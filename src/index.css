@@ -1,0 +1,185 @@
+/* Global reset for Panda Stage M0.5 */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background-color: #1a1a2e;
+  color: #e0e0e0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure canvas containers never overflow or show scrollbars */
+canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* App layout */
+.app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background-color: #16213e;
+  border-bottom: 1px solid #0f3460;
+  flex-shrink: 0;
+}
+
+.app-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #e0e0e0;
+  background-color: #0f3460;
+  border: 1px solid #1a5a9e;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  outline: none;
+}
+
+.btn:hover {
+  background-color: #1a5a9e;
+  border-color: #2a7cc9;
+}
+
+.btn:active {
+  background-color: #0d2b4f;
+}
+
+.btn-primary {
+  background-color: #e94560;
+  border-color: #e94560;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background-color: #ff6b81;
+  border-color: #ff6b81;
+}
+
+.btn-danger {
+  background-color: #c0392b;
+  border-color: #c0392b;
+  color: #ffffff;
+}
+
+.btn-danger:hover {
+  background-color: #e74c3c;
+  border-color: #e74c3c;
+}
+
+/* Main canvas area */
+.app-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 20px;
+  background-color: #1a1a2e;
+}
+
+/* Canvas stage container */
+.canvas-stage-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-stage-wrapper {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Progress bar */
+.progress-bar-container {
+  flex-shrink: 0;
+  padding: 12px 20px;
+  background-color: #16213e;
+  border-top: 1px solid #0f3460;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #0f3460;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: #e94560;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #a0a0a0;
+  text-align: center;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0f3460;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #1a5a9e;
+}

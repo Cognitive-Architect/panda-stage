@@ -1,0 +1,57 @@
+{
+  "name": "panda-stage",
+  "version": "0.0.1",
+  "description": "M0.5 Core Tech Probe - Panda Stage",
+  "main": "dist/electron/electron/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && npm run build:electron",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:all": "npm run build",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "konva": "^9.3.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-konva": "^18.2.10",
+    "zod": "^3.24.2",
+    "zustand": "^4.5.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.21.0",
+    "playwright": "^1.49.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
+  },
+  "build": {
+    "asar": true,
+    "productName": "PandaStage",
+    "appId": "com.pandastage.app",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
