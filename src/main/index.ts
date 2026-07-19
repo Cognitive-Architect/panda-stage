@@ -1,57 +1,52 @@
-import { app, BrowserWindow, screen } from 'electron';
-import path from 'node:path';
+import { app, type BrowserWindow } from 'electron';
+import { registerIpcHandlers } from './ipc/register-ipc-handlers';
+import { HiddenWindowManager } from './windows/hidden-window-manager';
+import { createMainWindow } from './windows/main-window';
 
 let mainWindow: BrowserWindow | null = null;
+const hiddenWindowManager = new HiddenWindowManager();
+let removeIpcHandlers: (() => void) | null = null;
 
-function createMainWindow(): BrowserWindow {
-  const { width: workAreaWidth, height: workAreaHeight } =
-    screen.getPrimaryDisplay().workAreaSize;
-
-  const window = new BrowserWindow({
-    width: Math.min(1200, workAreaWidth),
-    height: Math.min(760, workAreaHeight),
-    minWidth: Math.min(800, workAreaWidth),
-    minHeight: Math.min(560, workAreaHeight),
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
+async function createApplicationWindows(): Promise<void> {
+  mainWindow = await createMainWindow();
+  mainWindow.once('closed', () => {
+    mainWindow = null;
+    hiddenWindowManager.close();
   });
 
-  const developmentUrl = process.env.VITE_DEV_SERVER_URL;
-
-  if (developmentUrl) {
-    void window.loadURL(developmentUrl);
-  } else {
-    void window.loadFile(
-      path.join(__dirname, '../../dist/renderer/index.html'),
-    );
-  }
-
-  window.once('ready-to-show', () => {
-    window.show();
-  });
-
-  window.on('closed', () => {
-    if (mainWindow === window) {
-      mainWindow = null;
-    }
-  });
-
-  return window;
+  await hiddenWindowManager.create();
 }
 
-void app.whenReady().then(() => {
-  mainWindow = createMainWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createMainWindow();
-    }
+async function initialize(): Promise<void> {
+  removeIpcHandlers = registerIpcHandlers({
+    getMainWindow: () => mainWindow,
+    getHiddenWindow: () => hiddenWindowManager.getWindow(),
+    markHiddenReady: (senderId) => hiddenWindowManager.markReady(senderId),
   });
+
+  await createApplicationWindows();
+}
+
+void app
+  .whenReady()
+  .then(initialize)
+  .catch((error: unknown) => {
+    console.error('Panda Stage failed to initialize.', error);
+    app.exit(1);
+  });
+
+app.on('activate', () => {
+  if (!mainWindow) {
+    void createApplicationWindows().catch((error: unknown) => {
+      console.error('Panda Stage failed to recreate its windows.', error);
+    });
+  }
+});
+
+app.on('before-quit', () => {
+  removeIpcHandlers?.();
+  removeIpcHandlers = null;
+  hiddenWindowManager.close();
 });
 
 app.on('window-all-closed', () => {

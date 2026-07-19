@@ -20,5 +20,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/renderer", "src/shared", "tests", "vite.config.ts", "vitest.config.ts"]
+  "include": [
+    "src/renderer",
+    "src/shared",
+    "tests",
+    "vite.config.ts",
+    "vite.preload.config.ts",
+    "vitest.config.ts"
+  ]
 }

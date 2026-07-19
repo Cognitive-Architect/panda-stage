@@ -103,6 +103,45 @@ h1 {
   line-height: 1.7;
 }
 
+.ipc-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.ping-button {
+  padding: 10px 16px;
+  border: 1px solid rgb(143 209 161 / 45%);
+  border-radius: 10px;
+  color: #e9f7ed;
+  background: #244b2f;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ping-button:hover:not(:disabled) {
+  background: #2f613d;
+}
+
+.ping-button:focus-visible {
+  outline: 3px solid rgb(143 209 161 / 45%);
+  outline-offset: 3px;
+}
+
+.ping-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.ping-result {
+  min-width: 96px;
+  color: #b8c0ba;
+  font-size: 14px;
+}
+
 .status-badge {
   display: inline-flex;
   padding: 8px 14px;

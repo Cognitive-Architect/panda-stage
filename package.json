@@ -17,9 +17,10 @@
     "lint": "eslint .",
     "test:unit": "vitest run",
     "evidence:screenshot": "electron scripts/capture-bootstrap.cjs",
+    "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",
     "build": "pnpm typecheck && pnpm build:renderer && pnpm build:electron",
     "build:renderer": "vite build",
-    "build:electron": "tsc -p tsconfig.electron.json"
+    "build:electron": "tsc -p tsconfig.electron.json && cross-env PRELOAD_ENTRY=index vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=hidden vite build --config vite.preload.config.ts"
   },
   "dependencies": {
     "react": "^19.2.7",
