@@ -142,3 +142,7 @@ dist-electron
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Local image-generation intermediates
+tmp/imagegen/
+public/probe/*-original.png
