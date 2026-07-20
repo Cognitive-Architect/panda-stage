@@ -12,7 +12,7 @@ interface StageRendererProps {
   project: Project;
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
-  caption: string;
+  caption: string | null;
   onReady?: () => void;
   onError?: (error: Error) => void;
 }
@@ -130,6 +130,8 @@ export function StageRenderer({
       className="stage-renderer"
       data-logical-height={modelResult.model.height}
       data-logical-width={modelResult.model.width}
+      data-caption-visible={String(Boolean(caption))}
+      data-caption-text={caption ?? ''}
       data-stage-ready={String(ready)}
       data-stage-time={modelResult.model.timeMs}
       data-testid="stage-renderer"
@@ -165,39 +167,43 @@ export function StageRenderer({
               />
             );
           })}
-          <Rect
-            cornerRadius={34}
-            fill="rgba(10, 20, 17, 0.78)"
-            height={STAGE_CAPTION_SAFE_AREA.height}
-            width={STAGE_CAPTION_SAFE_AREA.width}
-            x={STAGE_CAPTION_SAFE_AREA.x}
-            y={STAGE_CAPTION_SAFE_AREA.y}
-          />
-          <Text
-            align="center"
-            fill="#fffdf6"
-            fontFamily="Microsoft YaHei, Segoe UI, sans-serif"
-            fontSize={44}
-            height={
-              STAGE_CAPTION_SAFE_AREA.height -
-              STAGE_CAPTION_SAFE_AREA.verticalPadding * 2
-            }
-            lineHeight={1.35}
-            text={caption}
-            verticalAlign="middle"
-            width={
-              STAGE_CAPTION_SAFE_AREA.width -
-              STAGE_CAPTION_SAFE_AREA.horizontalPadding * 2
-            }
-            x={
-              STAGE_CAPTION_SAFE_AREA.x +
-              STAGE_CAPTION_SAFE_AREA.horizontalPadding
-            }
-            y={
-              STAGE_CAPTION_SAFE_AREA.y +
-              STAGE_CAPTION_SAFE_AREA.verticalPadding
-            }
-          />
+          {caption ? (
+            <>
+              <Rect
+                cornerRadius={34}
+                fill="rgba(10, 20, 17, 0.78)"
+                height={STAGE_CAPTION_SAFE_AREA.height}
+                width={STAGE_CAPTION_SAFE_AREA.width}
+                x={STAGE_CAPTION_SAFE_AREA.x}
+                y={STAGE_CAPTION_SAFE_AREA.y}
+              />
+              <Text
+                align="center"
+                fill="#fffdf6"
+                fontFamily="Microsoft YaHei, Segoe UI, sans-serif"
+                fontSize={44}
+                height={
+                  STAGE_CAPTION_SAFE_AREA.height -
+                  STAGE_CAPTION_SAFE_AREA.verticalPadding * 2
+                }
+                lineHeight={1.35}
+                text={caption}
+                verticalAlign="middle"
+                width={
+                  STAGE_CAPTION_SAFE_AREA.width -
+                  STAGE_CAPTION_SAFE_AREA.horizontalPadding * 2
+                }
+                x={
+                  STAGE_CAPTION_SAFE_AREA.x +
+                  STAGE_CAPTION_SAFE_AREA.horizontalPadding
+                }
+                y={
+                  STAGE_CAPTION_SAFE_AREA.y +
+                  STAGE_CAPTION_SAFE_AREA.verticalPadding
+                }
+              />
+            </>
+          ) : null}
           <Text
             fill="rgba(16, 45, 34, 0.7)"
             fontFamily="Segoe UI, sans-serif"

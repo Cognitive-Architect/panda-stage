@@ -16,9 +16,11 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "eslint .",
     "test:unit": "vitest run",
+    "assets:probe-audio": "node scripts/generate-probe-audio.cjs",
     "evidence:screenshot": "electron scripts/capture-bootstrap.cjs",
     "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",
     "verify:day04": "pnpm build && electron scripts/verify-day04.cjs",
+    "verify:day05": "pnpm build && electron scripts/verify-day05.cjs",
     "build": "pnpm typecheck && pnpm build:renderer && pnpm build:electron",
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && cross-env PRELOAD_ENTRY=index vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=hidden vite build --config vite.preload.config.ts"

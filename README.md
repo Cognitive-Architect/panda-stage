@@ -2,7 +2,7 @@
 
 Panda Stage 是一款面向个人创作者的 Windows 桌面纸片人动画工具。项目计划让用户通过透明角色图片、背景、对白、音频和简单动作，制作并导出短动画。
 
-当前分支已完成 **Day 04：共享舞台渲染探针**。主窗口和隐藏窗口现在复用同一套 `CanvasStage → StageRenderer` 渲染链，能够在固定 1920×1080 逻辑坐标中显示背景、透明 PNG 角色和字幕，并播放 3 秒移动探针；仍不包含完整编辑器、素材管理、动作系统或导出编码。
+当前分支已完成 **Day 05：AudioContext 音画同步预览探针**。3 秒探针中的音频、角色移动和两段字幕现在由同一个 AudioContext 主时钟驱动，支持播放、暂停、停止和重播，并保证重复播放不会叠加音源；仍不包含完整时间轴 UI、TTS、AI 能力或导出编码。
 
 ## 技术栈
 
@@ -49,7 +49,7 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` 会同时启动 Vite 开发服务器和 Electron。舞台初始停在 1.5 秒共享快照，可使用播放、暂停和重播控制 3 秒探针；点击“测试安全 IPC”返回 `pong` 表示 IPC 正常，终端出现 `Hidden window ready` 表示隐藏窗口已使用同一渲染器完成首帧。
+`pnpm dev` 会同时启动 Vite 开发服务器和 Electron。预览初始位于 0 秒停止态；点击播放后，三秒提示音、角色移动和字幕都读取 AudioContext 时间。暂停会冻结画面并释放当前音源，停止和重播会恢复 0 秒状态。点击“测试安全 IPC”返回 `pong` 表示 IPC 正常。
 
 ## 质量检查
 
@@ -60,6 +60,7 @@ pnpm test:unit
 pnpm build
 pnpm verify:day03
 pnpm verify:day04
+pnpm verify:day05
 ```
 
 生产构建输出：
@@ -86,6 +87,14 @@ src/
 - `StageRenderer` 只消费已求值图层，不自行计算时间轴或动作；
 - 主窗口 `StagePreview` 和隐藏窗口 `HiddenApp` 直接复用同一个 `CanvasStage` 与 `StageRenderer`。
 
+## 预览时钟架构
+
+- `PreviewPlaybackEngine` 管理播放状态和唯一活动音源；
+- `WebAudioRuntime` 解码 WAV，并以 `AudioContext.currentTime` 作为主时钟；
+- `usePreviewController` 只用 `requestAnimationFrame` 采样音频时钟，不使用视觉帧时间累计；
+- `evaluateShotAtTime()` 和 `evaluateSubtitleAtTime()` 消费同一个整数毫秒时间；
+- 暂停、停止、重播和卸载都会停止并断开旧 `AudioBufferSourceNode`。
+
 ## IPC 架构
 
 - 所有通道名集中定义在 `src/shared/ipc/channels.ts`；
@@ -109,6 +118,7 @@ Renderer 不直接访问 Node.js、文件系统或子进程。后续跨进程能
 
 - [Day 03：安全 IPC](./docs/day-03-results.md)
 - [Day 04：共享舞台渲染](./docs/day-04-results.md)
+- [Day 05：AudioContext 音画同步预览](./docs/day-05-results.md)
 
 ## 开发计划
 

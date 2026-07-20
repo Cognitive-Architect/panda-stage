@@ -1,20 +1,19 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { evaluateShotAtTime } from '../shared/domain';
 import {
-  PROBE_CAPTION,
-  PROBE_PREVIEW_TIME_MS,
   PROBE_PROJECT,
   PROBE_SHOT,
+  PROBE_SUBTITLE_CUES,
 } from '../shared/probe/probe-project';
+import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from './stage/CanvasStage';
 import { PROBE_ASSET_URLS } from './stage/probe-assets';
 
 export function HiddenApp(): React.JSX.Element {
   const announcedRef = useRef(false);
-  const evaluatedShot = useMemo(
-    () => evaluateShotAtTime(PROBE_SHOT, PROBE_PREVIEW_TIME_MS),
-    [],
-  );
+  const previewTimeMs = 0;
+  const evaluatedShot = useMemo(() => evaluateShotAtTime(PROBE_SHOT, 0), []);
+  const subtitle = evaluateSubtitleAtTime(PROBE_SUBTITLE_CUES, previewTimeMs);
 
   const announceReady = useCallback(() => {
     if (announcedRef.current) {
@@ -38,7 +37,7 @@ export function HiddenApp(): React.JSX.Element {
     <main className="hidden-stage-shell">
       <CanvasStage
         assetUrls={PROBE_ASSET_URLS}
-        caption={PROBE_CAPTION}
+        caption={subtitle?.text ?? null}
         evaluatedShot={evaluatedShot}
         onError={(error) => console.error('Hidden stage failed.', error)}
         onReady={announceReady}
