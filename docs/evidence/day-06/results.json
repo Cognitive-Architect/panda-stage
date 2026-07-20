@@ -1,0 +1,169 @@
+{
+  "configuration": {
+    "fps": 24,
+    "maxPendingFrames": 3
+  },
+  "firstThreeSecond": {
+    "jobId": "0a42e282-5be3-4ab9-9329-b40c70b08ef9",
+    "status": "completed",
+    "durationMs": 3000,
+    "totalFrames": 72,
+    "completedFrames": 72,
+    "outputDirectory": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage\\day06-verification-3084-1784519425247\\0a42e282-5be3-4ab9-9329-b40c70b08ef9",
+    "error": null,
+    "peakPendingWrites": 1,
+    "totalBytes": 51939473,
+    "elapsedMs": 143048,
+    "memory": {
+      "heapUsedStart": 7379748,
+      "heapUsedPeak": 8018332,
+      "heapUsedEnd": 6316384,
+      "rssStart": 113516544,
+      "rssPeak": 136433664,
+      "rssEnd": 119881728
+    },
+    "inspection": {
+      "count": 72,
+      "first": "frame_000000.png",
+      "last": "frame_000071.png",
+      "samples": [
+        {
+          "fileName": "frame_000000.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "befe6f09cd8ec0bb5d38e5320ffacc0361bbd8d8cebaed304de62fb02921cefb",
+          "bytes": 786558
+        },
+        {
+          "fileName": "frame_000036.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "121c72b06984f9c12680f5cd66e2a54e14acb62e5aab561b40e33c5b12c1d031",
+          "bytes": 722332
+        },
+        {
+          "fileName": "frame_000071.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "cb5c54556fc8469670dadf8f550d69fce3a3c3ef01db62108a6dff4b59064bcc",
+          "bytes": 789076
+        }
+      ]
+    }
+  },
+  "secondThreeSecond": {
+    "jobId": "b15f4031-c99d-46aa-907d-3fc9cdb0d104",
+    "status": "completed",
+    "durationMs": 3000,
+    "totalFrames": 72,
+    "completedFrames": 72,
+    "outputDirectory": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage\\day06-verification-3084-1784519425247\\b15f4031-c99d-46aa-907d-3fc9cdb0d104",
+    "error": null,
+    "peakPendingWrites": 1,
+    "totalBytes": 51939473,
+    "elapsedMs": 143985,
+    "memory": {
+      "heapUsedStart": 6848296,
+      "heapUsedPeak": 7138540,
+      "heapUsedEnd": 5096192,
+      "rssStart": 123224064,
+      "rssPeak": 132227072,
+      "rssEnd": 112545792
+    },
+    "inspection": {
+      "count": 72,
+      "first": "frame_000000.png",
+      "last": "frame_000071.png",
+      "samples": [
+        {
+          "fileName": "frame_000000.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "befe6f09cd8ec0bb5d38e5320ffacc0361bbd8d8cebaed304de62fb02921cefb",
+          "bytes": 786558
+        },
+        {
+          "fileName": "frame_000036.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "121c72b06984f9c12680f5cd66e2a54e14acb62e5aab561b40e33c5b12c1d031",
+          "bytes": 722332
+        },
+        {
+          "fileName": "frame_000071.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "cb5c54556fc8469670dadf8f550d69fce3a3c3ef01db62108a6dff4b59064bcc",
+          "bytes": 789076
+        }
+      ]
+    }
+  },
+  "fiveSecond": {
+    "jobId": "8c939798-f7c0-4f1c-8c99-ad102d104a7a",
+    "status": "completed",
+    "durationMs": 5000,
+    "totalFrames": 120,
+    "completedFrames": 120,
+    "outputDirectory": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage\\day06-verification-3084-1784519425247\\8c939798-f7c0-4f1c-8c99-ad102d104a7a",
+    "error": null,
+    "peakPendingWrites": 1,
+    "totalBytes": 89815409,
+    "elapsedMs": 192989,
+    "memory": {
+      "heapUsedStart": 5908744,
+      "heapUsedPeak": 6051472,
+      "heapUsedEnd": 5475648,
+      "rssStart": 114708480,
+      "rssPeak": 134443008,
+      "rssEnd": 126410752
+    },
+    "inspection": {
+      "count": 120,
+      "first": "frame_000000.png",
+      "last": "frame_000119.png",
+      "samples": [
+        {
+          "fileName": "frame_000000.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "befe6f09cd8ec0bb5d38e5320ffacc0361bbd8d8cebaed304de62fb02921cefb",
+          "bytes": 786558
+        },
+        {
+          "fileName": "frame_000060.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "5911930748114e756d11893267fc5305db0601fdaa1232743fdf60c356b36f5f",
+          "bytes": 711055
+        },
+        {
+          "fileName": "frame_000119.png",
+          "signature": "89504e470d0a1a0a",
+          "width": 1920,
+          "height": 1080,
+          "sha256": "aab2407a2d600abf33164f46f71321647549ba8ce465005a0b489137c75c7235",
+          "bytes": 789082
+        }
+      ]
+    }
+  },
+  "writeFailure": {
+    "message": "Export Job 4034b225-7fcf-4134-9fc5-16adcf60d183: simulated controlled write failure",
+    "partialDirectoryRemoved": true
+  },
+  "resourceObservation": {
+    "firstHeapDelta": -1063364,
+    "secondHeapDelta": -1752104,
+    "firstRssDelta": 6365184,
+    "secondRssDelta": -10678272
+  }
+}

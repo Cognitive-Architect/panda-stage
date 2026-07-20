@@ -2,7 +2,7 @@
 
 Panda Stage 是一款面向个人创作者的 Windows 桌面纸片人动画工具。项目计划让用户通过透明角色图片、背景、对白、音频和简单动作，制作并导出短动画。
 
-当前分支已完成 **Day 05：AudioContext 音画同步预览探针**。3 秒探针中的音频、角色移动和两段字幕现在由同一个 AudioContext 主时钟驱动，支持播放、暂停、停止和重播，并保证重复播放不会叠加音源；仍不包含完整时间轴 UI、TTS、AI 能力或导出编码。
+当前分支已完成 **Day 06：隐藏窗口逐帧捕获**。Main Process 以 24 FPS 调度隐藏窗口复用共享舞台渲染真实 1920×1080 PNG，并通过独立 Job 目录、异步写盘、有限背压和失败清理生成确定性帧序列；仍不包含 FFmpeg、视频编码、音频 mux 或正式导出 UI。
 
 ## 技术栈
 
@@ -61,6 +61,7 @@ pnpm build
 pnpm verify:day03
 pnpm verify:day04
 pnpm verify:day05
+pnpm verify:day06
 ```
 
 生产构建输出：
@@ -74,7 +75,8 @@ pnpm verify:day05
 src/
 ├── main/       # Electron Main Process、IPC handler 与窗口管理
 ├── preload/    # 主窗口和隐藏窗口的白名单桥
-├── renderer/   # React Renderer 与隐藏窗口入口
+├── export-renderer/ # 隐藏导出 Renderer 入口
+├── renderer/   # 主窗口 React Renderer 与共享舞台
 └── shared/     # 领域模型、IPC 数据合同和共享舞台模型
 ```
 
@@ -85,7 +87,15 @@ src/
 - `src/shared/stage/` 将求值快照转换成渲染模型，并对缺失素材返回可读错误；
 - `CanvasStage` 只负责等比显示，Konva 画布始终保持 1920×1080 逻辑坐标；
 - `StageRenderer` 只消费已求值图层，不自行计算时间轴或动作；
-- 主窗口 `StagePreview` 和隐藏窗口 `HiddenApp` 直接复用同一个 `CanvasStage` 与 `StageRenderer`。
+- 主窗口 `StagePreview` 和隐藏窗口 `ExportRendererApp` 直接复用同一个 `CanvasStage` 与 `StageRenderer`。
+
+## 帧导出架构
+
+- `ExportService` 在 Main Process 中创建唯一 Job，并按 `floor(frameIndex / 24 * 1000)` 调度帧；
+- 隐藏 Renderer 在共享舞台真实绘制完成后，将 Canvas 编码为 PNG `Uint8Array` 回传；
+- `FileSystemService` 只在 Main Process 中异步写入 `frame_000000.png` 形式的文件；
+- `MAX_PENDING_FRAMES = 3` 限制待写队列，失败或取消会删除整个 Job 临时目录；
+- 3 秒和 5 秒探针分别产生 72 帧与 120 帧，真实验证结果见 [Day 06 回执](./docs/test-receipts/DAY-06.md)。
 
 ## 预览时钟架构
 
@@ -100,7 +110,7 @@ src/
 - 所有通道名集中定义在 `src/shared/ipc/channels.ts`；
 - 请求和响应均由 `src/shared/ipc/contracts.ts` 中的严格 Zod Schema 校验；
 - 主窗口只暴露 `window.pandaStage.app.ping()`；
-- 隐藏窗口只暴露 `window.pandaStageHidden.ready()`；
+- 隐藏窗口只暴露白名单化的 ready、加载探针、逐帧请求与逐帧结果 API；
 - Main Process 校验消息来源窗口，并在退出前注销 handler、关闭隐藏窗口；
 - 两个 Preload 均构建为独立的沙箱兼容 bundle，不向 Renderer 暴露 Node.js。
 
@@ -119,6 +129,7 @@ Renderer 不直接访问 Node.js、文件系统或子进程。后续跨进程能
 - [Day 03：安全 IPC](./docs/day-03-results.md)
 - [Day 04：共享舞台渲染](./docs/day-04-results.md)
 - [Day 05：AudioContext 音画同步预览](./docs/day-05-results.md)
+- [Day 06：隐藏窗口逐帧捕获](./docs/test-receipts/DAY-06.md)
 
 ## 开发计划
 

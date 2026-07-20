@@ -1,10 +1,16 @@
 import { app, type BrowserWindow } from 'electron';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
+import { ExportService } from './services/ExportService';
+import { FileSystemService } from './services/FileSystemService';
 import { HiddenWindowManager } from './windows/hidden-window-manager';
 import { createMainWindow } from './windows/main-window';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
+const exportService = new ExportService(
+  hiddenWindowManager,
+  new FileSystemService(),
+);
 let removeIpcHandlers: (() => void) | null = null;
 
 async function createApplicationWindows(): Promise<void> {
@@ -22,6 +28,12 @@ async function initialize(): Promise<void> {
     getMainWindow: () => mainWindow,
     getHiddenWindow: () => hiddenWindowManager.getWindow(),
     markHiddenReady: (senderId) => hiddenWindowManager.markReady(senderId),
+    markProbeLoaded: (senderId, payload) =>
+      hiddenWindowManager.markProbeLoaded(senderId, payload),
+    markFrameReady: (senderId, payload) =>
+      hiddenWindowManager.markFrameReady(senderId, payload),
+    markFrameFailed: (senderId, payload) =>
+      hiddenWindowManager.markFrameFailed(senderId, payload),
   });
 
   await createApplicationWindows();
@@ -44,6 +56,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  exportService.cancelActiveJob();
   removeIpcHandlers?.();
   removeIpcHandlers = null;
   hiddenWindowManager.close();
