@@ -18,6 +18,7 @@ class MemoryFileSystem implements FrameFileSystem {
   inFlight = 0;
   peakInFlight = 0;
   failAtFile: string | null = null;
+  successfulWrites: string[] = [];
 
   async createJobDirectory(jobId: string): Promise<string> {
     const directory = `/jobs/${jobId}`;
@@ -34,6 +35,7 @@ class MemoryFileSystem implements FrameFileSystem {
       throw new Error(`simulated write failure: ${fileName}`);
     }
     this.directories.get(directory)?.set(fileName, bytes);
+    this.successfulWrites.push(fileName);
   }
 
   async listFrameFiles(directory: string): Promise<string[]> {
@@ -120,13 +122,21 @@ describe('ExportService', () => {
     if (kind === 'write') fileSystem.failAtFile = 'frame_000004.png';
     const service = new ExportService(renderer, fileSystem);
 
-    await expect(service.runProbe({ durationMs: 3_000, fps: 24 })).rejects.toBeInstanceOf(
-      ExportJobError,
-    );
+    let jobError: ExportJobError | null = null;
+    try {
+      await service.runProbe({ durationMs: 3_000, fps: 24 });
+    } catch (error) {
+      expect(error).toBeInstanceOf(ExportJobError);
+      jobError = error as ExportJobError;
+    }
+    expect(jobError).not.toBeNull();
     expect(fileSystem.cleaned).toHaveLength(1);
     expect(fileSystem.directories.size).toBe(0);
     expect(service.getActiveJobId()).toBeNull();
     if (kind === 'write') {
+      const job = service.getJob(jobError?.jobId ?? 'missing-job-id');
+      expect(fileSystem.successfulWrites).not.toContain('frame_000004.png');
+      expect(job?.completedFrames).toBe(fileSystem.successfulWrites.length);
       expect(renderer.requests.length).toBeLessThan(10);
     }
   });

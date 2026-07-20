@@ -209,7 +209,8 @@ export class HiddenWindowManager {
     if (
       !pending ||
       pending.request.jobId !== payload.jobId ||
-      pending.request.frameIndex !== payload.frameIndex
+      pending.request.frameIndex !== payload.frameIndex ||
+      pending.request.timeMs !== payload.timeMs
     ) {
       throw new Error(
         `Unexpected frame-failed response for Job ${payload.jobId}, frame ${payload.frameIndex}.`,

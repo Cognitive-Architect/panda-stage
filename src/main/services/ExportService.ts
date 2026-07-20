@@ -173,16 +173,20 @@ export class ExportService {
         totalBytes += rendered.pngBytes.byteLength;
         const writeTask = this.fileSystem
           .writeFrame(jobDirectory, frame.fileName, rendered.pngBytes)
-          .catch((error: unknown) => {
-            writeFailure =
-              error instanceof Error ? error : new Error('Frame write failed.');
-          })
+          .then(
+            () => {
+              record.completedFrames += 1;
+            },
+            (error: unknown) => {
+              writeFailure =
+                error instanceof Error
+                  ? error
+                  : new Error('Frame write failed.');
+            },
+          )
           .finally(() => pendingWrites.delete(writeTask));
         pendingWrites.add(writeTask);
         peakPendingWrites = Math.max(peakPendingWrites, pendingWrites.size);
-        void writeTask.then(() => {
-          record.completedFrames += 1;
-        });
 
         const memory = process.memoryUsage();
         heapUsedPeak = Math.max(heapUsedPeak, memory.heapUsed);
