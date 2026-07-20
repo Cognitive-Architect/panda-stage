@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BOOTSTRAP_MESSAGE } from '../shared/bootstrap';
+import { StagePreview } from './stage/StagePreview';
 
 export function App(): React.JSX.Element {
   const [pingStatus, setPingStatus] = useState<
@@ -18,18 +18,15 @@ export function App(): React.JSX.Element {
   };
 
   return (
-    <main className="bootstrap-shell">
-      <section className="bootstrap-card" aria-labelledby="app-title">
-        <div className="panda-mark" aria-hidden="true">
-          <span className="panda-ear panda-ear-left" />
-          <span className="panda-ear panda-ear-right" />
-          <span className="panda-face">熊</span>
+    <main className="app-shell">
+      <header className="app-header">
+        <div className="brand-lockup">
+          <span className="brand-mark" aria-hidden="true">熊</span>
+          <div>
+            <strong>Panda Stage</strong>
+            <span>共享渲染架构探针</span>
+          </div>
         </div>
-        <p className="eyebrow">Desktop animation workspace</p>
-        <h1 id="app-title">{BOOTSTRAP_MESSAGE}</h1>
-        <p className="status-copy">
-          Electron、React 与 TypeScript 工程基线已就绪。
-        </p>
         <div className="ipc-check">
           <button
             className="ping-button"
@@ -47,8 +44,8 @@ export function App(): React.JSX.Element {
             {pingStatus === 'error' && '通信失败'}
           </output>
         </div>
-        <span className="status-badge">Day 03</span>
-      </section>
+      </header>
+      <StagePreview />
     </main>
   );
 }

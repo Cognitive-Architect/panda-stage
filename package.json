@@ -12,19 +12,22 @@
   "scripts": {
     "dev": "pnpm build:electron && concurrently --kill-others --success first \"pnpm dev:renderer\" \"pnpm dev:electron\"",
     "dev:renderer": "vite",
-    "dev:electron": "concurrently --kill-others \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron dist-electron/main/index.js\"",
+    "dev:electron": "concurrently --kill-others \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron dist-electron/main/index.js\"",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "eslint .",
     "test:unit": "vitest run",
     "evidence:screenshot": "electron scripts/capture-bootstrap.cjs",
     "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",
+    "verify:day04": "pnpm build && electron scripts/verify-day04.cjs",
     "build": "pnpm typecheck && pnpm build:renderer && pnpm build:electron",
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && cross-env PRELOAD_ENTRY=index vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=hidden vite build --config vite.preload.config.ts"
   },
   "dependencies": {
+    "konva": "^10.3.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-konva": "^19.2.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
