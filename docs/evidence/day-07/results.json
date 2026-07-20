@@ -1,0 +1,156 @@
+{
+  "sourceFrames": {
+    "count": 72,
+    "first": "frame_000000.png",
+    "last": "frame_000071.png",
+    "renderElapsedMs": 143049
+  },
+  "ffmpeg": {
+    "versionLine": "ffmpeg version N-92722-gf22fcd4483 Copyright (c) 2000-2018 the FFmpeg developers",
+    "hasLibx264": true,
+    "executable": "<ffmpeg-path>"
+  },
+  "encode": {
+    "elapsedMs": 2017,
+    "frameCount": 72,
+    "args": [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "info",
+      "-framerate",
+      "24",
+      "-start_number",
+      "0",
+      "-i",
+      "<verification-root>\\frame jobs\\52b7c43e-1efb-4c10-8cbf-4f4b9b4cb8cd\\frame_%06d.png",
+      "-frames:v",
+      "72",
+      "-an",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      "24",
+      "-movflags",
+      "+faststart",
+      "<verification-root>\\encoded output with spaces\\panda stage silent probe.mp4"
+    ],
+    "outputBytes": 119597,
+    "sha256": "9af20958e0753708cd6e739756700515d393a64ce82a975e113447d2efc67bef"
+  },
+  "ffprobe": {
+    "codecName": "h264",
+    "pixelFormat": "yuv420p",
+    "width": 1920,
+    "height": 1080,
+    "fps": 24,
+    "frameCount": 72,
+    "durationSeconds": 3,
+    "hasAudio": false,
+    "raw": {
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "h264",
+          "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+          "profile": "High",
+          "codec_type": "video",
+          "codec_tag_string": "avc1",
+          "codec_tag": "0x31637661",
+          "width": 1920,
+          "height": 1080,
+          "coded_width": 1920,
+          "coded_height": 1088,
+          "closed_captions": 0,
+          "film_grain": 0,
+          "has_b_frames": 2,
+          "pix_fmt": "yuv420p",
+          "level": 40,
+          "chroma_location": "left",
+          "field_order": "progressive",
+          "refs": 4,
+          "is_avc": "true",
+          "nal_length_size": "4",
+          "id": "0x1",
+          "r_frame_rate": "24/1",
+          "avg_frame_rate": "24/1",
+          "time_base": "1/12288",
+          "start_pts": 0,
+          "start_time": "0.000000",
+          "duration_ts": 36864,
+          "duration": "3.000000",
+          "bit_rate": "314562",
+          "bits_per_raw_sample": "8",
+          "nb_frames": "72",
+          "nb_read_frames": "72",
+          "extradata_size": 43,
+          "disposition": {
+            "default": 1,
+            "dub": 0,
+            "original": 0,
+            "comment": 0,
+            "lyrics": 0,
+            "karaoke": 0,
+            "forced": 0,
+            "hearing_impaired": 0,
+            "visual_impaired": 0,
+            "clean_effects": 0,
+            "attached_pic": 0,
+            "timed_thumbnails": 0,
+            "captions": 0,
+            "descriptions": 0,
+            "metadata": 0,
+            "dependent": 0,
+            "still_image": 0
+          },
+          "tags": {
+            "language": "und",
+            "handler_name": "VideoHandler",
+            "vendor_id": "[0][0][0][0]"
+          }
+        }
+      ],
+      "format": {
+        "filename": "<verification-root>\\encoded output with spaces\\panda stage silent probe.mp4",
+        "nb_streams": 1,
+        "nb_programs": 0,
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "format_long_name": "QuickTime / MOV",
+        "start_time": "0.000000",
+        "duration": "3.000000",
+        "size": "119597",
+        "bit_rate": "318925",
+        "probe_score": 100,
+        "tags": {
+          "major_brand": "isom",
+          "minor_version": "512",
+          "compatible_brands": "isomiso2avc1mp41",
+          "encoder": "Lavf58.24.101"
+        }
+      }
+    }
+  },
+  "playback": {
+    "currentTime": 1.529148,
+    "duration": 3,
+    "videoWidth": 1920,
+    "videoHeight": 1080,
+    "paused": true
+  },
+  "negativePaths": {
+    "missingExecutable": {
+      "code": "EXECUTABLE_NOT_FOUND",
+      "message": "找不到媒体工具：ffmpeg.exe。请配置开发环境路径。"
+    },
+    "missingFrame": {
+      "code": "FRAME_SEQUENCE_INVALID",
+      "message": "PNG 帧序列不连续，缺少 frame_000036.png。"
+    },
+    "unwritableOutput": {
+      "code": "OUTPUT_NOT_WRITABLE",
+      "message": "视频输出目录不存在或不可写。"
+    }
+  }
+}
