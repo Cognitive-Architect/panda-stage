@@ -1,13 +1,29 @@
 import { ProjectSchema, type Project, type Shot } from '../domain';
+import { SubtitleTrackSchema } from '../preview/subtitle-engine';
 
 export const PROBE_BACKGROUND_ASSET_ID =
   '10000000-0000-4000-8000-000000000001';
 export const PROBE_CHARACTER_ASSET_ID =
   '10000000-0000-4000-8000-000000000002';
+export const PROBE_AUDIO_ASSET_ID =
+  '10000000-0000-4000-8000-000000000003';
 export const PROBE_CHARACTER_LAYER_ID =
   '20000000-0000-4000-8000-000000000002';
-export const PROBE_PREVIEW_TIME_MS = 1_500;
 export const PROBE_CAPTION = '每一个故事，都从勇敢迈出第一步开始。';
+export const PROBE_SUBTITLE_CUES = SubtitleTrackSchema.parse([
+  {
+    id: '50000000-0000-4000-8000-000000000001',
+    startMs: 200,
+    endMs: 1_400,
+    text: '风吹过竹林，新的旅程准备出发。',
+  },
+  {
+    id: '50000000-0000-4000-8000-000000000002',
+    startMs: 1_400,
+    endMs: 2_850,
+    text: PROBE_CAPTION,
+  },
+]);
 
 export const PROBE_PROJECT: Project = ProjectSchema.parse({
   schemaVersion: 1,
@@ -34,6 +50,14 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
       mimeType: 'image/png',
       width: 640,
       height: 640,
+    },
+    {
+      id: PROBE_AUDIO_ASSET_ID,
+      kind: 'audio',
+      name: '三秒预览提示音',
+      relativePath: 'probe/preview-tone.wav',
+      mimeType: 'audio/wav',
+      durationMs: 3_000,
     },
   ],
   shots: [

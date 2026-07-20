@@ -61,6 +61,38 @@ button:disabled {
   align-items: center;
 }
 
+.preview-status-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.playback-status {
+  padding: 7px 11px;
+  border-radius: 999px;
+  color: #a9b8ae;
+  background: rgb(255 255 255 / 6%);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.playback-status-playing {
+  color: #d5f7de;
+  background: rgb(59 148 85 / 32%);
+  box-shadow: 0 0 0 1px rgb(124 212 150 / 25%);
+}
+
+.playback-status-error {
+  color: #ffd7d2;
+  background: rgb(148 59 59 / 32%);
+}
+
+.preview-error {
+  margin: 14px 0 0;
+  color: #ffd7d2;
+  font-size: 13px;
+}
+
 .app-header {
   max-width: 1180px;
   margin: 0 auto 18px;

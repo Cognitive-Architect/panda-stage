@@ -7,7 +7,7 @@ interface CanvasStageProps {
   project: Project;
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
-  caption: string;
+  caption: string | null;
   onReady?: () => void;
   onError?: (error: Error) => void;
 }

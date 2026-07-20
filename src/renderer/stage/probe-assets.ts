@@ -12,3 +12,5 @@ export const PROBE_ASSET_URLS: StageAssetUrlMap = Object.freeze({
   [PROBE_BACKGROUND_ASSET_ID]: publicAssetUrl('probe/stage-background.svg'),
   [PROBE_CHARACTER_ASSET_ID]: publicAssetUrl('probe/panda-character.png'),
 });
+
+export const PROBE_AUDIO_URL = publicAssetUrl('probe/preview-tone.wav');

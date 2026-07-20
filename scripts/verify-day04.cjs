@@ -152,7 +152,7 @@ async function runVerification() {
       hiddenSnapshot.logicalWidth !== 1_920 ||
       hiddenSnapshot.logicalHeight !== 1_080 ||
       hiddenSnapshot.timeMs !== result.snapshotTimeMs ||
-      result.snapshotTimeMs !== 1_500 ||
+      result.snapshotTimeMs !== 0 ||
       !result.canvasSizeStable ||
       !result.responsiveScaleChanged ||
       result.transparentPngColorType !== 6 ||
