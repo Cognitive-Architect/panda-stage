@@ -10,6 +10,7 @@ interface CanvasStageProps {
   caption: string | null;
   onReady?: () => void;
   onError?: (error: Error) => void;
+  renderToken?: string | number;
 }
 
 export function CanvasStage(props: CanvasStageProps): React.JSX.Element {

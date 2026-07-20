@@ -12,7 +12,15 @@ describe('IPC channel registry', () => {
     const channels = Object.values(IPC_CHANNELS);
 
     expect(new Set(channels).size).toBe(channels.length);
-    expect(channels).toEqual(['app:ping', 'hidden:ready']);
+    expect(channels).toEqual([
+      'app:ping',
+      'hidden:ready',
+      'export:load-probe',
+      'export:probe-loaded',
+      'export:render-frame',
+      'export:frame-ready',
+      'export:frame-failed',
+    ]);
   });
 });
 

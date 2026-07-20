@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import Konva from 'konva';
 import { Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { EvaluatedShot, Project } from '../../shared/domain';
 import {
@@ -15,7 +16,10 @@ interface StageRendererProps {
   caption: string | null;
   onReady?: () => void;
   onError?: (error: Error) => void;
+  renderToken?: string | number;
 }
+
+Konva.pixelRatio = 1;
 
 interface ImageLoadState {
   images: ReadonlyMap<string, HTMLImageElement>;
@@ -81,6 +85,7 @@ export function StageRenderer({
   caption,
   onReady,
   onError,
+  renderToken,
 }: StageRendererProps): React.JSX.Element {
   const modelResult = useMemo(() => {
     try {
@@ -114,7 +119,14 @@ export function StageRenderer({
 
     const frame = window.requestAnimationFrame(() => onReady?.());
     return () => window.cancelAnimationFrame(frame);
-  }, [modelResult.error, onError, onReady, ready]);
+  }, [
+    modelResult.error,
+    modelResult.model?.timeMs,
+    onError,
+    onReady,
+    ready,
+    renderToken,
+  ]);
 
   if (!modelResult.model || error) {
     return (

@@ -1,9 +1,34 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import {
+  ExportFrameFailedSchema,
+  ExportFrameReadySchema,
+  ExportLoadProbeRequestSchema,
+  ExportProbeLoadedSchema,
+  ExportRenderFrameRequestSchema,
+  type ExportFrameFailed,
+  type ExportFrameReady,
+  type ExportLoadProbeRequest,
+  type ExportRenderFrameRequest,
+} from '../shared/export-types';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
 import {
   HiddenReadyRequestSchema,
   HiddenReadyResponseSchema,
 } from '../shared/ipc/contracts';
+
+type Unsubscribe = () => void;
+
+function onValidatedMessage<T>(
+  channel: string,
+  parse: (rawPayload: unknown) => T,
+  callback: (payload: T) => void,
+): Unsubscribe {
+  const listener = (_event: Electron.IpcRendererEvent, rawPayload: unknown) => {
+    callback(parse(rawPayload));
+  };
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
 
 const hiddenApi = Object.freeze({
   ready: async () => {
@@ -16,6 +41,30 @@ const hiddenApi = Object.freeze({
       request,
     );
     return HiddenReadyResponseSchema.parse(response);
+  },
+  onLoadProbe: (callback: (request: ExportLoadProbeRequest) => void) =>
+    onValidatedMessage(
+      IPC_CHANNELS.EXPORT_LOAD_PROBE,
+      (payload) => ExportLoadProbeRequestSchema.parse(payload),
+      callback,
+    ),
+  probeLoaded: (rawPayload: unknown) => {
+    const payload = ExportProbeLoadedSchema.parse(rawPayload);
+    ipcRenderer.send(IPC_CHANNELS.EXPORT_PROBE_LOADED, payload);
+  },
+  onRenderFrame: (callback: (request: ExportRenderFrameRequest) => void) =>
+    onValidatedMessage(
+      IPC_CHANNELS.EXPORT_RENDER_FRAME,
+      (payload) => ExportRenderFrameRequestSchema.parse(payload),
+      callback,
+    ),
+  frameReady: (rawPayload: ExportFrameReady) => {
+    const payload = ExportFrameReadySchema.parse(rawPayload);
+    ipcRenderer.send(IPC_CHANNELS.EXPORT_FRAME_READY, payload);
+  },
+  frameFailed: (rawPayload: ExportFrameFailed) => {
+    const payload = ExportFrameFailedSchema.parse(rawPayload);
+    ipcRenderer.send(IPC_CHANNELS.EXPORT_FRAME_FAILED, payload);
   },
 });
 
