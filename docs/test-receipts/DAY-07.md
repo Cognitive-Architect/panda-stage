@@ -90,3 +90,22 @@ Chromium 实际加载视频后报告 1920×1080、3 秒并成功播放/暂停。
 - `DEBT-TEST-B07-001`：无，正常、路径空格、三条真实失败路径、异常退出、取消和媒体参数均有证据；
 - 主要性能风险仍是 PNG 捕获约 143 秒，FFmpeg 编码仅约 2.0 秒；
 - 回滚方式：`git revert <Day 07 最终提交 SHA>`。
+
+## 2026-07-22 pre-PR 修复回执
+
+- FFmpeg 编码进程非 0 退出或被 `AbortSignal` 取消后，会删除本次可能留下的 `outputPath` 半成品；成功输出保持不变；
+- 半成品清理失败不会替换原始编码错误，附加错误保留在 `diagnostics.cleanupError`；
+- `EncodePngSequenceRequestSchema` 仅接受 `.mp4` 输出路径，扩展名匹配忽略大小写；
+- 新增测试覆盖失败清理、取消清理、成功保留、清理失败诊断、`output.mp4`、`output.MP4` 与 `output.mkv`。
+
+验证结果：
+
+- `pnpm typecheck`：通过；
+- `pnpm lint`：通过；
+- `pnpm test:unit`：11 个测试文件、58 项测试通过，其中 FFmpegAdapter 定向测试 14 项通过；
+- `pnpm build`：通过；Vite 既有共享 chunk 大小警告仍为非阻断项；
+- `pnpm verify:day03`：通过；隐藏窗口关闭后剩余窗口数为 0；
+- `pnpm verify:day04`：通过；共享帧 SHA-256 匹配，逻辑尺寸 1920×1080；
+- `pnpm verify:day05`：通过；预览播放、暂停、继续、重播与结束状态均符合预期；
+- `$env:DAY06_FAILURE_ONLY='1'; pnpm verify:day06`：通过；模拟失败后的部分帧目录已清理；
+- `pnpm verify:day07`：本次未重跑。修复未改变 FFmpeg 参数数组、编码参数或真实媒体链路，依任务说明沿用上方已有真实媒体证据。

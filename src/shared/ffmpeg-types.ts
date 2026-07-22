@@ -4,7 +4,13 @@ import { EXPORT_FPS } from './export-types';
 export const EncodePngSequenceRequestSchema = z
   .object({
     framesDirectory: z.string().trim().min(1),
-    outputPath: z.string().trim().min(1),
+    outputPath: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((value) => /\.mp4$/iu.test(value), {
+        message: '视频输出路径必须使用 .mp4 扩展名。',
+      }),
     fps: z.literal(EXPORT_FPS),
     overwrite: z.boolean().default(true),
   })

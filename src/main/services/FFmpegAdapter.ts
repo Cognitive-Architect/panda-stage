@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access, readdir, stat } from 'node:fs/promises';
+import { access, readdir, rm, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -52,6 +52,7 @@ export interface FFmpegDiagnostics {
   signal?: NodeJS.Signals | null;
   stderr?: string;
   cause?: unknown;
+  cleanupError?: unknown;
 }
 
 export class FFmpegAdapterError extends Error {
@@ -271,32 +272,38 @@ export class FFmpegAdapter {
       frameCount,
     });
     const startedAt = performance.now();
-    const result = await this.runProcess(this.ffmpegPath, args, { signal });
-    if (signal?.aborted) {
-      throw this.cancelledError(
-        this.ffmpegPath,
-        args,
-        result.code,
-        result.signal,
-        result.stderr,
-      );
-    }
-    if (result.code !== 0) {
-      throw this.mapEncodeFailure(args, result);
-    }
-    const outputStats = await stat(outputPath).catch(() => null);
-    if (!outputStats?.isFile() || outputStats.size === 0) {
-      throw new FFmpegAdapterError(
-        'PROCESS_FAILED',
-        'FFmpeg 已退出，但没有生成可用的视频文件。',
-        {
-          executable: this.ffmpegPath,
+    let result: ProcessResult;
+    try {
+      result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) {
+        throw this.cancelledError(
+          this.ffmpegPath,
           args,
-          exitCode: result.code,
-          signal: result.signal,
-          stderr: technicalTail(result.stderr),
-        },
-      );
+          result.code,
+          result.signal,
+          result.stderr,
+        );
+      }
+      if (result.code !== 0) {
+        throw this.mapEncodeFailure(args, result);
+      }
+      const outputStats = await stat(outputPath).catch(() => null);
+      if (!outputStats?.isFile() || outputStats.size === 0) {
+        throw new FFmpegAdapterError(
+          'PROCESS_FAILED',
+          'FFmpeg 已退出，但没有生成可用的视频文件。',
+          {
+            executable: this.ffmpegPath,
+            args,
+            exitCode: result.code,
+            signal: result.signal,
+            stderr: technicalTail(result.stderr),
+          },
+        );
+      }
+    } catch (error) {
+      await this.cleanupFailedOutput(outputPath, error);
+      throw error;
     }
     return {
       outputPath,
@@ -487,6 +494,19 @@ export class FFmpegAdapter {
         '视频输出目录不存在或不可写。',
         { executable: this.ffmpegPath, args: [], cause: error },
       );
+    }
+  }
+
+  private async cleanupFailedOutput(
+    outputPath: string,
+    originalError: unknown,
+  ): Promise<void> {
+    try {
+      await rm(outputPath, { force: true });
+    } catch (cleanupError) {
+      if (originalError instanceof FFmpegAdapterError) {
+        originalError.diagnostics.cleanupError = cleanupError;
+      }
     }
   }
 

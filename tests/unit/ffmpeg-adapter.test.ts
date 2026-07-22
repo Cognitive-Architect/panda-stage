@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -9,6 +9,7 @@ import {
   type ProcessRunOptions,
   type ProcessRunner,
 } from '../../src/main/services/FFmpegAdapter';
+import { EncodePngSequenceRequestSchema } from '../../src/shared/ffmpeg-types';
 
 type FakeResponse =
   | ProcessResult
@@ -149,6 +150,33 @@ describe('FFmpegAdapter', () => {
     expect(encodeCall?.args).toContain('libx264');
     expect(encodeCall?.args).toContain('yuv420p');
     expect(encodeCall?.args).toContain('-an');
+    await expect(stat(outputPath)).resolves.toMatchObject({ size: 4 });
+  });
+
+  it.each(['output.mp4', 'output.MP4'])(
+    'accepts the MP4 output extension in %s',
+    (outputPath) => {
+      expect(
+        EncodePngSequenceRequestSchema.safeParse({
+          framesDirectory: 'frames',
+          outputPath,
+          fps: 24,
+        }).success,
+      ).toBe(true);
+    },
+  );
+
+  it('rejects a non-MP4 output extension', () => {
+    const result = EncodePngSequenceRequestSchema.safeParse({
+      framesDirectory: 'frames',
+      outputPath: 'output.mkv',
+      fps: 24,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain('.mp4');
+    }
   });
 
   it('rejects a missing frame before spawning FFmpeg', async () => {
@@ -203,12 +231,16 @@ describe('FFmpegAdapter', () => {
 
   it('keeps stderr in diagnostics without dumping it into the user message', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputPath = path.join(temporaryRoot, 'out.mp4');
     await writeFrames(framesDirectory, [0]);
     const technicalDetail = 'internal filter graph exploded';
     const runner = new FakeRunner([
       VERSION_RESULT,
       ENCODERS_RESULT,
-      { code: 17, signal: null, stdout: '', stderr: technicalDetail },
+      async () => {
+        await writeFile(outputPath, 'partial video');
+        return { code: 17, signal: null, stdout: '', stderr: technicalDetail };
+      },
     ]);
     const adapter = new FFmpegAdapter({ runner });
 
@@ -216,7 +248,7 @@ describe('FFmpegAdapter', () => {
     try {
       await adapter.encodePngSequence({
         framesDirectory,
-        outputPath: path.join(temporaryRoot, 'out.mp4'),
+        outputPath,
         fps: 24,
       });
     } catch (error) {
@@ -229,17 +261,20 @@ describe('FFmpegAdapter', () => {
     });
     expect(failure?.message).not.toContain(technicalDetail);
     expect(failure?.diagnostics.stderr).toContain(technicalDetail);
+    await expect(stat(outputPath)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('maps an aborted child signal to a cancellation error', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputPath = path.join(temporaryRoot, 'out.mp4');
     await writeFrames(framesDirectory, [0]);
     const controller = new AbortController();
     const runner = new FakeRunner([
       VERSION_RESULT,
       ENCODERS_RESULT,
-      (_executable, _args, options) => {
+      async (_executable, _args, options) => {
         expect(options?.signal).toBe(controller.signal);
+        await writeFile(outputPath, 'partial video');
         controller.abort();
         return {
           code: null,
@@ -255,7 +290,7 @@ describe('FFmpegAdapter', () => {
       adapter.encodePngSequence(
         {
           framesDirectory,
-          outputPath: path.join(temporaryRoot, 'out.mp4'),
+          outputPath,
           fps: 24,
         },
         controller.signal,
@@ -263,6 +298,34 @@ describe('FFmpegAdapter', () => {
     ).rejects.toMatchObject({
       code: 'PROCESS_CANCELLED',
       diagnostics: { signal: 'SIGTERM' },
+    });
+    await expect(stat(outputPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('preserves the encoding error when partial-output cleanup fails', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputPath = path.join(temporaryRoot, 'directory.mp4');
+    await writeFrames(framesDirectory, [0]);
+    const runner = new FakeRunner([
+      VERSION_RESULT,
+      ENCODERS_RESULT,
+      async () => {
+        await mkdir(outputPath);
+        return { code: 29, signal: null, stdout: '', stderr: 'encode failed' };
+      },
+    ]);
+    const adapter = new FFmpegAdapter({ runner });
+
+    await expect(
+      adapter.encodePngSequence({
+        framesDirectory,
+        outputPath,
+        fps: 24,
+      }),
+    ).rejects.toMatchObject({
+      code: 'PROCESS_FAILED',
+      message: '视频编码失败（FFmpeg 退出码 29）。',
+      diagnostics: { cleanupError: expect.anything() },
     });
   });
 
