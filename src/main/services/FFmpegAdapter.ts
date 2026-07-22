@@ -53,6 +53,14 @@ export interface ProcessRunner {
     args: readonly string[],
     options?: ProcessRunOptions,
   ): Promise<ProcessResult>;
+  getActiveProcesses?(): readonly ActiveProcessDiagnostic[];
+  getTotalProcessesStarted?(): number;
+}
+
+export interface ActiveProcessDiagnostic {
+  executable: string;
+  args: readonly string[];
+  pid: number | null;
 }
 
 export interface FFmpegDiagnostics {
@@ -122,6 +130,23 @@ function appendBounded(current: string, chunk: Buffer | string): string {
 }
 
 export class NodeProcessRunner implements ProcessRunner {
+  private readonly activeProcesses = new Map<
+    object,
+    ActiveProcessDiagnostic
+  >();
+  private totalProcessesStarted = 0;
+
+  getActiveProcesses(): readonly ActiveProcessDiagnostic[] {
+    return [...this.activeProcesses.values()].map((process) => ({
+      ...process,
+      args: [...process.args],
+    }));
+  }
+
+  getTotalProcessesStarted(): number {
+    return this.totalProcessesStarted;
+  }
+
   run(
     executable: string,
     args: readonly string[],
@@ -138,9 +163,16 @@ export class NodeProcessRunner implements ProcessRunner {
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       });
+      this.totalProcessesStarted += 1;
+      this.activeProcesses.set(child, {
+        executable,
+        args: [...args],
+        pid: child.pid ?? null,
+      });
       const finishReject = (error: Error) => {
         if (settled) return;
         settled = true;
+        this.activeProcesses.delete(child);
         options.signal?.removeEventListener('abort', abort);
         reject(error);
       };
@@ -163,6 +195,7 @@ export class NodeProcessRunner implements ProcessRunner {
       child.once('close', (code, signal) => {
         if (settled) return;
         settled = true;
+        this.activeProcesses.delete(child);
         options.signal?.removeEventListener('abort', abort);
         resolve({ code, signal, stdout, stderr });
       });
@@ -224,6 +257,20 @@ export class FFmpegAdapter {
       process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe',
     );
     this.runner = options.runner ?? new NodeProcessRunner();
+  }
+
+  getActiveProcessCount(): number {
+    return this.runner.getActiveProcesses?.().length ?? 0;
+  }
+
+  getProcessDiagnostics(): {
+    active: readonly ActiveProcessDiagnostic[];
+    totalStarted: number;
+  } {
+    return {
+      active: this.runner.getActiveProcesses?.() ?? [],
+      totalStarted: this.runner.getTotalProcessesStarted?.() ?? 0,
+    };
   }
 
   async getVersion(signal?: AbortSignal): Promise<string> {
@@ -416,7 +463,7 @@ export class FFmpegAdapter {
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
-    const audioProbe = await this.probeAudioFile(audioPath);
+    const audioProbe = await this.probeAudioFile(audioPath, signal);
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
@@ -495,7 +542,10 @@ export class FFmpegAdapter {
     };
   }
 
-  async probeVideo(videoPath: string): Promise<VideoProbeResult> {
+  async probeVideo(
+    videoPath: string,
+    signal?: AbortSignal,
+  ): Promise<VideoProbeResult> {
     const resolvedVideoPath = path.resolve(videoPath);
     const args = [
       '-v',
@@ -507,7 +557,19 @@ export class FFmpegAdapter {
       'json',
       resolvedVideoPath,
     ];
-    const result = await this.runProcess(this.ffprobePath, args);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffprobePath, args, null, 'SIGTERM');
+    }
+    const result = await this.runProcess(this.ffprobePath, args, { signal });
+    if (signal?.aborted) {
+      throw this.cancelledError(
+        this.ffprobePath,
+        args,
+        result.code,
+        result.signal,
+        result.stderr,
+      );
+    }
     if (result.code !== 0) {
       throw new FFmpegAdapterError(
         'PROBE_FAILED',
@@ -572,7 +634,10 @@ export class FFmpegAdapter {
     };
   }
 
-  async probeAudioFile(audioPath: string): Promise<AudioProbeResult> {
+  async probeAudioFile(
+    audioPath: string,
+    signal?: AbortSignal,
+  ): Promise<AudioProbeResult> {
     const resolvedAudioPath = path.resolve(audioPath);
     await this.assertReadableInput(resolvedAudioPath, 'audio');
     const args = [
@@ -584,7 +649,19 @@ export class FFmpegAdapter {
       'json',
       resolvedAudioPath,
     ];
-    const result = await this.runProcess(this.ffprobePath, args);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffprobePath, args, null, 'SIGTERM');
+    }
+    const result = await this.runProcess(this.ffprobePath, args, { signal });
+    if (signal?.aborted) {
+      throw this.cancelledError(
+        this.ffprobePath,
+        args,
+        result.code,
+        result.signal,
+        result.stderr,
+      );
+    }
     if (result.code !== 0) {
       throw new FFmpegAdapterError(
         'AUDIO_INPUT_INVALID',
@@ -640,7 +717,10 @@ export class FFmpegAdapter {
     };
   }
 
-  async analyzeAudioTiming(mediaPath: string): Promise<AudioTimingResult> {
+  async analyzeAudioTiming(
+    mediaPath: string,
+    signal?: AbortSignal,
+  ): Promise<AudioTimingResult> {
     const resolvedMediaPath = path.resolve(mediaPath);
     const args = [
       '-hide_banner',
@@ -655,7 +735,19 @@ export class FFmpegAdapter {
       'null',
       '-',
     ];
-    const result = await this.runProcess(this.ffmpegPath, args);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, args, null, 'SIGTERM');
+    }
+    const result = await this.runProcess(this.ffmpegPath, args, { signal });
+    if (signal?.aborted) {
+      throw this.cancelledError(
+        this.ffmpegPath,
+        args,
+        result.code,
+        result.signal,
+        result.stderr,
+      );
+    }
     if (result.code !== 0) {
       throw new FFmpegAdapterError(
         'PROBE_FAILED',
@@ -977,6 +1069,7 @@ export class FFmpegAdapter {
     } catch (cleanupError) {
       if (originalError instanceof FFmpegAdapterError) {
         originalError.diagnostics.cleanupError = cleanupError;
+        originalError.message = `${originalError.message} 同时无法清理本 Job 的临时媒体文件，请关闭占用该文件的程序后重试。`;
       }
     }
   }

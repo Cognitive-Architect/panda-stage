@@ -38,6 +38,7 @@ export function ExportRendererApp(): React.JSX.Element {
   const pendingLoadRef = useRef<ExportLoadProbeRequest | null>(null);
   const activeFrameRef = useRef<ExportRenderFrameRequest | null>(null);
   const captureInFlightRef = useRef(false);
+  const cancelledJobIdsRef = useRef(new Set<string>());
 
   const shot = useMemo(
     () => ({ ...PROBE_SHOT, durationMs }),
@@ -76,6 +77,7 @@ export function ExportRendererApp(): React.JSX.Element {
 
   useEffect(() => {
     const removeLoadListener = window.pandaStageHidden.onLoadProbe((request) => {
+      cancelledJobIdsRef.current.delete(request.jobId);
       loadedJobIdRef.current = request.jobId;
       setDurationMs(request.durationMs);
       if (stageReadyRef.current) {
@@ -86,6 +88,9 @@ export function ExportRendererApp(): React.JSX.Element {
     });
     const removeFrameListener = window.pandaStageHidden.onRenderFrame(
       (request) => {
+        if (cancelledJobIdsRef.current.has(request.jobId)) {
+          return;
+        }
         if (loadedJobIdRef.current !== request.jobId) {
           failFrame(
             request,
@@ -106,10 +111,27 @@ export function ExportRendererApp(): React.JSX.Element {
         setFrameRequest(request);
       },
     );
+    const removeCancelListener = window.pandaStageHidden.onCancelExport(
+      ({ jobId }) => {
+        cancelledJobIdsRef.current.add(jobId);
+        if (loadedJobIdRef.current === jobId) {
+          loadedJobIdRef.current = null;
+        }
+        if (pendingLoadRef.current?.jobId === jobId) {
+          pendingLoadRef.current = null;
+        }
+        if (activeFrameRef.current?.jobId === jobId) {
+          activeFrameRef.current = null;
+          captureInFlightRef.current = false;
+          setFrameRequest(null);
+        }
+      },
+    );
 
     return () => {
       removeLoadListener();
       removeFrameListener();
+      removeCancelListener();
     };
   }, [acknowledgeLoad, failFrame]);
 
@@ -173,6 +195,12 @@ export function ExportRendererApp(): React.JSX.Element {
 
     void canvasToPngBytes(canvas)
       .then((pngBytes) => {
+        if (
+          cancelledJobIdsRef.current.has(activeFrame.jobId) ||
+          activeFrameRef.current !== activeFrame
+        ) {
+          return;
+        }
         window.pandaStageHidden.frameReady({
           jobId: activeFrame.jobId,
           frameIndex: activeFrame.frameIndex,

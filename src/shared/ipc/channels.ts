@@ -6,6 +6,10 @@ export const IPC_CHANNELS = Object.freeze({
   EXPORT_RENDER_FRAME: 'export:render-frame',
   EXPORT_FRAME_READY: 'export:frame-ready',
   EXPORT_FRAME_FAILED: 'export:frame-failed',
+  EXPORT_CANCEL_RENDER: 'export:cancel-render',
+  EXPORT_START_PROBE: 'export:start-probe',
+  EXPORT_CANCEL_JOB: 'export:cancel-job',
+  EXPORT_JOB_UPDATE: 'export:job-update',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

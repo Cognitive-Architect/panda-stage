@@ -77,7 +77,7 @@ FFmpeg 不直接写正式 `outputPath`，而是写入同目录、由 `randomUUID
 
 - `overwrite=false` 且正式文件已存在时，在 FFmpeg 版本检查和编码进程启动前返回 `OUTPUT_ALREADY_EXISTS`，旧文件不会被删除；提交前会再次检查，降低编码期间目标路径被占用的风险；
 - `overwrite=true` 时，成功提交可替换既有正式文件；编码失败或取消只清理本轮 UUID 临时文件；
-- 临时文件清理失败不会覆盖原始编码错误，附加错误保存在 `diagnostics.cleanupError`。
+- 临时文件清理失败不会覆盖原始编码错误，附加错误保存在 `diagnostics.cleanupError`，同时在用户可见消息中说明本 Job 临时媒体文件未能清理及下一步操作。
 
 临时文件与正式文件位于同一目录，因此不会发生跨卷复制；典型本地文件系统上的 rename 提交可以避免先删旧文件再写新文件。平台限制是：Windows 上若目标文件被播放器、杀毒软件或其他进程以不允许删除/替换的共享模式打开，rename 会失败；网络文件系统也不保证与本地 NTFS 相同的原子性或崩溃持久性。Adapter 会保留原正式文件、清理本轮临时文件并返回 `OUTPUT_NOT_WRITABLE`，但当前没有额外的目录 `fsync` 或断电恢复日志。
 
@@ -97,6 +97,8 @@ FFmpeg 不直接写正式 `outputPath`，而是写入同目录、由 `randomUUID
 - `PROBE_FAILED` / `PROBE_MISMATCH`：媒体信息无法解析或参数不达标。
 
 stdout/stderr 分别限于最后 256,000 个字符，避免无限诊断输出占用内存。
+
+Day 09 为完整 Job 创建唯一 `AbortController`。视频编码、音频探测、音频合成和最终探测均接收同一 signal；`NodeProcessRunner` 保存实际 child 句柄，取消时仅调用该 child 的 `kill('SIGTERM')`。完整导出的 mux 目标不是正式路径，而是同目录、带 Job ID/UUID 的外层 staging；Adapter 自身仍以内部 UUID 临时文件安全生成该 staging。外层 staging 通过 ffprobe 后才进入不可取消的同目录 rename。真实验证分别终止编码与 mux 进程，取消后活动数和 staging 均归零，独立 sentinel 子进程保持存活；没有使用 `taskkill`、按进程名终止或 shell 命令拼接。
 
 ## 本次开发环境来源与许可证
 

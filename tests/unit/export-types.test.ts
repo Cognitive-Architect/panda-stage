@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FullProbeExportRequestSchema,
   createFrameSchedule,
   formatFrameFileName,
   frameTimeMs,
@@ -28,5 +29,26 @@ describe('export frame schedule', () => {
     expect(frameTimeMs(24, 24)).toBe(1_000);
     expect(frameTimeMs(71, 24)).toBe(2_958);
     expect(formatFrameFileName(71)).toBe('frame_000071.png');
+  });
+
+  it('accepts MP4 case-insensitively and rejects other full-export extensions', () => {
+    const request = {
+      projectDirectory: 'C:\\项目',
+      audioPath: 'C:\\项目\\声音.wav',
+      outputPath: 'C:\\输出\\成片.MP4',
+      durationMs: 3_000,
+      fps: 24,
+      audioStartMs: 400,
+      overwrite: true,
+    } as const;
+    expect(FullProbeExportRequestSchema.parse(request).outputPath).toBe(
+      request.outputPath,
+    );
+    expect(
+      FullProbeExportRequestSchema.safeParse({
+        ...request,
+        outputPath: 'C:\\输出\\成片.mkv',
+      }).success,
+    ).toBe(false);
   });
 });

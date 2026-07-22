@@ -7,6 +7,13 @@ import type {
   ExportFrameReady,
   ExportLoadProbeRequest,
   ExportRenderFrameRequest,
+  ExportCancelRenderRequest,
+} from '../shared/export-types';
+import type {
+  ExportCancelResponse,
+  ExportJobUpdate,
+  ExportStartResponse,
+  FullProbeExportRequest,
 } from '../shared/export-types';
 
 declare global {
@@ -14,6 +21,13 @@ declare global {
     pandaStage: {
       app: {
         ping: () => Promise<AppPingResponse>;
+      };
+      export: {
+        startProbe: (
+          request: FullProbeExportRequest,
+        ) => Promise<ExportStartResponse>;
+        cancel: (jobId: string) => Promise<ExportCancelResponse>;
+        onUpdate: (callback: (update: ExportJobUpdate) => void) => () => void;
       };
     };
     pandaStageHidden: {
@@ -27,6 +41,9 @@ declare global {
       }) => void;
       onRenderFrame: (
         callback: (request: ExportRenderFrameRequest) => void,
+      ) => () => void;
+      onCancelExport: (
+        callback: (request: ExportCancelRenderRequest) => void,
       ) => () => void;
       frameReady: (payload: ExportFrameReady) => void;
       frameFailed: (payload: ExportFrameFailed) => void;

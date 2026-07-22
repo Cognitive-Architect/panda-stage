@@ -1,0 +1,154 @@
+{
+  "gitBaseline": "05343ce26639f93660ad2a75625c53f1b16af07f",
+  "pathEvidence": {
+    "verificationRoot": "<os-temp>\\panda stage day 09 中文 空格 🐼\\<run-id>",
+    "projectDirectory": "<verification-root>\\项目 源文件 🎬",
+    "projectFile": "<project-directory>\\探针 项目 🐼.json",
+    "outputPath": "<verification-root>\\输出 成片 🐼\\恢复 导出成功 🐼.mp4",
+    "projectReadBack": {
+      "name": "熊猫片场 Day 09",
+      "fps": 24,
+      "durationMs": 3000
+    }
+  },
+  "cancellationProtocol": {
+    "signalScope": "one AbortController per Export Job",
+    "childTermination": "Node child.kill(SIGTERM) on the signal-owning child only",
+    "cleanupRetries": {
+      "maxRetries": 3,
+      "retryDelayMs": 75
+    },
+    "finalOutputCommit": "same-directory Job staging -> probe -> cancellation point-of-no-return -> rename"
+  },
+  "cancellations": [
+    {
+      "index": 1,
+      "phase": "rendering",
+      "jobId": "9eb735d4-d587-4579-b0f2-ecadfea7e3e4",
+      "elapsedMs": 369,
+      "encodedProcessPid": null,
+      "status": "cancelled",
+      "activeProcessesAfter": 0,
+      "hiddenWindowsAfter": 0,
+      "frameDirectoriesAfter": 0,
+      "finalOutputStagingFilesAfter": 0,
+      "inFlightWritesAfter": 0,
+      "unrelatedProcessAlive": true,
+      "message": "Export Job 9eb735d4-d587-4579-b0f2-ecadfea7e3e4: 导出已取消并完成资源清理；可以立即重新导出。"
+    },
+    {
+      "index": 2,
+      "phase": "rendering",
+      "jobId": "bd91d7f4-6ff4-48b6-be64-545097f4f212",
+      "elapsedMs": 312,
+      "encodedProcessPid": null,
+      "status": "cancelled",
+      "activeProcessesAfter": 0,
+      "hiddenWindowsAfter": 0,
+      "frameDirectoriesAfter": 0,
+      "finalOutputStagingFilesAfter": 0,
+      "inFlightWritesAfter": 0,
+      "unrelatedProcessAlive": true,
+      "message": "Export Job bd91d7f4-6ff4-48b6-be64-545097f4f212: 导出已取消并完成资源清理；可以立即重新导出。"
+    },
+    {
+      "index": 3,
+      "phase": "writing",
+      "jobId": "38885b79-5a82-40df-a5cb-e4a5cd3007a6",
+      "elapsedMs": 10,
+      "encodedProcessPid": null,
+      "status": "cancelled",
+      "activeProcessesAfter": 0,
+      "hiddenWindowsAfter": 0,
+      "frameDirectoriesAfter": 0,
+      "finalOutputStagingFilesAfter": 0,
+      "inFlightWritesAfter": 0,
+      "unrelatedProcessAlive": true,
+      "message": "Export Job 38885b79-5a82-40df-a5cb-e4a5cd3007a6: 导出已取消并完成资源清理；可以立即重新导出。"
+    },
+    {
+      "index": 4,
+      "phase": "encoding",
+      "jobId": "f09374b9-957b-44c0-af33-9a6793b28a04",
+      "elapsedMs": 257,
+      "encodedProcessPid": 9468,
+      "status": "cancelled",
+      "activeProcessesAfter": 0,
+      "hiddenWindowsAfter": 0,
+      "frameDirectoriesAfter": 0,
+      "finalOutputStagingFilesAfter": 0,
+      "inFlightWritesAfter": 0,
+      "unrelatedProcessAlive": true,
+      "message": "Export Job f09374b9-957b-44c0-af33-9a6793b28a04: 导出已取消并完成资源清理；可以立即重新导出。"
+    },
+    {
+      "index": 5,
+      "phase": "muxing",
+      "jobId": "682bf368-970a-4763-b0d5-05441d837bb9",
+      "elapsedMs": 2543,
+      "encodedProcessPid": 9312,
+      "status": "cancelled",
+      "activeProcessesAfter": 0,
+      "hiddenWindowsAfter": 0,
+      "frameDirectoriesAfter": 0,
+      "finalOutputStagingFilesAfter": 0,
+      "inFlightWritesAfter": 0,
+      "unrelatedProcessAlive": true,
+      "message": "Export Job 682bf368-970a-4763-b0d5-05441d837bb9: 导出已取消并完成资源清理；可以立即重新导出。",
+      "formalOutputExistedBefore": true,
+      "formalOutputPreserved": true,
+      "formalOutputSha256Before": "658a3d13d3e20eaef672cf51b6a6ca8fa39f4e73c7351f04e092054e7d48dcf8",
+      "formalOutputSha256After": "658a3d13d3e20eaef672cf51b6a6ca8fa39f4e73c7351f04e092054e7d48dcf8"
+    }
+  ],
+  "recovery": {
+    "jobId": "bba2e368-87e9-4d36-9cc8-d0391074d281",
+    "status": "completed",
+    "outputBytes": 187040,
+    "sha256": "41ae598f10b9b83f8f2f9fa60075a640bf196790cefa459c73407e9ec0cda400",
+    "renderElapsedMs": 143053,
+    "totalElapsedMs": 146152,
+    "probe": {
+      "codecName": "h264",
+      "pixelFormat": "yuv420p",
+      "width": 1920,
+      "height": 1080,
+      "fps": 24,
+      "frameCount": 72,
+      "videoDurationSeconds": 3,
+      "audioCodecName": "aac",
+      "audioSampleRate": 48000,
+      "audioChannels": 1,
+      "audioDurationSeconds": 3.4,
+      "formatDurationSeconds": 3.4
+    },
+    "leadingSilenceEndSeconds": 0.400646,
+    "playback": {
+      "currentTime": 2.582439,
+      "duration": 3.4,
+      "videoWidth": 1920,
+      "videoHeight": 1080,
+      "muted": false,
+      "paused": true
+    },
+    "uiRecovery": {
+      "statusText": "Job 682bf368-970a-4763-b0d5-05441d837bb9 · cancelled · finished · 72/72 · 导出已取消并完成资源清理；可以立即重新导出。",
+      "startDisabled": false,
+      "cancelDisabled": true,
+      "inputValues": [
+        "<project-directory: Unicode path verified>",
+        "<probe-wav>",
+        "<output-path: Unicode path verified>"
+      ]
+    }
+  },
+  "resourcesAfterRecovery": {
+    "activeJobId": null,
+    "activeEncodingProcesses": 0,
+    "hiddenWindows": 0,
+    "frameDirectories": 0,
+    "finalOutputStagingFiles": 0,
+    "inFlightWrites": 0,
+    "unrelatedProcessAlive": true
+  }
+}

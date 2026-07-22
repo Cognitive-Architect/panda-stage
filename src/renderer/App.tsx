@@ -1,10 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { ExportJobUpdate } from '../shared/export-types';
 import { StagePreview } from './stage/StagePreview';
 
 export function App(): React.JSX.Element {
   const [pingStatus, setPingStatus] = useState<
     'idle' | 'pending' | 'pong' | 'error'
   >('idle');
+  const [projectDirectory, setProjectDirectory] = useState('');
+  const [audioPath, setAudioPath] = useState('');
+  const [outputPath, setOutputPath] = useState('');
+  const [exportJob, setExportJob] = useState<ExportJobUpdate | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  useEffect(() => window.pandaStage.export.onUpdate(setExportJob), []);
 
   const pingMainProcess = async (): Promise<void> => {
     setPingStatus('pending');
@@ -16,6 +24,44 @@ export function App(): React.JSX.Element {
       setPingStatus('error');
     }
   };
+
+  const startExport = async (): Promise<void> => {
+    setExportError(null);
+    try {
+      const response = await window.pandaStage.export.startProbe({
+        projectDirectory,
+        audioPath,
+        outputPath,
+        durationMs: 3_000,
+        fps: 24,
+        audioStartMs: 400,
+        overwrite: true,
+      });
+      setExportJob({
+        jobId: response.jobId,
+        status: response.status,
+        phase: 'preparing',
+        completedFrames: 0,
+        totalFrames: 72,
+        error: null,
+      });
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : '无法开始导出。');
+    }
+  };
+
+  const cancelExport = async (): Promise<void> => {
+    if (!exportJob) return;
+    try {
+      await window.pandaStage.export.cancel(exportJob.jobId);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : '无法取消导出。');
+    }
+  };
+
+  const exportBusy =
+    exportJob?.status === 'running' || exportJob?.status === 'cancelling';
+  const exportCommitLocked = exportJob?.phase === 'committing';
 
   return (
     <main className="app-shell">
@@ -45,6 +91,58 @@ export function App(): React.JSX.Element {
           </output>
         </div>
       </header>
+      <section className="export-probe" aria-label="完整导出探针">
+        <h2>完整导出探针</h2>
+        <label>
+          项目目录
+          <input
+            onChange={(event) => setProjectDirectory(event.target.value)}
+            placeholder="支持中文、空格与 Unicode 路径"
+            value={projectDirectory}
+          />
+        </label>
+        <label>
+          WAV 音频路径
+          <input
+            onChange={(event) => setAudioPath(event.target.value)}
+            value={audioPath}
+          />
+        </label>
+        <label>
+          MP4 输出路径
+          <input
+            onChange={(event) => setOutputPath(event.target.value)}
+            value={outputPath}
+          />
+        </label>
+        <div>
+          <button
+            disabled={exportBusy || !projectDirectory || !audioPath || !outputPath}
+            onClick={() => void startExport()}
+            type="button"
+          >
+            开始导出
+          </button>
+          <button
+            disabled={!exportBusy || exportCommitLocked}
+            onClick={() => void cancelExport()}
+            type="button"
+          >
+            {exportCommitLocked
+              ? '正在提交…'
+              : exportJob?.status === 'cancelling'
+                ? '正在取消…'
+                : '取消导出'}
+          </button>
+        </div>
+        <output data-testid="export-status">
+          {exportJob
+            ? `Job ${exportJob.jobId} · ${exportJob.status} · ${exportJob.phase} · ${exportJob.completedFrames}/${exportJob.totalFrames}`
+            : '尚未开始导出'}
+          {exportJob?.error ? ` · ${exportJob.error}` : ''}
+          {exportError ? ` · ${exportError}` : ''}
+        </output>
+      </section>
       <StagePreview />
     </main>
   );

@@ -146,6 +146,54 @@ button:disabled {
   font-size: 13px;
 }
 
+.export-probe {
+  display: grid;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  padding: 16px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 16px;
+  background: rgb(18 26 21 / 88%);
+  gap: 10px;
+}
+
+.export-probe h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.export-probe label {
+  display: grid;
+  color: #a9b8ae;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.export-probe input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgb(154 216 172 / 25%);
+  border-radius: 8px;
+  color: #eef6f0;
+  background: #0b100e;
+  font: inherit;
+}
+
+.export-probe div {
+  display: flex;
+  gap: 8px;
+}
+
+.export-probe button {
+  padding: 8px 12px;
+}
+
+.export-probe output {
+  color: #9aaca0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
 .preview-panel {
   max-width: 1180px;
   margin: 0 auto;

@@ -81,4 +81,50 @@ describe('HiddenWindowManager frame failure correlation', () => {
     await expectedRejection;
     manager.close();
   });
+
+  it('cancels only the matching Job, ignores its late frame, and releases the window', async () => {
+    const manager = new HiddenWindowManager();
+    const creating = manager.create();
+    manager.markReady(42);
+    await creating;
+    const jobId = randomUUID();
+    const loading = manager.loadProbe({ jobId, durationMs: 3_000, fps: 24 });
+    manager.markProbeLoaded(42, { jobId, acknowledged: true });
+    await loading;
+    const rendering = manager.renderFrame({
+      jobId,
+      frameIndex: 3,
+      timeMs: 125,
+    });
+    const rejected = expect(rendering).rejects.toThrow(
+      `Export Job ${jobId}: hidden rendering cancelled`,
+    );
+
+    expect(manager.cancelJob(randomUUID())).toBe(false);
+    expect(manager.cancelJob(jobId)).toBe(true);
+    await rejected;
+    expect(FakeBrowserWindow.instances[0]?.webContents.send).toHaveBeenCalledWith(
+      'export:cancel-render',
+      { jobId },
+    );
+    expect(() =>
+      manager.markFrameReady(42, {
+        jobId,
+        frameIndex: 3,
+        timeMs: 125,
+        width: 1_920,
+        height: 1_080,
+        pngBytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]),
+      }),
+    ).not.toThrow();
+    expect(manager.getDiagnostics()).toEqual({
+      windowOpen: true,
+      loadedJobId: null,
+      pendingLoadJobId: null,
+      pendingFrameJobId: null,
+    });
+
+    manager.releaseJob();
+    expect(manager.getDiagnostics().windowOpen).toBe(false);
+  });
 });
