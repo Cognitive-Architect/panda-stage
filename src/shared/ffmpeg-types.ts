@@ -49,6 +49,7 @@ export const MuxProbeExpectationSchema = z
     width: z.literal(1_920),
     height: z.literal(1_080),
     fps: z.literal(EXPORT_FPS),
+    frameCount: z.number().int().positive(),
     audioCodecName: z.literal('aac'),
     audioSampleRate: z.number().int().positive(),
     audioChannels: z.number().int().positive(),

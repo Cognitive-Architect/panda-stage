@@ -104,7 +104,7 @@ src/
 - `FFmpegAdapter` 只在 Main Process 使用 `spawn` 参数数组，不经过 shell；
 - 开发期通过 `PANDA_STAGE_FFMPEG_PATH` 和 `PANDA_STAGE_FFPROBE_PATH` 配置工具；
 - 编码前检查版本、`libx264`、连续帧和输出目录，编码后以 ffprobe 验证媒体流；
-- 单 WAV 合成使用数据中的整数 `startMs` 构造 `adelay`，视频流直接复制、音频编码为 AAC，不拉伸音频；
+- 单 WAV 合成先读取并校验声道数，再为每个声道重复数据中的整数 `startMs` 构造 `adelay`；视频流直接复制、音频编码为 AAC，不拉伸音频；
 - 三次真实合成的声音起点均为 0.400646 秒，完整音频把容器时长延长到 3.4 秒；
 - 用户错误与技术 diagnostics 分离，支持 AbortSignal 取消；
 - 配置、来源和许可证见 [FFmpeg 文档](./docs/ffmpeg.md)，真实结果见 [Day 07 回执](./docs/test-receipts/DAY-07.md)与 [Day 08 回执](./docs/test-receipts/DAY-08.md)。

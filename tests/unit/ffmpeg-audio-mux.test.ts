@@ -38,6 +38,26 @@ const AUDIO_ENCODERS_RESULT: ProcessResult = {
   stderr: '',
 };
 
+function audioProbeResult(channels: number | undefined): ProcessResult {
+  return {
+    code: 0,
+    signal: null,
+    stdout: JSON.stringify({
+      streams: [
+        {
+          codec_type: 'audio',
+          codec_name: 'pcm_s16le',
+          sample_rate: '48000',
+          channels,
+          duration: '3.000000',
+        },
+      ],
+      format: { duration: '3.000000' },
+    }),
+    stderr: '',
+  };
+}
+
 class FakeRunner implements ProcessRunner {
   readonly calls: Array<{
     executable: string;
@@ -117,12 +137,17 @@ describe('FFmpegAdapter single-audio mux', () => {
     });
   });
 
-  it.each([0, 375])(
-    'muxes a single WAV with startMs=%s using a temporary MP4 and no time stretch',
-    async (startMs) => {
+  it.each([
+    { channels: 1, startMs: 400, expectedDelay: '400' },
+    { channels: 2, startMs: 400, expectedDelay: '400|400' },
+    { channels: 2, startMs: 0, expectedDelay: '0|0' },
+  ])(
+    'builds $channels-channel delay $expectedDelay for startMs=$startMs',
+    async ({ channels, startMs, expectedDelay }) => {
       const outputPath = path.join(temporaryRoot, `output ${startMs}.mp4`);
       let temporaryOutputPath = '';
       const runner = new FakeRunner([
+        audioProbeResult(channels),
         VERSION_RESULT,
         AUDIO_ENCODERS_RESULT,
         async (_executable, args) => {
@@ -143,10 +168,12 @@ describe('FFmpegAdapter single-audio mux', () => {
         }),
       ).resolves.toMatchObject({ outputPath, videoPath, audioPath, startMs });
 
-      const muxArgs = runner.calls[2]?.args ?? [];
+      const muxArgs = runner.calls[3]?.args ?? [];
       expect(muxArgs).toContain(videoPath);
       expect(muxArgs).toContain(audioPath);
-      expect(muxArgs).toContain(`[1:a:0]adelay=${startMs}[delayed_audio]`);
+      expect(muxArgs).toContain(
+        `[1:a:0]adelay=${expectedDelay}[delayed_audio]`,
+      );
       expect(muxArgs).toContain('copy');
       expect(muxArgs).toContain('aac');
       expect(muxArgs).not.toContain('-shortest');
@@ -160,6 +187,32 @@ describe('FFmpegAdapter single-audio mux', () => {
       await expect(stat(temporaryOutputPath)).rejects.toMatchObject({
         code: 'ENOENT',
       });
+    },
+  );
+
+  it.each([0, undefined, 1.5])(
+    'rejects invalid channel metadata %s before starting the mux process',
+    async (channels) => {
+      const runner = new FakeRunner([audioProbeResult(channels)]);
+      const adapter = new FFmpegAdapter({ runner });
+
+      await expect(
+        adapter.muxSingleAudio({
+          videoPath,
+          audioPath,
+          startMs: 400,
+          outputPath: path.join(
+            temporaryRoot,
+            `invalid-channels-${String(channels)}.mp4`,
+          ),
+        }),
+      ).rejects.toMatchObject({
+        code: 'AUDIO_INPUT_INVALID',
+        message: expect.stringContaining('声道信息无效'),
+      });
+      expect(runner.calls).toHaveLength(1);
+      expect(runner.calls[0]?.args).toContain('-show_streams');
+      expect(runner.calls[0]?.args).not.toContain('-filter_complex');
     },
   );
 
@@ -206,25 +259,19 @@ describe('FFmpegAdapter single-audio mux', () => {
     expect(runner.calls).toHaveLength(0);
   });
 
-  it('reports a corrupt WAV, cleans its partial output, and can retry successfully', async () => {
+  it('reports a corrupt WAV before mux and can retry successfully', async () => {
     const corruptAudioPath = path.join(temporaryRoot, '损坏 audio.wav');
     const failedOutputPath = path.join(temporaryRoot, 'failed.mp4');
     const recoveredOutputPath = path.join(temporaryRoot, 'recovered.mp4');
     await writeFile(corruptAudioPath, 'not a wav');
-    let failedTemporaryPath = '';
     const runner = new FakeRunner([
-      VERSION_RESULT,
-      AUDIO_ENCODERS_RESULT,
-      async (_executable, args) => {
-        failedTemporaryPath = args.at(-1) ?? '';
-        await writeFile(failedTemporaryPath, 'partial mux');
-        return {
-          code: 1,
-          signal: null,
-          stdout: '',
-          stderr: 'Invalid data found when processing input',
-        };
+      {
+        code: 1,
+        signal: null,
+        stdout: '',
+        stderr: 'Invalid data found when processing input',
       },
+      audioProbeResult(1),
       VERSION_RESULT,
       AUDIO_ENCODERS_RESULT,
       async (_executable, args) => {
@@ -245,9 +292,8 @@ describe('FFmpegAdapter single-audio mux', () => {
       code: 'AUDIO_INPUT_INVALID',
       message: expect.stringContaining('损坏 audio.wav'),
     });
-    await expect(stat(failedTemporaryPath)).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(runner.calls).toHaveLength(1);
+    expect(runner.calls[0]?.args).not.toContain('-filter_complex');
     await expect(
       adapter.muxSingleAudio({
         videoPath,
@@ -313,6 +359,7 @@ describe('FFmpegAdapter single-audio mux', () => {
         width: 1_920,
         height: 1_080,
         fps: 24,
+        frameCount: 72,
         audioCodecName: 'aac',
         audioSampleRate: 48_000,
         audioChannels: 1,
@@ -328,6 +375,7 @@ describe('FFmpegAdapter single-audio mux', () => {
         width: 1_920,
         height: 1_080,
         fps: 24,
+        frameCount: 72,
         audioCodecName: 'aac',
         audioSampleRate: 48_000,
         audioChannels: 1,
@@ -336,6 +384,22 @@ describe('FFmpegAdapter single-audio mux', () => {
         formatDurationSeconds: 3.4,
       }),
     ).toThrow(/audio_duration=3.4/u);
+    expect(() =>
+      adapter.assertMuxProbeMatches(probe, {
+        videoCodecName: 'h264',
+        pixelFormat: 'yuv420p',
+        width: 1_920,
+        height: 1_080,
+        fps: 24,
+        frameCount: 71,
+        audioCodecName: 'aac',
+        audioSampleRate: 48_000,
+        audioChannels: 1,
+        videoDurationSeconds: 3,
+        audioDurationSeconds: 3.4,
+        formatDurationSeconds: 3.4,
+      }),
+    ).toThrow(/frames=72/u);
   });
 
   it('reads the WAV duration and channel metadata through ffprobe', async () => {

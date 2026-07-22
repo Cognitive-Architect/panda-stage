@@ -416,6 +416,10 @@ export class FFmpegAdapter {
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
+    const audioProbe = await this.probeAudioFile(audioPath);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
     const validation = await this.validateAudioMuxExecutable(signal);
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
@@ -425,6 +429,7 @@ export class FFmpegAdapter {
       videoPath,
       audioPath,
       startMs: request.startMs,
+      channels: audioProbe.channels,
       outputPath: temporaryOutputPath,
       overwrite: request.overwrite,
     });
@@ -616,10 +621,18 @@ export class FFmpegAdapter {
         { executable: this.ffprobePath, args },
       );
     }
+    const channels = Number(audio.channels);
+    if (!Number.isInteger(channels) || channels <= 0) {
+      throw new FFmpegAdapterError(
+        'AUDIO_INPUT_INVALID',
+        `音频文件的声道信息无效：${path.basename(resolvedAudioPath)}。`,
+        { executable: this.ffprobePath, args },
+      );
+    }
     return {
       codecName: String(audio.codec_name ?? ''),
       sampleRate: Number(audio.sample_rate),
-      channels: Number(audio.channels),
+      channels,
       durationSeconds: Number(
         audio.duration ?? container.format?.duration ?? Number.NaN,
       ),
@@ -724,6 +737,8 @@ export class FFmpegAdapter {
       failures.push(`size=${probe.width}x${probe.height}`);
     if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - expected.fps) > 0.001)
       failures.push(`fps=${probe.fps}`);
+    if (probe.frameCount !== expected.frameCount)
+      failures.push(`frames=${probe.frameCount}`);
     if (probe.audioCodecName !== expected.audioCodecName)
       failures.push(`audio_codec=${probe.audioCodecName}`);
     if (probe.audioSampleRate !== expected.audioSampleRate)
@@ -797,9 +812,14 @@ export class FFmpegAdapter {
     videoPath: string;
     audioPath: string;
     startMs: number;
+    channels: number;
     outputPath: string;
     overwrite: boolean;
   }): readonly string[] {
+    const channelDelays = Array.from(
+      { length: request.channels },
+      () => request.startMs,
+    ).join('|');
     return [
       request.overwrite ? '-y' : '-n',
       '-hide_banner',
@@ -810,7 +830,7 @@ export class FFmpegAdapter {
       '-i',
       request.audioPath,
       '-filter_complex',
-      `[1:a:0]adelay=${request.startMs}[delayed_audio]`,
+      `[1:a:0]adelay=${channelDelays}[delayed_audio]`,
       '-map',
       '0:v:0',
       '-map',
