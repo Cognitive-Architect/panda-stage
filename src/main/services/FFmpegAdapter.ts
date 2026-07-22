@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { access, readdir, rm, stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { access, readdir, rename, rm, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -19,6 +20,7 @@ export type FFmpegErrorCode =
   | 'EXECUTABLE_NOT_FOUND'
   | 'ENCODER_UNAVAILABLE'
   | 'FRAME_SEQUENCE_INVALID'
+  | 'OUTPUT_ALREADY_EXISTS'
   | 'OUTPUT_NOT_WRITABLE'
   | 'PROCESS_FAILED'
   | 'PROCESS_CANCELLED'
@@ -171,6 +173,15 @@ function technicalTail(stderr: string): string {
   return stderr.trim().slice(-8_000);
 }
 
+function createTemporaryOutputPath(outputPath: string): string {
+  const outputDirectory = path.dirname(outputPath);
+  const outputBaseName = path.basename(outputPath, path.extname(outputPath));
+  return path.join(
+    outputDirectory,
+    `.${outputBaseName}.panda-stage-${randomUUID()}.mp4`,
+  );
+}
+
 export class FFmpegAdapter {
   readonly ffmpegPath: string;
   readonly ffprobePath: string;
@@ -258,6 +269,7 @@ export class FFmpegAdapter {
     const outputPath = path.resolve(request.outputPath);
     const frameCount = await this.inspectFrameSequence(framesDirectory);
     await this.assertOutputWritable(outputPath);
+    await this.assertOverwriteAllowed(outputPath, request.overwrite);
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
@@ -265,10 +277,11 @@ export class FFmpegAdapter {
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
+    const temporaryOutputPath = createTemporaryOutputPath(outputPath);
     const args = this.buildEncodeArguments({
       ...request,
       framesDirectory,
-      outputPath,
+      outputPath: temporaryOutputPath,
       frameCount,
     });
     const startedAt = performance.now();
@@ -287,7 +300,7 @@ export class FFmpegAdapter {
       if (result.code !== 0) {
         throw this.mapEncodeFailure(args, result);
       }
-      const outputStats = await stat(outputPath).catch(() => null);
+      const outputStats = await stat(temporaryOutputPath).catch(() => null);
       if (!outputStats?.isFile() || outputStats.size === 0) {
         throw new FFmpegAdapterError(
           'PROCESS_FAILED',
@@ -301,8 +314,24 @@ export class FFmpegAdapter {
           },
         );
       }
+      if (signal?.aborted) {
+        throw this.cancelledError(
+          this.ffmpegPath,
+          args,
+          result.code,
+          result.signal,
+          result.stderr,
+        );
+      }
+      await this.commitTemporaryOutput(
+        temporaryOutputPath,
+        outputPath,
+        request.overwrite,
+        args,
+        result,
+      );
     } catch (error) {
-      await this.cleanupFailedOutput(outputPath, error);
+      await this.cleanupTemporaryOutput(temporaryOutputPath, error);
       throw error;
     }
     return {
@@ -497,12 +526,66 @@ export class FFmpegAdapter {
     }
   }
 
-  private async cleanupFailedOutput(
+  private async assertOverwriteAllowed(
     outputPath: string,
+    overwrite: boolean,
+  ): Promise<void> {
+    if (overwrite) return;
+    if (await this.pathExists(outputPath)) {
+      throw new FFmpegAdapterError(
+        'OUTPUT_ALREADY_EXISTS',
+        '视频输出文件已存在，请选择其他路径或允许覆盖。',
+        { executable: this.ffmpegPath, args: [] },
+      );
+    }
+  }
+
+  private async commitTemporaryOutput(
+    temporaryOutputPath: string,
+    outputPath: string,
+    overwrite: boolean,
+    args: readonly string[],
+    result: ProcessResult,
+  ): Promise<void> {
+    await this.assertOverwriteAllowed(outputPath, overwrite);
+    try {
+      await rename(temporaryOutputPath, outputPath);
+    } catch (error) {
+      throw new FFmpegAdapterError(
+        'OUTPUT_NOT_WRITABLE',
+        '视频已编码，但无法提交到目标输出文件。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+          cause: error,
+        },
+      );
+    }
+  }
+
+  private async pathExists(filePath: string): Promise<boolean> {
+    try {
+      await stat(filePath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw new FFmpegAdapterError(
+        'OUTPUT_NOT_WRITABLE',
+        '无法检查视频输出文件状态。',
+        { executable: this.ffmpegPath, args: [], cause: error },
+      );
+    }
+  }
+
+  private async cleanupTemporaryOutput(
+    temporaryOutputPath: string,
     originalError: unknown,
   ): Promise<void> {
     try {
-      await rm(outputPath, { force: true });
+      await rm(temporaryOutputPath, { force: true });
     } catch (cleanupError) {
       if (originalError instanceof FFmpegAdapterError) {
         originalError.diagnostics.cleanupError = cleanupError;

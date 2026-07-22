@@ -109,3 +109,26 @@ Chromium 实际加载视频后报告 1920×1080、3 秒并成功播放/暂停。
 - `pnpm verify:day05`：通过；预览播放、暂停、继续、重播与结束状态均符合预期；
 - `$env:DAY06_FAILURE_ONLY='1'; pnpm verify:day06`：通过；模拟失败后的部分帧目录已清理；
 - `pnpm verify:day07`：本次未重跑。修复未改变 FFmpeg 参数数组、编码参数或真实媒体链路，依任务说明沿用上方已有真实媒体证据。
+
+## 2026-07-22 pre-PR Fix-01 修复回执
+
+上一补丁直接清理正式 `outputPath`，在目标文件调用前已存在时存在误删风险。本轮已将该行为替换为同目录 UUID 临时 MP4 提交方案：
+
+- FFmpeg 仅写临时 `.mp4`；成功且文件非空后才 rename 到正式路径；
+- `overwrite=false` + 已有正式输出会在启动 FFmpeg 前明确拒绝，旧文件内容保持不变；
+- 编码失败或取消只清理本轮临时文件，不触碰已有正式输出；
+- `overwrite=true` 成功时替换正式文件；首次输出也能正常提交；
+- 清理失败仍保留原始编码错误，并写入 `diagnostics.cleanupError`；
+- 同目录 rename 的 Windows 文件占用、网络文件系统原子性和断电持久性限制已记录在 `docs/ffmpeg.md`。
+
+验证结果：
+
+- `pnpm typecheck`：通过；
+- `pnpm lint`：通过；
+- `pnpm test:unit`：11 个测试文件、61 项测试通过，其中 FFmpegAdapter 定向测试 17 项通过；
+- `pnpm build`：通过；Vite 既有共享 chunk 大小警告仍为非阻断项；
+- `pnpm verify:day03`：通过；隐藏窗口关闭后剩余窗口数为 0；
+- `pnpm verify:day04`：通过；共享帧 SHA-256 匹配，逻辑尺寸 1920×1080；
+- `pnpm verify:day05`：通过；预览播放、暂停、继续、重播与结束状态均符合预期；
+- `$env:DAY06_FAILURE_ONLY='1'; pnpm verify:day06`：通过；模拟失败后的部分帧目录已清理；
+- `pnpm verify:day07`：本轮未重跑。编码参数、ffprobe 和媒体内容链路未变，依任务说明沿用上方真实媒体证据。

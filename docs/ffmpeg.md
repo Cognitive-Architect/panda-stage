@@ -39,10 +39,20 @@ pnpm verify:day07
 -pix_fmt yuv420p
 -r 24
 -movflags +faststart
-<output.mp4>
+<output-directory>\.<output-name>.panda-stage-<uuid>.mp4
 ```
 
 编码前会检查 `frame_000000.png` 起始的序列连续性、输出父目录存在且可写、FFmpeg 能读取版本，以及编码器列表包含 `libx264`。编码成功后仍需使用 `probeVideo()` / ffprobe 验证 codec、pixel format、尺寸、帧率、帧数、时长和无音轨状态。
+
+## 输出提交与覆盖语义
+
+FFmpeg 不直接写正式 `outputPath`，而是写入同目录、由 `randomUUID()` 区分且仍以 `.mp4` 结尾的临时文件。只有进程成功退出且临时文件是非空普通文件后，Adapter 才用同目录 `rename()` 将其提交为正式输出：
+
+- `overwrite=false` 且正式文件已存在时，在 FFmpeg 版本检查和编码进程启动前返回 `OUTPUT_ALREADY_EXISTS`，旧文件不会被删除；提交前会再次检查，降低编码期间目标路径被占用的风险；
+- `overwrite=true` 时，成功提交可替换既有正式文件；编码失败或取消只清理本轮 UUID 临时文件；
+- 临时文件清理失败不会覆盖原始编码错误，附加错误保存在 `diagnostics.cleanupError`。
+
+临时文件与正式文件位于同一目录，因此不会发生跨卷复制；典型本地文件系统上的 rename 提交可以避免先删旧文件再写新文件。平台限制是：Windows 上若目标文件被播放器、杀毒软件或其他进程以不允许删除/替换的共享模式打开，rename 会失败；网络文件系统也不保证与本地 NTFS 相同的原子性或崩溃持久性。Adapter 会保留原正式文件、清理本轮临时文件并返回 `OUTPUT_NOT_WRITABLE`，但当前没有额外的目录 `fsync` 或断电恢复日志。
 
 ## 错误与诊断
 
@@ -51,6 +61,7 @@ pnpm verify:day07
 - `EXECUTABLE_NOT_FOUND`：工具不存在或路径错误；
 - `ENCODER_UNAVAILABLE`：缺少 `libx264`；
 - `FRAME_SEQUENCE_INVALID`：帧目录为空或序号不连续；
+- `OUTPUT_ALREADY_EXISTS`：禁止覆盖且正式输出已经存在；
 - `OUTPUT_NOT_WRITABLE`：输出父目录不存在、不是目录或不可写；
 - `PROCESS_FAILED`：进程启动/退出异常；
 - `PROCESS_CANCELLED`：AbortSignal 触发并终止子进程；
