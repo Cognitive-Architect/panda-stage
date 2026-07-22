@@ -61,12 +61,75 @@ export const ExportFrameFailedSchema = z
   })
   .strict();
 
+export const ExportCancelRenderRequestSchema = z
+  .object({
+    jobId: JobIdSchema,
+  })
+  .strict();
+
 export const ExportJobStatusSchema = z.enum([
   'running',
+  'cancelling',
   'completed',
   'failed',
   'cancelled',
 ]);
+
+export const ExportJobPhaseSchema = z.enum([
+  'preparing',
+  'rendering',
+  'writing',
+  'encoding',
+  'muxing',
+  'cleaning',
+  'finished',
+]);
+
+const FileSystemPathSchema = z.string().trim().min(1).max(32_767);
+
+export const FullProbeExportRequestSchema = z
+  .object({
+    projectDirectory: FileSystemPathSchema,
+    audioPath: FileSystemPathSchema,
+    outputPath: FileSystemPathSchema,
+    durationMs: DurationSchema,
+    fps: z.literal(EXPORT_FPS),
+    audioStartMs: z.number().int().nonnegative(),
+    overwrite: z.boolean().default(false),
+  })
+  .strict();
+
+export const ExportStartResponseSchema = z
+  .object({
+    jobId: JobIdSchema,
+    status: z.literal('running'),
+  })
+  .strict();
+
+export const ExportCancelRequestSchema = z
+  .object({
+    jobId: JobIdSchema,
+  })
+  .strict();
+
+export const ExportCancelResponseSchema = z
+  .object({
+    jobId: JobIdSchema,
+    accepted: z.boolean(),
+    status: ExportJobStatusSchema,
+  })
+  .strict();
+
+export const ExportJobUpdateSchema = z
+  .object({
+    jobId: JobIdSchema,
+    status: ExportJobStatusSchema,
+    phase: ExportJobPhaseSchema,
+    completedFrames: z.number().int().nonnegative(),
+    totalFrames: z.number().int().nonnegative(),
+    error: z.string().trim().min(1).max(2_000).nullable(),
+  })
+  .strict();
 
 export type ExportProbeConfig = z.infer<typeof ExportProbeConfigSchema>;
 export type ExportLoadProbeRequest = z.infer<
@@ -79,6 +142,17 @@ export type ExportRenderFrameRequest = z.infer<
 export type ExportFrameReady = z.infer<typeof ExportFrameReadySchema>;
 export type ExportFrameFailed = z.infer<typeof ExportFrameFailedSchema>;
 export type ExportJobStatus = z.infer<typeof ExportJobStatusSchema>;
+export type ExportJobPhase = z.infer<typeof ExportJobPhaseSchema>;
+export type ExportCancelRenderRequest = z.infer<
+  typeof ExportCancelRenderRequestSchema
+>;
+export type FullProbeExportRequest = z.infer<
+  typeof FullProbeExportRequestSchema
+>;
+export type ExportStartResponse = z.infer<typeof ExportStartResponseSchema>;
+export type ExportCancelRequest = z.infer<typeof ExportCancelRequestSchema>;
+export type ExportCancelResponse = z.infer<typeof ExportCancelResponseSchema>;
+export type ExportJobUpdate = z.infer<typeof ExportJobUpdateSchema>;
 
 export interface FrameScheduleEntry {
   frameIndex: number;

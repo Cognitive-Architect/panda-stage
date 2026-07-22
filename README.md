@@ -97,6 +97,8 @@ src/
 - 隐藏 Renderer 在共享舞台真实绘制完成后，将 Canvas 编码为 PNG `Uint8Array` 回传；
 - `FileSystemService` 只在 Main Process 中异步写入 `frame_000000.png` 形式的文件；
 - `MAX_PENDING_FRAMES = 3` 限制待写队列，失败或取消会删除整个 Job 临时目录；
+- Day 09 由每个 Job 唯一的 `AbortController` 统一停止隐藏渲染、阻止新写入、等待在途写入收敛，并终止该 Job 当前持有的 FFmpeg 子进程；
+- 临时目录在 Windows 文件占用时最多重试 3 次、每次间隔 75ms；失败会返回包含 Job ID 和处理建议的错误，不会静默忽略；
 - 3 秒和 5 秒探针分别产生 72 帧与 120 帧，真实验证结果见 [Day 06 回执](./docs/test-receipts/DAY-06.md)。
 
 ## 视频编码架构
@@ -107,7 +109,8 @@ src/
 - 单 WAV 合成先读取并校验声道数，再为每个声道重复数据中的整数 `startMs` 构造 `adelay`；视频流直接复制、音频编码为 AAC，不拉伸音频；
 - 三次真实合成的声音起点均为 0.400646 秒，完整音频把容器时长延长到 3.4 秒；
 - 用户错误与技术 diagnostics 分离，支持 AbortSignal 取消；
-- 配置、来源和许可证见 [FFmpeg 文档](./docs/ffmpeg.md)，真实结果见 [Day 07 回执](./docs/test-receipts/DAY-07.md)与 [Day 08 回执](./docs/test-receipts/DAY-08.md)。
+- 完整探针已在中文、空格和 emoji 项目/输出路径下验证，连续 5 次取消后可立即重新导出；
+- 配置、来源和许可证见 [FFmpeg 文档](./docs/ffmpeg.md)，真实结果见 [Day 07 回执](./docs/test-receipts/DAY-07.md)、[Day 08 回执](./docs/test-receipts/DAY-08.md)与 [Day 09 回执](./docs/test-receipts/DAY-09.md)。
 
 ## 预览时钟架构
 
@@ -121,9 +124,10 @@ src/
 
 - 所有通道名集中定义在 `src/shared/ipc/channels.ts`；
 - 请求和响应均由 `src/shared/ipc/contracts.ts` 中的严格 Zod Schema 校验；
-- 主窗口只暴露 `window.pandaStage.app.ping()`；
-- 隐藏窗口只暴露白名单化的 ready、加载探针、逐帧请求与逐帧结果 API；
+- 主窗口暴露白名单化的 ping、完整探针 start/cancel 和只读 Job 状态订阅；
+- 隐藏窗口只暴露 ready、加载探针、逐帧请求、逐帧结果和按 Job ID 取消 API；
 - Main Process 校验消息来源窗口，并在退出前注销 handler、关闭隐藏窗口；
+- 完整通道与状态约束见 [IPC 协议](./docs/ipc.md)。
 - 两个 Preload 均构建为独立的沙箱兼容 bundle，不向 Renderer 暴露 Node.js。
 
 ## 安全基线

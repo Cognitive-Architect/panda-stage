@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   FFmpegAdapter,
   FFmpegAdapterError,
+  NodeProcessRunner,
   type ProcessResult,
   type ProcessRunOptions,
   type ProcessRunner,
@@ -441,7 +442,9 @@ describe('FFmpegAdapter', () => {
       }),
     ).rejects.toMatchObject({
       code: 'PROCESS_FAILED',
-      message: '视频编码失败（FFmpeg 退出码 29）。',
+      message: expect.stringMatching(
+        /视频编码失败（FFmpeg 退出码 29）。.*无法清理本 Job 的临时媒体文件/,
+      ),
       diagnostics: { cleanupError: expect.anything() },
     });
     await expect(readFile(outputPath, 'utf8')).resolves.toBe('original video');
@@ -518,5 +521,38 @@ describe('FFmpegAdapter', () => {
         durationSeconds: 3,
       }),
     ).toThrow(/frames=72/);
+  });
+});
+
+describe('NodeProcessRunner Job-scoped cancellation', () => {
+  it('terminates only the child carrying the aborted signal', async () => {
+    const runner = new NodeProcessRunner();
+    const unrelated = runner.run(process.execPath, [
+      '-e',
+      'setTimeout(() => process.exit(0), 250)',
+    ]);
+    const controller = new AbortController();
+    const targeted = runner.run(
+      process.execPath,
+      ['-e', 'setTimeout(() => process.exit(0), 10000)'],
+      { signal: controller.signal },
+    );
+
+    while (runner.getActiveProcesses().length < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const targetedPid = runner
+      .getActiveProcesses()
+      .find((entry) => entry.args.some((argument) => argument.includes('10000')))
+      ?.pid;
+    expect(targetedPid).not.toBeNull();
+    controller.abort();
+    const targetedResult = await targeted;
+    expect(targetedResult.code === 0 && targetedResult.signal === null).toBe(
+      false,
+    );
+    expect(runner.getActiveProcesses()).toHaveLength(1);
+    await expect(unrelated).resolves.toMatchObject({ code: 0, signal: null });
+    expect(runner.getActiveProcesses()).toHaveLength(0);
   });
 });

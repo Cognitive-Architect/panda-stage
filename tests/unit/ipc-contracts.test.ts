@@ -6,6 +6,11 @@ import {
   HiddenReadyRequestSchema,
   HiddenReadyResponseSchema,
 } from '../../src/shared/ipc/contracts';
+import {
+  ExportCancelRequestSchema,
+  ExportJobUpdateSchema,
+  FullProbeExportRequestSchema,
+} from '../../src/shared/export-types';
 
 describe('IPC channel registry', () => {
   it('keeps every channel unique and namespaced', () => {
@@ -20,6 +25,10 @@ describe('IPC channel registry', () => {
       'export:render-frame',
       'export:frame-ready',
       'export:frame-failed',
+      'export:cancel-render',
+      'export:start-probe',
+      'export:cancel-job',
+      'export:job-update',
     ]);
   });
 });
@@ -64,6 +73,36 @@ describe('IPC contracts', () => {
         loadedAtMs: 456,
         execute: 'child_process',
       }).success,
+    ).toBe(false);
+  });
+
+  it('validates strict full-export, cancellation, and state payloads', () => {
+    const jobId = '00000000-0000-4000-8000-000000000000';
+    expect(
+      FullProbeExportRequestSchema.parse({
+        projectDirectory: 'C:\\熊猫 项目',
+        audioPath: 'C:\\熊猫 项目\\音轨.wav',
+        outputPath: 'C:\\熊猫 输出\\成片.mp4',
+        durationMs: 3_000,
+        fps: 24,
+        audioStartMs: 400,
+        overwrite: true,
+      }).projectDirectory,
+    ).toContain('熊猫');
+    expect(ExportCancelRequestSchema.parse({ jobId })).toEqual({ jobId });
+    expect(
+      ExportJobUpdateSchema.parse({
+        jobId,
+        status: 'cancelling',
+        phase: 'encoding',
+        completedFrames: 72,
+        totalFrames: 72,
+        error: null,
+      }).status,
+    ).toBe('cancelling');
+    expect(
+      ExportCancelRequestSchema.safeParse({ jobId, command: 'taskkill /f' })
+        .success,
     ).toBe(false);
   });
 });

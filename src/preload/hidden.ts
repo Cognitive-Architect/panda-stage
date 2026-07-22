@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   ExportFrameFailedSchema,
   ExportFrameReadySchema,
+  ExportCancelRenderRequestSchema,
   ExportLoadProbeRequestSchema,
   ExportProbeLoadedSchema,
   ExportRenderFrameRequestSchema,
@@ -9,6 +10,7 @@ import {
   type ExportFrameReady,
   type ExportLoadProbeRequest,
   type ExportRenderFrameRequest,
+  type ExportCancelRenderRequest,
 } from '../shared/export-types';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
 import {
@@ -56,6 +58,14 @@ const hiddenApi = Object.freeze({
     onValidatedMessage(
       IPC_CHANNELS.EXPORT_RENDER_FRAME,
       (payload) => ExportRenderFrameRequestSchema.parse(payload),
+      callback,
+    ),
+  onCancelExport: (
+    callback: (request: ExportCancelRenderRequest) => void,
+  ) =>
+    onValidatedMessage(
+      IPC_CHANNELS.EXPORT_CANCEL_RENDER,
+      (payload) => ExportCancelRenderRequestSchema.parse(payload),
       callback,
     ),
   frameReady: (rawPayload: ExportFrameReady) => {

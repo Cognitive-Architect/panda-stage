@@ -1,25 +1,59 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import {
   ExportProbeConfigSchema,
+  FullProbeExportRequestSchema,
   MAX_PENDING_FRAMES,
   createFrameSchedule,
   type ExportFrameReady,
+  type ExportJobPhase,
   type ExportJobStatus,
+  type ExportJobUpdate,
   type ExportLoadProbeRequest,
   type ExportProbeConfig,
   type ExportProbeLoaded,
   type ExportRenderFrameRequest,
+  type FullProbeExportRequest,
 } from '../../shared/export-types';
+import type { VideoProbeResult } from '../../shared/ffmpeg-types';
 import type { FrameFileSystem } from './FileSystemService';
 
 export interface FrameRenderer {
   loadProbe(request: ExportLoadProbeRequest): Promise<ExportProbeLoaded>;
   renderFrame(request: ExportRenderFrameRequest): Promise<ExportFrameReady>;
+  cancelJob(jobId: string): boolean;
+  prepareJob?(): Promise<void>;
+  releaseJob?(jobId: string): void;
+}
+
+export interface FullProbeMediaAdapter {
+  encodePngSequence(
+    request: {
+      framesDirectory: string;
+      outputPath: string;
+      fps: 24;
+      overwrite: boolean;
+    },
+    signal?: AbortSignal,
+  ): Promise<unknown>;
+  muxSingleAudio(
+    request: {
+      videoPath: string;
+      audioPath: string;
+      startMs: number;
+      outputPath: string;
+      overwrite: boolean;
+    },
+    signal?: AbortSignal,
+  ): Promise<unknown>;
+  probeVideo(videoPath: string, signal?: AbortSignal): Promise<VideoProbeResult>;
+  getActiveProcessCount?(): number;
 }
 
 export interface ExportJobRecord {
   jobId: string;
   status: ExportJobStatus;
+  phase: ExportJobPhase;
   durationMs: number;
   totalFrames: number;
   completedFrames: number;
@@ -27,9 +61,7 @@ export interface ExportJobRecord {
   error: string | null;
 }
 
-export interface ExportProbeResult extends ExportJobRecord {
-  status: 'completed';
-  outputDirectory: string;
+interface FrameExportMetrics {
   peakPendingWrites: number;
   totalBytes: number;
   elapsedMs: number;
@@ -43,12 +75,35 @@ export interface ExportProbeResult extends ExportJobRecord {
   };
 }
 
+export interface ExportProbeResult extends ExportJobRecord, FrameExportMetrics {
+  status: 'completed';
+  phase: 'finished';
+  outputDirectory: string;
+}
+
+export interface FullProbeExportResult extends ExportJobRecord {
+  status: 'completed';
+  phase: 'finished';
+  outputDirectory: null;
+  projectDirectory: string;
+  outputPath: string;
+  probe: VideoProbeResult;
+  elapsedMs: number;
+  render: FrameExportMetrics;
+}
+
+export interface FullProbeExportHandle {
+  jobId: string;
+  completion: Promise<FullProbeExportResult>;
+}
+
 interface ActiveJob {
   jobId: string;
-  cancelRequested: boolean;
+  controller: AbortController;
 }
 
 class ExportCancelledError extends Error {}
+class ExportCleanupError extends Error {}
 
 export class ExportJobError extends Error {
   constructor(
@@ -61,17 +116,25 @@ export class ExportJobError extends Error {
   }
 }
 
+type JobListener = (update: ExportJobUpdate) => void;
+
 export class ExportService {
   private readonly jobs = new Map<string, ExportJobRecord>();
+  private readonly listeners = new Set<JobListener>();
   private activeJob: ActiveJob | null = null;
 
   constructor(
     private readonly renderer: FrameRenderer,
     private readonly fileSystem: FrameFileSystem,
+    private readonly mediaAdapter?: FullProbeMediaAdapter,
   ) {}
 
   getActiveJobId(): string | null {
     return this.activeJob?.jobId ?? null;
+  }
+
+  getActiveProcessCount(): number {
+    return this.mediaAdapter?.getActiveProcessCount?.() ?? 0;
   }
 
   getJob(jobId: string): ExportJobRecord | null {
@@ -79,12 +142,30 @@ export class ExportService {
     return job ? { ...job } : null;
   }
 
-  cancelActiveJob(): boolean {
-    if (!this.activeJob) {
+  subscribe(listener: JobListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  cancelJob(jobId: string): boolean {
+    const active = this.activeJob;
+    if (!active || active.jobId !== jobId) {
       return false;
     }
-    this.activeJob.cancelRequested = true;
+    const record = this.requireJob(jobId);
+    if (active.controller.signal.aborted) {
+      return true;
+    }
+    record.status = 'cancelling';
+    this.emit(record);
+    active.controller.abort();
+    this.renderer.cancelJob(jobId);
     return true;
+  }
+
+  cancelActiveJob(): boolean {
+    const jobId = this.getActiveJobId();
+    return jobId ? this.cancelJob(jobId) : false;
   }
 
   async cleanupJob(jobId: string): Promise<void> {
@@ -92,76 +173,209 @@ export class ExportService {
     if (!job?.outputDirectory) {
       return;
     }
-    await this.fileSystem.cleanupJobDirectory(job.outputDirectory);
-    job.outputDirectory = null;
+    const directory = job.outputDirectory;
+    job.phase = 'cleaning';
+    this.emit(job);
+    try {
+      await this.fileSystem.cleanupJobDirectory(directory);
+      job.outputDirectory = null;
+      this.emit(job);
+    } catch (error) {
+      const reason = this.errorMessage(error);
+      job.status = 'failed';
+      job.error = `临时目录清理失败：${reason}`;
+      this.emit(job);
+      throw new ExportJobError(jobId, job.error, { cause: error });
+    }
   }
 
   async runProbe(rawConfig: ExportProbeConfig): Promise<ExportProbeResult> {
     const config = ExportProbeConfigSchema.parse(rawConfig);
-    if (this.activeJob) {
-      throw new ExportJobError(
-        this.activeJob.jobId,
-        'another invocation attempted to start while this Job is running.',
+    const active = this.createJob(config);
+    const record = this.requireJob(active.jobId);
+    let jobDirectory: string | null = null;
+
+    try {
+      jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
+      record.outputDirectory = jobDirectory;
+      const metrics = await this.renderFrames(
+        active,
+        record,
+        config,
+        jobDirectory,
       );
+      this.throwIfCancelled(active);
+      record.status = 'completed';
+      record.phase = 'finished';
+      this.emit(record);
+      return {
+        ...record,
+        status: 'completed',
+        phase: 'finished',
+        outputDirectory: jobDirectory,
+        ...metrics,
+      };
+    } catch (error) {
+      throw await this.finishFailedJob(active, record, jobDirectory, error);
+    } finally {
+      this.clearActiveJob(active);
     }
+  }
 
-    const jobId = randomUUID();
-    const schedule = createFrameSchedule(config);
-    const record: ExportJobRecord = {
-      jobId,
-      status: 'running',
-      durationMs: config.durationMs,
-      totalFrames: schedule.length,
-      completedFrames: 0,
-      outputDirectory: null,
-      error: null,
+  startFullProbe(rawRequest: FullProbeExportRequest): FullProbeExportHandle {
+    const request = FullProbeExportRequestSchema.parse(rawRequest);
+    if (!this.mediaAdapter) {
+      throw new Error('Full probe export requires an FFmpeg adapter.');
+    }
+    const active = this.createJob(request);
+    return {
+      jobId: active.jobId,
+      completion: this.executeFullProbe(active, request, this.mediaAdapter),
     };
-    this.jobs.set(jobId, record);
-    this.activeJob = { jobId, cancelRequested: false };
+  }
 
+  async runFullProbe(
+    rawRequest: FullProbeExportRequest,
+  ): Promise<FullProbeExportResult> {
+    return this.startFullProbe(rawRequest).completion;
+  }
+
+  private async executeFullProbe(
+    active: ActiveJob,
+    request: FullProbeExportRequest,
+    adapter: FullProbeMediaAdapter,
+  ): Promise<FullProbeExportResult> {
+    const record = this.requireJob(active.jobId);
+    const startedAt = performance.now();
+    let jobDirectory: string | null = null;
+
+    try {
+      const projectDirectory =
+        await this.fileSystem.assertReadableProjectDirectory(
+          request.projectDirectory,
+        );
+      this.throwIfCancelled(active);
+      await this.renderer.prepareJob?.();
+      this.throwIfCancelled(active);
+      jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
+      record.outputDirectory = jobDirectory;
+
+      const render = await this.renderFrames(
+        active,
+        record,
+        request,
+        jobDirectory,
+      );
+      this.throwIfCancelled(active);
+
+      record.phase = 'encoding';
+      this.emit(record);
+      const silentVideoPath = path.join(jobDirectory, 'probe-silent.mp4');
+      await adapter.encodePngSequence(
+        {
+          framesDirectory: jobDirectory,
+          outputPath: silentVideoPath,
+          fps: request.fps,
+          overwrite: true,
+        },
+        active.controller.signal,
+      );
+      this.throwIfCancelled(active);
+
+      record.phase = 'muxing';
+      this.emit(record);
+      await adapter.muxSingleAudio(
+        {
+          videoPath: silentVideoPath,
+          audioPath: request.audioPath,
+          startMs: request.audioStartMs,
+          outputPath: request.outputPath,
+          overwrite: request.overwrite,
+        },
+        active.controller.signal,
+      );
+      this.throwIfCancelled(active);
+      const probe = await adapter.probeVideo(
+        request.outputPath,
+        active.controller.signal,
+      );
+      this.throwIfCancelled(active);
+
+      await this.cleanupDirectory(record, jobDirectory);
+      jobDirectory = null;
+      record.status = 'completed';
+      record.phase = 'finished';
+      this.emit(record);
+      return {
+        ...record,
+        status: 'completed',
+        phase: 'finished',
+        outputDirectory: null,
+        projectDirectory,
+        outputPath: path.resolve(request.outputPath),
+        probe,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        render,
+      };
+    } catch (error) {
+      throw await this.finishFailedJob(active, record, jobDirectory, error);
+    } finally {
+      this.renderer.releaseJob?.(active.jobId);
+      this.clearActiveJob(active);
+    }
+  }
+
+  private async renderFrames(
+    active: ActiveJob,
+    record: ExportJobRecord,
+    config: ExportProbeConfig,
+    jobDirectory: string,
+  ): Promise<FrameExportMetrics> {
+    const probeConfig = ExportProbeConfigSchema.parse({
+      durationMs: config.durationMs,
+      fps: config.fps,
+    });
+    const schedule = createFrameSchedule(probeConfig);
     const startedAt = performance.now();
     const startMemory = process.memoryUsage();
     let heapUsedPeak = startMemory.heapUsed;
     let rssPeak = startMemory.rss;
     let peakPendingWrites = 0;
     let totalBytes = 0;
-    let jobDirectory: string | null = null;
     let writeFailure: Error | null = null;
     const pendingWrites = new Set<Promise<void>>();
 
     const waitForWriteSlot = async (): Promise<void> => {
-      if (writeFailure) {
-        throw writeFailure;
-      }
+      this.throwIfCancelled(active);
+      if (writeFailure) throw writeFailure;
       while (pendingWrites.size >= MAX_PENDING_FRAMES) {
+        record.phase = 'writing';
+        this.emit(record);
         await Promise.race(pendingWrites);
-        if (writeFailure) {
-          throw writeFailure;
-        }
+        this.throwIfCancelled(active);
+        if (writeFailure) throw writeFailure;
       }
-      if (writeFailure) {
-        throw writeFailure;
-      }
+      if (writeFailure) throw writeFailure;
     };
 
     try {
-      jobDirectory = await this.fileSystem.createJobDirectory(jobId);
-      record.outputDirectory = jobDirectory;
-      await this.renderer.loadProbe({ jobId, ...config });
+      record.phase = 'preparing';
+      this.emit(record);
+      await this.renderer.loadProbe({ jobId: active.jobId, ...probeConfig });
+      this.throwIfCancelled(active);
 
       for (const frame of schedule) {
-        if (this.activeJob.cancelRequested) {
-          throw new ExportCancelledError('cancel requested');
-        }
         await waitForWriteSlot();
-
+        record.phase = 'rendering';
+        this.emit(record);
         const rendered = await this.renderer.renderFrame({
-          jobId,
+          jobId: active.jobId,
           frameIndex: frame.frameIndex,
           timeMs: frame.timeMs,
         });
+        this.throwIfCancelled(active);
         if (
-          rendered.jobId !== jobId ||
+          rendered.jobId !== active.jobId ||
           rendered.frameIndex !== frame.frameIndex ||
           rendered.timeMs !== frame.timeMs
         ) {
@@ -176,6 +390,7 @@ export class ExportService {
           .then(
             () => {
               record.completedFrames += 1;
+              this.emit(record);
             },
             (error: unknown) => {
               writeFailure =
@@ -193,48 +408,148 @@ export class ExportService {
         rssPeak = Math.max(rssPeak, memory.rss);
       }
 
+      if (pendingWrites.size > 0) {
+        record.phase = 'writing';
+        this.emit(record);
+      }
       await Promise.all(pendingWrites);
-      if (writeFailure) {
-        throw writeFailure;
-      }
-      if (this.activeJob.cancelRequested) {
-        throw new ExportCancelledError('cancel requested');
-      }
-
-      const endMemory = process.memoryUsage();
-      record.status = 'completed';
-      return {
-        ...record,
-        status: 'completed',
-        outputDirectory: jobDirectory,
-        peakPendingWrites,
-        totalBytes,
-        elapsedMs: Math.round(performance.now() - startedAt),
-        memory: {
-          heapUsedStart: startMemory.heapUsed,
-          heapUsedPeak,
-          heapUsedEnd: endMemory.heapUsed,
-          rssStart: startMemory.rss,
-          rssPeak,
-          rssEnd: endMemory.rss,
-        },
-      };
+      if (writeFailure) throw writeFailure;
+      this.throwIfCancelled(active);
     } catch (error) {
       await Promise.all(pendingWrites);
-      if (jobDirectory) {
-        await this.fileSystem.cleanupJobDirectory(jobDirectory);
-        record.outputDirectory = null;
+      if (active.controller.signal.aborted) {
+        throw new ExportCancelledError('cancel requested');
       }
-      const cancelled = error instanceof ExportCancelledError;
-      record.status = cancelled ? 'cancelled' : 'failed';
-      record.error = error instanceof Error ? error.message : String(error);
+      throw error;
+    }
+
+    const endMemory = process.memoryUsage();
+    return {
+      peakPendingWrites,
+      totalBytes,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      memory: {
+        heapUsedStart: startMemory.heapUsed,
+        heapUsedPeak,
+        heapUsedEnd: endMemory.heapUsed,
+        rssStart: startMemory.rss,
+        rssPeak,
+        rssEnd: endMemory.rss,
+      },
+    };
+  }
+
+  private createJob(config: ExportProbeConfig): ActiveJob {
+    if (this.activeJob) {
       throw new ExportJobError(
-        jobId,
-        cancelled ? 'cancelled and cleaned up.' : record.error,
-        { cause: error },
+        this.activeJob.jobId,
+        'another invocation attempted to start while this Job is running.',
       );
-    } finally {
+    }
+    const jobId = randomUUID();
+    const record: ExportJobRecord = {
+      jobId,
+      status: 'running',
+      phase: 'preparing',
+      durationMs: config.durationMs,
+      totalFrames: createFrameSchedule({
+        durationMs: config.durationMs,
+        fps: config.fps,
+      }).length,
+      completedFrames: 0,
+      outputDirectory: null,
+      error: null,
+    };
+    const active = { jobId, controller: new AbortController() };
+    this.jobs.set(jobId, record);
+    this.activeJob = active;
+    this.emit(record);
+    return active;
+  }
+
+  private async cleanupDirectory(
+    record: ExportJobRecord,
+    directory: string,
+  ): Promise<void> {
+    record.phase = 'cleaning';
+    this.emit(record);
+    try {
+      await this.fileSystem.cleanupJobDirectory(directory);
+    } catch (error) {
+      throw new ExportCleanupError(this.errorMessage(error), { cause: error });
+    }
+    record.outputDirectory = null;
+    this.emit(record);
+  }
+
+  private async finishFailedJob(
+    active: ActiveJob,
+    record: ExportJobRecord,
+    jobDirectory: string | null,
+    error: unknown,
+  ): Promise<ExportJobError> {
+    const cancelled = active.controller.signal.aborted;
+    let cleanupError: unknown = null;
+    if (error instanceof ExportCleanupError) {
+      cleanupError = error;
+    } else if (jobDirectory) {
+      try {
+        await this.cleanupDirectory(record, jobDirectory);
+      } catch (caughtCleanupError) {
+        cleanupError = caughtCleanupError;
+      }
+    }
+
+    if (cleanupError) {
+      record.status = 'failed';
+      record.phase = 'finished';
+      record.error = `临时目录清理失败：${this.errorMessage(cleanupError)} 下一步：关闭占用目录的程序后重试。`;
+      this.emit(record);
+      return new ExportJobError(active.jobId, record.error, {
+        cause: new AggregateError([error, cleanupError]),
+      });
+    }
+
+    record.status = cancelled ? 'cancelled' : 'failed';
+    record.phase = 'finished';
+    record.error = cancelled
+      ? '导出已取消并完成资源清理；可以立即重新导出。'
+      : `${this.errorMessage(error)} 下一步：检查输入路径和媒体工具后重试。`;
+    this.emit(record);
+    return new ExportJobError(active.jobId, record.error, { cause: error });
+  }
+
+  private throwIfCancelled(active: ActiveJob): void {
+    if (active.controller.signal.aborted) {
+      throw new ExportCancelledError('cancel requested');
+    }
+  }
+
+  private clearActiveJob(active: ActiveJob): void {
+    if (this.activeJob === active) {
       this.activeJob = null;
     }
+  }
+
+  private requireJob(jobId: string): ExportJobRecord {
+    const record = this.jobs.get(jobId);
+    if (!record) throw new Error(`Unknown Export Job ${jobId}.`);
+    return record;
+  }
+
+  private emit(record: ExportJobRecord): void {
+    const update: ExportJobUpdate = {
+      jobId: record.jobId,
+      status: record.status,
+      phase: record.phase,
+      completedFrames: record.completedFrames,
+      totalFrames: record.totalFrames,
+      error: record.error,
+    };
+    for (const listener of this.listeners) listener(update);
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

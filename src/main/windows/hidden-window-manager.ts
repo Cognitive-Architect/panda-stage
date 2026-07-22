@@ -39,6 +39,29 @@ export class HiddenWindowManager {
     ExportRenderFrameRequest,
     ExportFrameReady
   > | null = null;
+  private readonly cancelledJobIds = new Set<string>();
+
+  getDiagnostics(): {
+    windowOpen: boolean;
+    loadedJobId: string | null;
+    pendingLoadJobId: string | null;
+    pendingFrameJobId: string | null;
+  } {
+    return {
+      windowOpen: this.getWindow() !== null,
+      loadedJobId: this.loadedJobId,
+      pendingLoadJobId: this.pendingLoad?.request.jobId ?? null,
+      pendingFrameJobId: this.pendingFrame?.request.jobId ?? null,
+    };
+  }
+
+  async prepareJob(): Promise<void> {
+    await this.create();
+  }
+
+  releaseJob(): void {
+    this.close();
+  }
 
   getWindow(): BrowserWindow | null {
     return this.window && !this.window.isDestroyed() ? this.window : null;
@@ -108,6 +131,7 @@ export class HiddenWindowManager {
     rawRequest: ExportLoadProbeRequest,
   ): Promise<ExportProbeLoaded> {
     const request = ExportLoadProbeRequestSchema.parse(rawRequest);
+    this.cancelledJobIds.delete(request.jobId);
     const window = this.requireWindow();
     if (this.pendingLoad || this.pendingFrame) {
       throw new Error('Hidden window is busy with another export request.');
@@ -171,6 +195,7 @@ export class HiddenWindowManager {
   markProbeLoaded(senderId: number, rawPayload: ExportProbeLoaded): void {
     this.assertSender(senderId);
     const payload = ExportProbeLoadedSchema.parse(rawPayload);
+    if (this.cancelledJobIds.has(payload.jobId)) return;
     const pending = this.pendingLoad;
     if (!pending || pending.request.jobId !== payload.jobId) {
       throw new Error(`Unexpected probe-loaded response for Job ${payload.jobId}.`);
@@ -185,6 +210,7 @@ export class HiddenWindowManager {
   markFrameReady(senderId: number, rawPayload: ExportFrameReady): void {
     this.assertSender(senderId);
     const payload = ExportFrameReadySchema.parse(rawPayload);
+    if (this.cancelledJobIds.has(payload.jobId)) return;
     const pending = this.pendingFrame;
     if (
       !pending ||
@@ -205,6 +231,7 @@ export class HiddenWindowManager {
   markFrameFailed(senderId: number, rawPayload: ExportFrameFailed): void {
     this.assertSender(senderId);
     const payload = ExportFrameFailedSchema.parse(rawPayload);
+    if (this.cancelledJobIds.has(payload.jobId)) return;
     const pending = this.pendingFrame;
     if (
       !pending ||
@@ -226,11 +253,43 @@ export class HiddenWindowManager {
     );
   }
 
+  cancelJob(jobId: string): boolean {
+    const ownsJob =
+      this.loadedJobId === jobId ||
+      this.pendingLoad?.request.jobId === jobId ||
+      this.pendingFrame?.request.jobId === jobId;
+    this.cancelledJobIds.add(jobId);
+
+    const window = this.getWindow();
+    if (window) {
+      window.webContents.send(IPC_CHANNELS.EXPORT_CANCEL_RENDER, { jobId });
+    }
+
+    const cancellation = new Error(
+      `Export Job ${jobId}: hidden rendering cancelled.`,
+    );
+    if (this.pendingLoad?.request.jobId === jobId) {
+      clearTimeout(this.pendingLoad.timeout);
+      this.pendingLoad.reject(cancellation);
+      this.pendingLoad = null;
+    }
+    if (this.pendingFrame?.request.jobId === jobId) {
+      clearTimeout(this.pendingFrame.timeout);
+      this.pendingFrame.reject(cancellation);
+      this.pendingFrame = null;
+    }
+    if (this.loadedJobId === jobId) {
+      this.loadedJobId = null;
+    }
+    return ownsJob;
+  }
+
   close(): void {
     const cleanupError = new Error('Hidden window closed during cleanup.');
     this.rejectReady(cleanupError);
     this.rejectPendingRequests(cleanupError);
     this.loadedJobId = null;
+    this.cancelledJobIds.clear();
     const window = this.getWindow();
     this.window = null;
     if (window) {
