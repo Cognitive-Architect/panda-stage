@@ -107,6 +107,8 @@ src/
 - 开发期通过 `PANDA_STAGE_FFMPEG_PATH` 和 `PANDA_STAGE_FFPROBE_PATH` 配置工具；
 - 编码前检查版本、`libx264`、连续帧和输出目录，编码后以 ffprobe 验证媒体流；
 - 单 WAV 合成先读取并校验声道数，再为每个声道重复数据中的整数 `startMs` 构造 `adelay`；视频流直接复制、音频编码为 AAC，不拉伸音频；
+- 完整导出只接受大小写不敏感的 `.mp4`；正式目标存在检查在渲染前完成，AAC 先写入同目录 Job staging，probe 成功且未取消后才以 rename 提交正式文件；
+- 进入最终 `committing` point-of-no-return 后不再接受取消，避免返回 cancelled 但磁盘已提交新文件；
 - 三次真实合成的声音起点均为 0.400646 秒，完整音频把容器时长延长到 3.4 秒；
 - 用户错误与技术 diagnostics 分离，支持 AbortSignal 取消；
 - 完整探针已在中文、空格和 emoji 项目/输出路径下验证，连续 5 次取消后可立即重新导出；

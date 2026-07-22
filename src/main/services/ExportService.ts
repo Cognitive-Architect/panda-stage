@@ -100,10 +100,20 @@ export interface FullProbeExportHandle {
 interface ActiveJob {
   jobId: string;
   controller: AbortController;
+  acceptsCancellation: boolean;
 }
 
 class ExportCancelledError extends Error {}
-class ExportCleanupError extends Error {}
+class ExportCleanupError extends Error {
+  constructor(
+    readonly resource: 'job-directory' | 'final-output-staging',
+    message: string,
+    readonly originalError?: unknown,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
 
 export class ExportJobError extends Error {
   constructor(
@@ -150,6 +160,9 @@ export class ExportService {
   cancelJob(jobId: string): boolean {
     const active = this.activeJob;
     if (!active || active.jobId !== jobId) {
+      return false;
+    }
+    if (!active.acceptsCancellation) {
       return false;
     }
     const record = this.requireJob(jobId);
@@ -248,14 +261,23 @@ export class ExportService {
     const record = this.requireJob(active.jobId);
     const startedAt = performance.now();
     let jobDirectory: string | null = null;
+    let finalOutputStagingPath: string | null = null;
+    let rendererPrepared = false;
 
     try {
+      const outputPath = await this.fileSystem.prepareFinalOutput(
+        request.outputPath,
+        request.overwrite,
+      );
+      finalOutputStagingPath =
+        this.fileSystem.createFinalOutputStagingPath(active.jobId, outputPath);
       const projectDirectory =
         await this.fileSystem.assertReadableProjectDirectory(
           request.projectDirectory,
         );
       this.throwIfCancelled(active);
       await this.renderer.prepareJob?.();
+      rendererPrepared = true;
       this.throwIfCancelled(active);
       jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
       record.outputDirectory = jobDirectory;
@@ -289,20 +311,30 @@ export class ExportService {
           videoPath: silentVideoPath,
           audioPath: request.audioPath,
           startMs: request.audioStartMs,
-          outputPath: request.outputPath,
-          overwrite: request.overwrite,
+          outputPath: finalOutputStagingPath,
+          overwrite: false,
         },
         active.controller.signal,
       );
       this.throwIfCancelled(active);
       const probe = await adapter.probeVideo(
-        request.outputPath,
+        finalOutputStagingPath,
         active.controller.signal,
       );
       this.throwIfCancelled(active);
 
       await this.cleanupDirectory(record, jobDirectory);
       jobDirectory = null;
+      this.throwIfCancelled(active);
+      record.phase = 'committing';
+      active.acceptsCancellation = false;
+      this.emit(record);
+      await this.fileSystem.commitFinalOutput(
+        finalOutputStagingPath,
+        outputPath,
+        request.overwrite,
+      );
+      finalOutputStagingPath = null;
       record.status = 'completed';
       record.phase = 'finished';
       this.emit(record);
@@ -312,16 +344,41 @@ export class ExportService {
         phase: 'finished',
         outputDirectory: null,
         projectDirectory,
-        outputPath: path.resolve(request.outputPath),
+        outputPath,
         probe,
         elapsedMs: Math.round(performance.now() - startedAt),
         render,
       };
     } catch (error) {
-      throw await this.finishFailedJob(active, record, jobDirectory, error);
+      let failure = error;
+      if (finalOutputStagingPath) {
+        try {
+          await this.fileSystem.cleanupFinalOutputStaging(
+            finalOutputStagingPath,
+          );
+        } catch (cleanupError) {
+          failure = new ExportCleanupError(
+            'final-output-staging',
+            `最终输出暂存清理失败：${this.errorMessage(cleanupError)}`,
+            error,
+            { cause: new AggregateError([error, cleanupError]) },
+          );
+        }
+      }
+      throw await this.finishFailedJob(
+        active,
+        record,
+        jobDirectory,
+        failure,
+      );
     } finally {
-      this.renderer.releaseJob?.(active.jobId);
-      this.clearActiveJob(active);
+      try {
+        if (rendererPrepared) {
+          this.renderer.releaseJob?.(active.jobId);
+        }
+      } finally {
+        this.clearActiveJob(active);
+      }
     }
   }
 
@@ -460,7 +517,11 @@ export class ExportService {
       outputDirectory: null,
       error: null,
     };
-    const active = { jobId, controller: new AbortController() };
+    const active = {
+      jobId,
+      controller: new AbortController(),
+      acceptsCancellation: true,
+    };
     this.jobs.set(jobId, record);
     this.activeJob = active;
     this.emit(record);
@@ -476,7 +537,12 @@ export class ExportService {
     try {
       await this.fileSystem.cleanupJobDirectory(directory);
     } catch (error) {
-      throw new ExportCleanupError(this.errorMessage(error), { cause: error });
+      throw new ExportCleanupError(
+        'job-directory',
+        `临时目录清理失败：${this.errorMessage(error)}`,
+        undefined,
+        { cause: error },
+      );
     }
     record.outputDirectory = null;
     this.emit(record);
@@ -489,24 +555,35 @@ export class ExportService {
     error: unknown,
   ): Promise<ExportJobError> {
     const cancelled = active.controller.signal.aborted;
-    let cleanupError: unknown = null;
+    const cleanupErrors: unknown[] = [];
     if (error instanceof ExportCleanupError) {
-      cleanupError = error;
-    } else if (jobDirectory) {
+      cleanupErrors.push(error);
+    }
+    if (
+      jobDirectory &&
+      !(
+        error instanceof ExportCleanupError &&
+        error.resource === 'job-directory'
+      )
+    ) {
       try {
         await this.cleanupDirectory(record, jobDirectory);
       } catch (caughtCleanupError) {
-        cleanupError = caughtCleanupError;
+        cleanupErrors.push(caughtCleanupError);
       }
     }
 
-    if (cleanupError) {
+    if (cleanupErrors.length > 0) {
+      const originalError =
+        error instanceof ExportCleanupError && error.originalError
+          ? error.originalError
+          : error;
       record.status = 'failed';
       record.phase = 'finished';
-      record.error = `临时目录清理失败：${this.errorMessage(cleanupError)} 下一步：关闭占用目录的程序后重试。`;
+      record.error = `原始错误：${this.errorMessage(originalError)}；清理错误：${cleanupErrors.map((cleanupError) => this.errorMessage(cleanupError)).join('；')} 下一步：关闭占用文件或目录的程序后重试。`;
       this.emit(record);
       return new ExportJobError(active.jobId, record.error, {
-        cause: new AggregateError([error, cleanupError]),
+        cause: new AggregateError([error, ...cleanupErrors]),
       });
     }
 

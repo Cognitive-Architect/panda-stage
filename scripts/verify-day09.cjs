@@ -238,6 +238,22 @@ class ControlledFileSystem {
     return this.real.assertReadableProjectDirectory(directory);
   }
 
+  prepareFinalOutput(outputPath, overwrite) {
+    return this.real.prepareFinalOutput(outputPath, overwrite);
+  }
+
+  createFinalOutputStagingPath(jobId, outputPath) {
+    return this.real.createFinalOutputStagingPath(jobId, outputPath);
+  }
+
+  commitFinalOutput(stagingPath, outputPath, overwrite) {
+    return this.real.commitFinalOutput(stagingPath, outputPath, overwrite);
+  }
+
+  cleanupFinalOutputStaging(stagingPath) {
+    return this.real.cleanupFinalOutputStaging(stagingPath);
+  }
+
   armWriteBlock() {
     this.blockNextWrite = true;
     this.writeStarted = new Promise((resolve) => {
@@ -357,6 +373,14 @@ async function runVerification() {
     if (frameEntries.length !== 0) {
       throw new Error(`${phase} cancellation left a Job directory.`);
     }
+    const stagingEntries = (await fs.readdir(outputDirectory)).filter(
+      (entry) => /\.panda-stage-.*\.mp4$/iu.test(entry),
+    );
+    if (stagingEntries.length !== 0) {
+      throw new Error(
+        `${phase} cancellation left final-output staging: ${stagingEntries.join(', ')}.`,
+      );
+    }
     if (hidden.getDiagnostics().windowOpen) {
       throw new Error(`${phase} cancellation left a hidden window open.`);
     }
@@ -377,6 +401,7 @@ async function runVerification() {
       activeProcessesAfter: adapter.getActiveProcessCount(),
       hiddenWindowsAfter: hidden.getDiagnostics().windowOpen ? 1 : 0,
       frameDirectoriesAfter: frameEntries.length,
+      finalOutputStagingFilesAfter: stagingEntries.length,
       inFlightWritesAfter: fileSystem.inFlightWrites,
       unrelatedProcessAlive: sentinel.exitCode === null,
       message: error.message,
@@ -443,30 +468,82 @@ async function runVerification() {
       null,
     );
 
-    for (let index = 4; index <= 5; index += 1) {
-      renderer.mode = 'fast';
-      const startedAt = Date.now();
-      const handle = service.startFullProbe(requestFor(`取消-编码-${index}`));
-      await waitUntil(
-        () =>
-          adapter
-            .getProcessDiagnostics()
-            .active.some((process) => process.args.includes('-framerate')),
-        `real FFmpeg encoding process for Job ${handle.jobId}`,
-      );
-      const processEntry = adapter
-        .getProcessDiagnostics()
-        .active.find((process) => process.args.includes('-framerate'));
-      if (!service.cancelJob(handle.jobId)) {
-        throw new Error(`Encoding Job ${handle.jobId} rejected cancellation.`);
-      }
-      await assertCleanAfterCancellation(
-        handle,
-        'encoding',
-        startedAt,
-        processEntry?.pid ?? null,
-      );
+    renderer.mode = 'fast';
+    const encodeStartedAt = Date.now();
+    const encodeHandle = service.startFullProbe(requestFor('取消-编码-4'));
+    await waitUntil(
+      () =>
+        adapter
+          .getProcessDiagnostics()
+          .active.some((process) => process.args.includes('-framerate')),
+      `real FFmpeg encoding process for Job ${encodeHandle.jobId}`,
+    );
+    const encodeProcess = adapter
+      .getProcessDiagnostics()
+      .active.find((process) => process.args.includes('-framerate'));
+    if (!service.cancelJob(encodeHandle.jobId)) {
+      throw new Error(`Encoding Job ${encodeHandle.jobId} rejected cancellation.`);
     }
+    await assertCleanAfterCancellation(
+      encodeHandle,
+      'encoding',
+      encodeStartedAt,
+      encodeProcess?.pid ?? null,
+    );
+
+    const protectedOutputPath = path.join(
+      outputDirectory,
+      '取消-mux-5-旧正式输出.mp4',
+    );
+    const protectedOutputBytes = Buffer.from(
+      'Panda Stage Day 09 protected formal output',
+      'utf8',
+    );
+    const protectedOutputHash = crypto
+      .createHash('sha256')
+      .update(protectedOutputBytes)
+      .digest('hex');
+    await fs.writeFile(protectedOutputPath, protectedOutputBytes);
+    renderer.mode = 'fast';
+    const muxStartedAt = Date.now();
+    const muxHandle = service.startFullProbe({
+      ...requestFor('取消-mux-5-旧正式输出'),
+      outputPath: protectedOutputPath,
+    });
+    await waitUntil(
+      () =>
+        adapter
+          .getProcessDiagnostics()
+          .active.some((process) => process.args.includes('-filter_complex')),
+      `real FFmpeg mux process for Job ${muxHandle.jobId}`,
+    );
+    const muxProcess = adapter
+      .getProcessDiagnostics()
+      .active.find((process) => process.args.includes('-filter_complex'));
+    if (!service.cancelJob(muxHandle.jobId)) {
+      throw new Error(`Mux Job ${muxHandle.jobId} rejected cancellation.`);
+    }
+    await assertCleanAfterCancellation(
+      muxHandle,
+      'muxing',
+      muxStartedAt,
+      muxProcess?.pid ?? null,
+    );
+    const protectedOutputAfter = await fs.readFile(protectedOutputPath);
+    const protectedOutputHashAfter = crypto
+      .createHash('sha256')
+      .update(protectedOutputAfter)
+      .digest('hex');
+    if (protectedOutputHashAfter !== protectedOutputHash) {
+      throw new Error('Mux cancellation changed the pre-existing formal output.');
+    }
+    Object.assign(cancellations.at(-1), {
+      formalOutputExistedBefore: true,
+      formalOutputPreserved: true,
+      formalOutputSha256Before: protectedOutputHash,
+      formalOutputSha256After: protectedOutputHashAfter,
+    });
+    await fs.rm(protectedOutputPath, { force: true });
 
     if (cancellations.length !== 5) {
       throw new Error(`Expected five cancellations, received ${cancellations.length}.`);
@@ -527,8 +604,12 @@ async function runVerification() {
     const recoveryBytes = await fs.readFile(recoveryOutputPath);
     await fs.copyFile(recoveryOutputPath, evidenceVideoPath);
     const frameEntriesAfterRecovery = await fs.readdir(frameRoot);
+    const stagingEntriesAfterRecovery = (
+      await fs.readdir(outputDirectory)
+    ).filter((entry) => /\.panda-stage-.*\.mp4$/iu.test(entry));
     if (
       frameEntriesAfterRecovery.length !== 0 ||
+      stagingEntriesAfterRecovery.length !== 0 ||
       adapter.getActiveProcessCount() !== 0 ||
       hidden.getDiagnostics().windowOpen ||
       service.getActiveJobId() !== null
@@ -549,6 +630,8 @@ async function runVerification() {
         signalScope: 'one AbortController per Export Job',
         childTermination: 'Node child.kill(SIGTERM) on the signal-owning child only',
         cleanupRetries: { maxRetries: 3, retryDelayMs: 75 },
+        finalOutputCommit:
+          'same-directory Job staging -> probe -> cancellation point-of-no-return -> rename',
       },
       cancellations,
       recovery: {
@@ -581,6 +664,7 @@ async function runVerification() {
         activeEncodingProcesses: adapter.getActiveProcessCount(),
         hiddenWindows: hidden.getDiagnostics().windowOpen ? 1 : 0,
         frameDirectories: frameEntriesAfterRecovery.length,
+        finalOutputStagingFiles: stagingEntriesAfterRecovery.length,
         inFlightWrites: fileSystem.inFlightWrites,
         unrelatedProcessAlive: sentinel.exitCode === null,
       },

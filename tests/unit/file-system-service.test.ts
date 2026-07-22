@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -49,5 +57,31 @@ describe('FileSystemService Unicode paths and cleanup', () => {
   it('uses a finite Windows lock retry policy', () => {
     expect(CLEANUP_MAX_RETRIES).toBe(3);
     expect(CLEANUP_RETRY_DELAY_MS).toBe(75);
+  });
+
+  it('commits a same-directory Job staging file without pre-deleting the formal output', async () => {
+    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-day09-'));
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'frames'));
+    const outputPath = path.join(parent, '正式 输出.MP4');
+    await writeFile(outputPath, 'old video', 'utf8');
+    await expect(service.prepareFinalOutput(outputPath, false)).rejects.toThrow(
+      /正式输出已存在且未允许覆盖/,
+    );
+    await expect(service.prepareFinalOutput(outputPath, true)).resolves.toBe(
+      path.resolve(outputPath),
+    );
+    const jobId = randomUUID();
+    const stagingPath = service.createFinalOutputStagingPath(jobId, outputPath);
+
+    expect(path.dirname(stagingPath)).toBe(path.dirname(outputPath));
+    expect(path.basename(stagingPath)).toContain(jobId);
+    expect(stagingPath.toLowerCase().endsWith('.mp4')).toBe(true);
+    await writeFile(stagingPath, 'new video', 'utf8');
+    await service.commitFinalOutput(stagingPath, outputPath, true);
+
+    await expect(readFile(outputPath, 'utf8')).resolves.toBe('new video');
+    await expect(stat(stagingPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await service.cleanupFinalOutputStaging(stagingPath);
   });
 });

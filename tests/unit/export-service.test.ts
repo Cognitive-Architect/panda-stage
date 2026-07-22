@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FrameFileSystem } from '../../src/main/services/FileSystemService';
 import {
@@ -24,6 +25,15 @@ class MemoryFileSystem implements FrameFileSystem {
   cleanupFailure: Error | null = null;
   projectDirectories: string[] = [];
   writeGate: Promise<void> | null = null;
+  readonly finalFiles = new Map<string, string>();
+  readonly stagingFiles = new Map<string, string>();
+  readonly finalOutputEvents: string[] = [];
+  prepareFinalOutputCalls = 0;
+  commitFinalOutputCalls = 0;
+  cleanupStagingCalls = 0;
+  stagingCleanupFailure: Error | null = null;
+  commitGate: Promise<void> | null = null;
+  commitStarted: (() => void) | null = null;
 
   async createJobDirectory(jobId: string): Promise<string> {
     const directory = `/jobs/${jobId}`;
@@ -57,6 +67,49 @@ class MemoryFileSystem implements FrameFileSystem {
   async assertReadableProjectDirectory(directory: string): Promise<string> {
     this.projectDirectories.push(directory);
     return directory;
+  }
+
+  async prepareFinalOutput(
+    outputPath: string,
+    overwrite: boolean,
+  ): Promise<string> {
+    this.prepareFinalOutputCalls += 1;
+    if (this.finalFiles.has(outputPath) && !overwrite) {
+      throw new Error(`正式输出已存在且未允许覆盖：${outputPath}。`);
+    }
+    return outputPath;
+  }
+
+  createFinalOutputStagingPath(jobId: string, outputPath: string): string {
+    const stagingPath = path.join(
+      path.dirname(outputPath),
+      `.${path.basename(outputPath, path.extname(outputPath))}.panda-stage-${jobId}-test.mp4`,
+    );
+    return stagingPath;
+  }
+
+  async commitFinalOutput(
+    stagingPath: string,
+    outputPath: string,
+    overwrite: boolean,
+  ): Promise<void> {
+    this.commitFinalOutputCalls += 1;
+    this.finalOutputEvents.push('commit');
+    this.commitStarted?.();
+    if (this.commitGate) await this.commitGate;
+    if (this.finalFiles.has(outputPath) && !overwrite) {
+      throw new Error('formal output appeared before commit');
+    }
+    const stagedContent = this.stagingFiles.get(stagingPath);
+    if (!stagedContent) throw new Error('staging output is missing');
+    this.finalFiles.set(outputPath, stagedContent);
+    this.stagingFiles.delete(stagingPath);
+  }
+
+  async cleanupFinalOutputStaging(stagingPath: string): Promise<void> {
+    this.cleanupStagingCalls += 1;
+    if (this.stagingCleanupFailure) throw this.stagingCleanupFailure;
+    this.stagingFiles.delete(stagingPath);
   }
 }
 
@@ -121,10 +174,35 @@ const probeResult: VideoProbeResult = {
 class MemoryMediaAdapter implements FullProbeMediaAdapter {
   encodeRequests: Array<Record<string, unknown>> = [];
   muxRequests: Array<Record<string, unknown>> = [];
+  probeRequests: string[] = [];
   signals: AbortSignal[] = [];
   blockEncode = false;
   encodeStarted: (() => void) | null = null;
   activeProcesses = 0;
+  blockMux = false;
+  muxStarted: (() => void) | null = null;
+  blockProbe = false;
+  probeStarted: (() => void) | null = null;
+  probeFailure: Error | null = null;
+
+  constructor(private readonly fileSystem: MemoryFileSystem) {}
+
+  private async waitForCancellation(
+    signal: AbortSignal | undefined,
+    message: string,
+  ): Promise<void> {
+    this.activeProcesses = 1;
+    await new Promise<void>((_resolve, reject) => {
+      signal?.addEventListener(
+        'abort',
+        () => {
+          this.activeProcesses = 0;
+          reject(new Error(message));
+        },
+        { once: true },
+      );
+    });
+  }
 
   async encodePngSequence(
     request: Record<string, unknown>,
@@ -153,9 +231,30 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
   ): Promise<void> {
     this.muxRequests.push(request);
     if (signal) this.signals.push(signal);
+    const stagingPath = String(request.outputPath);
+    this.fileSystem.finalOutputEvents.push('mux');
+    this.fileSystem.stagingFiles.set(stagingPath, 'new video');
+    if (this.blockMux) {
+      this.muxStarted?.();
+      await this.waitForCancellation(signal, 'controlled mux cancellation');
+    }
   }
 
-  async probeVideo(): Promise<VideoProbeResult> {
+  async probeVideo(
+    videoPath: string,
+    signal?: AbortSignal,
+  ): Promise<VideoProbeResult> {
+    this.probeRequests.push(videoPath);
+    if (signal) this.signals.push(signal);
+    this.fileSystem.finalOutputEvents.push('probe');
+    if (!this.fileSystem.stagingFiles.has(videoPath)) {
+      throw new Error('probe did not receive staging output');
+    }
+    if (this.probeFailure) throw this.probeFailure;
+    if (this.blockProbe) {
+      this.probeStarted?.();
+      await this.waitForCancellation(signal, 'controlled probe cancellation');
+    }
     return probeResult;
   }
 
@@ -253,7 +352,7 @@ describe('ExportService', () => {
   it('uses one Job signal through a Unicode full export and removes its frame directory', async () => {
     const renderer = new MemoryRenderer();
     const fileSystem = new MemoryFileSystem();
-    const media = new MemoryMediaAdapter();
+    const media = new MemoryMediaAdapter(fileSystem);
     const service = new ExportService(renderer, fileSystem, media);
     const projectDirectory = 'C:\\熊猫 项目\\场景 🐼';
     const audioPath = 'C:\\熊猫 项目\\音频 音轨.wav';
@@ -272,9 +371,21 @@ describe('ExportService', () => {
     expect(result.status).toBe('completed');
     expect(result.probe).toEqual(probeResult);
     expect(fileSystem.projectDirectories).toEqual([projectDirectory]);
-    expect(media.muxRequests[0]).toMatchObject({ audioPath, outputPath });
-    expect(media.signals).toHaveLength(2);
-    expect(media.signals[0]).toBe(media.signals[1]);
+    const stagingPath = String(media.muxRequests[0]?.outputPath);
+    expect(media.muxRequests[0]).toMatchObject({
+      audioPath,
+      outputPath: stagingPath,
+      overwrite: false,
+    });
+    expect(stagingPath).not.toBe(outputPath);
+    expect(stagingPath).toContain(result.jobId);
+    expect(stagingPath.toLowerCase().endsWith('.mp4')).toBe(true);
+    expect(media.probeRequests).toEqual([stagingPath]);
+    expect(media.signals).toHaveLength(3);
+    expect(new Set(media.signals).size).toBe(1);
+    expect(fileSystem.finalOutputEvents).toEqual(['mux', 'probe', 'commit']);
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('new video');
+    expect(fileSystem.stagingFiles.size).toBe(0);
     expect(fileSystem.directories.size).toBe(0);
     expect(renderer.prepared).toBe(1);
     expect(renderer.releasedJobs).toEqual([result.jobId]);
@@ -283,7 +394,7 @@ describe('ExportService', () => {
   it('cancels the current encoding process idempotently and can export again immediately', async () => {
     const renderer = new MemoryRenderer();
     const fileSystem = new MemoryFileSystem();
-    const media = new MemoryMediaAdapter();
+    const media = new MemoryMediaAdapter(fileSystem);
     media.blockEncode = true;
     let signalEncodeStarted!: () => void;
     const encodeStarted = new Promise<void>((resolve) => {
@@ -324,6 +435,216 @@ describe('ExportService', () => {
     });
     expect(recovered.status).toBe('completed');
     expect(service.getActiveJobId()).toBeNull();
+  });
+
+  it('keeps the formal output and removes staging when mux is cancelled', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    media.blockMux = true;
+    let signalMuxStarted!: () => void;
+    const muxStarted = new Promise<void>((resolve) => {
+      signalMuxStarted = resolve;
+    });
+    media.muxStarted = signalMuxStarted;
+    const outputPath = 'C:\\输出\\受保护.mp4';
+    fileSystem.finalFiles.set(outputPath, 'old video');
+    const service = new ExportService(renderer, fileSystem, media);
+    const handle = service.startFullProbe({
+      projectDirectory: 'C:\\项目',
+      audioPath: 'C:\\项目\\音频.wav',
+      outputPath,
+      durationMs: 3_000,
+      fps: 24,
+      audioStartMs: 400,
+      overwrite: true,
+    });
+    await muxStarted;
+
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
+    expect(fileSystem.stagingFiles.size).toBe(1);
+    expect(service.cancelJob(handle.jobId)).toBe(true);
+    await expect(handle.completion).rejects.toThrow(/可以立即重新导出/);
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
+    expect(fileSystem.stagingFiles.size).toBe(0);
+    expect(service.getJob(handle.jobId)?.status).toBe('cancelled');
+  });
+
+  it('keeps the formal output and stops media work when probe is cancelled', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    media.blockProbe = true;
+    let signalProbeStarted!: () => void;
+    const probeStarted = new Promise<void>((resolve) => {
+      signalProbeStarted = resolve;
+    });
+    media.probeStarted = signalProbeStarted;
+    const outputPath = 'C:\\输出\\探测保护.mp4';
+    fileSystem.finalFiles.set(outputPath, 'old video');
+    const service = new ExportService(renderer, fileSystem, media);
+    const handle = service.startFullProbe({
+      projectDirectory: 'C:\\项目',
+      audioPath: 'C:\\项目\\音频.wav',
+      outputPath,
+      durationMs: 3_000,
+      fps: 24,
+      audioStartMs: 400,
+      overwrite: true,
+    });
+    await probeStarted;
+
+    expect(service.getActiveProcessCount()).toBe(1);
+    expect(service.cancelJob(handle.jobId)).toBe(true);
+    await expect(handle.completion).rejects.toThrow(/可以立即重新导出/);
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
+    expect(fileSystem.stagingFiles.size).toBe(0);
+    expect(service.getActiveProcessCount()).toBe(0);
+    expect(service.getJob(handle.jobId)?.status).toBe('cancelled');
+  });
+
+  it('preserves the formal output and removes staging when probe fails', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    media.probeFailure = new Error('controlled probe mismatch');
+    const outputPath = 'C:\\输出\\探测失败保护.mp4';
+    fileSystem.finalFiles.set(outputPath, 'old video');
+    const service = new ExportService(renderer, fileSystem, media);
+    const handle = service.startFullProbe({
+      projectDirectory: 'C:\\项目',
+      audioPath: 'C:\\项目\\音频.wav',
+      outputPath,
+      durationMs: 3_000,
+      fps: 24,
+      audioStartMs: 400,
+      overwrite: true,
+    });
+
+    await expect(handle.completion).rejects.toThrow(/controlled probe mismatch/);
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
+    expect(fileSystem.stagingFiles.size).toBe(0);
+    expect(fileSystem.commitFinalOutputCalls).toBe(0);
+    expect(service.getJob(handle.jobId)?.status).toBe('failed');
+  });
+
+  it('stops accepting cancellation at the final commit point of no return', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    let releaseCommit!: () => void;
+    fileSystem.commitGate = new Promise<void>((resolve) => {
+      releaseCommit = resolve;
+    });
+    let signalCommitStarted!: () => void;
+    const commitStarted = new Promise<void>((resolve) => {
+      signalCommitStarted = resolve;
+    });
+    fileSystem.commitStarted = signalCommitStarted;
+    const outputPath = 'C:\\输出\\最终提交.mp4';
+    fileSystem.finalFiles.set(outputPath, 'old video');
+    const service = new ExportService(renderer, fileSystem, media);
+    const handle = service.startFullProbe({
+      projectDirectory: 'C:\\项目',
+      audioPath: 'C:\\项目\\音频.wav',
+      outputPath,
+      durationMs: 3_000,
+      fps: 24,
+      audioStartMs: 400,
+      overwrite: true,
+    });
+    await commitStarted;
+
+    expect(service.getJob(handle.jobId)?.phase).toBe('committing');
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
+    expect(service.cancelJob(handle.jobId)).toBe(false);
+    releaseCommit();
+    await expect(handle.completion).resolves.toMatchObject({
+      status: 'completed',
+      outputPath,
+    });
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('new video');
+    expect(fileSystem.stagingFiles.size).toBe(0);
+    expect(service.getJob(handle.jobId)?.status).toBe('completed');
+  });
+
+  it('rejects an existing formal target before rendering when overwrite is false', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const outputPath = 'C:\\输出\\已存在.mp4';
+    fileSystem.finalFiles.set(outputPath, 'old video');
+    const service = new ExportService(renderer, fileSystem, media);
+    const handle = service.startFullProbe({
+      projectDirectory: 'C:\\项目',
+      audioPath: 'C:\\项目\\音频.wav',
+      outputPath,
+      durationMs: 3_000,
+      fps: 24,
+      audioStartMs: 400,
+      overwrite: false,
+    });
+
+    await expect(handle.completion).rejects.toThrow(/正式输出已存在/);
+    expect(renderer.prepared).toBe(0);
+    expect(renderer.requests).toHaveLength(0);
+    expect(fileSystem.directories.size).toBe(0);
+    expect(media.encodeRequests).toHaveLength(0);
+    expect(media.muxRequests).toHaveLength(0);
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
+  });
+
+  it('rejects a non-MP4 output synchronously without starting a Job', () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const service = new ExportService(renderer, fileSystem, media);
+
+    expect(() =>
+      service.startFullProbe({
+        projectDirectory: 'C:\\项目',
+        audioPath: 'C:\\项目\\音频.wav',
+        outputPath: 'C:\\输出\\错误格式.mkv',
+        durationMs: 3_000,
+        fps: 24,
+        audioStartMs: 400,
+        overwrite: true,
+      }),
+    ).toThrow(/仅支持 \.mp4/);
+    expect(service.getActiveJobId()).toBeNull();
+    expect(fileSystem.prepareFinalOutputCalls).toBe(0);
+    expect(fileSystem.directories.size).toBe(0);
+    expect(renderer.prepared).toBe(0);
+    expect(media.encodeRequests).toHaveLength(0);
+  });
+
+  it('reports staging cleanup failure without hiding the probe error or changing the formal output', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    media.probeFailure = new Error('original probe failure');
+    fileSystem.stagingCleanupFailure = new Error('controlled staging lock');
+    const outputPath = 'C:\\输出\\清理失败保护.mp4';
+    fileSystem.finalFiles.set(outputPath, 'old video');
+    const service = new ExportService(renderer, fileSystem, media);
+    const handle = service.startFullProbe({
+      projectDirectory: 'C:\\项目',
+      audioPath: 'C:\\项目\\音频.wav',
+      outputPath,
+      durationMs: 3_000,
+      fps: 24,
+      audioStartMs: 400,
+      overwrite: true,
+    });
+
+    await expect(handle.completion).rejects.toThrow(
+      new RegExp(
+        `Export Job ${handle.jobId}.*original probe failure.*controlled staging lock.*下一步`,
+      ),
+    );
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
+    expect(fileSystem.commitFinalOutputCalls).toBe(0);
+    expect(service.getJob(handle.jobId)?.status).toBe('failed');
   });
 
   it('waits for in-flight writes before cleanup when rendering is cancelled', async () => {
@@ -372,7 +693,9 @@ describe('ExportService', () => {
       failure = error as ExportJobError;
     }
     expect(failure).toBeInstanceOf(ExportJobError);
-    expect(failure?.message).toMatch(/controlled file lock.*关闭占用目录/);
+    expect(failure?.message).toMatch(
+      /controlled file lock.*关闭占用文件或目录/,
+    );
     expect(service.getJob(failure?.jobId ?? '')?.status).toBe('failed');
     expect(fileSystem.cleaned).toHaveLength(1);
 
@@ -385,7 +708,7 @@ describe('ExportService', () => {
   it('does not start a second cleanup cycle when successful media output cleanup fails', async () => {
     const renderer = new MemoryRenderer();
     const fileSystem = new MemoryFileSystem();
-    const media = new MemoryMediaAdapter();
+    const media = new MemoryMediaAdapter(fileSystem);
     fileSystem.cleanupFailure = new Error('controlled final cleanup lock');
     const service = new ExportService(renderer, fileSystem, media);
     const handle = service.startFullProbe({

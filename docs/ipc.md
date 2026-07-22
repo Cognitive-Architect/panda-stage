@@ -27,4 +27,6 @@
 
 ## 状态合同
 
-Job 状态为 `running → cancelling → cancelled`，或从 `running` 进入 `completed/failed`。阶段为 `preparing`、`rendering`、`writing`、`encoding`、`muxing`、`cleaning`、`finished`。清理结束前不会发布最终 `cancelled`；若清理失败，最终状态为 `failed`，错误包含 Job ID、占用原因和重试建议。
+Job 状态为 `running → cancelling → cancelled`，或从 `running` 进入 `completed/failed`。阶段为 `preparing`、`rendering`、`writing`、`encoding`、`muxing`、`cleaning`、`committing`、`finished`。清理结束前不会发布最终 `cancelled`；若清理失败，最终状态为 `failed`，错误包含 Job ID、原始原因、清理原因和重试建议。
+
+`committing` 是最终输出的 point-of-no-return。进入该阶段前 Main 再次检查 Job signal；进入后 `export:cancel-job` 返回 `accepted=false`，UI 禁用取消按钮并显示“正在提交…”。因此状态机不会在正式 rename 已发生后发布 `cancelled`。

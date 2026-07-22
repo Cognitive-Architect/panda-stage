@@ -82,16 +82,21 @@ export const ExportJobPhaseSchema = z.enum([
   'encoding',
   'muxing',
   'cleaning',
+  'committing',
   'finished',
 ]);
 
 const FileSystemPathSchema = z.string().trim().min(1).max(32_767);
+const Mp4OutputPathSchema = FileSystemPathSchema.refine(
+  (value) => /\.mp4$/iu.test(value),
+  '完整导出仅支持 .mp4 输出路径。',
+);
 
 export const FullProbeExportRequestSchema = z
   .object({
     projectDirectory: FileSystemPathSchema,
     audioPath: FileSystemPathSchema,
-    outputPath: FileSystemPathSchema,
+    outputPath: Mp4OutputPathSchema,
     durationMs: DurationSchema,
     fps: z.literal(EXPORT_FPS),
     audioStartMs: z.number().int().nonnegative(),

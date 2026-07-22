@@ -61,6 +61,7 @@ export function App(): React.JSX.Element {
 
   const exportBusy =
     exportJob?.status === 'running' || exportJob?.status === 'cancelling';
+  const exportCommitLocked = exportJob?.phase === 'committing';
 
   return (
     <main className="app-shell">
@@ -123,11 +124,15 @@ export function App(): React.JSX.Element {
             开始导出
           </button>
           <button
-            disabled={!exportBusy}
+            disabled={!exportBusy || exportCommitLocked}
             onClick={() => void cancelExport()}
             type="button"
           >
-            {exportJob?.status === 'cancelling' ? '正在取消…' : '取消导出'}
+            {exportCommitLocked
+              ? '正在提交…'
+              : exportJob?.status === 'cancelling'
+                ? '正在取消…'
+                : '取消导出'}
           </button>
         </div>
         <output data-testid="export-status">

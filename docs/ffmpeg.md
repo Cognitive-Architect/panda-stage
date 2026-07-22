@@ -98,7 +98,7 @@ FFmpeg 不直接写正式 `outputPath`，而是写入同目录、由 `randomUUID
 
 stdout/stderr 分别限于最后 256,000 个字符，避免无限诊断输出占用内存。
 
-Day 09 为完整 Job 创建唯一 `AbortController`。视频编码、音频探测、音频合成和最终探测均接收同一 signal；`NodeProcessRunner` 保存实际 child 句柄，取消时仅调用该 child 的 `kill('SIGTERM')`。真实验证在两个编码进程 PID 上确认取消后活动数归零，同时独立 sentinel 子进程保持存活；没有使用 `taskkill`、按进程名终止或 shell 命令拼接。
+Day 09 为完整 Job 创建唯一 `AbortController`。视频编码、音频探测、音频合成和最终探测均接收同一 signal；`NodeProcessRunner` 保存实际 child 句柄，取消时仅调用该 child 的 `kill('SIGTERM')`。完整导出的 mux 目标不是正式路径，而是同目录、带 Job ID/UUID 的外层 staging；Adapter 自身仍以内部 UUID 临时文件安全生成该 staging。外层 staging 通过 ffprobe 后才进入不可取消的同目录 rename。真实验证分别终止编码与 mux 进程，取消后活动数和 staging 均归零，独立 sentinel 子进程保持存活；没有使用 `taskkill`、按进程名终止或 shell 命令拼接。
 
 ## 本次开发环境来源与许可证
 
