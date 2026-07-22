@@ -2,7 +2,7 @@
 
 Panda Stage 是一款面向个人创作者的 Windows 桌面纸片人动画工具。项目计划让用户通过透明角色图片、背景、对白、音频和简单动作，制作并导出短动画。
 
-当前分支已完成 **Day 07：静音 H.264 MP4 编码探针**。Main Process 可将 Day 06 的连续 PNG 帧通过安全参数数组交给 FFmpeg，并用 ffprobe 验证 1920×1080、24 FPS、H.264、yuv420p、3 秒和无音轨；仍不包含 AAC、音频 mux、正式导出 UI 或安装包 sidecar。
+当前分支已完成 **Day 08：单 WAV 延迟与 AAC 合成探针**。Main Process 可将 Day 07 的静音 H.264 视频与仓库自制 WAV 按整数 `startMs` 合成为 H.264 + AAC MP4，并用 ffprobe、`silencedetect` 和 Chromium 完整播放验证双流、声音起点与结尾；仍不包含多轨混音、正式导出 UI 或安装包 sidecar。
 
 ## 技术栈
 
@@ -63,6 +63,7 @@ pnpm verify:day04
 pnpm verify:day05
 pnpm verify:day06
 pnpm verify:day07
+pnpm verify:day08
 ```
 
 生产构建输出：
@@ -103,8 +104,10 @@ src/
 - `FFmpegAdapter` 只在 Main Process 使用 `spawn` 参数数组，不经过 shell；
 - 开发期通过 `PANDA_STAGE_FFMPEG_PATH` 和 `PANDA_STAGE_FFPROBE_PATH` 配置工具；
 - 编码前检查版本、`libx264`、连续帧和输出目录，编码后以 ffprobe 验证媒体流；
+- 单 WAV 合成使用数据中的整数 `startMs` 构造 `adelay`，视频流直接复制、音频编码为 AAC，不拉伸音频；
+- 三次真实合成的声音起点均为 0.400646 秒，完整音频把容器时长延长到 3.4 秒；
 - 用户错误与技术 diagnostics 分离，支持 AbortSignal 取消；
-- 配置、来源和许可证见 [FFmpeg 文档](./docs/ffmpeg.md)，真实结果见 [Day 07 回执](./docs/test-receipts/DAY-07.md)。
+- 配置、来源和许可证见 [FFmpeg 文档](./docs/ffmpeg.md)，真实结果见 [Day 07 回执](./docs/test-receipts/DAY-07.md)与 [Day 08 回执](./docs/test-receipts/DAY-08.md)。
 
 ## 预览时钟架构
 
@@ -140,6 +143,7 @@ Renderer 不直接访问 Node.js、文件系统或子进程。后续跨进程能
 - [Day 05：AudioContext 音画同步预览](./docs/day-05-results.md)
 - [Day 06：隐藏窗口逐帧捕获](./docs/test-receipts/DAY-06.md)
 - [Day 07：静音 H.264 MP4 编码](./docs/test-receipts/DAY-07.md)
+- [Day 08：单 WAV 延迟与 AAC 合成](./docs/test-receipts/DAY-08.md)
 
 ## 开发计划
 

@@ -6,8 +6,14 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
   EncodePngSequenceRequestSchema,
+  MuxProbeExpectationSchema,
+  MuxSingleAudioRequestSchema,
   VideoProbeExpectationSchema,
+  type AudioProbeResult,
+  type AudioTimingResult,
   type EncodePngSequenceRequest,
+  type MuxProbeExpectation,
+  type MuxSingleAudioRequest,
   type VideoProbeExpectation,
   type VideoProbeResult,
 } from '../../shared/ffmpeg-types';
@@ -20,6 +26,8 @@ export type FFmpegErrorCode =
   | 'EXECUTABLE_NOT_FOUND'
   | 'ENCODER_UNAVAILABLE'
   | 'FRAME_SEQUENCE_INVALID'
+  | 'VIDEO_INPUT_INVALID'
+  | 'AUDIO_INPUT_INVALID'
   | 'OUTPUT_ALREADY_EXISTS'
   | 'OUTPUT_NOT_WRITABLE'
   | 'PROCESS_FAILED'
@@ -74,9 +82,26 @@ export interface FFmpegValidationResult {
   hasLibx264: true;
 }
 
+export interface FFmpegAudioValidationResult {
+  executable: string;
+  versionLine: string;
+  hasAac: true;
+}
+
 export interface EncodePngSequenceResult {
   outputPath: string;
   frameCount: number;
+  elapsedMs: number;
+  args: readonly string[];
+  versionLine: string;
+  stderr: string;
+}
+
+export interface MuxSingleAudioResult {
+  outputPath: string;
+  videoPath: string;
+  audioPath: string;
+  startMs: number;
   elapsedMs: number;
   args: readonly string[];
   versionLine: string;
@@ -260,6 +285,38 @@ export class FFmpegAdapter {
     return { executable: this.ffmpegPath, versionLine, hasLibx264: true };
   }
 
+  async validateAudioMuxExecutable(
+    signal?: AbortSignal,
+  ): Promise<FFmpegAudioValidationResult> {
+    const versionLine = await this.getVersion(signal);
+    const args = ['-hide_banner', '-encoders'];
+    const result = await this.runProcess(this.ffmpegPath, args, { signal });
+    if (signal?.aborted) {
+      throw this.cancelledError(
+        this.ffmpegPath,
+        args,
+        result.code,
+        result.signal,
+        result.stderr,
+      );
+    }
+    const encoderOutput = `${result.stdout}\n${result.stderr}`;
+    if (result.code !== 0 || !/^\s*A\S*\s+aac\s/imu.test(encoderOutput)) {
+      throw new FFmpegAdapterError(
+        'ENCODER_UNAVAILABLE',
+        '当前 FFmpeg 不包含 AAC 编码器，无法合成带声音的视频。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        },
+      );
+    }
+    return { executable: this.ffmpegPath, versionLine, hasAac: true };
+  }
+
   async encodePngSequence(
     rawRequest: EncodePngSequenceRequest,
     signal?: AbortSignal,
@@ -344,6 +401,95 @@ export class FFmpegAdapter {
     };
   }
 
+  async muxSingleAudio(
+    rawRequest: MuxSingleAudioRequest,
+    signal?: AbortSignal,
+  ): Promise<MuxSingleAudioResult> {
+    const request = MuxSingleAudioRequestSchema.parse(rawRequest);
+    const videoPath = path.resolve(request.videoPath);
+    const audioPath = path.resolve(request.audioPath);
+    const outputPath = path.resolve(request.outputPath);
+    await this.assertReadableInput(videoPath, 'video');
+    await this.assertReadableInput(audioPath, 'audio');
+    await this.assertOutputWritable(outputPath);
+    await this.assertOverwriteAllowed(outputPath, request.overwrite);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+    const validation = await this.validateAudioMuxExecutable(signal);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+    const temporaryOutputPath = createTemporaryOutputPath(outputPath);
+    const args = this.buildMuxAudioArguments({
+      videoPath,
+      audioPath,
+      startMs: request.startMs,
+      outputPath: temporaryOutputPath,
+      overwrite: request.overwrite,
+    });
+    const startedAt = performance.now();
+    let result: ProcessResult;
+    try {
+      result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) {
+        throw this.cancelledError(
+          this.ffmpegPath,
+          args,
+          result.code,
+          result.signal,
+          result.stderr,
+        );
+      }
+      if (result.code !== 0) {
+        throw this.mapMuxFailure(args, result, audioPath);
+      }
+      const outputStats = await stat(temporaryOutputPath).catch(() => null);
+      if (!outputStats?.isFile() || outputStats.size === 0) {
+        throw new FFmpegAdapterError(
+          'PROCESS_FAILED',
+          'FFmpeg 已退出，但没有生成可用的含声视频文件。',
+          {
+            executable: this.ffmpegPath,
+            args,
+            exitCode: result.code,
+            signal: result.signal,
+            stderr: technicalTail(result.stderr),
+          },
+        );
+      }
+      if (signal?.aborted) {
+        throw this.cancelledError(
+          this.ffmpegPath,
+          args,
+          result.code,
+          result.signal,
+          result.stderr,
+        );
+      }
+      await this.commitTemporaryOutput(
+        temporaryOutputPath,
+        outputPath,
+        request.overwrite,
+        args,
+        result,
+      );
+    } catch (error) {
+      await this.cleanupTemporaryOutput(temporaryOutputPath, error);
+      throw error;
+    }
+    return {
+      outputPath,
+      videoPath,
+      audioPath,
+      startMs: request.startMs,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      args,
+      versionLine: validation.versionLine,
+      stderr: technicalTail(result.stderr),
+    };
+  }
+
   async probeVideo(videoPath: string): Promise<VideoProbeResult> {
     const resolvedVideoPath = path.resolve(videoPath);
     const args = [
@@ -394,6 +540,7 @@ export class FFmpegAdapter {
         { executable: this.ffprobePath, args },
       );
     }
+    const audio = streams.find((stream) => stream.codec_type === 'audio');
     const durationSeconds = Number(
       video.duration ?? container.format?.duration ?? Number.NaN,
     );
@@ -407,8 +554,127 @@ export class FFmpegAdapter {
       fps: parseRational(video.avg_frame_rate ?? video.r_frame_rate),
       frameCount: Number.isInteger(frameCount) ? frameCount : null,
       durationSeconds,
-      hasAudio: streams.some((stream) => stream.codec_type === 'audio'),
+      hasAudio: Boolean(audio),
+      audioCodecName: audio ? String(audio.codec_name ?? '') : null,
+      audioSampleRate: audio ? Number(audio.sample_rate) : null,
+      audioChannels: audio ? Number(audio.channels) : null,
+      audioStartSeconds: audio ? Number(audio.start_time ?? Number.NaN) : null,
+      audioDurationSeconds: audio
+        ? Number(audio.duration ?? container.format?.duration ?? Number.NaN)
+        : null,
+      formatDurationSeconds: Number(container.format?.duration ?? Number.NaN),
       raw,
+    };
+  }
+
+  async probeAudioFile(audioPath: string): Promise<AudioProbeResult> {
+    const resolvedAudioPath = path.resolve(audioPath);
+    await this.assertReadableInput(resolvedAudioPath, 'audio');
+    const args = [
+      '-v',
+      'error',
+      '-show_streams',
+      '-show_format',
+      '-of',
+      'json',
+      resolvedAudioPath,
+    ];
+    const result = await this.runProcess(this.ffprobePath, args);
+    if (result.code !== 0) {
+      throw new FFmpegAdapterError(
+        'AUDIO_INPUT_INVALID',
+        `无法读取音频文件：${path.basename(resolvedAudioPath)}。`,
+        {
+          executable: this.ffprobePath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        },
+      );
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(result.stdout);
+    } catch (error) {
+      throw new FFmpegAdapterError(
+        'AUDIO_INPUT_INVALID',
+        `音频文件信息无法解析：${path.basename(resolvedAudioPath)}。`,
+        { executable: this.ffprobePath, args, cause: error },
+      );
+    }
+    const container = raw as {
+      streams?: Array<Record<string, unknown>>;
+      format?: Record<string, unknown>;
+    };
+    const streams = Array.isArray(container.streams) ? container.streams : [];
+    const audio = streams.find((stream) => stream.codec_type === 'audio');
+    if (!audio) {
+      throw new FFmpegAdapterError(
+        'AUDIO_INPUT_INVALID',
+        `文件中没有可解码的音频流：${path.basename(resolvedAudioPath)}。`,
+        { executable: this.ffprobePath, args },
+      );
+    }
+    return {
+      codecName: String(audio.codec_name ?? ''),
+      sampleRate: Number(audio.sample_rate),
+      channels: Number(audio.channels),
+      durationSeconds: Number(
+        audio.duration ?? container.format?.duration ?? Number.NaN,
+      ),
+      raw,
+    };
+  }
+
+  async analyzeAudioTiming(mediaPath: string): Promise<AudioTimingResult> {
+    const resolvedMediaPath = path.resolve(mediaPath);
+    const args = [
+      '-hide_banner',
+      '-nostats',
+      '-i',
+      resolvedMediaPath,
+      '-map',
+      '0:a:0',
+      '-af',
+      'silencedetect=noise=-50dB:d=0.05',
+      '-f',
+      'null',
+      '-',
+    ];
+    const result = await this.runProcess(this.ffmpegPath, args);
+    if (result.code !== 0) {
+      throw new FFmpegAdapterError(
+        'PROBE_FAILED',
+        '无法分析输出视频中的音频起点。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        },
+      );
+    }
+    const stderr = technicalTail(result.stderr);
+    const silenceStartsSeconds = Array.from(
+      result.stderr.matchAll(/silence_start:\s*([0-9]+(?:\.[0-9]+)?)/giu),
+      (match) => Number(match[1]),
+    );
+    const silenceEndsSeconds = Array.from(
+      result.stderr.matchAll(/silence_end:\s*([0-9]+(?:\.[0-9]+)?)/giu),
+      (match) => Number(match[1]),
+    );
+    const hasLeadingSilence =
+      (silenceStartsSeconds[0] ?? Number.POSITIVE_INFINITY) <= 0.001 &&
+      Number.isFinite(silenceEndsSeconds[0]);
+    return {
+      leadingSilenceEndSeconds: hasLeadingSilence
+        ? (silenceEndsSeconds[0] ?? 0)
+        : 0,
+      silenceStartsSeconds,
+      silenceEndsSeconds,
+      stderr,
     };
   }
 
@@ -439,6 +705,56 @@ export class FFmpegAdapter {
       throw new FFmpegAdapterError(
         'PROBE_MISMATCH',
         `导出视频参数不符合要求：${failures.join('，')}。`,
+        { executable: this.ffprobePath, args: [] },
+      );
+    }
+  }
+
+  assertMuxProbeMatches(
+    probe: VideoProbeResult,
+    rawExpectation: MuxProbeExpectation,
+  ): void {
+    const expected = MuxProbeExpectationSchema.parse(rawExpectation);
+    const failures: string[] = [];
+    if (probe.codecName !== expected.videoCodecName)
+      failures.push(`video_codec=${probe.codecName}`);
+    if (probe.pixelFormat !== expected.pixelFormat)
+      failures.push(`pix_fmt=${probe.pixelFormat}`);
+    if (probe.width !== expected.width || probe.height !== expected.height)
+      failures.push(`size=${probe.width}x${probe.height}`);
+    if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - expected.fps) > 0.001)
+      failures.push(`fps=${probe.fps}`);
+    if (probe.audioCodecName !== expected.audioCodecName)
+      failures.push(`audio_codec=${probe.audioCodecName}`);
+    if (probe.audioSampleRate !== expected.audioSampleRate)
+      failures.push(`sample_rate=${probe.audioSampleRate}`);
+    if (probe.audioChannels !== expected.audioChannels)
+      failures.push(`channels=${probe.audioChannels}`);
+    if (
+      !Number.isFinite(probe.durationSeconds) ||
+      Math.abs(probe.durationSeconds - expected.videoDurationSeconds) >
+        expected.durationToleranceSeconds
+    )
+      failures.push(`video_duration=${probe.durationSeconds}`);
+    if (
+      !Number.isFinite(probe.audioDurationSeconds) ||
+      Math.abs(
+        (probe.audioDurationSeconds ?? Number.NaN) -
+          expected.audioDurationSeconds,
+      ) > expected.durationToleranceSeconds
+    )
+      failures.push(`audio_duration=${probe.audioDurationSeconds}`);
+    if (
+      !Number.isFinite(probe.formatDurationSeconds) ||
+      Math.abs(
+        probe.formatDurationSeconds - expected.formatDurationSeconds,
+      ) > expected.durationToleranceSeconds
+    )
+      failures.push(`format_duration=${probe.formatDurationSeconds}`);
+    if (failures.length > 0) {
+      throw new FFmpegAdapterError(
+        'PROBE_MISMATCH',
+        `含声视频参数不符合要求：${failures.join('，')}。`,
         { executable: this.ffprobePath, args: [] },
       );
     }
@@ -477,6 +793,40 @@ export class FFmpegAdapter {
     ];
   }
 
+  private buildMuxAudioArguments(request: {
+    videoPath: string;
+    audioPath: string;
+    startMs: number;
+    outputPath: string;
+    overwrite: boolean;
+  }): readonly string[] {
+    return [
+      request.overwrite ? '-y' : '-n',
+      '-hide_banner',
+      '-loglevel',
+      'info',
+      '-i',
+      request.videoPath,
+      '-i',
+      request.audioPath,
+      '-filter_complex',
+      `[1:a:0]adelay=${request.startMs}[delayed_audio]`,
+      '-map',
+      '0:v:0',
+      '-map',
+      '[delayed_audio]',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-movflags',
+      '+faststart',
+      request.outputPath,
+    ];
+  }
+
   private async inspectFrameSequence(framesDirectory: string): Promise<number> {
     let entries;
     try {
@@ -509,6 +859,24 @@ export class FFmpegAdapter {
       }
     }
     return indices.length;
+  }
+
+  private async assertReadableInput(
+    inputPath: string,
+    inputKind: 'video' | 'audio',
+  ): Promise<void> {
+    try {
+      const inputStats = await stat(inputPath);
+      if (!inputStats.isFile()) throw new Error('not a file');
+      await access(inputPath, constants.R_OK);
+    } catch (error) {
+      const isAudio = inputKind === 'audio';
+      throw new FFmpegAdapterError(
+        isAudio ? 'AUDIO_INPUT_INVALID' : 'VIDEO_INPUT_INVALID',
+        `${isAudio ? '音频' : '视频'}文件不存在或无法读取：${path.basename(inputPath)}。`,
+        { executable: this.ffmpegPath, args: [], cause: error },
+      );
+    }
   }
 
   private async assertOutputWritable(outputPath: string): Promise<void> {
@@ -615,6 +983,68 @@ export class FFmpegAdapter {
         { executable, args, cause: error },
       );
     }
+  }
+
+  private mapMuxFailure(
+    args: readonly string[],
+    result: ProcessResult,
+    audioPath: string,
+  ): FFmpegAdapterError {
+    const stderr = technicalTail(result.stderr);
+    if (/unknown encoder ['"]?aac/iu.test(stderr)) {
+      return new FFmpegAdapterError(
+        'ENCODER_UNAVAILABLE',
+        '当前 FFmpeg 不包含 AAC 编码器，无法合成带声音的视频。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    if (
+      /invalid data found|error while decoding|could not find codec parameters|invalid.*audio|failed to open codec/iu.test(
+        stderr,
+      )
+    ) {
+      return new FFmpegAdapterError(
+        'AUDIO_INPUT_INVALID',
+        `无法解码音频文件：${path.basename(audioPath)}。`,
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    if (/permission denied|access is denied/iu.test(stderr)) {
+      return new FFmpegAdapterError(
+        'OUTPUT_NOT_WRITABLE',
+        'FFmpeg 无法写入含声视频输出文件。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    return new FFmpegAdapterError(
+      'PROCESS_FAILED',
+      `音视频合成失败（FFmpeg 退出码 ${result.code ?? 'unknown'}）。`,
+      {
+        executable: this.ffmpegPath,
+        args,
+        exitCode: result.code,
+        signal: result.signal,
+        stderr,
+      },
+    );
   }
 
   private mapEncodeFailure(

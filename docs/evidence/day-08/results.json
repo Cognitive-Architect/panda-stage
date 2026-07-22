@@ -1,0 +1,255 @@
+{
+  "source": {
+    "video": {
+      "videoCodecName": "h264",
+      "pixelFormat": "yuv420p",
+      "width": 1920,
+      "height": 1080,
+      "fps": 24,
+      "frameCount": 72,
+      "videoDurationSeconds": 3,
+      "audioCodecName": null,
+      "audioSampleRate": null,
+      "audioChannels": null,
+      "audioStartSeconds": null,
+      "audioDurationSeconds": null,
+      "formatDurationSeconds": 3
+    },
+    "audio": {
+      "codecName": "pcm_s16le",
+      "sampleRate": 48000,
+      "channels": 1,
+      "durationSeconds": 3,
+      "origin": "Repository-generated PCM16 probe WAV; see scripts/generate-probe-audio.cjs."
+    }
+  },
+  "ffmpeg": {
+    "versionLine": "ffmpeg version N-92722-gf22fcd4483 Copyright (c) 2000-2018 the FFmpeg developers",
+    "hasAac": true,
+    "executable": "<ffmpeg-path>"
+  },
+  "delayedStartMs": 400,
+  "repeats": [
+    {
+      "index": 1,
+      "elapsedMs": 187,
+      "args": [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-i",
+        "<day-07-silent-video>",
+        "-i",
+        "<probe-wav>",
+        "-filter_complex",
+        "[1:a:0]adelay=400[delayed_audio]",
+        "-map",
+        "0:v:0",
+        "-map",
+        "[delayed_audio]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        "<verification-root>\\mux output with spaces\\.熊猫音画同步-1.panda-stage-b43a7da1-ee7c-42d7-b6cb-5adaf672167a.mp4"
+      ],
+      "probe": {
+        "videoCodecName": "h264",
+        "pixelFormat": "yuv420p",
+        "width": 1920,
+        "height": 1080,
+        "fps": 24,
+        "frameCount": 72,
+        "videoDurationSeconds": 3,
+        "audioCodecName": "aac",
+        "audioSampleRate": 48000,
+        "audioChannels": 1,
+        "audioStartSeconds": 0,
+        "audioDurationSeconds": 3.4,
+        "formatDurationSeconds": 3.4
+      },
+      "leadingSilenceEndSeconds": 0.400646,
+      "outputBytes": 187040,
+      "sha256": "41ae598f10b9b83f8f2f9fa60075a640bf196790cefa459c73407e9ec0cda400"
+    },
+    {
+      "index": 2,
+      "elapsedMs": 181,
+      "args": [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-i",
+        "<day-07-silent-video>",
+        "-i",
+        "<probe-wav>",
+        "-filter_complex",
+        "[1:a:0]adelay=400[delayed_audio]",
+        "-map",
+        "0:v:0",
+        "-map",
+        "[delayed_audio]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        "<verification-root>\\mux output with spaces\\.熊猫音画同步-2.panda-stage-3120b78e-68a7-4bcd-8f04-178fddf28103.mp4"
+      ],
+      "probe": {
+        "videoCodecName": "h264",
+        "pixelFormat": "yuv420p",
+        "width": 1920,
+        "height": 1080,
+        "fps": 24,
+        "frameCount": 72,
+        "videoDurationSeconds": 3,
+        "audioCodecName": "aac",
+        "audioSampleRate": 48000,
+        "audioChannels": 1,
+        "audioStartSeconds": 0,
+        "audioDurationSeconds": 3.4,
+        "formatDurationSeconds": 3.4
+      },
+      "leadingSilenceEndSeconds": 0.400646,
+      "outputBytes": 187040,
+      "sha256": "41ae598f10b9b83f8f2f9fa60075a640bf196790cefa459c73407e9ec0cda400"
+    },
+    {
+      "index": 3,
+      "elapsedMs": 184,
+      "args": [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-i",
+        "<day-07-silent-video>",
+        "-i",
+        "<probe-wav>",
+        "-filter_complex",
+        "[1:a:0]adelay=400[delayed_audio]",
+        "-map",
+        "0:v:0",
+        "-map",
+        "[delayed_audio]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        "<verification-root>\\mux output with spaces\\.熊猫音画同步-3.panda-stage-c518d9b7-aa97-4df0-a7e8-db10b7639195.mp4"
+      ],
+      "probe": {
+        "videoCodecName": "h264",
+        "pixelFormat": "yuv420p",
+        "width": 1920,
+        "height": 1080,
+        "fps": 24,
+        "frameCount": 72,
+        "videoDurationSeconds": 3,
+        "audioCodecName": "aac",
+        "audioSampleRate": 48000,
+        "audioChannels": 1,
+        "audioStartSeconds": 0,
+        "audioDurationSeconds": 3.4,
+        "formatDurationSeconds": 3.4
+      },
+      "leadingSilenceEndSeconds": 0.400646,
+      "outputBytes": 187040,
+      "sha256": "41ae598f10b9b83f8f2f9fa60075a640bf196790cefa459c73407e9ec0cda400"
+    }
+  ],
+  "onsetSpreadSeconds": 0,
+  "zeroStart": {
+    "args": [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "info",
+      "-i",
+      "<day-07-silent-video>",
+      "-i",
+      "<probe-wav>",
+      "-filter_complex",
+      "[1:a:0]adelay=0[delayed_audio]",
+      "-map",
+      "0:v:0",
+      "-map",
+      "[delayed_audio]",
+      "-c:v",
+      "copy",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-movflags",
+      "+faststart",
+      "<verification-root>\\mux output with spaces\\.zero-start.panda-stage-aed3c641-83ff-43e6-9a61-a925026a42e9.mp4"
+    ],
+    "probe": {
+      "videoCodecName": "h264",
+      "pixelFormat": "yuv420p",
+      "width": 1920,
+      "height": 1080,
+      "fps": 24,
+      "frameCount": 72,
+      "videoDurationSeconds": 3,
+      "audioCodecName": "aac",
+      "audioSampleRate": 48000,
+      "audioChannels": 1,
+      "audioStartSeconds": 0,
+      "audioDurationSeconds": 3,
+      "formatDurationSeconds": 3
+    },
+    "leadingSilenceEndSeconds": 0
+  },
+  "playback": {
+    "midpoint": {
+      "currentTime": 0.653114,
+      "duration": 3.4,
+      "videoWidth": 1920,
+      "videoHeight": 1080,
+      "muted": false,
+      "volume": 0.25,
+      "paused": true
+    },
+    "ending": {
+      "currentTime": 3.4,
+      "duration": 3.4,
+      "ended": true,
+      "paused": true
+    }
+  },
+  "negativePaths": {
+    "missingAudio": {
+      "code": "AUDIO_INPUT_INVALID",
+      "message": "音频文件不存在或无法读取：缺失音频.wav。"
+    },
+    "corruptAudio": {
+      "code": "AUDIO_INPUT_INVALID",
+      "message": "无法解码音频文件：损坏 audio.wav。"
+    },
+    "missingVideo": {
+      "code": "VIDEO_INPUT_INVALID",
+      "message": "视频文件不存在或无法读取：missing-video.mp4。"
+    },
+    "unwritableOutput": {
+      "code": "OUTPUT_NOT_WRITABLE",
+      "message": "视频输出目录不存在或不可写。"
+    },
+    "recoveredAfterFailure": true
+  }
+}
