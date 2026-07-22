@@ -25,6 +25,8 @@
     "verify:day07": "pnpm build && electron scripts/verify-day07.cjs",
     "verify:day08": "pnpm build && electron scripts/verify-day08.cjs",
     "verify:day09": "pnpm build && electron scripts/verify-day09.cjs",
+    "verify:gate-a": "node scripts/verify-gate-a.cjs",
+    "dist": "pnpm build && node scripts/build-distribution.cjs",
     "build": "pnpm typecheck && pnpm build:renderer && pnpm build:electron",
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && cross-env PRELOAD_ENTRY=index vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=hidden vite build --config vite.preload.config.ts"
@@ -38,6 +40,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@ffmpeg-installer/win32-x64": "4.1.0",
+    "@ffprobe-installer/win32-x64": "5.1.0",
     "@types/node": "^22.20.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
@@ -45,6 +49,7 @@
     "concurrently": "^10.0.3",
     "cross-env": "^10.1.0",
     "electron": "^43.1.1",
+    "electron-builder": "26.15.3",
     "eslint": "^10.7.0",
     "globals": "^17.7.0",
     "typescript": "^5.9.3",

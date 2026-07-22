@@ -1,0 +1,100 @@
+{
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-4000-8000-000000000004",
+    "name": "Day 04 共享舞台探针",
+    "width": 1920,
+    "height": 1080,
+    "fps": 24,
+    "assets": [
+      {
+        "id": "10000000-0000-4000-8000-000000000001",
+        "kind": "image",
+        "name": "探针竹林背景",
+        "relativePath": "probe/stage-background.svg",
+        "mimeType": "image/svg+xml",
+        "width": 1920,
+        "height": 1080
+      },
+      {
+        "id": "10000000-0000-4000-8000-000000000002",
+        "kind": "image",
+        "name": "透明熊猫角色",
+        "relativePath": "probe/panda-character.png",
+        "mimeType": "image/png",
+        "width": 640,
+        "height": 640
+      },
+      {
+        "id": "10000000-0000-4000-8000-000000000003",
+        "kind": "audio",
+        "name": "三秒预览提示音",
+        "relativePath": "probe/preview-tone.wav",
+        "mimeType": "audio/wav",
+        "durationMs": 3000
+      }
+    ],
+    "shots": [
+      {
+        "id": "30000000-0000-4000-8000-000000000001",
+        "name": "熊猫横向移动探针",
+        "durationMs": 3000,
+        "layers": [
+          {
+            "id": "20000000-0000-4000-8000-000000000001",
+            "assetId": "10000000-0000-4000-8000-000000000001",
+            "name": "背景",
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0
+          },
+          {
+            "id": "20000000-0000-4000-8000-000000000002",
+            "assetId": "10000000-0000-4000-8000-000000000002",
+            "name": "熊猫角色",
+            "anchor": "center",
+            "x": 430,
+            "y": 690,
+            "scaleX": 0.72,
+            "scaleY": 0.72,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 1
+          }
+        ],
+        "timelineEvents": [
+          {
+            "id": "40000000-0000-4000-8000-000000000001",
+            "type": "move",
+            "layerId": "20000000-0000-4000-8000-000000000002",
+            "startMs": 0,
+            "durationMs": 3000,
+            "from": {
+              "x": 430,
+              "y": 690
+            },
+            "to": {
+              "x": 1490,
+              "y": 690
+            },
+            "easing": "ease-in-out"
+          }
+        ]
+      }
+    ],
+    "createdAt": "2026-07-19T00:00:00.000Z",
+    "updatedAt": "2026-07-19T00:00:00.000Z"
+  },
+  "config": {
+    "durationMs": 3000,
+    "fps": 24,
+    "audioStartMs": 400
+  }
+}
