@@ -23,6 +23,7 @@
     "verify:day05": "pnpm build && electron scripts/verify-day05.cjs",
     "verify:day06": "pnpm build && electron scripts/verify-day06.cjs",
     "verify:day07": "pnpm build && electron scripts/verify-day07.cjs",
+    "verify:day08": "pnpm build && electron scripts/verify-day08.cjs",
     "build": "pnpm typecheck && pnpm build:renderer && pnpm build:electron",
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && cross-env PRELOAD_ENTRY=index vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=hidden vite build --config vite.preload.config.ts"
