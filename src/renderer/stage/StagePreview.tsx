@@ -20,15 +20,22 @@ const statusLabels = {
   error: '预览错误',
 } as const;
 
-export function StagePreview(): React.JSX.Element {
+interface StagePreviewProps {
+  gatePreviewRequest?: { timeMs: number; token: string } | null;
+}
+
+export function StagePreview({
+  gatePreviewRequest = null,
+}: StagePreviewProps): React.JSX.Element {
   const preview = usePreviewController(PROBE_AUDIO_URL, PROBE_SHOT.durationMs);
+  const renderedTimeMs = gatePreviewRequest?.timeMs ?? preview.timeMs;
   const evaluatedShot = useMemo(
-    () => evaluateShotAtTime(PROBE_SHOT, preview.timeMs),
-    [preview.timeMs],
+    () => evaluateShotAtTime(PROBE_SHOT, renderedTimeMs),
+    [renderedTimeMs],
   );
   const subtitle = evaluateSubtitleAtTime(
     PROBE_SUBTITLE_CUES,
-    preview.timeMs,
+    renderedTimeMs,
   );
   const character = evaluatedShot.layers.find(
     (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
@@ -45,7 +52,10 @@ export function StagePreview(): React.JSX.Element {
       data-audio-clock-state={preview.clockState}
       data-character-x={character?.x ?? ''}
       data-preview-status={preview.status}
-      data-preview-time={preview.timeMs}
+      data-preview-time={renderedTimeMs}
+      data-preview-render-source={
+        gatePreviewRequest ? 'packaged-main-preview-gate' : 'audio-clock'
+      }
       data-source-start-count={preview.sourceStartCount}
       data-source-stop-count={preview.sourceStopCount}
       data-testid="preview-panel"
@@ -67,7 +77,16 @@ export function StagePreview(): React.JSX.Element {
         assetUrls={PROBE_ASSET_URLS}
         caption={subtitle?.text ?? null}
         evaluatedShot={evaluatedShot}
+        onReady={
+          gatePreviewRequest
+            ? () => {
+                document.documentElement.dataset.gatePreviewReady =
+                  gatePreviewRequest.token;
+              }
+            : undefined
+        }
         project={PROBE_PROJECT}
+        renderToken={gatePreviewRequest?.token}
       />
 
       <div className="transport-bar">
@@ -107,7 +126,7 @@ export function StagePreview(): React.JSX.Element {
         </div>
         <div className="probe-metrics" aria-live="polite">
           <span>
-            时间 <strong>{(preview.timeMs / 1_000).toFixed(2)}s</strong>
+            时间 <strong>{(renderedTimeMs / 1_000).toFixed(2)}s</strong>
           </span>
           <span>
             角色 X <strong>{character?.x.toFixed(1) ?? '—'}</strong>

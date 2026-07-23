@@ -1,0 +1,31 @@
+Panda Stage packaged media tools notice
+========================================
+
+This build bundles two unmodified command-line programs:
+
+1. ffmpeg.exe
+   npm package: @ffmpeg-installer/win32-x64 4.1.0
+   package-declared license: GPLv3
+   upstream build identifier: 20181217-f22fcd4
+   upstream source commit: f22fcd4483
+
+2. ffprobe.exe
+   npm package: @ffprobe-installer/win32-x64 5.1.0
+   package-declared license: GPL-3.0
+   upstream build identifier: 20230213-2296078
+   upstream source commit: 2296078397
+
+FFmpeg project source and legal information:
+https://ffmpeg.org/download.html#get-sources
+https://ffmpeg.org/legal.html
+https://github.com/FFmpeg/FFmpeg
+
+GNU General Public License version 3:
+https://www.gnu.org/licenses/gpl-3.0.txt
+
+The exact package versions and integrity hashes are recorded in pnpm-lock.yaml.
+The packaged executable SHA-256 values and reported version/configuration are
+recorded by scripts/verify-gate-a.cjs in docs/evidence/gate-a/results.json.
+
+Panda Stage invokes these programs as separate processes. The programs remain
+copyright their respective authors and are provided under their stated terms.

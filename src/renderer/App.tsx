@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react';
 import type { ExportJobUpdate } from '../shared/export-types';
 import { StagePreview } from './stage/StagePreview';
 
+const GATE_PREVIEW_EVENT = 'panda-stage:gate-preview-time';
+
+interface GatePreviewRequest {
+  timeMs: number;
+  token: string;
+}
+
 export function App(): React.JSX.Element {
   const [pingStatus, setPingStatus] = useState<
     'idle' | 'pending' | 'pong' | 'error'
@@ -11,8 +18,42 @@ export function App(): React.JSX.Element {
   const [outputPath, setOutputPath] = useState('');
   const [exportJob, setExportJob] = useState<ExportJobUpdate | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [gatePreviewRequest, setGatePreviewRequest] =
+    useState<GatePreviewRequest | null>(null);
 
   useEffect(() => window.pandaStage.export.onUpdate(setExportJob), []);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('gateA') !== '1') {
+      return;
+    }
+    const receiveGatePreviewRequest = (event: Event): void => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const timeMs =
+        typeof detail === 'object' && detail !== null && 'timeMs' in detail
+          ? detail.timeMs
+          : null;
+      const token =
+        typeof detail === 'object' && detail !== null && 'token' in detail
+          ? detail.token
+          : null;
+      if (
+        !Number.isInteger(timeMs) ||
+        typeof timeMs !== 'number' ||
+        typeof token !== 'string' ||
+        timeMs < 0 ||
+        timeMs >= 3_000
+      ) {
+        throw new Error('Invalid Gate A preview-frame request.');
+      }
+      setGatePreviewRequest({
+        timeMs,
+        token,
+      });
+    };
+    window.addEventListener(GATE_PREVIEW_EVENT, receiveGatePreviewRequest);
+    return () =>
+      window.removeEventListener(GATE_PREVIEW_EVENT, receiveGatePreviewRequest);
+  }, []);
 
   const pingMainProcess = async (): Promise<void> => {
     setPingStatus('pending');
@@ -143,7 +184,7 @@ export function App(): React.JSX.Element {
           {exportError ? ` · ${exportError}` : ''}
         </output>
       </section>
-      <StagePreview />
+      <StagePreview gatePreviewRequest={gatePreviewRequest} />
     </main>
   );
 }

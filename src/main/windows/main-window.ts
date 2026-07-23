@@ -1,7 +1,14 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'node:path';
 
-export async function createMainWindow(): Promise<BrowserWindow> {
+export interface MainWindowOptions {
+  gateA?: boolean;
+  show?: boolean;
+}
+
+export async function createMainWindow(
+  options: MainWindowOptions = {},
+): Promise<BrowserWindow> {
   const { width: workAreaWidth, height: workAreaHeight } =
     screen.getPrimaryDisplay().workAreaSize;
   const window = new BrowserWindow({
@@ -17,14 +24,19 @@ export async function createMainWindow(): Promise<BrowserWindow> {
       sandbox: true,
     },
   });
-  window.once('ready-to-show', () => window.show());
+  if (options.show !== false) {
+    window.once('ready-to-show', () => window.show());
+  }
 
   const developmentUrl = process.env.VITE_DEV_SERVER_URL;
   if (developmentUrl) {
-    await window.loadURL(developmentUrl);
+    const url = new URL(developmentUrl);
+    if (options.gateA) url.searchParams.set('gateA', '1');
+    await window.loadURL(url.toString());
   } else {
     await window.loadFile(
       path.join(__dirname, '../../../dist/renderer/index.html'),
+      options.gateA ? { query: { gateA: '1' } } : undefined,
     );
   }
 

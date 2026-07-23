@@ -1,0 +1,4 @@
+{
+  "status": "FAIL",
+  "message": "Panda Stage packaged resource is missing or unreadable: FFmpeg (D:\\panda-stage\\.worktrees\\day10\\release\\win-unpacked\\resources-missing-gate-fixture\\media\\ffmpeg.exe). Reinstall the application from a complete distribution."
+}

@@ -1,0 +1,29 @@
+appId: com.pandastage.desktop
+productName: Panda Stage
+asar: true
+directories:
+  output: release
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+extraResources:
+  - from: node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe
+    to: media/ffmpeg.exe
+  - from: node_modules/@ffprobe-installer/win32-x64/ffprobe.exe
+    to: media/ffprobe.exe
+  - from: public/probe/preview-tone.wav
+    to: probe/preview-tone.wav
+  - from: resources/licenses
+    to: licenses
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Panda-Stage-${version}-Windows-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
