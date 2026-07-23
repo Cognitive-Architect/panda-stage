@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -26,18 +27,25 @@ const IDS = [
   '90000000-0000-4000-8000-000000000001',
   '90000000-0000-4000-8000-000000000002',
 ];
+const OTHER_IDS = [
+  '91000000-0000-4000-8000-000000000001',
+  '91000000-0000-4000-8000-000000000002',
+];
 const temporaryParents: string[] = [];
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function service(faults: ProjectFileSystemFaultInjector = {}): ProjectService {
+function service(
+  faults: ProjectFileSystemFaultInjector = {},
+  ids: readonly string[] = IDS,
+): ProjectService {
   let idIndex = 0;
   return new ProjectService({
     fileSystem: new ProjectFileSystemService(faults),
     now: () => new Date(FIXED_NOW),
-    createId: () => IDS[idIndex++]!,
+    createId: () => ids[idIndex++]!,
   });
 }
 
@@ -127,7 +135,49 @@ describe('project directory lifecycle', () => {
     ).toBe(false);
   });
 
-  it('migrates v0 in memory without changing the source file', async () => {
+  it('rejects save into an empty existing project directory without side effects', async () => {
+    const sourceRoot = await newProjectRoot();
+    const incoming = await service().create(sourceRoot, {
+      name: 'Valid incoming project',
+    });
+    const emptyRoot = await newProjectRoot();
+    await mkdir(emptyRoot);
+
+    await expectServiceError(
+      service().save(emptyRoot, incoming.project),
+      'PROJECT_NOT_FOUND',
+    );
+
+    expect(await readdir(emptyRoot)).toEqual([]);
+  });
+
+  it('rejects saving one project into another project root without side effects', async () => {
+    const projectARoot = await newProjectRoot();
+    const projectBRoot = await newProjectRoot();
+    const projectA = await service().create(projectARoot, {
+      name: 'Project A',
+    });
+    const projectB = await service({}, OTHER_IDS).create(projectBRoot, {
+      name: 'Project B',
+    });
+    const projectBFile = path.join(projectBRoot, PROJECT_FILE_NAME);
+    const beforeHash = sha256(await readFile(projectBFile, 'utf8'));
+
+    const error = await expectServiceError(
+      service().save(projectBRoot, projectA.project),
+      'PROJECT_ID_MISMATCH',
+    );
+
+    expect(error.message).toContain(projectBRoot);
+    expect(error.message).toContain(projectB.project.id);
+    expect(error.message).toContain(projectA.project.id);
+    expect(sha256(await readFile(projectBFile, 'utf8'))).toBe(beforeHash);
+    expect(
+      (await readdir(projectBRoot)).some((entry) => entry.endsWith('.tmp')),
+    ).toBe(false);
+  });
+
+  it('migrates v0 in memory and saves the migrated project to the same root', async () => {
     const projectRoot = await newProjectRoot();
     await service().create(projectRoot, { name: 'Migration root' });
     const filePath = path.join(projectRoot, PROJECT_FILE_NAME);
@@ -143,23 +193,62 @@ describe('project directory lifecycle', () => {
     expect(opened.migrated).toBe(true);
     expect(opened.project.schemaVersion).toBe(1);
     expect(afterHash).toBe(beforeHash);
+
+    await service().save(projectRoot, opened.project);
+    const reopened = await service().open(projectRoot);
+
+    expect(reopened.migrated).toBe(false);
+    expect(reopened.project.id).toBe(opened.project.id);
+    expect(reopened.project).toEqual(opened.project);
   });
 
-  it('rejects invalid JSON without changing the source file', async () => {
+  it('rejects opening or saving over invalid JSON without side effects', async () => {
     const projectRoot = await newProjectRoot();
-    await service().create(projectRoot, { name: 'Invalid JSON root' });
+    const created = await service().create(projectRoot, {
+      name: 'Invalid JSON root',
+    });
     const filePath = path.join(projectRoot, PROJECT_FILE_NAME);
     await writeFile(filePath, '{"schemaVersion": 1,', 'utf8');
     const before = await readFile(filePath, 'utf8');
 
     await expectServiceError(service().open(projectRoot), 'INVALID_JSON');
+    await expectServiceError(
+      service().save(projectRoot, created.project),
+      'INVALID_JSON',
+    );
 
     expect(await readFile(filePath, 'utf8')).toBe(before);
+    expect(
+      (await readdir(projectRoot)).some((entry) => entry.endsWith('.tmp')),
+    ).toBe(false);
   });
 
-  it('rejects future schema versions without changing the source file', async () => {
+  it('rejects saving over a schema-invalid existing project without side effects', async () => {
     const projectRoot = await newProjectRoot();
-    await service().create(projectRoot, { name: 'Future root' });
+    const created = await service().create(projectRoot, {
+      name: 'Schema invalid root',
+    });
+    const filePath = path.join(projectRoot, PROJECT_FILE_NAME);
+    const source = '{"schemaVersion":1,"id":"not-a-uuid"}\n';
+    await writeFile(filePath, source, 'utf8');
+    const beforeHash = sha256(source);
+
+    await expectServiceError(
+      service().save(projectRoot, created.project),
+      'INVALID_PROJECT',
+    );
+
+    expect(sha256(await readFile(filePath, 'utf8'))).toBe(beforeHash);
+    expect(
+      (await readdir(projectRoot)).some((entry) => entry.endsWith('.tmp')),
+    ).toBe(false);
+  });
+
+  it('rejects opening or saving over future schema versions without side effects', async () => {
+    const projectRoot = await newProjectRoot();
+    const created = await service().create(projectRoot, {
+      name: 'Future root',
+    });
     const filePath = path.join(projectRoot, PROJECT_FILE_NAME);
     const source = '{"schemaVersion": 999}\n';
     await writeFile(filePath, source, 'utf8');
@@ -169,8 +258,15 @@ describe('project directory lifecycle', () => {
       service().open(projectRoot),
       'UNSUPPORTED_VERSION',
     );
+    await expectServiceError(
+      service().save(projectRoot, created.project),
+      'UNSUPPORTED_VERSION',
+    );
 
     expect(sha256(await readFile(filePath, 'utf8'))).toBe(beforeHash);
+    expect(
+      (await readdir(projectRoot)).some((entry) => entry.endsWith('.tmp')),
+    ).toBe(false);
   });
 
   it.each([

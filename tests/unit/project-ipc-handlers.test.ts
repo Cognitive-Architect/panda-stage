@@ -21,8 +21,13 @@ vi.mock('electron', () => ({
 }));
 
 import { registerProjectIpcHandlers } from '../../src/main/ipc/register-project-ipc-handlers';
-import type { ProjectService } from '../../src/main/services/ProjectService';
+import {
+  ProjectServiceError,
+  type ProjectService,
+} from '../../src/main/services/ProjectService';
+import { ProjectSchema } from '../../src/domain';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
+import exampleProject from '../../demo-project/project-v1.example.json';
 
 function mainWindow(senderId = 42): BrowserWindow {
   return {
@@ -95,5 +100,33 @@ describe('project IPC handlers', () => {
       handler(event(7), { projectRoot: 'demo.pandastage' }),
     ).rejects.toThrow('untrusted sender');
     expect(service.open).not.toHaveBeenCalled();
+  });
+
+  it('returns a distinct failure response for a project identity mismatch', async () => {
+    const service = projectService();
+    const projectRoot = 'D:\\projects\\target.pandastage';
+    const project = ProjectSchema.parse(exampleProject);
+    vi.spyOn(service, 'save').mockRejectedValue(
+      new ProjectServiceError(
+        'PROJECT_ID_MISMATCH',
+        projectRoot,
+        `Cannot save project at ${projectRoot}: project identity mismatch.`,
+      ),
+    );
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+    });
+    const handler = electronMocks.handlers.get(IPC_CHANNELS.PROJECT_SAVE)!;
+
+    await expect(
+      handler(event(), { projectRoot, project }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'PROJECT_ID_MISMATCH',
+        projectRoot,
+      },
+    });
   });
 });

@@ -87,3 +87,19 @@
 - 主要风险: Windows 文件替换和进程中断。当前把 rename 设为唯一提交点，
   并用真实 Windows 集成测试验证；提交点之前的失败保持旧文件。
 - 回滚方式: `git revert 26977f3cf246f958e782009aab86faa0d6c17c52`。
+
+## Issue #17 follow-up — save target identity
+
+- `save()` now opens the existing target before any write, including JSON
+  parsing, schema-version detection, legacy migration, and v1 validation.
+- Missing `project.json`, damaged JSON, schema-invalid data, and future schema
+  versions are rejected with their specific error codes.
+- `PROJECT_ID_MISMATCH` distinguishes cross-project saves. Its message includes
+  the target root, existing project ID, and incoming project ID.
+- Empty existing `.pandastage` directories remain empty after rejection:
+  no `project.json`, lifecycle directories, or `.tmp` files are created.
+- Cross-project and malformed-target rejection preserve the original bytes and
+  SHA-256; normal same-ID saves and migrated v0-to-v1 saves still pass.
+- Verification: `pnpm typecheck` PASS; `pnpm lint` PASS;
+  `pnpm test:unit` PASS (20 files, 136 tests);
+  `pnpm test:integration` PASS (1 file, 12 tests); `pnpm build` PASS.

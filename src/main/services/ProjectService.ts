@@ -148,11 +148,20 @@ export class ProjectService {
     rawProject: Project,
   ): Promise<ProjectDocument> {
     const projectRoot = this.resolveProjectRoot(rawProjectRoot);
+    const existingDocument = await this.open(projectRoot);
     let project: Project;
     try {
       project = ProjectSchema.parse(rawProject);
     } catch (error) {
       throw this.mapError('save', projectRoot, error);
+    }
+
+    if (existingDocument.project.id !== project.id) {
+      throw new ProjectServiceError(
+        'PROJECT_ID_MISMATCH',
+        projectRoot,
+        `Cannot save project at ${projectRoot}: project identity mismatch; the existing project ID is ${existingDocument.project.id}, but the incoming project ID is ${project.id}.`,
+      );
     }
 
     try {

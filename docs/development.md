@@ -29,6 +29,12 @@ Each response is a discriminated union. Check `response.ok` before reading
 the affected `projectRoot`. Request and response objects are runtime-validated
 in both Preload and Main IPC boundaries.
 
+`project.save` is update-only. The target must already contain a readable,
+supported, schema-valid `project.json`, and its project ID must equal the
+incoming project's ID. A mismatch returns `PROJECT_ID_MISMATCH`; use
+`project.create` for a new directory rather than trying to save into an empty
+`.pandastage` directory.
+
 Do not add filesystem access to renderer code. Add project business rules to
 `ProjectService`, and keep all project-file operations in
 `ProjectFileSystemService`. There must remain only one implementation of the

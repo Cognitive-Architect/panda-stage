@@ -10,6 +10,7 @@ export const ProjectErrorCodeSchema = z.enum([
   'INVALID_JSON',
   'UNSUPPORTED_VERSION',
   'INVALID_PROJECT',
+  'PROJECT_ID_MISMATCH',
   'PROJECT_NOT_WRITABLE',
   'CREATE_FAILED',
   'OPEN_FAILED',

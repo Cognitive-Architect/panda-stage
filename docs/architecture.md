@@ -118,8 +118,12 @@ detects the schema version, migrates legacy v0 data in memory, and validates
 the resulting formal v1 model before returning it. Invalid JSON, invalid
 models, and unsupported future versions do not modify the source file.
 
-Saving validates the complete formal model before any write. The filesystem
-service creates a unique temporary file in the project directory, writes the
+Saving first opens and validates the existing on-disk project through the same
+version detection and migration path. It rejects missing, corrupt, invalid, or
+future-version targets, then compares the on-disk project ID with the incoming
+project ID. Only an identity match may continue. The service then validates the
+complete incoming formal model before any write. The filesystem service
+creates a unique temporary file in the project directory, writes the
 complete serialized JSON, flushes it with `FileHandle.sync()`, closes the
 handle, and then replaces `project.json` with a same-directory `rename`.
 Every failure path closes the handle and removes the temporary file. Because

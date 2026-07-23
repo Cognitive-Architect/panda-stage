@@ -43,4 +43,18 @@ describe('project API contracts', () => {
       }),
     ).toBeTruthy();
   });
+
+  it('exposes a distinct project identity mismatch error', () => {
+    expect(
+      ProjectOperationResponseSchema.parse({
+        ok: false,
+        error: {
+          code: 'PROJECT_ID_MISMATCH',
+          message:
+            'Project identity mismatch between the target and incoming project.',
+          projectRoot: 'D:\\作品\\短片.pandastage',
+        },
+      }),
+    ).toBeTruthy();
+  });
 });
