@@ -22,6 +22,7 @@
   },
   "include": [
     "src/renderer",
+    "src/domain",
     "src/shared",
     "tests",
     "vite.config.ts",

@@ -16,6 +16,48 @@ Hidden Export Renderer（sandbox）
 
 主窗口和隐藏导出窗口都复用 `CanvasStage`、`StageRenderer`、领域 evaluator、探针项目及字幕 evaluator。Renderer 不访问 `fs`、`path` 或子进程；只有 Main Process 的 `FileSystemService` 写盘。
 
+## ProjectSchema v1 正式领域模型
+
+Day 11 起，`src/domain` 是 MVP 项目文件的正式数据契约；`src/shared/domain` 保留为 M0.5 渲染探针模型。两者不会通过宽泛联合类型混在一起，历史探针只能经 `migrateProject()` 显式进入正式模型。
+
+正式 `ProjectSchema v1` 使用严格 Zod object 和 discriminated union，覆盖：
+
+```text
+Project
+├─ Asset = ImageAsset | AudioAsset
+├─ Character
+│  ├─ CharacterExpression
+│  └─ default VoiceProfile reference
+├─ VoiceProfile
+├─ SubtitleStyle
+└─ Shot
+   ├─ Layer = asset source | character/expression source
+   ├─ Dialogue
+   ├─ AudioClip
+   └─ TimelineEvent
+      ├─ move
+      ├─ scale
+      ├─ opacity
+      ├─ shake
+      ├─ expression
+      ├─ flip
+      └─ visibility
+```
+
+项目固定为 1920×1080、24 FPS。所有 `startMs`、`endMs`、`durationMs`、`offsetMs` 均为非负整数毫秒；镜头 duration 必须为正整数。Layer 的 `anchor` 固定为 `center`，`x/y` 始终表示图层在逻辑画布上的视觉中心，而不是左上角。
+
+实体 schema 只校验自身字段；`ProjectSchema.superRefine()` 调用集中式 `validateProjectReferences()` 校验素材、角色、表情、VoiceProfile、字幕样式、音频、图层和事件引用，并把错误定位到具体数组索引与字段路径。所有对象使用 strict 模式，未知字段和未知 TimelineEvent 类型直接拒绝，不会在 parse 时静默删除。
+
+### 版本检测与迁移
+
+- `detectSchemaVersion(input)` 只接受显式 `0` 或 `1`；缺失版本和未来版本抛出 `UnsupportedSchemaVersionError`。
+- `migrateProject(input)` 是纯函数，只依赖 Zod 和领域常量，不读取 UI、Electron、文件系统、网络或环境变量。
+- v0→v1 保留项目、素材、镜头、图层、移动事件、时间戳和 UUID；旧 `durationMs` 事件明确转换为 `endMs = startMs + durationMs`，并添加确定性的默认字幕样式。
+- M0.5 探针曾提前使用 `schemaVersion: 1`。迁移入口先严格尝试正式 v1，再严格识别旧探针 v1 形状并执行同一兼容迁移；两种 schema 都失败时拒绝输入，未知字段和事件不会被丢弃。
+- 已是正式 v1 的项目只做完整 `ProjectSchema.parse()`，不会重复迁移。
+
+示例项目位于 `demo-project/project-v1.example.json`，由单元测试真实 parse，并执行 parse→serialize→parse 语义一致性验证。
+
 ## 确定性帧协议
 
 - 固定 24 FPS，帧数为 `ceil(durationMs * 24 / 1000)`；
