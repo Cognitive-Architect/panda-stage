@@ -16,6 +16,10 @@ const hiddenWindowManager = new HiddenWindowManager();
 let exportService: ExportService | null = null;
 let removeIpcHandlers: (() => void) | null = null;
 
+if (process.env.PANDA_STAGE_GATE_A === '1') {
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+}
+
 async function createApplicationWindows(): Promise<void> {
   mainWindow = await createMainWindow();
   mainWindow.once('closed', () => {

@@ -14,6 +14,8 @@ const evidenceDirectory = path.join(root, 'docs', 'evidence', 'gate-a');
 const outputRoot = path.join(evidenceDirectory, '打包输出 中文 空格 🐼');
 const missingRoot = path.join(evidenceDirectory, '资源缺失负向测试');
 const keyFrames = [0, 24, 48, 71];
+const previewChannelTolerance = 16;
+const parityRatioThreshold = 0.01;
 
 function run(executable, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -82,19 +84,48 @@ async function extractRgb(mediaPath, frameIndex) {
   return result.stdout;
 }
 
-function pixelDifference(left, right) {
+async function decodePreviewRgb(imagePath) {
+  const result = await run(ffmpegPath, [
+    '-v',
+    'error',
+    '-i',
+    imagePath,
+    '-frames:v',
+    '1',
+    '-f',
+    'rawvideo',
+    '-pix_fmt',
+    'rgb24',
+    'pipe:1',
+  ]);
+  if (result.code !== 0) {
+    throw new Error(`Preview PNG decode failed: ${result.stderr.toString('utf8')}`);
+  }
+  const expectedBytes = 1_920 * 1_080 * 3;
+  if (result.stdout.length !== expectedBytes) {
+    throw new Error(`Preview PNG has ${result.stdout.length} RGB bytes; expected ${expectedBytes}.`);
+  }
+  return result.stdout;
+}
+
+function pixelDifference(left, right, channelTolerance) {
   let changedPixels = 0;
-  const pixels = left.length / 3;
+  const totalPixels = left.length / 3;
   for (let offset = 0; offset < left.length; offset += 3) {
     if (
-      left[offset] !== right[offset] ||
-      left[offset + 1] !== right[offset + 1] ||
-      left[offset + 2] !== right[offset + 2]
+      Math.abs(left[offset] - right[offset]) > channelTolerance ||
+      Math.abs(left[offset + 1] - right[offset + 1]) > channelTolerance ||
+      Math.abs(left[offset + 2] - right[offset + 2]) > channelTolerance
     ) {
       changedPixels += 1;
     }
   }
-  return { changedPixels, pixels, ratio: changedPixels / pixels };
+  return {
+    changedPixels,
+    totalPixels,
+    ratio: changedPixels / totalPixels,
+    channelTolerance,
+  };
 }
 
 async function findInstaller() {
@@ -151,7 +182,29 @@ async function main() {
     throw new Error('Packaged runs did not share one project/config hash.');
   }
 
-  const comparisons = [];
+  if (
+    !Array.isArray(packaged.previewFrames) ||
+    packaged.previewFrames.length !== keyFrames.length ||
+    packaged.previewFrames.some(
+      (entry) =>
+        entry.source !== 'StagePreview/CanvasStage main-window canvas' ||
+        !keyFrames.includes(entry.frameIndex),
+    )
+  ) {
+    throw new Error('Packaged report lacks four main-window StagePreview frames.');
+  }
+  if (
+    packaged.playback?.source !== 'packaged Electron Chromium HTMLVideoElement' ||
+    packaged.playback.videoWidth !== 1_920 ||
+    packaged.playback.videoHeight !== 1_080 ||
+    packaged.playback.muted !== false ||
+    packaged.playback.advancedSeconds < 0.3
+  ) {
+    throw new Error(`Packaged playback evidence mismatch: ${JSON.stringify(packaged.playback)}`);
+  }
+
+  const exportDeterminismComparisons = [];
+  const previewParityComparisons = [];
   const decoded = new Map();
   for (const runEntry of packaged.runs) {
     for (const frameIndex of keyFrames) {
@@ -163,11 +216,39 @@ async function main() {
       const difference = pixelDifference(
         decoded.get(`1:${frameIndex}`),
         decoded.get(`${rightRun}:${frameIndex}`),
+        0,
       );
-      if (difference.ratio >= 0.01) {
+      if (difference.ratio >= parityRatioThreshold) {
         throw new Error(`Frame ${frameIndex} run 1/run ${rightRun} difference is ${difference.ratio}.`);
       }
-      comparisons.push({ frameIndex, leftRun: 1, rightRun, ...difference });
+      exportDeterminismComparisons.push({
+        frameIndex,
+        leftRun: 1,
+        rightRun,
+        ...difference,
+      });
+    }
+  }
+  for (const previewFrame of packaged.previewFrames) {
+    const previewRgb = await decodePreviewRgb(previewFrame.path);
+    for (const runEntry of packaged.runs) {
+      const difference = pixelDifference(
+        previewRgb,
+        decoded.get(`${runEntry.index}:${previewFrame.frameIndex}`),
+        previewChannelTolerance,
+      );
+      if (difference.ratio >= parityRatioThreshold) {
+        throw new Error(
+          `Main preview frame ${previewFrame.frameIndex}/run ${runEntry.index} difference is ${difference.ratio}.`,
+        );
+      }
+      previewParityComparisons.push({
+        frameIndex: previewFrame.frameIndex,
+        timeMs: previewFrame.timeMs,
+        previewSource: previewFrame.source,
+        exportRun: runEntry.index,
+        ...difference,
+      });
     }
   }
 
@@ -243,7 +324,33 @@ async function main() {
     },
     packaged,
     ffprobeReports,
-    keyframeComparisons: comparisons,
+    comparisons: {
+      exportToExportDeterminism: {
+        purpose: 'Prove three exports are deterministic; does not prove preview parity.',
+        algorithm: {
+          colorSpace: 'RGB24',
+          dimensions: '1920x1080',
+          changedPixel: 'any channel absolute difference > 0',
+          channelTolerance: 0,
+          ratioThresholdExclusive: parityRatioThreshold,
+        },
+        entries: exportDeterminismComparisons,
+      },
+      previewToExportParity: {
+        purpose: 'Compare packaged main-window StagePreview/CanvasStage pixels with every decoded export.',
+        previewSource: 'StagePreview/CanvasStage main-window canvas PNG',
+        algorithm: {
+          colorSpace: 'RGB24',
+          dimensions: '1920x1080',
+          changedPixel: `any channel absolute difference > ${previewChannelTolerance}`,
+          channelTolerance: previewChannelTolerance,
+          toleranceRationale: 'Allow small RGB channel error introduced by H.264/yuv420p lossy encoding.',
+          ratio: 'changedPixels / totalPixels',
+          ratioThresholdExclusive: parityRatioThreshold,
+        },
+        entries: previewParityComparisons,
+      },
+    },
     missingResource: { exitCode: missingRun.code, ...missingReport },
   };
   await fs.writeFile(
@@ -255,7 +362,13 @@ async function main() {
     status: result.status,
     installer: result.artifacts.installer,
     runs: result.artifacts.runs,
-    maximumKeyframeDifference: Math.max(...comparisons.map((entry) => entry.ratio)),
+    maximumExportDeterminismDifference: Math.max(
+      ...exportDeterminismComparisons.map((entry) => entry.ratio),
+    ),
+    maximumPreviewParityDifference: Math.max(
+      ...previewParityComparisons.map((entry) => entry.ratio),
+    ),
+    playback: result.packaged.playback,
     missingResource: result.missingResource,
   }, null, 2));
 }

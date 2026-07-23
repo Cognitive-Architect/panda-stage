@@ -9,6 +9,40 @@
     "source": "packaged-resources"
   },
   "configHash": "c47d81e308ca9f1c2a4b0fbd88efc7d0dc6a1e43ee407df73cd9b957e6e377db",
+  "previewFrames": [
+    {
+      "frameIndex": 0,
+      "timeMs": 0,
+      "path": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\主预览关键帧\\main-preview-frame-000000.png",
+      "width": 1920,
+      "height": 1080,
+      "source": "StagePreview/CanvasStage main-window canvas"
+    },
+    {
+      "frameIndex": 24,
+      "timeMs": 1000,
+      "path": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\主预览关键帧\\main-preview-frame-000024.png",
+      "width": 1920,
+      "height": 1080,
+      "source": "StagePreview/CanvasStage main-window canvas"
+    },
+    {
+      "frameIndex": 48,
+      "timeMs": 2000,
+      "path": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\主预览关键帧\\main-preview-frame-000048.png",
+      "width": 1920,
+      "height": 1080,
+      "source": "StagePreview/CanvasStage main-window canvas"
+    },
+    {
+      "frameIndex": 71,
+      "timeMs": 2958,
+      "path": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\主预览关键帧\\main-preview-frame-000071.png",
+      "width": 1920,
+      "height": 1080,
+      "source": "StagePreview/CanvasStage main-window canvas"
+    }
+  ],
   "subtitles": [
     {
       "frameIndex": 0,
@@ -31,8 +65,18 @@
       "text": null
     }
   ],
+  "playback": {
+    "source": "packaged Electron Chromium HTMLVideoElement",
+    "videoWidth": 1920,
+    "videoHeight": 1080,
+    "durationSeconds": 3.4,
+    "muted": false,
+    "startTimeSeconds": 0,
+    "endTimeSeconds": 0.61126,
+    "advancedSeconds": 0.61126
+  },
   "cancellation": {
-    "jobId": "f692fc1b-67cd-45c9-ae12-c557e267d240",
+    "jobId": "d898308e-c4ed-4d14-8f27-b7ebbd8494aa",
     "cancellationAccepted": true,
     "status": "cancelled",
     "error": "导出已取消并完成资源清理；可以立即重新导出。",
@@ -52,7 +96,7 @@
   "runs": [
     {
       "index": 1,
-      "jobId": "f5a479de-b6c1-452f-8c6f-df8c9cb8e5d9",
+      "jobId": "7f2f927d-52fb-4742-8665-716b6582c1f1",
       "outputPath": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\熊猫片场 Gate A 第 1 次 🐼.mp4",
       "configHash": "c47d81e308ca9f1c2a4b0fbd88efc7d0dc6a1e43ee407df73cd9b957e6e377db",
       "probe": {
@@ -185,7 +229,7 @@
             }
           ],
           "format": {
-            "filename": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\.熊猫片场 Gate A 第 1 次 🐼.panda-stage-f5a479de-b6c1-452f-8c6f-df8c9cb8e5d9-ee046bd2-e9d1-4ab0-9c75-7b6b27914d33.mp4",
+            "filename": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\.熊猫片场 Gate A 第 1 次 🐼.panda-stage-7f2f927d-52fb-4742-8665-716b6582c1f1-b2c803f5-dff5-426a-9c1a-fd62e570b3fd.mp4",
             "nb_streams": 2,
             "nb_programs": 0,
             "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
@@ -205,11 +249,11 @@
         }
       },
       "leadingSilenceEndSeconds": 0.400646,
-      "elapsedMs": 147110
+      "elapsedMs": 146167
     },
     {
       "index": 2,
-      "jobId": "5fff2edc-a0cf-413f-a387-a9708643eff3",
+      "jobId": "d37d692c-998c-4920-83d8-11e6753112e5",
       "outputPath": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\熊猫片场 Gate A 第 2 次 🐼.mp4",
       "configHash": "c47d81e308ca9f1c2a4b0fbd88efc7d0dc6a1e43ee407df73cd9b957e6e377db",
       "probe": {
@@ -342,7 +386,7 @@
             }
           ],
           "format": {
-            "filename": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\.熊猫片场 Gate A 第 2 次 🐼.panda-stage-5fff2edc-a0cf-413f-a387-a9708643eff3-25d628a9-96d8-4ccd-ab01-ad3191b24318.mp4",
+            "filename": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\.熊猫片场 Gate A 第 2 次 🐼.panda-stage-d37d692c-998c-4920-83d8-11e6753112e5-b6dfed4d-57d2-49b9-8a97-a3deae334736.mp4",
             "nb_streams": 2,
             "nb_programs": 0,
             "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
@@ -362,11 +406,11 @@
         }
       },
       "leadingSilenceEndSeconds": 0.400646,
-      "elapsedMs": 146065
+      "elapsedMs": 146833
     },
     {
       "index": 3,
-      "jobId": "3bda33c7-37f5-4575-af02-064e4e400b18",
+      "jobId": "05ccdfb5-8b11-4070-acc2-96b291c7defa",
       "outputPath": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\熊猫片场 Gate A 第 3 次 🐼.mp4",
       "configHash": "c47d81e308ca9f1c2a4b0fbd88efc7d0dc6a1e43ee407df73cd9b957e6e377db",
       "probe": {
@@ -499,7 +543,7 @@
             }
           ],
           "format": {
-            "filename": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\.熊猫片场 Gate A 第 3 次 🐼.panda-stage-3bda33c7-37f5-4575-af02-064e4e400b18-c4f01679-dc1c-40b4-8a71-7af852a1bbf0.mp4",
+            "filename": "D:\\panda-stage\\.worktrees\\day10\\docs\\evidence\\gate-a\\打包输出 中文 空格 🐼\\三次 导出 🎬\\.熊猫片场 Gate A 第 3 次 🐼.panda-stage-05ccdfb5-8b11-4070-acc2-96b291c7defa-ae13459c-ee75-45fc-80eb-e10a93ac0571.mp4",
             "nb_streams": 2,
             "nb_programs": 0,
             "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
@@ -519,7 +563,7 @@
         }
       },
       "leadingSilenceEndSeconds": 0.400646,
-      "elapsedMs": 146107
+      "elapsedMs": 146378
     }
   ]
 }
