@@ -46,7 +46,7 @@ Project
 
 项目固定为 1920×1080、24 FPS。所有 `startMs`、`endMs`、`durationMs`、`offsetMs` 均为非负整数毫秒；镜头 duration 必须为正整数。Layer 的 `anchor` 固定为 `center`，`x/y` 始终表示图层在逻辑画布上的视觉中心，而不是左上角。
 
-实体 schema 只校验自身字段；`ProjectSchema.superRefine()` 调用集中式 `validateProjectReferences()` 校验素材、角色、表情、VoiceProfile、字幕样式、音频、图层和事件引用，并把错误定位到具体数组索引与字段路径。所有对象使用 strict 模式，未知字段和未知 TimelineEvent 类型直接拒绝，不会在 parse 时静默删除。
+实体 schema 只校验自身字段；`ProjectSchema.superRefine()` 调用集中式 `validateProjectReferences()` 校验素材、角色、表情、VoiceProfile、字幕样式、音频、图层和事件引用，并把错误定位到具体数组索引与字段路径。AudioClip 除镜头时间范围外，还必须满足 `offsetMs + (endMs - startMs) <= AudioAsset.durationMs`，禁止读取超过源音频结尾。所有对象使用 strict 模式，未知字段和未知 TimelineEvent 类型直接拒绝，不会在 parse 时静默删除。
 
 ### 版本检测与迁移
 

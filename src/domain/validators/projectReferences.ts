@@ -164,6 +164,16 @@ export function validateProjectReferences(
           ['shots', shotIndex, 'audioClips', clipIndex, 'assetId'],
           `Audio clip references unknown or non-audio asset: ${clip.assetId}`,
         );
+      } else {
+        const requestedDurationMs = clip.endMs - clip.startMs;
+        const requiredSourceEndMs = clip.offsetMs + requestedDurationMs;
+        if (requiredSourceEndMs > asset.durationMs) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'audioClips', clipIndex, 'offsetMs'],
+            `Audio clip request exceeds the source audio range: offsetMs=${clip.offsetMs} plus requested clip duration ${requestedDurationMs}ms requires source audio through ${requiredSourceEndMs}ms, but source durationMs=${asset.durationMs}.`,
+          );
+        }
       }
       if (clip.endMs > shot.durationMs) {
         addIssue(

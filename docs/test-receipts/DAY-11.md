@@ -46,11 +46,11 @@
 - 变更前 `pnpm build`: PASS。
 - 最终 `pnpm typecheck`: PASS。
 - 最终 `pnpm lint`: PASS。
-- 最终 `pnpm test:unit`: PASS，17 个文件、124 个测试。
+- 最终 `pnpm test:unit`: PASS，18 个文件、128 个测试。
 - 最终 `pnpm build`: PASS。
 - 格式检查: N/A；仓库没有 Prettier 依赖或独立格式脚本，现有 ESLint 与 `git diff --check` 作为格式门禁。
 - 合法 fixture: 3 个顶层输入（正式 v1 示例、显式 v0、旧 probe v1）全部通过；正式示例包含 7 种合法 TimelineEvent。
-- 非法 fixture: 20 个真实拒绝断言，覆盖固定常量、负数/小数毫秒、end/start 逆序、缺失引用、未知字段、未知事件和未知/缺失版本。
+- 非法 fixture: 22 个真实拒绝断言，覆盖固定常量、负数/小数毫秒、end/start 逆序、源音频越界、缺失引用、未知字段、未知事件和未知/缺失版本。
 
 ### 关键验证结果
 
@@ -61,6 +61,7 @@
 - `migrateProject(PROBE_PROJECT)`: 旧 probe v1 冲突通过严格兼容分支迁移。
 - 未知 `event.type`: discriminated union 拒绝。
 - `endMs < startMs`: 错误路径定位到具体 `endMs`。
+- AudioClip 源范围: `offsetMs + (endMs - startMs)` 不得超过 AudioAsset duration；边界相等通过，越界 1ms 拒绝并定位到 `shots.0.audioClips.0.offsetMs`。
 - domain 静态依赖搜索: 无 Electron、React、`node:fs`、`child_process`。
 
 ### 刀刃表摘要
