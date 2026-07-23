@@ -8,7 +8,7 @@
 - 分支: `feat/day-12-project-lifecycle`
 - Gate A: PASS（`docs/test-receipts/GATE-A.md`）
 - 基线 SHA: `0d64cd39b5b9999cb18846dae2e2aba41517236f`
-- 结果 SHA: 以包含实现的上述 commit 为准
+- 实现结果 SHA: `26977f3cf246f958e782009aab86faa0d6c17c52`
 
 ### 本轮目标与实际结果
 
@@ -86,4 +86,4 @@
 
 - 主要风险: Windows 文件替换和进程中断。当前把 rename 设为唯一提交点，
   并用真实 Windows 集成测试验证；提交点之前的失败保持旧文件。
-- 回滚方式: `git revert <Day 12 实现 commit SHA>`。
+- 回滚方式: `git revert 26977f3cf246f958e782009aab86faa0d6c17c52`。
