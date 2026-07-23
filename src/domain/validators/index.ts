@@ -1,0 +1,1 @@
+export { validateProjectReferences } from './projectReferences';
