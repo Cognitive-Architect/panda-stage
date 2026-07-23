@@ -10,6 +10,12 @@ import type {
   ExportCancelRenderRequest,
 } from '../shared/export-types';
 import type {
+  ProjectCreateRequest,
+  ProjectOpenRequest,
+  ProjectOperationResponse,
+  ProjectSaveRequest,
+} from '../shared/project-api';
+import type {
   ExportCancelResponse,
   ExportJobUpdate,
   ExportStartResponse,
@@ -21,6 +27,17 @@ declare global {
     pandaStage: {
       app: {
         ping: () => Promise<AppPingResponse>;
+      };
+      project: {
+        create: (
+          request: ProjectCreateRequest,
+        ) => Promise<ProjectOperationResponse>;
+        open: (
+          request: ProjectOpenRequest,
+        ) => Promise<ProjectOperationResponse>;
+        save: (
+          request: ProjectSaveRequest,
+        ) => Promise<ProjectOperationResponse>;
       };
       export: {
         startProbe: (

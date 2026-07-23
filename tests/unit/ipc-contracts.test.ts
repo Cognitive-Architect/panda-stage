@@ -29,6 +29,9 @@ describe('IPC channel registry', () => {
       'export:start-probe',
       'export:cancel-job',
       'export:job-update',
+      'project:create',
+      'project:open',
+      'project:save',
     ]);
   });
 });

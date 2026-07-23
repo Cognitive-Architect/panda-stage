@@ -27,6 +27,7 @@
     "tests",
     "vite.config.ts",
     "vite.preload.config.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vitest.integration.config.ts"
   ]
 }

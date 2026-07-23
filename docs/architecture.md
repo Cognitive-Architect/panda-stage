@@ -94,3 +94,44 @@ Day 07 输出固定为静音 H.264/yuv420p MP4；Day 08 在同一 Adapter 内先
 ## 当前性能观察
 
 真实 72 帧探针中，1920×1080 Canvas PNG 捕获约 143 秒，FFmpeg H.264 编码约 2.0 秒。当前主要瓶颈仍是帧捕获而非视频编码，后续优化必须保持共享 Renderer 和确定性时间轴不变。
+## Day 12 project directory lifecycle
+
+Formal projects are directories whose names end in `.pandastage`. A new project
+contains `project.json` plus the `assets/`, `cache/`, `exports/`, and `recovery/`
+directories. Creation rejects an existing target directory; it never merges
+with or overwrites an existing directory.
+
+Only Electron Main may read or write project files:
+
+```text
+Renderer
+  -> frozen Preload project.create/open/save allowlist
+  -> strict Zod request/response contracts
+  -> trusted-window IPC handlers
+  -> ProjectService (create/open/migrate/validate/save workflow)
+  -> ProjectFileSystemService (the single atomic-write implementation)
+  -> .pandastage/project.json
+```
+
+Opening is read-only. `ProjectService` reads `project.json`, parses JSON,
+detects the schema version, migrates legacy v0 data in memory, and validates
+the resulting formal v1 model before returning it. Invalid JSON, invalid
+models, and unsupported future versions do not modify the source file.
+
+Saving first opens and validates the existing on-disk project through the same
+version detection and migration path. It rejects missing, corrupt, invalid, or
+future-version targets, then compares the on-disk project ID with the incoming
+project ID. Only an identity match may continue. The service then validates the
+complete incoming formal model before any write. The filesystem service
+creates a unique temporary file in the project directory, writes the
+complete serialized JSON, flushes it with `FileHandle.sync()`, closes the
+handle, and then replaces `project.json` with a same-directory `rename`.
+Every failure path closes the handle and removes the temporary file. Because
+the old target is not touched before the final rename, failures before the
+commit point preserve its bytes and SHA-256 hash. The Windows integration test
+also verifies that Node's same-directory rename replaces an existing file on
+the supported platform.
+
+Persisted asset paths are project-relative and are enforced by
+`ProjectSchema`; drive-rooted, slash-rooted, and `..` traversal paths are
+rejected.

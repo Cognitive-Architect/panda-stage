@@ -13,6 +13,15 @@ import {
   type ExportJobUpdate,
   type FullProbeExportRequest,
 } from '../shared/export-types';
+import {
+  ProjectCreateRequestSchema,
+  ProjectOpenRequestSchema,
+  ProjectOperationResponseSchema,
+  ProjectSaveRequestSchema,
+  type ProjectCreateRequest,
+  type ProjectOpenRequest,
+  type ProjectSaveRequest,
+} from '../shared/project-api';
 
 type Unsubscribe = () => void;
 
@@ -25,6 +34,32 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AppPingResponseSchema.parse(response);
+    },
+  }),
+  project: Object.freeze({
+    create: async (rawRequest: ProjectCreateRequest) => {
+      const request = ProjectCreateRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_CREATE,
+        request,
+      );
+      return ProjectOperationResponseSchema.parse(response);
+    },
+    open: async (rawRequest: ProjectOpenRequest) => {
+      const request = ProjectOpenRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_OPEN,
+        request,
+      );
+      return ProjectOperationResponseSchema.parse(response);
+    },
+    save: async (rawRequest: ProjectSaveRequest) => {
+      const request = ProjectSaveRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_SAVE,
+        request,
+      );
+      return ProjectOperationResponseSchema.parse(response);
     },
   }),
   export: Object.freeze({

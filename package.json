@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "eslint .",
     "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "assets:probe-audio": "node scripts/generate-probe-audio.cjs",
     "evidence:screenshot": "electron scripts/capture-bootstrap.cjs",
     "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",
