@@ -10,11 +10,14 @@ import { createMainWindow } from './windows/main-window';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
 import { resolveMediaToolPaths } from './services/production-resources';
 import { runPackagedGateA } from './gate-a-runner';
+import { registerProjectIpcHandlers } from './ipc/register-project-ipc-handlers';
+import { ProjectService } from './services/ProjectService';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
 let exportService: ExportService | null = null;
 let removeIpcHandlers: (() => void) | null = null;
+let removeProjectIpcHandlers: (() => void) | null = null;
 
 if (process.env.PANDA_STAGE_GATE_A === '1') {
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -91,6 +94,10 @@ async function initialize(): Promise<void> {
       };
     },
   });
+  removeProjectIpcHandlers = registerProjectIpcHandlers({
+    getMainWindow: () => mainWindow,
+    projectService: new ProjectService(),
+  });
 
   await createApplicationWindows();
 }
@@ -133,6 +140,8 @@ app.on('before-quit', () => {
   exportService?.cancelActiveJob();
   removeIpcHandlers?.();
   removeIpcHandlers = null;
+  removeProjectIpcHandlers?.();
+  removeProjectIpcHandlers = null;
   hiddenWindowManager.close();
 });
 

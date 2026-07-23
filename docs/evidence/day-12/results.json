@@ -1,0 +1,35 @@
+{
+  "day": 12,
+  "platform": "Windows",
+  "projectRootFixture": "熊猫 项目 with spaces 🐼.pandastage",
+  "directoryEntries": [
+    "assets",
+    "cache",
+    "exports",
+    "project.json",
+    "recovery"
+  ],
+  "atomicReplacement": {
+    "sameDirectoryTemporaryFile": true,
+    "writeSyncCloseBeforeRename": true,
+    "replacesExistingTargetOnWindows": true,
+    "temporaryFilesAfterFailure": 0
+  },
+  "faultHashEvidence": [
+    {
+      "fault": "afterTemporarySync",
+      "before": "24bba17b588caedac0095121f47bea3ab2ec534cc020b2a09040b0af9bd1a037",
+      "after": "24bba17b588caedac0095121f47bea3ab2ec534cc020b2a09040b0af9bd1a037"
+    },
+    {
+      "fault": "beforeAtomicReplace",
+      "before": "24bba17b588caedac0095121f47bea3ab2ec534cc020b2a09040b0af9bd1a037",
+      "after": "24bba17b588caedac0095121f47bea3ab2ec534cc020b2a09040b0af9bd1a037"
+    }
+  ],
+  "openIsReadOnly": {
+    "invalidJsonPreserved": true,
+    "v0SourcePreserved": true,
+    "futureVersionPreserved": true
+  }
+}
