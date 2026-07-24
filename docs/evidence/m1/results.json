@@ -1,0 +1,60 @@
+{
+  "gate": "M1 Project Lifecycle",
+  "workOrder": "B-15/45",
+  "result": "PASS",
+  "branch": "chore/day-15-m1-gate",
+  "baselineSha": "b47877c0d3df3eff1dba8ec6509430638314da49",
+  "testedSha": "5f28b3e737a06b099c5395404b1b957588c9d6f1",
+  "executedAt": "2026-07-24T08:24:53.130Z",
+  "environment": {
+    "platform": "win32",
+    "node": "v22.23.1"
+  },
+  "lifecycle": {
+    "unicodeAndSpaces": true,
+    "createSaveCloseReopen": true,
+    "formalHashAfterSave": "8321ef61c903e3c819cb24d39110de529c9b3931adc65267fd683463c9b7b548",
+    "formalHashBeforeRestore": "8321ef61c903e3c819cb24d39110de529c9b3931adc65267fd683463c9b7b548",
+    "recoveryDidNotOverwriteFormal": true,
+    "recoveryDetectedAfterRestart": true,
+    "recoveryMovedWithProject": true,
+    "recentOldPathStatus": "missing",
+    "recentRelocatedStatus": "available",
+    "relativeAssetPath": "assets/角色 图片 🐼.png",
+    "relativeAssetReadableAfterMove": true,
+    "cancelRetainedRecovery": true,
+    "discardRemovedRecovery": true,
+    "temporaryArtifactsAfterFaultAndDiscard": 0,
+    "finalProjectId": "15000000-0000-4000-8000-000000000001"
+  },
+  "atomicSave": {
+    "injectedFailureCode": "SAVE_FAILED",
+    "beforeSha256": "8321ef61c903e3c819cb24d39110de529c9b3931adc65267fd683463c9b7b548",
+    "afterSha256": "8321ef61c903e3c819cb24d39110de529c9b3931adc65267fd683463c9b7b548",
+    "oldFormalFilePreserved": true
+  },
+  "architecture": {
+    "rendererFileSystemMatches": [],
+    "recentConfigOutsideProject": true,
+    "persistedAssetPathsAreRelative": true
+  },
+  "inheritedEvidence": {
+    "gateA": "docs/test-receipts/GATE-A.md",
+    "day11": "docs/test-receipts/DAY-11.md",
+    "day12": "docs/test-receipts/DAY-12.md",
+    "day13": "docs/test-receipts/DAY-13.md",
+    "day14": "docs/test-receipts/DAY-14.md",
+    "recoveryUi": "docs/evidence/day-13/ui-results.json",
+    "recentAndCloseUi": "docs/evidence/day-14/ui-results.json"
+  },
+  "operations": [
+    "create:PASS",
+    "modify-save-close-reopen:PASS",
+    "atomic-save-fault-preserves-hash:PASS",
+    "crash-detect-restore-ignore-formal-unchanged:PASS",
+    "unicode-move-relocate-relative-asset-recovery:PASS",
+    "close-save-cleans-recovery:PASS",
+    "close-cancel-retains-discard-cleans:PASS",
+    "invalid-project-read-only:PASS"
+  ]
+}

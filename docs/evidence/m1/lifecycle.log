@@ -1,0 +1,8 @@
+create:PASS
+modify-save-close-reopen:PASS
+atomic-save-fault-preserves-hash:PASS
+crash-detect-restore-ignore-formal-unchanged:PASS
+unicode-move-relocate-relative-asset-recovery:PASS
+close-save-cleans-recovery:PASS
+close-cancel-retains-discard-cleans:PASS
+invalid-project-read-only:PASS
