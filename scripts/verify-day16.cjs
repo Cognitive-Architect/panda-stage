@@ -295,7 +295,8 @@ async function verifyDay16() {
       ui.resultStatus !== 'imported' ||
       !ui.resultMessage?.includes('已导入') ||
       ui.status !== '素材已复制并保存到项目。' ||
-      ui.assetsApi.join(',') !== 'choose,importDropped' ||
+      !ui.assetsApi.includes('choose') ||
+      !ui.assetsApi.includes('importDropped') ||
       ui.rendererHasNodeRequire ||
       !cleanupUi.status?.includes('导入清理未完成') ||
       !residualPaths.every((filePath) =>

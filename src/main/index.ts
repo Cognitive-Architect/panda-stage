@@ -27,6 +27,13 @@ import { UnsavedCloseGuard } from './windows/unsaved-close-guard';
 import { AssetImportService } from './services/AssetImportService';
 import { declaredMimeTypeForPath } from './services/MediaInspectionService';
 import { registerAssetImportIpcHandlers } from './ipc/register-asset-import-ipc-handlers';
+import { CacheService } from './services/CacheService';
+import {
+  FFmpegThumbnailGenerator,
+  ThumbnailService,
+} from './services/ThumbnailService';
+import { AssetMetadataService } from './services/AssetMetadataService';
+import { registerAssetMetadataIpcHandlers } from './ipc/register-asset-metadata-ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -36,6 +43,7 @@ let removeProjectIpcHandlers: (() => void) | null = null;
 let removeRecoveryIpcHandlers: (() => void) | null = null;
 let removeRecentProjectsIpcHandlers: (() => void) | null = null;
 let removeAssetImportIpcHandlers: (() => void) | null = null;
+let removeAssetMetadataIpcHandlers: (() => void) | null = null;
 let autosaveService: AutosaveService | null = null;
 let projectService: ProjectService | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
@@ -89,13 +97,14 @@ async function initialize(): Promise<void> {
     app.quit();
     return;
   }
+  const ffmpegAdapter = new FFmpegAdapter({
+    ffmpegPath: mediaTools.ffmpegPath,
+    ffprobePath: mediaTools.ffprobePath,
+  });
   exportService = new ExportService(
     hiddenWindowManager,
     new FileSystemService(),
-    new FFmpegAdapter({
-      ffmpegPath: mediaTools.ffmpegPath,
-      ffprobePath: mediaTools.ffprobePath,
-    }),
+    ffmpegAdapter,
   );
   exportService.subscribe((update) => {
     const window = mainWindow;
@@ -231,6 +240,18 @@ async function initialize(): Promise<void> {
       });
     },
   });
+  const assetMetadataService = new AssetMetadataService({
+    projectService,
+    thumbnailService: new ThumbnailService(
+      new CacheService(),
+      new FFmpegThumbnailGenerator(mediaTools.ffmpegPath),
+    ),
+    audioProbe: ffmpegAdapter,
+  });
+  removeAssetMetadataIpcHandlers = registerAssetMetadataIpcHandlers({
+    getMainWindow: () => mainWindow,
+    assetMetadataService,
+  });
   unsavedCloseController = new UnsavedCloseController({
     getDirtyProject: () =>
       autosaveService?.getDirtyProjectSnapshot() ?? null,
@@ -333,6 +354,8 @@ app.on('will-quit', () => {
   removeRecentProjectsIpcHandlers = null;
   removeAssetImportIpcHandlers?.();
   removeAssetImportIpcHandlers = null;
+  removeAssetMetadataIpcHandlers?.();
+  removeAssetMetadataIpcHandlers = null;
   void autosaveService?.stopAll();
   autosaveService = null;
   projectService = null;

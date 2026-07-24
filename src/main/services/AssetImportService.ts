@@ -303,6 +303,7 @@ export class AssetImportService {
                 copiedMedia,
                 sourceName,
                 targetFileName,
+                sha256,
               );
               const resultIndex = results.length;
               results.push({
@@ -540,12 +541,14 @@ export class AssetImportService {
     inspected: InspectedMedia,
     sourceName: string,
     targetFileName: string,
+    sha256: string,
   ): Asset {
     const base = {
       id: this.createId(),
       name: assetDisplayName(sourceName),
       relativePath: `assets/${targetFileName}`,
       mimeType: inspected.mimeType,
+      sha256,
     };
     return AssetSchema.parse(
       inspected.kind === 'image'

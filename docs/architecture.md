@@ -325,3 +325,41 @@ Imported audio assets intentionally omit `durationMs`: Day 16 validates media
 type but does not introduce Day 17 metadata extraction. Such an asset may be
 stored but cannot be referenced by an `AudioClip` until duration metadata is
 available; the centralized reference validator enforces that boundary.
+
+## Day 17 asset metadata and thumbnail cache
+
+Asset metadata is refreshed only in Electron Main. The allowlisted
+`asset-metadata:refresh` IPC request contains a project root and Asset UUID;
+Preload validates both request and response with Zod, while Renderer receives
+no file-system or process capability.
+
+`AssetMetadataService` opens the current on-disk project inside the shared
+project-operation coordinator, resolves only project-relative files below
+`assets/`, computes the real SHA-256, and atomically saves trusted metadata:
+
+- image Assets receive decoded-header `width`/`height`, `sha256`, and a
+  structured ready/error metadata state;
+- audio Assets receive an integer `durationMs` from real FFprobe output,
+  `sha256`, and the same structured state;
+- corrupt or unreadable media records a localized, asset-specific error
+  state. The project remains schema-valid and reopenable.
+
+`ThumbnailService` delegates image decoding to the already packaged FFmpeg
+sidecar, so the Main event loop does not synchronously decode full images.
+The maximum thumbnail edge is 256 px. FFmpeg's default autorotation remains
+enabled, the scaling filter preserves aspect ratio, and PNG output uses RGBA
+so source alpha is retained. Persisted image dimensions describe the encoded
+raster header; the generated thumbnail applies display orientation.
+
+`CacheService` writes thumbnails atomically below
+`cache/asset-thumbnails/`. A cache name is
+`v1-max256-<asset-sha256>.png`, binding content identity, thumbnail schema,
+and size policy. A changed hash selects a new entry; deleting the whole cache
+or one entry causes lazy rebuild. Thumbnail paths never enter `project.json`.
+Missing, corrupt, or unwritable cache data is therefore not an open-project
+dependency.
+
+Images above 40,000,000 encoded pixels are not handed to FFmpeg. Their
+dimensions and hash remain available with an `ASSET_IMAGE_TOO_LARGE`
+warning, and no thumbnail is produced. This preflight is the Day 17
+protection against unbounded decode work.

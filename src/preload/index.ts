@@ -8,6 +8,11 @@ import {
   type AssetImportProjectRequest,
 } from '../shared/asset-import-api';
 import {
+  AssetMetadataRequestSchema,
+  AssetMetadataResponseSchema,
+  type AssetMetadataRequest,
+} from '../shared/asset-metadata-api';
+import {
   AppPingRequestSchema,
   AppPingResponseSchema,
 } from '../shared/ipc/contracts';
@@ -131,6 +136,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AssetImportResponseSchema.parse(response);
+    },
+    refreshMetadata: async (rawRequest: AssetMetadataRequest) => {
+      const request = AssetMetadataRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_METADATA_REFRESH,
+        request,
+      );
+      return AssetMetadataResponseSchema.parse(response);
     },
   }),
   recentProjects: Object.freeze({

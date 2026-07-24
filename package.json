@@ -30,6 +30,7 @@
     "verify:day13": "pnpm build && electron scripts/verify-day13.cjs",
     "verify:day14": "pnpm build && electron scripts/verify-day14.cjs",
     "verify:day16": "pnpm build && pnpm test:integration && electron scripts/verify-day16.cjs",
+    "verify:day17": "pnpm build && pnpm test:integration && node scripts/verify-day17.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",
     "dist": "pnpm build && node scripts/build-distribution.cjs",

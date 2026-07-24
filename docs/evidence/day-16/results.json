@@ -12,7 +12,8 @@
     "status": "素材已复制并保存到项目。",
     "assetsApi": [
       "choose",
-      "importDropped"
+      "importDropped",
+      "refreshMetadata"
     ],
     "rendererHasNodeRequire": false
   },

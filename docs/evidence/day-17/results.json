@@ -1,0 +1,106 @@
+{
+  "day": 17,
+  "workOrder": "B-17/45",
+  "result": "PASS",
+  "branch": "feat/day-17-asset-metadata",
+  "testedSha": "3d23a1b0c4fbb06d83d973c5d5974888f6ba0fdc",
+  "executedAt": "2026-07-24T13:11:34.193Z",
+  "dependencyDecision": {
+    "image": "Existing packaged FFmpeg 4.1 sidecar",
+    "audio": "Existing packaged FFprobe 5.1 sidecar",
+    "addedPackages": [],
+    "thumbnailSchemaVersion": 1,
+    "thumbnailMaxEdge": 256,
+    "cacheKeyExample": "v1-max256-38714d8821ebd17405711e56a05711c05a87e6eeb9caf48a2543c1062a1c58fc.png"
+  },
+  "realMedia": {
+    "png": {
+      "dimensions": {
+        "width": 16,
+        "height": 12
+      },
+      "thumbnail": {
+        "relativePath": "cache/asset-thumbnails/v1-max256-38714d8821ebd17405711e56a05711c05a87e6eeb9caf48a2543c1062a1c58fc.png",
+        "width": 16,
+        "height": 12,
+        "cacheHit": false
+      },
+      "evidence": "docs/evidence/day-17/thumbnail-png.png"
+    },
+    "jpg": {
+      "dimensions": {
+        "width": 18,
+        "height": 14
+      },
+      "thumbnail": {
+        "relativePath": "cache/asset-thumbnails/v1-max256-6d058147b8815dc23180e49b8cbfdadd511abed44b4ffccdee5cd3f5524b55ff.png",
+        "width": 18,
+        "height": 14,
+        "cacheHit": false
+      },
+      "evidence": "docs/evidence/day-17/thumbnail-jpg.png"
+    },
+    "mp3": {
+      "durationMs": 313
+    },
+    "wav": {
+      "durationMs": 250
+    },
+    "bounded": {
+      "source": {
+        "width": 512,
+        "height": 300
+      },
+      "thumbnail": {
+        "width": 256,
+        "height": 150
+      },
+      "evidence": "docs/evidence/day-17/thumbnail-bounded.png"
+    }
+  },
+  "resilience": {
+    "externalSourcesDeletedBeforeExtraction": true,
+    "projectAssetHashesUnchangedByHealthyExtraction": true,
+    "cacheDeletionRebuilt": true,
+    "cacheWriteFailureWarning": "ASSET_THUMBNAIL_CACHE_UNAVAILABLE",
+    "corruptImageCode": "ASSET_METADATA_INVALID_IMAGE",
+    "corruptAudioCode": "ASSET_METADATA_INVALID_AUDIO",
+    "oversizedImageWarning": "ASSET_IMAGE_TOO_LARGE",
+    "projectReopenedAfterFailures": true,
+    "thumbnailAbsentFromProjectJson": true
+  },
+  "observation": {
+    "perAsset": [
+      {
+        "asset": "熊猫 图片",
+        "elapsedMs": 109
+      },
+      {
+        "asset": "熊猫 照片",
+        "elapsedMs": 97
+      },
+      {
+        "asset": "熊猫 声音",
+        "elapsedMs": 59
+      },
+      {
+        "asset": "熊猫 声音",
+        "elapsedMs": 59
+      },
+      {
+        "asset": "512x300",
+        "elapsedMs": 107
+      }
+    ],
+    "mainProcessRssBeforeBytes": 55840768,
+    "mainProcessPeakRssBytes": 56803328,
+    "mainProcessRssDeltaBytes": 962560,
+    "note": "Thumbnail decoding runs in the FFmpeg child process; the 40,000,000-pixel preflight threshold skips oversized decoding."
+  },
+  "tests": {
+    "unitFiles": 40,
+    "unitTests": 224,
+    "integrationFiles": 6,
+    "integrationTests": 52
+  }
+}
