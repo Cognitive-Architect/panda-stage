@@ -71,6 +71,8 @@ export const AssetImportResultSchema = z
 export const AssetImportErrorCodeSchema = z.enum([
   'ASSET_IMPORT_PROJECT_MISMATCH',
   'ASSET_IMPORT_PROJECT_INVALID',
+  'ASSET_IMPORT_STALE_REVISION',
+  'ASSET_IMPORT_ROLLBACK_FAILED',
   'ASSET_IMPORT_OPERATION_FAILED',
 ]);
 
@@ -79,6 +81,9 @@ export const AssetImportErrorSchema = z
     code: AssetImportErrorCodeSchema,
     message: z.string().trim().min(1),
     projectRoot: FileSystemPathSchema,
+    currentProject: ProjectSchema.optional(),
+    currentRevision: RevisionSchema.optional(),
+    residualPaths: z.array(FileSystemPathSchema).max(100).optional(),
   })
   .strict();
 

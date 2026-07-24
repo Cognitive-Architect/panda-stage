@@ -192,7 +192,19 @@ resolved to a native path only in Preload with Electron `webUtils`.
 - preserve Unicode/spaces and resolve same-name conflicts without overwrite;
 - copy through the asset filesystem service, then save the full validated
   project once through `ProjectService.transact`;
-- roll back newly committed files if the project save fails.
+- register each formal target as a rollback candidate before any copied-media,
+  Asset, or Project validation;
+- roll back all request-owned files on internal construction/save failure and
+  report exact residual paths if deletion fails.
+
+The active `AutosaveService` session is Main's revision authority. An import
+must match its full project snapshot and revision before candidate inspection,
+again after candidate processing, and immediately before save. A mismatch
+returns `ASSET_IMPORT_STALE_REVISION` before a stale request can copy anything.
+The error includes the authoritative snapshot for an explicit refresh/retry,
+but Renderer must not apply it automatically over dirty edits. Tests must
+start concurrent requests before the first completes; sequential calls alone
+do not prove the conflict boundary.
 
 Do not add absolute source paths or hashes to `ProjectSchema`. Stored asset
 paths stay project-relative, and hashes are recomputed from project-owned files

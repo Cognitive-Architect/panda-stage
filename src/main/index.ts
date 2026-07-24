@@ -204,6 +204,8 @@ async function initialize(): Promise<void> {
   });
   const assetImportService = new AssetImportService({
     projectService,
+    getCurrentProjectSnapshot: (projectRoot) =>
+      autosaveService?.getProjectSnapshot(projectRoot) ?? null,
   });
   removeAssetImportIpcHandlers = registerAssetImportIpcHandlers({
     getMainWindow: () => mainWindow,

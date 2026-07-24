@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
 import type {
-  AssetImportResponse,
   AssetImportResult,
 } from '../../../shared/asset-import-api';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { applyAssetImportResponse } from './applyAssetImportResponse';
 import { useAssetDrop } from './useAssetDrop';
 
 export interface AssetImportPanelProps {
@@ -25,40 +25,15 @@ export function AssetImportPanel({
   const [results, setResults] = useState<AssetImportResult[]>([]);
 
   const applyResponse = useCallback(
-    (response: AssetImportResponse): void => {
-      if (!response.ok) {
-        setStatus(response.error.message);
-        return;
-      }
-      if (response.status === 'cancelled') {
-        setStatus('已取消素材导入，项目未发生变化。');
-        return;
-      }
-      setResults(response.results);
-      if (response.projectChanged) {
-        const importedAssets = response.results.flatMap((result) =>
-          result.status === 'imported' && result.asset
-            ? [result.asset]
-            : [],
-        );
-        const acknowledgement = editorProjectStore.applyAssetImport(
-          response.project,
-          importedAssets,
-          response.baseRevision,
-          response.savedRevision,
-        );
-        setStatus(
-          acknowledgement === 'current'
-            ? '素材已复制并保存到项目。'
-            : '素材已保存；导入期间的新编辑仍保持未保存状态。',
-        );
-        return;
-      }
-      setStatus(
-        response.results.some((result) => result.status === 'duplicate')
-          ? '没有复制重复素材；已保留并复用原素材记录。'
-          : '没有素材被导入，项目未发生变化。',
+    (response: Awaited<
+      ReturnType<typeof window.pandaStage.assets.choose>
+    >): void => {
+      const outcome = applyAssetImportResponse(
+        response,
+        editorProjectStore,
       );
+      if (outcome.results) setResults(outcome.results);
+      setStatus(outcome.status);
     },
     [],
   );

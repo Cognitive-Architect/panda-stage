@@ -22,7 +22,10 @@ vi.mock('electron', () => ({
 
 import { ProjectSchema } from '../../src/domain';
 import { registerAssetImportIpcHandlers } from '../../src/main/ipc/register-asset-import-ipc-handlers';
-import type { AssetImportService } from '../../src/main/services/AssetImportService';
+import {
+  AssetImportServiceError,
+  type AssetImportService,
+} from '../../src/main/services/AssetImportService';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -167,5 +170,88 @@ describe('asset import IPC handlers', () => {
     expect(
       services.assetImportService.importCandidates,
     ).not.toHaveBeenCalled();
+  });
+
+  it('returns the authoritative snapshot for a stale revision', async () => {
+    const services = dependencies();
+    services.assetImportService.importCandidates = vi
+      .fn()
+      .mockRejectedValue(
+        new AssetImportServiceError(
+          'ASSET_IMPORT_STALE_REVISION',
+          request.projectRoot,
+          'Refresh the project snapshot and retry.',
+          {
+            currentProject: project,
+            currentRevision: 3,
+          },
+        ),
+      );
+    registerAssetImportIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...services,
+    });
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_IMPORT_DROPPED)!(
+        event(),
+        {
+          ...request,
+          candidates: [
+            {
+              sourcePath: 'D:\\source.png',
+              declaredMimeType: 'image/png',
+            },
+          ],
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'ASSET_IMPORT_STALE_REVISION',
+        currentProject: project,
+        currentRevision: 3,
+      },
+    });
+  });
+
+  it('returns residual paths when rollback cannot restore the directory', async () => {
+    const services = dependencies();
+    const residualPath = 'D:\\project.pandastage\\assets\\orphan.png';
+    services.assetImportService.importCandidates = vi
+      .fn()
+      .mockRejectedValue(
+        new AssetImportServiceError(
+          'ASSET_IMPORT_ROLLBACK_FAILED',
+          request.projectRoot,
+          'Manual cleanup is required.',
+          { residualPaths: [residualPath] },
+        ),
+      );
+    registerAssetImportIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...services,
+    });
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_IMPORT_DROPPED)!(
+        event(),
+        {
+          ...request,
+          candidates: [
+            {
+              sourcePath: 'D:\\source.png',
+              declaredMimeType: 'image/png',
+            },
+          ],
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'ASSET_IMPORT_ROLLBACK_FAILED',
+        residualPaths: [residualPath],
+      },
+    });
   });
 });

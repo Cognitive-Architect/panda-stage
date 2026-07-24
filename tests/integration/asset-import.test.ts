@@ -12,7 +12,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AssetImportFileSystemService } from '../../src/main/services/AssetImportFileSystemService';
-import { AssetImportService } from '../../src/main/services/AssetImportService';
+import {
+  AssetImportService,
+  AssetImportServiceError,
+  type AssetImportRevisionSnapshot,
+} from '../../src/main/services/AssetImportService';
 import { ProjectFileSystemService } from '../../src/main/services/ProjectFileSystemService';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
@@ -45,6 +49,10 @@ async function harness(): Promise<{
   assetImportService: AssetImportService;
   created: Awaited<ReturnType<ProjectService['create']>>;
   nextId: () => string;
+  getCurrentProjectSnapshot: () => AssetImportRevisionSnapshot;
+  setCurrentProjectSnapshot: (
+    snapshot: AssetImportRevisionSnapshot,
+  ) => void;
 }> {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-assets-'));
   temporaryDirectories.push(parent);
@@ -54,15 +62,30 @@ async function harness(): Promise<{
   );
   let idIndex = 0;
   const nextId = () => IDS[idIndex++]!;
+  let currentProjectSnapshot: AssetImportRevisionSnapshot;
   const projectService = new ProjectService({
     createId: nextId,
     now: () => new Date('2026-07-24T09:00:00.000Z'),
+    onProjectSaved: (_root, project, revision) => {
+      if (revision !== undefined) {
+        currentProjectSnapshot = { project, revision };
+      }
+    },
   });
   const created = await projectService.create(projectRoot, {
     name: 'Day 16 素材项目',
   });
+  currentProjectSnapshot = { project: created.project, revision: 0 };
+  const getCurrentProjectSnapshot = () =>
+    structuredClone(currentProjectSnapshot);
+  const setCurrentProjectSnapshot = (
+    snapshot: AssetImportRevisionSnapshot,
+  ) => {
+    currentProjectSnapshot = structuredClone(snapshot);
+  };
   const assetImportService = new AssetImportService({
     projectService,
+    getCurrentProjectSnapshot,
     createId: nextId,
     now: () => new Date('2026-07-24T09:10:00.000Z'),
   });
@@ -73,6 +96,8 @@ async function harness(): Promise<{
     assetImportService,
     created,
     nextId,
+    getCurrentProjectSnapshot,
+    setCurrentProjectSnapshot,
   };
 }
 
@@ -87,6 +112,35 @@ async function externalCopy(
   const target = path.join(directory, targetName);
   await copyFile(path.join(fixtureDirectory, fixtureName), target);
   return target;
+}
+
+async function assetDirectoryEntries(projectRoot: string): Promise<string[]> {
+  return (await readdir(path.join(projectRoot, 'assets'))).sort();
+}
+
+async function expectAssetsMatchProject(projectRoot: string): Promise<void> {
+  const project = (await new ProjectService().open(projectRoot)).project;
+  const recordedFiles = project.assets
+    .map(({ relativePath }) => path.basename(relativePath))
+    .sort();
+  const entries = await assetDirectoryEntries(projectRoot);
+  expect(entries.filter((name) => name.startsWith('.asset-import.'))).toEqual(
+    [],
+  );
+  expect(entries.filter((name) => !name.startsWith('.'))).toEqual(
+    recordedFiles,
+  );
+}
+
+function deferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe('asset import integration', () => {
@@ -275,12 +329,19 @@ describe('asset import integration', () => {
   });
 
   it('leaves project JSON and assets unchanged when the copy fails', async () => {
-    const { parent, projectRoot, projectService, created, nextId } =
-      await harness();
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
     const source = await externalCopy(parent, '熊猫 图片.png');
     const beforeHash = await hash(path.join(projectRoot, 'project.json'));
     const service = new AssetImportService({
       projectService,
+      getCurrentProjectSnapshot,
       createId: nextId,
       fileSystem: new AssetImportFileSystemService({
         afterTemporarySync: () => {
@@ -318,12 +379,14 @@ describe('asset import integration', () => {
       projectService,
       created,
       nextId,
+      getCurrentProjectSnapshot,
     } = await harness();
     const source = await externalCopy(parent, '熊猫 图片.png');
     const projectFile = path.join(projectRoot, 'project.json');
     const beforeHash = await hash(projectFile);
     const service = new AssetImportService({
       projectService,
+      getCurrentProjectSnapshot,
       createId: nextId,
       fileSystem: new AssetImportFileSystemService({
         beforeFinalize: async ({ temporaryPath }) => {
@@ -352,7 +415,13 @@ describe('asset import integration', () => {
   });
 
   it('rolls back the new file and model when atomic project save fails', async () => {
-    const { parent, projectRoot, created, nextId } = await harness();
+    const {
+      parent,
+      projectRoot,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
     const source = await externalCopy(parent, '熊猫 图片.png');
     const projectFile = path.join(projectRoot, 'project.json');
     const beforeHash = await hash(projectFile);
@@ -367,6 +436,7 @@ describe('asset import integration', () => {
     });
     const service = new AssetImportService({
       projectService: failingProjectService,
+      getCurrentProjectSnapshot,
       createId: nextId,
     });
 
@@ -387,5 +457,504 @@ describe('asset import integration', () => {
     expect(operation.project.assets).toEqual([]);
     expect(await hash(projectFile)).toBe(beforeHash);
     expect(await readdir(path.join(projectRoot, 'assets'))).toEqual([]);
+  });
+
+  it('rejects a queued same-revision import before copy, then preserves both assets after retry', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const sourceA = await externalCopy(
+      parent,
+      '熊猫 图片.png',
+      '并发 A.png',
+      '并发来源 A',
+    );
+    const sourceB = await externalCopy(
+      parent,
+      '另一张 图片.png',
+      '并发 B.png',
+      '并发来源 B',
+    );
+    const firstRegistered = deferred();
+    const releaseFirst = deferred();
+    let registeredCount = 0;
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      faults: {
+        afterFileRegistered: async () => {
+          registeredCount += 1;
+          if (registeredCount === 1) {
+            firstRegistered.resolve();
+            await releaseFirst.promise;
+          }
+        },
+      },
+    });
+    const initialRequest = {
+      projectRoot,
+      project: created.project,
+      baseRevision: 0,
+    };
+
+    const first = service.importCandidates({
+      ...initialRequest,
+      candidates: [
+        { sourcePath: sourceA, declaredMimeType: 'image/png' },
+      ],
+    });
+    await firstRegistered.promise;
+    const stale = service.importCandidates({
+      ...initialRequest,
+      candidates: [
+        { sourcePath: sourceB, declaredMimeType: 'image/png' },
+      ],
+    });
+    releaseFirst.resolve();
+
+    await expect(first).resolves.toMatchObject({
+      projectChanged: true,
+      savedRevision: 1,
+    });
+    await expect(stale).rejects.toMatchObject({
+      code: 'ASSET_IMPORT_STALE_REVISION',
+      currentRevision: 1,
+    });
+    expect(registeredCount).toBe(1);
+
+    const current = getCurrentProjectSnapshot();
+    const retried = await service.importCandidates({
+      projectRoot,
+      project: current.project,
+      baseRevision: current.revision,
+      candidates: [
+        { sourcePath: sourceB, declaredMimeType: 'image/png' },
+      ],
+    });
+
+    expect(retried.savedRevision).toBe(2);
+    expect(retried.project.assets).toHaveLength(2);
+    expect(getCurrentProjectSnapshot().revision).toBe(2);
+    await expectAssetsMatchProject(projectRoot);
+  });
+
+  it('deduplicates the retry after concurrent imports of identical content', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const sourceA = await externalCopy(
+      parent,
+      '熊猫 图片.png',
+      '相同 A.png',
+      '相同来源 A',
+    );
+    const sourceB = await externalCopy(
+      parent,
+      '熊猫 图片.png',
+      '相同 B.png',
+      '相同来源 B',
+    );
+    const firstRegistered = deferred();
+    const releaseFirst = deferred();
+    let registeredCount = 0;
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      faults: {
+        afterFileRegistered: async () => {
+          registeredCount += 1;
+          if (registeredCount === 1) {
+            firstRegistered.resolve();
+            await releaseFirst.promise;
+          }
+        },
+      },
+    });
+    const request = {
+      projectRoot,
+      project: created.project,
+      baseRevision: 0,
+    };
+
+    const first = service.importCandidates({
+      ...request,
+      candidates: [
+        { sourcePath: sourceA, declaredMimeType: 'image/png' },
+      ],
+    });
+    await firstRegistered.promise;
+    const stale = service.importCandidates({
+      ...request,
+      candidates: [
+        { sourcePath: sourceB, declaredMimeType: 'image/png' },
+      ],
+    });
+    releaseFirst.resolve();
+    await first;
+    await expect(stale).rejects.toMatchObject({
+      code: 'ASSET_IMPORT_STALE_REVISION',
+    });
+
+    const current = getCurrentProjectSnapshot();
+    const retry = await service.importCandidates({
+      projectRoot,
+      project: current.project,
+      baseRevision: current.revision,
+      candidates: [
+        { sourcePath: sourceB, declaredMimeType: 'image/png' },
+      ],
+    });
+
+    expect(retry.projectChanged).toBe(false);
+    expect(retry.savedRevision).toBe(1);
+    expect(retry.results[0]).toMatchObject({ status: 'duplicate' });
+    expect((await projectService.open(projectRoot)).project.assets).toHaveLength(
+      1,
+    );
+    expect(await assetDirectoryEntries(projectRoot)).toHaveLength(1);
+    await expectAssetsMatchProject(projectRoot);
+  });
+
+  it('rejects an old snapshot before copy and never overwrites a newer edit', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+      setCurrentProjectSnapshot,
+    } = await harness();
+    const source = await externalCopy(parent, '熊猫 图片.png');
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const editedProject = {
+      ...created.project,
+      name: '并发产生的新项目名称',
+    };
+    setCurrentProjectSnapshot({
+      project: editedProject,
+      revision: 1,
+    });
+    let copyAttempted = false;
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      fileSystem: new AssetImportFileSystemService({
+        beforeCopy: () => {
+          copyAttempted = true;
+        },
+      }),
+    });
+
+    await expect(
+      service.importCandidates({
+        projectRoot,
+        project: created.project,
+        baseRevision: 0,
+        candidates: [
+          { sourcePath: source, declaredMimeType: 'image/png' },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'ASSET_IMPORT_STALE_REVISION',
+      currentProject: { name: '并发产生的新项目名称' },
+      currentRevision: 1,
+    });
+    expect(copyAttempted).toBe(false);
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect(await assetDirectoryEntries(projectRoot)).toEqual([]);
+
+    const current = getCurrentProjectSnapshot();
+    const retry = await service.importCandidates({
+      projectRoot,
+      project: current.project,
+      baseRevision: current.revision,
+      candidates: [
+        { sourcePath: source, declaredMimeType: 'image/png' },
+      ],
+    });
+    expect(retry.project.name).toBe('并发产生的新项目名称');
+    expect(retry.savedRevision).toBe(2);
+    await expectAssetsMatchProject(projectRoot);
+  });
+
+  it('rolls back copied files when the editor advances during an import', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+      setCurrentProjectSnapshot,
+    } = await harness();
+    const source = await externalCopy(parent, '熊猫 图片.png');
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const concurrentEdit = {
+      ...created.project,
+      name: '导入进行中产生的新编辑',
+    };
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      faults: {
+        afterFileRegistered: () => {
+          setCurrentProjectSnapshot({
+            project: concurrentEdit,
+            revision: 1,
+          });
+        },
+      },
+    });
+
+    await expect(
+      service.importCandidates({
+        projectRoot,
+        project: created.project,
+        baseRevision: 0,
+        candidates: [
+          { sourcePath: source, declaredMimeType: 'image/png' },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'ASSET_IMPORT_STALE_REVISION',
+      currentProject: { name: '导入进行中产生的新编辑' },
+      currentRevision: 1,
+    });
+    expect(getCurrentProjectSnapshot()).toMatchObject({
+      project: { name: '导入进行中产生的新编辑' },
+      revision: 1,
+    });
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect((await projectService.open(projectRoot)).project.assets).toEqual([]);
+    expect(await assetDirectoryEntries(projectRoot)).toEqual([]);
+  });
+
+  it('imports a long Unicode file name with schema-safe display and disk names', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      assetImportService,
+    } = await harness();
+    const longStem = '长'.repeat(205);
+    const source = await externalCopy(
+      parent,
+      '熊猫 图片.png',
+      `${longStem}.png`,
+      '长名',
+    );
+
+    const operation = await assetImportService.importCandidates({
+      projectRoot,
+      project: created.project,
+      baseRevision: 0,
+      candidates: [
+        { sourcePath: source, declaredMimeType: 'image/png' },
+      ],
+    });
+    const asset = operation.project.assets[0]!;
+    const targetName = path.basename(asset.relativePath);
+
+    expect(asset.name.length).toBe(200);
+    expect(targetName.length).toBeLessThanOrEqual(124);
+    expect(path.basename(targetName)).toBe(targetName);
+    expect((await projectService.open(projectRoot)).project.assets[0]).toEqual(
+      asset,
+    );
+    await expectAssetsMatchProject(projectRoot);
+  });
+
+  it('rolls back a formal file when a fault occurs immediately after registration', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const source = await externalCopy(parent, '熊猫 图片.png');
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      faults: {
+        afterFileRegistered: () => {
+          throw new Error('Injected post-registration fault.');
+        },
+      },
+    });
+
+    const operation = await service.importCandidates({
+      projectRoot,
+      project: created.project,
+      baseRevision: 0,
+      candidates: [
+        { sourcePath: source, declaredMimeType: 'image/png' },
+      ],
+    });
+
+    expect(operation.projectChanged).toBe(false);
+    expect(operation.results[0]).toMatchObject({
+      status: 'failed',
+      code: 'ASSET_IMPORT_COPY_FAILED',
+    });
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect((await projectService.open(projectRoot)).project.assets).toEqual([]);
+    expect(await assetDirectoryEntries(projectRoot)).toEqual([]);
+  });
+
+  it('rolls back a copied file when AssetSchema construction fails', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const source = await externalCopy(parent, '熊猫 图片.png');
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: () => 'invalid-asset-id',
+    });
+
+    await expect(
+      service.importCandidates({
+        projectRoot,
+        project: created.project,
+        baseRevision: 0,
+        candidates: [
+          { sourcePath: source, declaredMimeType: 'image/png' },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'ASSET_IMPORT_OPERATION_FAILED',
+    });
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect((await projectService.open(projectRoot)).project.assets).toEqual([]);
+    expect(await assetDirectoryEntries(projectRoot)).toEqual([]);
+  });
+
+  it('rolls back every copied file when project construction fails', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const sources = await Promise.all([
+      externalCopy(parent, '熊猫 图片.png', '事务 A.png', '事务源 A'),
+      externalCopy(parent, '另一张 图片.png', '事务 B.png', '事务源 B'),
+      externalCopy(parent, '熊猫 照片.jpg', '事务 C.jpg', '事务源 C'),
+    ]);
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      faults: {
+        beforeProjectBuild: () => {
+          throw new Error('Injected project construction fault.');
+        },
+      },
+    });
+
+    await expect(
+      service.importCandidates({
+        projectRoot,
+        project: created.project,
+        baseRevision: 0,
+        candidates: sources.map((sourcePath, index) => ({
+          sourcePath,
+          declaredMimeType:
+            index === 2 ? 'image/jpeg' : 'image/png',
+        })),
+      }),
+    ).rejects.toMatchObject({
+      code: 'ASSET_IMPORT_OPERATION_FAILED',
+    });
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect((await projectService.open(projectRoot)).project.assets).toEqual([]);
+    expect(await assetDirectoryEntries(projectRoot)).toEqual([]);
+  });
+
+  it('reports rollback failure with the exact residual path and no temp file', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const source = await externalCopy(parent, '熊猫 图片.png');
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      fileSystem: new AssetImportFileSystemService({
+        beforeRollbackRemove: () => {
+          throw new Error('Injected persistent rollback failure.');
+        },
+      }),
+      faults: {
+        afterFileRegistered: () => {
+          throw new Error('Force rollback after formal placement.');
+        },
+      },
+    });
+
+    let failure: unknown;
+    try {
+      await service.importCandidates({
+        projectRoot,
+        project: created.project,
+        baseRevision: 0,
+        candidates: [
+          { sourcePath: source, declaredMimeType: 'image/png' },
+        ],
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(AssetImportServiceError);
+    expect(failure).toMatchObject({
+      code: 'ASSET_IMPORT_ROLLBACK_FAILED',
+      residualPaths: [path.join(projectRoot, 'assets', '熊猫 图片.png')],
+    });
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect((await projectService.open(projectRoot)).project.assets).toEqual([]);
+    const entries = await assetDirectoryEntries(projectRoot);
+    expect(entries).toEqual(['熊猫 图片.png']);
+    expect(entries.filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 });

@@ -284,11 +284,32 @@ replaced.
 
 Each copy is streamed to a unique temporary file in `assets/`, flushed, then
 committed without overwrite through an exclusive same-volume hard link.
-Only successfully committed copies are added to the candidate project model.
-The complete model is saved once through the existing project-root operation
-coordinator. Save failure rolls back every newly committed file; validation or
-copy failure never changes the model. Persisted paths remain relative
+The formal target is registered as a rollback candidate immediately after the
+copy call returns, before copied-media validation, hashing, Asset construction,
+or Project construction. The complete model is saved once through the existing
+project-root operation coordinator. Any pre-commit internal failure rolls back
+every file already committed by that request; expected per-file validation or
+copy failures may coexist with successfully imported files, but every success
+must have both a file and Asset record. Rollback failure becomes
+`ASSET_IMPORT_ROLLBACK_FAILED` and includes the exact residual paths instead of
+claiming that the directory is clean. Persisted paths remain relative
 `assets/...` paths.
+
+Main owns the import revision check through the active `AutosaveService`
+session. Before reading a candidate, `AssetImportService` requires the request
+project ID, full project snapshot, and `baseRevision` to match Main's current
+snapshot. It builds hashes, occupied names, and the next project from that
+authoritative snapshot rather than Renderer request data. The check runs again
+before project construction and immediately before save, so an editor change
+during a long import rolls back copied files and returns
+`ASSET_IMPORT_STALE_REVISION` with the current project and revision. A stale
+response is informational and never mutates `EditorProjectStore`.
+
+Asset display names and disk file names have separate stable limits. Display
+names are NFC-normalized and safely truncated to the `NameSchema` limit of 200
+UTF-16 code units. Disk stems preserve Unicode and spaces, replace unsafe
+characters, avoid Windows device names, and are safely limited to 120 code
+units before extension and conflict suffixes.
 
 Imported audio assets intentionally omit `durationMs`: Day 16 validates media
 type but does not introduce Day 17 metadata extraction. Such an asset may be

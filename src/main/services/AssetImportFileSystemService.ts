@@ -23,6 +23,19 @@ export interface AssetImportFileSystemFaultInjector {
   beforeRollbackRemove?(filePath: string): void | Promise<void>;
 }
 
+export class AssetImportFileSystemCleanupError extends Error {
+  constructor(
+    readonly residualPaths: readonly string[],
+    options?: ErrorOptions,
+  ) {
+    super(
+      `Asset copy cleanup left residual paths: ${residualPaths.join(', ')}`,
+      options,
+    );
+    this.name = 'AssetImportFileSystemCleanupError';
+  }
+}
+
 export class AssetImportFileSystemService {
   constructor(
     private readonly faults: AssetImportFileSystemFaultInjector = {},
@@ -66,6 +79,7 @@ export class AssetImportFileSystemService {
     );
     const context = { sourcePath, temporaryPath, targetPath };
     let temporaryFileExists = false;
+    let targetFileExists = false;
     try {
       await this.faults.beforeCopy?.(context);
       temporaryFileExists = true;
@@ -82,12 +96,34 @@ export class AssetImportFileSystemService {
       await this.faults.afterTemporarySync?.(context);
       await this.faults.beforeFinalize?.(context);
       await link(temporaryPath, targetPath);
-      await rm(temporaryPath, { force: true }).catch(() => undefined);
+      targetFileExists = true;
+      await rm(temporaryPath, { force: true });
+      temporaryFileExists = false;
       return targetPath;
-    } finally {
-      if (temporaryFileExists) {
-        await rm(temporaryPath, { force: true }).catch(() => undefined);
+    } catch (error) {
+      const residualPaths: string[] = [];
+      if (targetFileExists) {
+        try {
+          await rm(targetPath, { force: true });
+          targetFileExists = false;
+        } catch {
+          residualPaths.push(targetPath);
+        }
       }
+      if (temporaryFileExists) {
+        try {
+          await rm(temporaryPath, { force: true });
+          temporaryFileExists = false;
+        } catch {
+          residualPaths.push(temporaryPath);
+        }
+      }
+      if (residualPaths.length > 0) {
+        throw new AssetImportFileSystemCleanupError(residualPaths, {
+          cause: error,
+        });
+      }
+      throw error;
     }
   }
 

@@ -57,6 +57,15 @@ function failure(
       code: normalized.code,
       message: normalized.message,
       projectRoot: normalized.projectRoot,
+      ...(normalized.currentProject
+        ? { currentProject: normalized.currentProject }
+        : {}),
+      ...(normalized.currentRevision !== undefined
+        ? { currentRevision: normalized.currentRevision }
+        : {}),
+      ...(normalized.residualPaths.length > 0
+        ? { residualPaths: normalized.residualPaths }
+        : {}),
     },
   });
 }
