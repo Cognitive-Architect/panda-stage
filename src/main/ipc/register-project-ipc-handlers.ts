@@ -4,6 +4,7 @@ import {
   ProjectOpenRequestSchema,
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
+  type ProjectDocument,
   type ProjectOperationResponse,
 } from '../../shared/project-api';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
@@ -12,6 +13,8 @@ import { ProjectService, ProjectServiceError } from '../services/ProjectService'
 interface ProjectIpcHandlerDependencies {
   getMainWindow: () => BrowserWindow | null;
   projectService: ProjectService;
+  onProjectAccessed?: (document: ProjectDocument) => void | Promise<void>;
+  onRecentProjectError?: (error: unknown) => void;
 }
 
 function assertTrustedSender(
@@ -51,6 +54,17 @@ function failure(
   });
 }
 
+async function recordProjectAccess(
+  dependencies: ProjectIpcHandlerDependencies,
+  document: ProjectDocument,
+): Promise<void> {
+  try {
+    await dependencies.onProjectAccessed?.(document);
+  } catch (error) {
+    dependencies.onRecentProjectError?.(error);
+  }
+}
+
 export function registerProjectIpcHandlers(
   dependencies: ProjectIpcHandlerDependencies,
 ): () => void {
@@ -68,6 +82,7 @@ export function registerProjectIpcHandlers(
           request.projectRoot,
           request.metadata,
         );
+        await recordProjectAccess(dependencies, value);
         return ProjectOperationResponseSchema.parse({ ok: true, value });
       } catch (error) {
         return failure(error, request.projectRoot, 'CREATE_FAILED');
@@ -88,6 +103,7 @@ export function registerProjectIpcHandlers(
         const value = await dependencies.projectService.open(
           request.projectRoot,
         );
+        await recordProjectAccess(dependencies, value);
         return ProjectOperationResponseSchema.parse({ ok: true, value });
       } catch (error) {
         return failure(error, request.projectRoot, 'OPEN_FAILED');
@@ -110,6 +126,7 @@ export function registerProjectIpcHandlers(
           request.project,
           request.revision,
         );
+        await recordProjectAccess(dependencies, value);
         return ProjectOperationResponseSchema.parse({ ok: true, value });
       } catch (error) {
         return failure(error, request.projectRoot, 'SAVE_FAILED');

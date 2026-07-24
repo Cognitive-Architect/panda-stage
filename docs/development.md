@@ -111,3 +111,35 @@ pnpm verify:day13
 autosave/recovery API surface and absence of `window.require`, renders a
 candidate with project name and timestamp, and writes evidence under
 `docs/evidence/day-13/`.
+
+## Recent projects and close-guard development
+
+- Construct `RecentProjectsService` with
+  `path.join(app.getPath('userData'), 'recent-projects.json')`; never point it
+  inside a `.pandastage` directory.
+- Record successful create/open/save documents. Configuration failure is
+  logged but does not turn a successful project open into a failed open.
+- Missing records must remain visible. Removal is an explicit IPC action.
+- Relocation must open the selected directory and compare project IDs before
+  updating the record. Do not rewrite asset paths or project JSON.
+- Use `PathService` for new Main-process path equality and normalization logic.
+- Keep the close prompt in Electron Main. Renderer does not receive filesystem
+  or process access.
+- Run shutdown cleanup on `will-quit`, not before the dirty close decision.
+
+Day 14 verification:
+
+```powershell
+pnpm typecheck
+pnpm lint
+pnpm test:unit
+pnpm test:integration
+pnpm build
+pnpm verify:day13
+pnpm verify:day14
+```
+
+`verify:day14` renders available and missing recent projects in a real Electron
+window, reopens an available entry through the frozen Preload API, verifies the
+relocation/remove actions and close-choice labels, and writes evidence under
+`docs/evidence/day-14/`.

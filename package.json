@@ -27,6 +27,7 @@
     "verify:day08": "pnpm build && electron scripts/verify-day08.cjs",
     "verify:day09": "pnpm build && electron scripts/verify-day09.cjs",
     "verify:day13": "pnpm build && electron scripts/verify-day13.cjs",
+    "verify:day14": "pnpm build && electron scripts/verify-day14.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",
     "dist": "pnpm build && node scripts/build-distribution.cjs",
     "build": "pnpm typecheck && pnpm build:renderer && pnpm build:electron",

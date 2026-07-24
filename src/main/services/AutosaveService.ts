@@ -146,6 +146,19 @@ export class AutosaveService {
     return this.sessions.size;
   }
 
+  getDirtyProjectSnapshot(): AutosaveTrackRequest | null {
+    for (const session of this.sessions.values()) {
+      if (!session.dirty) continue;
+      return {
+        projectRoot: session.projectRoot,
+        project: structuredClone(session.project),
+        dirty: true,
+        revision: session.revision,
+      };
+    }
+    return null;
+  }
+
   markFormalSaved(
     rawProjectRoot: string,
     rawProject: Project,

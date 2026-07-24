@@ -45,6 +45,10 @@ async function verifyDay13Ui() {
       },
     },
   }));
+  ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({
+    ok: true,
+    entries: [],
+  }));
   const window = await createMainWindow({ show: false });
   try {
     await window.webContents.executeJavaScript(`
@@ -151,6 +155,7 @@ async function verifyDay13Ui() {
     ipcMain.removeHandler(IPC_CHANNELS.AUTOSAVE_UPDATE);
     ipcMain.removeHandler(IPC_CHANNELS.AUTOSAVE_STOP);
     ipcMain.removeHandler(IPC_CHANNELS.RECOVERY_DETECT);
+    ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_LIST);
   }
 }
 

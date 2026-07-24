@@ -130,4 +130,36 @@ describe('project IPC handlers', () => {
     });
     expect(service.save).toHaveBeenCalledWith(projectRoot, project, 7);
   });
+
+  it('records a successful open without failing the open when recent config is unavailable', async () => {
+    const service = projectService();
+    const project = ProjectSchema.parse(exampleProject);
+    const document = {
+      projectRoot: 'D:\\projects\\demo.pandastage',
+      projectFilePath: 'D:\\projects\\demo.pandastage\\project.json',
+      project,
+      migrated: false,
+      sourceVersion: 1 as const,
+    };
+    vi.spyOn(service, 'open').mockResolvedValue(document);
+    const onProjectAccessed = vi
+      .fn()
+      .mockRejectedValue(new Error('Injected recent config failure.'));
+    const onRecentProjectError = vi.fn();
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+      onProjectAccessed,
+      onRecentProjectError,
+    });
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.PROJECT_OPEN)!(
+        event(),
+        { projectRoot: document.projectRoot },
+      ),
+    ).resolves.toEqual({ ok: true, value: document });
+    expect(onProjectAccessed).toHaveBeenCalledWith(document);
+    expect(onRecentProjectError).toHaveBeenCalledOnce();
+  });
 });
