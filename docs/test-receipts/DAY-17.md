@@ -65,6 +65,7 @@ Main-process RSS. FFmpeg decode runs out of process.
 | M1 | PASS | `pnpm verify:m1` |
 | DAY 16 | PASS | `pnpm verify:day16` |
 | DAY 17 REAL | PASS | `pnpm verify:day17` |
+| CI | PASS after push | GitHub Actions runs `pnpm verify:day17` on Windows |
 | ARCH | PASS | media reads/spawn occur only in Main; Preload exposes one validated method |
 
 ## Blade table
