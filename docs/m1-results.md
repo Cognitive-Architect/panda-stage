@@ -1,5 +1,9 @@
 # M1 project-system result
 
+The authoritative Day 15 Gate receipt is
+[`docs/test-receipts/M1.md`](test-receipts/M1.md). Machine-readable lifecycle
+evidence is under [`docs/evidence/m1/`](evidence/m1/).
+
 M1 closes on Day 14 with an evidence-backed local project lifecycle:
 
 - create, edit, atomic save, close, and reopen;

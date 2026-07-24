@@ -160,11 +160,11 @@ same-directory temporary file followed by sync, close, and rename. A successful
 write retains only the newest recovery for that project. A failed write keeps
 the previous recovery and removes the failed temporary file.
 
-Detection runs immediately after an explicit project open, because recent
-projects and automatic last-project reopening remain out of scope. Candidates
-must have a matching project ID, pass the recovery and project schemas, and
-have a timestamp newer than `project.json` mtime. Corrupt, mismatched, and old
-files are not offered.
+Detection runs immediately after an explicit project open, including an
+identity-checked recent-project open; automatic startup reopening remains out
+of scope. Candidates must have a matching project ID, pass the recovery and
+project schemas, and have a timestamp newer than `project.json` mtime. Corrupt,
+mismatched, and old files are not offered.
 
 Restore validates the selected path inside the project's `recovery/` directory
 and returns the project to Renderer memory. `EditorProjectStore.restore()` marks
@@ -206,21 +206,28 @@ Renderer never receives filesystem or Node.js access.
 Recent projects are application configuration, not project data.
 `RecentProjectsService` writes a strict, versioned `recent-projects.json`
 under Electron's `app.getPath('userData')`. The write is atomic and retains up
-to 12 de-duplicated entries. Listing checks whether each `project.json` still
-exists and reports `available` or `missing`; missing entries remain persisted
-until the user explicitly removes or relocates them.
+to 12 de-duplicated entries. Listing reads and parses each `project.json`,
+runs migration and `ProjectSchema` validation, and compares the actual project
+ID with the stored ID. Entries are reported as `available`, `missing`,
+`mismatched`, or `invalid`; non-available entries remain persisted until the
+user explicitly removes or relocates them.
 
 `PathService` is the Main-process normalization boundary for Day 14 project
 paths. On Windows it resolves slash direction, trailing separators, `.`/`..`,
 drive-letter case, and UNC comparison keys. Relocation opens and validates the
-user-selected directory before replacing a missing record, and requires the
-project ID to match. It never rewrites the project document, so asset paths
-remain project-relative.
+user-selected directory before replacing a non-available record, and requires
+the project ID to match. Opening an available recent entry uses a dedicated
+Main IPC request containing `projectRoot` and `expectedProjectId`; Main repeats
+the identity check after opening to close the list-to-click TOCTOU window. A
+mismatch does not update the editor store, autosave session, or recent record.
+Ordinary `record()` also refuses to replace a different project ID at the same
+normalized path. None of these operations rewrites the project document, so
+asset paths remain project-relative.
 
 ```text
 app userData/recent-projects.json
   -> RecentProjectsService (strict config, atomic write, de-duplication)
-  -> recent-projects IPC (list, explicit remove, native-picker relocation)
+  -> recent-projects IPC (list, identity-checked open, remove, relocation)
   -> RecentProjectsPanel
   -> ProjectSessionController (open/track/detect transaction)
 ```
@@ -229,6 +236,12 @@ Dirty close protection reads the latest cloned snapshot from
 `AutosaveService`. `UnsavedCloseController` owns the save/discard/cancel
 decision and joins repeated requests. `UnsavedCloseGuard` prevents both window
 close and application quit until the controller returns `allow-close`.
+Discard is a project operation rather than an immediate close: it stops new
+autosave scheduling, waits for an in-flight write, then removes and verifies
+same-project recovery inside the shared project-root coordinator. Cleanup
+failure returns `discard-failed`, reports an actionable error, rearms autosave,
+and keeps the window open. Successful discard leaves the formal
+`project.json` unchanged and permits no late recovery write.
 Successful save uses the existing project-root coordinator; cancel and save
 failure keep the window open. Shutdown cleanup runs at `will-quit`, after the
 guard has approved exit, so it cannot erase the dirty snapshot before the

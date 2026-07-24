@@ -119,12 +119,21 @@ candidate with project name and timestamp, and writes evidence under
   inside a `.pandastage` directory.
 - Record successful create/open/save documents. Configuration failure is
   logged but does not turn a successful project open into a failed open.
-- Missing records must remain visible. Removal is an explicit IPC action.
+- Missing, mismatched, and invalid records must remain visible. Removal is an
+  explicit IPC action.
+- Recent-project listing must parse/migrate/validate `project.json` and compare
+  its ID with the record. Opening a recent entry must use the dedicated Main
+  request with `expectedProjectId`; do not route it through ordinary open.
 - Relocation must open the selected directory and compare project IDs before
   updating the record. Do not rewrite asset paths or project JSON.
+- Ordinary recent `record()` must reject a different project ID already stored
+  at the same normalized path.
 - Use `PathService` for new Main-process path equality and normalization logic.
 - Keep the close prompt in Electron Main. Renderer does not receive filesystem
   or process access.
+- Discard must stop scheduling, wait for the project recovery write, clean and
+  verify recovery under the shared project-root coordinator, and only then
+  allow close. A cleanup failure must keep the window open.
 - Run shutdown cleanup on `will-quit`, not before the dirty close decision.
 
 Day 14 verification:
@@ -143,3 +152,28 @@ pnpm verify:day14
 window, reopens an available entry through the frozen Preload API, verifies the
 relocation/remove actions and close-choice labels, and writes evidence under
 `docs/evidence/day-14/`.
+
+## M1 project lifecycle gate
+
+Day 15 closes M1 with a reproducible Windows lifecycle gate:
+
+```powershell
+pnpm typecheck
+pnpm lint
+pnpm test:unit
+pnpm test:integration
+pnpm build
+pnpm verify:day13
+pnpm verify:day14
+pnpm verify:m1
+```
+
+`verify:m1` uses real Unicode/space/emoji directories and exercises
+create/save/reopen, an injected atomic-save failure, crash recovery without
+formal-file replacement, directory movement, recent-project relocation,
+relative asset portability, and save/cancel/discard close outcomes. It writes
+machine-readable evidence and an operation log under `docs/evidence/m1/`.
+
+GitHub Actions must run both unit and integration suites. The workflow also
+runs `verify:m1` on `main`, `chore/**`, `feat/**`, and `fix/**` pushes and on
+pull requests, so a branch can obtain CI evidence without requiring a PR.
