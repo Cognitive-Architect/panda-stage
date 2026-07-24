@@ -13,6 +13,13 @@ export const IPC_CHANNELS = Object.freeze({
   PROJECT_CREATE: 'project:create',
   PROJECT_OPEN: 'project:open',
   PROJECT_SAVE: 'project:save',
+  AUTOSAVE_TRACK: 'autosave:track',
+  AUTOSAVE_UPDATE: 'autosave:update',
+  AUTOSAVE_STOP: 'autosave:stop',
+  AUTOSAVE_ERROR: 'autosave:error',
+  RECOVERY_DETECT: 'recovery:detect',
+  RECOVERY_RESTORE: 'recovery:restore',
+  RECOVERY_IGNORE: 'recovery:ignore',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

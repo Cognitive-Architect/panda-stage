@@ -57,3 +57,40 @@ spaces, and emoji. Its fault injection hooks belong at the filesystem
 boundary and cover failure before temporary creation, after sync, and before
 the atomic replace. These hooks are for deterministic verification; production
 uses the service with no injected faults.
+
+## Autosave and recovery development
+
+Use `EditorProjectStore` as the only dirty/revision source. Opening a formal
+project starts clean at revision 0. Every in-memory edit or restore increments
+the revision and marks dirty; an explicit successful formal save marks clean.
+Do not create component-local dirty flags.
+
+Main owns the scheduler and filesystem:
+
+- `autosave.track` starts or refreshes the single project session after Main
+  confirms the root's on-disk project ID.
+- `autosave.update` supplies the latest dirty snapshot and integer revision.
+- `autosave.stop` clears the project timer and waits for an in-flight write.
+- clean state and already-snapshotted revisions do not write.
+- repeated ticks while a write is active join that write; they never overlap.
+
+Recovery detection belongs after a successful explicit project open. A restore
+loads only into `EditorProjectStore` and remains dirty. Ignore validates but
+retains the file. The user-facing Save recovered project action is the only
+path that commits recovered content to `project.json`.
+
+Run Day 13 verification:
+
+```powershell
+pnpm typecheck
+pnpm lint
+pnpm test:unit
+pnpm test:integration
+pnpm build
+pnpm verify:day13
+```
+
+`verify:day13` launches the built Electron renderer, verifies the frozen
+autosave/recovery API surface and absence of `window.require`, renders a
+candidate with project name and timestamp, and writes evidence under
+`docs/evidence/day-13/`.

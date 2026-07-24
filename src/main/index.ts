@@ -12,12 +12,17 @@ import { resolveMediaToolPaths } from './services/production-resources';
 import { runPackagedGateA } from './gate-a-runner';
 import { registerProjectIpcHandlers } from './ipc/register-project-ipc-handlers';
 import { ProjectService } from './services/ProjectService';
+import { registerRecoveryIpcHandlers } from './ipc/register-recovery-ipc-handlers';
+import { AutosaveService } from './services/AutosaveService';
+import { RecoveryService } from './services/RecoveryService';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
 let exportService: ExportService | null = null;
 let removeIpcHandlers: (() => void) | null = null;
 let removeProjectIpcHandlers: (() => void) | null = null;
+let removeRecoveryIpcHandlers: (() => void) | null = null;
+let autosaveService: AutosaveService | null = null;
 
 if (process.env.PANDA_STAGE_GATE_A === '1') {
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -94,9 +99,37 @@ async function initialize(): Promise<void> {
       };
     },
   });
+  const recoveryService = new RecoveryService();
+  const projectService = new ProjectService({
+    onProjectSaved: async (projectRoot, project) => {
+      try {
+        await recoveryService.cleanupAfterFormalSave(
+          projectRoot,
+          project.id,
+        );
+      } catch (error) {
+        console.error('Recovery cleanup after formal save failed.', error);
+      }
+    },
+  });
+  autosaveService = new AutosaveService({
+    recoveryService,
+    onError: (error) => {
+      const window = mainWindow;
+      if (window && !window.isDestroyed()) {
+        window.webContents.send(IPC_CHANNELS.AUTOSAVE_ERROR, error);
+      }
+    },
+  });
   removeProjectIpcHandlers = registerProjectIpcHandlers({
     getMainWindow: () => mainWindow,
-    projectService: new ProjectService(),
+    projectService,
+  });
+  removeRecoveryIpcHandlers = registerRecoveryIpcHandlers({
+    getMainWindow: () => mainWindow,
+    projectService,
+    recoveryService,
+    autosaveService,
   });
 
   await createApplicationWindows();
@@ -142,6 +175,10 @@ app.on('before-quit', () => {
   removeIpcHandlers = null;
   removeProjectIpcHandlers?.();
   removeProjectIpcHandlers = null;
+  removeRecoveryIpcHandlers?.();
+  removeRecoveryIpcHandlers = null;
+  void autosaveService?.stopAll();
+  autosaveService = null;
   hiddenWindowManager.close();
 });
 

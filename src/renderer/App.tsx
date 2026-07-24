@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ExportJobUpdate } from '../shared/export-types';
 import { StagePreview } from './stage/StagePreview';
+import { ProjectRecoveryPanel } from './features/recovery/ProjectRecoveryPanel';
 
 const GATE_PREVIEW_EVENT = 'panda-stage:gate-preview-time';
 
@@ -184,6 +185,7 @@ export function App(): React.JSX.Element {
           {exportError ? ` · ${exportError}` : ''}
         </output>
       </section>
+      <ProjectRecoveryPanel />
       <StagePreview gatePreviewRequest={gatePreviewRequest} />
     </main>
   );

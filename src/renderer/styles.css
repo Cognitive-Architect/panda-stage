@@ -194,6 +194,93 @@ button:disabled {
   font-size: 12px;
 }
 
+.recovery-panel {
+  display: grid;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  padding: 16px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 16px;
+  background: rgb(18 31 23 / 94%);
+  gap: 12px;
+}
+
+.recovery-heading-row,
+.recovery-open-row,
+.recovery-status-row,
+.recovery-prompt > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recovery-heading-row,
+.recovery-status-row {
+  justify-content: space-between;
+}
+
+.recovery-heading-row h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.recovery-open-row label {
+  display: grid;
+  flex: 1;
+  color: #a9b8ae;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.recovery-open-row input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgb(154 216 172 / 25%);
+  border-radius: 8px;
+  color: #eef6f0;
+  background: #0b100e;
+  font: inherit;
+}
+
+.recovery-panel button {
+  padding: 8px 12px;
+}
+
+.clean-state,
+.dirty-state {
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.clean-state {
+  color: #a9b8ae;
+  background: rgb(255 255 255 / 6%);
+}
+
+.dirty-state {
+  color: #ffe6ad;
+  background: rgb(155 104 18 / 28%);
+}
+
+.recovery-prompt {
+  display: grid;
+  padding: 12px;
+  border: 1px solid rgb(233 181 80 / 38%);
+  border-radius: 12px;
+  color: #f8e7bd;
+  background: rgb(101 66 15 / 24%);
+  gap: 6px;
+}
+
+.recovery-path,
+.recovery-status-row output {
+  color: #9aaca0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
 .preview-panel {
   max-width: 1180px;
   margin: 0 auto;

@@ -1,0 +1,29 @@
+{
+  "heading": "Crash recovery",
+  "defaultState": "Clean",
+  "inputPlaceholder": "D:\\Projects\\story.pandastage",
+  "actions": [
+    "Open and check recovery",
+    "Restore in memory",
+    "Ignore and retain file",
+    "Save recovered project"
+  ],
+  "candidateProject": "Recovered crash draft",
+  "candidateTime": "Recovery from 2100/1/1 08:00:00",
+  "candidateActions": [
+    "Restore in memory",
+    "Ignore and retain file"
+  ],
+  "autosaveApi": [
+    "onError",
+    "stop",
+    "track",
+    "update"
+  ],
+  "recoveryApi": [
+    "detect",
+    "ignore",
+    "restore"
+  ],
+  "rendererHasNodeRequire": false
+}

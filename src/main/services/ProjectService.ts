@@ -27,6 +27,11 @@ export interface ProjectServiceOptions {
   fileSystem?: ProjectFileSystemService;
   now?: () => Date;
   createId?: () => string;
+  onProjectSaved?: (
+    projectRoot: string,
+    project: Project,
+  ) => void | Promise<void>;
+  onPostSaveError?: (error: unknown) => void;
 }
 
 export class ProjectServiceError extends Error {
@@ -45,11 +50,17 @@ export class ProjectService {
   private readonly fileSystem: ProjectFileSystemService;
   private readonly now: () => Date;
   private readonly createId: () => string;
+  private readonly onProjectSaved:
+    | ((projectRoot: string, project: Project) => void | Promise<void>)
+    | null;
+  private readonly onPostSaveError: (error: unknown) => void;
 
   constructor(options: ProjectServiceOptions = {}) {
     this.fileSystem = options.fileSystem ?? new ProjectFileSystemService();
     this.now = options.now ?? (() => new Date());
     this.createId = options.createId ?? randomUUID;
+    this.onProjectSaved = options.onProjectSaved ?? null;
+    this.onPostSaveError = options.onPostSaveError ?? (() => undefined);
   }
 
   async create(
@@ -169,6 +180,11 @@ export class ProjectService {
         projectRoot,
         this.serialize(project),
       );
+      try {
+        await this.onProjectSaved?.(projectRoot, project);
+      } catch (error) {
+        this.onPostSaveError(error);
+      }
       return this.document(projectRoot, project, false, 1);
     } catch (error) {
       throw this.mapError('save', projectRoot, error);
