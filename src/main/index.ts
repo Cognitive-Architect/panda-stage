@@ -1,4 +1,4 @@
-import { app, type BrowserWindow } from 'electron';
+import { app, dialog, type BrowserWindow } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
@@ -16,6 +16,14 @@ import { registerRecoveryIpcHandlers } from './ipc/register-recovery-ipc-handler
 import { AutosaveService } from './services/AutosaveService';
 import { RecoveryService } from './services/RecoveryService';
 import { ProjectOperationCoordinator } from './services/ProjectOperationCoordinator';
+import { PathService } from './services/PathService';
+import { RecentProjectsService } from './services/RecentProjectsService';
+import { registerRecentProjectsIpcHandlers } from './ipc/register-recent-projects-ipc-handlers';
+import {
+  UnsavedCloseController,
+  createUnsavedCloseDialogOptions,
+} from './services/UnsavedCloseController';
+import { UnsavedCloseGuard } from './windows/unsaved-close-guard';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -23,16 +31,33 @@ let exportService: ExportService | null = null;
 let removeIpcHandlers: (() => void) | null = null;
 let removeProjectIpcHandlers: (() => void) | null = null;
 let removeRecoveryIpcHandlers: (() => void) | null = null;
+let removeRecentProjectsIpcHandlers: (() => void) | null = null;
 let autosaveService: AutosaveService | null = null;
+let projectService: ProjectService | null = null;
+let unsavedCloseController: UnsavedCloseController | null = null;
+let unsavedCloseGuard: UnsavedCloseGuard | null = null;
 
 if (process.env.PANDA_STAGE_GATE_A === '1') {
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 }
 
 async function createApplicationWindows(): Promise<void> {
-  mainWindow = await createMainWindow();
-  mainWindow.once('closed', () => {
-    mainWindow = null;
+  const window = await createMainWindow();
+  mainWindow = window;
+  if (unsavedCloseController) {
+    const guard = new UnsavedCloseGuard({
+      controller: unsavedCloseController,
+      closeWindow: () => {
+        if (!window.isDestroyed()) window.close();
+      },
+      quitApplication: () => app.quit(),
+    });
+    unsavedCloseGuard = guard;
+    window.on('close', (event) => guard.handleWindowClose(event));
+  }
+  window.once('closed', () => {
+    if (mainWindow === window) mainWindow = null;
+    if (unsavedCloseGuard) unsavedCloseGuard = null;
     hiddenWindowManager.close();
   });
 
@@ -101,6 +126,14 @@ async function initialize(): Promise<void> {
     },
   });
   const recoveryService = new RecoveryService();
+  const pathService = new PathService();
+  const recentProjectsService = new RecentProjectsService({
+    configurationFilePath: path.join(
+      app.getPath('userData'),
+      'recent-projects.json',
+    ),
+    pathService,
+  });
   const projectOperationCoordinator = new ProjectOperationCoordinator();
   autosaveService = new AutosaveService({
     recoveryService,
@@ -112,8 +145,9 @@ async function initialize(): Promise<void> {
       }
     },
   });
-  const projectService = new ProjectService({
+  projectService = new ProjectService({
     coordinator: projectOperationCoordinator,
+    pathService,
     onProjectSaved: async (projectRoot, project, revision) => {
       try {
         await recoveryService.cleanupAfterFormalSave(
@@ -139,12 +173,78 @@ async function initialize(): Promise<void> {
   removeProjectIpcHandlers = registerProjectIpcHandlers({
     getMainWindow: () => mainWindow,
     projectService,
+    onProjectAccessed: (document) =>
+      recentProjectsService.record(document).then(() => undefined),
+    onRecentProjectError: (error) => {
+      console.error('Recent project update failed.', error);
+    },
   });
   removeRecoveryIpcHandlers = registerRecoveryIpcHandlers({
     getMainWindow: () => mainWindow,
     projectService,
     recoveryService,
     autosaveService,
+  });
+  removeRecentProjectsIpcHandlers = registerRecentProjectsIpcHandlers({
+    getMainWindow: () => mainWindow,
+    projectService,
+    recentProjectsService,
+    selectProjectDirectory: async (window) => {
+      const selection = await dialog.showOpenDialog(window, {
+        title: '重新定位 Panda Stage 项目',
+        buttonLabel: '选择项目目录',
+        properties: ['openDirectory'],
+      });
+      return selection.canceled ? null : selection.filePaths[0] ?? null;
+    },
+  });
+  unsavedCloseController = new UnsavedCloseController({
+    getDirtyProject: () =>
+      autosaveService?.getDirtyProjectSnapshot() ?? null,
+    prompt: async (project) => {
+      const window = mainWindow;
+      if (!window || window.isDestroyed()) return 'cancel';
+      const result = await dialog.showMessageBox(
+        window,
+        createUnsavedCloseDialogOptions(project.project.name),
+      );
+      return result.response === 0
+        ? 'save'
+        : result.response === 1
+          ? 'discard'
+          : 'cancel';
+    },
+    save: async (snapshot) => {
+      if (!projectService) throw new Error('Project service is unavailable.');
+      await projectService.save(
+        snapshot.projectRoot,
+        snapshot.project,
+        snapshot.revision,
+      );
+    },
+    discard: async (snapshot) => {
+      if (!autosaveService) {
+        throw new Error('Autosave service is unavailable.');
+      }
+      await autosaveService.discard(
+        snapshot.projectRoot,
+        snapshot.project.id,
+      );
+    },
+    reportSaveFailure: (snapshot, error) => {
+      console.error('Save before close failed.', error);
+      dialog.showErrorBox(
+        '无法保存项目',
+        `“${snapshot.project.name}”保存失败，窗口将保持打开。请检查磁盘和目录权限后重试。`,
+      );
+    },
+    reportDiscardFailure: (snapshot, error) => {
+      console.error('Discard before close failed.', error);
+      dialog.showErrorBox(
+        '无法放弃修改并安全退出',
+        `“${snapshot.project.name}”的恢复数据清理失败，窗口将保持打开。请检查磁盘和目录权限后重试。`,
+      );
+    },
   });
 
   await createApplicationWindows();
@@ -184,7 +284,11 @@ app.on('activate', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  unsavedCloseGuard?.handleBeforeQuit(event);
+});
+
+app.on('will-quit', () => {
   exportService?.cancelActiveJob();
   removeIpcHandlers?.();
   removeIpcHandlers = null;
@@ -192,8 +296,13 @@ app.on('before-quit', () => {
   removeProjectIpcHandlers = null;
   removeRecoveryIpcHandlers?.();
   removeRecoveryIpcHandlers = null;
+  removeRecentProjectsIpcHandlers?.();
+  removeRecentProjectsIpcHandlers = null;
   void autosaveService?.stopAll();
   autosaveService = null;
+  projectService = null;
+  unsavedCloseController = null;
+  unsavedCloseGuard = null;
   hiddenWindowManager.close();
 });
 

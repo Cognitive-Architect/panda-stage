@@ -38,6 +38,18 @@ import {
   type RecoveryError,
   type RecoverySelectionRequest,
 } from '../shared/recovery-api';
+import {
+  RecentProjectsListRequestSchema,
+  RecentProjectsListResponseSchema,
+  RecentProjectsOpenRequestSchema,
+  RecentProjectsOpenResponseSchema,
+  RecentProjectsRelocateRequestSchema,
+  RecentProjectsRelocateResponseSchema,
+  RecentProjectsRemoveRequestSchema,
+  type RecentProjectsRelocateRequest,
+  type RecentProjectsOpenRequest,
+  type RecentProjectsRemoveRequest,
+} from '../shared/recent-projects-api';
 
 type Unsubscribe = () => void;
 
@@ -76,6 +88,41 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return ProjectOperationResponseSchema.parse(response);
+    },
+  }),
+  recentProjects: Object.freeze({
+    list: async () => {
+      const request = RecentProjectsListRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.RECENT_PROJECTS_LIST,
+        request,
+      );
+      return RecentProjectsListResponseSchema.parse(response);
+    },
+    open: async (rawRequest: RecentProjectsOpenRequest) => {
+      const request = RecentProjectsOpenRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.RECENT_PROJECTS_OPEN,
+        request,
+      );
+      return RecentProjectsOpenResponseSchema.parse(response);
+    },
+    remove: async (rawRequest: RecentProjectsRemoveRequest) => {
+      const request = RecentProjectsRemoveRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.RECENT_PROJECTS_REMOVE,
+        request,
+      );
+      return RecentProjectsListResponseSchema.parse(response);
+    },
+    relocate: async (rawRequest: RecentProjectsRelocateRequest) => {
+      const request =
+        RecentProjectsRelocateRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.RECENT_PROJECTS_RELOCATE,
+        request,
+      );
+      return RecentProjectsRelocateResponseSchema.parse(response);
     },
   }),
   autosave: Object.freeze({

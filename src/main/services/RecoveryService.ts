@@ -187,6 +187,31 @@ export class RecoveryService {
     );
   }
 
+  async assertDiscarded(
+    rawProjectRoot: string,
+    rawProject: Project,
+  ): Promise<void> {
+    const projectRoot = path.resolve(rawProjectRoot);
+    const project = ProjectSchema.parse(rawProject);
+    try {
+      const names = await this.fileSystem.listRecoveryFiles(projectRoot);
+      const artifacts = names.filter((name) => name.includes(project.id));
+      const latest = await this.detectLatest(projectRoot, project);
+      if (artifacts.length > 0 || latest !== null) {
+        throw new Error(
+          `Recovery artifacts remain: ${artifacts.join(', ') || latest?.recoveryFilePath}`,
+        );
+      }
+    } catch (error) {
+      throw this.mapError(
+        'RECOVERY_CLEANUP_FAILED',
+        projectRoot,
+        'verify discarded recovery snapshots',
+        error,
+      );
+    }
+  }
+
   private fileName(projectId: string, savedAtMs: number): string {
     return `${projectId}.${savedAtMs}.recovery.json`;
   }

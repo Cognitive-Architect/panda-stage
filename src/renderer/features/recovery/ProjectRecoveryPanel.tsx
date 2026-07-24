@@ -7,6 +7,7 @@ import {
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { ProjectSessionController } from './ProjectSessionController';
 import { saveCurrentProject } from './saveCurrentProject';
+import { RecentProjectsPanel } from '../welcome/RecentProjectsPanel';
 
 function failureMessage(
   response: { ok: boolean; error?: { message: string } },
@@ -26,6 +27,11 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
         {
           open: (projectRoot) =>
             window.pandaStage.project.open({ projectRoot }),
+          openRecent: (projectRoot, expectedProjectId) =>
+            window.pandaStage.recentProjects.open({
+              projectRoot,
+              expectedProjectId,
+            }),
           track: (request) => window.pandaStage.autosave.track(request),
           stop: (projectRoot) =>
             window.pandaStage.autosave.stop(projectRoot),
@@ -44,6 +50,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
     'Open a .pandastage project to check crash recovery.',
   );
   const [busy, setBusy] = useState(false);
+  const [recentRefreshToken, setRecentRefreshToken] = useState(0);
 
   useEffect(() => window.pandaStage.autosave.onError((error) => {
     setStatus(error.message);
@@ -74,18 +81,40 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
     return null;
   }
 
+  const switchToProject = async (projectRoot: string): Promise<void> => {
+    const nextSession = await sessionController.switchProject(projectRoot);
+    setSessionSnapshot(nextSession);
+    setRecentRefreshToken((current) => current + 1);
+    setStatus(
+      nextSession.recoveryCandidate
+        ? 'A newer crash-recovery snapshot is available.'
+        : 'Project opened. No newer recovery snapshot was found.',
+    );
+  };
+
+  const switchToRecentProject = async (
+    projectRoot: string,
+    expectedProjectId: string,
+  ): Promise<void> => {
+    const nextSession = await sessionController.switchRecentProject(
+      projectRoot,
+      expectedProjectId,
+    );
+    setSessionSnapshot(nextSession);
+    setRecentRefreshToken((current) => current + 1);
+    setStatus(
+      nextSession.recoveryCandidate
+        ? 'A newer crash-recovery snapshot is available.'
+        : 'Project opened from recent list. No newer recovery snapshot was found.',
+    );
+  };
+
   const openProject = async (): Promise<void> => {
     const projectRoot = projectRootInput.trim();
     if (!projectRoot) return;
     setBusy(true);
     try {
-      const nextSession = await sessionController.switchProject(projectRoot);
-      setSessionSnapshot(nextSession);
-      setStatus(
-        nextSession.recoveryCandidate
-          ? 'A newer crash-recovery snapshot is available.'
-          : 'Project opened. No newer recovery snapshot was found.',
-      );
+      await switchToProject(projectRoot);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Open failed.');
     } finally {
@@ -162,7 +191,12 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
   };
 
   return (
-    <section className="recovery-panel" aria-labelledby="recovery-heading">
+    <>
+      <RecentProjectsPanel
+        onOpenProject={switchToRecentProject}
+        refreshToken={recentRefreshToken}
+      />
+      <section className="recovery-panel" aria-labelledby="recovery-heading">
       <div className="recovery-heading-row">
         <div>
           <p className="eyebrow">Day 13 safety</p>
@@ -229,6 +263,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
           Save recovered project
         </button>
       </div>
-    </section>
+      </section>
+    </>
   );
 }

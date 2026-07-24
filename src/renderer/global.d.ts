@@ -10,6 +10,14 @@ import type {
   ExportCancelRenderRequest,
 } from '../shared/export-types';
 import type {
+  RecentProjectsListResponse,
+  RecentProjectsOpenRequest,
+  RecentProjectsOpenResponse,
+  RecentProjectsRelocateRequest,
+  RecentProjectsRelocateResponse,
+  RecentProjectsRemoveRequest,
+} from '../shared/recent-projects-api';
+import type {
   AutosaveTrackRequest,
   AutosaveUpdateRequest,
   RecoveryAcknowledgeResponse,
@@ -48,6 +56,18 @@ declare global {
         save: (
           request: ProjectSaveRequest,
         ) => Promise<ProjectOperationResponse>;
+      };
+      recentProjects: {
+        list: () => Promise<RecentProjectsListResponse>;
+        open: (
+          request: RecentProjectsOpenRequest,
+        ) => Promise<RecentProjectsOpenResponse>;
+        remove: (
+          request: RecentProjectsRemoveRequest,
+        ) => Promise<RecentProjectsListResponse>;
+        relocate: (
+          request: RecentProjectsRelocateRequest,
+        ) => Promise<RecentProjectsRelocateResponse>;
       };
       autosave: {
         track: (

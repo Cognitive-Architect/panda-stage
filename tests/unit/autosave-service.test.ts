@@ -188,4 +188,35 @@ describe('AutosaveService', () => {
     expect(service.trackedProjectCount()).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('provides the latest dirty snapshot to the close guard', async () => {
+    const service = new AutosaveService({
+      recoveryService: recoveryService(vi.fn().mockResolvedValue({})),
+    });
+    service.track({
+      projectRoot: PROJECT_ROOT,
+      project: project('Clean'),
+      dirty: false,
+      revision: 0,
+    });
+    expect(service.getDirtyProjectSnapshot()).toBeNull();
+    service.update({
+      projectRoot: PROJECT_ROOT,
+      project: project('Unsaved close revision'),
+      dirty: true,
+      revision: 5,
+    });
+
+    const snapshot = service.getDirtyProjectSnapshot();
+    expect(snapshot).toMatchObject({
+      projectRoot: PROJECT_ROOT,
+      project: { name: 'Unsaved close revision' },
+      dirty: true,
+      revision: 5,
+    });
+    expect(snapshot?.project).not.toBe(
+      service.getDirtyProjectSnapshot()?.project,
+    );
+    await service.stopAll();
+  });
 });

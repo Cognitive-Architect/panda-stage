@@ -1,0 +1,95 @@
+{
+  "heading": "最近项目",
+  "count": "4/12",
+  "projects": [
+    {
+      "name": "可用的熊猫项目",
+      "path": "D:\\项目\\可用 熊猫.pandastage",
+      "state": "可用 · 2026/7/24 14:00:00",
+      "actions": [
+        {
+          "label": "打开",
+          "disabled": false
+        },
+        {
+          "label": "移除记录",
+          "disabled": false
+        }
+      ]
+    },
+    {
+      "name": "等待重新定位的项目",
+      "path": "D:\\项目\\已移动 熊猫.pandastage",
+      "state": "路径已失效 · 2026/7/24 13:00:00",
+      "actions": [
+        {
+          "label": "打开",
+          "disabled": true
+        },
+        {
+          "label": "重新定位",
+          "disabled": false
+        },
+        {
+          "label": "移除记录",
+          "disabled": false
+        }
+      ]
+    },
+    {
+      "name": "身份冲突项目",
+      "path": "D:\\项目\\身份冲突.pandastage",
+      "state": "项目身份不匹配 · 2026/7/24 12:00:00",
+      "actions": [
+        {
+          "label": "打开",
+          "disabled": true
+        },
+        {
+          "label": "重新定位",
+          "disabled": false
+        },
+        {
+          "label": "移除记录",
+          "disabled": false
+        }
+      ]
+    },
+    {
+      "name": "文件损坏项目",
+      "path": "D:\\项目\\文件损坏.pandastage",
+      "state": "项目文件无效 · 2026/7/24 11:00:00",
+      "actions": [
+        {
+          "label": "打开",
+          "disabled": true
+        },
+        {
+          "label": "重新定位",
+          "disabled": false
+        },
+        {
+          "label": "移除记录",
+          "disabled": false
+        }
+      ]
+    }
+  ],
+  "recentProjectsApi": [
+    "list",
+    "open",
+    "relocate",
+    "remove"
+  ],
+  "recoveryStatus": "Project opened from recent list. No newer recovery snapshot was found.",
+  "rendererHasNodeRequire": false,
+  "openedRecentRoot": "D:\\项目\\可用 熊猫.pandastage",
+  "recentProjectsConfigPath": "C:\\Users\\admin\\AppData\\Roaming\\Electron\\recent-projects.json",
+  "configOutsideProject": true,
+  "closeActions": [
+    "保存并退出",
+    "不保存",
+    "取消"
+  ],
+  "closeCancelId": 2
+}

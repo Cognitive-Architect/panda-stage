@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
 import { ZodError } from 'zod';
 import {
   PROJECT_FPS,
@@ -23,6 +22,7 @@ import {
   ProjectRootAlreadyExistsError,
 } from './ProjectFileSystemService';
 import { ProjectOperationCoordinator } from './ProjectOperationCoordinator';
+import { PathService } from './PathService';
 
 export interface ProjectServiceOptions {
   fileSystem?: ProjectFileSystemService;
@@ -35,6 +35,7 @@ export interface ProjectServiceOptions {
   ) => void | Promise<void>;
   onPostSaveError?: (error: unknown) => void;
   coordinator?: ProjectOperationCoordinator;
+  pathService?: PathService;
 }
 
 export class ProjectServiceError extends Error {
@@ -62,6 +63,7 @@ export class ProjectService {
     | null;
   private readonly onPostSaveError: (error: unknown) => void;
   private readonly coordinator: ProjectOperationCoordinator;
+  private readonly pathService: PathService;
 
   constructor(options: ProjectServiceOptions = {}) {
     this.fileSystem = options.fileSystem ?? new ProjectFileSystemService();
@@ -71,6 +73,7 @@ export class ProjectService {
     this.onPostSaveError = options.onPostSaveError ?? (() => undefined);
     this.coordinator =
       options.coordinator ?? new ProjectOperationCoordinator();
+    this.pathService = options.pathService ?? new PathService();
   }
 
   async create(
@@ -214,10 +217,13 @@ export class ProjectService {
 
   private resolveProjectRoot(rawProjectRoot: string): string {
     const trimmedRoot = rawProjectRoot.trim();
-    const projectRoot = path.resolve(trimmedRoot);
+    const projectRoot = this.pathService.resolve(trimmedRoot || '.');
     if (
       !trimmedRoot ||
-      !path.basename(projectRoot).toLowerCase().endsWith('.pandastage')
+      !this.pathService
+        .basename(projectRoot)
+        .toLowerCase()
+        .endsWith('.pandastage')
     ) {
       throw new ProjectServiceError(
         'INVALID_PROJECT_ROOT',

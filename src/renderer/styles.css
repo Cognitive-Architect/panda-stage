@@ -205,6 +205,72 @@ button:disabled {
   gap: 12px;
 }
 
+.recent-projects-panel {
+  display: grid;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  padding: 16px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 16px;
+  background: rgb(18 31 23 / 94%);
+  gap: 12px;
+}
+
+.recent-projects-heading,
+.recent-projects-list li,
+.recent-project-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recent-projects-heading,
+.recent-projects-list li {
+  justify-content: space-between;
+}
+
+.recent-projects-heading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.recent-projects-heading > span,
+.recent-projects-list li > div > span,
+.recent-projects-status,
+.recent-projects-empty {
+  color: #9aaca0;
+  font-size: 12px;
+}
+
+.recent-projects-list {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 8px;
+  list-style: none;
+}
+
+.recent-projects-list li {
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.recent-projects-list li > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.recent-project-path {
+  overflow-wrap: anywhere;
+}
+
+.recent-project-actions {
+  flex: 0 0 auto;
+}
+
 .recovery-heading-row,
 .recovery-open-row,
 .recovery-status-row,

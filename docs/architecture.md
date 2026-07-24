@@ -200,3 +200,36 @@ reach temporary tracking or rollback logic for the already-open project.
 Switching projects, Renderer unmount, and application quit release timers.
 Periodic write errors are sent through the read-only `autosave:error` event.
 Renderer never receives filesystem or Node.js access.
+
+## Day 14 recent projects, close guard, and relocation
+
+Recent projects are application configuration, not project data.
+`RecentProjectsService` writes a strict, versioned `recent-projects.json`
+under Electron's `app.getPath('userData')`. The write is atomic and retains up
+to 12 de-duplicated entries. Listing checks whether each `project.json` still
+exists and reports `available` or `missing`; missing entries remain persisted
+until the user explicitly removes or relocates them.
+
+`PathService` is the Main-process normalization boundary for Day 14 project
+paths. On Windows it resolves slash direction, trailing separators, `.`/`..`,
+drive-letter case, and UNC comparison keys. Relocation opens and validates the
+user-selected directory before replacing a missing record, and requires the
+project ID to match. It never rewrites the project document, so asset paths
+remain project-relative.
+
+```text
+app userData/recent-projects.json
+  -> RecentProjectsService (strict config, atomic write, de-duplication)
+  -> recent-projects IPC (list, explicit remove, native-picker relocation)
+  -> RecentProjectsPanel
+  -> ProjectSessionController (open/track/detect transaction)
+```
+
+Dirty close protection reads the latest cloned snapshot from
+`AutosaveService`. `UnsavedCloseController` owns the save/discard/cancel
+decision and joins repeated requests. `UnsavedCloseGuard` prevents both window
+close and application quit until the controller returns `allow-close`.
+Successful save uses the existing project-root coordinator; cancel and save
+failure keep the window open. Shutdown cleanup runs at `will-quit`, after the
+guard has approved exit, so it cannot erase the dirty snapshot before the
+decision.
