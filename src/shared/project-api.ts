@@ -40,6 +40,7 @@ export const ProjectSaveRequestSchema = z
   .object({
     projectRoot: FileSystemPathSchema,
     project: ProjectSchema,
+    revision: z.number().int().nonnegative(),
   })
   .strict();
 

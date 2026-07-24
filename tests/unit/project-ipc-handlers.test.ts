@@ -120,7 +120,7 @@ describe('project IPC handlers', () => {
     const handler = electronMocks.handlers.get(IPC_CHANNELS.PROJECT_SAVE)!;
 
     await expect(
-      handler(event(), { projectRoot, project }),
+      handler(event(), { projectRoot, project, revision: 7 }),
     ).resolves.toMatchObject({
       ok: false,
       error: {
@@ -128,5 +128,6 @@ describe('project IPC handlers', () => {
         projectRoot,
       },
     });
+    expect(service.save).toHaveBeenCalledWith(projectRoot, project, 7);
   });
 });

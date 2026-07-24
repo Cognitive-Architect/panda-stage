@@ -135,3 +135,68 @@ the supported platform.
 Persisted asset paths are project-relative and are enforced by
 `ProjectSchema`; drive-rooted, slash-rooted, and `..` traversal paths are
 rejected.
+## Day 13 autosave and crash recovery
+
+Autosave is a recovery mechanism, not a replacement for formal save.
+`AutosaveService` runs in Electron Main and owns one 30-second interval per
+tracked project root. Renderer sends a runtime-validated snapshot containing
+the formal project, the central editor `dirty` state, and an integer revision.
+Clean snapshots never write. A dirty revision is written once; later timer
+ticks skip it until a newer revision arrives.
+
+```text
+EditorProjectStore (single dirty/revision source)
+  -> frozen Preload autosave.track/update/stop
+  -> trusted-window IPC + on-disk project-ID validation
+  -> AutosaveService (one timer and one in-flight write per project root)
+  -> RecoveryService (schema, detection, restore/ignore, retention)
+  -> RecoveryFileSystemService
+  -> recovery/<project-id>.<saved-at-ms>.recovery.json
+```
+
+Recovery files use a strict envelope containing `schemaVersion`, `projectId`,
+integer `savedAtMs`, and a complete `ProjectSchema` project. Writes use a
+same-directory temporary file followed by sync, close, and rename. A successful
+write retains only the newest recovery for that project. A failed write keeps
+the previous recovery and removes the failed temporary file.
+
+Detection runs immediately after an explicit project open, because recent
+projects and automatic last-project reopening remain out of scope. Candidates
+must have a matching project ID, pass the recovery and project schemas, and
+have a timestamp newer than `project.json` mtime. Corrupt, mismatched, and old
+files are not offered.
+
+Restore validates the selected path inside the project's `recovery/` directory
+and returns the project to Renderer memory. `EditorProjectStore.restore()` marks
+it dirty; neither restore nor ignore writes or deletes `project.json`. Ignore
+retains the evidence file. Only an explicit formal `project.save` replaces
+`project.json`; after that commit, same-project recovery files are cleaned.
+
+Formal save and recovery writes share a per-project-root operation coordinator.
+The coordinator waits for an in-flight recovery write before replacing
+`project.json`, then keeps recovery cleanup and autosave session reconciliation
+inside the same critical section. It does not serialize unrelated project
+roots. A failed formal write never runs cleanup or marks the live session clean.
+Renderer save acknowledgement is revision-aware as well. The save workflow
+captures the request revision before awaiting Main. A matching response may
+refresh the saved project and mark the store clean; a response older than the
+current editor revision leaves the newer in-memory project dirty, while a
+response from a future revision is rejected as an invalid state.
+
+Project switching is a Renderer-owned transaction:
+
+1. Open and validate the requested project without changing the editor store.
+2. Start its temporary autosave session and detect recovery.
+3. Stop the old session.
+4. Commit the prepared project, tracked root, and candidate together.
+
+Failures before commit remove the temporary session and preserve or re-track
+the old session. Reopening the current dirty path is rejected explicitly, so it
+cannot duplicate a timer or discard unsaved state. The controller performs this
+same-project check both before open for simple string aliases and after open
+using Main's resolved `projectRoot`. Therefore `.` and `..` aliases cannot
+reach temporary tracking or rollback logic for the already-open project.
+
+Switching projects, Renderer unmount, and application quit release timers.
+Periodic write errors are sent through the read-only `autosave:error` event.
+Renderer never receives filesystem or Node.js access.

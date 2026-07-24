@@ -32,6 +32,13 @@ describe('IPC channel registry', () => {
       'project:create',
       'project:open',
       'project:save',
+      'autosave:track',
+      'autosave:update',
+      'autosave:stop',
+      'autosave:error',
+      'recovery:detect',
+      'recovery:restore',
+      'recovery:ignore',
     ]);
   });
 });

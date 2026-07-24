@@ -10,6 +10,16 @@ import type {
   ExportCancelRenderRequest,
 } from '../shared/export-types';
 import type {
+  AutosaveTrackRequest,
+  AutosaveUpdateRequest,
+  RecoveryAcknowledgeResponse,
+  RecoveryDetectResponse,
+  RecoveryError,
+  RecoveryIgnoreResponse,
+  RecoveryRestoreResponse,
+  RecoverySelectionRequest,
+} from '../shared/recovery-api';
+import type {
   ProjectCreateRequest,
   ProjectOpenRequest,
   ProjectOperationResponse,
@@ -38,6 +48,29 @@ declare global {
         save: (
           request: ProjectSaveRequest,
         ) => Promise<ProjectOperationResponse>;
+      };
+      autosave: {
+        track: (
+          request: AutosaveTrackRequest,
+        ) => Promise<RecoveryAcknowledgeResponse>;
+        update: (
+          request: AutosaveUpdateRequest,
+        ) => Promise<RecoveryAcknowledgeResponse>;
+        stop: (
+          projectRoot: string,
+        ) => Promise<RecoveryAcknowledgeResponse>;
+        onError: (
+          callback: (error: RecoveryError) => void,
+        ) => () => void;
+      };
+      recovery: {
+        detect: (projectRoot: string) => Promise<RecoveryDetectResponse>;
+        restore: (
+          request: RecoverySelectionRequest,
+        ) => Promise<RecoveryRestoreResponse>;
+        ignore: (
+          request: RecoverySelectionRequest,
+        ) => Promise<RecoveryIgnoreResponse>;
       };
       export: {
         startProbe: (

@@ -1,0 +1,46 @@
+{
+  "issue": 20,
+  "status": "PASS",
+  "branch": "feat/day-13-autosave-recovery",
+  "unitTests": {
+    "files": 27,
+    "passed": 162,
+    "failed": 0
+  },
+  "integrationTests": {
+    "files": 2,
+    "passed": 21,
+    "failed": 0
+  },
+  "revisionAwareAcknowledgement": {
+    "matchingRevisionMarksClean": true,
+    "matchingRevisionDoesNotRegressRevision": true,
+    "staleRevisionPreservesNewerProject": true,
+    "staleRevisionPreservesDirty": true,
+    "staleRevisionPreservesCurrentRevision": true,
+    "futureRevisionRejected": true,
+    "requestTimeRevisionCaptured": true,
+    "delayedRevision2ResponsePreservedRevision3": true
+  },
+  "normalizedReopenAliases": {
+    "requestedRoot": "D:\\projects\\temp\\..\\a.pandastage",
+    "mainReturnedRoot": "D:\\projects\\a.pandastage",
+    "dirtyReopenError": "CURRENT_PROJECT_DIRTY",
+    "dirtyReopenTrackCallsAdded": 0,
+    "dirtyReopenStopCalls": 0,
+    "dirtyReopenSessions": 1,
+    "cleanReopenTrackCallsAdded": 0,
+    "cleanReopenStopCalls": 0,
+    "cleanReopenDetectsAgain": true,
+    "cleanReopenSessions": 1,
+    "caseSlashTrailingSlashProtection": "PASS"
+  },
+  "gates": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "unit": "PASS",
+    "integration": "PASS",
+    "build": "PASS",
+    "verifyDay13": "PASS"
+  }
+}

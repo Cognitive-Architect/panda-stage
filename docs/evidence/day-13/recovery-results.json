@@ -1,0 +1,17 @@
+{
+  "day": 13,
+  "baselineSha": "01651213d7d0e9a0593f35f7ba14b663eab3062b",
+  "autosaveIntervalMs": 30000,
+  "recoveryFile": "a0000000-0000-4000-8000-000000000001.4102444800000.recovery.json",
+  "formalProjectSha256BeforeRestore": "4208705efec87e01dfac69b4288dd9b36c5805165f5f5bcbdbc5aa2531aaa677",
+  "formalProjectSha256AfterRestore": "4208705efec87e01dfac69b4288dd9b36c5805165f5f5bcbdbc5aa2531aaa677",
+  "restoredDirty": true,
+  "ignoreRetainsRecovery": true,
+  "formalSaveCleansRecovery": true,
+  "retentionCountPerProject": 1,
+  "failedWriteTemporaryFiles": 0,
+  "corruptRecoveryOffered": false,
+  "oldRecoveryOffered": false,
+  "mismatchedRecoveryOffered": false,
+  "missingProjectRootCreated": false
+}

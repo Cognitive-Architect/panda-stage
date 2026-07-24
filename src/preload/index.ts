@@ -22,6 +22,22 @@ import {
   type ProjectOpenRequest,
   type ProjectSaveRequest,
 } from '../shared/project-api';
+import {
+  AutosaveErrorEventSchema,
+  AutosaveStopRequestSchema,
+  AutosaveTrackRequestSchema,
+  AutosaveUpdateRequestSchema,
+  RecoveryAcknowledgeResponseSchema,
+  RecoveryDetectRequestSchema,
+  RecoveryDetectResponseSchema,
+  RecoveryIgnoreResponseSchema,
+  RecoveryRestoreResponseSchema,
+  RecoverySelectionRequestSchema,
+  type AutosaveTrackRequest,
+  type AutosaveUpdateRequest,
+  type RecoveryError,
+  type RecoverySelectionRequest,
+} from '../shared/recovery-api';
 
 type Unsubscribe = () => void;
 
@@ -60,6 +76,67 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return ProjectOperationResponseSchema.parse(response);
+    },
+  }),
+  autosave: Object.freeze({
+    track: async (rawRequest: AutosaveTrackRequest) => {
+      const request = AutosaveTrackRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.AUTOSAVE_TRACK,
+        request,
+      );
+      return RecoveryAcknowledgeResponseSchema.parse(response);
+    },
+    update: async (rawRequest: AutosaveUpdateRequest) => {
+      const request = AutosaveUpdateRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.AUTOSAVE_UPDATE,
+        request,
+      );
+      return RecoveryAcknowledgeResponseSchema.parse(response);
+    },
+    stop: async (projectRoot: string) => {
+      const request = AutosaveStopRequestSchema.parse({ projectRoot });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.AUTOSAVE_STOP,
+        request,
+      );
+      return RecoveryAcknowledgeResponseSchema.parse(response);
+    },
+    onError: (callback: (error: RecoveryError) => void): Unsubscribe => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        rawError: unknown,
+      ) => callback(AutosaveErrorEventSchema.parse(rawError));
+      ipcRenderer.on(IPC_CHANNELS.AUTOSAVE_ERROR, listener);
+      return () =>
+        ipcRenderer.removeListener(IPC_CHANNELS.AUTOSAVE_ERROR, listener);
+    },
+  }),
+  recovery: Object.freeze({
+    detect: async (projectRoot: string) => {
+      const request = RecoveryDetectRequestSchema.parse({ projectRoot });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.RECOVERY_DETECT,
+        request,
+      );
+      return RecoveryDetectResponseSchema.parse(response);
+    },
+    restore: async (rawRequest: RecoverySelectionRequest) => {
+      const request = RecoverySelectionRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.RECOVERY_RESTORE,
+        request,
+      );
+      return RecoveryRestoreResponseSchema.parse(response);
+    },
+    ignore: async (rawRequest: RecoverySelectionRequest) => {
+      const request = RecoverySelectionRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.RECOVERY_IGNORE,
+        request,
+      );
+      return RecoveryIgnoreResponseSchema.parse(response);
     },
   }),
   export: Object.freeze({
