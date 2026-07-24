@@ -14,6 +14,7 @@ export const IPC_CHANNELS = Object.freeze({
   PROJECT_OPEN: 'project:open',
   PROJECT_SAVE: 'project:save',
   RECENT_PROJECTS_LIST: 'recent-projects:list',
+  RECENT_PROJECTS_OPEN: 'recent-projects:open',
   RECENT_PROJECTS_REMOVE: 'recent-projects:remove',
   RECENT_PROJECTS_RELOCATE: 'recent-projects:relocate',
   AUTOSAVE_TRACK: 'autosave:track',

@@ -1,6 +1,6 @@
 {
   "heading": "最近项目",
-  "count": "2/12",
+  "count": "4/12",
   "projects": [
     {
       "name": "可用的熊猫项目",
@@ -35,14 +35,53 @@
           "disabled": false
         }
       ]
+    },
+    {
+      "name": "身份冲突项目",
+      "path": "D:\\项目\\身份冲突.pandastage",
+      "state": "项目身份不匹配 · 2026/7/24 12:00:00",
+      "actions": [
+        {
+          "label": "打开",
+          "disabled": true
+        },
+        {
+          "label": "重新定位",
+          "disabled": false
+        },
+        {
+          "label": "移除记录",
+          "disabled": false
+        }
+      ]
+    },
+    {
+      "name": "文件损坏项目",
+      "path": "D:\\项目\\文件损坏.pandastage",
+      "state": "项目文件无效 · 2026/7/24 11:00:00",
+      "actions": [
+        {
+          "label": "打开",
+          "disabled": true
+        },
+        {
+          "label": "重新定位",
+          "disabled": false
+        },
+        {
+          "label": "移除记录",
+          "disabled": false
+        }
+      ]
     }
   ],
   "recentProjectsApi": [
     "list",
+    "open",
     "relocate",
     "remove"
   ],
-  "recoveryStatus": "Project opened. No newer recovery snapshot was found.",
+  "recoveryStatus": "Project opened from recent list. No newer recovery snapshot was found.",
   "rendererHasNodeRequire": false,
   "openedRecentRoot": "D:\\项目\\可用 熊猫.pandastage",
   "recentProjectsConfigPath": "C:\\Users\\admin\\AppData\\Roaming\\Electron\\recent-projects.json",

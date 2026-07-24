@@ -70,6 +70,7 @@ interface Harness {
   store: EditorProjectStore;
   writeRecovery: ReturnType<typeof vi.fn>;
   open: ReturnType<typeof vi.fn>;
+  openRecent: ReturnType<typeof vi.fn>;
   track: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   detect: ReturnType<typeof vi.fn>;
@@ -140,8 +141,33 @@ function createHarness(): Harness {
       candidate: candidates.get(projectRoot) ?? null,
     };
   });
+  const openRecent = vi.fn(async (projectRoot, expectedProjectId) => {
+      const response = await open(projectRoot);
+      if (!response.ok) {
+        return {
+          ok: false as const,
+          error: {
+            code: 'RECENT_PROJECT_RELOCATE_FAILED' as const,
+            message: response.error.message,
+            projectRoot,
+          },
+        };
+      }
+      if (response.value.project.id !== expectedProjectId) {
+        return {
+          ok: false as const,
+          error: {
+            code: 'RECENT_PROJECT_MISMATCH' as const,
+            message: 'Project identity mismatch.',
+            projectRoot,
+          },
+        };
+      }
+      return { ok: true as const, document: response.value };
+    });
   const api: ProjectSessionApi = {
     open,
+    openRecent,
     track,
     stop,
     detect,
@@ -154,6 +180,7 @@ function createHarness(): Harness {
     store,
     writeRecovery,
     open,
+    openRecent,
     track,
     stop,
     detect,
@@ -198,6 +225,24 @@ describe('ProjectSessionController transactional switching', () => {
       PROJECT_A_ROOT,
       expect.objectContaining({ name: 'Unsaved A' }),
     );
+  });
+
+  it('does not track or change the store when recent identity recheck fails', async () => {
+    await expect(
+      harness.controller.switchRecentProject(
+        PROJECT_B_ROOT,
+        PROJECT_A.id,
+      ),
+    ).rejects.toMatchObject({ code: 'OPEN_FAILED' });
+
+    expect(harness.openRecent).toHaveBeenCalledWith(
+      PROJECT_B_ROOT,
+      PROJECT_A.id,
+    );
+    expect(harness.track).not.toHaveBeenCalled();
+    expect(harness.detect).not.toHaveBeenCalled();
+    expect(harness.store.getSnapshot()).toBeNull();
+    expect(harness.autosave.trackedProjectCount()).toBe(0);
   });
 
   it('rolls back a failed new-project track without stopping the old session', async () => {

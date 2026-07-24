@@ -6,9 +6,9 @@
   "baselineSha": "4e92ed3c45e319c4a495fc8777ffa6ab8e1e863b",
   "tests": {
     "unitFiles": 32,
-    "unitPassed": 185,
+    "unitPassed": 191,
     "integrationFiles": 4,
-    "integrationPassed": 25
+    "integrationPassed": 28
   },
   "recentProjects": {
     "configuration": "app.getPath('userData')/recent-projects.json",
@@ -17,14 +17,23 @@
     "normalizedDeduplication": true,
     "missingEntriesRetained": true,
     "explicitRemove": true,
-    "identityCheckedRelocation": true
+    "identityCheckedRelocation": true,
+    "identityStatuses": ["available", "missing", "mismatched", "invalid"],
+    "mainProcessIdentityRecheck": true,
+    "toctouMismatchRejected": true,
+    "pathIdentityConflictPreserved": true
   },
   "closeGuard": {
     "choices": ["save", "discard", "cancel"],
     "cancelPreventsWindowClose": true,
     "cancelPreventsApplicationQuit": true,
     "saveFailureKeepsWindowOpen": true,
-    "reentrySuppressed": true
+    "reentrySuppressed": true,
+    "discardStopsScheduling": true,
+    "discardWaitsForInflightRecovery": true,
+    "discardCleansAndVerifiesRecovery": true,
+    "discardFailureKeepsWindowOpen": true,
+    "discardFailureOutcome": "discard-failed"
   },
   "realRelocation": {
     "unicodeSpacesEmoji": true,

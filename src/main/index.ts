@@ -222,11 +222,27 @@ async function initialize(): Promise<void> {
         snapshot.revision,
       );
     },
+    discard: async (snapshot) => {
+      if (!autosaveService) {
+        throw new Error('Autosave service is unavailable.');
+      }
+      await autosaveService.discard(
+        snapshot.projectRoot,
+        snapshot.project.id,
+      );
+    },
     reportSaveFailure: (snapshot, error) => {
       console.error('Save before close failed.', error);
       dialog.showErrorBox(
         '无法保存项目',
         `“${snapshot.project.name}”保存失败，窗口将保持打开。请检查磁盘和目录权限后重试。`,
+      );
+    },
+    reportDiscardFailure: (snapshot, error) => {
+      console.error('Discard before close failed.', error);
+      dialog.showErrorBox(
+        '无法放弃修改并安全退出',
+        `“${snapshot.project.name}”的恢复数据清理失败，窗口将保持打开。请检查磁盘和目录权限后重试。`,
       );
     },
   });

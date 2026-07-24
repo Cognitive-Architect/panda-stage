@@ -37,6 +37,20 @@ async function verifyDay14Ui() {
       lastOpenedAt: '2026-07-24T05:00:00.000Z',
       status: 'missing',
     },
+    {
+      projectId: 'f1000000-0000-4000-8000-000000000002',
+      projectName: '身份冲突项目',
+      projectRoot: 'D:\\项目\\身份冲突.pandastage',
+      lastOpenedAt: '2026-07-24T04:00:00.000Z',
+      status: 'mismatched',
+    },
+    {
+      projectId: 'f1000000-0000-4000-8000-000000000003',
+      projectName: '文件损坏项目',
+      projectRoot: 'D:\\项目\\文件损坏.pandastage',
+      lastOpenedAt: '2026-07-24T03:00:00.000Z',
+      status: 'invalid',
+    },
   ];
   let openedRecentRoot = null;
   ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN, (_event, request) => {
@@ -44,6 +58,19 @@ async function verifyDay14Ui() {
     return {
       ok: true,
       value: {
+        projectRoot: availableRoot,
+        projectFilePath: `${availableRoot}\\project.json`,
+        project: exampleProject,
+        migrated: false,
+        sourceVersion: 1,
+      },
+    };
+  });
+  ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => {
+    openedRecentRoot = request.projectRoot;
+    return {
+      ok: true,
+      document: {
         projectRoot: availableRoot,
         projectFilePath: `${availableRoot}\\project.json`,
         project: exampleProject,
@@ -78,7 +105,7 @@ async function verifyDay14Ui() {
       new Promise((resolve, reject) => {
         const deadline = Date.now() + 10000;
         const poll = () => {
-          if (document.querySelectorAll('.recent-projects-list li').length === 2) {
+          if (document.querySelectorAll('.recent-projects-list li').length === 4) {
             return resolve();
           }
           if (Date.now() >= deadline) {
@@ -152,7 +179,7 @@ async function verifyDay14Ui() {
 
     if (
       result.heading !== '最近项目' ||
-      result.count !== '2/12' ||
+      result.count !== '4/12' ||
       result.projects[0]?.name !== '可用的熊猫项目' ||
       result.projects[0]?.actions[0]?.label !== '打开' ||
       result.projects[0]?.actions[0]?.disabled ||
@@ -161,7 +188,15 @@ async function verifyDay14Ui() {
       result.projects[1]?.actions[0]?.label !== '打开' ||
       !result.projects[1]?.actions[0]?.disabled ||
       result.projects[1]?.actions[1]?.label !== '重新定位' ||
-      result.recentProjectsApi.join(',') !== 'list,relocate,remove' ||
+      result.projects[2]?.name !== '身份冲突项目' ||
+      !result.projects[2]?.state?.includes('身份不匹配') ||
+      !result.projects[2]?.actions[0]?.disabled ||
+      result.projects[2]?.actions.length !== 3 ||
+      result.projects[3]?.name !== '文件损坏项目' ||
+      !result.projects[3]?.state?.includes('项目文件无效') ||
+      !result.projects[3]?.actions[0]?.disabled ||
+      result.projects[3]?.actions.length !== 3 ||
+      result.recentProjectsApi.join(',') !== 'list,open,relocate,remove' ||
       openedRecentRoot !== availableRoot ||
       !result.recoveryStatus?.includes('Project opened') ||
       !evidence.configOutsideProject ||
@@ -198,6 +233,7 @@ async function verifyDay14Ui() {
   } finally {
     window.destroy();
     ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_LIST);
+    ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_OPEN);
     ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_REMOVE);
     ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_RELOCATE);
     ipcMain.removeHandler(IPC_CHANNELS.AUTOSAVE_UPDATE);

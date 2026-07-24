@@ -26,6 +26,7 @@ interface AutosaveSession {
   lastSavedRevision: number;
   timer: IntervalHandle;
   inFlight: Promise<void> | null;
+  discarding: boolean;
 }
 
 export interface AutosaveServiceOptions {
@@ -79,6 +80,7 @@ export class AutosaveService {
         });
       }, AUTOSAVE_INTERVAL_MS),
       inFlight: null,
+      discarding: false,
     };
     this.sessions.set(projectRoot, session);
   }
@@ -96,14 +98,14 @@ export class AutosaveService {
   async tick(rawProjectRoot: string): Promise<void> {
     const projectRoot = path.resolve(rawProjectRoot);
     const session = this.sessions.get(projectRoot);
-    if (!session || !session.dirty) return;
+    if (!session || !session.dirty || session.discarding) return;
     if (session.revision <= session.lastSavedRevision) return;
     if (session.inFlight) return session.inFlight;
 
     const write = this.coordinator
       .runExclusive(projectRoot, async () => {
         const current = this.sessions.get(projectRoot);
-        if (!current || !current.dirty) return;
+        if (!current || !current.dirty || current.discarding) return;
         if (current.revision <= current.lastSavedRevision) return;
         const revision = current.revision;
         const project = structuredClone(current.project);
@@ -130,6 +132,43 @@ export class AutosaveService {
     this.clock.clearInterval(session.timer);
     await session.inFlight?.catch(() => undefined);
     this.sessions.delete(projectRoot);
+  }
+
+  async discard(
+    rawProjectRoot: string,
+    expectedProjectId: string,
+  ): Promise<void> {
+    const projectRoot = path.resolve(rawProjectRoot);
+    const session = this.sessions.get(projectRoot);
+    if (!session) return;
+    if (session.project.id !== expectedProjectId) {
+      throw new RecoveryServiceError(
+        'RECOVERY_PROJECT_MISMATCH',
+        projectRoot,
+        'Cannot discard recovery for a different project identity.',
+      );
+    }
+
+    session.discarding = true;
+    this.clock.clearInterval(session.timer);
+    try {
+      await session.inFlight;
+      await this.coordinator.runExclusive(projectRoot, async () => {
+        await this.recoveryService.cleanupAfterFormalSave(
+          projectRoot,
+          expectedProjectId,
+        );
+        await this.recoveryService.assertDiscarded(
+          projectRoot,
+          session.project,
+        );
+      });
+      this.sessions.delete(projectRoot);
+    } catch (error) {
+      session.discarding = false;
+      session.timer = this.createTimer(projectRoot);
+      throw error;
+    }
   }
 
   async stopAll(): Promise<void> {
@@ -201,6 +240,14 @@ export class AutosaveService {
       ...rawRequest,
       project: ProjectSchema.parse(rawRequest.project),
     };
+  }
+
+  private createTimer(projectRoot: string): IntervalHandle {
+    return this.clock.setInterval(() => {
+      void this.tick(projectRoot).catch((error: unknown) => {
+        this.onError(this.toRecoveryError(projectRoot, error));
+      });
+    }, AUTOSAVE_INTERVAL_MS);
   }
 
   private applyUpdate(

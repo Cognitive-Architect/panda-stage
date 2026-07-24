@@ -2,6 +2,7 @@ import { ProjectSchema } from '../../../domain';
 import type {
   ProjectOperationResponse,
 } from '../../../shared/project-api';
+import type { RecentProjectsOpenResponse } from '../../../shared/recent-projects-api';
 import type {
   AutosaveTrackRequest,
   RecoveryAcknowledgeResponse,
@@ -12,6 +13,10 @@ import { EditorProjectStore } from '../../stores/EditorProjectStore';
 
 export interface ProjectSessionApi {
   open(projectRoot: string): Promise<ProjectOperationResponse>;
+  openRecent(
+    projectRoot: string,
+    expectedProjectId: string,
+  ): Promise<RecentProjectsOpenResponse>;
   track(
     request: AutosaveTrackRequest,
   ): Promise<RecoveryAcknowledgeResponse>;
@@ -59,6 +64,32 @@ export class ProjectSessionController {
   async switchProject(
     rawProjectRoot: string,
   ): Promise<ProjectSessionSnapshot> {
+    return this.switchWith(rawProjectRoot, async (projectRoot) => {
+      const response = await this.api.open(projectRoot);
+      return response.ok
+        ? { ok: true as const, document: response.value }
+        : response;
+    });
+  }
+
+  async switchRecentProject(
+    rawProjectRoot: string,
+    expectedProjectId: string,
+  ): Promise<ProjectSessionSnapshot> {
+    return this.switchWith(rawProjectRoot, (projectRoot) =>
+      this.api.openRecent(projectRoot, expectedProjectId),
+    );
+  }
+
+  private async switchWith(
+    rawProjectRoot: string,
+    open: (
+      projectRoot: string,
+    ) => Promise<
+      | { ok: true; document: { projectRoot: string; project: unknown } }
+      | { ok: false; error: { message: string } }
+    >,
+  ): Promise<ProjectSessionSnapshot> {
     const requestedRoot = rawProjectRoot.trim();
     const currentEditor = this.store.getSnapshot();
     if (
@@ -89,19 +120,19 @@ export class ProjectSessionController {
     let temporaryTracked = false;
     let oldStopAttempted = false;
     try {
-      const opened = await this.api.open(requestedRoot);
+      const opened = await open(requestedRoot);
       if (!opened.ok) {
         throw new ProjectSessionSwitchError(
           'OPEN_FAILED',
           opened.error.message,
         );
       }
-      const preparedProject = ProjectSchema.parse(opened.value.project);
+      const preparedProject = ProjectSchema.parse(opened.document.project);
       if (
         currentEditor &&
         this.sameRoot(
           currentEditor.projectRoot,
-          opened.value.projectRoot,
+          opened.document.projectRoot,
         )
       ) {
         if (currentEditor.dirty) {
@@ -125,7 +156,7 @@ export class ProjectSessionController {
         };
         return this.snapshot;
       }
-      temporaryProjectRoot = opened.value.projectRoot;
+      temporaryProjectRoot = opened.document.projectRoot;
       temporaryTracked = true;
       const tracked = await this.api.track({
         projectRoot: temporaryProjectRoot,

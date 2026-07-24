@@ -25,6 +25,7 @@ export interface RecoveryFileSystemFaultInjector {
   ): void | Promise<void>;
   afterTemporarySync?(context: RecoveryWriteContext): void | Promise<void>;
   beforeAtomicReplace?(context: RecoveryWriteContext): void | Promise<void>;
+  beforeRemoveFile?(filePath: string): void | Promise<void>;
 }
 
 export class RecoveryFileSystemService {
@@ -59,6 +60,7 @@ export class RecoveryFileSystemService {
   }
 
   async removeFile(filePath: string): Promise<void> {
+    await this.faults.beforeRemoveFile?.(filePath);
     await rm(filePath, { force: true });
   }
 

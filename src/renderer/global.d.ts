@@ -11,6 +11,8 @@ import type {
 } from '../shared/export-types';
 import type {
   RecentProjectsListResponse,
+  RecentProjectsOpenRequest,
+  RecentProjectsOpenResponse,
   RecentProjectsRelocateRequest,
   RecentProjectsRelocateResponse,
   RecentProjectsRemoveRequest,
@@ -57,6 +59,9 @@ declare global {
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;
+        open: (
+          request: RecentProjectsOpenRequest,
+        ) => Promise<RecentProjectsOpenResponse>;
         remove: (
           request: RecentProjectsRemoveRequest,
         ) => Promise<RecentProjectsListResponse>;

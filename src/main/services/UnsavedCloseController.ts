@@ -11,7 +11,12 @@ export interface UnsavedCloseControllerDependencies {
     project: AutosaveTrackRequest,
   ) => Promise<UnsavedCloseChoice>;
   save: (project: AutosaveTrackRequest) => Promise<void>;
+  discard: (project: AutosaveTrackRequest) => Promise<void>;
   reportSaveFailure: (
+    project: AutosaveTrackRequest,
+    error: unknown,
+  ) => void | Promise<void>;
+  reportDiscardFailure: (
     project: AutosaveTrackRequest,
     error: unknown,
   ) => void | Promise<void>;
@@ -57,7 +62,15 @@ export class UnsavedCloseController {
     if (!project) return 'allow-close';
     const choice = await this.dependencies.prompt(project);
     if (choice === 'cancel') return 'cancelled';
-    if (choice === 'discard') return 'allow-close';
+    if (choice === 'discard') {
+      try {
+        await this.dependencies.discard(project);
+        return 'allow-close';
+      } catch (error) {
+        await this.dependencies.reportDiscardFailure(project, error);
+        return 'discard-failed';
+      }
+    }
     try {
       await this.dependencies.save(project);
       return 'allow-close';

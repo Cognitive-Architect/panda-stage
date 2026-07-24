@@ -6,6 +6,8 @@ const FileSystemPathSchema = z.string().trim().min(1).max(32_767);
 export const RecentProjectStatusSchema = z.enum([
   'available',
   'missing',
+  'mismatched',
+  'invalid',
 ]);
 
 export const RecentProjectEntrySchema = z
@@ -44,6 +46,13 @@ export const RecentProjectsRemoveRequestSchema = z
 
 export const RecentProjectsRelocateRequestSchema =
   RecentProjectsRemoveRequestSchema;
+
+export const RecentProjectsOpenRequestSchema = z
+  .object({
+    projectRoot: FileSystemPathSchema,
+    expectedProjectId: z.uuid(),
+  })
+  .strict();
 
 export const RecentProjectsListResponseSchema = z.discriminatedUnion(
   'ok',
@@ -86,6 +95,24 @@ export const RecentProjectsRelocateResponseSchema = z.union([
       .strict(),
 ]);
 
+export const RecentProjectsOpenResponseSchema = z.discriminatedUnion(
+  'ok',
+  [
+    z
+      .object({
+        ok: z.literal(true),
+        document: ProjectDocumentSchema,
+      })
+      .strict(),
+    z
+      .object({
+        ok: z.literal(false),
+        error: RecentProjectsErrorSchema,
+      })
+      .strict(),
+  ],
+);
+
 export type RecentProjectStatus = z.infer<
   typeof RecentProjectStatusSchema
 >;
@@ -104,9 +131,15 @@ export type RecentProjectsRemoveRequest = z.infer<
 export type RecentProjectsRelocateRequest = z.infer<
   typeof RecentProjectsRelocateRequestSchema
 >;
+export type RecentProjectsOpenRequest = z.infer<
+  typeof RecentProjectsOpenRequestSchema
+>;
 export type RecentProjectsListResponse = z.infer<
   typeof RecentProjectsListResponseSchema
 >;
 export type RecentProjectsRelocateResponse = z.infer<
   typeof RecentProjectsRelocateResponseSchema
+>;
+export type RecentProjectsOpenResponse = z.infer<
+  typeof RecentProjectsOpenResponseSchema
 >;

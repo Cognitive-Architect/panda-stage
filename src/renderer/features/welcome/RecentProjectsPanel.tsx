@@ -3,7 +3,10 @@ import type { RecentProjectEntry } from '../../../shared/recent-projects-api';
 
 export interface RecentProjectsPanelProps {
   refreshToken: number;
-  onOpenProject: (projectRoot: string) => Promise<void>;
+  onOpenProject: (
+    projectRoot: string,
+    expectedProjectId: string,
+  ) => Promise<void>;
 }
 
 export function RecentProjectsPanel({
@@ -37,7 +40,7 @@ export function RecentProjectsPanel({
   const openProject = async (entry: RecentProjectEntry): Promise<void> => {
     setBusyRoot(entry.projectRoot);
     try {
-      await onOpenProject(entry.projectRoot);
+      await onOpenProject(entry.projectRoot, entry.projectId);
       setStatus(`已打开“${entry.projectName}”。`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '打开项目失败。');
@@ -78,7 +81,10 @@ export function RecentProjectsPanel({
         return;
       }
       setEntries(response.entries);
-      await onOpenProject(response.document.projectRoot);
+      await onOpenProject(
+        response.document.projectRoot,
+        response.document.project.id,
+      );
       setStatus(`已重新定位并打开“${entry.projectName}”。`);
     } catch (error) {
       setStatus(
@@ -111,7 +117,13 @@ export function RecentProjectsPanel({
                 <strong>{entry.projectName}</strong>
                 <span className="recent-project-path">{entry.projectRoot}</span>
                 <span>
-                  {entry.status === 'available' ? '可用' : '路径已失效'}
+                  {entry.status === 'available'
+                    ? '可用'
+                    : entry.status === 'missing'
+                      ? '路径已失效'
+                      : entry.status === 'mismatched'
+                        ? '项目身份不匹配'
+                        : '项目文件无效'}
                   {' · '}
                   {new Date(entry.lastOpenedAt).toLocaleString()}
                 </span>
@@ -119,14 +131,14 @@ export function RecentProjectsPanel({
               <div className="recent-project-actions">
                 <button
                   disabled={
-                    busyRoot !== null || entry.status === 'missing'
+                    busyRoot !== null || entry.status !== 'available'
                   }
                   onClick={() => void openProject(entry)}
                   type="button"
                 >
                   打开
                 </button>
-                {entry.status === 'missing' ? (
+                {entry.status !== 'available' ? (
                   <button
                     disabled={busyRoot !== null}
                     onClick={() => void relocateProject(entry)}

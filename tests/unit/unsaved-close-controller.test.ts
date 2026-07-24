@@ -17,7 +17,11 @@ const dirtyProject: AutosaveTrackRequest = {
 
 function controller(
   choice: 'save' | 'discard' | 'cancel',
-  options: { saveError?: Error; promptGate?: Promise<void> } = {},
+  options: {
+    saveError?: Error;
+    discardError?: Error;
+    promptGate?: Promise<void>;
+  } = {},
 ) {
   const save = vi.fn(async () => {
     if (options.saveError) throw options.saveError;
@@ -27,16 +31,24 @@ function controller(
     return choice;
   });
   const reportSaveFailure = vi.fn();
+  const discard = vi.fn(async () => {
+    if (options.discardError) throw options.discardError;
+  });
+  const reportDiscardFailure = vi.fn();
   return {
     value: new UnsavedCloseController({
       getDirtyProject: () => dirtyProject,
       prompt,
       save,
+      discard,
       reportSaveFailure,
+      reportDiscardFailure,
     }),
     prompt,
     save,
     reportSaveFailure,
+    discard,
+    reportDiscardFailure,
   };
 }
 
@@ -65,7 +77,9 @@ describe('UnsavedCloseController', () => {
       getDirtyProject: () => null,
       prompt,
       save: vi.fn(),
+      discard: vi.fn(),
       reportSaveFailure: vi.fn(),
+      reportDiscardFailure: vi.fn(),
     });
 
     await expect(value.requestClose()).resolves.toBe('allow-close');
@@ -79,6 +93,27 @@ describe('UnsavedCloseController', () => {
       'allow-close',
     );
     expect(harness.save).not.toHaveBeenCalled();
+    expect(harness.discard).toHaveBeenCalledWith(dirtyProject);
+  });
+
+  it('keeps the window open and reports a discard failure', async () => {
+    const injected = new Error('Injected cleanup failure.');
+    const harness = controller('discard', { discardError: injected });
+    const closeWindow = vi.fn();
+    const guard = new UnsavedCloseGuard({
+      controller: harness.value,
+      closeWindow,
+      quitApplication: vi.fn(),
+    });
+
+    guard.handleWindowClose({ preventDefault: vi.fn() });
+    await guard.waitForIdle();
+
+    expect(closeWindow).not.toHaveBeenCalled();
+    expect(harness.reportDiscardFailure).toHaveBeenCalledWith(
+      dirtyProject,
+      injected,
+    );
   });
 
   it('keeps the application open when the user cancels', async () => {
@@ -157,7 +192,9 @@ describe('UnsavedCloseController', () => {
       getDirtyProject: () => currentDirtyProject,
       prompt: vi.fn(async () => choices.shift()!),
       save,
+      discard: vi.fn(),
       reportSaveFailure: vi.fn(),
+      reportDiscardFailure: vi.fn(),
     });
     const closeWindow = vi.fn();
     const guard = new UnsavedCloseGuard({

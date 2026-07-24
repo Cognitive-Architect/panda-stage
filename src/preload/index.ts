@@ -41,10 +41,13 @@ import {
 import {
   RecentProjectsListRequestSchema,
   RecentProjectsListResponseSchema,
+  RecentProjectsOpenRequestSchema,
+  RecentProjectsOpenResponseSchema,
   RecentProjectsRelocateRequestSchema,
   RecentProjectsRelocateResponseSchema,
   RecentProjectsRemoveRequestSchema,
   type RecentProjectsRelocateRequest,
+  type RecentProjectsOpenRequest,
   type RecentProjectsRemoveRequest,
 } from '../shared/recent-projects-api';
 
@@ -95,6 +98,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return RecentProjectsListResponseSchema.parse(response);
+    },
+    open: async (rawRequest: RecentProjectsOpenRequest) => {
+      const request = RecentProjectsOpenRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.RECENT_PROJECTS_OPEN,
+        request,
+      );
+      return RecentProjectsOpenResponseSchema.parse(response);
     },
     remove: async (rawRequest: RecentProjectsRemoveRequest) => {
       const request = RecentProjectsRemoveRequestSchema.parse(rawRequest);

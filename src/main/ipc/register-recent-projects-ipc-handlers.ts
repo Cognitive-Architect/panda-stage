@@ -7,11 +7,14 @@ import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import {
   RecentProjectsListRequestSchema,
   RecentProjectsListResponseSchema,
+  RecentProjectsOpenRequestSchema,
+  RecentProjectsOpenResponseSchema,
   RecentProjectsRelocateRequestSchema,
   RecentProjectsRelocateResponseSchema,
   RecentProjectsRemoveRequestSchema,
   type RecentProjectsError,
   type RecentProjectsListResponse,
+  type RecentProjectsOpenResponse,
   type RecentProjectsRelocateResponse,
 } from '../../shared/recent-projects-api';
 import {
@@ -98,6 +101,40 @@ export function registerRecentProjectsIpcHandlers(
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.RECENT_PROJECTS_OPEN,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.RECENT_PROJECTS_OPEN,
+      );
+      const request = RecentProjectsOpenRequestSchema.parse(rawRequest);
+      try {
+        const document = await dependencies.projectService.open(
+          request.projectRoot,
+        );
+        if (document.project.id !== request.expectedProjectId) {
+          throw new RecentProjectsServiceError(
+            'RECENT_PROJECT_MISMATCH',
+            request.projectRoot,
+            'The project at this path no longer matches the recent-project record.',
+          );
+        }
+        await dependencies.recentProjectsService.record(document);
+        return RecentProjectsOpenResponseSchema.parse({
+          ok: true,
+          document,
+        } satisfies RecentProjectsOpenResponse);
+      } catch (error) {
+        return RecentProjectsOpenResponseSchema.parse({
+          ok: false,
+          error: errorResponse(error, request.projectRoot),
+        } satisfies RecentProjectsOpenResponse);
+      }
+    },
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.RECENT_PROJECTS_REMOVE,
     async (event, rawRequest: unknown) => {
       assertTrustedSender(
@@ -163,6 +200,7 @@ export function registerRecentProjectsIpcHandlers(
 
   return () => {
     ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_LIST);
+    ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_OPEN);
     ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_REMOVE);
     ipcMain.removeHandler(IPC_CHANNELS.RECENT_PROJECTS_RELOCATE);
   };

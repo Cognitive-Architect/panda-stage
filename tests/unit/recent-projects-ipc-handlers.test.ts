@@ -66,6 +66,7 @@ function services() {
     recentProjectsService: {
       list: vi.fn().mockResolvedValue(entries),
       remove: vi.fn().mockResolvedValue([]),
+      record: vi.fn().mockResolvedValue(entries),
       relocate: vi.fn().mockResolvedValue(entries),
     } as unknown as RecentProjectsService,
   };
@@ -88,6 +89,7 @@ describe('recent projects IPC handlers', () => {
 
     expect([...electronMocks.handlers.keys()]).toEqual([
       IPC_CHANNELS.RECENT_PROJECTS_LIST,
+      IPC_CHANNELS.RECENT_PROJECTS_OPEN,
       IPC_CHANNELS.RECENT_PROJECTS_REMOVE,
       IPC_CHANNELS.RECENT_PROJECTS_RELOCATE,
     ]);
@@ -117,6 +119,59 @@ describe('recent projects IPC handlers', () => {
     ).resolves.toEqual({ ok: true, entries: [] });
     expect(dependencies.recentProjectsService.remove).toHaveBeenCalledWith(
       oldRoot,
+    );
+  });
+
+  it('rechecks identity in Main and rejects a TOCTOU replacement without recording it', async () => {
+    const dependencies = services();
+    const replaced = {
+      ...document,
+      project: {
+        ...document.project,
+        id: 'd0000000-0000-4000-8000-000000000002',
+      },
+    };
+    dependencies.projectService.open = vi.fn().mockResolvedValue(replaced);
+    registerRecentProjectsIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...dependencies,
+      selectProjectDirectory: vi.fn(),
+    });
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.RECENT_PROJECTS_OPEN)!(
+        event(),
+        {
+          projectRoot: movedRoot,
+          expectedProjectId: project.id,
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'RECENT_PROJECT_MISMATCH' },
+    });
+    expect(dependencies.recentProjectsService.record).not.toHaveBeenCalled();
+  });
+
+  it('opens a matching recent project and updates last-opened metadata', async () => {
+    const dependencies = services();
+    registerRecentProjectsIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...dependencies,
+      selectProjectDirectory: vi.fn(),
+    });
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.RECENT_PROJECTS_OPEN)!(
+        event(),
+        {
+          projectRoot: movedRoot,
+          expectedProjectId: project.id,
+        },
+      ),
+    ).resolves.toEqual({ ok: true, document });
+    expect(dependencies.recentProjectsService.record).toHaveBeenCalledWith(
+      document,
     );
   });
 

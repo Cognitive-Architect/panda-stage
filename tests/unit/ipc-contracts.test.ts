@@ -33,6 +33,7 @@ describe('IPC channel registry', () => {
       'project:open',
       'project:save',
       'recent-projects:list',
+      'recent-projects:open',
       'recent-projects:remove',
       'recent-projects:relocate',
       'autosave:track',

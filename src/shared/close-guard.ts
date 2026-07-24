@@ -10,6 +10,7 @@ export const UnsavedCloseOutcomeSchema = z.enum([
   'allow-close',
   'cancelled',
   'save-failed',
+  'discard-failed',
 ]);
 
 export type UnsavedCloseChoice = z.infer<

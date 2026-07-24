@@ -27,6 +27,11 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
         {
           open: (projectRoot) =>
             window.pandaStage.project.open({ projectRoot }),
+          openRecent: (projectRoot, expectedProjectId) =>
+            window.pandaStage.recentProjects.open({
+              projectRoot,
+              expectedProjectId,
+            }),
           track: (request) => window.pandaStage.autosave.track(request),
           stop: (projectRoot) =>
             window.pandaStage.autosave.stop(projectRoot),
@@ -84,6 +89,23 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
       nextSession.recoveryCandidate
         ? 'A newer crash-recovery snapshot is available.'
         : 'Project opened. No newer recovery snapshot was found.',
+    );
+  };
+
+  const switchToRecentProject = async (
+    projectRoot: string,
+    expectedProjectId: string,
+  ): Promise<void> => {
+    const nextSession = await sessionController.switchRecentProject(
+      projectRoot,
+      expectedProjectId,
+    );
+    setSessionSnapshot(nextSession);
+    setRecentRefreshToken((current) => current + 1);
+    setStatus(
+      nextSession.recoveryCandidate
+        ? 'A newer crash-recovery snapshot is available.'
+        : 'Project opened from recent list. No newer recovery snapshot was found.',
     );
   };
 
@@ -171,7 +193,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
   return (
     <>
       <RecentProjectsPanel
-        onOpenProject={switchToProject}
+        onOpenProject={switchToRecentProject}
         refreshToken={recentRefreshToken}
       />
       <section className="recovery-panel" aria-labelledby="recovery-heading">

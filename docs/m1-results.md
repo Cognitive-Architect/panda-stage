@@ -22,11 +22,22 @@ M1 closes on Day 14 with an evidence-backed local project lifecycle:
 | cancel then save close | `tests/integration/unsaved-close-lifecycle.test.ts` | PASS |
 | save failure keeps window | `tests/integration/unsaved-close-lifecycle.test.ts` | PASS |
 | recent-project UI and reopen | `docs/evidence/day-14/ui-results.json` | PASS |
+| discard waits/cleans recovery | `tests/integration/unsaved-close-lifecycle.test.ts` | PASS |
+| discard deletion failure keeps window | `tests/integration/unsaved-close-lifecycle.test.ts` | PASS |
+| recent identity + corrupt/future status | `tests/unit/recent-projects-service.test.ts` | PASS |
+| recent TOCTOU recheck | `tests/unit/recent-projects-ipc-handlers.test.ts` | PASS |
 
 The real relocation test renames a `.pandastage` directory containing Unicode,
 spaces, a relative `assets/...` file, and a recovery snapshot. The old recent
 entry remains `missing`; after identity-checked relocation, the new root is
 `available`, the asset is readable, and the recovery snapshot is detected.
+
+Issue #23 hardens the two destructive boundaries. Discard now waits for an
+in-flight autosave and removes every same-project recovery artifact before
+close; injected deletion failure leaves the window and formal project intact.
+Recent-project listing validates the parsed/migrated project identity, while a
+dedicated Main IPC entry repeats the ID check at open time to close the TOCTOU
+window.
 
 ## M1 remaining items
 

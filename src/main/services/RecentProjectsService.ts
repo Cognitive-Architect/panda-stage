@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  access,
   mkdir,
   readFile,
   rename,
@@ -9,6 +8,7 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
+import { migrateProject } from '../../domain';
 import {
   ProjectDocumentSchema,
   type ProjectDocument,
@@ -77,9 +77,7 @@ export class RecentProjectsService {
     return Promise.all(
       config.entries.map(async (entry) => ({
         ...entry,
-        status: await this.isAvailable(entry.projectRoot)
-          ? ('available' as const)
-          : ('missing' as const),
+        status: await this.inspectStatus(entry),
       })),
     );
   }
@@ -89,6 +87,18 @@ export class RecentProjectsService {
     const config = await this.readConfig();
     const projectRoot = this.pathService.resolve(document.projectRoot);
     const key = this.pathService.comparisonKey(projectRoot);
+    const conflict = config.entries.find(
+      (candidate) =>
+        this.pathService.comparisonKey(candidate.projectRoot) === key &&
+        candidate.projectId !== document.project.id,
+    );
+    if (conflict) {
+      throw new RecentProjectsServiceError(
+        'RECENT_PROJECT_MISMATCH',
+        projectRoot,
+        `The path is already recorded for ${conflict.projectName}; resolve that identity conflict explicitly.`,
+      );
+    }
     const entry: StoredRecentProject = {
       projectId: document.project.id,
       projectName: document.project.name,
@@ -164,12 +174,23 @@ export class RecentProjectsService {
     return this.list();
   }
 
-  private async isAvailable(projectRoot: string): Promise<boolean> {
+  private async inspectStatus(
+    entry: StoredRecentProject,
+  ): Promise<RecentProjectEntry['status']> {
     try {
-      await access(this.pathService.join(projectRoot, 'project.json'));
-      return true;
-    } catch {
-      return false;
+      const serialized = await readFile(
+        this.pathService.join(entry.projectRoot, 'project.json'),
+        'utf8',
+      );
+      const project = migrateProject(JSON.parse(serialized));
+      return project.id === entry.projectId
+        ? 'available'
+        : 'mismatched';
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return code === 'ENOENT' || code === 'ENOTDIR'
+        ? 'missing'
+        : 'invalid';
     }
   }
 

@@ -13,6 +13,7 @@ export const RecoveryErrorCodeSchema = z.enum([
   'RECOVERY_PROJECT_MISMATCH',
   'RECOVERY_WRITE_FAILED',
   'RECOVERY_READ_FAILED',
+  'RECOVERY_CLEANUP_FAILED',
 ]);
 
 export const RecoveryEnvelopeSchema = z

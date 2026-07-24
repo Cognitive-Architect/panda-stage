@@ -18,6 +18,8 @@ const temporaryDirectories: string[] = [];
 const IDS = [
   'd0000000-0000-4000-8000-000000000001',
   'd0000000-0000-4000-8000-000000000002',
+  'd0000000-0000-4000-8000-000000000003',
+  'd0000000-0000-4000-8000-000000000004',
 ];
 
 async function harness(): Promise<{
@@ -118,5 +120,55 @@ describe('RecentProjectsService', () => {
       name: 'RecentProjectsServiceError',
       code: 'RECENT_PROJECT_CONFIG_INVALID',
     } satisfies Partial<RecentProjectsServiceError>);
+  });
+
+  it('keeps corrupt and future-schema projects as explicit invalid records', async () => {
+    const { projectRoot, projectService, recentProjects } = await harness();
+    const created = await projectService.create(projectRoot, {
+      name: 'Invalid later',
+    });
+    await recentProjects.record(created);
+
+    await writeFile(path.join(projectRoot, 'project.json'), '{broken', 'utf8');
+    await expect(recentProjects.list()).resolves.toEqual([
+      expect.objectContaining({ status: 'invalid' }),
+    ]);
+
+    await writeFile(
+      path.join(projectRoot, 'project.json'),
+      JSON.stringify({ ...created.project, schemaVersion: 99 }),
+      'utf8',
+    );
+    await expect(recentProjects.list()).resolves.toEqual([
+      expect.objectContaining({ status: 'invalid' }),
+    ]);
+  });
+
+  it('marks path reuse as mismatched and refuses silent record replacement', async () => {
+    const { parent, projectRoot, configPath, projectService, recentProjects } =
+      await harness();
+    const otherRoot = path.join(parent, 'other.pandastage');
+    const first = await projectService.create(projectRoot, { name: 'A' });
+    const second = await projectService.create(otherRoot, { name: 'B' });
+    await recentProjects.record(first);
+    await writeFile(
+      path.join(projectRoot, 'project.json'),
+      await readFile(path.join(otherRoot, 'project.json'), 'utf8'),
+      'utf8',
+    );
+
+    await expect(recentProjects.list()).resolves.toEqual([
+      expect.objectContaining({
+        projectId: first.project.id,
+        status: 'mismatched',
+      }),
+    ]);
+    await expect(
+      recentProjects.record({ ...second, projectRoot }),
+    ).rejects.toMatchObject({ code: 'RECENT_PROJECT_MISMATCH' });
+    expect(await readFile(configPath, 'utf8')).toContain(first.project.id);
+    expect(await readFile(configPath, 'utf8')).not.toContain(
+      second.project.id,
+    );
   });
 });
