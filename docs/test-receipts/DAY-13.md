@@ -7,7 +7,7 @@
 - Commit: `feat(project): add autosave and crash recovery workflow`
 - 分支: `feat/day-13-autosave-recovery`
 - 基线 SHA: `01651213d7d0e9a0593f35f7ba14b663eab3062b`
-- 结果 SHA: 以包含实现的上述 commit 为准
+- 实现结果 SHA: `1bcd5f23d69c7520037c1776a36a9b563c2798e9`
 - Gate 前置: Day 12 单元 136/136、集成 12/12、完整门禁 PASS
 
 ### 本轮目标与实际结果
@@ -92,4 +92,4 @@
 
 - 主要风险: timer 重入或恢复时静默覆盖正式项目。单项目 in-flight
   锁和“恢复只入内存”状态机分别阻断两个风险。
-- 回滚方式: `git revert <Day 13 实现 commit SHA>`。
+- 回滚方式: `git revert 1bcd5f23d69c7520037c1776a36a9b563c2798e9`。
