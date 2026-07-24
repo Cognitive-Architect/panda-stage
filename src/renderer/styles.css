@@ -216,6 +216,67 @@ button:disabled {
   gap: 12px;
 }
 
+.asset-import-panel {
+  display: grid;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  padding: 16px;
+  border: 1px dashed rgb(127 199 148 / 45%);
+  border-radius: 16px;
+  background: rgb(18 31 23 / 94%);
+  gap: 12px;
+}
+
+.asset-import-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asset-import-heading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.asset-import-heading button {
+  padding: 8px 12px;
+}
+
+.asset-import-drop,
+.asset-import-status {
+  margin: 0;
+  color: #9aaca0;
+  font-size: 12px;
+}
+
+.asset-import-results {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 6px;
+  list-style: none;
+}
+
+.asset-import-result {
+  display: grid;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 4%);
+  gap: 3px;
+  font-size: 12px;
+}
+
+.asset-import-result-imported,
+.asset-import-result-duplicate {
+  color: #c9efd4;
+}
+
+.asset-import-result-rejected,
+.asset-import-result-failed {
+  color: #ffd7d2;
+}
+
 .recent-projects-heading,
 .recent-projects-list li,
 .recent-project-actions {

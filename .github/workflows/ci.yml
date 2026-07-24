@@ -54,3 +54,6 @@ jobs:
 
       - name: M1 project lifecycle gate
         run: pnpm verify:m1
+
+      - name: Day 16 asset import gate
+        run: pnpm verify:day16

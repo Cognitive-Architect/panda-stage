@@ -1,4 +1,8 @@
-import { ProjectSchema, type Project } from '../../domain';
+import {
+  ProjectSchema,
+  type Asset,
+  type Project,
+} from '../../domain';
 
 export interface EditorProjectSnapshot {
   projectRoot: string;
@@ -47,6 +51,60 @@ export class EditorProjectStore {
 
   restore(rawProject: Project): void {
     this.updateProject(rawProject);
+  }
+
+  applyAssetImport(
+    rawSavedProject: Project,
+    importedAssets: readonly Asset[],
+    baseRevision: number,
+    savedRevision: number,
+  ): SaveAcknowledgement {
+    const current = this.requireSnapshot();
+    const savedProject = ProjectSchema.parse(rawSavedProject);
+    this.assertSameProject(current.project, savedProject);
+    if (
+      !Number.isInteger(baseRevision) ||
+      baseRevision < 0 ||
+      savedRevision !== baseRevision + 1
+    ) {
+      throw new Error(
+        `Invalid asset import revisions: base=${baseRevision}, saved=${savedRevision}.`,
+      );
+    }
+    if (current.revision < baseRevision) {
+      throw new Error(
+        `Asset import base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
+      );
+    }
+    if (current.revision === baseRevision) {
+      this.snapshot = {
+        ...current,
+        project: savedProject,
+        dirty: false,
+        revision: savedRevision,
+      };
+      this.emit();
+      return 'current';
+    }
+
+    const existingIds = new Set(
+      current.project.assets.map((asset) => asset.id),
+    );
+    const project = ProjectSchema.parse({
+      ...current.project,
+      assets: [
+        ...current.project.assets,
+        ...importedAssets.filter((asset) => !existingIds.has(asset.id)),
+      ],
+    });
+    this.snapshot = {
+      ...current,
+      project,
+      dirty: true,
+      revision: current.revision + 1,
+    };
+    this.emit();
+    return 'stale';
   }
 
   markSaved(

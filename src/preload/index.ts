@@ -1,5 +1,12 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
+import {
+  AssetImportDroppedRequestSchema,
+  AssetImportProjectRequestSchema,
+  AssetImportResponseSchema,
+  declaredMimeTypeForAssetPath,
+  type AssetImportProjectRequest,
+} from '../shared/asset-import-api';
 import {
   AppPingRequestSchema,
   AppPingResponseSchema,
@@ -88,6 +95,42 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return ProjectOperationResponseSchema.parse(response);
+    },
+  }),
+  assets: Object.freeze({
+    choose: async (rawRequest: AssetImportProjectRequest) => {
+      const request = AssetImportProjectRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_IMPORT_CHOOSE,
+        request,
+      );
+      return AssetImportResponseSchema.parse(response);
+    },
+    importDropped: async (
+      rawRequest: AssetImportProjectRequest,
+      files: ReadonlyArray<
+        Parameters<typeof webUtils.getPathForFile>[0] & {
+          readonly type: string;
+        }
+      >,
+    ) => {
+      const projectRequest =
+        AssetImportProjectRequestSchema.parse(rawRequest);
+      const request = AssetImportDroppedRequestSchema.parse({
+        ...projectRequest,
+        candidates: files.map((file) => ({
+          sourcePath: webUtils.getPathForFile(file),
+          declaredMimeType:
+            file.type.trim() ||
+            declaredMimeTypeForAssetPath(file.name) ||
+            'application/octet-stream',
+        })),
+      });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_IMPORT_DROPPED,
+        request,
+      );
+      return AssetImportResponseSchema.parse(response);
     },
   }),
   recentProjects: Object.freeze({

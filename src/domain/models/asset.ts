@@ -26,7 +26,7 @@ export const AudioAssetSchema = z
   .object({
     ...AssetBaseShape,
     kind: z.literal('audio'),
-    durationMs: PositiveMillisecondsSchema,
+    durationMs: PositiveMillisecondsSchema.optional(),
   })
   .strict();
 

@@ -103,4 +103,70 @@ describe('EditorProjectStore', () => {
       }),
     ).toThrow('identity mismatch');
   });
+
+  it('commits an asset import at the matching base revision', () => {
+    const store = new EditorProjectStore();
+    const project = ProjectSchema.parse(exampleProject);
+    store.open('D:\\project.pandastage', project);
+    const imported = {
+      id: '16000000-0000-4000-8000-000000000001',
+      name: 'Imported',
+      relativePath: 'assets/imported.png',
+      mimeType: 'image/png',
+      kind: 'image' as const,
+      width: 16,
+      height: 12,
+    };
+    const savedProject = ProjectSchema.parse({
+      ...project,
+      assets: [...project.assets, imported],
+    });
+
+    expect(store.applyAssetImport(savedProject, [imported], 0, 1)).toBe(
+      'current',
+    );
+    expect(store.getSnapshot()).toMatchObject({
+      dirty: false,
+      revision: 1,
+      project: {
+        assets: expect.arrayContaining([
+          expect.objectContaining({ id: imported.id }),
+        ]),
+      },
+    });
+  });
+
+  it('merges imported assets without losing newer editor changes', () => {
+    const store = new EditorProjectStore();
+    const project = ProjectSchema.parse(exampleProject);
+    store.open('D:\\project.pandastage', project);
+    const imported = {
+      id: '16000000-0000-4000-8000-000000000001',
+      name: 'Imported',
+      relativePath: 'assets/imported.png',
+      mimeType: 'image/png',
+      kind: 'image' as const,
+      width: 16,
+      height: 12,
+    };
+    const savedProject = ProjectSchema.parse({
+      ...project,
+      assets: [...project.assets, imported],
+    });
+    store.updateProject({ ...project, name: 'Concurrent edit' });
+
+    expect(store.applyAssetImport(savedProject, [imported], 0, 1)).toBe(
+      'stale',
+    );
+    expect(store.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 2,
+      project: {
+        name: 'Concurrent edit',
+        assets: expect.arrayContaining([
+          expect.objectContaining({ id: imported.id }),
+        ]),
+      },
+    });
+  });
 });

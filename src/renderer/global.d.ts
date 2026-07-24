@@ -1,4 +1,8 @@
 import type {
+  AssetImportProjectRequest,
+  AssetImportResponse,
+} from '../shared/asset-import-api';
+import type {
   AppPingResponse,
   HiddenReadyResponse,
 } from '../shared/ipc/contracts';
@@ -56,6 +60,15 @@ declare global {
         save: (
           request: ProjectSaveRequest,
         ) => Promise<ProjectOperationResponse>;
+      };
+      assets: {
+        choose: (
+          request: AssetImportProjectRequest,
+        ) => Promise<AssetImportResponse>;
+        importDropped: (
+          request: AssetImportProjectRequest,
+          files: readonly File[],
+        ) => Promise<AssetImportResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;

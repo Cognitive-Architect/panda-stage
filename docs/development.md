@@ -177,3 +177,41 @@ machine-readable evidence and an operation log under `docs/evidence/m1/`.
 GitHub Actions must run both unit and integration suites. The workflow also
 runs `verify:m1` on `main`, `chore/**`, `feat/**`, and `fix/**` pushes and on
 pull requests, so a branch can obtain CI evidence without requiring a PR.
+
+## Secure asset import development
+
+Keep external file paths inside Main. Renderer code may only use the frozen
+`assets.choose` and `assets.importDropped` APIs; a dropped DOM `File` is
+resolved to a native path only in Preload with Electron `webUtils`.
+
+`AssetImportService` is the transaction coordinator:
+
+- inspect extension, declared MIME, and binary media structure before copying;
+- hash sources and existing project assets with streaming SHA-256;
+- return explicit `imported`, `duplicate`, `rejected`, or `failed` results;
+- preserve Unicode/spaces and resolve same-name conflicts without overwrite;
+- copy through the asset filesystem service, then save the full validated
+  project once through `ProjectService.transact`;
+- roll back newly committed files if the project save fails.
+
+Do not add absolute source paths or hashes to `ProjectSchema`. Stored asset
+paths stay project-relative, and hashes are recomputed from project-owned files
+for deduplication. Imported audio has no fabricated duration; it cannot be
+placed on a timeline until a later metadata workflow supplies `durationMs`.
+
+Generate the small synthetic fixtures and run Day 16 verification with:
+
+```powershell
+pnpm assets:generate-day16-fixtures
+pnpm typecheck
+pnpm lint
+pnpm test:unit
+pnpm test:integration
+pnpm build
+pnpm verify:day16
+```
+
+The fixtures are generated locally by the pinned FFmpeg development binary and
+contain no third-party media. `verify:day16` launches the built Electron UI,
+checks the constrained Preload surface and visible import result, then writes
+`docs/evidence/day-16/results.json` and `asset-import.png`.

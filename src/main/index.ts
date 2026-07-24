@@ -24,6 +24,9 @@ import {
   createUnsavedCloseDialogOptions,
 } from './services/UnsavedCloseController';
 import { UnsavedCloseGuard } from './windows/unsaved-close-guard';
+import { AssetImportService } from './services/AssetImportService';
+import { declaredMimeTypeForPath } from './services/MediaInspectionService';
+import { registerAssetImportIpcHandlers } from './ipc/register-asset-import-ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -32,6 +35,7 @@ let removeIpcHandlers: (() => void) | null = null;
 let removeProjectIpcHandlers: (() => void) | null = null;
 let removeRecoveryIpcHandlers: (() => void) | null = null;
 let removeRecentProjectsIpcHandlers: (() => void) | null = null;
+let removeAssetImportIpcHandlers: (() => void) | null = null;
 let autosaveService: AutosaveService | null = null;
 let projectService: ProjectService | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
@@ -198,6 +202,33 @@ async function initialize(): Promise<void> {
       return selection.canceled ? null : selection.filePaths[0] ?? null;
     },
   });
+  const assetImportService = new AssetImportService({
+    projectService,
+  });
+  removeAssetImportIpcHandlers = registerAssetImportIpcHandlers({
+    getMainWindow: () => mainWindow,
+    assetImportService,
+    selectAssetCandidates: async (window) => {
+      const selection = await dialog.showOpenDialog(window, {
+        title: '导入素材到 Panda Stage 项目',
+        buttonLabel: '导入素材',
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+          {
+            name: 'PNG / JPG / MP3 / WAV',
+            extensions: ['png', 'jpg', 'jpeg', 'mp3', 'wav'],
+          },
+        ],
+      });
+      if (selection.canceled) return null;
+      return selection.filePaths.flatMap((sourcePath) => {
+        const declaredMimeType = declaredMimeTypeForPath(sourcePath);
+        return declaredMimeType
+          ? [{ sourcePath, declaredMimeType }]
+          : [];
+      });
+    },
+  });
   unsavedCloseController = new UnsavedCloseController({
     getDirtyProject: () =>
       autosaveService?.getDirtyProjectSnapshot() ?? null,
@@ -298,6 +329,8 @@ app.on('will-quit', () => {
   removeRecoveryIpcHandlers = null;
   removeRecentProjectsIpcHandlers?.();
   removeRecentProjectsIpcHandlers = null;
+  removeAssetImportIpcHandlers?.();
+  removeAssetImportIpcHandlers = null;
   void autosaveService?.stopAll();
   autosaveService = null;
   projectService = null;
