@@ -14,6 +14,8 @@ import type { RecoveryCandidate } from '../../src/shared/recovery-api';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 const PROJECT_A_ROOT = 'D:\\projects\\a.pandastage';
+const PROJECT_A_ALIAS =
+  'D:\\projects\\temp\\..\\a.pandastage';
 const PROJECT_B_ROOT = 'D:\\projects\\b.pandastage';
 const PROJECT_A = ProjectSchema.parse(exampleProject);
 const PROJECT_B = ProjectSchema.parse({
@@ -68,7 +70,9 @@ interface Harness {
   store: EditorProjectStore;
   writeRecovery: ReturnType<typeof vi.fn>;
   open: ReturnType<typeof vi.fn>;
+  track: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
+  detect: ReturnType<typeof vi.fn>;
   trackFailures: Set<string>;
   stopFailures: Set<string>;
   detectFailures: Set<string>;
@@ -92,13 +96,15 @@ function createHarness(): Harness {
   const detectFailures = new Set<string>();
   const candidates = new Map<string, RecoveryCandidate | null>();
   const open = vi.fn(async (projectRoot: string) => {
-    const project = documents.get(projectRoot);
+    const normalizedRoot =
+      projectRoot === PROJECT_A_ALIAS ? PROJECT_A_ROOT : projectRoot;
+    const project = documents.get(normalizedRoot);
     if (!project) return operationError(projectRoot, 'Project not found.');
     return {
       ok: true as const,
       value: {
-        projectRoot,
-        projectFilePath: `${projectRoot}\\project.json`,
+        projectRoot: normalizedRoot,
+        projectFilePath: `${normalizedRoot}\\project.json`,
         project,
         migrated: false,
         sourceVersion: 1 as const,
@@ -112,31 +118,33 @@ function createHarness(): Harness {
     }
     return { ok: true as const };
   });
+  const track = vi.fn(async (request) => {
+    if (trackFailures.has(request.projectRoot)) {
+      return recoveryError(
+        request.projectRoot,
+        'Injected track failure.',
+      );
+    }
+    autosave.track(request);
+    return { ok: true as const };
+  });
+  const detect = vi.fn(async (projectRoot: string) => {
+    if (detectFailures.has(projectRoot)) {
+      return recoveryError(
+        projectRoot,
+        'Injected detect failure.',
+      );
+    }
+    return {
+      ok: true as const,
+      candidate: candidates.get(projectRoot) ?? null,
+    };
+  });
   const api: ProjectSessionApi = {
     open,
-    track: async (request) => {
-      if (trackFailures.has(request.projectRoot)) {
-        return recoveryError(
-          request.projectRoot,
-          'Injected track failure.',
-        );
-      }
-      autosave.track(request);
-      return { ok: true };
-    },
+    track,
     stop,
-    detect: async (projectRoot) => {
-      if (detectFailures.has(projectRoot)) {
-        return recoveryError(
-          projectRoot,
-          'Injected detect failure.',
-        );
-      }
-      return {
-        ok: true,
-        candidate: candidates.get(projectRoot) ?? null,
-      };
-    },
+    detect,
   };
   const store = new EditorProjectStore();
   const controller = new ProjectSessionController(api, store);
@@ -146,7 +154,9 @@ function createHarness(): Harness {
     store,
     writeRecovery,
     open,
+    track,
     stop,
+    detect,
     trackFailures,
     stopFailures,
     detectFailures,
@@ -268,12 +278,60 @@ describe('ProjectSessionController transactional switching', () => {
     const oldSnapshot = harness.store.getSnapshot();
 
     await expect(
-      harness.controller.switchProject('d:/projects/a.pandastage'),
+      harness.controller.switchProject('d:/projects/a.pandastage/'),
     ).rejects.toMatchObject({ code: 'CURRENT_PROJECT_DIRTY' });
 
     expect(harness.store.getSnapshot()).toBe(oldSnapshot);
     expect(harness.autosave.trackedProjectCount()).toBe(1);
     expect(harness.open).toHaveBeenCalledTimes(1);
     expect(harness.stop).not.toHaveBeenCalled();
+  });
+
+  it('blocks a dirty same-project dot-segment alias after Main normalizes it', async () => {
+    harness.candidates.set(
+      PROJECT_A_ROOT,
+      candidate(PROJECT_A_ROOT, PROJECT_A),
+    );
+    await openDirtyProjectA(harness);
+    const oldSnapshot = harness.store.getSnapshot();
+    const oldSessionSnapshot = harness.controller.getSnapshot();
+
+    await expect(
+      harness.controller.switchProject(PROJECT_A_ALIAS),
+    ).rejects.toMatchObject({ code: 'CURRENT_PROJECT_DIRTY' });
+
+    expect(harness.open).toHaveBeenCalledWith(PROJECT_A_ALIAS);
+    expect(harness.store.getSnapshot()).toBe(oldSnapshot);
+    expect(harness.controller.getSnapshot().trackedProjectRoot).toBe(
+      PROJECT_A_ROOT,
+    );
+    expect(harness.controller.getSnapshot()).toBe(oldSessionSnapshot);
+    expect(harness.autosave.trackedProjectCount()).toBe(1);
+    expect(harness.track).toHaveBeenCalledTimes(1);
+    expect(harness.stop).not.toHaveBeenCalled();
+  });
+
+  it('re-detects a clean same-project dot-segment alias without replacing its session', async () => {
+    await harness.controller.switchProject(PROJECT_A_ROOT);
+    const projectACandidate = candidate(PROJECT_A_ROOT, PROJECT_A);
+    harness.candidates.set(PROJECT_A_ROOT, projectACandidate);
+
+    const reopened = await harness.controller.switchProject(
+      PROJECT_A_ALIAS,
+    );
+
+    expect(harness.open).toHaveBeenCalledWith(PROJECT_A_ALIAS);
+    expect(harness.track).toHaveBeenCalledTimes(1);
+    expect(harness.stop).not.toHaveBeenCalled();
+    expect(harness.detect).toHaveBeenCalledTimes(2);
+    expect(harness.autosave.trackedProjectCount()).toBe(1);
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_A_ROOT,
+      dirty: false,
+    });
+    expect(reopened).toEqual({
+      trackedProjectRoot: PROJECT_A_ROOT,
+      recoveryCandidate: projectACandidate,
+    });
   });
 });

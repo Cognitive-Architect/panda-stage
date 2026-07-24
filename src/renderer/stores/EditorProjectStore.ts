@@ -7,6 +7,8 @@ export interface EditorProjectSnapshot {
   revision: number;
 }
 
+export type SaveAcknowledgement = 'current' | 'stale';
+
 type Listener = () => void;
 
 export class EditorProjectStore {
@@ -47,16 +49,38 @@ export class EditorProjectStore {
     this.updateProject(rawProject);
   }
 
-  markSaved(rawProject: Project): void {
+  markSaved(
+    rawProject: Project,
+    savedRevision: number,
+  ): SaveAcknowledgement {
     const current = this.requireSnapshot();
     const project = ProjectSchema.parse(rawProject);
     this.assertSameProject(current.project, project);
+    if (!Number.isInteger(savedRevision) || savedRevision < 0) {
+      throw new Error(
+        `Saved revision must be a non-negative integer: ${savedRevision}.`,
+      );
+    }
+    if (savedRevision > current.revision) {
+      throw new Error(
+        `Saved revision ${savedRevision} is ahead of current editor revision ${current.revision}.`,
+      );
+    }
+    if (savedRevision < current.revision) {
+      this.snapshot = {
+        ...current,
+        dirty: true,
+      };
+      this.emit();
+      return 'stale';
+    }
     this.snapshot = {
       ...current,
       project,
       dirty: false,
     };
     this.emit();
+    return 'current';
   }
 
   clear(): void {

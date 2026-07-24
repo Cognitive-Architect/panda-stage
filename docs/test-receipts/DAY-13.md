@@ -115,3 +115,21 @@
 - Machine-readable follow-up evidence:
   `docs/evidence/day-13/issue-19-results.json`. The final commit SHA is recorded
   in GitHub Issue #19 because a commit cannot contain its own SHA.
+
+## Issue #20 follow-up — revision-aware save acknowledgement and path aliases
+
+- Renderer captures `savedRevision` from the exact snapshot sent to Main.
+  Matching acknowledgements mark clean without reducing revision; stale
+  acknowledgements preserve the latest project, dirty state, and revision;
+  future acknowledgements are rejected explicitly.
+- A delayed-save regression test starts a revision-2 save, edits to revision 3,
+  then applies the revision-2 response and proves revision 3 remains dirty.
+- Project switching compares Main's resolved root immediately after open and
+  before temporary tracking. Dirty `temp\..\a.pandastage` reopen is rejected
+  without track/stop; clean reopen only re-detects recovery and keeps one
+  session. Existing case, slash, and trailing-slash protection remains covered.
+- Final verification: typecheck PASS; lint PASS; unit 27 files / 162 tests;
+  integration 2 files / 21 tests; build PASS; `verify:day13` PASS.
+- Machine-readable follow-up evidence:
+  `docs/evidence/day-13/issue-20-results.json`. The final commit SHA is recorded
+  in GitHub Issue #20 because a commit cannot contain its own SHA.

@@ -97,6 +97,34 @@ export class ProjectSessionController {
         );
       }
       const preparedProject = ProjectSchema.parse(opened.value.project);
+      if (
+        currentEditor &&
+        this.sameRoot(
+          currentEditor.projectRoot,
+          opened.value.projectRoot,
+        )
+      ) {
+        if (currentEditor.dirty) {
+          throw new ProjectSessionSwitchError(
+            'CURRENT_PROJECT_DIRTY',
+            `Cannot reopen ${currentEditor.projectRoot}: the current project has unsaved changes.`,
+          );
+        }
+        const detected = await this.api.detect(
+          currentEditor.projectRoot,
+        );
+        if (!detected.ok) {
+          throw new ProjectSessionSwitchError(
+            'DETECT_FAILED',
+            detected.error.message,
+          );
+        }
+        this.snapshot = {
+          trackedProjectRoot: currentEditor.projectRoot,
+          recoveryCandidate: detected.candidate,
+        };
+        return this.snapshot;
+      }
       temporaryProjectRoot = opened.value.projectRoot;
       temporaryTracked = true;
       const tracked = await this.api.track({

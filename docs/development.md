@@ -65,6 +65,11 @@ project starts clean at revision 0. Every in-memory edit or restore increments
 the revision and marks dirty; an explicit successful formal save marks clean.
 Do not create component-local dirty flags.
 
+Use `saveCurrentProject()` for Renderer formal-save acknowledgement. It captures
+the revision from the request snapshot before awaiting IPC and passes that same
+revision to `EditorProjectStore.markSaved()`. A stale acknowledgement must not
+replace newer memory state; a future acknowledgement must throw.
+
 Main owns the scheduler and filesystem:
 
 - `autosave.track` starts or refreshes the single project session after Main
@@ -87,7 +92,9 @@ Use `ProjectSessionController` for project changes. Prepare the new open,
 temporary autosave session, and recovery candidate before stopping the old
 session or changing `EditorProjectStore`. Any pre-commit failure must stop the
 temporary session and leave the old store/session usable. A same-path reopen
-while dirty must remain blocked.
+while dirty must remain blocked. After `project.open`, compare Main's returned,
+resolved root with the current root before calling `autosave.track`; this second
+check is required for `.` and `..` path aliases.
 
 Run Day 13 verification:
 

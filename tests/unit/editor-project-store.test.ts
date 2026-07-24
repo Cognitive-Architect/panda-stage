@@ -36,12 +36,59 @@ describe('EditorProjectStore', () => {
       revision: 2,
     });
 
-    store.markSaved(store.getSnapshot()!.project);
+    store.markSaved(store.getSnapshot()!.project, 2);
     expect(store.getSnapshot()).toMatchObject({
       dirty: false,
       revision: 2,
     });
     expect(listener).toHaveBeenCalledTimes(4);
+  });
+
+  it('marks the matching revision clean without moving revision backwards', () => {
+    const store = new EditorProjectStore();
+    const project = ProjectSchema.parse(exampleProject);
+    store.open('D:\\project.pandastage', project);
+    store.updateProject({ ...project, name: 'Revision 1' });
+    store.updateProject({ ...project, name: 'Revision 2' });
+    const savedProject = { ...project, name: 'Saved revision 2' };
+
+    expect(store.markSaved(savedProject, 2)).toBe('current');
+    expect(store.getSnapshot()).toMatchObject({
+      project: { name: 'Saved revision 2' },
+      dirty: false,
+      revision: 2,
+    });
+  });
+
+  it('keeps newer dirty edits when an older save acknowledgement arrives', () => {
+    const store = new EditorProjectStore();
+    const project = ProjectSchema.parse(exampleProject);
+    store.open('D:\\project.pandastage', project);
+    store.updateProject({ ...project, name: 'Revision 1' });
+    const savedRevisionTwo = { ...project, name: 'Saved revision 2' };
+    store.updateProject(savedRevisionTwo);
+    store.updateProject({ ...project, name: 'Unsaved revision 3' });
+
+    expect(store.markSaved(savedRevisionTwo, 2)).toBe('stale');
+    expect(store.getSnapshot()).toMatchObject({
+      project: { name: 'Unsaved revision 3' },
+      dirty: true,
+      revision: 3,
+    });
+  });
+
+  it('rejects a save acknowledgement from a future revision', () => {
+    const store = new EditorProjectStore();
+    const project = ProjectSchema.parse(exampleProject);
+    store.open('D:\\project.pandastage', project);
+    store.updateProject({ ...project, name: 'Revision 1' });
+    store.updateProject({ ...project, name: 'Revision 2' });
+    const before = store.getSnapshot();
+
+    expect(() => store.markSaved(project, 3)).toThrow(
+      'Saved revision 3 is ahead of current editor revision 2.',
+    );
+    expect(store.getSnapshot()).toBe(before);
   });
 
   it('rejects replacing the open project with a different identity', () => {

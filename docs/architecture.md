@@ -177,6 +177,11 @@ The coordinator waits for an in-flight recovery write before replacing
 `project.json`, then keeps recovery cleanup and autosave session reconciliation
 inside the same critical section. It does not serialize unrelated project
 roots. A failed formal write never runs cleanup or marks the live session clean.
+Renderer save acknowledgement is revision-aware as well. The save workflow
+captures the request revision before awaiting Main. A matching response may
+refresh the saved project and mark the store clean; a response older than the
+current editor revision leaves the newer in-memory project dirty, while a
+response from a future revision is rejected as an invalid state.
 
 Project switching is a Renderer-owned transaction:
 
@@ -187,7 +192,10 @@ Project switching is a Renderer-owned transaction:
 
 Failures before commit remove the temporary session and preserve or re-track
 the old session. Reopening the current dirty path is rejected explicitly, so it
-cannot duplicate a timer or discard unsaved state.
+cannot duplicate a timer or discard unsaved state. The controller performs this
+same-project check both before open for simple string aliases and after open
+using Main's resolved `projectRoot`. Therefore `.` and `..` aliases cannot
+reach temporary tracking or rollback logic for the already-open project.
 
 Switching projects, Renderer unmount, and application quit release timers.
 Periodic write errors are sent through the read-only `autosave:error` event.

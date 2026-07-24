@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { ProjectSessionController } from './ProjectSessionController';
+import { saveCurrentProject } from './saveCurrentProject';
 
 function failureMessage(
   response: { ok: boolean; error?: { message: string } },
@@ -137,20 +138,27 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
     const snapshot = editorProjectStore.getSnapshot();
     if (!snapshot?.dirty) return;
     setBusy(true);
-    const response = await window.pandaStage.project.save({
-      projectRoot: snapshot.projectRoot,
-      project: snapshot.project,
-      revision: snapshot.revision,
-    });
-    if (response.ok) {
-      editorProjectStore.markSaved(response.value.project);
-      setStatus(
-        'Recovered project saved explicitly; stale recovery was cleaned.',
+    try {
+      const result = await saveCurrentProject(
+        window.pandaStage.project,
+        editorProjectStore,
       );
-    } else {
-      setStatus(response.error.message);
+      if (!result.ok) {
+        setStatus(result.error.message);
+      } else if (result.acknowledgement === 'stale') {
+        setStatus(
+          `Revision ${result.savedRevision} was saved, but newer unsaved changes remain.`,
+        );
+      } else {
+        setStatus(
+          'Recovered project saved explicitly; stale recovery was cleaned.',
+        );
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Save failed.');
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   return (
