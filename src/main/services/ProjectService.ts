@@ -22,6 +22,7 @@ import {
   ProjectFileSystemService,
   ProjectRootAlreadyExistsError,
 } from './ProjectFileSystemService';
+import { ProjectOperationCoordinator } from './ProjectOperationCoordinator';
 
 export interface ProjectServiceOptions {
   fileSystem?: ProjectFileSystemService;
@@ -30,8 +31,10 @@ export interface ProjectServiceOptions {
   onProjectSaved?: (
     projectRoot: string,
     project: Project,
+    revision?: number,
   ) => void | Promise<void>;
   onPostSaveError?: (error: unknown) => void;
+  coordinator?: ProjectOperationCoordinator;
 }
 
 export class ProjectServiceError extends Error {
@@ -51,9 +54,14 @@ export class ProjectService {
   private readonly now: () => Date;
   private readonly createId: () => string;
   private readonly onProjectSaved:
-    | ((projectRoot: string, project: Project) => void | Promise<void>)
+    | ((
+        projectRoot: string,
+        project: Project,
+        revision?: number,
+      ) => void | Promise<void>)
     | null;
   private readonly onPostSaveError: (error: unknown) => void;
+  private readonly coordinator: ProjectOperationCoordinator;
 
   constructor(options: ProjectServiceOptions = {}) {
     this.fileSystem = options.fileSystem ?? new ProjectFileSystemService();
@@ -61,6 +69,8 @@ export class ProjectService {
     this.createId = options.createId ?? randomUUID;
     this.onProjectSaved = options.onProjectSaved ?? null;
     this.onPostSaveError = options.onPostSaveError ?? (() => undefined);
+    this.coordinator =
+      options.coordinator ?? new ProjectOperationCoordinator();
   }
 
   async create(
@@ -157,8 +167,19 @@ export class ProjectService {
   async save(
     rawProjectRoot: string,
     rawProject: Project,
+    revision?: number,
   ): Promise<ProjectDocument> {
     const projectRoot = this.resolveProjectRoot(rawProjectRoot);
+    return this.coordinator.runExclusive(projectRoot, () =>
+      this.saveExclusive(projectRoot, rawProject, revision),
+    );
+  }
+
+  private async saveExclusive(
+    projectRoot: string,
+    rawProject: Project,
+    revision?: number,
+  ): Promise<ProjectDocument> {
     const existingDocument = await this.open(projectRoot);
     let project: Project;
     try {
@@ -181,7 +202,7 @@ export class ProjectService {
         this.serialize(project),
       );
       try {
-        await this.onProjectSaved?.(projectRoot, project);
+        await this.onProjectSaved?.(projectRoot, project, revision);
       } catch (error) {
         this.onPostSaveError(error);
       }

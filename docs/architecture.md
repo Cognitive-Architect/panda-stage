@@ -172,6 +172,23 @@ it dirty; neither restore nor ignore writes or deletes `project.json`. Ignore
 retains the evidence file. Only an explicit formal `project.save` replaces
 `project.json`; after that commit, same-project recovery files are cleaned.
 
+Formal save and recovery writes share a per-project-root operation coordinator.
+The coordinator waits for an in-flight recovery write before replacing
+`project.json`, then keeps recovery cleanup and autosave session reconciliation
+inside the same critical section. It does not serialize unrelated project
+roots. A failed formal write never runs cleanup or marks the live session clean.
+
+Project switching is a Renderer-owned transaction:
+
+1. Open and validate the requested project without changing the editor store.
+2. Start its temporary autosave session and detect recovery.
+3. Stop the old session.
+4. Commit the prepared project, tracked root, and candidate together.
+
+Failures before commit remove the temporary session and preserve or re-track
+the old session. Reopening the current dirty path is rejected explicitly, so it
+cannot duplicate a timer or discard unsaved state.
+
 Switching projects, Renderer unmount, and application quit release timers.
 Periodic write errors are sent through the read-only `autosave:error` event.
 Renderer never receives filesystem or Node.js access.

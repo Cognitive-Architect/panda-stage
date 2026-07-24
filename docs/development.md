@@ -73,11 +73,21 @@ Main owns the scheduler and filesystem:
 - `autosave.stop` clears the project timer and waits for an in-flight write.
 - clean state and already-snapshotted revisions do not write.
 - repeated ticks while a write is active join that write; they never overlap.
+- formal save and recovery writes must receive the same
+  `ProjectOperationCoordinator`; the key is the resolved project root.
+- keep formal write, recovery cleanup, and `markFormalSaved` in that shared
+  critical section. Do not introduce a global save lock.
 
 Recovery detection belongs after a successful explicit project open. A restore
 loads only into `EditorProjectStore` and remains dirty. Ignore validates but
 retains the file. The user-facing Save recovered project action is the only
 path that commits recovered content to `project.json`.
+
+Use `ProjectSessionController` for project changes. Prepare the new open,
+temporary autosave session, and recovery candidate before stopping the old
+session or changing `EditorProjectStore`. Any pre-commit failure must stop the
+temporary session and leave the old store/session usable. A same-path reopen
+while dirty must remain blocked.
 
 Run Day 13 verification:
 

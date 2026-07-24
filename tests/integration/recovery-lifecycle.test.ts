@@ -15,7 +15,12 @@ import {
   AutosaveService,
   type AutosaveClock,
 } from '../../src/main/services/AutosaveService';
-import { ProjectService } from '../../src/main/services/ProjectService';
+import { ProjectFileSystemService } from '../../src/main/services/ProjectFileSystemService';
+import { ProjectOperationCoordinator } from '../../src/main/services/ProjectOperationCoordinator';
+import {
+  ProjectService,
+  type ProjectServiceError,
+} from '../../src/main/services/ProjectService';
 import {
   RecoveryFileSystemService,
 } from '../../src/main/services/RecoveryFileSystemService';
@@ -34,6 +39,17 @@ const RECOVERY_TIME = 4_102_444_800_000;
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function deferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 async function newProjectRoot(): Promise<string> {
@@ -74,6 +90,223 @@ afterEach(async () => {
 });
 
 describe('crash recovery lifecycle', () => {
+  it('serializes an in-flight autosave before formal save and leaves the live session clean', async () => {
+    const projectRoot = await newProjectRoot();
+    const { project: formalProject } = await createProject(projectRoot);
+    const formalFilePath = path.join(projectRoot, 'project.json');
+    const coordinator = new ProjectOperationCoordinator();
+    const recoveryWriteEntered = deferred();
+    const releaseRecoveryWrite = deferred();
+    let recoveryTime = RECOVERY_TIME;
+    const recoveryService = new RecoveryService({
+      nowMs: () => recoveryTime,
+      fileSystem: new RecoveryFileSystemService({
+        afterTemporarySync: async () => {
+          recoveryWriteEntered.resolve();
+          await releaseRecoveryWrite.promise;
+        },
+      }),
+    });
+    const autosave = new AutosaveService({
+      recoveryService,
+      clock: inertClock,
+      coordinator,
+    });
+    const saveService = new ProjectService({
+      coordinator,
+      onProjectSaved: async (root, project, revision) => {
+        await recoveryService.cleanupAfterFormalSave(root, project.id);
+        autosave.markFormalSaved(root, project, revision!);
+      },
+    });
+    const revisionOne = {
+      ...formalProject,
+      name: 'Autosave revision one',
+    };
+    const revisionTwo = {
+      ...formalProject,
+      name: 'Formal revision two',
+    };
+
+    autosave.track({
+      projectRoot,
+      project: formalProject,
+      dirty: false,
+      revision: 0,
+    });
+    autosave.update({
+      projectRoot,
+      project: revisionOne,
+      dirty: true,
+      revision: 1,
+    });
+    const autosaveWrite = autosave.tick(projectRoot);
+    await recoveryWriteEntered.promise;
+    const formalSave = saveService.save(projectRoot, revisionTwo, 2);
+    let formalSaveSettled = false;
+    void formalSave.finally(() => {
+      formalSaveSettled = true;
+    });
+    await Promise.resolve();
+    expect(formalSaveSettled).toBe(false);
+
+    releaseRecoveryWrite.resolve();
+    await Promise.all([autosaveWrite, formalSave]);
+
+    expect(
+      JSON.parse(await readFile(formalFilePath, 'utf8')),
+    ).toMatchObject({ name: 'Formal revision two' });
+    expect(await readdir(path.join(projectRoot, 'recovery'))).toEqual([]);
+    expect(
+      await recoveryService.detectLatest(projectRoot, revisionTwo),
+    ).toBeNull();
+    expect(autosave.trackedProjectCount()).toBe(1);
+    await autosave.tick(projectRoot);
+    expect(await readdir(path.join(projectRoot, 'recovery'))).toEqual([]);
+
+    recoveryTime += 30_000;
+    const revisionThree = {
+      ...revisionTwo,
+      name: 'Autosave revision three',
+    };
+    autosave.update({
+      projectRoot,
+      project: revisionThree,
+      dirty: true,
+      revision: 3,
+    });
+    await autosave.tick(projectRoot);
+    const entries = await readdir(path.join(projectRoot, 'recovery'));
+    expect(entries).toHaveLength(1);
+    expect(entries.some((entry) => entry.endsWith('.tmp'))).toBe(false);
+    expect(
+      (
+        await recoveryService.detectLatest(projectRoot, revisionTwo)
+      )?.project.name,
+    ).toBe('Autosave revision three');
+    console.info(
+      `DAY13_SAVE_RACE_EVIDENCE scenario=A formal=revision-2 recoveryAfterSave=0 liveSessions=${autosave.trackedProjectCount()} laterRecovery=revision-3`,
+    );
+  });
+
+  it('preserves formal data, recovery evidence, and the live session when formal save fails', async () => {
+    const projectRoot = await newProjectRoot();
+    const { project: formalProject } = await createProject(projectRoot);
+    const formalFilePath = path.join(projectRoot, 'project.json');
+    const formalHash = sha256(await readFile(formalFilePath, 'utf8'));
+    const coordinator = new ProjectOperationCoordinator();
+    let recoveryTime = RECOVERY_TIME;
+    const recoveryService = new RecoveryService({
+      nowMs: () => recoveryTime,
+    });
+    const autosave = new AutosaveService({
+      recoveryService,
+      clock: inertClock,
+      coordinator,
+    });
+    const revisionOne = {
+      ...formalProject,
+      name: 'Preserved recovery revision one',
+    };
+    autosave.track({
+      projectRoot,
+      project: formalProject,
+      dirty: false,
+      revision: 0,
+    });
+    autosave.update({
+      projectRoot,
+      project: revisionOne,
+      dirty: true,
+      revision: 1,
+    });
+    await autosave.tick(projectRoot);
+    const [oldRecoveryName] = await readdir(
+      path.join(projectRoot, 'recovery'),
+    );
+    const oldRecoveryPath = path.join(
+      projectRoot,
+      'recovery',
+      oldRecoveryName!,
+    );
+    const oldRecoveryHash = sha256(
+      await readFile(oldRecoveryPath, 'utf8'),
+    );
+    const injectedFailure = Object.assign(
+      new Error('Injected formal save failure.'),
+      { code: 'EIO' },
+    );
+    const saveService = new ProjectService({
+      coordinator,
+      fileSystem: new ProjectFileSystemService({
+        beforeTemporaryWrite: () => {
+          throw injectedFailure;
+        },
+      }),
+      onProjectSaved: async (root, project, revision) => {
+        await recoveryService.cleanupAfterFormalSave(root, project.id);
+        autosave.markFormalSaved(root, project, revision!);
+      },
+    });
+    const revisionTwo = {
+      ...revisionOne,
+      name: 'Failed formal revision two',
+    };
+    autosave.update({
+      projectRoot,
+      project: revisionTwo,
+      dirty: true,
+      revision: 2,
+    });
+
+    let saveError: ProjectServiceError | undefined;
+    try {
+      await saveService.save(projectRoot, revisionTwo, 2);
+    } catch (error) {
+      saveError = error as ProjectServiceError;
+    }
+
+    expect(saveError).toMatchObject({
+      code: 'SAVE_FAILED',
+      projectRoot: path.resolve(projectRoot),
+    });
+    expect(saveError?.cause).toBe(injectedFailure);
+    expect(sha256(await readFile(formalFilePath, 'utf8'))).toBe(
+      formalHash,
+    );
+    expect(sha256(await readFile(oldRecoveryPath, 'utf8'))).toBe(
+      oldRecoveryHash,
+    );
+    expect(autosave.trackedProjectCount()).toBe(1);
+
+    recoveryTime += 30_000;
+    const revisionThree = {
+      ...revisionTwo,
+      name: 'Recovery continues at revision three',
+    };
+    autosave.update({
+      projectRoot,
+      project: revisionThree,
+      dirty: true,
+      revision: 3,
+    });
+    await autosave.tick(projectRoot);
+    const entries = await readdir(path.join(projectRoot, 'recovery'));
+    expect(entries).toHaveLength(1);
+    expect(entries.some((entry) => entry.endsWith('.tmp'))).toBe(false);
+    expect(
+      (
+        await recoveryService.detectLatest(
+          projectRoot,
+          formalProject,
+        )
+      )?.project.name,
+    ).toBe('Recovery continues at revision three');
+    console.info(
+      `DAY13_SAVE_RACE_EVIDENCE scenario=B error=${saveError?.code} formalUnchanged=true oldRecoveryUnchanged=true liveSessions=${autosave.trackedProjectCount()} laterRecovery=revision-3`,
+    );
+  });
+
   it('restores the latest autosave after a simulated crash without overwriting the formal project', async () => {
     const projectRoot = await newProjectRoot();
     const { project: formalProject } = await createProject(projectRoot);

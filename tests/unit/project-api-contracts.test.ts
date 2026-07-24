@@ -5,6 +5,8 @@ import {
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
 } from '../../src/shared/project-api';
+import { ProjectSchema } from '../../src/domain';
+import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('project API contracts', () => {
   it('accepts only the explicit create and open request shapes', () => {
@@ -29,6 +31,23 @@ describe('project API contracts', () => {
         project: { schemaVersion: 99 },
       }).success,
     ).toBe(false);
+  });
+
+  it('requires the editor revision on a valid formal save request', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    expect(
+      ProjectSaveRequestSchema.safeParse({
+        projectRoot: 'project.pandastage',
+        project,
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectSaveRequestSchema.parse({
+        projectRoot: 'project.pandastage',
+        project,
+        revision: 4,
+      }),
+    ).toBeTruthy();
   });
 
   it('validates standardized operation errors', () => {

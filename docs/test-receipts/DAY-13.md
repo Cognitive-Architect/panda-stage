@@ -93,3 +93,25 @@
 - 主要风险: timer 重入或恢复时静默覆盖正式项目。单项目 in-flight
   锁和“恢复只入内存”状态机分别阻断两个风险。
 - 回滚方式: `git revert 1bcd5f23d69c7520037c1776a36a9b563c2798e9`。
+
+## Issue #19 follow-up — save/autosave serialization and transactional switching
+
+- Formal save and autosave recovery writes now share a project-root-scoped
+  coordinator. Different roots remain independent.
+- Controlled scenario A pauses recovery after temporary-file sync, queues a
+  formal revision-2 save, then releases recovery. The final formal document is
+  revision 2, recovery is empty, the session stays live and clean, and a later
+  dirty revision 3 produces recovery normally.
+- Controlled scenario B injects `EIO` before the formal temporary write. The
+  original `SAVE_FAILED` retains the injected cause; the formal SHA-256, prior
+  recovery SHA-256, dirty session, and subsequent revision-3 autosave all
+  remain valid.
+- Project switching now prepares open/track/detect before stopping the old
+  session and committing the store. Missing paths and track/detect/stop
+  failures preserve the prior store and timer; successful switches leave one
+  aligned session. Same-path dirty reopen is rejected explicitly.
+- Final verification: typecheck PASS; lint PASS; unit 26 files / 156 tests;
+  integration 2 files / 21 tests; build PASS; `verify:day13` PASS.
+- Machine-readable follow-up evidence:
+  `docs/evidence/day-13/issue-19-results.json`. The final commit SHA is recorded
+  in GitHub Issue #19 because a commit cannot contain its own SHA.

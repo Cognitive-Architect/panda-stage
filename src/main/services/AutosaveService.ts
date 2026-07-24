@@ -9,6 +9,7 @@ import {
   RecoveryService,
   RecoveryServiceError,
 } from './RecoveryService';
+import { ProjectOperationCoordinator } from './ProjectOperationCoordinator';
 
 type IntervalHandle = ReturnType<typeof setInterval>;
 
@@ -31,6 +32,7 @@ export interface AutosaveServiceOptions {
   recoveryService: RecoveryService;
   clock?: AutosaveClock;
   onError?: (error: RecoveryError) => void;
+  coordinator?: ProjectOperationCoordinator;
 }
 
 const defaultClock: AutosaveClock = {
@@ -44,11 +46,14 @@ export class AutosaveService {
   private readonly clock: AutosaveClock;
   private readonly onError: (error: RecoveryError) => void;
   private readonly sessions = new Map<string, AutosaveSession>();
+  private readonly coordinator: ProjectOperationCoordinator;
 
   constructor(options: AutosaveServiceOptions) {
     this.recoveryService = options.recoveryService;
     this.clock = options.clock ?? defaultClock;
     this.onError = options.onError ?? (() => undefined);
+    this.coordinator =
+      options.coordinator ?? new ProjectOperationCoordinator();
   }
 
   track(rawRequest: AutosaveTrackRequest): void {
@@ -95,18 +100,20 @@ export class AutosaveService {
     if (session.revision <= session.lastSavedRevision) return;
     if (session.inFlight) return session.inFlight;
 
-    const revision = session.revision;
-    const project = structuredClone(session.project);
-    const write = this.recoveryService
-      .writeRecovery(projectRoot, project)
-      .then(() => {
+    const write = this.coordinator
+      .runExclusive(projectRoot, async () => {
         const current = this.sessions.get(projectRoot);
-        if (current) {
-          current.lastSavedRevision = Math.max(
-            current.lastSavedRevision,
-            revision,
-          );
-        }
+        if (!current || !current.dirty) return;
+        if (current.revision <= current.lastSavedRevision) return;
+        const revision = current.revision;
+        const project = structuredClone(current.project);
+        await this.recoveryService.writeRecovery(projectRoot, project);
+        const latest = this.sessions.get(projectRoot);
+        if (!latest) return;
+        latest.lastSavedRevision = Math.max(
+          latest.lastSavedRevision,
+          revision,
+        );
       })
       .finally(() => {
         const current = this.sessions.get(projectRoot);
@@ -137,6 +144,41 @@ export class AutosaveService {
 
   trackedProjectCount(): number {
     return this.sessions.size;
+  }
+
+  markFormalSaved(
+    rawProjectRoot: string,
+    rawProject: Project,
+    revision: number,
+  ): void {
+    const projectRoot = path.resolve(rawProjectRoot);
+    const session = this.sessions.get(projectRoot);
+    if (!session) return;
+    const project = ProjectSchema.parse(rawProject);
+    if (session.project.id !== project.id) {
+      throw new Error(
+        `Formal save project identity mismatch at ${projectRoot}.`,
+      );
+    }
+    if (!Number.isInteger(revision) || revision < 0) {
+      throw new Error(
+        `Formal save revision must be a non-negative integer at ${projectRoot}.`,
+      );
+    }
+    if (revision < session.revision) {
+      session.lastSavedRevision = Math.max(
+        session.lastSavedRevision,
+        revision,
+      );
+      return;
+    }
+    session.project = project;
+    session.dirty = false;
+    session.revision = revision;
+    session.lastSavedRevision = Math.max(
+      session.lastSavedRevision,
+      revision,
+    );
   }
 
   private parseRequest(

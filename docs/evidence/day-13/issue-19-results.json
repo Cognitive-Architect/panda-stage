@@ -1,0 +1,49 @@
+{
+  "issue": 19,
+  "status": "PASS",
+  "branch": "feat/day-13-autosave-recovery",
+  "unitTests": {
+    "files": 26,
+    "passed": 156,
+    "failed": 0
+  },
+  "integrationTests": {
+    "files": 2,
+    "passed": 21,
+    "failed": 0
+  },
+  "controlledConcurrency": {
+    "scenarioA": {
+      "formalProjectRevision": 2,
+      "recoveryCountAfterSave": 0,
+      "detectLatestAfterSave": null,
+      "temporaryFilesAfterSave": 0,
+      "liveAutosaveSessions": 1,
+      "laterRecoveryRevision": 3
+    },
+    "scenarioB": {
+      "saveError": "SAVE_FAILED",
+      "originalCausePreserved": true,
+      "formalProjectHashUnchanged": true,
+      "priorRecoveryHashUnchanged": true,
+      "liveAutosaveSessions": 1,
+      "laterRecoveryRevision": 3
+    }
+  },
+  "projectSwitching": {
+    "missingPathRollback": "PASS",
+    "trackFailureRollback": "PASS",
+    "detectFailureRollback": "PASS",
+    "stopFailureRollback": "PASS",
+    "successfulSwitchSingleSession": "PASS",
+    "samePathDirtyReopenBlocked": "PASS"
+  },
+  "gates": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "unit": "PASS",
+    "integration": "PASS",
+    "build": "PASS",
+    "verifyDay13": "PASS"
+  }
+}

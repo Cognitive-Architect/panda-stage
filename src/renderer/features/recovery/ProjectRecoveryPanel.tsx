@@ -1,6 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
-import type { RecoveryCandidate } from '../../../shared/recovery-api';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { ProjectSessionController } from './ProjectSessionController';
 
 function failureMessage(
   response: { ok: boolean; error?: { message: string } },
@@ -14,11 +19,26 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
-  const [projectRootInput, setProjectRootInput] = useState('');
-  const [candidate, setCandidate] = useState<RecoveryCandidate | null>(null);
-  const [trackedProjectRoot, setTrackedProjectRoot] = useState<string | null>(
-    null,
+  const sessionController = useMemo(
+    () =>
+      new ProjectSessionController(
+        {
+          open: (projectRoot) =>
+            window.pandaStage.project.open({ projectRoot }),
+          track: (request) => window.pandaStage.autosave.track(request),
+          stop: (projectRoot) =>
+            window.pandaStage.autosave.stop(projectRoot),
+          detect: (projectRoot) =>
+            window.pandaStage.recovery.detect(projectRoot),
+        },
+        editorProjectStore,
+      ),
+    [],
   );
+  const [sessionSnapshot, setSessionSnapshot] = useState(() =>
+    sessionController.getSnapshot(),
+  );
+  const [projectRootInput, setProjectRootInput] = useState('');
   const [status, setStatus] = useState(
     'Open a .pandastage project to check crash recovery.',
   );
@@ -30,16 +50,15 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
 
   useEffect(
     () => () => {
-      const current = editorProjectStore.getSnapshot();
-      if (current) void window.pandaStage.autosave.stop(current.projectRoot);
+      void sessionController.dispose();
     },
-    [],
+    [sessionController],
   );
 
   useEffect(() => {
     if (
       !projectSnapshot ||
-      projectSnapshot.projectRoot !== trackedProjectRoot
+      projectSnapshot.projectRoot !== sessionSnapshot.trackedProjectRoot
     ) {
       return;
     }
@@ -48,7 +67,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
       .then((response) => {
         if (!response.ok) setStatus(response.error.message);
       });
-  }, [projectSnapshot, trackedProjectRoot]);
+  }, [projectSnapshot, sessionSnapshot.trackedProjectRoot]);
 
   if (new URLSearchParams(window.location.search).get('gateA') === '1') {
     return null;
@@ -59,25 +78,10 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
     if (!projectRoot) return;
     setBusy(true);
     try {
-      const previous = editorProjectStore.getSnapshot();
-      if (previous) {
-        await window.pandaStage.autosave.stop(previous.projectRoot);
-        setTrackedProjectRoot(null);
-      }
-      const opened = await window.pandaStage.project.open({ projectRoot });
-      if (!opened.ok) throw new Error(opened.error.message);
-      editorProjectStore.open(opened.value.projectRoot, opened.value.project);
-      const snapshot = editorProjectStore.getSnapshot()!;
-      const tracked = await window.pandaStage.autosave.track(snapshot);
-      if (!tracked.ok) throw new Error(tracked.error.message);
-      setTrackedProjectRoot(snapshot.projectRoot);
-      const detected = await window.pandaStage.recovery.detect(
-        snapshot.projectRoot,
-      );
-      if (!detected.ok) throw new Error(detected.error.message);
-      setCandidate(detected.candidate);
+      const nextSession = await sessionController.switchProject(projectRoot);
+      setSessionSnapshot(nextSession);
       setStatus(
-        detected.candidate
+        nextSession.recoveryCandidate
           ? 'A newer crash-recovery snapshot is available.'
           : 'Project opened. No newer recovery snapshot was found.',
       );
@@ -89,6 +93,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
   };
 
   const restoreRecovery = async (): Promise<void> => {
+    const candidate = sessionSnapshot.recoveryCandidate;
     if (!candidate) return;
     setBusy(true);
     try {
@@ -98,7 +103,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
       });
       if (!response.ok) throw new Error(response.error.message);
       editorProjectStore.restore(response.candidate.project);
-      setCandidate(null);
+      setSessionSnapshot(sessionController.clearRecoveryCandidate());
       setStatus(
         'Recovery loaded in memory and marked dirty. Use Save recovered project to replace project.json.',
       );
@@ -110,6 +115,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
   };
 
   const ignoreRecovery = async (): Promise<void> => {
+    const candidate = sessionSnapshot.recoveryCandidate;
     if (!candidate) return;
     setBusy(true);
     const response = await window.pandaStage.recovery.ignore({
@@ -117,7 +123,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
       recoveryFilePath: candidate.recoveryFilePath,
     });
     if (response.ok) {
-      setCandidate(null);
+      setSessionSnapshot(sessionController.clearRecoveryCandidate());
       setStatus(
         'Recovery ignored for this session. The evidence file was retained.',
       );
@@ -134,6 +140,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
     const response = await window.pandaStage.project.save({
       projectRoot: snapshot.projectRoot,
       project: snapshot.project,
+      revision: snapshot.revision,
     });
     if (response.ok) {
       editorProjectStore.markSaved(response.value.project);
@@ -174,13 +181,18 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
           Open and check recovery
         </button>
       </div>
-      {candidate ? (
+      {sessionSnapshot.recoveryCandidate ? (
         <div className="recovery-prompt" role="alert">
-          <strong>{candidate.project.name}</strong>
+          <strong>{sessionSnapshot.recoveryCandidate.project.name}</strong>
           <span>
-            Recovery from {new Date(candidate.savedAtMs).toLocaleString()}
+            Recovery from{' '}
+            {new Date(
+              sessionSnapshot.recoveryCandidate.savedAtMs,
+            ).toLocaleString()}
           </span>
-          <span className="recovery-path">{candidate.recoveryFilePath}</span>
+          <span className="recovery-path">
+            {sessionSnapshot.recoveryCandidate.recoveryFilePath}
+          </span>
           <div>
             <button
               disabled={busy}

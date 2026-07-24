@@ -108,6 +108,7 @@ export function registerProjectIpcHandlers(
         const value = await dependencies.projectService.save(
           request.projectRoot,
           request.project,
+          request.revision,
         );
         return ProjectOperationResponseSchema.parse({ ok: true, value });
       } catch (error) {
