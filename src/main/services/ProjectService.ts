@@ -38,6 +38,15 @@ export interface ProjectServiceOptions {
   pathService?: PathService;
 }
 
+export interface ProjectTransaction {
+  projectRoot: string;
+  existingDocument: ProjectDocument;
+  save(
+    project: Project,
+    revision?: number,
+  ): Promise<ProjectDocument>;
+}
+
 export class ProjectServiceError extends Error {
   constructor(
     readonly code: ProjectErrorCode,
@@ -178,12 +187,35 @@ export class ProjectService {
     );
   }
 
+  async transact<T>(
+    rawProjectRoot: string,
+    operation: (transaction: ProjectTransaction) => Promise<T>,
+  ): Promise<T> {
+    const projectRoot = this.resolveProjectRoot(rawProjectRoot);
+    return this.coordinator.runExclusive(projectRoot, async () => {
+      const existingDocument = await this.open(projectRoot);
+      return operation({
+        projectRoot,
+        existingDocument,
+        save: (project, revision) =>
+          this.saveExclusive(
+            projectRoot,
+            project,
+            revision,
+            existingDocument,
+          ),
+      });
+    });
+  }
+
   private async saveExclusive(
     projectRoot: string,
     rawProject: Project,
     revision?: number,
+    knownExistingDocument?: ProjectDocument,
   ): Promise<ProjectDocument> {
-    const existingDocument = await this.open(projectRoot);
+    const existingDocument =
+      knownExistingDocument ?? (await this.open(projectRoot));
     let project: Project;
     try {
       project = ProjectSchema.parse(rawProject);

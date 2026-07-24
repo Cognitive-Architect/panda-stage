@@ -219,4 +219,35 @@ describe('AutosaveService', () => {
     );
     await service.stopAll();
   });
+
+  it('keeps a divergent same-revision edit dirty after a formal save acknowledgement', async () => {
+    const service = new AutosaveService({
+      recoveryService: recoveryService(vi.fn().mockResolvedValue({})),
+    });
+    service.track({
+      projectRoot: PROJECT_ROOT,
+      project: project('Base'),
+      dirty: false,
+      revision: 0,
+    });
+    service.update({
+      projectRoot: PROJECT_ROOT,
+      project: project('Concurrent editor change'),
+      dirty: true,
+      revision: 1,
+    });
+
+    service.markFormalSaved(
+      PROJECT_ROOT,
+      project('Different formal branch'),
+      1,
+    );
+
+    expect(service.getProjectSnapshot(PROJECT_ROOT)).toMatchObject({
+      project: { name: 'Concurrent editor change' },
+      dirty: true,
+      revision: 1,
+    });
+    await service.stopAll();
+  });
 });

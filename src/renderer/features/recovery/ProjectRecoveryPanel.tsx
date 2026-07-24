@@ -8,6 +8,7 @@ import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { ProjectSessionController } from './ProjectSessionController';
 import { saveCurrentProject } from './saveCurrentProject';
 import { RecentProjectsPanel } from '../welcome/RecentProjectsPanel';
+import { AssetImportPanel } from '../assets/AssetImportPanel';
 
 function failureMessage(
   response: { ok: boolean; error?: { message: string } },
@@ -196,6 +197,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
         onOpenProject={switchToRecentProject}
         refreshToken={recentRefreshToken}
       />
+      <AssetImportPanel snapshot={projectSnapshot} />
       <section className="recovery-panel" aria-labelledby="recovery-heading">
       <div className="recovery-heading-row">
         <div>

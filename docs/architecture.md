@@ -46,7 +46,7 @@ Project
 
 项目固定为 1920×1080、24 FPS。所有 `startMs`、`endMs`、`durationMs`、`offsetMs` 均为非负整数毫秒；镜头 duration 必须为正整数。Layer 的 `anchor` 固定为 `center`，`x/y` 始终表示图层在逻辑画布上的视觉中心，而不是左上角。
 
-实体 schema 只校验自身字段；`ProjectSchema.superRefine()` 调用集中式 `validateProjectReferences()` 校验素材、角色、表情、VoiceProfile、字幕样式、音频、图层和事件引用，并把错误定位到具体数组索引与字段路径。AudioClip 除镜头时间范围外，还必须满足 `offsetMs + (endMs - startMs) <= AudioAsset.durationMs`，禁止读取超过源音频结尾。所有对象使用 strict 模式，未知字段和未知 TimelineEvent 类型直接拒绝，不会在 parse 时静默删除。
+实体 schema 只校验自身字段；`ProjectSchema.superRefine()` 调用集中式 `validateProjectReferences()` 校验素材、角色、表情、VoiceProfile、字幕样式、音频、图层和事件引用，并把错误定位到具体数组索引与字段路径。AudioAsset 可在安全导入后暂缺 `durationMs`，但 AudioClip 只能引用已有时长元数据的素材，并且必须满足 `offsetMs + (endMs - startMs) <= AudioAsset.durationMs`，禁止读取超过源音频结尾。所有对象使用 strict 模式，未知字段和未知 TimelineEvent 类型直接拒绝，不会在 parse 时静默删除。
 
 ### 版本检测与迁移
 
@@ -246,3 +246,82 @@ Successful save uses the existing project-root coordinator; cancel and save
 failure keep the window open. Shutdown cleanup runs at `will-quit`, after the
 guard has approved exit, so it cannot erase the dirty snapshot before the
 decision.
+
+## Day 16 secure asset import
+
+Local media import is a Main-process transaction. Renderer can request the
+native picker or pass dropped `File` objects to the frozen Preload bridge;
+Preload converts those objects to controlled source candidates with Electron
+`webUtils`. Renderer never receives Node.js or filesystem access.
+
+```text
+AssetImportPanel
+  -> frozen Preload assets.choose/importDropped
+  -> strict Zod request/response contracts
+  -> trusted-window IPC
+  -> AssetImportService
+     ├─ MediaInspectionService (extension + declared MIME + binary structure)
+     ├─ HashService (streaming SHA-256)
+     ├─ AssetImportFileSystemService (sync + exclusive atomic placement)
+     └─ ProjectService transaction (validated atomic project save)
+  -> <project>.pandastage/assets/
+```
+
+PNG and JPEG validation checks their binary signatures and image dimensions.
+WAV validation parses RIFF/WAVE chunks; MP3 validation accepts a valid ID3
+prefix followed by an MPEG audio frame or a direct valid MPEG frame. Declared
+MIME, extension, and detected media type must agree. This is deliberately
+implemented without a new sniffing dependency or license obligation.
+
+SHA-256 is fixed as the content identity algorithm and is computed with
+streams. Existing project assets are hashed from their project-relative paths;
+matching content returns `duplicate` and creates neither a file nor a model
+entry. A same-name, different-content file keeps its original name when free,
+otherwise receives `-<first 8 SHA-256 hex>` before its extension, with a
+numeric suffix only for the remaining collision case. Unicode and spaces are
+preserved while control characters and Windows-unsafe filename characters are
+replaced.
+
+Each copy is streamed to a unique temporary file in `assets/`, flushed, then
+committed without overwrite through an exclusive same-volume hard link.
+The formal target is registered as a rollback candidate immediately after the
+copy call returns, before copied-media validation, hashing, Asset construction,
+or Project construction. The complete model is saved once through the existing
+project-root operation coordinator. Any pre-commit internal failure rolls back
+every file already committed by that request; expected per-file validation or
+copy failures may coexist with successfully imported files, but every success
+must have both a file and Asset record. Rollback failure becomes
+`ASSET_IMPORT_ROLLBACK_FAILED` and includes the exact residual paths instead of
+claiming that the directory is clean. Persisted paths remain relative
+`assets/...` paths.
+
+The atomic copy service also owns failures inside its link/temporary cleanup
+window. If removing the temporary hard-link name fails after the formal target
+was created, it attempts to remove both names. Complete cleanup propagates as
+an ordinary copy failure. Incomplete cleanup throws
+`AssetImportFileSystemCleanupError`; `AssetImportService` recognizes that error
+at the `copyIntoAssetsAtomically()` boundary and promotes it to
+`ASSET_IMPORT_ROLLBACK_FAILED` without rewriting `residualPaths`. Renderer
+shows those paths as manual-cleanup instructions and does not touch the editor
+store.
+
+Main owns the import revision check through the active `AutosaveService`
+session. Before reading a candidate, `AssetImportService` requires the request
+project ID, full project snapshot, and `baseRevision` to match Main's current
+snapshot. It builds hashes, occupied names, and the next project from that
+authoritative snapshot rather than Renderer request data. The check runs again
+before project construction and immediately before save, so an editor change
+during a long import rolls back copied files and returns
+`ASSET_IMPORT_STALE_REVISION` with the current project and revision. A stale
+response is informational and never mutates `EditorProjectStore`.
+
+Asset display names and disk file names have separate stable limits. Display
+names are NFC-normalized and safely truncated to the `NameSchema` limit of 200
+UTF-16 code units. Disk stems preserve Unicode and spaces, replace unsafe
+characters, avoid Windows device names, and are safely limited to 120 code
+units before extension and conflict suffixes.
+
+Imported audio assets intentionally omit `durationMs`: Day 16 validates media
+type but does not introduce Day 17 metadata extraction. Such an asset may be
+stored but cannot be referenced by an `AudioClip` until duration metadata is
+available; the centralized reference validator enforces that boundary.

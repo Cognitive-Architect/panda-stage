@@ -167,7 +167,13 @@ export function validateProjectReferences(
       } else {
         const requestedDurationMs = clip.endMs - clip.startMs;
         const requiredSourceEndMs = clip.offsetMs + requestedDurationMs;
-        if (requiredSourceEndMs > asset.durationMs) {
+        if (asset.durationMs === undefined) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'audioClips', clipIndex, 'assetId'],
+            `Audio clip cannot use asset ${asset.id} until its duration metadata is available.`,
+          );
+        } else if (requiredSourceEndMs > asset.durationMs) {
           addIssue(
             context,
             ['shots', shotIndex, 'audioClips', clipIndex, 'offsetMs'],

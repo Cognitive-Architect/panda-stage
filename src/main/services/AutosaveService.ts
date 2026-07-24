@@ -198,6 +198,19 @@ export class AutosaveService {
     return null;
   }
 
+  getProjectSnapshot(
+    rawProjectRoot: string,
+  ): AutosaveTrackRequest | null {
+    const session = this.sessions.get(path.resolve(rawProjectRoot));
+    if (!session) return null;
+    return {
+      projectRoot: session.projectRoot,
+      project: structuredClone(session.project),
+      dirty: session.dirty,
+      revision: session.revision,
+    };
+  }
+
   markFormalSaved(
     rawProjectRoot: string,
     rawProject: Project,
@@ -217,7 +230,11 @@ export class AutosaveService {
         `Formal save revision must be a non-negative integer at ${projectRoot}.`,
       );
     }
-    if (revision < session.revision) {
+    if (
+      revision < session.revision ||
+      (revision === session.revision &&
+        !projectsEqual(session.project, project))
+    ) {
       session.lastSavedRevision = Math.max(
         session.lastSavedRevision,
         revision,
@@ -288,4 +305,8 @@ export class AutosaveService {
       projectRoot: normalized.projectRoot,
     };
   }
+}
+
+function projectsEqual(left: Project, right: Project): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
