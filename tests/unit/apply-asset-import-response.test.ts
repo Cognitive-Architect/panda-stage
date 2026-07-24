@@ -39,4 +39,35 @@ describe('applyAssetImportResponse', () => {
       project: { name: 'Newer unsaved edit' },
     });
   });
+
+  it('preserves the store and shows exact residual paths for cleanup failure', () => {
+    const store = new EditorProjectStore();
+    const project = ProjectSchema.parse(exampleProject);
+    store.open('D:\\project.pandastage', project);
+    store.updateProject({ ...project, name: 'Keep this dirty edit' });
+    const before = structuredClone(store.getSnapshot());
+    const targetPath =
+      'D:\\project.pandastage\\assets\\residual.png';
+    const temporaryPath =
+      'D:\\project.pandastage\\assets\\.asset-import.123.tmp';
+    const response: AssetImportResponse =
+      AssetImportResponseSchema.parse({
+        ok: false,
+        error: {
+          code: 'ASSET_IMPORT_ROLLBACK_FAILED',
+          message: 'Internal cleanup failed.',
+          projectRoot: 'D:\\project.pandastage',
+          residualPaths: [targetPath, temporaryPath],
+        },
+      });
+
+    const outcome = applyAssetImportResponse(response, store);
+
+    expect(outcome.status).toContain('导入清理未完成');
+    expect(outcome.status).not.toContain('复制失败');
+    expect(outcome.status).toContain(targetPath);
+    expect(outcome.status).toContain(temporaryPath);
+    expect(outcome.results).toBeNull();
+    expect(store.getSnapshot()).toEqual(before);
+  });
 });

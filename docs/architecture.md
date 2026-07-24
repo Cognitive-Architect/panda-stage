@@ -295,6 +295,16 @@ must have both a file and Asset record. Rollback failure becomes
 claiming that the directory is clean. Persisted paths remain relative
 `assets/...` paths.
 
+The atomic copy service also owns failures inside its link/temporary cleanup
+window. If removing the temporary hard-link name fails after the formal target
+was created, it attempts to remove both names. Complete cleanup propagates as
+an ordinary copy failure. Incomplete cleanup throws
+`AssetImportFileSystemCleanupError`; `AssetImportService` recognizes that error
+at the `copyIntoAssetsAtomically()` boundary and promotes it to
+`ASSET_IMPORT_ROLLBACK_FAILED` without rewriting `residualPaths`. Renderer
+shows those paths as manual-cleanup instructions and does not touch the editor
+store.
+
 Main owns the import revision check through the active `AutosaveService`
 session. Before reading a candidate, `AssetImportService` requires the request
 project ID, full project snapshot, and `baseRevision` to match Main's current

@@ -16,10 +16,20 @@ export interface AssetCopyContext {
   targetPath: string;
 }
 
+export type AssetCopyCleanupKind = 'target' | 'temporary';
+
 export interface AssetImportFileSystemFaultInjector {
   beforeCopy?(context: AssetCopyContext): void | Promise<void>;
   afterTemporarySync?(context: AssetCopyContext): void | Promise<void>;
   beforeFinalize?(context: AssetCopyContext): void | Promise<void>;
+  beforeCommitTemporaryRemove?(
+    context: AssetCopyContext,
+  ): void | Promise<void>;
+  beforeCopyCleanupRemove?(
+    filePath: string,
+    kind: AssetCopyCleanupKind,
+    context: AssetCopyContext,
+  ): void | Promise<void>;
   beforeRollbackRemove?(filePath: string): void | Promise<void>;
 }
 
@@ -97,6 +107,7 @@ export class AssetImportFileSystemService {
       await this.faults.beforeFinalize?.(context);
       await link(temporaryPath, targetPath);
       targetFileExists = true;
+      await this.faults.beforeCommitTemporaryRemove?.(context);
       await rm(temporaryPath, { force: true });
       temporaryFileExists = false;
       return targetPath;
@@ -104,6 +115,11 @@ export class AssetImportFileSystemService {
       const residualPaths: string[] = [];
       if (targetFileExists) {
         try {
+          await this.faults.beforeCopyCleanupRemove?.(
+            targetPath,
+            'target',
+            context,
+          );
           await rm(targetPath, { force: true });
           targetFileExists = false;
         } catch {
@@ -112,6 +128,11 @@ export class AssetImportFileSystemService {
       }
       if (temporaryFileExists) {
         try {
+          await this.faults.beforeCopyCleanupRemove?.(
+            temporaryPath,
+            'temporary',
+            context,
+          );
           await rm(temporaryPath, { force: true });
           temporaryFileExists = false;
         } catch {

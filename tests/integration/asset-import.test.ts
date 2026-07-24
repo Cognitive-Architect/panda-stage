@@ -11,7 +11,10 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AssetImportFileSystemService } from '../../src/main/services/AssetImportFileSystemService';
+import {
+  AssetImportFileSystemCleanupError,
+  AssetImportFileSystemService,
+} from '../../src/main/services/AssetImportFileSystemService';
 import {
   AssetImportService,
   AssetImportServiceError,
@@ -956,5 +959,169 @@ describe('asset import integration', () => {
     const entries = await assetDirectoryEntries(projectRoot);
     expect(entries).toEqual(['熊猫 图片.png']);
     expect(entries.filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('propagates both target and temporary residual paths from atomic copy cleanup', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const source = await externalCopy(parent, '熊猫 图片.png');
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      fileSystem: new AssetImportFileSystemService({
+        beforeCommitTemporaryRemove: () => {
+          throw new Error('Injected first temporary removal failure.');
+        },
+        beforeCopyCleanupRemove: () => {
+          throw new Error('Injected persistent internal cleanup failure.');
+        },
+      }),
+    });
+
+    let failure: unknown;
+    try {
+      await service.importCandidates({
+        projectRoot,
+        project: created.project,
+        baseRevision: 0,
+        candidates: [
+          { sourcePath: source, declaredMimeType: 'image/png' },
+        ],
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(AssetImportServiceError);
+    expect(failure).toMatchObject({
+      code: 'ASSET_IMPORT_ROLLBACK_FAILED',
+    });
+    const normalized = failure as AssetImportServiceError;
+    expect(normalized.cause).toBeInstanceOf(
+      AssetImportFileSystemCleanupError,
+    );
+    expect((normalized.cause as Error).cause).toMatchObject({
+      message: 'Injected first temporary removal failure.',
+    });
+    const entries = await assetDirectoryEntries(projectRoot);
+    expect(entries).toHaveLength(2);
+    expect(entries).toContain('熊猫 图片.png');
+    expect(
+      entries.some((name) => /^\.asset-import\..+\.tmp$/u.test(name)),
+    ).toBe(true);
+    expect(
+      normalized.residualPaths.map((filePath) => path.basename(filePath)).sort(),
+    ).toEqual(entries);
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect((await projectService.open(projectRoot)).project.assets).toEqual([]);
+  });
+
+  it('keeps ordinary copy failure semantics when internal cleanup succeeds', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const source = await externalCopy(parent, '熊猫 图片.png');
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      fileSystem: new AssetImportFileSystemService({
+        beforeCommitTemporaryRemove: () => {
+          throw new Error(
+            'Injected temporary removal failure with successful cleanup.',
+          );
+        },
+      }),
+    });
+
+    const operation = await service.importCandidates({
+      projectRoot,
+      project: created.project,
+      baseRevision: 0,
+      candidates: [
+        { sourcePath: source, declaredMimeType: 'image/png' },
+      ],
+    });
+
+    expect(operation.projectChanged).toBe(false);
+    expect(operation.results[0]).toMatchObject({
+      status: 'failed',
+      code: 'ASSET_IMPORT_COPY_FAILED',
+    });
+    expect(await assetDirectoryEntries(projectRoot)).toEqual([]);
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect((await projectService.open(projectRoot)).project.assets).toEqual([]);
+  });
+
+  it('reports only the temporary path when target cleanup succeeds', async () => {
+    const {
+      parent,
+      projectRoot,
+      projectService,
+      created,
+      nextId,
+      getCurrentProjectSnapshot,
+    } = await harness();
+    const source = await externalCopy(parent, '熊猫 图片.png');
+    const projectFile = path.join(projectRoot, 'project.json');
+    const beforeHash = await hash(projectFile);
+    const service = new AssetImportService({
+      projectService,
+      getCurrentProjectSnapshot,
+      createId: nextId,
+      fileSystem: new AssetImportFileSystemService({
+        beforeCommitTemporaryRemove: () => {
+          throw new Error('Injected first temporary removal failure.');
+        },
+        beforeCopyCleanupRemove: (_filePath, kind) => {
+          if (kind === 'temporary') {
+            throw new Error('Injected persistent temporary cleanup failure.');
+          }
+        },
+      }),
+    });
+
+    let failure: unknown;
+    try {
+      await service.importCandidates({
+        projectRoot,
+        project: created.project,
+        baseRevision: 0,
+        candidates: [
+          { sourcePath: source, declaredMimeType: 'image/png' },
+        ],
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(AssetImportServiceError);
+    const normalized = failure as AssetImportServiceError;
+    expect(normalized.code).toBe('ASSET_IMPORT_ROLLBACK_FAILED');
+    expect(normalized.residualPaths).toHaveLength(1);
+    expect(path.basename(normalized.residualPaths[0]!)).toMatch(
+      /^\.asset-import\..+\.tmp$/u,
+    );
+    expect(await assetDirectoryEntries(projectRoot)).toEqual([
+      path.basename(normalized.residualPaths[0]!),
+    ]);
+    expect(await hash(projectFile)).toBe(beforeHash);
+    expect((await projectService.open(projectRoot)).project.assets).toEqual([]);
   });
 });

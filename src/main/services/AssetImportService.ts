@@ -192,18 +192,7 @@ export class AssetImportService {
                 sha256 = (
                   await this.hashService.hashFile(candidate.sourcePath)
                 ).hex;
-              } catch (error) {
-                if (error instanceof AssetImportFileSystemCleanupError) {
-                  throw new AssetImportServiceError(
-                    'ASSET_IMPORT_ROLLBACK_FAILED',
-                    transaction.projectRoot,
-                    `Asset copy cleanup failed; manual cleanup is required for: ${error.residualPaths.join(', ')}`,
-                    {
-                      cause: error,
-                      residualPaths: error.residualPaths,
-                    },
-                  );
-                }
+              } catch {
                 results.push({
                   sourceName,
                   status: 'failed',
@@ -248,7 +237,18 @@ export class AssetImportService {
                     candidate.sourcePath,
                     targetFileName,
                   );
-              } catch {
+              } catch (error) {
+                if (error instanceof AssetImportFileSystemCleanupError) {
+                  throw new AssetImportServiceError(
+                    'ASSET_IMPORT_ROLLBACK_FAILED',
+                    transaction.projectRoot,
+                    `Asset copy cleanup is incomplete. Manually remove the residual files: ${error.residualPaths.join(', ')}`,
+                    {
+                      cause: error,
+                      residualPaths: error.residualPaths,
+                    },
+                  );
+                }
                 results.push({
                   sourceName,
                   status: 'failed',

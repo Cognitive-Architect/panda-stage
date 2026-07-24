@@ -197,6 +197,14 @@ resolved to a native path only in Preload with Electron `webUtils`.
 - roll back all request-owned files on internal construction/save failure and
   report exact residual paths if deletion fails.
 
+`AssetImportFileSystemCleanupError` can only be handled at the
+`copyIntoAssetsAtomically()` call site. Do not inspect for it in hash, media
+inspection, or later model branches. Internal cleanup that removes both the
+formal target and temporary name remains an ordinary per-file copy failure;
+only non-empty residual paths are promoted to operation-level rollback
+failure. Renderer must display every returned path and leave project, dirty,
+and revision state untouched.
+
 The active `AutosaveService` session is Main's revision authority. An import
 must match its full project snapshot and revision before candidate inspection,
 again after candidate processing, and immediately before save. A mismatch

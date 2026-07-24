@@ -16,6 +16,15 @@
     ],
     "rendererHasNodeRequire": false
   },
+  "cleanupUi": {
+    "status": "导入清理未完成，请手动清理残留文件：D:\\项目\\素材 导入 🐼.pandastage\\assets\\残留 图片.png；D:\\项目\\素材 导入 🐼.pandastage\\assets\\.asset-import.issue-28.tmp",
+    "resultStatus": "imported",
+    "residualPaths": [
+      "D:\\项目\\素材 导入 🐼.pandastage\\assets\\残留 图片.png",
+      "D:\\项目\\素材 导入 🐼.pandastage\\assets\\.asset-import.issue-28.tmp"
+    ],
+    "storeUnchangedByError": true
+  },
   "chooseRequest": {
     "projectRoot": "D:\\项目\\素材 导入 🐼.pandastage",
     "project": {
@@ -60,6 +69,15 @@
           "mimeType": "audio/wav",
           "kind": "audio",
           "durationMs": 3000
+        },
+        {
+          "id": "16000000-0000-4000-8000-000000000099",
+          "name": "熊猫 图片",
+          "relativePath": "assets/熊猫 图片.png",
+          "mimeType": "image/png",
+          "kind": "image",
+          "width": 16,
+          "height": 12
         }
       ],
       "characters": [
@@ -255,7 +273,7 @@
       "createdAt": "2026-07-23T00:00:00.000Z",
       "updatedAt": "2026-07-23T00:00:00.000Z"
     },
-    "baseRevision": 0
+    "baseRevision": 1
   },
   "importedAsset": {
     "id": "16000000-0000-4000-8000-000000000099",
@@ -288,12 +306,23 @@
       "rollbackFailureReportsResidualPaths": true
     }
   },
+  "issue28": {
+    "issue": "https://github.com/Cognitive-Architect/panda-stage/issues/28",
+    "verifiedBehaviors": {
+      "cleanupErrorHandledAtAtomicCopyBoundary": true,
+      "targetAndTemporaryResidualsReported": true,
+      "successfulInternalCleanupRemainsCopyFailure": true,
+      "temporaryOnlyResidualReported": true,
+      "rendererShowsActionableResidualPaths": true,
+      "rendererStoreUnchanged": true
+    }
+  },
   "backendEvidence": {
     "test": "tests/integration/asset-import.test.ts",
     "unitFiles": 37,
-    "unitTests": 214,
+    "unitTests": 215,
     "integrationFiles": 5,
-    "integrationTests": 44,
+    "integrationTests": 47,
     "verifiedBehaviors": {
       "fourMediaTypesImported": true,
       "relativePathsPersisted": true,

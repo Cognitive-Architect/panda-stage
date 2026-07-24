@@ -14,6 +14,16 @@ export function applyAssetImportResponse(
   store: EditorProjectStore,
 ): AssetImportUiOutcome {
   if (!response.ok) {
+    if (response.error.code === 'ASSET_IMPORT_ROLLBACK_FAILED') {
+      const residualPaths = response.error.residualPaths ?? [];
+      return {
+        status:
+          residualPaths.length > 0
+            ? `导入清理未完成，请手动清理残留文件：${residualPaths.join('；')}`
+            : `导入清理未完成。${response.error.message}`,
+        results: null,
+      };
+    }
     return {
       status: response.error.message,
       results: null,

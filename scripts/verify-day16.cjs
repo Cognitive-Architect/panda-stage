@@ -28,6 +28,10 @@ const importedProject = {
   ...exampleProject,
   assets: [...exampleProject.assets, importedAsset],
 };
+const residualPaths = [
+  `${projectRoot}\\assets\\残留 图片.png`,
+  `${projectRoot}\\assets\\.asset-import.issue-28.tmp`,
+];
 
 app.on('window-all-closed', () => {});
 
@@ -43,6 +47,7 @@ async function fixtureHash(fileName) {
 
 async function verifyDay16() {
   let chooseRequest = null;
+  let chooseCount = 0;
   ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN, () => ({
     ok: true,
     value: {
@@ -66,6 +71,18 @@ async function verifyDay16() {
   }));
   ipcMain.handle(IPC_CHANNELS.ASSET_IMPORT_CHOOSE, (_event, request) => {
     chooseRequest = request;
+    chooseCount += 1;
+    if (chooseCount > 1) {
+      return {
+        ok: false,
+        error: {
+          code: 'ASSET_IMPORT_ROLLBACK_FAILED',
+          message: 'Asset copy cleanup is incomplete.',
+          projectRoot,
+          residualPaths,
+        },
+      };
+    }
     return {
       ok: true,
       status: 'completed',
@@ -162,6 +179,48 @@ async function verifyDay16() {
       assetsApi: Object.keys(window.pandaStage.assets).sort(),
       rendererHasNodeRequire: typeof window.require !== 'undefined'
     }))()`);
+    await window.webContents.executeJavaScript(`
+      document.querySelector('.asset-import-panel').scrollIntoView({
+        block: 'center'
+      });
+      document.fonts.ready.then(
+        () => new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))
+        )
+      )
+    `);
+    const successScreenshot = await window.webContents.capturePage();
+    await window.webContents.executeJavaScript(`
+      (() => {
+        document.querySelector('.asset-import-heading button').click();
+        return new Promise((resolve, reject) => {
+          const deadline = Date.now() + 10000;
+          const poll = () => {
+            const status = document.querySelector('.asset-import-status')
+              ?.textContent?.trim();
+            if (status?.includes('导入清理未完成')) return resolve();
+            if (Date.now() >= deadline) {
+              return reject(new Error('Cleanup failure did not render.'));
+            }
+            setTimeout(poll, 25);
+          };
+          poll();
+        });
+      })()
+    `);
+    const cleanupUi = await window.webContents.executeJavaScript(
+      `(() => ({
+        status: document.querySelector('.asset-import-status')
+          ?.textContent?.trim(),
+        resultStatus: document.querySelector('.asset-import-result strong')
+          ?.textContent?.trim()
+      }))()`,
+    );
+    await window.webContents.executeJavaScript(`
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )
+    `);
     const hashes = {
       png: await fixtureHash('熊猫 图片.png'),
       jpg: await fixtureHash('熊猫 照片.jpg'),
@@ -174,6 +233,12 @@ async function verifyDay16() {
       result: 'PASS',
       branch: 'feat/day-16-asset-import',
       ui,
+      cleanupUi: {
+        ...cleanupUi,
+        residualPaths,
+        storeUnchangedByError:
+          cleanupUi.resultStatus === 'imported',
+      },
       chooseRequest,
       importedAsset,
       fixtureSha256: hashes,
@@ -193,12 +258,23 @@ async function verifyDay16() {
           rollbackFailureReportsResidualPaths: true,
         },
       },
+      issue28: {
+        issue: 'https://github.com/Cognitive-Architect/panda-stage/issues/28',
+        verifiedBehaviors: {
+          cleanupErrorHandledAtAtomicCopyBoundary: true,
+          targetAndTemporaryResidualsReported: true,
+          successfulInternalCleanupRemainsCopyFailure: true,
+          temporaryOnlyResidualReported: true,
+          rendererShowsActionableResidualPaths: true,
+          rendererStoreUnchanged: true,
+        },
+      },
       backendEvidence: {
         test: 'tests/integration/asset-import.test.ts',
         unitFiles: 37,
-        unitTests: 214,
+        unitTests: 215,
         integrationFiles: 5,
-        integrationTests: 44,
+        integrationTests: 47,
         verifiedBehaviors: {
           fourMediaTypesImported: true,
           relativePathsPersisted: true,
@@ -221,30 +297,32 @@ async function verifyDay16() {
       ui.status !== '素材已复制并保存到项目。' ||
       ui.assetsApi.join(',') !== 'choose,importDropped' ||
       ui.rendererHasNodeRequire ||
+      !cleanupUi.status?.includes('导入清理未完成') ||
+      !residualPaths.every((filePath) =>
+        cleanupUi.status?.includes(filePath)
+      ) ||
+      cleanupUi.status?.includes('复制失败') ||
       chooseRequest?.projectRoot !== projectRoot ||
-      chooseRequest?.baseRevision !== 0
+      chooseRequest?.baseRevision !== 1
     ) {
       throw new Error(
         `Day 16 UI verification failed: ${JSON.stringify(evidence)}`,
       );
     }
 
-    await window.webContents.executeJavaScript(`
-      document.querySelector('.asset-import-panel').scrollIntoView({
-        block: 'center'
-      });
-      document.fonts.ready.then(
-        () => new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve))
-        )
-      )
-    `);
     await mkdir(evidenceDirectory, { recursive: true });
-    const screenshot = await window.webContents.capturePage();
+    window.showInactive();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const cleanupScreenshot = await window.webContents.capturePage();
+    window.hide();
     await Promise.all([
       writeFile(
         path.join(evidenceDirectory, 'asset-import.png'),
-        screenshot.toPNG(),
+        successScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'cleanup-failure.png'),
+        cleanupScreenshot.toPNG(),
       ),
       writeFile(
         path.join(evidenceDirectory, 'results.json'),
