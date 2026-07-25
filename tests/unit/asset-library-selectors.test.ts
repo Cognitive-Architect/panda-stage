@@ -22,6 +22,27 @@ describe('asset library selectors', () => {
     ).toEqual(['Panda happy', 'Panda neutral']);
   });
 
+  it('classifies a configured mouth image as a character image', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const withMouth = ProjectSchema.parse({
+      ...project,
+      characters: project.characters.map((character, index) =>
+        index === 0
+          ? {
+              ...character,
+              mouthOpenAssetId: project.assets[0]!.id,
+            }
+          : character,
+      ),
+    });
+
+    expect(assetCategoryCounts(withMouth)).toEqual({
+      character: 3,
+      background: 0,
+      audio: 1,
+    });
+  });
+
   it('selects and sorts 100 background fixtures without loading file paths', () => {
     const base = ProjectSchema.parse({
       ...exampleProject,

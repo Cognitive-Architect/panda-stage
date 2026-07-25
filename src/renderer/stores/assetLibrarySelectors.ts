@@ -28,6 +28,9 @@ export function assetCategory(
     project.characters.flatMap((character) => [
       character.baseAssetId,
       ...character.expressions.map((expression) => expression.assetId),
+      ...(character.mouthOpenAssetId
+        ? [character.mouthOpenAssetId]
+        : []),
     ]),
   );
   return characterAssetIds.has(asset.id) ? 'character' : 'background';

@@ -129,7 +129,12 @@ export class ProjectService {
         projectRoot,
         this.serialize(project),
       );
-      return this.document(projectRoot, project, false, 1);
+      return this.document(
+        projectRoot,
+        project,
+        false,
+        PROJECT_SCHEMA_VERSION,
+      );
     } catch (error) {
       if (treeCreated) {
         await this.fileSystem
@@ -163,14 +168,17 @@ export class ProjectService {
 
     try {
       const sourceVersion = detectSchemaVersion(input);
-      const currentProject = ProjectSchema.safeParse(input);
-      const project = currentProject.success
+      const currentProject =
+        sourceVersion === PROJECT_SCHEMA_VERSION
+          ? ProjectSchema.safeParse(input)
+          : null;
+      const project = currentProject?.success
         ? currentProject.data
         : migrateProject(input);
       return this.document(
         projectRoot,
         project,
-        !currentProject.success,
+        !currentProject?.success,
         sourceVersion,
       );
     } catch (error) {
@@ -246,7 +254,12 @@ export class ProjectService {
       } catch (error) {
         this.onPostSaveError(error);
       }
-      return this.document(projectRoot, project, false, 1);
+      return this.document(
+        projectRoot,
+        project,
+        false,
+        PROJECT_SCHEMA_VERSION,
+      );
     } catch (error) {
       if (error instanceof AtomicWriteCommitRejectedError) {
         throw error;
@@ -278,7 +291,7 @@ export class ProjectService {
     projectRoot: string,
     project: Project,
     migrated: boolean,
-    sourceVersion: 0 | 1,
+    sourceVersion: 0 | 1 | 2,
   ): ProjectDocument {
     return {
       projectRoot,

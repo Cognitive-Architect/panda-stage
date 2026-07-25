@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ProjectSchema,
   scanAssetReferences,
+  scanCharacterReferences,
+  scanExpressionReferences,
 } from '../../src/domain';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -75,5 +77,46 @@ describe('scanAssetReferences', () => {
 
     expect(dialogueReference?.label).toContain('…');
     expect(dialogueReference!.label.length).toBeLessThanOrEqual(500);
+  });
+});
+
+describe('character reference scans', () => {
+  it('uses the shared scanner for character and expression deletion protection', () => {
+    const character = project.characters[0]!;
+    const expression = character.expressions[0]!;
+
+    expect(
+      scanCharacterReferences(project, character.id).map(
+        (reference) => reference.kind,
+      ),
+    ).toEqual(['shot-layer-character', 'dialogue-character']);
+    expect(
+      scanExpressionReferences(
+        project,
+        character.id,
+        expression.id,
+      ).map((reference) => reference.kind),
+    ).toEqual(['shot-layer-expression']);
+  });
+
+  it('reports a character mouth asset through the asset scanner', () => {
+    const character = project.characters[0]!;
+    const withMouth = ProjectSchema.parse({
+      ...project,
+      characters: project.characters.map((candidate) =>
+        candidate.id === character.id
+          ? {
+              ...candidate,
+              mouthOpenAssetId: project.assets[2]!.id,
+            }
+          : candidate,
+      ),
+    });
+
+    expect(
+      scanAssetReferences(withMouth, project.assets[2]!.id).map(
+        (reference) => reference.kind,
+      ),
+    ).toContain('character-mouth');
   });
 });

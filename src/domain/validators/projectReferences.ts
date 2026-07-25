@@ -23,12 +23,32 @@ function validateUniqueIds(
   });
 }
 
+function validateUniqueNames(
+  values: readonly { name: string }[],
+  path: PropertyKey[],
+  context: z.RefinementCtx,
+): void {
+  const seen = new Set<string>();
+  values.forEach((value, index) => {
+    const normalized = value.name.trim().toLocaleLowerCase();
+    if (seen.has(normalized)) {
+      addIssue(
+        context,
+        [...path, index, 'name'],
+        `Duplicate name: ${value.name}`,
+      );
+    }
+    seen.add(normalized);
+  });
+}
+
 export function validateProjectReferences(
   project: ProjectData,
   context: z.RefinementCtx,
 ): void {
   validateUniqueIds(project.assets, ['assets'], context);
   validateUniqueIds(project.characters, ['characters'], context);
+  validateUniqueNames(project.characters, ['characters'], context);
   validateUniqueIds(project.voiceProfiles, ['voiceProfiles'], context);
   validateUniqueIds(project.subtitleStyles, ['subtitleStyles'], context);
   validateUniqueIds(project.shots, ['shots'], context);
@@ -46,6 +66,11 @@ export function validateProjectReferences(
 
   project.characters.forEach((character, characterIndex) => {
     validateUniqueIds(
+      character.expressions,
+      ['characters', characterIndex, 'expressions'],
+      context,
+    );
+    validateUniqueNames(
       character.expressions,
       ['characters', characterIndex, 'expressions'],
       context,
@@ -74,6 +99,32 @@ export function validateProjectReferences(
         );
       }
     });
+    const defaultExpression = character.expressions.find(
+      (expression) => expression.id === character.defaultExpressionId,
+    );
+    if (!defaultExpression) {
+      addIssue(
+        context,
+        ['characters', characterIndex, 'defaultExpressionId'],
+        `Character references an unknown default expression: ${character.defaultExpressionId}`,
+      );
+    } else if (defaultExpression.assetId !== character.baseAssetId) {
+      addIssue(
+        context,
+        ['characters', characterIndex, 'baseAssetId'],
+        'Character baseAssetId must match the default expression asset.',
+      );
+    }
+    if (character.mouthOpenAssetId) {
+      const mouthAsset = assets.get(character.mouthOpenAssetId);
+      if (!mouthAsset || mouthAsset.kind !== 'image') {
+        addIssue(
+          context,
+          ['characters', characterIndex, 'mouthOpenAssetId'],
+          `Character references unknown or non-image mouth asset: ${character.mouthOpenAssetId}`,
+        );
+      }
+    }
     const defaultVoice = voiceProfiles.get(character.defaultVoiceProfileId);
     if (!defaultVoice || defaultVoice.characterId !== character.id) {
       addIssue(

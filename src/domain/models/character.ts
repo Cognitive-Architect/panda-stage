@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IdSchema, NameSchema } from './common';
+import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 
 export const CharacterExpressionSchema = z
   .object({
@@ -16,6 +16,10 @@ export const CharacterSchema = z
     baseAssetId: IdSchema,
     defaultVoiceProfileId: IdSchema,
     expressions: z.array(CharacterExpressionSchema).min(1),
+    defaultExpressionId: IdSchema,
+    mouthOpenAssetId: IdSchema.optional(),
+    defaultScale: FiniteNumberSchema.min(0.1).max(10),
+    defaultFlipX: z.boolean(),
   })
   .strict();
 

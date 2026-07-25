@@ -50,7 +50,11 @@ export const ProjectDocumentSchema = z
     projectFilePath: FileSystemPathSchema,
     project: ProjectSchema,
     migrated: z.boolean(),
-    sourceVersion: z.union([z.literal(0), z.literal(1)]),
+    sourceVersion: z.union([
+      z.literal(0),
+      z.literal(1),
+      z.literal(2),
+    ]),
   })
   .strict();
 

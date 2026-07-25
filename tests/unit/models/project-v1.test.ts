@@ -24,19 +24,24 @@ function issuePaths(input: unknown): string[] {
     : result.error.issues.map((issue) => issue.path.join('.'));
 }
 
-describe('ProjectSchema v1', () => {
-  it('parses the human-readable example with every MVP entity', () => {
+describe('ProjectSchema v2', () => {
+  it('migrates the human-readable v1 example with every MVP entity', () => {
     const project = ProjectSchema.parse(exampleProject);
     const shot = project.shots[0]!;
 
     expect(project).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       width: 1920,
       height: 1080,
       fps: 24,
     });
     expect(project.assets).toHaveLength(4);
     expect(project.characters).toHaveLength(1);
+    expect(project.characters[0]).toMatchObject({
+      defaultExpressionId: project.characters[0]!.expressions[0]!.id,
+      defaultScale: 1,
+      defaultFlipX: false,
+    });
     expect(project.voiceProfiles).toHaveLength(1);
     expect(project.subtitleStyles).toHaveLength(1);
     expect(shot.layers).toHaveLength(2);
@@ -46,7 +51,8 @@ describe('ProjectSchema v1', () => {
 
   it('exports executable schemas for every MVP entity', () => {
     expect(AssetSchema.parse(exampleProject.assets[0])).toBeTruthy();
-    expect(CharacterSchema.parse(exampleProject.characters[0])).toBeTruthy();
+    const migrated = ProjectSchema.parse(exampleProject);
+    expect(CharacterSchema.parse(migrated.characters[0])).toBeTruthy();
     expect(VoiceProfileSchema.parse(exampleProject.voiceProfiles[0])).toBeTruthy();
     expect(SubtitleStyleSchema.parse(exampleProject.subtitleStyles[0])).toBeTruthy();
     expect(ShotSchema.parse(exampleProject.shots[0])).toBeTruthy();
@@ -130,6 +136,35 @@ describe('ProjectSchema v1', () => {
 
     expect(issuePaths(input)).toContain(
       'shots.0.layers.1.source.expressionId',
+    );
+  });
+
+  it('rejects dangling defaults, duplicate expression names, non-image mouths, and invalid transforms', () => {
+    const dangling = structuredClone(ProjectSchema.parse(exampleProject));
+    dangling.characters[0]!.defaultExpressionId =
+      'ffffffff-ffff-4fff-8fff-fffffffffff5';
+    expect(issuePaths(dangling)).toContain(
+      'characters.0.defaultExpressionId',
+    );
+
+    const duplicate = structuredClone(ProjectSchema.parse(exampleProject));
+    duplicate.characters[0]!.expressions[1]!.name =
+      duplicate.characters[0]!.expressions[0]!.name.toUpperCase();
+    expect(issuePaths(duplicate)).toContain(
+      'characters.0.expressions.1.name',
+    );
+
+    const audioMouth = structuredClone(ProjectSchema.parse(exampleProject));
+    audioMouth.characters[0]!.mouthOpenAssetId =
+      audioMouth.assets.find((asset) => asset.kind === 'audio')!.id;
+    expect(issuePaths(audioMouth)).toContain(
+      'characters.0.mouthOpenAssetId',
+    );
+
+    const invalidScale = structuredClone(ProjectSchema.parse(exampleProject));
+    invalidScale.characters[0]!.defaultScale = 0;
+    expect(issuePaths(invalidScale)).toContain(
+      'characters.0.defaultScale',
     );
   });
 
