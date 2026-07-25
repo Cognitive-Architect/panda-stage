@@ -1,0 +1,100 @@
+{
+  "day": 19,
+  "workOrder": "B-19/45",
+  "result": "PASS",
+  "branch": "feat/day-19-character-definitions",
+  "executedAt": "2026-07-25T06:45:49.004Z",
+  "realFixtureMetadata": {
+    "normal": {
+      "width": 160,
+      "height": 120,
+      "sha256": "a4a9fbf3f0bb6ff421c253667cf0722690f1c22ec870a20af6aa4ab78a620d13"
+    },
+    "angry": {
+      "width": 240,
+      "height": 120,
+      "sha256": "76abdb1114c9f390bfff8839ef5acbdf9c93ed6bd76af141f7669071143f65a9"
+    },
+    "mouth": {
+      "width": 160,
+      "height": 52,
+      "sha256": "cc8c370be4c782f5fe09dec4d4dc31b25003806d2da3e422bb55c2224ee779e1"
+    }
+  },
+  "configuredUi": {
+    "characterName": "Panda",
+    "expressionNames": [
+      "normal",
+      "angry"
+    ],
+    "thumbnailCount": 2,
+    "mouthValue": "19300000-0000-4000-8000-000000000003",
+    "scaleValue": "0.75",
+    "flipChecked": true,
+    "warning": "图片尺寸差异超过 30%表情“angry”：240×120；默认基准为 160×120。中心位置 保持不变，请人工确认视觉缩放。张嘴图片：160×52；默认基准为 160×120。中心位置 保持不变，请人工确认视觉缩放。",
+    "rendererHasNodeRequire": false,
+    "hasTtsControl": false
+  },
+  "defaultProtection": {
+    "defaultName": "normal",
+    "deleteDisabled": true,
+    "deleteTitle": "请先选择替代表情，再删除默认表情。",
+    "defaultBadge": "默认表情"
+  },
+  "persistence": {
+    "importedViaUi": true,
+    "importBaseRevision": 0,
+    "openCount": 2,
+    "saveRevision": 5,
+    "autosaveUpdateCount": 8,
+    "schemaVersion": 2,
+    "character": {
+      "id": "2566f047-d410-4b7f-8d09-d9256c80673d",
+      "name": "Panda",
+      "baseAssetId": "19300000-0000-4000-8000-000000000001",
+      "defaultVoiceProfileId": "36bc1c36-89aa-41c6-830b-c888a112b40c",
+      "expressions": [
+        {
+          "id": "bdf74a8a-6ea4-4921-b609-b591465fe99b",
+          "name": "normal",
+          "assetId": "19300000-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd194736-ef0c-421b-9b8c-948dba44a2f7",
+          "name": "angry",
+          "assetId": "19300000-0000-4000-8000-000000000002"
+        }
+      ],
+      "defaultExpressionId": "bdf74a8a-6ea4-4921-b609-b591465fe99b",
+      "mouthOpenAssetId": "19300000-0000-4000-8000-000000000003",
+      "defaultScale": 0.75,
+      "defaultFlipX": true
+    },
+    "voiceProfileCount": 1,
+    "reopenedUi": {
+      "characterName": "Panda",
+      "expressionNames": [
+        "normal",
+        "angry"
+      ],
+      "defaultName": "normal",
+      "mouthValue": "19300000-0000-4000-8000-000000000003",
+      "scaleValue": "0.75",
+      "flipChecked": true,
+      "warningVisible": true
+    },
+    "containsAbsolutePath": false,
+    "containsBase64": false
+  },
+  "automatedEvidence": {
+    "service": "tests/unit/character-service.test.ts",
+    "components": "tests/unit/character-components.test.ts",
+    "migration": "tests/unit/migrations/project-migration.test.ts",
+    "saveReopen": "tests/integration/character-lifecycle.test.ts",
+    "sharedReferences": "tests/unit/reference-scanner.test.ts"
+  },
+  "screenshots": [
+    "docs/evidence/day-19/character-configured.png",
+    "docs/evidence/day-19/character-reopened.png"
+  ]
+}

@@ -63,3 +63,6 @@ jobs:
 
       - name: Day 18 asset library gate
         run: pnpm verify:day18
+
+      - name: Day 19 character definitions gate
+        run: pnpm verify:day19
