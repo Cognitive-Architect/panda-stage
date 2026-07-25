@@ -78,12 +78,24 @@ const LegacyShotSchema = z
     id: IdSchema,
     name: NameSchema,
     durationMs: PositiveMillisecondsSchema,
+    backgroundLayerId: IdSchema.nullable().optional(),
     layers: z.array(LegacyLayerSchema),
     timelineEvents: z.array(LegacyMoveEventSchema),
   })
   .strict()
   .superRefine((shot, context) => {
     const layerIds = new Set(shot.layers.map((layer) => layer.id));
+    if (
+      shot.backgroundLayerId !== undefined &&
+      shot.backgroundLayerId !== null &&
+      !layerIds.has(shot.backgroundLayerId)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['backgroundLayerId'],
+        message: `Legacy shot references unknown background layer: ${shot.backgroundLayerId}`,
+      });
+    }
     shot.timelineEvents.forEach((event, eventIndex) => {
       if (!layerIds.has(event.layerId)) {
         context.addIssue({

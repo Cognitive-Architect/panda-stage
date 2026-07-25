@@ -65,6 +65,7 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
       id: '30000000-0000-4000-8000-000000000001',
       name: '熊猫横向移动探针',
       durationMs: 3_000,
+      backgroundLayerId: '20000000-0000-4000-8000-000000000001',
       layers: [
         {
           id: '20000000-0000-4000-8000-000000000001',

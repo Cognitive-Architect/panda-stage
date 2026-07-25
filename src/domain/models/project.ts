@@ -6,10 +6,11 @@ import {
   PROJECT_WIDTH,
 } from '../constants';
 import { validateProjectReferences } from '../validators/projectReferences';
-import { AssetSchema } from './asset';
+import { AssetSchema, type Asset } from './asset';
 import { CharacterSchema, VoiceProfileSchema } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
-import { ShotSchema } from './shot';
+import type { Layer } from './layer';
+import { ShotSchema, ShotV2Schema } from './shot';
 import { SubtitleStyleSchema } from './subtitle';
 
 const CharacterExpressionV1Schema = z
@@ -60,18 +61,96 @@ export const ProjectV1Schema = z
     characters: z.array(CharacterV1Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
-    shots: z.array(ShotSchema),
+    shots: z.array(ShotV2Schema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
 
-function migrateProjectV1(input: unknown): unknown {
+export const ProjectV2Schema = z
+  .object({
+    schemaVersion: z.literal(2),
+    id: IdSchema,
+    name: NameSchema,
+    width: z.literal(PROJECT_WIDTH),
+    height: z.literal(PROJECT_HEIGHT),
+    fps: z.literal(PROJECT_FPS),
+    assets: z.array(AssetSchema),
+    characters: z.array(CharacterSchema),
+    voiceProfiles: z.array(VoiceProfileSchema),
+    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
+    shots: z.array(ShotV2Schema),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
+const LEGACY_BACKGROUND_MIN_WIDTH_RATIO = 0.75;
+const LEGACY_BACKGROUND_MIN_HEIGHT_RATIO = 0.75;
+
+/**
+ * V1/V2 had no background identity. Migration conservatively preserves a
+ * single centered, large, direct-image layer; ambiguous shots migrate to null.
+ * Runtime background resolution never calls this compatibility helper.
+ */
+export function inferLegacyBackgroundLayerId(
+  assets: readonly Asset[],
+  layers: readonly Layer[],
+): string | null {
+  const imageAssets = new Map(
+    assets
+      .filter((asset) => asset.kind === 'image')
+      .map((asset) => [asset.id, asset]),
+  );
+  const candidates = layers.filter((layer) => {
+    if (
+      layer.source.kind !== 'asset' ||
+      layer.x !== PROJECT_WIDTH / 2 ||
+      layer.y !== PROJECT_HEIGHT / 2
+    ) {
+      return false;
+    }
+    const asset = imageAssets.get(layer.source.assetId);
+    if (!asset) return false;
+    return (
+      asset.width * layer.scaleX >=
+        PROJECT_WIDTH * LEGACY_BACKGROUND_MIN_WIDTH_RATIO ||
+      asset.height * layer.scaleY >=
+        PROJECT_HEIGHT * LEGACY_BACKGROUND_MIN_HEIGHT_RATIO
+    );
+  });
+  return candidates.length === 1 ? candidates[0]!.id : null;
+}
+
+function addBackgroundIdentity<T extends {
+  assets: Asset[];
+  shots: z.infer<typeof ShotV2Schema>[];
+}>(project: T): Array<z.infer<typeof ShotSchema>> {
+  return project.shots.map((shot) => ({
+    ...shot,
+    backgroundLayerId: inferLegacyBackgroundLayerId(
+      project.assets,
+      shot.layers,
+    ),
+  }));
+}
+
+function migrateFormalProject(input: unknown): unknown {
+  const version2 = ProjectV2Schema.safeParse(input);
+  if (version2.success) {
+    return {
+      ...version2.data,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      shots: addBackgroundIdentity(version2.data),
+    };
+  }
+
   const legacy = ProjectV1Schema.safeParse(input);
   if (!legacy.success) return input;
   return {
     ...legacy.data,
     schemaVersion: PROJECT_SCHEMA_VERSION,
+    shots: addBackgroundIdentity(legacy.data),
     characters: legacy.data.characters.map((character) => {
       const defaultExpression =
         character.expressions.find(
@@ -89,7 +168,7 @@ function migrateProjectV1(input: unknown): unknown {
 }
 
 export const ProjectSchema = z.preprocess(
-  migrateProjectV1,
+  migrateFormalProject,
   ProjectDataSchema.superRefine(validateProjectReferences),
 );
 

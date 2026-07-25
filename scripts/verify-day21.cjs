@@ -146,7 +146,7 @@ async function verifyDay21() {
   const sha256 = 'a'.repeat(64);
   const project = {
     ...exampleProject,
-    schemaVersion: 2,
+    schemaVersion: 3,
     assets: exampleProject.assets.map((asset) =>
       asset.kind === 'image' ? { ...asset, sha256 } : asset,
     ),
@@ -155,6 +155,10 @@ async function verifyDay21() {
       defaultExpressionId: character.expressions[0].id,
       defaultScale: 1,
       defaultFlipX: false,
+    })),
+    shots: exampleProject.shots.map((shot) => ({
+      ...shot,
+      backgroundLayerId: shot.layers[0]?.id ?? null,
     })),
   };
   const missingProject = {
@@ -169,6 +173,7 @@ async function verifyDay21() {
         layers: project.shots[0].layers.filter(
           (layer) => layer.zIndex !== 0,
         ),
+        backgroundLayerId: null,
         dialogues: [],
         audioClips: [],
         timelineEvents: [],
@@ -185,6 +190,7 @@ async function verifyDay21() {
         id: 'd2100000-0000-4000-8000-000000000013',
         name: 'Empty shot',
         layers: [],
+        backgroundLayerId: null,
         dialogues: [],
         audioClips: [],
         timelineEvents: [],
@@ -219,7 +225,7 @@ async function verifyDay21() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: selected,
         migrated: false,
-        sourceVersion: 2,
+        sourceVersion: 3,
       },
     };
   });
@@ -233,7 +239,7 @@ async function verifyDay21() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 2,
+        sourceVersion: 3,
       },
     };
   });
@@ -340,6 +346,9 @@ async function verifyDay21() {
         backgroundListening: stage.dataset.backgroundListening,
         backgroundScaleX: Number(stage.dataset.backgroundScaleX),
         backgroundScaleY: Number(stage.dataset.backgroundScaleY),
+        backgroundLayerId: stage.dataset.backgroundLayerId,
+        backgroundOpacity: Number(stage.dataset.backgroundOpacity),
+        renderContract: stage.dataset.renderContract,
         centerGuides: stage.dataset.centerGuides,
         modeFeedback: document.querySelector(
           '[data-testid="canvas-mode-feedback"]'
@@ -396,22 +405,75 @@ async function verifyDay21() {
         'Actual-size mode did not become 1:1.',
       ),
     );
+    const autosaveBeforeActualPointer = autosaveUpdates.length;
+    const actualPointerTarget =
+      await window.webContents.executeJavaScript(`(() => {
+        const viewport = document.querySelector(
+          '[data-testid="project-canvas-viewport"]'
+        );
+        viewport.scrollLeft = 321;
+        viewport.scrollTop = 187;
+        const rect = viewport.getBoundingClientRect();
+        const visibleX = 400;
+        const visibleY = 300;
+        return {
+          x: Math.round(rect.left + visibleX),
+          y: Math.round(rect.top + visibleY),
+          expectedX: viewport.scrollLeft + visibleX,
+          expectedY: viewport.scrollTop + visibleY
+        };
+      })()`);
+    window.webContents.sendInputEvent({
+      type: 'mouseMove',
+      x: actualPointerTarget.x,
+      y: actualPointerTarget.y,
+    });
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-testid=\"canvas-pointer-coordinate\"]')" +
+          `?.textContent?.trim() !== ${JSON.stringify(fit.pointer)}`,
+        'Actual-size scrolled pointer did not update.',
+      ),
+    );
     const actual = await window.webContents.executeJavaScript(`(() => {
       const viewport = document.querySelector(
         '[data-testid="project-canvas-viewport"]'
       );
       const content = viewport.querySelector('.canvas-viewport-content');
+      const stage = document.querySelector(
+        '[data-testid="project-canvas-stage"]'
+      );
       return {
         scale: Number(viewport.dataset.displayScale),
+        scrollLeft: viewport.scrollLeft,
+        scrollTop: viewport.scrollTop,
         scrollWidth: viewport.scrollWidth,
         scrollHeight: viewport.scrollHeight,
         contentWidth: content.getBoundingClientRect().width,
         contentHeight: content.getBoundingClientRect().height,
+        pointer: document.querySelector(
+          '[data-testid="canvas-pointer-coordinate"]'
+        ).textContent.trim(),
+        layerJson: stage.dataset.layerJson,
+        clean: document.querySelector('.clean-state')
+          ?.textContent?.trim() === 'Clean',
+        revisionZero: document.querySelector(
+          '.shot-manager-heading span'
+        )?.textContent?.includes('revision 0'),
         modeFeedback: document.querySelector(
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim()
       };
     })()`);
+    actual.autosaveUpdateDelta =
+      autosaveUpdates.length - autosaveBeforeActualPointer;
+    actual.expectedPointer = {
+      x: actualPointerTarget.expectedX,
+      y: actualPointerTarget.expectedY,
+    };
+    const actualPointerMatch = /^x ([\d.]+) · y ([\d.]+)$/u.exec(
+      actual.pointer,
+    );
     const actualScreenshot = await captureCanvasSection(window);
 
     const saveResponse =
@@ -475,6 +537,177 @@ async function verifyDay21() {
         ".textContent.replace(/\\s+/g, ' ').trim()",
     );
 
+    const dpiWindow = await createMainWindow({ show: false });
+    let highDpi;
+    try {
+      dpiWindow.setSize(1280, 900);
+      dpiWindow.webContents.debugger.attach('1.3');
+      await dpiWindow.webContents.debugger.sendCommand(
+        'Emulation.setDeviceMetricsOverride',
+        {
+          width: 1280,
+          height: 800,
+          deviceScaleFactor: 1.5,
+          mobile: false,
+        },
+      );
+      await dpiWindow.webContents.executeJavaScript(
+        waitFor(
+          "document.querySelector('.project-canvas')",
+          'High-DPI project canvas did not render.',
+        ),
+      );
+      await openProject(dpiWindow, projectRoot, 'Opening');
+      await dpiWindow.webContents.executeJavaScript(
+        waitFor(
+          "document.querySelector('[data-testid=\"project-canvas-stage\"]')" +
+            "?.dataset.backgroundReady === 'true'",
+          'High-DPI background did not render.',
+        ),
+      );
+      await scrollCanvasIntoView(dpiWindow);
+      const autosaveBeforeDpiPointers = autosaveUpdates.length;
+      const dpiFitTarget =
+        await dpiWindow.webContents.executeJavaScript(`(() => {
+          const viewport = document.querySelector(
+            '[data-testid="project-canvas-viewport"]'
+          );
+          const rect = viewport.getBoundingClientRect();
+          const scale = Number(viewport.dataset.displayScale);
+          const offsetX = Number(viewport.dataset.offsetX);
+          const offsetY = Number(viewport.dataset.offsetY);
+          return {
+            x: Math.round(rect.left + offsetX + 960 * scale),
+            y: Math.round(rect.top + offsetY + 540 * scale)
+          };
+        })()`);
+      dpiWindow.webContents.sendInputEvent({
+        type: 'mouseMove',
+        x: dpiFitTarget.x,
+        y: dpiFitTarget.y,
+      });
+      await dpiWindow.webContents.executeJavaScript(
+        waitFor(
+          "document.querySelector('[data-testid=\"canvas-pointer-coordinate\"]')" +
+            "?.textContent?.startsWith('x ')",
+          'High-DPI fit pointer did not update.',
+        ),
+      );
+      const dpiFit = await dpiWindow.webContents.executeJavaScript(`(() => ({
+        devicePixelRatio: window.devicePixelRatio,
+        pointer: document.querySelector(
+          '[data-testid="canvas-pointer-coordinate"]'
+        ).textContent.trim(),
+        layerJson: document.querySelector(
+          '[data-testid="project-canvas-stage"]'
+        ).dataset.layerJson
+      }))()`);
+      await dpiWindow.webContents.executeJavaScript(`
+        document.querySelector('[data-testid="canvas-mode-actual"]').click()
+      `);
+      await dpiWindow.webContents.executeJavaScript(
+        waitFor(
+          "document.querySelector('[data-testid=\"project-canvas-viewport\"]')" +
+            "?.dataset.displayScale === '1.000000'",
+          'High-DPI actual-size mode did not become 1:1.',
+        ),
+      );
+      const dpiActualTarget =
+        await dpiWindow.webContents.executeJavaScript(`(() => {
+          const viewport = document.querySelector(
+            '[data-testid="project-canvas-viewport"]'
+          );
+          viewport.scrollLeft = 211;
+          viewport.scrollTop = 133;
+          const rect = viewport.getBoundingClientRect();
+          const visibleX = 250;
+          const visibleY = 200;
+          return {
+            x: Math.round(rect.left + visibleX),
+            y: Math.round(rect.top + visibleY),
+            expectedX: viewport.scrollLeft + visibleX,
+            expectedY: viewport.scrollTop + visibleY
+          };
+        })()`);
+      dpiWindow.webContents.sendInputEvent({
+        type: 'mouseMove',
+        x: dpiActualTarget.x,
+        y: dpiActualTarget.y,
+      });
+      await dpiWindow.webContents.executeJavaScript(
+        waitFor(
+          "document.querySelector('[data-testid=\"canvas-pointer-coordinate\"]')" +
+            `?.textContent?.trim() !== ${JSON.stringify(dpiFit.pointer)}`,
+          'High-DPI actual pointer did not update.',
+        ),
+      );
+      const dpiActual =
+        await dpiWindow.webContents.executeJavaScript(`(() => ({
+          pointer: document.querySelector(
+            '[data-testid="canvas-pointer-coordinate"]'
+          ).textContent.trim(),
+          scrollLeft: document.querySelector(
+            '[data-testid="project-canvas-viewport"]'
+          ).scrollLeft,
+          scrollTop: document.querySelector(
+            '[data-testid="project-canvas-viewport"]'
+          ).scrollTop,
+          layerJson: document.querySelector(
+            '[data-testid="project-canvas-stage"]'
+          ).dataset.layerJson,
+          clean: document.querySelector('.clean-state')
+            ?.textContent?.trim() === 'Clean',
+          revisionZero: document.querySelector(
+            '.shot-manager-heading span'
+          )?.textContent?.includes('revision 0')
+        }))()`);
+      const dpiFitPointer = /^x ([\d.]+) · y ([\d.]+)$/u.exec(
+        dpiFit.pointer,
+      );
+      const dpiActualPointer = /^x ([\d.]+) · y ([\d.]+)$/u.exec(
+        dpiActual.pointer,
+      );
+      highDpi = {
+        devicePixelRatio: dpiFit.devicePixelRatio,
+        fit: dpiFit,
+        actual: {
+          ...dpiActual,
+          expectedPointer: {
+            x: dpiActualTarget.expectedX,
+            y: dpiActualTarget.expectedY,
+          },
+        },
+        autosaveUpdateDelta:
+          autosaveUpdates.length - autosaveBeforeDpiPointers,
+      };
+      if (
+        highDpi.devicePixelRatio !== 1.5 ||
+        !dpiFitPointer ||
+        Math.abs(Number(dpiFitPointer[1]) - 960) > 2 ||
+        Math.abs(Number(dpiFitPointer[2]) - 540) > 2 ||
+        !dpiActualPointer ||
+        Math.abs(
+          Number(dpiActualPointer[1]) - dpiActualTarget.expectedX,
+        ) > 1 ||
+        Math.abs(
+          Number(dpiActualPointer[2]) - dpiActualTarget.expectedY,
+        ) > 1 ||
+        dpiFit.layerJson !== dpiActual.layerJson ||
+        highDpi.autosaveUpdateDelta !== 0 ||
+        !dpiActual.clean ||
+        !dpiActual.revisionZero
+      ) {
+        throw new Error(
+          `High-DPI mapping verification failed: ${JSON.stringify(highDpi)}`,
+        );
+      }
+    } finally {
+      if (dpiWindow.webContents.debugger.isAttached()) {
+        dpiWindow.webContents.debugger.detach();
+      }
+      dpiWindow.destroy();
+    }
+
     const evidence = {
       day: 21,
       workOrder: 'B-21/45',
@@ -482,11 +715,14 @@ async function verifyDay21() {
       branch: 'feat/day-21-canvas-stage',
       executedAt: new Date().toISOString(),
       contract: {
+        projectSchemaVersion: 3,
         logicalCanvas: { width: 1920, height: 1080, center: [960, 540] },
         fitFormula: 'min(containerWidth / 1920, containerHeight / 1080)',
         actualSizeScale: 1,
         pointerMapping: 'screenToStage inverse transform',
         background: 'equal-axis cover, centered crop, listening=false',
+        backgroundIdentity: 'shot.backgroundLayerId',
+        renderContract: 'shared-stage-layer-v1',
         viewportStateSerialized: false,
       },
       fit,
@@ -496,6 +732,7 @@ async function verifyDay21() {
         autosaveUpdateDelta: autosaveResizeDelta,
       },
       actual,
+      highDpi,
       persistence: {
         saveOk: saveResponse.ok,
         saveRevision: saveRequest?.revision,
@@ -528,6 +765,9 @@ async function verifyDay21() {
       fit.backgroundPolicy !== 'cover-centered-no-stretch' ||
       fit.backgroundListening !== 'false' ||
       fit.backgroundScaleX !== fit.backgroundScaleY ||
+      fit.backgroundLayerId !== project.shots[0].backgroundLayerId ||
+      fit.backgroundOpacity !== 1 ||
+      fit.renderContract !== 'shared-stage-layer-v1' ||
       fit.centerGuides !== 'vertical,horizontal' ||
       !fit.modeFeedback.includes('Fit to viewport') ||
       !fit.clean ||
@@ -538,8 +778,21 @@ async function verifyDay21() {
       !resized.clean ||
       !resized.revisionZero ||
       actual.scale !== 1 ||
+      actual.scrollLeft <= 0 ||
+      actual.scrollTop <= 0 ||
       actual.scrollWidth < 1920 ||
       actual.scrollHeight < 1080 ||
+      !actualPointerMatch ||
+      Math.abs(
+        Number(actualPointerMatch[1]) - actualPointerTarget.expectedX,
+      ) > 1 ||
+      Math.abs(
+        Number(actualPointerMatch[2]) - actualPointerTarget.expectedY,
+      ) > 1 ||
+      actual.layerJson !== fit.layerJson ||
+      actual.autosaveUpdateDelta !== 0 ||
+      !actual.clean ||
+      !actual.revisionZero ||
       !actual.modeFeedback.includes('1:1 pixels') ||
       !saveResponse.ok ||
       saveRequest?.revision !== 0 ||

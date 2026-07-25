@@ -2,13 +2,14 @@ import type {
   ImageAsset,
   Layer,
   Project,
+  Shot,
 } from '../models';
 
-export function isShotBackgroundLayer(layer: Layer): boolean {
-  return (
-    layer.source.kind === 'asset' &&
-    (layer.zIndex === 0 || /background|背景/iu.test(layer.name))
-  );
+export function isShotBackgroundLayer(
+  shot: Shot,
+  layer: Layer,
+): boolean {
+  return shot.backgroundLayerId === layer.id;
 }
 
 export function resolveLayerImageAsset(

@@ -13,8 +13,38 @@ const project = ProjectSchema.parse(exampleProject);
 describe('canvas layer selectors', () => {
   it('identifies only asset-backed background layers', () => {
     const [background, character] = project.shots[0]!.layers;
-    expect(isShotBackgroundLayer(background!)).toBe(true);
-    expect(isShotBackgroundLayer(character!)).toBe(false);
+    expect(isShotBackgroundLayer(project.shots[0]!, background!)).toBe(
+      true,
+    );
+    expect(isShotBackgroundLayer(project.shots[0]!, character!)).toBe(
+      false,
+    );
+  });
+
+  it('never infers background identity from zIndex or a layer name', () => {
+    const shot = project.shots[0]!;
+    const [assetLayer, contentLayer] = shot.layers;
+    const noBackground = {
+      ...shot,
+      backgroundLayerId: null,
+      layers: [
+        { ...assetLayer!, name: 'background decoration', zIndex: 0 },
+        { ...contentLayer!, name: '背景 foreground', zIndex: 0 },
+      ],
+    };
+
+    expect(isShotBackgroundLayer(noBackground, noBackground.layers[0]!)).toBe(
+      false,
+    );
+    expect(isShotBackgroundLayer(noBackground, noBackground.layers[1]!)).toBe(
+      false,
+    );
+    const explicit = {
+      ...noBackground,
+      backgroundLayerId: noBackground.layers[0]!.id,
+    };
+    expect(isShotBackgroundLayer(explicit, explicit.layers[0]!)).toBe(true);
+    expect(isShotBackgroundLayer(explicit, explicit.layers[1]!)).toBe(false);
   });
 
   it('resolves both direct assets and character expressions', () => {

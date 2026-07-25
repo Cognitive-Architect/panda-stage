@@ -40,7 +40,7 @@ describe('Day 19 character persistence', () => {
     const created = await projectService.create(root, {
       name: 'Day 19 character project',
     });
-    expect(created.sourceVersion).toBe(2);
+    expect(created.sourceVersion).toBe(3);
     const withAssets = {
       ...created.project,
       assets: [
@@ -111,7 +111,7 @@ describe('Day 19 character persistence', () => {
     );
 
     expect(reopened.migrated).toBe(false);
-    expect(reopened.sourceVersion).toBe(2);
+    expect(reopened.sourceVersion).toBe(3);
     expect(reopened.project.characters[0]).toEqual(
       characterProject.characters[0],
     );
@@ -136,7 +136,7 @@ describe('Day 19 character persistence', () => {
 
     expect(opened.sourceVersion).toBe(1);
     expect(opened.migrated).toBe(true);
-    expect(opened.project.schemaVersion).toBe(2);
+    expect(opened.project.schemaVersion).toBe(3);
     expect(opened.project.characters[0]).toMatchObject({
       defaultExpressionId:
         exampleProject.characters[0]!.expressions[0]!.id,

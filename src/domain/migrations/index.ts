@@ -5,7 +5,12 @@ import {
   PROJECT_SCHEMA_VERSION,
   PROJECT_WIDTH,
 } from '../constants';
-import { ProjectSchema, type Project } from '../models/project';
+import {
+  ProjectSchema,
+  inferLegacyBackgroundLayerId,
+  type Project,
+} from '../models/project';
+import type { Layer } from '../models/layer';
 import {
   LegacyProbeProjectV1Schema,
   ProjectV0Schema,
@@ -16,12 +21,16 @@ import {
 export { LegacyProbeProjectV1Schema, ProjectV0Schema };
 export type { LegacyProbeProjectV1, ProjectV0 };
 
-export type DetectedSchemaVersion = 0 | 1 | typeof PROJECT_SCHEMA_VERSION;
+export type DetectedSchemaVersion =
+  | 0
+  | 1
+  | 2
+  | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(readonly receivedVersion: unknown) {
     super(
-      `Unsupported project schemaVersion: ${String(receivedVersion)}. Supported versions are 0, 1, and ${PROJECT_SCHEMA_VERSION}.`,
+      `Unsupported project schemaVersion: ${String(receivedVersion)}. Supported versions are 0, 1, 2, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -39,6 +48,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
   if (
     version === 0 ||
     version === 1 ||
+    version === 2 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version;
@@ -75,12 +85,8 @@ function migrateLegacyProject(
         maxWidth: 1600,
       },
     ],
-    shots: legacy.shots.map((shot) => ({
-      id: shot.id,
-      name: shot.name,
-      durationMs: shot.durationMs,
-      defaultSubtitleStyleId: MIGRATED_SUBTITLE_STYLE_ID,
-      layers: shot.layers.map((layer) => ({
+    shots: legacy.shots.map((shot) => {
+      const layers: Layer[] = shot.layers.map((layer) => ({
         id: layer.id,
         name: layer.name,
         source: { kind: 'asset', assetId: layer.assetId },
@@ -93,20 +99,30 @@ function migrateLegacyProject(
         opacity: layer.opacity,
         visible: layer.visible,
         zIndex: layer.zIndex,
-      })),
-      dialogues: [],
-      audioClips: [],
-      timelineEvents: shot.timelineEvents.map((event) => ({
-        id: event.id,
-        type: event.type,
-        layerId: event.layerId,
-        startMs: event.startMs,
-        endMs: event.startMs + event.durationMs,
-        from: event.from,
-        to: event.to,
-        easing: event.easing,
-      })),
-    })),
+      }));
+      return {
+        id: shot.id,
+        name: shot.name,
+        durationMs: shot.durationMs,
+        defaultSubtitleStyleId: MIGRATED_SUBTITLE_STYLE_ID,
+        layers,
+        backgroundLayerId:
+          shot.backgroundLayerId ??
+          inferLegacyBackgroundLayerId(legacy.assets, layers),
+        dialogues: [],
+        audioClips: [],
+        timelineEvents: shot.timelineEvents.map((event) => ({
+          id: event.id,
+          type: event.type,
+          layerId: event.layerId,
+          startMs: event.startMs,
+          endMs: event.startMs + event.durationMs,
+          from: event.from,
+          to: event.to,
+          easing: event.easing,
+        })),
+      };
+    }),
     createdAt: legacy.createdAt,
     updatedAt: legacy.updatedAt,
   });

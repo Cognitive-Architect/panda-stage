@@ -90,6 +90,10 @@ describe('ShotService', () => {
     expect(copy.layers.map((layer) => layer.id)).not.toEqual(
       source.layers.map((layer) => layer.id),
     );
+    expect(copy.backgroundLayerId).not.toBe(source.backgroundLayerId);
+    expect(
+      copy.layers.some((layer) => layer.id === copy.backgroundLayerId),
+    ).toBe(true);
     expect(
       copy.timelineEvents.every((event) =>
         copy.layers.some((layer) => layer.id === event.layerId),

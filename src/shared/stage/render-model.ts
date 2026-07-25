@@ -4,12 +4,17 @@ import type {
   EvaluatedShot,
   Project,
 } from '../domain';
+import {
+  buildStageLayerRenderInstruction,
+  type StageLayerRenderInstruction,
+} from './layer-render-contract';
 
 export type StageAssetUrlMap = Readonly<Record<string, string | undefined>>;
 
 export interface StageRenderLayer extends EvaluatedLayer {
   asset: Asset;
   sourceUrl: string;
+  render: StageLayerRenderInstruction;
 }
 
 export interface StageRenderModel {
@@ -64,7 +69,40 @@ export function buildStageRenderModel(
       );
     }
 
-    return { ...layer, asset, sourceUrl };
+    if (
+      asset.kind !== 'image' ||
+      asset.width === undefined ||
+      asset.height === undefined
+    ) {
+      throw new StageAssetError(
+        'UNKNOWN_ASSET',
+        `Stage layer ${layer.id} requires an image asset.`,
+      );
+    }
+
+    return {
+      ...layer,
+      asset,
+      sourceUrl,
+      render: buildStageLayerRenderInstruction(
+        {
+          id: layer.id,
+          assetId: asset.id,
+          assetWidth: asset.width,
+          assetHeight: asset.height,
+          x: layer.x,
+          y: layer.y,
+          scaleX: layer.scaleX,
+          scaleY: layer.scaleY,
+          rotationDeg: layer.rotationDeg,
+          opacity: layer.opacity,
+          visible: layer.visible,
+          zIndex: layer.zIndex,
+        },
+        { width: project.width, height: project.height },
+        evaluatedShot.backgroundLayerId === layer.id,
+      ),
+    };
   });
 
   return {

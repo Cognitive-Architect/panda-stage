@@ -144,6 +144,7 @@ export function StageRenderer({
       data-logical-width={modelResult.model.width}
       data-caption-visible={String(Boolean(caption))}
       data-caption-text={caption ?? ''}
+      data-render-contract="shared-stage-layer-v1"
       data-stage-ready={String(ready)}
       data-stage-time={modelResult.model.timeMs}
       data-testid="stage-renderer"
@@ -156,26 +157,25 @@ export function StageRenderer({
         <Layer listening={false}>
           {modelResult.model.layers.map((layer) => {
             const image = imageState.images.get(layer.id);
-            if (!image || !layer.visible) {
+            const render = layer.render;
+            if (!image || !render.visible) {
               return null;
             }
-
-            const width = layer.asset.width ?? image.naturalWidth;
-            const height = layer.asset.height ?? image.naturalHeight;
             return (
               <KonvaImage
                 key={layer.id}
-                height={height}
+                height={render.height}
                 image={image}
-                offsetX={width / 2}
-                offsetY={height / 2}
-                opacity={layer.opacity}
-                rotation={layer.rotationDeg}
-                scaleX={layer.scaleX}
-                scaleY={layer.scaleY}
-                width={width}
-                x={layer.x}
-                y={layer.y}
+                listening={render.listening}
+                offsetX={render.offsetX}
+                offsetY={render.offsetY}
+                opacity={render.opacity}
+                rotation={render.rotationDeg}
+                scaleX={render.scaleX}
+                scaleY={render.scaleY}
+                width={render.width}
+                x={render.x}
+                y={render.y}
               />
             );
           })}

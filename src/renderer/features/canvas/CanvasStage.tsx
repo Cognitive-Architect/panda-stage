@@ -15,11 +15,9 @@ import {
 import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
-  calculateCoverTransform,
   calculateViewportTransform,
-  isShotBackgroundLayer,
+  buildEditorStageRenderModel,
   listShotImageAssets,
-  resolveLayerImageAsset,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -142,23 +140,21 @@ export function CanvasStage(): React.JSX.Element {
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
+  const stageModel = useMemo(
+    () =>
+      snapshot && shot
+        ? buildEditorStageRenderModel(snapshot.project, shot)
+        : null,
+    [shot, snapshot],
+  );
   const imageState = useCanvasImages(snapshot, shot);
   const backgroundLayer =
-    shot?.layers.find(isShotBackgroundLayer) ?? null;
-  const backgroundAsset =
-    snapshot && backgroundLayer
-      ? resolveLayerImageAsset(snapshot.project, backgroundLayer)
-      : null;
+    stageModel?.layers.find((layer) => layer.render.isBackground) ?? null;
+  const backgroundAsset = backgroundLayer?.asset ?? null;
   const backgroundImage = backgroundAsset
     ? imageState.images.get(backgroundAsset.id)
     : undefined;
-  const backgroundCover = backgroundAsset
-    ? calculateCoverTransform(backgroundAsset, {
-        width: PROJECT_WIDTH,
-        height: PROJECT_HEIGHT,
-      })
-    : null;
-  const empty = !shot || shot.layers.length === 0;
+  const empty = !stageModel || stageModel.layers.length === 0;
   const missingBackground =
     !empty &&
     (!backgroundLayer ||
@@ -185,12 +181,23 @@ export function CanvasStage(): React.JSX.Element {
           <>
             <div
               data-background-listening="false"
+              data-background-layer-id={
+                backgroundLayer?.render.id ?? ''
+              }
+              data-background-opacity={
+                backgroundLayer?.render.opacity ?? ''
+              }
               data-background-policy="cover-centered-no-stretch"
               data-background-ready={String(Boolean(backgroundImage))}
-              data-background-scale-x={backgroundCover?.scale ?? ''}
-              data-background-scale-y={backgroundCover?.scale ?? ''}
+              data-background-scale-x={
+                backgroundLayer?.render.coverScale ?? ''
+              }
+              data-background-scale-y={
+                backgroundLayer?.render.coverScale ?? ''
+              }
               data-center-guides="vertical,horizontal"
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
+              data-render-contract="shared-stage-layer-v1"
               data-stage-center="960,540"
               data-testid="project-canvas-stage"
             >
@@ -206,53 +213,28 @@ export function CanvasStage(): React.JSX.Element {
                     listening={false}
                     width={PROJECT_WIDTH}
                   />
-                  {backgroundCover && backgroundImage
-                    ? (
-                        <KonvaImage
-                          height={backgroundCover.height}
-                          image={backgroundImage}
-                          listening={false}
-                          width={backgroundCover.width}
-                          x={backgroundCover.x}
-                          y={backgroundCover.y}
-                        />
-                      )
-                    : null}
-                  {snapshot
-                    ? shot?.layers
-                        .filter(
-                          (layer) =>
-                            layer.visible &&
-                            layer !== backgroundLayer,
-                        )
-                        .sort((left, right) => left.zIndex - right.zIndex)
-                        .map((layer) => {
-                          const asset = resolveLayerImageAsset(
-                            snapshot.project,
-                            layer,
-                          );
-                          const image = asset
-                            ? imageState.images.get(asset.id)
-                            : undefined;
-                          if (!asset || !image) return null;
-                          return (
-                            <KonvaImage
-                              height={asset.height}
-                              image={image}
-                              key={layer.id}
-                              listening={false}
-                              offsetX={asset.width / 2}
-                              offsetY={asset.height / 2}
-                              opacity={layer.opacity}
-                              rotation={layer.rotationDeg}
-                              scaleX={layer.scaleX}
-                              scaleY={layer.scaleY}
-                              width={asset.width}
-                              x={layer.x}
-                              y={layer.y}
-                            />
-                          );
-                        })
+                  {stageModel
+                    ? stageModel.layers.map(({ asset, render }) => {
+                        const image = imageState.images.get(asset.id);
+                        if (!render.visible || !image) return null;
+                        return (
+                          <KonvaImage
+                            height={render.height}
+                            image={image}
+                            key={render.id}
+                            listening={render.listening}
+                            offsetX={render.offsetX}
+                            offsetY={render.offsetY}
+                            opacity={render.opacity}
+                            rotation={render.rotationDeg}
+                            scaleX={render.scaleX}
+                            scaleY={render.scaleY}
+                            width={render.width}
+                            x={render.x}
+                            y={render.y}
+                          />
+                        );
+                      })
                     : null}
                   <Line
                     listening={false}

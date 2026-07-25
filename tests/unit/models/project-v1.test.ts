@@ -24,13 +24,13 @@ function issuePaths(input: unknown): string[] {
     : result.error.issues.map((issue) => issue.path.join('.'));
 }
 
-describe('ProjectSchema v2', () => {
+describe('ProjectSchema v3', () => {
   it('migrates the human-readable v1 example with every MVP entity', () => {
     const project = ProjectSchema.parse(exampleProject);
     const shot = project.shots[0]!;
 
     expect(project).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       width: 1920,
       height: 1080,
       fps: 24,
@@ -55,7 +55,7 @@ describe('ProjectSchema v2', () => {
     expect(CharacterSchema.parse(migrated.characters[0])).toBeTruthy();
     expect(VoiceProfileSchema.parse(exampleProject.voiceProfiles[0])).toBeTruthy();
     expect(SubtitleStyleSchema.parse(exampleProject.subtitleStyles[0])).toBeTruthy();
-    expect(ShotSchema.parse(exampleProject.shots[0])).toBeTruthy();
+    expect(ShotSchema.parse(migrated.shots[0])).toBeTruthy();
     expect(LayerSchema.parse(exampleProject.shots[0]!.layers[0])).toBeTruthy();
     expect(DialogueSchema.parse(exampleProject.shots[0]!.dialogues[0])).toBeTruthy();
     expect(AudioClipSchema.parse(exampleProject.shots[0]!.audioClips[0])).toBeTruthy();
@@ -136,6 +136,24 @@ describe('ProjectSchema v2', () => {
 
     expect(issuePaths(input)).toContain(
       'shots.0.layers.1.source.expressionId',
+    );
+  });
+
+  it('rejects dangling or character-backed background references', () => {
+    const dangling = structuredClone(ProjectSchema.parse(exampleProject));
+    dangling.shots[0]!.backgroundLayerId =
+      'ffffffff-ffff-4fff-8fff-fffffffffff6';
+    expect(issuePaths(dangling)).toContain(
+      'shots.0.backgroundLayerId',
+    );
+
+    const characterBackground = structuredClone(
+      ProjectSchema.parse(exampleProject),
+    );
+    characterBackground.shots[0]!.backgroundLayerId =
+      characterBackground.shots[0]!.layers[1]!.id;
+    expect(issuePaths(characterBackground)).toContain(
+      'shots.0.backgroundLayerId',
     );
   });
 

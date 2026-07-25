@@ -385,7 +385,7 @@ export class ProjectService {
     projectRoot: string,
     project: Project,
     migrated: boolean,
-    sourceVersion: 0 | 1 | 2,
+    sourceVersion: 0 | 1 | 2 | 3,
   ): ProjectDocument {
     return {
       projectRoot,
