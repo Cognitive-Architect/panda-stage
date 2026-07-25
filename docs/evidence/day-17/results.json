@@ -3,8 +3,8 @@
   "workOrder": "B-17/45",
   "result": "PASS",
   "branch": "feat/day-17-asset-metadata",
-  "testedSha": "3d23a1b0c4fbb06d83d973c5d5974888f6ba0fdc",
-  "executedAt": "2026-07-24T13:11:34.193Z",
+  "testedSha": "64366b16f377a38314be2568502bc2a9d1d4fcc6",
+  "executedAt": "2026-07-25T00:23:36.482Z",
   "dependencyDecision": {
     "image": "Existing packaged FFmpeg 4.1 sidecar",
     "audio": "Existing packaged FFprobe 5.1 sidecar",
@@ -69,38 +69,55 @@
     "projectReopenedAfterFailures": true,
     "thumbnailAbsentFromProjectJson": true
   },
+  "revisionSafety": {
+    "requestCarriesProjectAndBaseRevision": true,
+    "mainSnapshotAuthority": "AutosaveService.getProjectSnapshot",
+    "normalRevisionTransition": "3 -> 4",
+    "staleBeforeProcessingCode": "ASSET_METADATA_STALE_REVISION",
+    "staleDuringProcessingCode": "ASSET_METADATA_STALE_REVISION",
+    "stalePreservesProjectAndRecoveryHashes": true,
+    "mediaRunsOutsideProjectLock": true,
+    "timeoutMsDefault": 20000,
+    "timeoutCode": "ASSET_METADATA_TIMEOUT",
+    "cancellationCode": "ASSET_METADATA_CANCELLED",
+    "timeoutAndCancellationPreserveState": true,
+    "timeoutReleasesProjectLock": true,
+    "activeMediaProcessesAfterTerminalOutcome": 0,
+    "temporaryThumbnailsAfterTerminalOutcome": 0,
+    "raceHasSingleTerminalOutcome": true
+  },
   "observation": {
     "perAsset": [
       {
         "asset": "熊猫 图片",
-        "elapsedMs": 109
+        "elapsedMs": 105
       },
       {
         "asset": "熊猫 照片",
-        "elapsedMs": 97
+        "elapsedMs": 96
       },
       {
         "asset": "熊猫 声音",
-        "elapsedMs": 59
+        "elapsedMs": 62
       },
       {
         "asset": "熊猫 声音",
-        "elapsedMs": 59
+        "elapsedMs": 57
       },
       {
         "asset": "512x300",
-        "elapsedMs": 107
+        "elapsedMs": 106
       }
     ],
-    "mainProcessRssBeforeBytes": 55840768,
-    "mainProcessPeakRssBytes": 56803328,
-    "mainProcessRssDeltaBytes": 962560,
+    "mainProcessRssBeforeBytes": 57610240,
+    "mainProcessPeakRssBytes": 59285504,
+    "mainProcessRssDeltaBytes": 1675264,
     "note": "Thumbnail decoding runs in the FFmpeg child process; the 40,000,000-pixel preflight threshold skips oversized decoding."
   },
   "tests": {
     "unitFiles": 40,
-    "unitTests": 224,
-    "integrationFiles": 6,
-    "integrationTests": 52
+    "unitTests": 225,
+    "integrationFiles": 7,
+    "integrationTests": 58
   }
 }

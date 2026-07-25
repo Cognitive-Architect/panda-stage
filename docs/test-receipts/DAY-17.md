@@ -5,7 +5,8 @@
 - Work order: `B-17/45`
 - Branch: `feat/day-17-asset-metadata`
 - Baseline SHA: `3d23a1b0c4fbb06d83d973c5d5974888f6ba0fdc`
-- Result SHA: recorded after commit
+- Issue #30 baseline SHA: `a2eb5f2bbb3964754166b9b6cc59430c3b275025`
+- Result SHA: `64366b16f377a38314be2568502bc2a9d1d4fcc6`
 - Result: PASS
 
 ## Decisions
@@ -25,6 +26,14 @@
   FFmpeg autorotation enabled, RGBA PNG output preserves transparency.
 - Image safety: encoded raster dimensions above 40,000,000 pixels produce
   `ASSET_IMAGE_TOO_LARGE` and skip decode.
+- Metadata refresh authority is the current `AutosaveService` snapshot. The
+  request carries the exact project plus `baseRevision`; Main validates it
+  in a short transaction, performs media work outside the project
+  coordinator, revalidates, then atomically saves `baseRevision + 1`.
+- FFmpeg thumbnail generation and FFprobe receive one operation-scoped
+  `AbortSignal`. The default deadline is 20 seconds; timeout and external
+  cancellation terminate child work, clean temporary cache files, and never
+  persist error metadata or touch formal/recovery state.
 
 ## Real outputs
 
@@ -58,8 +67,8 @@ Main-process RSS. FFmpeg decode runs out of process.
 | TYPE | PASS | `pnpm typecheck` |
 | LINT | PASS | `pnpm lint` |
 | FMT | N/A | repository has no Prettier dependency/config; TypeScript style is enforced by ESLint |
-| UNIT | PASS | 40 files / 224 tests |
-| INTEGRATION | PASS | 6 files / 52 tests |
+| UNIT | PASS | 40 files / 225 tests |
+| INTEGRATION | PASS | 7 files / 58 tests |
 | BUILD | PASS | `pnpm build` |
 | DIST | PASS | NSIS package built; packaged FFmpeg/FFprobe sidecars executed and reported pinned versions |
 | M1 | PASS | `pnpm verify:m1` |
@@ -88,6 +97,13 @@ Main-process RSS. FFmpeg decode runs out of process.
 | UX-002 | PASS | IPC result discriminates `ready`, `error`, and warning codes |
 | E2E-001 | PASS | import → metadata → atomic save → reopen |
 | HIGH-001 | PASS | external source deletion + cache deletion still rebuilds |
+| REV-001 | PASS | stale revision before media leaves formal/recovery hashes and Main revision unchanged |
+| REV-002 | PASS | revision change during unlocked media work is revalidated and cannot overwrite revision 4 |
+| REV-003 | PASS | normal revision 3 to 4 synchronizes project.json, AutosaveService, and Renderer Store |
+| LOCK-001 | PASS | hash/thumbnail/FFprobe work runs between short read/commit transactions |
+| TIME-001 | PASS | thumbnail and audio timeout abort active work, remove temp files, preserve state, and release lock |
+| CANCEL-001 | PASS | IPC/service cancellation returns `ASSET_METADATA_CANCELLED` without metadata/error persistence |
+| RACE-001 | PASS | stale plus timeout race produces one terminal result with zero residual media tasks |
 
 ## Scope and debt
 
