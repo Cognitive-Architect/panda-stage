@@ -1,0 +1,92 @@
+{
+  "day": 18,
+  "workOrder": "B-18/45",
+  "result": "PASS",
+  "branch": "feat/day-18-asset-library-ui",
+  "executedAt": "2026-07-25T02:03:38.691Z",
+  "ui": {
+    "categories": [
+      "角色图片",
+      "背景图片",
+      "音频"
+    ],
+    "backgroundItemsBeforeDelete": 100,
+    "thumbnailRequestCount": 197,
+    "performanceObservation": {
+      "elapsedMs": 28.799999997019768,
+      "itemCount": 100,
+      "selectedName": "Bamboo background",
+      "scrollTop": 2647.333251953125,
+      "scrollHeight": 3087,
+      "clientHeight": 440
+    },
+    "dragEvidence": {
+      "payload": {
+        "version": 1,
+        "assetId": "18000000-0000-4000-8000-000000000001",
+        "type": "background-image"
+      },
+      "types": [
+        "application/x-panda-stage-asset"
+      ],
+      "rawContainsPath": false,
+      "rawContainsAssetObject": false
+    },
+    "referenceUi": {
+      "status": "Main Process 已阻止删除：素材仍被 1 处内容使用。",
+      "warning": "正在被以下位置使用镜头“Opening”的背景图层“Background”shots[Opening].layers[Background].source.assetId",
+      "cardStillPresent": true
+    },
+    "deletionUi": {
+      "status": "素材文件、缩略图缓存和项目记录已同步删除。",
+      "backgroundCount": "99",
+      "total": "共 102 项",
+      "removedCardPresent": false,
+      "rendererHasNodeRequire": false,
+      "assetsApi": [
+        "cancelMetadata",
+        "choose",
+        "delete",
+        "importDropped",
+        "readThumbnail",
+        "refreshMetadata"
+      ]
+    },
+    "sourceAudit": {
+      "imageCount": 97,
+      "nonDataImageSources": [],
+      "missingHasRebuild": true
+    }
+  },
+  "deletionProtocol": {
+    "referenceScanBeforeMutation": true,
+    "referencedDeleteBlocked": true,
+    "referencedAssetStillVisible": true,
+    "unreferencedDeleteApplied": true,
+    "requests": [
+      {
+        "assetId": "10000000-0000-4000-8000-000000000002",
+        "baseRevision": 0,
+        "projectRoot": "D:\\项目\\Day 18 素材库 🐼.pandastage"
+      },
+      {
+        "assetId": "18000000-0000-4000-8000-000000000001",
+        "baseRevision": 0,
+        "projectRoot": "D:\\项目\\Day 18 素材库 🐼.pandastage"
+      }
+    ]
+  },
+  "backendEvidence": {
+    "integrationTest": "tests/integration/asset-delete.test.ts",
+    "verifiesRealAssetCacheAndProjectDeletion": true,
+    "verifiesStageFailureRollback": true,
+    "verifiesAtomicSaveFailureRollback": true,
+    "verifiesStaleRevisionBeforeMutation": true
+  },
+  "screenshots": [
+    "docs/evidence/day-18/asset-library-100.png",
+    "docs/evidence/day-18/drag-feedback.png",
+    "docs/evidence/day-18/reference-blocked.png",
+    "docs/evidence/day-18/unreferenced-deleted.png"
+  ]
+}
