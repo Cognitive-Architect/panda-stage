@@ -76,6 +76,8 @@ async function createHarness(
   options: {
     referenced?: boolean;
     deleteFaults?: AssetDeleteFileSystemFaultInjector;
+    beforeCommitValidation?: () => void | Promise<void>;
+    beforeAtomicReplace?: () => void | Promise<void>;
   } = {},
 ) {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-delete-'));
@@ -85,6 +87,7 @@ async function createHarness(
   const recoveryService = new RecoveryService({ nowMs: () => 3_000 });
   const autosaveHolder: { current?: AutosaveService } = {};
   const failProjectSave = { current: false };
+  const enableAtomicReplaceHook = { current: false };
   const projectService = new ProjectService({
     coordinator,
     fileSystem: new ProjectFileSystemService({
@@ -92,6 +95,9 @@ async function createHarness(
         if (failProjectSave.current) {
           throw new Error('Injected project save failure.');
         }
+        return enableAtomicReplaceHook.current
+          ? options.beforeAtomicReplace?.()
+          : undefined;
       },
     }),
     onProjectSaved: async (root, project, revision) => {
@@ -156,6 +162,7 @@ async function createHarness(
       : [],
   });
   await projectService.save(projectRoot, project, 1);
+  enableAtomicReplaceHook.current = true;
   const cache = new CacheService();
   const cachePath = cache.thumbnailPath(
     projectRoot,
@@ -190,6 +197,7 @@ async function createHarness(
     ),
     cache,
     now: () => new Date('2026-07-25T03:00:00.000Z'),
+    beforeCommitValidation: options.beforeCommitValidation,
   });
   return {
     projectRoot,
@@ -202,6 +210,35 @@ async function createHarness(
     cachePath,
     failProjectSave,
   };
+}
+
+function deferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((accept) => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+}
+
+async function stagedDeleteFiles(
+  input: Awaited<ReturnType<typeof createHarness>>,
+): Promise<string[]> {
+  const directories = [
+    path.dirname(input.assetPath),
+    path.dirname(input.cachePath),
+  ];
+  return (
+    await Promise.all(
+      directories.map(async (directory) =>
+        (await readdir(directory)).filter((name) =>
+          name.endsWith('.asset-delete'),
+        ),
+      ),
+    )
+  ).flat();
 }
 
 function request(
@@ -335,5 +372,186 @@ describe('asset delete integration', () => {
       currentRevision: 3,
     });
     expect(await state(input)).toEqual(before);
+  });
+
+  it('rolls back staged files when revision 4 adds a reference before commit', async () => {
+    const commitReached = deferred();
+    const releaseCommit = deferred();
+    const input = await createHarness({
+      beforeCommitValidation: async () => {
+        commitReached.resolve();
+        await releaseCommit.promise;
+      },
+    });
+    const editor = new EditorProjectStore();
+    editor.open(input.projectRoot, {
+      ...input.revision3,
+      name: 'Revision 0',
+    });
+    editor.updateProject({ ...input.revision3, name: 'Revision 1' });
+    editor.updateProject({ ...input.revision3, name: 'Revision 2' });
+    editor.updateProject(input.revision3);
+    const before = await state(input);
+
+    const deletion = input.deleteService.deleteAsset(request(input));
+    await commitReached.promise;
+    const revision4 = ProjectSchema.parse({
+      ...input.revision3,
+      name: 'Revision 4 with new reference',
+      shots: [
+        {
+          id: randomUUID(),
+          name: '并发新增引用',
+          durationMs: 3_000,
+          defaultSubtitleStyleId:
+            input.revision3.subtitleStyles[0]!.id,
+          layers: [
+            {
+              id: randomUUID(),
+              name: '并发背景',
+              source: {
+                kind: 'asset',
+                assetId: input.asset.id,
+              },
+              anchor: 'center',
+              x: 960,
+              y: 540,
+              scaleX: 1,
+              scaleY: 1,
+              rotationDeg: 0,
+              opacity: 1,
+              visible: true,
+              zIndex: 0,
+            },
+          ],
+          dialogues: [],
+          audioClips: [],
+          timelineEvents: [],
+        },
+      ],
+    });
+    input.autosaveService.update({
+      projectRoot: input.projectRoot,
+      project: revision4,
+      revision: 4,
+      dirty: true,
+    });
+    editor.updateProject(revision4);
+    const rendererBeforeRelease = structuredClone(
+      editor.getSnapshot(),
+    );
+    releaseCommit.resolve();
+
+    await expect(deletion).rejects.toMatchObject({
+      code: 'ASSET_DELETE_STALE_REVISION',
+      currentProject: revision4,
+      currentRevision: 4,
+      references: [
+        expect.objectContaining({
+          kind: 'shot-background',
+        }),
+      ],
+    });
+    expect(await state(input)).toEqual(before);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toMatchObject({
+      project: revision4,
+      revision: 4,
+      dirty: true,
+    });
+    expect(editor.getSnapshot()).toEqual(rendererBeforeRelease);
+    expect(editor.getSnapshot()).toMatchObject({
+      project: revision4,
+      revision: 4,
+      dirty: true,
+    });
+    expect(await stagedDeleteFiles(input)).toEqual([]);
+  });
+
+  it('rolls back staged files for an unrelated revision 4 edit', async () => {
+    const commitReached = deferred();
+    const releaseCommit = deferred();
+    const input = await createHarness({
+      beforeCommitValidation: async () => {
+        commitReached.resolve();
+        await releaseCommit.promise;
+      },
+    });
+    const before = await state(input);
+    const deletion = input.deleteService.deleteAsset(request(input));
+    await commitReached.promise;
+    const revision4 = ProjectSchema.parse({
+      ...input.revision3,
+      name: 'Unrelated concurrent rename',
+    });
+    input.autosaveService.update({
+      projectRoot: input.projectRoot,
+      project: revision4,
+      revision: 4,
+      dirty: true,
+    });
+    releaseCommit.resolve();
+
+    await expect(deletion).rejects.toMatchObject({
+      code: 'ASSET_DELETE_STALE_REVISION',
+      currentProject: revision4,
+      currentRevision: 4,
+      references: [],
+    });
+    expect(await state(input)).toEqual(before);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toMatchObject({
+      project: revision4,
+      revision: 4,
+      dirty: true,
+    });
+    expect(await stagedDeleteFiles(input)).toEqual([]);
+  });
+
+  it('rechecks the authoritative snapshot at the atomic replace boundary', async () => {
+    const replaceReached = deferred();
+    const releaseReplace = deferred();
+    const input = await createHarness({
+      beforeAtomicReplace: async () => {
+        replaceReached.resolve();
+        await releaseReplace.promise;
+      },
+    });
+    const before = await state(input);
+    const deletion = input.deleteService.deleteAsset(request(input));
+    await replaceReached.promise;
+    const revision4 = ProjectSchema.parse({
+      ...input.revision3,
+      name: 'Edit during temporary project write',
+    });
+    input.autosaveService.update({
+      projectRoot: input.projectRoot,
+      project: revision4,
+      revision: 4,
+      dirty: true,
+    });
+    releaseReplace.resolve();
+
+    await expect(deletion).rejects.toMatchObject({
+      code: 'ASSET_DELETE_STALE_REVISION',
+      currentProject: revision4,
+      currentRevision: 4,
+    });
+    expect(await state(input)).toEqual(before);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toMatchObject({
+      project: revision4,
+      revision: 4,
+      dirty: true,
+    });
+    expect(await stagedDeleteFiles(input)).toEqual([]);
+    expect(
+      (await readdir(input.projectRoot)).filter((name) =>
+        name.endsWith('.tmp'),
+      ),
+    ).toEqual([]);
   });
 });

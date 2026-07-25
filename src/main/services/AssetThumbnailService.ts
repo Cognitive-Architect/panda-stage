@@ -9,10 +9,8 @@ import {
   type AssetThumbnailReadResponse,
 } from '../../shared/asset-thumbnail-api';
 import { CacheService } from './CacheService';
+import { validatePngThumbnail } from './PngThumbnailValidator';
 
-const PNG_SIGNATURE = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-]);
 const MAX_THUMBNAIL_BYTES = 6_000_000;
 
 export interface AssetThumbnailServiceOptions {
@@ -75,6 +73,9 @@ export class AssetThumbnailService {
         '素材内容已经变化，请重新生成缩略图。',
       );
     }
+    if (asset.kind !== 'image') {
+      return { ok: true, status: 'missing', assetId: request.assetId };
+    }
     const cacheKey = this.cache.thumbnailKey(request.sha256);
     try {
       if (!(await this.cache.hasThumbnail(request.projectRoot, cacheKey))) {
@@ -85,7 +86,7 @@ export class AssetThumbnailService {
       );
       if (
         bytes.length > MAX_THUMBNAIL_BYTES ||
-        !bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+        !validatePngThumbnail(bytes)
       ) {
         return {
           ok: true,

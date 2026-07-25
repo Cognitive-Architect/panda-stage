@@ -1,5 +1,6 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProjectSchema } from '../../src/domain';
 
 const electronMocks = vi.hoisted(() => ({
   handlers: new Map<string, (...arguments_: unknown[]) => unknown>(),
@@ -21,7 +22,10 @@ vi.mock('electron', () => ({
 }));
 
 import { registerAssetLibraryIpcHandlers } from '../../src/main/ipc/register-asset-library-ipc-handlers';
-import type { AssetDeleteService } from '../../src/main/services/AssetDeleteService';
+import {
+  AssetDeleteServiceError,
+  type AssetDeleteService,
+} from '../../src/main/services/AssetDeleteService';
 import type { AssetThumbnailService } from '../../src/main/services/AssetThumbnailService';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import exampleProject from '../../demo-project/project-v1.example.json';
@@ -156,5 +160,45 @@ describe('asset library IPC handlers', () => {
     expect(
       (response as { error: { message: string } }).error.message,
     ).toHaveLength(1_000);
+  });
+
+  it('preserves the current project and revision in a stale response', async () => {
+    const dependencies = services();
+    const currentProject = ProjectSchema.parse(exampleProject);
+    dependencies.deleteAsset.mockRejectedValue(
+      new AssetDeleteServiceError(
+        'ASSET_DELETE_STALE_REVISION',
+        'D:\\demo.pandastage',
+        '10000000-0000-4000-8000-000000000002',
+        '删除期间项目已变化。',
+        {
+          currentProject,
+          currentRevision: 4,
+        },
+      ),
+    );
+    registerAssetLibraryIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...dependencies,
+    });
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_DELETE)!(
+        event(),
+        {
+          projectRoot: 'D:\\demo.pandastage',
+          project: exampleProject,
+          baseRevision: 3,
+          assetId: '10000000-0000-4000-8000-000000000002',
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'ASSET_DELETE_STALE_REVISION',
+        currentProject,
+        currentRevision: 4,
+      },
+    });
   });
 });

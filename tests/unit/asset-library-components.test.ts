@@ -1,10 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { createElement } from 'react';
+import {
+  createElement,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ProjectSchema } from '../../src/domain';
 import { AssetGrid } from '../../src/renderer/features/assets/AssetGrid';
-import { AssetCard } from '../../src/renderer/features/assets/AssetCard';
+import {
+  AssetCard,
+  type ThumbnailState,
+} from '../../src/renderer/features/assets/AssetCard';
 import { AssetLibrary } from '../../src/renderer/features/assets/AssetLibrary';
 import type { AssetLibraryEntry } from '../../src/renderer/stores/assetLibrarySelectors';
 import exampleProject from '../../demo-project/project-v1.example.json';
@@ -44,6 +51,7 @@ describe('asset library components', () => {
         onDragStart: noop,
         onDragEnd: noop,
         onRebuildThumbnail: noop,
+        onThumbnailError: noop,
       }),
     );
     expect(missingMarkup).toContain('缩略图缺失');
@@ -99,6 +107,7 @@ describe('asset library components', () => {
         onDragStart: noop,
         onDragEnd: noop,
         onRebuildThumbnail: noop,
+        onThumbnailError: noop,
       }),
     );
     const elapsedMs = performance.now() - startedAt;
@@ -106,5 +115,69 @@ describe('asset library components', () => {
     expect(markup).toContain('data-grid-count="100"');
     expect(markup).not.toContain('assets/original-');
     expect(elapsedMs).toBeLessThan(1_000);
+  });
+
+  it('falls back only the image whose browser decode reports an error', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const imageAssets = project.assets.filter(
+      (asset) => asset.kind === 'image',
+    );
+    const failedAsset = imageAssets[0]!;
+    const healthyAsset = imageAssets[1]!;
+    const dataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB';
+    const states: Record<string, ThumbnailState> = {
+      [failedAsset.id]: { status: 'ready' as const, dataUrl },
+      [healthyAsset.id]: { status: 'ready' as const, dataUrl },
+    };
+    const onThumbnailError = (assetId: string) => {
+      states[assetId] = { status: 'missing' };
+    };
+    const readyCard = AssetCard({
+      asset: failedAsset,
+      category: 'background',
+      selected: true,
+      dragging: false,
+      thumbnail: states[failedAsset.id]!,
+      onSelect: noop,
+      onDragStart: noop,
+      onDragEnd: noop,
+      onRebuildThumbnail: noop,
+      onThumbnailError,
+    });
+    const articleChildren = (
+      readyCard.props as { children: ReactNode[] }
+    ).children;
+    const preview = articleChildren[0] as ReactElement<{
+      children: ReactElement<{ onError: () => void }>;
+    }>;
+
+    preview.props.children.props.onError();
+
+    const markup = renderToStaticMarkup(
+      createElement(AssetGrid, {
+        entries: [
+          { asset: failedAsset, category: 'background' },
+          { asset: healthyAsset, category: 'background' },
+        ],
+        selectedAssetId: failedAsset.id,
+        draggingAssetId: null,
+        thumbnails: states,
+        onSelect: noop,
+        onDragStart: noop,
+        onDragEnd: noop,
+        onRebuildThumbnail: noop,
+        onThumbnailError,
+      }),
+    );
+    expect(states[failedAsset.id]).toEqual({ status: 'missing' });
+    expect(states[healthyAsset.id]).toEqual({
+      status: 'ready',
+      dataUrl,
+    });
+    expect(markup).toContain('缩略图缺失');
+    expect(markup).toContain('重建');
+    expect(markup.match(/<img/g)).toHaveLength(1);
+    expect(markup).toContain('asset-card-selected');
   });
 });

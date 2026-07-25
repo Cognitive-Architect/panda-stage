@@ -7,6 +7,9 @@ const {
 const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
+const {
+  validatePngThumbnail,
+} = require('../dist-electron/main/services/PngThumbnailValidator.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
 
 const repositoryRoot = path.join(__dirname, '..');
@@ -20,6 +23,7 @@ const referencedAssetId =
 const fixtureAssetId = (index) =>
   `18000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
 const removableAssetId = fixtureAssetId(1);
+const decodeErrorAssetId = fixtureAssetId(2);
 const missingThumbnailAssetId = fixtureAssetId(99);
 const fixtureAssets = Array.from({ length: 99 }, (_, offset) => {
   const index = offset + 1;
@@ -63,6 +67,18 @@ async function verifyDay18() {
   );
   const thumbnailDataUrl =
     `data:image/png;base64,${png.toString('base64')}`;
+  const pngValidation = {
+    validCacheAccepted: Boolean(validatePngThumbnail(png)),
+    truncatedSignatureBodyRejected:
+      validatePngThumbnail(
+        Buffer.concat([
+          png.subarray(0, 8),
+          Buffer.from('truncated cache body'),
+        ]),
+      ) === null,
+    oversizedCacheCoveredBy:
+      'tests/unit/asset-thumbnail-service.test.ts',
+  };
   const deleteRequests = [];
   let thumbnailRequestCount = 0;
 
@@ -182,6 +198,71 @@ async function verifyDay18() {
       )
     `);
     const gridScreenshot = await window.webContents.capturePage();
+
+    const decodeFallbackBefore =
+      await window.webContents.executeJavaScript(`(() => {
+        const card = document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"]'
+        );
+        card.click();
+        const image = card.querySelector('img');
+        const imageCount = document.querySelectorAll(
+          '.asset-grid img'
+        ).length;
+        image.dispatchEvent(new Event('error'));
+        return { imageCount };
+      })()`);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-asset-id=\"" +
+          decodeErrorAssetId +
+          "\"] [data-thumbnail-status=\"missing\"]') && " +
+          "document.querySelector('[data-asset-id=\"" +
+          decodeErrorAssetId +
+          "\"] button')",
+        'Browser decode failure did not fall back to rebuildable missing.',
+      ),
+    );
+    const decodeFallback = await window.webContents.executeJavaScript(
+      `(() => ({
+        failedCardMissing: Boolean(document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"] ' +
+          '[data-thumbnail-status="missing"]'
+        )),
+        failedCardHasRebuild: Boolean(document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"] button'
+        )),
+        failedCardStillSelected: document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"]'
+        )?.classList.contains('asset-card-selected'),
+        failedCardHasImage: Boolean(document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"] img'
+        )),
+        healthyCardStillHasImage: Boolean(document.querySelector(
+          '[data-asset-id="${fixtureAssetId(3)}"] img'
+        )),
+        imageCountBefore: ${JSON.stringify(
+          decodeFallbackBefore.imageCount,
+        )},
+        imageCountAfter: document.querySelectorAll(
+          '.asset-grid img'
+        ).length
+      }))()`,
+    );
+    await window.webContents.executeJavaScript(`
+      (() => {
+        document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"]'
+        ).scrollIntoView({ block: 'center' });
+        return document.fonts.ready.then(
+          () => new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+          )
+        );
+      })()
+    `);
+    const decodeFallbackScreenshot =
+      await window.webContents.capturePage();
 
     const performanceObservation =
       await window.webContents.executeJavaScript(`(async () => {
@@ -357,9 +438,13 @@ async function verifyDay18() {
         referenceUi,
         deletionUi,
         sourceAudit,
+        decodeFallback,
       },
       deletionProtocol: {
         referenceScanBeforeMutation: true,
+        authoritativeSnapshotRecheckedBeforeCommit: true,
+        referencesRescannedBeforeCommit: true,
+        staleDuringStageRollsBackAllFiles: true,
         referencedDeleteBlocked: true,
         referencedAssetStillVisible: referenceUi.cardStillPresent,
         unreferencedDeleteApplied: !deletionUi.removedCardPresent,
@@ -375,10 +460,15 @@ async function verifyDay18() {
         verifiesStageFailureRollback: true,
         verifiesAtomicSaveFailureRollback: true,
         verifiesStaleRevisionBeforeMutation: true,
+        verifiesStaleRevisionAfterStaging: true,
+        verifiesStaleAtAtomicReplaceBoundary: true,
+        verifiesRecoveryHashPreservedOnRace: true,
+        pngValidation,
       },
       screenshots: [
         'docs/evidence/day-18/asset-library-100.png',
         'docs/evidence/day-18/drag-feedback.png',
+        'docs/evidence/day-18/thumbnail-decode-fallback.png',
         'docs/evidence/day-18/reference-blocked.png',
         'docs/evidence/day-18/unreferenced-deleted.png',
       ],
@@ -400,6 +490,15 @@ async function verifyDay18() {
       !deletionUi.assetsApi.includes('readThumbnail') ||
       sourceAudit.nonDataImageSources.length > 0 ||
       !sourceAudit.missingHasRebuild ||
+      !decodeFallback.failedCardMissing ||
+      !decodeFallback.failedCardHasRebuild ||
+      !decodeFallback.failedCardStillSelected ||
+      decodeFallback.failedCardHasImage ||
+      !decodeFallback.healthyCardStillHasImage ||
+      decodeFallback.imageCountAfter !==
+        decodeFallback.imageCountBefore - 1 ||
+      !pngValidation.validCacheAccepted ||
+      !pngValidation.truncatedSignatureBodyRejected ||
       deleteRequests.length !== 2
     ) {
       throw new Error(
@@ -416,6 +515,13 @@ async function verifyDay18() {
       writeFile(
         path.join(evidenceDirectory, 'drag-feedback.png'),
         dragScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(
+          evidenceDirectory,
+          'thumbnail-decode-fallback.png',
+        ),
+        decodeFallbackScreenshot.toPNG(),
       ),
       writeFile(
         path.join(evidenceDirectory, 'reference-blocked.png'),

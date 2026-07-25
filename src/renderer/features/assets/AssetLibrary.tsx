@@ -308,6 +308,16 @@ export function AssetLibrary({
               void rebuildThumbnail(assetId)
             }
             onSelect={selectAsset}
+            onThumbnailError={(assetId) => {
+              setThumbnails((current) =>
+                current[assetId]?.status === 'missing'
+                  ? current
+                  : {
+                      ...current,
+                      [assetId]: { status: 'missing' },
+                    },
+              );
+            }}
             selectedAssetId={selectedAssetId}
             thumbnails={thumbnails}
           />

@@ -16,6 +16,7 @@ import {
   AssetDeleteFileSystemService,
   type StagedAssetDeleteFile,
 } from './AssetDeleteFileSystemService';
+import { AtomicWriteCommitRejectedError } from './ProjectFileSystemService';
 import {
   ProjectService,
   ProjectServiceError,
@@ -34,6 +35,7 @@ export interface AssetDeleteServiceOptions {
   fileSystem?: AssetDeleteFileSystemService;
   cache?: CacheService;
   now?: () => Date;
+  beforeCommitValidation?: () => void | Promise<void>;
 }
 
 export interface AssetDeleteOperation {
@@ -81,6 +83,9 @@ export class AssetDeleteService {
   private readonly fileSystem: AssetDeleteFileSystemService;
   private readonly cache: CacheService;
   private readonly now: () => Date;
+  private readonly beforeCommitValidation:
+    | (() => void | Promise<void>)
+    | null;
 
   constructor(options: AssetDeleteServiceOptions) {
     this.projectService = options.projectService;
@@ -90,6 +95,8 @@ export class AssetDeleteService {
       options.fileSystem ?? new AssetDeleteFileSystemService();
     this.cache = options.cache ?? new CacheService();
     this.now = options.now ?? (() => new Date());
+    this.beforeCommitValidation =
+      options.beforeCommitValidation ?? null;
   }
 
   async deleteAsset(
@@ -190,6 +197,33 @@ export class AssetDeleteService {
             );
           }
 
+          try {
+            await this.beforeCommitValidation?.();
+            this.assertCommitSnapshot(request, asset.id);
+          } catch (error) {
+            const residualPaths =
+              await this.fileSystem.rollback(staged);
+            if (residualPaths.length > 0) {
+              throw new AssetDeleteServiceError(
+                'ASSET_DELETE_ROLLBACK_FAILED',
+                transaction.projectRoot,
+                asset.id,
+                '删除提交校验失败，且部分素材文件未能恢复，请按残留路径手动恢复。',
+                { cause: error, residualPaths },
+              );
+            }
+            if (error instanceof AssetDeleteServiceError) {
+              throw error;
+            }
+            throw new AssetDeleteServiceError(
+              'ASSET_DELETE_FAILED',
+              transaction.projectRoot,
+              asset.id,
+              `删除素材“${asset.name}”的提交校验失败，文件已恢复。`,
+              { cause: error },
+            );
+          }
+
           const nextProject = ProjectSchema.parse({
             ...current.project,
             assets: current.project.assets.filter(
@@ -203,6 +237,7 @@ export class AssetDeleteService {
             saved = await transaction.save(
               nextProject,
               savedRevision,
+              () => this.assertCommitSnapshot(request, asset.id),
             );
           } catch (error) {
             const residualPaths =
@@ -215,6 +250,13 @@ export class AssetDeleteService {
                 '项目保存失败，且部分素材文件未能恢复，请按残留路径手动恢复。',
                 { cause: error, residualPaths },
               );
+            }
+            const commitError =
+              error instanceof AtomicWriteCommitRejectedError
+                ? error.cause
+                : error;
+            if (commitError instanceof AssetDeleteServiceError) {
+              throw commitError;
             }
             throw new AssetDeleteServiceError(
               'ASSET_DELETE_FAILED',
@@ -300,6 +342,43 @@ export class AssetDeleteService {
       );
     }
     return { project, revision: snapshot.revision };
+  }
+
+  private assertCommitSnapshot(
+    request: AssetDeleteRequest,
+    assetId: string,
+  ): void {
+    const snapshot = this.getCurrentProjectSnapshot(
+      request.projectRoot,
+    );
+    if (!snapshot) {
+      throw new AssetDeleteServiceError(
+        'ASSET_DELETE_STALE_REVISION',
+        request.projectRoot,
+        assetId,
+        '删除提交前 Main Process 已失去当前项目快照，文件已恢复，请重新打开项目后重试。',
+      );
+    }
+    const project = ProjectSchema.parse(snapshot.project);
+    const references = scanAssetReferences(project, assetId);
+    if (
+      project.id !== request.project.id ||
+      snapshot.revision !== request.baseRevision ||
+      JSON.stringify(project) !== JSON.stringify(request.project) ||
+      references.length > 0
+    ) {
+      throw new AssetDeleteServiceError(
+        'ASSET_DELETE_STALE_REVISION',
+        request.projectRoot,
+        assetId,
+        `删除期间项目已从修订 ${request.baseRevision} 变化到修订 ${snapshot.revision}，文件已恢复，请刷新后重试。`,
+        {
+          currentProject: project,
+          currentRevision: snapshot.revision,
+          references,
+        },
+      );
+    }
   }
 
   private resolveAssetPath(

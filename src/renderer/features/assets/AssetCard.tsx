@@ -19,6 +19,7 @@ export interface AssetCardProps {
   onDragStart: (assetId: string) => void;
   onDragEnd: () => void;
   onRebuildThumbnail: (assetId: string) => void;
+  onThumbnailError: (assetId: string) => void;
 }
 
 function dragType(
@@ -41,6 +42,7 @@ export function AssetCard({
   onDragStart,
   onDragEnd,
   onRebuildThumbnail,
+  onThumbnailError,
 }: AssetCardProps): React.JSX.Element {
   const image = asset.kind === 'image';
   return (
@@ -77,6 +79,7 @@ export function AssetCard({
             alt=""
             decoding="async"
             loading="lazy"
+            onError={() => onThumbnailError(asset.id)}
             src={thumbnail.dataUrl}
           />
         ) : (
