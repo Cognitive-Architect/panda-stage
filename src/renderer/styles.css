@@ -1371,6 +1371,144 @@ h1 {
   font-size: 52px;
 }
 
+.project-canvas {
+  display: grid;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  padding: 18px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 18px;
+  background: rgb(18 26 21 / 92%);
+  gap: 12px;
+}
+
+.project-canvas-heading,
+.canvas-toolbar,
+.canvas-mode-switch {
+  display: flex;
+  align-items: center;
+}
+
+.project-canvas-heading {
+  justify-content: space-between;
+}
+
+.project-canvas-heading h2 {
+  margin: 0;
+}
+
+.project-canvas-heading > span,
+.canvas-toolbar > span,
+.canvas-toolbar output {
+  color: #91a299;
+  font-size: 11px;
+}
+
+.canvas-viewport {
+  position: relative;
+  width: 100%;
+  height: min(62vh, 660px);
+  min-height: 320px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 14px;
+  background:
+    linear-gradient(45deg, rgb(255 255 255 / 2%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 2%) 25%, transparent 25%),
+    #080d0a;
+  background-position: 0 0, 12px 0;
+  background-size: 24px 24px;
+}
+
+.canvas-viewport-fit {
+  overflow: hidden;
+}
+
+.canvas-viewport-actual {
+  overflow: auto;
+  scrollbar-color: #3f6d4e #0a100c;
+}
+
+.canvas-viewport-content {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.canvas-logical-stage {
+  position: absolute;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: #111914;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 18%), 0 16px 48px rgb(0 0 0 / 45%);
+  transform-origin: 0 0;
+}
+
+.canvas-logical-stage > div,
+.canvas-logical-stage canvas {
+  display: block;
+}
+
+.canvas-stage-message {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 820px;
+  padding: 34px;
+  border: 3px dashed rgb(131 211 154 / 55%);
+  border-radius: 30px;
+  color: #e7f6eb;
+  background: rgb(10 18 13 / 84%);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  gap: 12px;
+  text-align: center;
+  font-size: 28px;
+}
+
+.canvas-stage-message strong {
+  font-size: 42px;
+}
+
+.canvas-stage-warning {
+  top: 120px;
+  border-style: solid;
+  border-color: rgb(233 181 80 / 62%);
+  color: #f8e7bd;
+}
+
+.canvas-toolbar {
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.canvas-mode-switch {
+  gap: 6px;
+}
+
+.canvas-mode-switch button {
+  padding: 7px 11px;
+  color: #99aaa0;
+  background: rgb(255 255 255 / 4%);
+}
+
+.canvas-mode-switch button[aria-pressed="true"] {
+  color: #e6f7ea;
+  background: #235739;
+  box-shadow: 0 0 0 1px rgb(131 211 154 / 35%);
+}
+
+.canvas-mode-feedback {
+  min-width: 150px;
+}
+
+.canvas-toolbar > output:last-child {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
 .transport-bar {
   justify-content: space-between;
   gap: 18px;
