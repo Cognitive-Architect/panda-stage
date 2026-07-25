@@ -11,6 +11,7 @@ export const ProjectErrorCodeSchema = z.enum([
   'UNSUPPORTED_VERSION',
   'INVALID_PROJECT',
   'PROJECT_ID_MISMATCH',
+  'PROJECT_SAVE_STALE_REVISION',
   'PROJECT_NOT_WRITABLE',
   'CREATE_FAILED',
   'OPEN_FAILED',
@@ -50,7 +51,11 @@ export const ProjectDocumentSchema = z
     projectFilePath: FileSystemPathSchema,
     project: ProjectSchema,
     migrated: z.boolean(),
-    sourceVersion: z.union([z.literal(0), z.literal(1)]),
+    sourceVersion: z.union([
+      z.literal(0),
+      z.literal(1),
+      z.literal(2),
+    ]),
   })
   .strict();
 
@@ -59,6 +64,8 @@ export const ProjectOperationErrorSchema = z
     code: ProjectErrorCodeSchema,
     message: z.string().trim().min(1),
     projectRoot: FileSystemPathSchema,
+    currentProject: ProjectSchema.optional(),
+    currentRevision: z.number().int().nonnegative().optional(),
   })
   .strict();
 

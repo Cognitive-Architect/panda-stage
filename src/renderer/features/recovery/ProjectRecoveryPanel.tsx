@@ -9,6 +9,7 @@ import { ProjectSessionController } from './ProjectSessionController';
 import { saveCurrentProject } from './saveCurrentProject';
 import { RecentProjectsPanel } from '../welcome/RecentProjectsPanel';
 import { AssetLibrary } from '../assets/AssetLibrary';
+import { CharacterManager } from '../characters/CharacterManager';
 
 function failureMessage(
   response: { ok: boolean; error?: { message: string } },
@@ -198,6 +199,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
         refreshToken={recentRefreshToken}
       />
       <AssetLibrary snapshot={projectSnapshot} />
+      <CharacterManager snapshot={projectSnapshot} />
       <section className="recovery-panel" aria-labelledby="recovery-heading">
       <div className="recovery-heading-row">
         <div>

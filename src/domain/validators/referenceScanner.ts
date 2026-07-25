@@ -3,6 +3,7 @@ import type { Project } from '../models/project';
 export type AssetReferenceKind =
   | 'character-base'
   | 'character-expression'
+  | 'character-mouth'
   | 'shot-background'
   | 'shot-layer'
   | 'audio-clip'
@@ -10,6 +11,26 @@ export type AssetReferenceKind =
 
 export interface AssetReference {
   kind: AssetReferenceKind;
+  path: string;
+  label: string;
+}
+
+export type CharacterReferenceKind =
+  | 'shot-layer-character'
+  | 'dialogue-character';
+
+export interface CharacterReference {
+  kind: CharacterReferenceKind;
+  path: string;
+  label: string;
+}
+
+export type ExpressionReferenceKind =
+  | 'shot-layer-expression'
+  | 'timeline-expression-event';
+
+export interface ExpressionReference {
+  kind: ExpressionReferenceKind;
   path: string;
   label: string;
 }
@@ -45,6 +66,13 @@ export function scanAssetReferences(
         label: `角色“${character.name}”的表情“${expression.name}”`,
       });
     });
+    if (character.mouthOpenAssetId === assetId) {
+      references.push({
+        kind: 'character-mouth',
+        path: `characters[${characterIndex}].mouthOpenAssetId`,
+        label: `角色“${character.name}”的张嘴图片`,
+      });
+    }
   });
 
   project.shots.forEach((shot, shotIndex) => {
@@ -88,5 +116,85 @@ export function scanAssetReferences(
     });
   });
 
+  return references;
+}
+
+export function scanCharacterReferences(
+  project: Project,
+  characterId: string,
+): CharacterReference[] {
+  const references: CharacterReference[] = [];
+  project.shots.forEach((shot, shotIndex) => {
+    shot.layers.forEach((layer, layerIndex) => {
+      if (
+        layer.source.kind !== 'character' ||
+        layer.source.characterId !== characterId
+      ) {
+        return;
+      }
+      references.push({
+        kind: 'shot-layer-character',
+        path:
+          `shots[${shotIndex}].layers[${layerIndex}]` +
+          '.source.characterId',
+        label: `镜头“${shot.name}”的角色图层“${layer.name}”`,
+      });
+    });
+    shot.dialogues.forEach((dialogue, dialogueIndex) => {
+      if (dialogue.characterId !== characterId) return;
+      references.push({
+        kind: 'dialogue-character',
+        path: `shots[${shotIndex}].dialogues[${dialogueIndex}].characterId`,
+        label:
+          `镜头“${shot.name}”的对白` +
+          `“${dialoguePreview(dialogue.text)}”`,
+      });
+    });
+  });
+  return references;
+}
+
+export function scanExpressionReferences(
+  project: Project,
+  characterId: string,
+  expressionId: string,
+): ExpressionReference[] {
+  const references: ExpressionReference[] = [];
+  project.shots.forEach((shot, shotIndex) => {
+    const characterLayerIds = new Set<string>();
+    shot.layers.forEach((layer, layerIndex) => {
+      if (
+        layer.source.kind !== 'character' ||
+        layer.source.characterId !== characterId
+      ) {
+        return;
+      }
+      characterLayerIds.add(layer.id);
+      if (layer.source.expressionId !== expressionId) return;
+      references.push({
+        kind: 'shot-layer-expression',
+        path:
+          `shots[${shotIndex}].layers[${layerIndex}]` +
+          '.source.expressionId',
+        label: `镜头“${shot.name}”的角色图层“${layer.name}”`,
+      });
+    });
+    shot.timelineEvents.forEach((event, eventIndex) => {
+      if (
+        event.type !== 'expression' ||
+        event.expressionId !== expressionId ||
+        !characterLayerIds.has(event.layerId)
+      ) {
+        return;
+      }
+      references.push({
+        kind: 'timeline-expression-event',
+        path:
+          `shots[${shotIndex}].timelineEvents[${eventIndex}]` +
+          '.expressionId',
+        label: `镜头“${shot.name}”的表情切换事件`,
+      });
+    });
+  });
   return references;
 }

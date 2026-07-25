@@ -16,12 +16,12 @@ import {
 export { LegacyProbeProjectV1Schema, ProjectV0Schema };
 export type { LegacyProbeProjectV1, ProjectV0 };
 
-export type DetectedSchemaVersion = 0 | typeof PROJECT_SCHEMA_VERSION;
+export type DetectedSchemaVersion = 0 | 1 | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(readonly receivedVersion: unknown) {
     super(
-      `Unsupported project schemaVersion: ${String(receivedVersion)}. Supported versions are 0 and ${PROJECT_SCHEMA_VERSION}.`,
+      `Unsupported project schemaVersion: ${String(receivedVersion)}. Supported versions are 0, 1, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -36,7 +36,13 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     throw new UnsupportedSchemaVersionError(undefined);
   }
   const version = envelope.data.schemaVersion;
-  if (version === 0 || version === PROJECT_SCHEMA_VERSION) return version;
+  if (
+    version === 0 ||
+    version === 1 ||
+    version === PROJECT_SCHEMA_VERSION
+  ) {
+    return version;
+  }
   throw new UnsupportedSchemaVersionError(version);
 }
 
