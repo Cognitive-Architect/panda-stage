@@ -10,6 +10,7 @@ import { saveCurrentProject } from './saveCurrentProject';
 import { RecentProjectsPanel } from '../welcome/RecentProjectsPanel';
 import { AssetLibrary } from '../assets/AssetLibrary';
 import { CharacterManager } from '../characters/CharacterManager';
+import { ShotManager } from '../shots/ShotManager';
 
 function failureMessage(
   response: { ok: boolean; error?: { message: string } },
@@ -200,6 +201,7 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
       />
       <AssetLibrary snapshot={projectSnapshot} />
       <CharacterManager snapshot={projectSnapshot} />
+      <ShotManager snapshot={projectSnapshot} />
       <section className="recovery-panel" aria-labelledby="recovery-heading">
       <div className="recovery-heading-row">
         <div>

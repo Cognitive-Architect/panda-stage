@@ -1,0 +1,60 @@
+import type { DragEvent } from 'react';
+import type { Shot } from '../../../domain';
+import { ShotThumbnailPlaceholder } from './ShotThumbnailPlaceholder';
+
+const SHOT_DRAG_TYPE = 'application/x-panda-stage-shot';
+
+export interface ShotListItemProps {
+  disabled?: boolean;
+  index: number;
+  selected: boolean;
+  shot: Shot;
+  onDropShot: (shotId: string, targetIndex: number) => void;
+  onSelect: (shotId: string) => void;
+}
+
+export function ShotListItem({
+  disabled = false,
+  index,
+  selected,
+  shot,
+  onDropShot,
+  onSelect,
+}: ShotListItemProps): React.JSX.Element {
+  const startDrag = (event: DragEvent<HTMLLIElement>): void => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(SHOT_DRAG_TYPE, shot.id);
+  };
+  const drop = (event: DragEvent<HTMLLIElement>): void => {
+    event.preventDefault();
+    const sourceId = event.dataTransfer.getData(SHOT_DRAG_TYPE);
+    if (sourceId) onDropShot(sourceId, index);
+  };
+
+  return (
+    <li
+      className={selected ? 'shot-list-item shot-list-item-selected' : 'shot-list-item'}
+      data-shot-id={shot.id}
+      draggable={!disabled}
+      onDragOver={(event) => event.preventDefault()}
+      onDragStart={startDrag}
+      onDrop={drop}
+    >
+      <button
+        aria-current={selected ? 'true' : undefined}
+        disabled={disabled}
+        onClick={() => onSelect(shot.id)}
+        type="button"
+      >
+        <ShotThumbnailPlaceholder index={index} name={shot.name} />
+        <span>
+          <strong>{shot.name}</strong>
+          <small>{shot.durationMs}ms</small>
+        </span>
+        <span className="shot-drag-handle" aria-label="拖拽排序">
+          ⋮⋮
+        </span>
+      </button>
+    </li>
+  );
+}

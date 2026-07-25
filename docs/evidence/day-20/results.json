@@ -1,0 +1,175 @@
+{
+  "day": 20,
+  "workOrder": "B-20/45",
+  "gate": "M2 Assets, Characters and Shots",
+  "result": "PASS",
+  "branch": "feat/day-20-shot-management",
+  "baselineSha": "c5c94beeacb7a458d9bca33acdc9766e041b3cb5",
+  "executedAt": "2026-07-25T13:58:26.141Z",
+  "configuredUi": {
+    "names": [
+      "Finale",
+      "Opening",
+      "Bridge",
+      "Scene 3",
+      "Scene 4"
+    ],
+    "durations": [
+      2500,
+      3000,
+      3500,
+      1000,
+      1500
+    ],
+    "currentName": "Finale",
+    "currentShotId": "c0b0d50d-fc76-4476-b0b7-abb0a21d1c7f",
+    "totalDurationMs": 11500,
+    "placeholderCount": 6,
+    "revisionText": "5 个镜头 · 总时长 11500ms · revision 10",
+    "rendererHasNodeRequire": false,
+    "hasCanvasEditor": false
+  },
+  "noOpMove": {
+    "before": {
+      "names": [
+        "Opening"
+      ],
+      "revisionText": "1 个镜头 · 总时长 3000ms · revision 0",
+      "saveDisabled": true
+    },
+    "after": {
+      "names": [
+        "Opening"
+      ],
+      "revisionText": "1 个镜头 · 总时长 3000ms · revision 0",
+      "saveDisabled": true,
+      "status": "镜头位置未变化，未新增待保存修改。"
+    },
+    "autosaveUpdateDelta": 0
+  },
+  "failedCreate": {
+    "shotCountBefore": 1,
+    "shotCountAfter": 1,
+    "name": "Rejected draft",
+    "durationMs": 499,
+    "status": "镜头时长必须是整数且不少于 500ms。"
+  },
+  "successfulCreate": {
+    "shotCount": 3,
+    "selectedName": "Scene 3",
+    "nextDefaultName": "镜头 4"
+  },
+  "projectSwitch": {
+    "previousDraft": "旧项目手工草稿",
+    "openedProjectId": "d2070000-0000-4000-8000-000000000001",
+    "shotCount": 0,
+    "defaultName": "镜头 1",
+    "durationMs": 3000
+  },
+  "invalidDuration": {
+    "attemptedMs": 499,
+    "rejected": true,
+    "status": "镜头时长必须是整数且不少于 500ms。"
+  },
+  "selectionAfterRemoval": "Opening",
+  "copyIdSafety": {
+    "sourceShotId": "50000000-0000-4000-8000-000000000001",
+    "copyShotId": "db6c4d8e-8768-4379-9e65-73634ce2ec0c",
+    "sourceEntityIds": [
+      "50000000-0000-4000-8000-000000000001",
+      "60000000-0000-4000-8000-000000000001",
+      "60000000-0000-4000-8000-000000000002",
+      "70000000-0000-4000-8000-000000000001",
+      "80000000-0000-4000-8000-000000000001",
+      "90000000-0000-4000-8000-000000000001",
+      "90000000-0000-4000-8000-000000000002",
+      "90000000-0000-4000-8000-000000000003",
+      "90000000-0000-4000-8000-000000000004",
+      "90000000-0000-4000-8000-000000000005",
+      "90000000-0000-4000-8000-000000000006",
+      "90000000-0000-4000-8000-000000000007"
+    ],
+    "copyEntityIds": [
+      "db6c4d8e-8768-4379-9e65-73634ce2ec0c",
+      "574864f0-6e99-400b-b8e5-95c6fcf6812f",
+      "40dee8f9-27eb-44cf-8127-7448fb87578a",
+      "a13123a4-25b3-496b-8935-94fb7e94e978",
+      "9f78c18f-ac13-4c55-828b-f3b96ede5cca",
+      "0fe03243-e861-404c-b985-d177fab49572",
+      "7f84f76c-ad81-487d-b22e-3e212ba9efc2",
+      "3ae3cc72-b2bf-4324-b5e6-80691db4fdfd",
+      "c390080a-02b8-4959-ac2a-66687a83c344",
+      "2a9a1ea8-4ddb-4670-8a6f-ecc795c6827f",
+      "eeb3072e-4f0c-4ba5-9dcf-01b6ec535d82",
+      "bb8c533e-a350-4466-b1db-d26731bc6e88"
+    ],
+    "allIdsDifferent": true,
+    "timelineLayerReferencesRemapped": true,
+    "dialogueAudioReferencesRemapped": true
+  },
+  "persistence": {
+    "openCount": 3,
+    "saveRevision": 10,
+    "autosaveUpdateCount": 14,
+    "savedNames": [
+      "Finale",
+      "Opening",
+      "Bridge",
+      "Scene 3",
+      "Scene 4"
+    ],
+    "savedDurations": [
+      2500,
+      3000,
+      3500,
+      1000,
+      1500
+    ],
+    "savedTotalDurationMs": 11500,
+    "savedShotIds": [
+      "c0b0d50d-fc76-4476-b0b7-abb0a21d1c7f",
+      "50000000-0000-4000-8000-000000000001",
+      "db6c4d8e-8768-4379-9e65-73634ce2ec0c",
+      "e0ecf2af-510d-4944-bbcf-2069ea327362",
+      "5032d31d-333f-4782-9b8e-f937c2f47d3c"
+    ],
+    "uniqueShotIds": true,
+    "containsCurrentShot": false,
+    "reopenedUi": {
+      "names": [
+        "Finale",
+        "Opening",
+        "Bridge",
+        "Scene 3",
+        "Scene 4"
+      ],
+      "durations": [
+        2500,
+        3000,
+        3500,
+        1000,
+        1500
+      ],
+      "currentName": "Finale",
+      "totalDurationMs": 11500,
+      "clean": true
+    }
+  },
+  "inheritedM2Evidence": {
+    "assetImport": "docs/test-receipts/DAY-16.md",
+    "assetMetadata": "docs/test-receipts/DAY-17.md",
+    "assetLibraryAndReferences": "docs/test-receipts/DAY-18.md",
+    "characters": "docs/test-receipts/DAY-19.md"
+  },
+  "automatedEvidence": {
+    "service": "tests/unit/shot-service.test.ts",
+    "store": "tests/unit/shot-store.test.ts",
+    "components": "tests/unit/shot-components.test.ts",
+    "durationSelector": "tests/unit/project-duration.test.ts",
+    "saveReopen": "tests/integration/shot-lifecycle.test.ts"
+  },
+  "screenshots": [
+    "docs/evidence/day-20/shots-configured.png",
+    "docs/evidence/day-20/shots-reopened.png"
+  ]
+}
