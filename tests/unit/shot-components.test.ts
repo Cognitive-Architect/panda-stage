@@ -1,0 +1,73 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import exampleProject from '../../demo-project/project-v1.example.json';
+import { ProjectSchema } from '../../src/domain';
+import { ShotEditor } from '../../src/renderer/features/shots/ShotEditor';
+import { ShotList } from '../../src/renderer/features/shots/ShotList';
+import { ShotManager } from '../../src/renderer/features/shots/ShotManager';
+
+const noop = () => undefined;
+
+describe('shot management components', () => {
+  it('renders selection, drag ordering, duration, total duration, and save actions', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const markup = renderToStaticMarkup(
+      createElement(ShotManager, {
+        snapshot: {
+          projectRoot: 'D:\\镜头 项目.pandastage',
+          project,
+          dirty: true,
+          revision: 3,
+        },
+      }),
+    );
+
+    expect(markup).toContain('镜头管理');
+    expect(markup).toContain('拖拽排序');
+    expect(markup).toContain('总时长 3000ms');
+    expect(markup).toContain('保存镜头');
+    expect(markup).toContain('复制镜头');
+    expect(markup).toContain('移除镜头');
+    expect(markup).toContain('画布将在 Day 21 提供');
+    expect(markup).not.toContain('时间轴编辑器');
+  });
+
+  it('renders an explicit empty-project creation path', () => {
+    const project = ProjectSchema.parse({
+      ...exampleProject,
+      shots: [],
+    });
+    const markup = renderToStaticMarkup(
+      createElement(ShotList, {
+        selectedShotId: null,
+        shots: project.shots,
+        onCreate: noop,
+        onMove: noop,
+        onSelect: noop,
+      }),
+    );
+
+    expect(markup).toContain('项目还没有镜头');
+    expect(markup).toContain('创建第一个镜头');
+    expect(markup).toContain('创建镜头');
+  });
+
+  it('explains the duration boundary and renders only a placeholder thumbnail', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const markup = renderToStaticMarkup(
+      createElement(ShotEditor, {
+        index: 0,
+        shot: project.shots[0]!,
+        onDuplicate: noop,
+        onRemove: noop,
+        onRename: noop,
+        onSetDuration: noop,
+      }),
+    );
+    expect(markup).toContain('不少于 500ms');
+    expect(markup).toContain('不能短于镜头内已有内容');
+    expect(markup).toContain('缩略图占位');
+    expect(markup).not.toContain('<img');
+  });
+});

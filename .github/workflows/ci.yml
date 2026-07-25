@@ -66,3 +66,6 @@ jobs:
 
       - name: Day 19 character definitions gate
         run: pnpm verify:day19
+
+      - name: Day 20 shot management M2 gate
+        run: pnpm verify:day20

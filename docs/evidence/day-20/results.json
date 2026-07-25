@@ -1,0 +1,138 @@
+{
+  "day": 20,
+  "workOrder": "B-20/45",
+  "gate": "M2 Assets, Characters and Shots",
+  "result": "PASS",
+  "branch": "feat/day-20-shot-management",
+  "baselineSha": "c5c94beeacb7a458d9bca33acdc9766e041b3cb5",
+  "executedAt": "2026-07-25T13:13:53.598Z",
+  "configuredUi": {
+    "names": [
+      "Finale",
+      "Opening",
+      "Bridge",
+      "Scene 3",
+      "Scene 4"
+    ],
+    "durations": [
+      2500,
+      3000,
+      3500,
+      1000,
+      1500
+    ],
+    "currentName": "Finale",
+    "currentShotId": "dc3f6098-1baf-40a3-90e6-ac10e9d6febf",
+    "totalDurationMs": 11500,
+    "placeholderCount": 6,
+    "revisionText": "5 个镜头 · 总时长 11500ms · revision 10",
+    "rendererHasNodeRequire": false,
+    "hasCanvasEditor": false
+  },
+  "invalidDuration": {
+    "attemptedMs": 499,
+    "rejected": true,
+    "status": "镜头时长必须是整数且不少于 500ms。"
+  },
+  "selectionAfterRemoval": "Opening",
+  "copyIdSafety": {
+    "sourceShotId": "50000000-0000-4000-8000-000000000001",
+    "copyShotId": "78ff7b71-fb68-4d25-bf5a-7528b7724c58",
+    "sourceEntityIds": [
+      "50000000-0000-4000-8000-000000000001",
+      "60000000-0000-4000-8000-000000000001",
+      "60000000-0000-4000-8000-000000000002",
+      "70000000-0000-4000-8000-000000000001",
+      "80000000-0000-4000-8000-000000000001",
+      "90000000-0000-4000-8000-000000000001",
+      "90000000-0000-4000-8000-000000000002",
+      "90000000-0000-4000-8000-000000000003",
+      "90000000-0000-4000-8000-000000000004",
+      "90000000-0000-4000-8000-000000000005",
+      "90000000-0000-4000-8000-000000000006",
+      "90000000-0000-4000-8000-000000000007"
+    ],
+    "copyEntityIds": [
+      "78ff7b71-fb68-4d25-bf5a-7528b7724c58",
+      "a95b3593-74ae-421b-b699-9965732d769c",
+      "a122f645-1302-48fe-961c-2697fcaca600",
+      "2d109db6-1dc0-412c-a5c6-b801bbd05960",
+      "0ba73d96-f8dd-4b6b-96fd-cc60a86ae73e",
+      "26bfe350-913a-437b-b1d9-1004a6663bf0",
+      "d650ecef-9ab4-4ec7-b40b-546cd9e694bc",
+      "085acf40-a92c-4ca0-a3ed-cf7ce6466391",
+      "32af9595-944a-4d82-b83c-bea7d3d447b7",
+      "c23b13d5-48e2-4723-a6b4-02710418149e",
+      "148cef38-3225-4a6d-8b52-fe13af92153e",
+      "a82f457c-c4e1-416e-97b7-d3785d7578e0"
+    ],
+    "allIdsDifferent": true,
+    "timelineLayerReferencesRemapped": true,
+    "dialogueAudioReferencesRemapped": true
+  },
+  "persistence": {
+    "openCount": 2,
+    "saveRevision": 10,
+    "autosaveUpdateCount": 13,
+    "savedNames": [
+      "Finale",
+      "Opening",
+      "Bridge",
+      "Scene 3",
+      "Scene 4"
+    ],
+    "savedDurations": [
+      2500,
+      3000,
+      3500,
+      1000,
+      1500
+    ],
+    "savedTotalDurationMs": 11500,
+    "savedShotIds": [
+      "dc3f6098-1baf-40a3-90e6-ac10e9d6febf",
+      "50000000-0000-4000-8000-000000000001",
+      "78ff7b71-fb68-4d25-bf5a-7528b7724c58",
+      "4c0f3263-1ab9-4d4f-8fb8-52a02c571228",
+      "e4faafb6-c4ab-4fe5-a34a-18495ded213c"
+    ],
+    "uniqueShotIds": true,
+    "containsCurrentShot": false,
+    "reopenedUi": {
+      "names": [
+        "Finale",
+        "Opening",
+        "Bridge",
+        "Scene 3",
+        "Scene 4"
+      ],
+      "durations": [
+        2500,
+        3000,
+        3500,
+        1000,
+        1500
+      ],
+      "currentName": "Finale",
+      "totalDurationMs": 11500,
+      "clean": true
+    }
+  },
+  "inheritedM2Evidence": {
+    "assetImport": "docs/test-receipts/DAY-16.md",
+    "assetMetadata": "docs/test-receipts/DAY-17.md",
+    "assetLibraryAndReferences": "docs/test-receipts/DAY-18.md",
+    "characters": "docs/test-receipts/DAY-19.md"
+  },
+  "automatedEvidence": {
+    "service": "tests/unit/shot-service.test.ts",
+    "store": "tests/unit/shot-store.test.ts",
+    "components": "tests/unit/shot-components.test.ts",
+    "durationSelector": "tests/unit/project-duration.test.ts",
+    "saveReopen": "tests/integration/shot-lifecycle.test.ts"
+  },
+  "screenshots": [
+    "docs/evidence/day-20/shots-configured.png",
+    "docs/evidence/day-20/shots-reopened.png"
+  ]
+}
