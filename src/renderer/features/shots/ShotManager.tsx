@@ -41,10 +41,16 @@ export function ShotManager({
   const mutate = (
     action: () => Project,
     success: string,
+    unchanged?: string,
   ): Project | null => {
+    const current = editorProjectStore.getSnapshot()?.project;
     try {
       const next = action();
-      setStatus(`${success} 修改已进入自动保存队列。`);
+      setStatus(
+        unchanged && next === current
+          ? unchanged
+          : `${success} 修改已进入自动保存队列。`,
+      );
       return next;
     } catch (error) {
       setStatus(
@@ -106,16 +112,20 @@ export function ShotManager({
       <div className="shot-workspace">
         <ShotList
           disabled={busy || !snapshot}
+          key={project?.id ?? 'no-project'}
           onCreate={(name, durationMs) => {
-            mutate(
-              () => shotStore.create({ name, durationMs }),
-              `镜头“${name.trim()}”已创建。`,
+            return (
+              mutate(
+                () => shotStore.create({ name, durationMs }),
+                `镜头“${name.trim()}”已创建。`,
+              ) !== null
             );
           }}
           onMove={(shotId, targetIndex) => {
             mutate(
               () => shotStore.move(shotId, targetIndex),
               '镜头顺序已写回项目。',
+              '镜头位置未变化，未新增待保存修改。',
             );
           }}
           onSelect={(shotId) => shotStore.select(shotId)}

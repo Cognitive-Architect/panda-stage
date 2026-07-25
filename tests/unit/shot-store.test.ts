@@ -20,6 +20,52 @@ function setup() {
 }
 
 describe('ShotStore', () => {
+  it('does not dirty, revise, or notify autosave subscribers for a no-op move', () => {
+    const { editor, store } = setup();
+    const cleanProject = new ShotService({
+      createId: (() => {
+        let counter = 0;
+        return () =>
+          `d2060000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
+      })(),
+    }).duplicate(
+      editor.getSnapshot()!.project,
+      editor.getSnapshot()!.project.shots[0]!.id,
+    );
+    editor.open('D:\\clean two-shot project.pandastage', cleanProject);
+    const cleanSnapshot = editor.getSnapshot()!;
+    let editorNotifications = 0;
+    const unsubscribe = editor.subscribe(() => {
+      editorNotifications += 1;
+    });
+
+    const unchanged = store.move(cleanProject.shots[0]!.id, 0);
+
+    expect(unchanged).toBe(cleanSnapshot.project);
+    expect(editor.getSnapshot()).toBe(cleanSnapshot);
+    expect(editor.getSnapshot()).toMatchObject({
+      dirty: false,
+      revision: 0,
+    });
+    expect(editorNotifications).toBe(0);
+
+    store.move(cleanProject.shots[0]!.id, 1);
+    expect(editor.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 1,
+    });
+    expect(
+      editor.getSnapshot()!.project.shots.map((shot) => shot.id),
+    ).toEqual([
+      cleanProject.shots[1]!.id,
+      cleanProject.shots[0]!.id,
+    ]);
+    expect(editorNotifications).toBe(1);
+
+    unsubscribe();
+    store.dispose();
+  });
+
   it('keeps current selection session-only and marks every model mutation dirty', () => {
     const { editor, store } = setup();
     const originalId = editor.getSnapshot()!.project.shots[0]!.id;

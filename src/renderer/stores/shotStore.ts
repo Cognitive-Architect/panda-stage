@@ -77,9 +77,11 @@ export class ShotStore {
   }
 
   move(shotId: string, targetIndex: number): Project {
-    return this.apply((project) =>
-      this.service.move(project, shotId, targetIndex),
-    );
+    const current = this.project();
+    const next = this.service.move(current, shotId, targetIndex);
+    if (next === current) return current;
+    this.editorStore.updateProject(next);
+    return next;
   }
 
   remove(shotId: string): Project {

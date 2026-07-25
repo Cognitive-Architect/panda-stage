@@ -4,10 +4,14 @@ import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { ProjectSchema } from '../../src/domain';
 import { ShotEditor } from '../../src/renderer/features/shots/ShotEditor';
-import { ShotList } from '../../src/renderer/features/shots/ShotList';
+import {
+  nextAvailableShotName,
+  ShotList,
+} from '../../src/renderer/features/shots/ShotList';
 import { ShotManager } from '../../src/renderer/features/shots/ShotManager';
 
 const noop = () => undefined;
+const rejectCreate = () => false;
 
 describe('shot management components', () => {
   it('renders selection, drag ordering, duration, total duration, and save actions', () => {
@@ -42,7 +46,7 @@ describe('shot management components', () => {
       createElement(ShotList, {
         selectedShotId: null,
         shots: project.shots,
-        onCreate: noop,
+        onCreate: rejectCreate,
         onMove: noop,
         onSelect: noop,
       }),
@@ -51,6 +55,24 @@ describe('shot management components', () => {
     expect(markup).toContain('项目还没有镜头');
     expect(markup).toContain('创建第一个镜头');
     expect(markup).toContain('创建镜头');
+    expect(markup).toContain('0 个镜头');
+    expect(markup).not.toContain('/5 验收样例');
+  });
+
+  it('derives an available default name from each current project', () => {
+    expect(nextAvailableShotName([])).toBe('镜头 1');
+    expect(
+      nextAvailableShotName([
+        { name: 'Opening' },
+        { name: '镜头 3' },
+      ]),
+    ).toBe('镜头 4');
+    expect(
+      nextAvailableShotName([
+        { name: '镜头 2' },
+        { name: '镜头 3' },
+      ]),
+    ).toBe('镜头 4');
   });
 
   it('explains the duration boundary and renders only a placeholder thumbnail', () => {

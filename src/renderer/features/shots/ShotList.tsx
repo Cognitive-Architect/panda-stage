@@ -1,12 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SHOT_MIN_DURATION_MS, type Shot } from '../../../domain';
 import { ShotListItem } from './ShotListItem';
+
+export function nextAvailableShotName(
+  shots: readonly Pick<Shot, 'name'>[],
+): string {
+  const names = new Set(
+    shots.map((shot) => shot.name.trim().toLocaleLowerCase()),
+  );
+  let suffix = shots.length + 1;
+  while (names.has(`镜头 ${suffix}`.toLocaleLowerCase())) suffix += 1;
+  return `镜头 ${suffix}`;
+}
 
 export interface ShotListProps {
   disabled?: boolean;
   selectedShotId: string | null;
   shots: readonly Shot[];
-  onCreate: (name: string, durationMs: number) => void;
+  onCreate: (name: string, durationMs: number) => boolean;
   onMove: (shotId: string, targetIndex: number) => void;
   onSelect: (shotId: string) => void;
 }
@@ -19,14 +30,20 @@ export function ShotList({
   onMove,
   onSelect,
 }: ShotListProps): React.JSX.Element {
-  const [name, setName] = useState(`镜头 ${shots.length + 1}`);
+  const suggestedName = nextAvailableShotName(shots);
+  const [name, setName] = useState(() => suggestedName);
+  const [nameEdited, setNameEdited] = useState(false);
   const [durationMs, setDurationMs] = useState(3_000);
+
+  useEffect(() => {
+    if (!nameEdited) setName(suggestedName);
+  }, [nameEdited, suggestedName]);
 
   return (
     <aside className="shot-list">
       <div className="shot-list-heading">
         <h3>镜头列表</h3>
-        <span>{shots.length}/5 验收样例</span>
+        <span>{shots.length} 个镜头</span>
       </div>
       {shots.length === 0 ? (
         <div className="shot-list-empty">
@@ -50,10 +67,10 @@ export function ShotList({
       )}
       <form
         className="shot-create-form"
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          onCreate(name, durationMs);
-          setName(`镜头 ${shots.length + 2}`);
+          if (onCreate(name, durationMs)) setNameEdited(false);
         }}
       >
         <strong>新增镜头</strong>
@@ -62,7 +79,10 @@ export function ShotList({
           <input
             disabled={disabled}
             maxLength={200}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              setNameEdited(true);
+            }}
             value={name}
           />
         </label>

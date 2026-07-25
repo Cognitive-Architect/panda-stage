@@ -15,6 +15,8 @@ const evidenceDirectory = path.join(
   'docs/evidence/day-20',
 );
 const projectRoot = 'D:\\项目\\Day 20 五镜头 M2 🐼.pandastage';
+const alternateProjectRoot =
+  'D:\\项目\\Day 20 空镜头切换 🐼.pandastage';
 
 app.on('window-all-closed', () => {});
 
@@ -92,14 +94,14 @@ async function captureSection(window, selector) {
   }
 }
 
-async function openProject(window) {
-  await setInput(window, '.recovery-open-row input', projectRoot);
+async function openProject(window, root = projectRoot) {
+  await setInput(window, '.recovery-open-row input', root);
   await window.webContents.executeJavaScript(`
     document.querySelector('.recovery-open-row button').click()
   `);
   await window.webContents.executeJavaScript(
     waitFor(
-      "document.querySelector('.shot-list-item') && " +
+      "document.querySelector('.shot-manager') && " +
         "document.querySelector('.shot-manager-heading span')" +
         "?.textContent?.includes('revision 0')",
       'Day 20 project did not open.',
@@ -204,19 +206,32 @@ async function verifyDay20() {
       defaultFlipX: false,
     })),
   };
+  const alternateProject = {
+    ...initialProject,
+    id: 'd2070000-0000-4000-8000-000000000001',
+    name: 'Day 20 empty switch project',
+    shots: [],
+  };
   let savedProject = null;
   let saveRequest = null;
   let openCount = 0;
   const autosaveUpdates = [];
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN, () => {
+  ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN, (_event, request) => {
     openCount += 1;
+    const openingAlternate =
+      request.projectRoot === alternateProjectRoot;
+    const openedRoot = openingAlternate
+      ? alternateProjectRoot
+      : projectRoot;
     return {
       ok: true,
       value: {
-        projectRoot,
-        projectFilePath: `${projectRoot}\\project.json`,
-        project: savedProject ?? initialProject,
+        projectRoot: openedRoot,
+        projectFilePath: `${openedRoot}\\project.json`,
+        project: openingAlternate
+          ? alternateProject
+          : savedProject ?? initialProject,
         migrated: false,
         sourceVersion: 2,
       },
@@ -270,6 +285,93 @@ async function verifyDay20() {
     );
     await openProject(window);
 
+    await window.webContents.executeJavaScript(
+      'new Promise((resolve) => setTimeout(resolve, 150))',
+    );
+    const noOpBefore =
+      await window.webContents.executeJavaScript(`(() => ({
+        names: [...document.querySelectorAll('.shot-list-item strong')]
+          .map((node) => node.textContent.trim()),
+        revisionText: document.querySelector(
+          '.shot-manager-heading span'
+        ).textContent.trim(),
+        saveDisabled: document.querySelector(
+          '.shot-manager-heading button'
+        ).disabled
+      }))()`);
+    const noOpAutosaveBefore = autosaveUpdates.length;
+    await dragShot(window, 'Opening', 0);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.shot-manager-status')" +
+          "?.textContent?.includes('位置未变化')",
+        'No-op drag did not report an unchanged position.',
+      ),
+    );
+    await window.webContents.executeJavaScript(
+      'new Promise((resolve) => setTimeout(resolve, 150))',
+    );
+    const noOpAfter =
+      await window.webContents.executeJavaScript(`(() => ({
+        names: [...document.querySelectorAll('.shot-list-item strong')]
+          .map((node) => node.textContent.trim()),
+        revisionText: document.querySelector(
+          '.shot-manager-heading span'
+        ).textContent.trim(),
+        saveDisabled: document.querySelector(
+          '.shot-manager-heading button'
+        ).disabled,
+        status: document.querySelector(
+          '.shot-manager-status'
+        ).textContent.trim()
+      }))()`);
+    const noOpMove = {
+      before: noOpBefore,
+      after: noOpAfter,
+      autosaveUpdateDelta:
+        autosaveUpdates.length - noOpAutosaveBefore,
+    };
+
+    const failedCreateCountBefore =
+      await window.webContents.executeJavaScript(
+        "document.querySelectorAll('.shot-list-item').length",
+      );
+    await setInput(
+      window,
+      '.shot-create-form label:nth-of-type(1) input',
+      'Rejected draft',
+    );
+    await setInput(
+      window,
+      '.shot-create-form label:nth-of-type(2) input',
+      499,
+    );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('.shot-create-form button').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.shot-manager-status')" +
+          "?.textContent?.includes('不少于 500ms')",
+        'Failed shot creation did not show a clear error.',
+      ),
+    );
+    const failedCreate =
+      await window.webContents.executeJavaScript(`(() => ({
+        shotCountBefore: ${failedCreateCountBefore},
+        shotCountAfter:
+          document.querySelectorAll('.shot-list-item').length,
+        name: document.querySelector(
+          '.shot-create-form label:nth-of-type(1) input'
+        ).value,
+        durationMs: Number(document.querySelector(
+          '.shot-create-form label:nth-of-type(2) input'
+        ).value),
+        status: document.querySelector(
+          '.shot-manager-status'
+        ).textContent.trim()
+      }))()`);
+
     await window.webContents.executeJavaScript(`
       document.querySelector('.shot-editor-actions button').click()
     `);
@@ -319,6 +421,24 @@ async function verifyDay20() {
     );
 
     await createShot(window, 'Scene 3', 1_000, 3);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector(" +
+          "'.shot-create-form label:nth-of-type(1) input'" +
+          ")?.value === '镜头 4'",
+        'Successful create did not advance to an available default name.',
+      ),
+    );
+    const successfulCreate =
+      await window.webContents.executeJavaScript(`(() => ({
+        shotCount: document.querySelectorAll('.shot-list-item').length,
+        selectedName: document.querySelector(
+          '.shot-editor-heading h3'
+        ).textContent.trim(),
+        nextDefaultName: document.querySelector(
+          '.shot-create-form label:nth-of-type(1) input'
+        ).value
+      }))()`);
     await createShot(window, 'Scene 4', 1_500, 4);
     await createShot(window, 'Scene 5', 2_000, 5);
 
@@ -449,6 +569,34 @@ async function verifyDay20() {
     const reopenedScreenshot =
       await captureSection(window, '.shot-manager');
 
+    await setInput(
+      window,
+      '.shot-create-form label:nth-of-type(1) input',
+      '旧项目手工草稿',
+    );
+    await openProject(window, alternateProjectRoot);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelectorAll('.shot-list-item').length === 0 && " +
+          "document.querySelector(" +
+          "'.shot-create-form label:nth-of-type(1) input'" +
+          ")?.value === '镜头 1'",
+        'Project switch retained the previous project draft name.',
+      ),
+    );
+    const projectSwitch =
+      await window.webContents.executeJavaScript(`(() => ({
+        previousDraft: '旧项目手工草稿',
+        openedProjectId: ${JSON.stringify(alternateProject.id)},
+        shotCount: document.querySelectorAll('.shot-list-item').length,
+        defaultName: document.querySelector(
+          '.shot-create-form label:nth-of-type(1) input'
+        ).value,
+        durationMs: Number(document.querySelector(
+          '.shot-create-form label:nth-of-type(2) input'
+        ).value)
+      }))()`);
+
     const source = savedProject.shots.find(
       (shot) => shot.name === 'Opening',
     );
@@ -464,6 +612,10 @@ async function verifyDay20() {
       baselineSha: 'c5c94beeacb7a458d9bca33acdc9766e041b3cb5',
       executedAt: new Date().toISOString(),
       configuredUi,
+      noOpMove,
+      failedCreate,
+      successfulCreate,
+      projectSwitch,
       invalidDuration: {
         attemptedMs: 499,
         rejected: true,
@@ -538,6 +690,25 @@ async function verifyDay20() {
       configuredUi.placeholderCount < 6 ||
       configuredUi.rendererHasNodeRequire ||
       configuredUi.hasCanvasEditor ||
+      noOpMove.before.names.join(',') !==
+        noOpMove.after.names.join(',') ||
+      noOpMove.before.revisionText !==
+        noOpMove.after.revisionText ||
+      !noOpMove.before.saveDisabled ||
+      !noOpMove.after.saveDisabled ||
+      noOpMove.autosaveUpdateDelta !== 0 ||
+      failedCreate.shotCountBefore !==
+        failedCreate.shotCountAfter ||
+      failedCreate.name !== 'Rejected draft' ||
+      failedCreate.durationMs !== 499 ||
+      !failedCreate.status.includes('不少于 500ms') ||
+      successfulCreate.shotCount !== 3 ||
+      successfulCreate.selectedName !== 'Scene 3' ||
+      successfulCreate.nextDefaultName !== '镜头 4' ||
+      projectSwitch.openedProjectId !== alternateProject.id ||
+      projectSwitch.shotCount !== 0 ||
+      projectSwitch.defaultName !== '镜头 1' ||
+      projectSwitch.durationMs !== 3_000 ||
       selectionAfterRemoval !== 'Opening' ||
       saveRequest?.revision !== 10 ||
       !evidence.copyIdSafety.allIdsDifferent ||
