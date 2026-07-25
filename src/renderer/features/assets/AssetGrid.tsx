@@ -1,0 +1,66 @@
+import type {
+  AssetLibraryEntry,
+} from '../../stores/assetLibrarySelectors';
+import {
+  AssetCard,
+  type ThumbnailState,
+} from './AssetCard';
+
+export interface AssetGridProps {
+  entries: readonly AssetLibraryEntry[];
+  selectedAssetId: string | null;
+  draggingAssetId: string | null;
+  thumbnails: Readonly<Record<string, ThumbnailState>>;
+  onSelect: (assetId: string) => void;
+  onDragStart: (assetId: string) => void;
+  onDragEnd: () => void;
+  onRebuildThumbnail: (assetId: string) => void;
+  onThumbnailError: (assetId: string) => void;
+}
+
+export function AssetGrid({
+  entries,
+  selectedAssetId,
+  draggingAssetId,
+  thumbnails,
+  onSelect,
+  onDragStart,
+  onDragEnd,
+  onRebuildThumbnail,
+  onThumbnailError,
+}: AssetGridProps): React.JSX.Element {
+  if (entries.length === 0) {
+    return (
+      <div className="asset-library-empty">
+        <span aria-hidden="true">＋</span>
+        <strong>这个分类还没有素材</strong>
+        <p>使用上方导入入口选择文件，或直接拖入 PNG、JPG、MP3、WAV。</p>
+      </div>
+    );
+  }
+  return (
+    <div
+      aria-label="素材缩略图网格"
+      className="asset-grid"
+      data-grid-count={entries.length}
+    >
+      {entries.map(({ asset, category }) => (
+        <AssetCard
+          asset={asset}
+          category={category}
+          dragging={draggingAssetId === asset.id}
+          key={asset.id}
+          onDragEnd={onDragEnd}
+          onDragStart={onDragStart}
+          onRebuildThumbnail={onRebuildThumbnail}
+          onSelect={onSelect}
+          onThumbnailError={onThumbnailError}
+          selected={selectedAssetId === asset.id}
+          thumbnail={
+            thumbnails[asset.id] ?? { status: 'loading' }
+          }
+        />
+      ))}
+    </div>
+  );
+}

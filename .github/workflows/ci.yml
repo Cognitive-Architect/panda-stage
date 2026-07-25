@@ -60,3 +60,6 @@ jobs:
 
       - name: Day 17 asset metadata gate
         run: pnpm verify:day17
+
+      - name: Day 18 asset library gate
+        run: pnpm verify:day18

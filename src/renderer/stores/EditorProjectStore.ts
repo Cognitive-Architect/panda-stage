@@ -1,5 +1,6 @@
 import {
   ProjectSchema,
+  scanAssetReferences,
   type Asset,
   type Project,
 } from '../../domain';
@@ -157,6 +158,64 @@ export class EditorProjectStore {
         ...current.project,
         assets,
       }),
+      dirty: true,
+      revision: current.revision + 1,
+    };
+    this.emit();
+    return 'stale';
+  }
+
+  applyAssetDelete(
+    rawSavedProject: Project,
+    deletedAssetId: string,
+    baseRevision: number,
+    savedRevision: number,
+  ): SaveAcknowledgement {
+    const current = this.requireSnapshot();
+    const savedProject = ProjectSchema.parse(rawSavedProject);
+    this.assertSameProject(current.project, savedProject);
+    if (
+      !Number.isInteger(baseRevision) ||
+      baseRevision < 0 ||
+      savedRevision !== baseRevision + 1 ||
+      savedProject.assets.some((asset) => asset.id === deletedAssetId)
+    ) {
+      throw new Error(
+        `Invalid asset delete acknowledgement: base=${baseRevision}, saved=${savedRevision}.`,
+      );
+    }
+    if (current.revision < baseRevision) {
+      throw new Error(
+        `Asset delete base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
+      );
+    }
+    if (current.revision === baseRevision) {
+      this.snapshot = {
+        ...current,
+        project: savedProject,
+        dirty: false,
+        revision: savedRevision,
+      };
+      this.emit();
+      return 'current';
+    }
+
+    if (
+      scanAssetReferences(current.project, deletedAssetId).length > 0
+    ) {
+      throw new Error(
+        'Newer editor changes reference the deleted asset and cannot be merged safely.',
+      );
+    }
+    const project = ProjectSchema.parse({
+      ...current.project,
+      assets: current.project.assets.filter(
+        (asset) => asset.id !== deletedAssetId,
+      ),
+    });
+    this.snapshot = {
+      ...current,
+      project,
       dirty: true,
       revision: current.revision + 1,
     };

@@ -18,6 +18,7 @@ import {
   type ProjectErrorCode,
 } from '../../shared/project-api';
 import {
+  AtomicWriteCommitRejectedError,
   ProjectFileSystemService,
   ProjectRootAlreadyExistsError,
 } from './ProjectFileSystemService';
@@ -44,6 +45,7 @@ export interface ProjectTransaction {
   save(
     project: Project,
     revision?: number,
+    commitGuard?: () => void,
   ): Promise<ProjectDocument>;
 }
 
@@ -197,12 +199,13 @@ export class ProjectService {
       return operation({
         projectRoot,
         existingDocument,
-        save: (project, revision) =>
+        save: (project, revision, commitGuard) =>
           this.saveExclusive(
             projectRoot,
             project,
             revision,
             existingDocument,
+            commitGuard,
           ),
       });
     });
@@ -213,6 +216,7 @@ export class ProjectService {
     rawProject: Project,
     revision?: number,
     knownExistingDocument?: ProjectDocument,
+    commitGuard?: () => void,
   ): Promise<ProjectDocument> {
     const existingDocument =
       knownExistingDocument ?? (await this.open(projectRoot));
@@ -235,6 +239,7 @@ export class ProjectService {
       await this.fileSystem.writeProjectFileAtomically(
         projectRoot,
         this.serialize(project),
+        commitGuard,
       );
       try {
         await this.onProjectSaved?.(projectRoot, project, revision);
@@ -243,6 +248,9 @@ export class ProjectService {
       }
       return this.document(projectRoot, project, false, 1);
     } catch (error) {
+      if (error instanceof AtomicWriteCommitRejectedError) {
+        throw error;
+      }
       throw this.mapError('save', projectRoot, error);
     }
   }

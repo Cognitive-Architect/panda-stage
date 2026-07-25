@@ -22,6 +22,13 @@ export interface AtomicWriteContext {
   temporaryPath: string;
 }
 
+export class AtomicWriteCommitRejectedError extends Error {
+  constructor(options: ErrorOptions) {
+    super('Atomic project replacement was rejected by its commit guard.', options);
+    this.name = 'AtomicWriteCommitRejectedError';
+  }
+}
+
 export interface ProjectFileSystemFaultInjector {
   beforeTemporaryWrite?(context: AtomicWriteContext): void | Promise<void>;
   afterTemporarySync?(context: AtomicWriteContext): void | Promise<void>;
@@ -89,6 +96,7 @@ export class ProjectFileSystemService {
   async writeProjectFileAtomically(
     projectRoot: string,
     serializedProject: string,
+    commitGuard?: () => void,
   ): Promise<void> {
     await this.assertProjectRoot(projectRoot);
     const targetPath = this.projectFilePath(projectRoot);
@@ -110,6 +118,11 @@ export class ProjectFileSystemService {
       handle = null;
       await this.faults.afterTemporarySync?.(context);
       await this.faults.beforeAtomicReplace?.(context);
+      try {
+        commitGuard?.();
+      } catch (error) {
+        throw new AtomicWriteCommitRejectedError({ cause: error });
+      }
       await rename(temporaryPath, targetPath);
       temporaryFileExists = false;
     } finally {
