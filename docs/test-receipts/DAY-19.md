@@ -126,7 +126,7 @@ project.
 | DAY 16 | PASS | `pnpm verify:day16` on core result SHA |
 | DAY 17 | PASS | `pnpm verify:day17` on core result SHA |
 | DAY 18 | PASS | `pnpm verify:day18` on core result SHA |
-| CI | PENDING PUSH | GitHub Actions on final branch head |
+| CI | PASS | GitHub Actions run `30149260016`, attempt 2 |
 
 ## B-19/45 completion audit
 
