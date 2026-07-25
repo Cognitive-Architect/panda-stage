@@ -516,6 +516,10 @@ describe('asset metadata revision and operation safety', () => {
     const pending = metadata.refresh(
       request(input, input.revision3, 3),
     );
+    const terminal = pending.then(
+      () => null,
+      (error: unknown) => error,
+    );
     await started;
     const revision4 = ProjectSchema.parse({
       ...input.revision3,
@@ -530,7 +534,7 @@ describe('asset metadata revision and operation safety', () => {
     await input.autosaveService.tick(input.projectRoot);
     const beforeTerminal = await stateHashes(input.projectRoot);
 
-    await expect(pending).rejects.toMatchObject({
+    expect(await terminal).toMatchObject({
       code: 'ASSET_METADATA_TIMEOUT',
     });
     expect({ active, aborts }).toEqual({ active: 0, aborts: 1 });
