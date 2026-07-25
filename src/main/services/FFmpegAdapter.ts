@@ -156,6 +156,7 @@ export class NodeProcessRunner implements ProcessRunner {
       let stdout = '';
       let stderr = '';
       let settled = false;
+      let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 
       const child = spawn(executable, [...args], {
         cwd: options.cwd,
@@ -172,12 +173,17 @@ export class NodeProcessRunner implements ProcessRunner {
       const finishReject = (error: Error) => {
         if (settled) return;
         settled = true;
+        if (forceKillTimer) clearTimeout(forceKillTimer);
         this.activeProcesses.delete(child);
         options.signal?.removeEventListener('abort', abort);
         reject(error);
       };
       const abort = () => {
-        if (!settled) child.kill('SIGTERM');
+        if (settled) return;
+        child.kill('SIGTERM');
+        forceKillTimer = setTimeout(() => {
+          if (!settled) child.kill('SIGKILL');
+        }, 100);
       };
 
       if (options.signal?.aborted) {
@@ -195,6 +201,7 @@ export class NodeProcessRunner implements ProcessRunner {
       child.once('close', (code, signal) => {
         if (settled) return;
         settled = true;
+        if (forceKillTimer) clearTimeout(forceKillTimer);
         this.activeProcesses.delete(child);
         options.signal?.removeEventListener('abort', abort);
         resolve({ code, signal, stdout, stderr });

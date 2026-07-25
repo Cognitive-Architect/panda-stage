@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import {
   copyFile,
@@ -55,6 +55,10 @@ async function harness(): Promise<{
   projectService: ProjectService;
   importService: AssetImportService;
   project: Awaited<ReturnType<ProjectService['create']>>['project'];
+  currentSnapshot: () => {
+    project: Awaited<ReturnType<ProjectService['create']>>['project'];
+    revision: number;
+  };
 }> {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-metadata-'));
   temporaryDirectories.push(parent);
@@ -86,11 +90,12 @@ async function harness(): Promise<{
     projectService,
     importService,
     project: created.project,
+    currentSnapshot: () => structuredClone(current!),
   };
 }
 
 function metadataService(
-  projectService: ProjectService,
+  input: Awaited<ReturnType<typeof harness>>,
   cache = new CacheService(),
 ): AssetMetadataService {
   const mediaTools = new FFmpegAdapter({
@@ -98,7 +103,8 @@ function metadataService(
     ffprobePath,
   });
   return new AssetMetadataService({
-    projectService,
+    projectService: input.projectService,
+    getCurrentProjectSnapshot: input.currentSnapshot,
     thumbnailService: new ThumbnailService(
       cache,
       new FFmpegThumbnailGenerator(ffmpegPath),
@@ -106,6 +112,25 @@ function metadataService(
     audioProbe: mediaTools,
     now: () => new Date('2026-07-24T12:10:00.000Z'),
   });
+}
+
+function refresh(
+  service: AssetMetadataService,
+  input: Awaited<ReturnType<typeof harness>>,
+  assetId: string,
+  signal?: AbortSignal,
+): Promise<AssetMetadataOperation> {
+  const current = input.currentSnapshot();
+  return service.refresh(
+    {
+      projectRoot: input.projectRoot,
+      project: current.project,
+      baseRevision: current.revision,
+      assetId,
+      requestId: randomUUID(),
+    },
+    { signal },
+  );
 }
 
 async function importFixtures(
@@ -154,7 +179,7 @@ describe('asset metadata integration', () => {
     await Promise.all(
       imported.externalPaths.map((sourcePath) => rm(sourcePath)),
     );
-    const service = metadataService(input.projectService);
+    const service = metadataService(input);
     const sourceHashes = new Map(
       await Promise.all(
         imported.project.assets.map(async (asset) => [
@@ -169,11 +194,10 @@ describe('asset metadata integration', () => {
       ),
     ).toBe(true);
 
-    const operations = await Promise.all(
-      imported.project.assets.map((asset) =>
-        service.refresh(input.projectRoot, asset.id),
-      ),
-    );
+    const operations: AssetMetadataOperation[] = [];
+    for (const asset of imported.project.assets) {
+      operations.push(await refresh(service, input, asset.id));
+    }
     const ready = operations.map((operation) => operation.result);
     expect(ready.every((result) => result.status === 'ready')).toBe(true);
 
@@ -223,7 +247,7 @@ describe('asset metadata integration', () => {
       png.thumbnail.relativePath,
     );
     await rm(thumbnailPath);
-    const rebuilt = await service.refresh(input.projectRoot, png.asset.id);
+    const rebuilt = await refresh(service, input, png.asset.id);
     expect(rebuilt.result.status).toBe('ready');
     if (rebuilt.result.status !== 'ready') return;
     expect(rebuilt.result.thumbnail?.cacheHit).toBe(false);
@@ -265,16 +289,10 @@ describe('asset metadata integration', () => {
       path.join(fixtures, '损坏 音频.wav'),
       path.join(input.projectRoot, audio.relativePath),
     );
-    const service = metadataService(input.projectService);
+    const service = metadataService(input);
 
-    const imageResult = await service.refresh(
-      input.projectRoot,
-      image.id,
-    );
-    const audioResult = await service.refresh(
-      input.projectRoot,
-      audio.id,
-    );
+    const imageResult = await refresh(service, input, image.id);
+    const audioResult = await refresh(service, input, audio.id);
 
     expect(imageResult.result).toMatchObject({
       status: 'error',
@@ -322,6 +340,7 @@ describe('asset metadata integration', () => {
     let generatorCalls = 0;
     const service = new AssetMetadataService({
       projectService: input.projectService,
+      getCurrentProjectSnapshot: input.currentSnapshot,
       thumbnailService: new ThumbnailService(new CacheService(), {
         generate: async () => {
           generatorCalls += 1;
@@ -331,7 +350,7 @@ describe('asset metadata integration', () => {
       audioProbe: new FFmpegAdapter({ ffmpegPath, ffprobePath }),
     });
 
-    const operation = await service.refresh(input.projectRoot, asset.id);
+    const operation = await refresh(service, input, asset.id);
 
     expect(operation.result).toMatchObject({
       status: 'ready',
@@ -368,9 +387,7 @@ describe('asset metadata integration', () => {
     });
     const asset = imported.project.assets[0]!;
 
-    const operation = await metadataService(
-      input.projectService,
-    ).refresh(input.projectRoot, asset.id);
+    const operation = await refresh(metadataService(input), input, asset.id);
 
     expect(operation.result).toMatchObject({
       status: 'ready',
@@ -389,10 +406,11 @@ describe('asset metadata integration', () => {
       },
     });
 
-    const operation = await metadataService(
-      input.projectService,
-      cache,
-    ).refresh(input.projectRoot, asset.id);
+    const operation = await refresh(
+      metadataService(input, cache),
+      input,
+      asset.id,
+    );
 
     expect(operation.result).toMatchObject({
       status: 'ready',

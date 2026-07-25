@@ -242,6 +242,8 @@ async function initialize(): Promise<void> {
   });
   const assetMetadataService = new AssetMetadataService({
     projectService,
+    getCurrentProjectSnapshot: (projectRoot) =>
+      autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     thumbnailService: new ThumbnailService(
       new CacheService(),
       new FFmpegThumbnailGenerator(mediaTools.ffmpegPath),

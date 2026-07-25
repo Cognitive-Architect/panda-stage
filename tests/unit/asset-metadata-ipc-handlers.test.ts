@@ -29,7 +29,10 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 const project = ProjectSchema.parse(exampleProject);
 const request = {
   projectRoot: 'D:\\project.pandastage',
+  project,
+  baseRevision: 3,
   assetId: project.assets[0]!.id,
+  requestId: 'f2f4dc13-312e-4620-9bd6-4d345b45ecf8',
 };
 
 function mainWindow(senderId = 42): BrowserWindow {
@@ -53,6 +56,8 @@ describe('asset metadata IPC handlers', () => {
   it('returns structured asset status through the allowlisted channel', async () => {
     const operation = {
       project,
+      baseRevision: 3,
+      savedRevision: 4,
       result: {
         status: 'ready' as const,
         asset: project.assets[0]!,
@@ -79,11 +84,51 @@ describe('asset metadata IPC handlers', () => {
       )!(event(), request),
     ).resolves.toEqual({ ok: true, ...operation });
     expect(refresh).toHaveBeenCalledWith(
-      request.projectRoot,
-      request.assetId,
+      request,
+      { signal: expect.any(AbortSignal) },
     );
     remove();
     expect(electronMocks.handlers.size).toBe(0);
+  });
+
+  it('cancels an active refresh by request ID', async () => {
+    const refresh = vi.fn(
+      async (
+        _request: typeof request,
+        options: { signal: AbortSignal },
+      ) =>
+        new Promise((resolve) => {
+          options.signal.addEventListener('abort', () => {
+            resolve({
+              project,
+              baseRevision: 3,
+              savedRevision: 4,
+              result: {
+                status: 'ready',
+                asset: project.assets[0]!,
+                thumbnail: null,
+                warnings: [],
+              },
+            });
+          });
+        }),
+    );
+    registerAssetMetadataIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      assetMetadataService: { refresh } as unknown as AssetMetadataService,
+    });
+    const pending = electronMocks.handlers.get(
+      IPC_CHANNELS.ASSET_METADATA_REFRESH,
+    )!(event(), request);
+    expect(
+      electronMocks.handlers.get(
+        IPC_CHANNELS.ASSET_METADATA_CANCEL,
+      )!(event(), { requestId: request.requestId }),
+    ).toEqual({
+      requestId: request.requestId,
+      accepted: true,
+    });
+    await pending;
   });
 
   it('rejects an untrusted renderer before reading media', async () => {
@@ -116,7 +161,10 @@ describe('asset metadata IPC handlers', () => {
         IPC_CHANNELS.ASSET_METADATA_REFRESH,
       )!(event(), {
         projectRoot: request.projectRoot,
+        project,
+        baseRevision: 3,
         assetId: 'not-a-uuid',
+        requestId: request.requestId,
       }),
     ).resolves.toMatchObject({
       ok: false,

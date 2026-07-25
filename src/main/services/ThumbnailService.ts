@@ -14,12 +14,16 @@ export interface ThumbnailGenerator {
     outputPath: string,
     sourceWidth: number,
     sourceHeight: number,
+    signal?: AbortSignal,
   ): Promise<void>;
 }
 
 export class ThumbnailGenerationError extends Error {
   constructor(
-    readonly kind: 'invalid-image' | 'processor-unavailable',
+    readonly kind:
+      | 'invalid-image'
+      | 'processor-unavailable'
+      | 'cancelled',
     message: string,
     options?: ErrorOptions,
   ) {
@@ -36,6 +40,7 @@ export class FFmpegThumbnailGenerator implements ThumbnailGenerator {
     outputPath: string,
     sourceWidth: number,
     sourceHeight: number,
+    signal?: AbortSignal,
   ): Promise<void> {
     const boxWidth = Math.min(THUMBNAIL_MAX_EDGE, sourceWidth);
     const boxHeight = Math.min(THUMBNAIL_MAX_EDGE, sourceHeight);
@@ -58,39 +63,66 @@ export class FFmpegThumbnailGenerator implements ThumbnailGenerator {
     ];
 
     await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
       const child = spawn(this.ffmpegPath, args, {
         windowsHide: true,
         stdio: ['ignore', 'ignore', 'pipe'],
       });
       let stderr = '';
+      const finish = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (forceKillTimer) clearTimeout(forceKillTimer);
+        signal?.removeEventListener('abort', abort);
+        callback();
+      };
+      const abort = () => {
+        if (settled) return;
+        child.kill('SIGTERM');
+        forceKillTimer = setTimeout(() => {
+          if (!settled) child.kill('SIGKILL');
+        }, 100);
+      };
+      if (signal?.aborted) abort();
+      else signal?.addEventListener('abort', abort, { once: true });
       child.stderr.on('data', (chunk: Buffer | string) => {
         stderr = `${stderr}${chunk.toString()}`.slice(-MAX_STDERR_CHARS);
       });
       child.once('error', (error) => {
-        reject(
+        finish(() => reject(
           new ThumbnailGenerationError(
             'processor-unavailable',
             `无法启动缩略图生成器处理“${path.basename(sourcePath)}”。`,
             { cause: error },
           ),
-        );
+        ));
       });
-      child.once('close', (code, signal) => {
-        if (code === 0) {
-          resolve();
+      child.once('close', (code, exitSignal) => {
+        if (signal?.aborted) {
+          finish(() => reject(
+            new ThumbnailGenerationError(
+              'cancelled',
+              `Thumbnail generation was cancelled for ${path.basename(sourcePath)}.`,
+            ),
+          ));
           return;
         }
-        reject(
+        if (code === 0) {
+          finish(resolve);
+          return;
+        }
+        finish(() => reject(
           new ThumbnailGenerationError(
             'invalid-image',
             `无法解码图片“${path.basename(sourcePath)}”并生成缩略图。`,
             {
               cause: new Error(
-                `FFmpeg exited with code ${String(code)} and signal ${String(signal)}: ${stderr}`,
+                `FFmpeg exited with code ${String(code)} and signal ${String(exitSignal)}: ${stderr}`,
               ),
             },
           ),
-        );
+        ));
       });
     });
   }
@@ -116,6 +148,7 @@ export class ThumbnailService {
     sha256: string;
     width: number;
     height: number;
+    signal?: AbortSignal;
   }): Promise<ThumbnailDescriptor> {
     const cacheKey = this.cache.thumbnailKey(input.sha256);
     if (await this.cache.hasThumbnail(input.projectRoot, cacheKey)) {
@@ -148,6 +181,7 @@ export class ThumbnailService {
           temporaryPath,
           input.width,
           input.height,
+          input.signal,
         );
         generatedDimensions =
           await this.inspectThumbnail(temporaryPath);

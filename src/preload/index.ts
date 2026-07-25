@@ -8,6 +8,8 @@ import {
   type AssetImportProjectRequest,
 } from '../shared/asset-import-api';
 import {
+  AssetMetadataCancelRequestSchema,
+  AssetMetadataCancelResponseSchema,
   AssetMetadataRequestSchema,
   AssetMetadataResponseSchema,
   type AssetMetadataRequest,
@@ -144,6 +146,16 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AssetMetadataResponseSchema.parse(response);
+    },
+    cancelMetadata: async (requestId: string) => {
+      const request = AssetMetadataCancelRequestSchema.parse({
+        requestId,
+      });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_METADATA_CANCEL,
+        request,
+      );
+      return AssetMetadataCancelResponseSchema.parse(response);
     },
   }),
   recentProjects: Object.freeze({

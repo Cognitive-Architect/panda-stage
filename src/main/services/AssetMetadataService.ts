@@ -5,7 +5,9 @@ import {
   type Project,
 } from '../../domain';
 import {
+  AssetMetadataRequestSchema,
   type AssetMetadataOperationErrorCode,
+  type AssetMetadataRequest,
   type AssetMetadataResult,
   type AssetMetadataResultErrorCode,
   type AssetMetadataWarning,
@@ -27,6 +29,8 @@ import {
 } from './ThumbnailService';
 
 export const MAX_IMAGE_PIXELS = 40_000_000 as const;
+export const ASSET_METADATA_TIMEOUT_MS = 20_000 as const;
+const MEDIA_ABORT_DRAIN_MS = 500;
 
 export interface AudioMetadataProbe {
   probeAudioFile(
@@ -35,35 +39,62 @@ export interface AudioMetadataProbe {
   ): Promise<AudioProbeResult>;
 }
 
+export interface AssetMetadataRevisionSnapshot {
+  project: Project;
+  revision: number;
+}
+
 export interface AssetMetadataServiceOptions {
   projectService: ProjectService;
+  getCurrentProjectSnapshot: (
+    projectRoot: string,
+  ) => AssetMetadataRevisionSnapshot | null;
   thumbnailService: ThumbnailService;
   audioProbe: AudioMetadataProbe;
   hashService?: HashService;
   inspectionService?: MediaInspectionService;
   now?: () => Date;
   maxImagePixels?: number;
+  timeoutMs?: number;
 }
 
 export interface AssetMetadataOperation {
   project: Project;
+  baseRevision: number;
+  savedRevision: number;
   result: AssetMetadataResult;
 }
 
+export interface AssetMetadataRefreshOptions {
+  signal?: AbortSignal;
+}
+
+interface AssetMetadataErrorDetails extends ErrorOptions {
+  currentProject?: Project;
+  currentRevision?: number;
+}
+
 export class AssetMetadataServiceError extends Error {
+  readonly currentProject: Project | undefined;
+  readonly currentRevision: number | undefined;
+
   constructor(
     readonly code: AssetMetadataOperationErrorCode,
     readonly projectRoot: string,
     readonly assetId: string,
     message: string,
-    options?: ErrorOptions,
+    details: AssetMetadataErrorDetails = {},
   ) {
-    super(message, options);
+    super(message, { cause: details.cause });
     this.name = 'AssetMetadataServiceError';
+    this.currentProject = details.currentProject;
+    this.currentRevision = details.currentRevision;
   }
 }
 
 class AssetMetadataItemError extends Error {
+  readonly sha256: string | undefined;
+
   constructor(
     readonly code: AssetMetadataResultErrorCode,
     message: string,
@@ -73,21 +104,31 @@ class AssetMetadataItemError extends Error {
     this.name = 'AssetMetadataItemError';
     this.sha256 = details.sha256;
   }
-
-  readonly sha256: string | undefined;
 }
+
+type ProcessedAsset = {
+  asset: Asset;
+  thumbnail: ThumbnailDescriptor | null;
+  warnings: AssetMetadataWarning[];
+};
 
 export class AssetMetadataService {
   private readonly projectService: ProjectService;
+  private readonly getCurrentProjectSnapshot: (
+    projectRoot: string,
+  ) => AssetMetadataRevisionSnapshot | null;
   private readonly thumbnailService: ThumbnailService;
   private readonly audioProbe: AudioMetadataProbe;
   private readonly hashService: HashService;
   private readonly inspectionService: MediaInspectionService;
   private readonly now: () => Date;
   private readonly maxImagePixels: number;
+  private readonly timeoutMs: number;
 
   constructor(options: AssetMetadataServiceOptions) {
     this.projectService = options.projectService;
+    this.getCurrentProjectSnapshot =
+      options.getCurrentProjectSnapshot;
     this.thumbnailService = options.thumbnailService;
     this.audioProbe = options.audioProbe;
     this.hashService = options.hashService ?? new HashService();
@@ -96,94 +137,138 @@ export class AssetMetadataService {
     this.now = options.now ?? (() => new Date());
     this.maxImagePixels =
       options.maxImagePixels ?? MAX_IMAGE_PIXELS;
+    this.timeoutMs = options.timeoutMs ?? ASSET_METADATA_TIMEOUT_MS;
+    if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) {
+      throw new Error('Asset metadata timeout must be positive.');
+    }
   }
 
   async refresh(
-    projectRoot: string,
-    assetId: string,
+    rawRequest: AssetMetadataRequest,
+    options: AssetMetadataRefreshOptions = {},
   ): Promise<AssetMetadataOperation> {
+    let request: AssetMetadataRequest;
     try {
-      return await this.projectService.transact(
-        projectRoot,
+      request = AssetMetadataRequestSchema.parse(rawRequest);
+    } catch (error) {
+      throw new AssetMetadataServiceError(
+        'ASSET_METADATA_INVALID_REQUEST',
+        rawRequest.projectRoot,
+        rawRequest.assetId,
+        'Asset metadata request is invalid.',
+        { cause: error },
+      );
+    }
+
+    try {
+      const initial = await this.projectService.transact(
+        request.projectRoot,
         async (transaction) => {
-          const assetIndex =
-            transaction.existingDocument.project.assets.findIndex(
-              (asset) => asset.id === assetId,
-            );
-          if (assetIndex < 0) {
+          this.assertDiskIdentity(
+            transaction.existingDocument.project,
+            request,
+          );
+          const current = this.assertCurrentRevision(request);
+          const asset = current.project.assets.find(
+            (candidate) => candidate.id === request.assetId,
+          );
+          if (!asset) {
             throw new AssetMetadataServiceError(
               'ASSET_METADATA_ASSET_NOT_FOUND',
               transaction.projectRoot,
-              assetId,
-              `项目中找不到素材 ID“${assetId}”。`,
+              request.assetId,
+              `Project does not contain asset ${request.assetId}.`,
             );
           }
-          const asset =
-            transaction.existingDocument.project.assets[assetIndex]!;
-          const assetPath = this.resolveAssetPath(
-            transaction.projectRoot,
-            asset,
-          );
-
-          let processed:
-            | {
-                asset: Asset;
-                thumbnail: ThumbnailDescriptor | null;
-                warnings: AssetMetadataWarning[];
-              }
-            | undefined;
-          try {
-            processed = await this.processAsset(
+          return {
+            projectRoot: transaction.projectRoot,
+            asset: structuredClone(asset),
+            assetPath: this.resolveAssetPath(
               transaction.projectRoot,
-              assetPath,
               asset,
-            );
-          } catch (error) {
-            const itemError = this.normalizeItemError(asset, error);
-            const failedAsset = {
-              ...asset,
-              ...(itemError.sha256
-                ? { sha256: itemError.sha256 }
-                : {}),
-              metadata: {
-                status: 'error' as const,
-                code: itemError.code,
-                message: itemError.message,
-              },
-            };
-            const failedProject = this.replaceAsset(
-              transaction.existingDocument.project,
-              assetIndex,
-              failedAsset,
-            );
-            const saved = await transaction.save(failedProject);
-            return {
-              project: saved.project,
-              result: {
-                status: 'error',
-                asset: saved.project.assets[assetIndex]!,
-                error: {
-                  code: itemError.code,
-                  message: itemError.message,
-                },
-              },
-            };
-          }
+            ),
+          };
+        },
+      );
 
-          const nextProject = this.replaceAsset(
+      const processed = await this.processWithDeadline(
+        request,
+        initial.projectRoot,
+        initial.assetPath,
+        initial.asset,
+        options.signal,
+      );
+
+      return await this.projectService.transact(
+        initial.projectRoot,
+        async (transaction) => {
+          if (options.signal?.aborted) {
+            throw new AssetMetadataServiceError(
+              'ASSET_METADATA_CANCELLED',
+              request.projectRoot,
+              request.assetId,
+              'Asset metadata processing was cancelled before commit.',
+            );
+          }
+          this.assertDiskIdentity(
             transaction.existingDocument.project,
-            assetIndex,
-            processed.asset,
+            request,
           );
-          const saved = await transaction.save(nextProject);
+          const current = this.assertCurrentRevision(request);
+          const assetIndex = current.project.assets.findIndex(
+            (asset) => asset.id === request.assetId,
+          );
+          if (assetIndex < 0) {
+            throw this.staleError(
+              request,
+              current,
+              'The asset was removed while metadata was processing.',
+            );
+          }
+          const nextAsset =
+            processed instanceof AssetMetadataItemError
+              ? {
+                  ...current.project.assets[assetIndex]!,
+                  ...(processed.sha256
+                    ? { sha256: processed.sha256 }
+                    : {}),
+                  metadata: {
+                    status: 'error' as const,
+                    code: processed.code,
+                    message: processed.message,
+                  },
+                }
+              : processed.asset;
+          const nextProject = this.replaceAsset(
+            current.project,
+            assetIndex,
+            nextAsset,
+          );
+          const savedRevision = request.baseRevision + 1;
+          const saved = await transaction.save(
+            nextProject,
+            savedRevision,
+          );
           return {
             project: saved.project,
-            result: {
-              status: 'ready',
-              asset: saved.project.assets[assetIndex]!,
-              thumbnail: processed.thumbnail,
-              warnings: processed.warnings,
-            },
+            baseRevision: request.baseRevision,
+            savedRevision,
+            result:
+              processed instanceof AssetMetadataItemError
+                ? {
+                    status: 'error' as const,
+                    asset: saved.project.assets[assetIndex]!,
+                    error: {
+                      code: processed.code,
+                      message: processed.message,
+                    },
+                  }
+                : {
+                    status: 'ready' as const,
+                    asset: saved.project.assets[assetIndex]!,
+                    thumbnail: processed.thumbnail,
+                    warnings: processed.warnings,
+                  },
           };
         },
       );
@@ -196,38 +281,176 @@ export class AssetMetadataService {
       ) {
         throw new AssetMetadataServiceError(
           'ASSET_METADATA_PROJECT_NOT_FOUND',
-          projectRoot,
-          assetId,
-          `无法打开素材所属项目：${projectRoot}。`,
+          request.projectRoot,
+          request.assetId,
+          `Cannot open the project at ${request.projectRoot}.`,
           { cause: error },
         );
       }
       throw new AssetMetadataServiceError(
         'ASSET_METADATA_OPERATION_FAILED',
-        projectRoot,
-        assetId,
-        `无法处理素材元数据：${error instanceof Error ? error.message : String(error)}`,
+        request.projectRoot,
+        request.assetId,
+        `Cannot process asset metadata: ${error instanceof Error ? error.message : String(error)}`,
         { cause: error },
       );
     }
+  }
+
+  private async processWithDeadline(
+    request: AssetMetadataRequest,
+    projectRoot: string,
+    assetPath: string,
+    asset: Asset,
+    externalSignal?: AbortSignal,
+  ): Promise<ProcessedAsset | AssetMetadataItemError> {
+    const controller = new AbortController();
+    let terminal: 'timeout' | 'cancelled' | null = null;
+    let rejectAbort!: () => void;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectAbort = () => reject(new Error('Asset metadata aborted.'));
+    });
+    const abort = (reason: 'timeout' | 'cancelled') => {
+      if (terminal) return;
+      terminal = reason;
+      controller.abort();
+      rejectAbort();
+    };
+    const cancel = () => abort('cancelled');
+    externalSignal?.addEventListener('abort', cancel, { once: true });
+    if (externalSignal?.aborted) cancel();
+    const timer = setTimeout(() => abort('timeout'), this.timeoutMs);
+
+    const media = this.processAsset(
+      projectRoot,
+      assetPath,
+      asset,
+      controller.signal,
+    ).catch((error: unknown) => {
+      if (terminal) throw error;
+      return this.normalizeItemError(asset, error);
+    });
+    void media.catch(() => undefined);
+    try {
+      return await Promise.race([media, aborted]);
+    } catch (error) {
+      if (terminal === 'timeout') {
+        await drainAfterAbort(media);
+        throw new AssetMetadataServiceError(
+          'ASSET_METADATA_TIMEOUT',
+          request.projectRoot,
+          request.assetId,
+          `Asset metadata processing exceeded ${this.timeoutMs} ms.`,
+          { cause: error },
+        );
+      }
+      if (terminal === 'cancelled') {
+        await drainAfterAbort(media);
+        throw new AssetMetadataServiceError(
+          'ASSET_METADATA_CANCELLED',
+          request.projectRoot,
+          request.assetId,
+          'Asset metadata processing was cancelled.',
+          { cause: error },
+        );
+      }
+      return this.normalizeItemError(asset, error);
+    } finally {
+      clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', cancel);
+    }
+  }
+
+  private assertDiskIdentity(
+    diskProject: Project,
+    request: AssetMetadataRequest,
+  ): void {
+    if (diskProject.id !== request.project.id) {
+      throw new AssetMetadataServiceError(
+        'ASSET_METADATA_PROJECT_MISMATCH',
+        request.projectRoot,
+        request.assetId,
+        'The project on disk has a different identity.',
+      );
+    }
+  }
+
+  private currentSnapshot(
+    request: AssetMetadataRequest,
+  ): AssetMetadataRevisionSnapshot {
+    const snapshot = this.getCurrentProjectSnapshot(
+      request.projectRoot,
+    );
+    if (!snapshot) {
+      throw new AssetMetadataServiceError(
+        'ASSET_METADATA_STALE_REVISION',
+        request.projectRoot,
+        request.assetId,
+        'Main has no active project snapshot. Reopen the project and retry.',
+      );
+    }
+    return {
+      project: ProjectSchema.parse(snapshot.project),
+      revision: snapshot.revision,
+    };
+  }
+
+  private assertCurrentRevision(
+    request: AssetMetadataRequest,
+  ): AssetMetadataRevisionSnapshot {
+    const current = this.currentSnapshot(request);
+    if (current.project.id !== request.project.id) {
+      throw new AssetMetadataServiceError(
+        'ASSET_METADATA_PROJECT_MISMATCH',
+        request.projectRoot,
+        request.assetId,
+        'Main tracks a different project identity.',
+      );
+    }
+    if (
+      current.revision !== request.baseRevision ||
+      !projectsEqual(current.project, request.project)
+    ) {
+      throw this.staleError(
+        request,
+        current,
+        `Revision ${request.baseRevision} is stale; Main is at revision ${current.revision}.`,
+      );
+    }
+    return current;
+  }
+
+  private staleError(
+    request: AssetMetadataRequest,
+    current: AssetMetadataRevisionSnapshot,
+    message: string,
+  ): AssetMetadataServiceError {
+    return new AssetMetadataServiceError(
+      'ASSET_METADATA_STALE_REVISION',
+      request.projectRoot,
+      request.assetId,
+      message,
+      {
+        currentProject: current.project,
+        currentRevision: current.revision,
+      },
+    );
   }
 
   private async processAsset(
     projectRoot: string,
     assetPath: string,
     asset: Asset,
-  ): Promise<{
-    asset: Asset;
-    thumbnail: ThumbnailDescriptor | null;
-    warnings: AssetMetadataWarning[];
-  }> {
+    signal: AbortSignal,
+  ): Promise<ProcessedAsset> {
     let sha256: string;
     try {
-      sha256 = (await this.hashService.hashFile(assetPath)).hex;
+      sha256 = (await this.hashService.hashFile(assetPath, signal)).hex;
     } catch (error) {
+      if (signal.aborted) throw error;
       throw new AssetMetadataItemError(
         'ASSET_METADATA_FILE_UNREADABLE',
-        `无法读取项目内素材“${asset.name}”（${asset.relativePath}）。`,
+        `Cannot read asset "${asset.name}" (${asset.relativePath}).`,
         { cause: error },
       );
     }
@@ -240,9 +463,10 @@ export class AssetMetadataService {
           asset.mimeType,
         );
       } catch (error) {
+        if (signal.aborted) throw error;
         throw new AssetMetadataItemError(
           'ASSET_METADATA_INVALID_IMAGE',
-          `图片素材“${asset.name}”（${asset.relativePath}）已损坏或无法解析。`,
+          `Image "${asset.name}" (${asset.relativePath}) is invalid.`,
           { cause: error, sha256 },
         );
       }
@@ -253,7 +477,7 @@ export class AssetMetadataService {
       ) {
         throw new AssetMetadataItemError(
           'ASSET_METADATA_INVALID_IMAGE',
-          `图片素材“${asset.name}”（${asset.relativePath}）没有有效尺寸。`,
+          `Image "${asset.name}" has no valid dimensions.`,
           { sha256 },
         );
       }
@@ -263,7 +487,7 @@ export class AssetMetadataService {
       if (inspected.width * inspected.height > this.maxImagePixels) {
         warnings.push({
           code: 'ASSET_IMAGE_TOO_LARGE',
-          message: `图片“${asset.name}”为 ${inspected.width}×${inspected.height}，超过安全解码阈值 ${this.maxImagePixels} 像素；已跳过缩略图以避免阻塞应用。`,
+          message: `Image "${asset.name}" is ${inspected.width}x${inspected.height}; thumbnail decoding was skipped.`,
         });
       } else {
         try {
@@ -274,8 +498,10 @@ export class AssetMetadataService {
               sha256,
               width: inspected.width,
               height: inspected.height,
+              signal,
             });
         } catch (error) {
+          if (signal.aborted) throw error;
           if (
             (error instanceof ThumbnailGenerationError &&
               error.kind === 'invalid-image') ||
@@ -283,17 +509,16 @@ export class AssetMetadataService {
           ) {
             throw new AssetMetadataItemError(
               'ASSET_METADATA_INVALID_IMAGE',
-              `图片素材“${asset.name}”（${asset.relativePath}）无法完整解码。`,
+              `Image "${asset.name}" could not be decoded.`,
               { cause: error, sha256 },
             );
           }
           warnings.push({
             code: 'ASSET_THUMBNAIL_CACHE_UNAVAILABLE',
-            message: `图片“${asset.name}”的缩略图缓存写入失败；项目仍可打开，稍后可重建缓存。`,
+            message: `Thumbnail cache is unavailable for "${asset.name}".`,
           });
         }
       }
-
       return {
         asset: {
           ...asset,
@@ -311,12 +536,13 @@ export class AssetMetadataService {
       let durationSeconds: number;
       try {
         durationSeconds = (
-          await this.audioProbe.probeAudioFile(assetPath)
+          await this.audioProbe.probeAudioFile(assetPath, signal)
         ).durationSeconds;
       } catch (error) {
+        if (signal.aborted) throw error;
         throw new AssetMetadataItemError(
           'ASSET_METADATA_INVALID_AUDIO',
-          `音频素材“${asset.name}”（${asset.relativePath}）已损坏或无法解析。`,
+          `Audio "${asset.name}" (${asset.relativePath}) is invalid.`,
           { cause: error, sha256 },
         );
       }
@@ -328,7 +554,7 @@ export class AssetMetadataService {
       ) {
         throw new AssetMetadataItemError(
           'ASSET_METADATA_INVALID_AUDIO',
-          `音频素材“${asset.name}”（${asset.relativePath}）没有有效时长。`,
+          `Audio "${asset.name}" has no valid duration.`,
           { sha256 },
         );
       }
@@ -347,7 +573,7 @@ export class AssetMetadataService {
     const unsupportedAsset = asset as Asset;
     throw new AssetMetadataItemError(
       'ASSET_METADATA_UNSUPPORTED_KIND',
-      `素材“${unsupportedAsset.name}”的媒体类型不受支持。`,
+      `Asset "${unsupportedAsset.name}" has an unsupported media kind.`,
     );
   }
 
@@ -361,7 +587,7 @@ export class AssetMetadataService {
           asset.kind === 'image'
             ? 'ASSET_METADATA_INVALID_IMAGE'
             : 'ASSET_METADATA_INVALID_AUDIO',
-          `素材“${asset.name}”（${asset.relativePath}）的元数据处理失败。`,
+          `Metadata processing failed for "${asset.name}" (${asset.relativePath}).`,
           { cause: error },
         );
   }
@@ -378,7 +604,7 @@ export class AssetMetadataService {
     ) {
       throw new AssetMetadataItemError(
         'ASSET_METADATA_FILE_UNREADABLE',
-        `素材“${asset.name}”没有指向项目 assets/ 内的安全副本。`,
+        `Asset "${asset.name}" does not point inside assets/.`,
       );
     }
     return assetPath;
@@ -397,4 +623,22 @@ export class AssetMetadataService {
       updatedAt: this.now().toISOString(),
     });
   }
+}
+
+function projectsEqual(left: Project, right: Project): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function drainAfterAbort(media: Promise<unknown>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    media.then(
+      () => undefined,
+      () => undefined,
+    ),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, MEDIA_ABORT_DRAIN_MS);
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
 }

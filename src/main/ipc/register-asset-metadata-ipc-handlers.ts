@@ -4,6 +4,8 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 import {
+  AssetMetadataCancelRequestSchema,
+  AssetMetadataCancelResponseSchema,
   AssetMetadataRequestSchema,
   AssetMetadataResponseSchema,
   type AssetMetadataResponse,
@@ -56,6 +58,12 @@ function failure(
       message: normalized.message,
       projectRoot: normalized.projectRoot,
       assetId: normalized.assetId,
+      ...(normalized.currentProject
+        ? { currentProject: normalized.currentProject }
+        : {}),
+      ...(normalized.currentRevision !== undefined
+        ? { currentRevision: normalized.currentRevision }
+        : {}),
     },
   });
 }
@@ -63,6 +71,7 @@ function failure(
 export function registerAssetMetadataIpcHandlers(
   dependencies: AssetMetadataIpcHandlerDependencies,
 ): () => void {
+  const activeRequests = new Map<string, AbortController>();
   ipcMain.handle(
     IPC_CHANNELS.ASSET_METADATA_REFRESH,
     async (event, rawRequest: unknown) => {
@@ -83,11 +92,13 @@ export function registerAssetMetadataIpcHandlers(
           '(invalid)',
         );
       }
+      const controller = new AbortController();
+      activeRequests.set(request.requestId, controller);
       try {
         const operation =
           await dependencies.assetMetadataService.refresh(
-            request.projectRoot,
-            request.assetId,
+            request,
+            { signal: controller.signal },
           );
         return AssetMetadataResponseSchema.parse({
           ok: true,
@@ -95,11 +106,31 @@ export function registerAssetMetadataIpcHandlers(
         });
       } catch (error) {
         return failure(error, request.projectRoot, request.assetId);
+      } finally {
+        if (activeRequests.get(request.requestId) === controller) {
+          activeRequests.delete(request.requestId);
+        }
       }
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_METADATA_CANCEL,
+    (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow());
+      const request = AssetMetadataCancelRequestSchema.parse(rawRequest);
+      const controller = activeRequests.get(request.requestId);
+      controller?.abort();
+      return AssetMetadataCancelResponseSchema.parse({
+        requestId: request.requestId,
+        accepted: Boolean(controller),
+      });
     },
   );
 
   return () => {
+    for (const controller of activeRequests.values()) controller.abort();
+    activeRequests.clear();
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_METADATA_REFRESH);
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_METADATA_CANCEL);
   };
 }

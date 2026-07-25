@@ -3,6 +3,7 @@ import type {
   AssetImportResponse,
 } from '../shared/asset-import-api';
 import type {
+  AssetMetadataCancelResponse,
   AssetMetadataRequest,
   AssetMetadataResponse,
 } from '../shared/asset-metadata-api';
@@ -76,6 +77,9 @@ declare global {
         refreshMetadata: (
           request: AssetMetadataRequest,
         ) => Promise<AssetMetadataResponse>;
+        cancelMetadata: (
+          requestId: string,
+        ) => Promise<AssetMetadataCancelResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;

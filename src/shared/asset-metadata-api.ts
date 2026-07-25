@@ -2,11 +2,28 @@ import { z } from 'zod';
 import { AssetSchema, ProjectSchema } from '../domain';
 
 const FileSystemPathSchema = z.string().trim().min(1).max(32_767);
+const RevisionSchema = z.number().int().nonnegative();
 
 export const AssetMetadataRequestSchema = z
   .object({
     projectRoot: FileSystemPathSchema,
+    project: ProjectSchema,
+    baseRevision: RevisionSchema,
     assetId: z.uuid(),
+    requestId: z.uuid(),
+  })
+  .strict();
+
+export const AssetMetadataCancelRequestSchema = z
+  .object({
+    requestId: z.uuid(),
+  })
+  .strict();
+
+export const AssetMetadataCancelResponseSchema = z
+  .object({
+    requestId: z.uuid(),
+    accepted: z.boolean(),
   })
   .strict();
 
@@ -69,6 +86,10 @@ export const AssetMetadataResultSchema = z.discriminatedUnion('status', [
 export const AssetMetadataOperationErrorCodeSchema = z.enum([
   'ASSET_METADATA_PROJECT_NOT_FOUND',
   'ASSET_METADATA_ASSET_NOT_FOUND',
+  'ASSET_METADATA_PROJECT_MISMATCH',
+  'ASSET_METADATA_STALE_REVISION',
+  'ASSET_METADATA_TIMEOUT',
+  'ASSET_METADATA_CANCELLED',
   'ASSET_METADATA_INVALID_REQUEST',
   'ASSET_METADATA_OPERATION_FAILED',
 ]);
@@ -78,6 +99,8 @@ export const AssetMetadataResponseSchema = z.discriminatedUnion('ok', [
     .object({
       ok: z.literal(true),
       project: ProjectSchema,
+      baseRevision: RevisionSchema,
+      savedRevision: RevisionSchema,
       result: AssetMetadataResultSchema,
     })
     .strict(),
@@ -90,6 +113,8 @@ export const AssetMetadataResponseSchema = z.discriminatedUnion('ok', [
           message: z.string().trim().min(1).max(1_000),
           projectRoot: FileSystemPathSchema,
           assetId: z.string().trim().min(1).max(200),
+          currentProject: ProjectSchema.optional(),
+          currentRevision: RevisionSchema.optional(),
         })
         .strict(),
     })
@@ -98,6 +123,12 @@ export const AssetMetadataResponseSchema = z.discriminatedUnion('ok', [
 
 export type AssetMetadataRequest = z.infer<
   typeof AssetMetadataRequestSchema
+>;
+export type AssetMetadataCancelRequest = z.infer<
+  typeof AssetMetadataCancelRequestSchema
+>;
+export type AssetMetadataCancelResponse = z.infer<
+  typeof AssetMetadataCancelResponseSchema
 >;
 export type AssetMetadataResult = z.infer<
   typeof AssetMetadataResultSchema

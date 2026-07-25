@@ -32,6 +32,8 @@ describe('asset metadata contracts', () => {
     const response = AssetMetadataResponseSchema.parse({
       ok: true,
       project,
+      baseRevision: 3,
+      savedRevision: 4,
       result: {
         status: 'ready',
         asset: audio,
@@ -49,13 +51,18 @@ describe('asset metadata contracts', () => {
     expect(() =>
       AssetMetadataRequestSchema.parse({
         projectRoot: 'D:\\project.pandastage',
+        project: exampleProject,
+        baseRevision: 3,
         assetId: 'not-a-uuid',
+        requestId: 'f2f4dc13-312e-4620-9bd6-4d345b45ecf8',
       }),
     ).toThrow();
     expect(() =>
       AssetMetadataResponseSchema.parse({
         ok: true,
         project: exampleProject,
+        baseRevision: 3,
+        savedRevision: 4,
         result: {
           status: 'ready',
           asset: exampleProject.assets[0],

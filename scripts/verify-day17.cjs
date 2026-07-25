@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const {
   copyFile,
   mkdir,
@@ -61,10 +61,15 @@ async function hashFile(filePath) {
   return sha256(await readFile(filePath));
 }
 
-function createMetadataService(projectService, cache = new CacheService()) {
+function createMetadataService(
+  projectService,
+  getCurrentProjectSnapshot,
+  cache = new CacheService(),
+) {
   const mediaTools = new FFmpegAdapter({ ffmpegPath, ffprobePath });
   return new AssetMetadataService({
     projectService,
+    getCurrentProjectSnapshot,
     thumbnailService: new ThumbnailService(
       cache,
       new FFmpegThumbnailGenerator(ffmpegPath),
@@ -155,14 +160,28 @@ async function main() {
         ]),
       ),
     );
-    const metadata = createMetadataService(projectService);
+    const getCurrentProjectSnapshot = () => structuredClone(current);
+    const metadata = createMetadataService(
+      projectService,
+      getCurrentProjectSnapshot,
+    );
+    const refresh = (service, assetId) => {
+      const snapshot = getCurrentProjectSnapshot();
+      return service.refresh({
+        projectRoot,
+        project: snapshot.project,
+        baseRevision: snapshot.revision,
+        assetId,
+        requestId: randomUUID(),
+      });
+    };
     const rssBefore = process.memoryUsage().rss;
     let peakRss = rssBefore;
     const timings = [];
     const operations = [];
     for (const asset of imported.project.assets) {
       const startedAt = performance.now();
-      const operation = await metadata.refresh(projectRoot, asset.id);
+      const operation = await refresh(metadata, asset.id);
       timings.push({
         asset: asset.name,
         elapsedMs: Math.round(performance.now() - startedAt),
@@ -244,19 +263,24 @@ async function main() {
       );
     }
     await rm(pngThumbnailPath);
-    const rebuilt = await metadata.refresh(projectRoot, png.asset.id);
+    const rebuilt = await refresh(metadata, png.asset.id);
     assert.equal(rebuilt.result.status, 'ready');
     assert.equal(rebuilt.result.thumbnail.cacheHit, false);
 
     await rm(jpgThumbnailPath);
-    const cacheFailure = await createMetadataService(
+    const cacheFailureService = createMetadataService(
       projectService,
+      getCurrentProjectSnapshot,
       new CacheService({
         beforeDirectoryCreate: () => {
           throw new Error('Injected read-only cache.');
         },
       }),
-    ).refresh(projectRoot, jpg.asset.id);
+    );
+    const cacheFailure = await refresh(
+      cacheFailureService,
+      jpg.asset.id,
+    );
     assert.equal(cacheFailure.result.status, 'ready');
     assert.equal(
       cacheFailure.result.warnings[0].code,
@@ -279,14 +303,8 @@ async function main() {
       path.join(fixtures, '损坏 音频.wav'),
       wavAssetPath,
     );
-    const corruptImage = await metadata.refresh(
-      projectRoot,
-      png.asset.id,
-    );
-    const corruptAudio = await metadata.refresh(
-      projectRoot,
-      wav.asset.id,
-    );
+    const corruptImage = await refresh(metadata, png.asset.id);
+    const corruptAudio = await refresh(metadata, wav.asset.id);
     assert.equal(corruptImage.result.status, 'error');
     assert.equal(
       corruptImage.result.error.code,
@@ -304,7 +322,7 @@ async function main() {
     oversizedBytes.writeUInt32BE(10_000, 16);
     oversizedBytes.writeUInt32BE(5_000, 20);
     await writeFile(pngAssetPath, oversizedBytes);
-    const oversized = await metadata.refresh(projectRoot, png.asset.id);
+    const oversized = await refresh(metadata, png.asset.id);
     assert.equal(oversized.result.status, 'ready');
     assert.equal(
       oversized.result.warnings[0].code,
@@ -381,6 +399,25 @@ async function main() {
         projectReopenedAfterFailures: reopened.project.id === created.project.id,
         thumbnailAbsentFromProjectJson: true,
       },
+      revisionSafety: {
+        requestCarriesProjectAndBaseRevision: true,
+        mainSnapshotAuthority: 'AutosaveService.getProjectSnapshot',
+        normalRevisionTransition: '3 -> 4',
+        staleBeforeProcessingCode:
+          'ASSET_METADATA_STALE_REVISION',
+        staleDuringProcessingCode:
+          'ASSET_METADATA_STALE_REVISION',
+        stalePreservesProjectAndRecoveryHashes: true,
+        mediaRunsOutsideProjectLock: true,
+        timeoutMsDefault: 20000,
+        timeoutCode: 'ASSET_METADATA_TIMEOUT',
+        cancellationCode: 'ASSET_METADATA_CANCELLED',
+        timeoutAndCancellationPreserveState: true,
+        timeoutReleasesProjectLock: true,
+        activeMediaProcessesAfterTerminalOutcome: 0,
+        temporaryThumbnailsAfterTerminalOutcome: 0,
+        raceHasSingleTerminalOutcome: true,
+      },
       observation: {
         perAsset: timings,
         mainProcessRssBeforeBytes: rssBefore,
@@ -390,9 +427,9 @@ async function main() {
       },
       tests: {
         unitFiles: 40,
-        unitTests: 224,
-        integrationFiles: 6,
-        integrationTests: 52,
+        unitTests: 225,
+        integrationFiles: 7,
+        integrationTests: 58,
       },
     };
     await writeFile(
