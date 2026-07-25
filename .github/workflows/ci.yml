@@ -57,3 +57,6 @@ jobs:
 
       - name: Day 16 asset import gate
         run: pnpm verify:day16
+
+      - name: Day 17 asset metadata gate
+        run: pnpm verify:day17

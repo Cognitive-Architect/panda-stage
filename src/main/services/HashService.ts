@@ -8,10 +8,13 @@ export interface FileHash {
 }
 
 export class HashService {
-  async hashFile(filePath: string): Promise<FileHash> {
+  async hashFile(
+    filePath: string,
+    signal?: AbortSignal,
+  ): Promise<FileHash> {
     const hash = createHash('sha256');
     let bytes = 0;
-    for await (const chunk of createReadStream(filePath)) {
+    for await (const chunk of createReadStream(filePath, { signal })) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       hash.update(buffer);
       bytes += buffer.length;

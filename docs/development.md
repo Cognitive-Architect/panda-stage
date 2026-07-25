@@ -214,10 +214,11 @@ but Renderer must not apply it automatically over dirty edits. Tests must
 start concurrent requests before the first completes; sequential calls alone
 do not prove the conflict boundary.
 
-Do not add absolute source paths or hashes to `ProjectSchema`. Stored asset
-paths stay project-relative, and hashes are recomputed from project-owned files
-for deduplication. Imported audio has no fabricated duration; it cannot be
-placed on a timeline until a later metadata workflow supplies `durationMs`.
+Do not add absolute source paths to `ProjectSchema`. Stored asset paths stay
+project-relative. Starting with Day 17, new imports persist their real SHA-256
+and metadata refresh backfills it for older Assets; only the project-owned copy
+is hashed. Day 16 imports still fabricate no audio duration: the Day 17
+metadata workflow supplies `durationMs` from FFprobe.
 
 Generate the small synthetic fixtures and run Day 16 verification with:
 
@@ -235,3 +236,25 @@ The fixtures are generated locally by the pinned FFmpeg development binary and
 contain no third-party media. `verify:day16` launches the built Electron UI,
 checks the constrained Preload surface and visible import result, then writes
 `docs/evidence/day-16/results.json` and `asset-import.png`.
+
+## Day 17 media metadata verification
+
+Run the real metadata and cache verifier on Windows:
+
+```powershell
+pnpm verify:day17
+```
+
+The command builds the app, reruns integration tests, imports real PNG, JPG,
+MP3, and WAV fixtures, deletes their external source copies, then extracts
+metadata only from the project `assets/` copies. It generates real thumbnails,
+checks their dimensions, compares real FFprobe durations, deletes and rebuilds
+cache, injects an unwritable cache, exercises corrupt image/audio files, and
+checks the oversized-image preflight.
+
+Machine evidence is written to `docs/evidence/day-17/results.json`; the
+generated PNG/JPG samples are copied to the same directory for visual
+inspection. The verifier records per-asset elapsed time and Main-process RSS.
+Thumbnail decode memory belongs primarily to the FFmpeg child process; the
+40,000,000-pixel header preflight prevents oversized inputs from starting that
+decode.

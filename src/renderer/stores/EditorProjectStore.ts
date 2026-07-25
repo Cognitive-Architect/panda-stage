@@ -107,6 +107,63 @@ export class EditorProjectStore {
     return 'stale';
   }
 
+  applyAssetMetadata(
+    rawSavedProject: Project,
+    rawRefreshedAsset: Asset,
+    baseRevision: number,
+    savedRevision: number,
+  ): SaveAcknowledgement {
+    const current = this.requireSnapshot();
+    const savedProject = ProjectSchema.parse(rawSavedProject);
+    const refreshedAsset = savedProject.assets.find(
+      (asset) => asset.id === rawRefreshedAsset.id,
+    );
+    this.assertSameProject(current.project, savedProject);
+    if (
+      !refreshedAsset ||
+      !Number.isInteger(baseRevision) ||
+      baseRevision < 0 ||
+      savedRevision !== baseRevision + 1
+    ) {
+      throw new Error(
+        `Invalid asset metadata acknowledgement: base=${baseRevision}, saved=${savedRevision}.`,
+      );
+    }
+    if (current.revision < baseRevision) {
+      throw new Error(
+        `Asset metadata base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
+      );
+    }
+    if (current.revision === baseRevision) {
+      this.snapshot = {
+        ...current,
+        project: savedProject,
+        dirty: false,
+        revision: savedRevision,
+      };
+      this.emit();
+      return 'current';
+    }
+
+    const assetIndex = current.project.assets.findIndex(
+      (asset) => asset.id === refreshedAsset.id,
+    );
+    if (assetIndex < 0) return 'stale';
+    const assets = [...current.project.assets];
+    assets[assetIndex] = refreshedAsset;
+    this.snapshot = {
+      ...current,
+      project: ProjectSchema.parse({
+        ...current.project,
+        assets,
+      }),
+      dirty: true,
+      revision: current.revision + 1,
+    };
+    this.emit();
+    return 'stale';
+  }
+
   markSaved(
     rawProject: Project,
     savedRevision: number,

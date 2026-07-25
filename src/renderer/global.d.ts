@@ -3,6 +3,11 @@ import type {
   AssetImportResponse,
 } from '../shared/asset-import-api';
 import type {
+  AssetMetadataCancelResponse,
+  AssetMetadataRequest,
+  AssetMetadataResponse,
+} from '../shared/asset-metadata-api';
+import type {
   AppPingResponse,
   HiddenReadyResponse,
 } from '../shared/ipc/contracts';
@@ -69,6 +74,12 @@ declare global {
           request: AssetImportProjectRequest,
           files: readonly File[],
         ) => Promise<AssetImportResponse>;
+        refreshMetadata: (
+          request: AssetMetadataRequest,
+        ) => Promise<AssetMetadataResponse>;
+        cancelMetadata: (
+          requestId: string,
+        ) => Promise<AssetMetadataCancelResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;
