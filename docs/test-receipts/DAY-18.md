@@ -86,7 +86,7 @@ hashes are identical.
 | DAY 17 | PASS | `pnpm verify:day17` |
 | DAY 18 REAL/UI | PASS | `pnpm verify:day18` |
 | ARCH | PASS | no Renderer FS import; deletion and thumbnail reads are Main-only, trusted-sender, strict IPC operations |
-| CI | PENDING PUSH | Windows GitHub Actions includes the Day 18 gate |
+| CI | PASS | GitHub Actions run `30140173782` passed all gates on the result/evidence head |
 
 ## Blade table
 
