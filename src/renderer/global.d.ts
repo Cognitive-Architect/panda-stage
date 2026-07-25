@@ -8,6 +8,14 @@ import type {
   AssetMetadataResponse,
 } from '../shared/asset-metadata-api';
 import type {
+  AssetDeleteRequest,
+  AssetDeleteResponse,
+} from '../shared/asset-delete-api';
+import type {
+  AssetThumbnailReadRequest,
+  AssetThumbnailReadResponse,
+} from '../shared/asset-thumbnail-api';
+import type {
   AppPingResponse,
   HiddenReadyResponse,
 } from '../shared/ipc/contracts';
@@ -80,6 +88,12 @@ declare global {
         cancelMetadata: (
           requestId: string,
         ) => Promise<AssetMetadataCancelResponse>;
+        delete: (
+          request: AssetDeleteRequest,
+        ) => Promise<AssetDeleteResponse>;
+        readThumbnail: (
+          request: AssetThumbnailReadRequest,
+        ) => Promise<AssetThumbnailReadResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;

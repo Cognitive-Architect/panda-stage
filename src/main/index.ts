@@ -34,6 +34,9 @@ import {
 } from './services/ThumbnailService';
 import { AssetMetadataService } from './services/AssetMetadataService';
 import { registerAssetMetadataIpcHandlers } from './ipc/register-asset-metadata-ipc-handlers';
+import { registerAssetLibraryIpcHandlers } from './ipc/register-asset-library-ipc-handlers';
+import { AssetDeleteService } from './services/AssetDeleteService';
+import { AssetThumbnailService } from './services/AssetThumbnailService';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -44,6 +47,7 @@ let removeRecoveryIpcHandlers: (() => void) | null = null;
 let removeRecentProjectsIpcHandlers: (() => void) | null = null;
 let removeAssetImportIpcHandlers: (() => void) | null = null;
 let removeAssetMetadataIpcHandlers: (() => void) | null = null;
+let removeAssetLibraryIpcHandlers: (() => void) | null = null;
 let autosaveService: AutosaveService | null = null;
 let projectService: ProjectService | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
@@ -254,6 +258,18 @@ async function initialize(): Promise<void> {
     getMainWindow: () => mainWindow,
     assetMetadataService,
   });
+  removeAssetLibraryIpcHandlers = registerAssetLibraryIpcHandlers({
+    getMainWindow: () => mainWindow,
+    assetDeleteService: new AssetDeleteService({
+      projectService,
+      getCurrentProjectSnapshot: (projectRoot) =>
+        autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    }),
+    assetThumbnailService: new AssetThumbnailService({
+      getCurrentProjectSnapshot: (projectRoot) =>
+        autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    }),
+  });
   unsavedCloseController = new UnsavedCloseController({
     getDirtyProject: () =>
       autosaveService?.getDirtyProjectSnapshot() ?? null,
@@ -358,6 +374,8 @@ app.on('will-quit', () => {
   removeAssetImportIpcHandlers = null;
   removeAssetMetadataIpcHandlers?.();
   removeAssetMetadataIpcHandlers = null;
+  removeAssetLibraryIpcHandlers?.();
+  removeAssetLibraryIpcHandlers = null;
   void autosaveService?.stopAll();
   autosaveService = null;
   projectService = null;

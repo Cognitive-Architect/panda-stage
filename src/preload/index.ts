@@ -15,6 +15,16 @@ import {
   type AssetMetadataRequest,
 } from '../shared/asset-metadata-api';
 import {
+  AssetDeleteRequestSchema,
+  AssetDeleteResponseSchema,
+  type AssetDeleteRequest,
+} from '../shared/asset-delete-api';
+import {
+  AssetThumbnailReadRequestSchema,
+  AssetThumbnailReadResponseSchema,
+  type AssetThumbnailReadRequest,
+} from '../shared/asset-thumbnail-api';
+import {
   AppPingRequestSchema,
   AppPingResponseSchema,
 } from '../shared/ipc/contracts';
@@ -156,6 +166,25 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AssetMetadataCancelResponseSchema.parse(response);
+    },
+    delete: async (rawRequest: AssetDeleteRequest) => {
+      const request = AssetDeleteRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_DELETE,
+        request,
+      );
+      return AssetDeleteResponseSchema.parse(response);
+    },
+    readThumbnail: async (
+      rawRequest: AssetThumbnailReadRequest,
+    ) => {
+      const request =
+        AssetThumbnailReadRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_THUMBNAIL_READ,
+        request,
+      );
+      return AssetThumbnailReadResponseSchema.parse(response);
     },
   }),
   recentProjects: Object.freeze({
