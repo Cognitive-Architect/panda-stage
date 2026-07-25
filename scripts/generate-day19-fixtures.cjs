@@ -39,6 +39,7 @@ function generate(name, color, size) {
 
 generate('熊猫 normal.png', '0x53a36b', '160x120');
 generate('熊猫 angry.png', '0xa35353', '240x120');
+generate('熊猫 angry replacement.png', '0x6b63b5', '320x200');
 generate('熊猫 mouth-open.png', '0xefe6d2', '160x52');
 
 console.log(`Generated Day 19 character fixtures in ${fixtureDirectory}`);

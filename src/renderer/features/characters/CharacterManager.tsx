@@ -29,7 +29,7 @@ export function CharacterManager({
   const [selectedCharacterId, setSelectedCharacterId] =
     useState<string | null>(snapshot?.project.characters[0]?.id ?? null);
   const [status, setStatus] = useState(
-    '将项目图片组织为可复用角色；所有修改先进入 recovery。',
+    '将项目图片组织为可复用角色；所有修改先进入自动保存队列。',
   );
   const [busy, setBusy] = useState(false);
   const [thumbnails, setThumbnails] = useState<
@@ -126,7 +126,7 @@ export function CharacterManager({
   ): Project | null => {
     try {
       const next = action();
-      setStatus(`${success} 修改已写入 recovery，正式保存前仍可关闭放弃。`);
+      setStatus(`${success} 修改已进入自动保存队列，正式保存前仍可关闭放弃。`);
       return next;
     } catch (error) {
       reportError(error);
@@ -279,6 +279,18 @@ export function CharacterManager({
                   expressionId,
                 ),
               '默认表情已替换。',
+            );
+          }}
+          onSetExpressionAsset={(expressionId, assetId) => {
+            if (!selectedCharacter) return;
+            mutate(
+              () =>
+                characterStore.setExpressionAsset(
+                  selectedCharacter.id,
+                  expressionId,
+                  assetId,
+                ),
+              '表情图片已更新，原有镜头与时间轴引用保持不变。',
             );
           }}
           onSetDefaultTransform={(scale, flipX) => {

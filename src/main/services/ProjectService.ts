@@ -37,6 +37,14 @@ export interface ProjectServiceOptions {
   onPostSaveError?: (error: unknown) => void;
   coordinator?: ProjectOperationCoordinator;
   pathService?: PathService;
+  getCurrentProjectSnapshot?: (
+    projectRoot: string,
+  ) => ProjectRevisionSnapshot | null;
+}
+
+export interface ProjectRevisionSnapshot {
+  project: Project;
+  revision: number;
 }
 
 export interface ProjectTransaction {
@@ -50,14 +58,22 @@ export interface ProjectTransaction {
 }
 
 export class ProjectServiceError extends Error {
+  readonly currentProject: Project | undefined;
+  readonly currentRevision: number | undefined;
+
   constructor(
     readonly code: ProjectErrorCode,
     readonly projectRoot: string,
     message: string,
-    options?: ErrorOptions,
+    options: ErrorOptions & {
+      currentProject?: Project;
+      currentRevision?: number;
+    } = {},
   ) {
     super(message, options);
     this.name = 'ProjectServiceError';
+    this.currentProject = options.currentProject;
+    this.currentRevision = options.currentRevision;
   }
 }
 
@@ -75,6 +91,9 @@ export class ProjectService {
   private readonly onPostSaveError: (error: unknown) => void;
   private readonly coordinator: ProjectOperationCoordinator;
   private readonly pathService: PathService;
+  private readonly getCurrentProjectSnapshot:
+    | ((projectRoot: string) => ProjectRevisionSnapshot | null)
+    | null;
 
   constructor(options: ProjectServiceOptions = {}) {
     this.fileSystem = options.fileSystem ?? new ProjectFileSystemService();
@@ -85,6 +104,8 @@ export class ProjectService {
     this.coordinator =
       options.coordinator ?? new ProjectOperationCoordinator();
     this.pathService = options.pathService ?? new PathService();
+    this.getCurrentProjectSnapshot =
+      options.getCurrentProjectSnapshot ?? null;
   }
 
   async create(
@@ -193,7 +214,14 @@ export class ProjectService {
   ): Promise<ProjectDocument> {
     const projectRoot = this.resolveProjectRoot(rawProjectRoot);
     return this.coordinator.runExclusive(projectRoot, () =>
-      this.saveExclusive(projectRoot, rawProject, revision),
+      this.saveExclusive(
+        projectRoot,
+        rawProject,
+        revision,
+        undefined,
+        undefined,
+        true,
+      ),
     );
   }
 
@@ -214,6 +242,7 @@ export class ProjectService {
             revision,
             existingDocument,
             commitGuard,
+            false,
           ),
       });
     });
@@ -225,6 +254,7 @@ export class ProjectService {
     revision?: number,
     knownExistingDocument?: ProjectDocument,
     commitGuard?: () => void,
+    enforceAuthoritativeSnapshot = false,
   ): Promise<ProjectDocument> {
     const existingDocument =
       knownExistingDocument ?? (await this.open(projectRoot));
@@ -243,11 +273,31 @@ export class ProjectService {
       );
     }
 
+    const authoritativeGuard =
+      enforceAuthoritativeSnapshot &&
+      revision !== undefined &&
+      this.getCurrentProjectSnapshot
+        ? () =>
+            this.assertAuthoritativeSaveSnapshot(
+              projectRoot,
+              project,
+              revision,
+            )
+        : null;
+    authoritativeGuard?.();
+    const combinedCommitGuard =
+      authoritativeGuard || commitGuard
+        ? () => {
+            authoritativeGuard?.();
+            commitGuard?.();
+          }
+        : undefined;
+
     try {
       await this.fileSystem.writeProjectFileAtomically(
         projectRoot,
         this.serialize(project),
-        commitGuard,
+        combinedCommitGuard,
       );
       try {
         await this.onProjectSaved?.(projectRoot, project, revision);
@@ -262,9 +312,53 @@ export class ProjectService {
       );
     } catch (error) {
       if (error instanceof AtomicWriteCommitRejectedError) {
+        if (error.cause instanceof ProjectServiceError) {
+          throw error.cause;
+        }
         throw error;
       }
       throw this.mapError('save', projectRoot, error);
+    }
+  }
+
+  private assertAuthoritativeSaveSnapshot(
+    projectRoot: string,
+    project: Project,
+    revision: number,
+  ): void {
+    const snapshot = this.getCurrentProjectSnapshot?.(projectRoot);
+    if (!snapshot) {
+      throw new ProjectServiceError(
+        'PROJECT_SAVE_STALE_REVISION',
+        projectRoot,
+        `Cannot save revision ${revision} at ${projectRoot}: Main Process has no authoritative project snapshot. Refresh or reopen the project and retry.`,
+      );
+    }
+    const currentProject = ProjectSchema.parse(snapshot.project);
+    if (currentProject.id !== project.id) {
+      throw new ProjectServiceError(
+        'PROJECT_ID_MISMATCH',
+        projectRoot,
+        `Cannot save project at ${projectRoot}: Main Process is tracking a different project identity.`,
+        {
+          currentProject,
+          currentRevision: snapshot.revision,
+        },
+      );
+    }
+    if (
+      snapshot.revision !== revision ||
+      !projectsEqual(currentProject, project)
+    ) {
+      throw new ProjectServiceError(
+        'PROJECT_SAVE_STALE_REVISION',
+        projectRoot,
+        `Cannot save revision ${revision} at ${projectRoot}: the authoritative revision is ${snapshot.revision}. Refresh and retry without discarding newer changes.`,
+        {
+          currentProject,
+          currentRevision: snapshot.revision,
+        },
+      );
     }
   }
 
@@ -367,4 +461,8 @@ export class ProjectService {
       { cause: error },
     );
   }
+}
+
+function projectsEqual(left: Project, right: Project): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

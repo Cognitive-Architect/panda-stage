@@ -10,7 +10,9 @@ They intentionally use different dimensions:
 
 - `熊猫 normal.png`: 160×120
 - `熊猫 angry.png`: 240×120
+- `熊猫 angry replacement.png`: 320×200
 - `熊猫 mouth-open.png`: 160×52
 
-The differences drive the >30% character-definition warning without relying
-on copyrighted artwork.
+The differences drive the >30% character-definition warning and the
+replacement image proves an expression can change assets without changing its
+stable ID. The fixtures do not rely on copyrighted artwork.

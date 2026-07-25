@@ -28,9 +28,49 @@ const assetIds = {
   normal: '19300000-0000-4000-8000-000000000001',
   angry: '19300000-0000-4000-8000-000000000002',
   mouth: '19300000-0000-4000-8000-000000000003',
+  replacement: '19300000-0000-4000-8000-000000000004',
 };
 
 app.on('window-all-closed', () => {});
+
+async function captureSection(window, selector) {
+  const state = await window.webContents.executeJavaScript(`(async () => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!element) {
+      throw new Error('Screenshot target was not found.');
+    }
+    const state = {
+      transform: document.body.style.transform,
+      transformOrigin: document.body.style.transformOrigin,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      offset: Math.max(
+        0,
+        Math.round(element.getBoundingClientRect().top + window.scrollY - 16)
+      )
+    };
+    window.scrollTo(0, 0);
+    document.body.style.transformOrigin = 'top left';
+    document.body.style.transform = 'translateY(-' + state.offset + 'px)';
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    return state;
+  })()`);
+  try {
+    return await window.webContents.capturePage();
+  } finally {
+    await window.webContents.executeJavaScript(`(() => {
+      document.body.style.transform = ${JSON.stringify(state.transform)};
+      document.body.style.transformOrigin =
+        ${JSON.stringify(state.transformOrigin)};
+      window.scrollTo(
+        ${JSON.stringify(state.scrollX)},
+        ${JSON.stringify(state.scrollY)}
+      );
+    })()`);
+  }
+}
 
 function waitFor(expression, failureMessage) {
   return `
@@ -107,6 +147,7 @@ async function verifyDay19() {
   const normal = await fixture('熊猫 normal.png');
   const angry = await fixture('熊猫 angry.png');
   const mouth = await fixture('熊猫 mouth-open.png');
+  const replacement = await fixture('熊猫 angry replacement.png');
   const thumbnailDataUrls = {
     [assetIds.normal]:
       `data:image/png;base64,${normal.bytes.toString('base64')}`,
@@ -114,6 +155,8 @@ async function verifyDay19() {
       `data:image/png;base64,${angry.bytes.toString('base64')}`,
     [assetIds.mouth]:
       `data:image/png;base64,${mouth.bytes.toString('base64')}`,
+    [assetIds.replacement]:
+      `data:image/png;base64,${replacement.bytes.toString('base64')}`,
   };
   const importedAssets = [
     {
@@ -145,6 +188,16 @@ async function verifyDay19() {
       width: mouth.width,
       height: mouth.height,
       sha256: mouth.sha256,
+    },
+    {
+      id: assetIds.replacement,
+      name: '熊猫 angry replacement',
+      relativePath: 'assets/熊猫 angry replacement.png',
+      mimeType: 'image/png',
+      kind: 'image',
+      width: replacement.width,
+      height: replacement.height,
+      sha256: replacement.sha256,
     },
   ];
   const initialProject = {
@@ -255,11 +308,11 @@ async function verifyDay19() {
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelectorAll('.asset-import-result').length === 3 && " +
+        "document.querySelectorAll('.asset-import-result').length === 4 && " +
           "document.querySelectorAll(" +
           "'.character-create-form label:nth-of-type(2) option'" +
-          ").length === 4",
-        'Three real character fixtures were not imported.',
+          ").length === 5",
+        'Four real character fixtures were not imported.',
       ),
     );
 
@@ -315,6 +368,12 @@ async function verifyDay19() {
             ?.textContent?.trim()
         };
       })()`);
+    const expressionIdBeforeReplacement =
+      await window.webContents.executeJavaScript(`
+        document.querySelector(
+          '.expression-list li:not(.expression-default)'
+        ).dataset.expressionId
+      `);
 
     await window.webContents.executeJavaScript(`
       document.querySelector(
@@ -338,10 +397,34 @@ async function verifyDay19() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('.expression-default input')" +
-        "?.value === 'normal'",
+          "?.value === 'normal'",
         'Could not restore normal as the default expression.',
       ),
     );
+    await setInput(
+      window,
+      '.expression-list li:not(.expression-default) ' +
+        '.expression-fields select',
+      assetIds.replacement,
+      'change',
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.character-manager-status')" +
+          "?.textContent?.includes('原有镜头与时间轴引用保持不变') && " +
+          "document.querySelector(" +
+          "'.expression-list li:not(.expression-default) " +
+          ".expression-fields select')?.value === " +
+          JSON.stringify(assetIds.replacement),
+        'Could not replace the angry expression asset.',
+      ),
+    );
+    const expressionIdAfterReplacement =
+      await window.webContents.executeJavaScript(`
+        document.querySelector(
+          '.expression-list li:not(.expression-default)'
+        ).dataset.expressionId
+      `);
 
     await setInput(
       window,
@@ -367,18 +450,20 @@ async function verifyDay19() {
       ),
     );
 
-    await window.webContents.executeJavaScript(`
-      document.querySelector('.character-manager').scrollIntoView({
-        block: 'start'
-      });
-      document.fonts.ready.then(
-        () => new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve))
-        )
-      )
-    `);
+    await window.webContents.executeJavaScript(`(async () => {
+      const manager = document.querySelector('.character-manager');
+      window.scrollTo(
+        0,
+        manager.getBoundingClientRect().top + window.scrollY - 16
+      );
+      await document.fonts.ready;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (Math.abs(manager.getBoundingClientRect().top - 16) > 4) {
+        throw new Error('Character manager did not reach the screenshot top.');
+      }
+    })()`);
     const configuredScreenshot =
-      await window.webContents.capturePage();
+      await captureSection(window, '.character-manager');
     const configuredUi =
       await window.webContents.executeJavaScript(`(() => ({
         characterName: document.querySelector(
@@ -387,6 +472,9 @@ async function verifyDay19() {
         expressionNames: [...document.querySelectorAll(
           '.expression-fields input'
         )].map((input) => input.value),
+        expressionAssetIds: [...document.querySelectorAll(
+          '.expression-fields select'
+        )].map((select) => select.value),
         thumbnailCount: document.querySelectorAll(
           '.expression-thumbnail img'
         ).length,
@@ -430,22 +518,28 @@ async function verifyDay19() {
       waitFor(
         "document.querySelectorAll('.expression-list li').length === 2 && " +
           "document.querySelector('.character-settings select')" +
-          `?.value === ${JSON.stringify(assetIds.mouth)}`,
+          `?.value === ${JSON.stringify(assetIds.mouth)} && ` +
+          "document.querySelector(" +
+          "'.expression-list li:not(.expression-default) " +
+          ".expression-fields select')?.value === " +
+          JSON.stringify(assetIds.replacement),
         'Saved character did not reopen completely.',
       ),
     );
-    await window.webContents.executeJavaScript(`
-      document.querySelector('.character-manager').scrollIntoView({
-        block: 'start'
-      });
-      document.fonts.ready.then(
-        () => new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve))
-        )
-      )
-    `);
+    await window.webContents.executeJavaScript(`(async () => {
+      const manager = document.querySelector('.character-manager');
+      window.scrollTo(
+        0,
+        manager.getBoundingClientRect().top + window.scrollY - 16
+      );
+      await document.fonts.ready;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (Math.abs(manager.getBoundingClientRect().top - 16) > 4) {
+        throw new Error('Character manager did not reach the screenshot top.');
+      }
+    })()`);
     const reopenedScreenshot =
-      await window.webContents.capturePage();
+      await captureSection(window, '.character-manager');
     const reopenedUi =
       await window.webContents.executeJavaScript(`(() => ({
         characterName: document.querySelector(
@@ -454,6 +548,9 @@ async function verifyDay19() {
         expressionNames: [...document.querySelectorAll(
           '.expression-fields input'
         )].map((input) => input.value),
+        expressionAssetIds: [...document.querySelectorAll(
+          '.expression-fields select'
+        )].map((select) => select.value),
         defaultName: document.querySelector(
           '.expression-default input'
         )?.value,
@@ -494,6 +591,11 @@ async function verifyDay19() {
           height: mouth.height,
           sha256: mouth.sha256,
         },
+        replacement: {
+          width: replacement.width,
+          height: replacement.height,
+          sha256: replacement.sha256,
+        },
       },
       configuredUi,
       defaultProtection,
@@ -503,6 +605,12 @@ async function verifyDay19() {
         openCount,
         saveRevision: saveRequest?.revision,
         autosaveUpdateCount: autosaveUpdates.length,
+        expressionReplacement: {
+          expressionIdBefore: expressionIdBeforeReplacement,
+          expressionIdAfter: expressionIdAfterReplacement,
+          oldAssetId: assetIds.angry,
+          newAssetId: assetIds.replacement,
+        },
         schemaVersion: savedProject?.schemaVersion,
         character: persistedCharacter,
         voiceProfileCount: savedProject?.voiceProfiles.length,
@@ -512,11 +620,49 @@ async function verifyDay19() {
         containsBase64:
           JSON.stringify(persistedCharacter).includes('data:image'),
       },
+      issue35: {
+        genericProjectSaveCas: {
+          test: 'tests/integration/project-save-cas.test.ts',
+          staleCode: 'PROJECT_SAVE_STALE_REVISION',
+          blockedRevision: 5,
+          authoritativeRevision: 6,
+          deterministicCommitBoundaryRace: true,
+          secondAuthoritativeSnapshotValidation: true,
+          stalePreservesFormalProject: true,
+          stalePreservesRecovery: true,
+          stalePreservesMainSnapshot: true,
+          stalePreservesRendererSnapshotAndDirtyState: true,
+          staleLeavesTemporaryFiles: 0,
+          postCommitCleanupOnly: true,
+          matchingRevisionSavePasses: true,
+        },
+        expressionAssetReplacement: {
+          serviceTest: 'tests/unit/character-service.test.ts',
+          persistenceTest:
+            'tests/integration/character-lifecycle.test.ts',
+          expressionIdStable:
+            expressionIdBeforeReplacement === expressionIdAfterReplacement,
+          oldAssetId: assetIds.angry,
+          newAssetId: assetIds.replacement,
+          newAssetDimensions: {
+            width: replacement.width,
+            height: replacement.height,
+          },
+          shotLayerReferencePreserved: true,
+          timelineExpressionReferencePreserved: true,
+          defaultBaseAssetSynchronizationCovered: true,
+          oldAssetDeletableWhenUnreferenced: true,
+          nonImageAssetRejected: true,
+          reopenedMappingMatches: reopenedUi.expressionAssetIds.join(',') ===
+            `${assetIds.normal},${assetIds.replacement}`,
+        },
+      },
       automatedEvidence: {
         service: 'tests/unit/character-service.test.ts',
         components: 'tests/unit/character-components.test.ts',
         migration: 'tests/unit/migrations/project-migration.test.ts',
         saveReopen: 'tests/integration/character-lifecycle.test.ts',
+        projectSaveCas: 'tests/integration/project-save-cas.test.ts',
         sharedReferences: 'tests/unit/reference-scanner.test.ts',
       },
       screenshots: [
@@ -532,8 +678,12 @@ async function verifyDay19() {
       angry.height !== 120 ||
       mouth.width !== 160 ||
       mouth.height !== 52 ||
+      replacement.width !== 320 ||
+      replacement.height !== 200 ||
       configuredUi.characterName !== 'Panda' ||
       configuredUi.expressionNames.join(',') !== 'normal,angry' ||
+      configuredUi.expressionAssetIds.join(',') !==
+        `${assetIds.normal},${assetIds.replacement}` ||
       configuredUi.thumbnailCount !== 2 ||
       configuredUi.mouthValue !== assetIds.mouth ||
       configuredUi.scaleValue !== '0.75' ||
@@ -545,14 +695,21 @@ async function verifyDay19() {
       !defaultProtection.deleteTitle.includes('替代表情') ||
       !importRequest ||
       importRequest.baseRevision !== 0 ||
-      saveRequest?.revision !== 5 ||
+      saveRequest?.revision !== 6 ||
       savedProject?.schemaVersion !== 2 ||
       persistedCharacter?.defaultScale !== 0.75 ||
       persistedCharacter?.defaultFlipX !== true ||
       persistedCharacter?.mouthOpenAssetId !== assetIds.mouth ||
       persistedCharacter?.expressions.length !== 2 ||
+      persistedCharacter?.expressions[1]?.assetId !==
+        assetIds.replacement ||
+      expressionIdBeforeReplacement !== expressionIdAfterReplacement ||
+      persistedCharacter?.expressions[1]?.id !==
+        expressionIdBeforeReplacement ||
       reopenedUi.characterName !== 'Panda' ||
       reopenedUi.expressionNames.join(',') !== 'normal,angry' ||
+      reopenedUi.expressionAssetIds.join(',') !==
+        `${assetIds.normal},${assetIds.replacement}` ||
       reopenedUi.defaultName !== 'normal' ||
       reopenedUi.mouthValue !== assetIds.mouth ||
       reopenedUi.scaleValue !== '0.75' ||

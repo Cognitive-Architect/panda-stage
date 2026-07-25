@@ -55,6 +55,21 @@ export class CharacterStore {
     );
   }
 
+  setExpressionAsset(
+    characterId: string,
+    expressionId: string,
+    assetId: string,
+  ): Project {
+    return this.apply((project) =>
+      this.service.setExpressionAsset(
+        project,
+        characterId,
+        expressionId,
+        assetId,
+      ),
+    );
+  }
+
   removeExpression(
     characterId: string,
     expressionId: string,

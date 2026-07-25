@@ -3,7 +3,7 @@
   "workOrder": "B-19/45",
   "result": "PASS",
   "branch": "feat/day-19-character-definitions",
-  "executedAt": "2026-07-25T06:45:49.004Z",
+  "executedAt": "2026-07-25T11:55:52.191Z",
   "realFixtureMetadata": {
     "normal": {
       "width": 160,
@@ -19,6 +19,11 @@
       "width": 160,
       "height": 52,
       "sha256": "cc8c370be4c782f5fe09dec4d4dc31b25003806d2da3e422bb55c2224ee779e1"
+    },
+    "replacement": {
+      "width": 320,
+      "height": 200,
+      "sha256": "47e043fcacfda34272b11f0dc4b90b6ceec27579142c3dd172ccb2cd3afd44ab"
     }
   },
   "configuredUi": {
@@ -27,11 +32,15 @@
       "normal",
       "angry"
     ],
+    "expressionAssetIds": [
+      "19300000-0000-4000-8000-000000000001",
+      "19300000-0000-4000-8000-000000000004"
+    ],
     "thumbnailCount": 2,
     "mouthValue": "19300000-0000-4000-8000-000000000003",
     "scaleValue": "0.75",
     "flipChecked": true,
-    "warning": "图片尺寸差异超过 30%表情“angry”：240×120；默认基准为 160×120。中心位置 保持不变，请人工确认视觉缩放。张嘴图片：160×52；默认基准为 160×120。中心位置 保持不变，请人工确认视觉缩放。",
+    "warning": "图片尺寸差异超过 30%表情“angry”：320×200；默认基准为 160×120。中心位置 保持不变，请人工确认视觉缩放。张嘴图片：160×52；默认基准为 160×120。中心位置 保持不变，请人工确认视觉缩放。",
     "rendererHasNodeRequire": false,
     "hasTtsControl": false
   },
@@ -45,27 +54,33 @@
     "importedViaUi": true,
     "importBaseRevision": 0,
     "openCount": 2,
-    "saveRevision": 5,
-    "autosaveUpdateCount": 8,
+    "saveRevision": 6,
+    "autosaveUpdateCount": 9,
+    "expressionReplacement": {
+      "expressionIdBefore": "7e959862-b30e-4749-a5ed-e49edbcb6efe",
+      "expressionIdAfter": "7e959862-b30e-4749-a5ed-e49edbcb6efe",
+      "oldAssetId": "19300000-0000-4000-8000-000000000002",
+      "newAssetId": "19300000-0000-4000-8000-000000000004"
+    },
     "schemaVersion": 2,
     "character": {
-      "id": "2566f047-d410-4b7f-8d09-d9256c80673d",
+      "id": "16a147c4-5f2b-444c-ae31-0d5f5db47b65",
       "name": "Panda",
       "baseAssetId": "19300000-0000-4000-8000-000000000001",
-      "defaultVoiceProfileId": "36bc1c36-89aa-41c6-830b-c888a112b40c",
+      "defaultVoiceProfileId": "c15ef740-0ff1-4045-9935-6e60f0ba0f8b",
       "expressions": [
         {
-          "id": "bdf74a8a-6ea4-4921-b609-b591465fe99b",
+          "id": "cc40e793-1b2a-4d2a-a97a-2ab440724063",
           "name": "normal",
           "assetId": "19300000-0000-4000-8000-000000000001"
         },
         {
-          "id": "dd194736-ef0c-421b-9b8c-948dba44a2f7",
+          "id": "7e959862-b30e-4749-a5ed-e49edbcb6efe",
           "name": "angry",
-          "assetId": "19300000-0000-4000-8000-000000000002"
+          "assetId": "19300000-0000-4000-8000-000000000004"
         }
       ],
-      "defaultExpressionId": "bdf74a8a-6ea4-4921-b609-b591465fe99b",
+      "defaultExpressionId": "cc40e793-1b2a-4d2a-a97a-2ab440724063",
       "mouthOpenAssetId": "19300000-0000-4000-8000-000000000003",
       "defaultScale": 0.75,
       "defaultFlipX": true
@@ -77,6 +92,10 @@
         "normal",
         "angry"
       ],
+      "expressionAssetIds": [
+        "19300000-0000-4000-8000-000000000001",
+        "19300000-0000-4000-8000-000000000004"
+      ],
       "defaultName": "normal",
       "mouthValue": "19300000-0000-4000-8000-000000000003",
       "scaleValue": "0.75",
@@ -86,11 +105,46 @@
     "containsAbsolutePath": false,
     "containsBase64": false
   },
+  "issue35": {
+    "genericProjectSaveCas": {
+      "test": "tests/integration/project-save-cas.test.ts",
+      "staleCode": "PROJECT_SAVE_STALE_REVISION",
+      "blockedRevision": 5,
+      "authoritativeRevision": 6,
+      "deterministicCommitBoundaryRace": true,
+      "secondAuthoritativeSnapshotValidation": true,
+      "stalePreservesFormalProject": true,
+      "stalePreservesRecovery": true,
+      "stalePreservesMainSnapshot": true,
+      "stalePreservesRendererSnapshotAndDirtyState": true,
+      "staleLeavesTemporaryFiles": 0,
+      "postCommitCleanupOnly": true,
+      "matchingRevisionSavePasses": true
+    },
+    "expressionAssetReplacement": {
+      "serviceTest": "tests/unit/character-service.test.ts",
+      "persistenceTest": "tests/integration/character-lifecycle.test.ts",
+      "expressionIdStable": true,
+      "oldAssetId": "19300000-0000-4000-8000-000000000002",
+      "newAssetId": "19300000-0000-4000-8000-000000000004",
+      "newAssetDimensions": {
+        "width": 320,
+        "height": 200
+      },
+      "shotLayerReferencePreserved": true,
+      "timelineExpressionReferencePreserved": true,
+      "defaultBaseAssetSynchronizationCovered": true,
+      "oldAssetDeletableWhenUnreferenced": true,
+      "nonImageAssetRejected": true,
+      "reopenedMappingMatches": true
+    }
+  },
   "automatedEvidence": {
     "service": "tests/unit/character-service.test.ts",
     "components": "tests/unit/character-components.test.ts",
     "migration": "tests/unit/migrations/project-migration.test.ts",
     "saveReopen": "tests/integration/character-lifecycle.test.ts",
+    "projectSaveCas": "tests/integration/project-save-cas.test.ts",
     "sharedReferences": "tests/unit/reference-scanner.test.ts"
   },
   "screenshots": [

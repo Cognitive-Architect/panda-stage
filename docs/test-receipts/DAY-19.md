@@ -43,6 +43,12 @@
 - Character edits enter the existing revision/recovery flow. The UI can save
   them with the existing revision-safe project API; a full page reload and
   reopen reproduced all character fields.
+- Existing expressions can replace their image asset without changing the
+  expression ID or name. Shot-layer and timeline-event references therefore
+  remain valid; replacing the default expression also updates `baseAssetId`.
+- Generic project saves use the Main/Autosave snapshot as the authority and
+  validate the project ID, revision, and full Project value both before
+  writing and again at the atomic replacement boundary.
 
 ## Project schema and migration
 
@@ -81,16 +87,18 @@ distinguished by its strict shape and still migrates deterministically.
 
 `pnpm verify:day19` performs this real Electron flow:
 
-1. Inspect three generated PNG files with `MediaInspectionService`.
+1. Inspect four generated PNG files with `MediaInspectionService`.
 2. Open a v1 project and migrate it to the current model.
 3. Import all three files through the existing import entry.
 4. Create `Panda` with `normal`, `angry`, and a mouth-open image.
 5. Switch the default to angry and back to normal.
 6. Set `defaultScale=0.75` and `defaultFlipX=true`.
 7. Confirm the default delete control is disabled with replacement guidance.
-8. Confirm real 160×120 versus 240×120 and 160×52 metadata produces warnings.
-9. Save at revision 5, reload the Renderer, reopen the project, and compare
-   every field.
+8. Replace the existing `angry` expression with the 320×200 image while
+   preserving its expression ID.
+9. Confirm real 160×120 versus 320×200 and 160×52 metadata produces warnings.
+10. Save at revision 6, reload the Renderer, reopen the project, and compare
+    every field.
 
 Recorded fixtures:
 
@@ -99,6 +107,7 @@ Recorded fixtures:
 | `熊猫 normal.png` | 160×120 | `a4a9fbf3f0bb6ff421c253667cf0722690f1c22ec870a20af6aa4ab78a620d13` |
 | `熊猫 angry.png` | 240×120 | `76abdb1114c9f390bfff8839ef5acbdf9c93ed6bd76af141f7669071143f65a9` |
 | `熊猫 mouth-open.png` | 160×52 | `cc8c370be4c782f5fe09dec4d4dc31b25003806d2da3e422bb55c2224ee779e1` |
+| `熊猫 angry replacement.png` | 320×200 | `47e043fcacfda34272b11f0dc4b90b6ceec27579142c3dd172ccb2cd3afd44ab` |
 
 Evidence:
 
@@ -110,6 +119,54 @@ The configured screenshot shows distinct expression thumbnails, default
 marker, transform controls, mouth selection, and both >30% warnings. The
 reopened screenshot shows the same definition at revision 0 with a clean
 project.
+
+## Issue #35 closeout verification
+
+The deterministic save race in
+`tests/integration/project-save-cas.test.ts` blocks a revision 5 save at the
+atomic replace boundary, advances Main and Renderer to revision 6, writes the
+revision 6 formal project and recovery snapshot, and then releases revision 5.
+The stale request returns `PROJECT_SAVE_STALE_REVISION` with
+`currentRevision=6` and the current Project. The test proves all of the
+following:
+
+- formal `project.json` remains revision 6;
+- recovery remains revision 6;
+- Main Autosave and Renderer snapshots remain revision 6 and dirty;
+- `onProjectSaved`, recovery cleanup, and `markFormalSaved()` do not run;
+- no `.tmp` file remains;
+- a matching authoritative revision still saves normally, then cleans
+  recovery and marks the Autosave session clean.
+
+Expression replacement coverage proves that:
+
+- the expression ID and name remain unchanged;
+- shot-layer and timeline-event references remain valid;
+- a default expression replacement synchronizes `baseAssetId`;
+- dimension warnings are recalculated from the replacement image metadata;
+- the old image has no remaining references and can be deleted;
+- non-image replacements are rejected;
+- dirty/recovery/save/reopen preserves the new asset mapping.
+
+The real Electron flow imports the 320×200 replacement fixture, replaces the
+existing `angry` expression through the UI, saves at revision 6, reloads, and
+reopens the project. Both screenshots and `results.json` record the stable
+expression ID and persisted replacement asset ID.
+
+Issue #35 local gates on 2026-07-25:
+
+| Gate | Result | Evidence |
+|---|---|---|
+| TYPE | PASS | `pnpm typecheck` |
+| LINT | PASS | `pnpm lint` |
+| UNIT / COMPONENT | PASS | 50 files / 273 tests |
+| INTEGRATION | PASS | 10 files / 71 tests |
+| BUILD | PASS | `pnpm build` |
+| M1 | PASS | `pnpm verify:m1` |
+| DAY 16 | PASS | `pnpm verify:day16` |
+| DAY 17 | PASS | `pnpm verify:day17` |
+| DAY 18 | PASS | `pnpm verify:day18` |
+| DAY 19 REAL/UI | PASS | `pnpm verify:day19` |
 
 ## Automated gates
 

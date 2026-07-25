@@ -131,6 +131,42 @@ describe('project IPC handlers', () => {
     expect(service.save).toHaveBeenCalledWith(projectRoot, project, 7);
   });
 
+  it('returns the authoritative project and revision for a stale save', async () => {
+    const service = projectService();
+    const projectRoot = 'D:\\projects\\target.pandastage';
+    const project = ProjectSchema.parse(exampleProject);
+    const currentProject = ProjectSchema.parse({
+      ...project,
+      name: 'Revision 6',
+    });
+    vi.spyOn(service, 'save').mockRejectedValue(
+      new ProjectServiceError(
+        'PROJECT_SAVE_STALE_REVISION',
+        projectRoot,
+        'Revision 5 is stale.',
+        { currentProject, currentRevision: 6 },
+      ),
+    );
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+    });
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.PROJECT_SAVE)!(
+        event(),
+        { projectRoot, project, revision: 5 },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'PROJECT_SAVE_STALE_REVISION',
+        currentProject: { name: 'Revision 6' },
+        currentRevision: 6,
+      },
+    });
+  });
+
   it('records a successful open without failing the open when recent config is unavailable', async () => {
     const service = projectService();
     const project = ProjectSchema.parse(exampleProject);

@@ -4,6 +4,8 @@ import {
   CharacterService,
   CharacterServiceError,
   ProjectSchema,
+  scanAssetReferences,
+  scanExpressionReferences,
   type Project,
 } from '../../src/domain';
 
@@ -370,5 +372,101 @@ describe('CharacterService', () => {
         path: 'shots[0].timelineEvents[4].expressionId',
       }),
     ]);
+  });
+
+  it('replaces a shot/timeline-referenced expression asset without changing its ID or name', () => {
+    const characterService = service();
+    const project = ProjectSchema.parse(exampleProject);
+    const character = project.characters[0]!;
+    const expression = character.expressions[1]!;
+    const oldAssetId = expression.assetId;
+    const replacementAsset = project.assets.find(
+      (asset) =>
+        asset.kind === 'image' &&
+        !character.expressions.some(
+          (candidate) => candidate.assetId === asset.id,
+        ),
+    )!;
+    if (replacementAsset.kind !== 'image') {
+      throw new Error('Expected the replacement fixture to be an image.');
+    }
+    const referenced = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) =>
+          layer.source.kind === 'character'
+            ? {
+                ...layer,
+                source: {
+                  ...layer.source,
+                  expressionId: expression.id,
+                },
+              }
+            : layer,
+        ),
+      })),
+    });
+    const withDefault = characterService.setDefaultExpression(
+      referenced,
+      character.id,
+      expression.id,
+    );
+    const replaced = characterService.setExpressionAsset(
+      withDefault,
+      character.id,
+      expression.id,
+      replacementAsset.id,
+    );
+    const nextCharacter = replaced.characters[0]!;
+    const nextExpression = nextCharacter.expressions.find(
+      (candidate) => candidate.id === expression.id,
+    )!;
+
+    expect(nextExpression).toEqual({
+      ...expression,
+      assetId: replacementAsset.id,
+    });
+    expect(nextCharacter.defaultExpressionId).toBe(expression.id);
+    expect(nextCharacter.baseAssetId).toBe(replacementAsset.id);
+    expect(
+      scanExpressionReferences(
+        replaced,
+        character.id,
+        expression.id,
+      ).map((reference) => reference.kind),
+    ).toEqual([
+      'shot-layer-expression',
+      'timeline-expression-event',
+    ]);
+    expect(scanAssetReferences(replaced, oldAssetId)).toEqual([]);
+    expect(
+      characterService.dimensionWarnings(replaced, character.id),
+    ).toEqual([
+      expect.objectContaining({
+        expressionId: character.expressions[0]!.id,
+        baseline: {
+          width: replacementAsset.width,
+          height: replacementAsset.height,
+        },
+      }),
+    ]);
+  });
+
+  it('rejects replacing an expression with a non-image asset', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const character = project.characters[0]!;
+    const audio = project.assets.find((asset) => asset.kind === 'audio')!;
+
+    expectCharacterError(
+      () =>
+        service().setExpressionAsset(
+          project,
+          character.id,
+          character.expressions[0]!.id,
+          audio.id,
+        ),
+      'IMAGE_ASSET_REQUIRED',
+    );
   });
 });

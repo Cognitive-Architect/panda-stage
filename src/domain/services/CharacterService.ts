@@ -236,6 +236,29 @@ export class CharacterService {
     return this.replaceCharacter(project, { ...character, expressions });
   }
 
+  setExpressionAsset(
+    project: Project,
+    characterId: string,
+    expressionId: string,
+    assetId: string,
+  ): Project {
+    const character = this.character(project, characterId);
+    const expression = this.expression(character, expressionId);
+    const imageAssetId = this.imageAsset(project, assetId).id;
+    const expressions = character.expressions.map((candidate) =>
+      candidate.id === expression.id
+        ? { ...candidate, assetId: imageAssetId }
+        : candidate,
+    );
+    return this.replaceCharacter(project, {
+      ...character,
+      expressions,
+      ...(character.defaultExpressionId === expression.id
+        ? { baseAssetId: imageAssetId }
+        : {}),
+    });
+  }
+
   removeExpression(
     project: Project,
     characterId: string,

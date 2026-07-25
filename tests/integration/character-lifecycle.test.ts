@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { CharacterService } from '../../src/domain';
+import { CharacterService, ProjectSchema } from '../../src/domain';
 import { PROJECT_FILE_NAME } from '../../src/main/services/ProjectFileSystemService';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
@@ -145,5 +145,61 @@ describe('Day 19 character persistence', () => {
       baseAssetId: exampleProject.characters[0]!.baseAssetId,
     });
     expect(await readFile(filePath, 'utf8')).toBe(v1Source);
+  });
+
+  it('keeps a referenced expression ID while replacing its asset and persists the new mapping', async () => {
+    const root = await projectRoot();
+    const projectService = new ProjectService();
+    await projectService.create(root, { name: 'expression replacement' });
+    const project = ProjectSchema.parse(exampleProject);
+    await writeFile(
+      path.join(root, PROJECT_FILE_NAME),
+      `${JSON.stringify(project, null, 2)}\n`,
+      'utf8',
+    );
+    const character = project.characters[0]!;
+    const expression = character.expressions[1]!;
+    const replacement = project.assets.find(
+      (asset) =>
+        asset.kind === 'image' &&
+        !character.expressions.some(
+          (candidate) => candidate.assetId === asset.id,
+        ),
+    )!;
+    const characterService = new CharacterService({
+      now: () => new Date('2026-07-25T08:30:00.000Z'),
+    });
+    const withDefault = characterService.setDefaultExpression(
+      project,
+      character.id,
+      expression.id,
+    );
+    const replaced = characterService.setExpressionAsset(
+      withDefault,
+      character.id,
+      expression.id,
+      replacement.id,
+    );
+
+    await projectService.save(root, replaced, 1);
+    const reopened = await projectService.open(root);
+    const persistedExpression =
+      reopened.project.characters[0]!.expressions.find(
+        (candidate) => candidate.id === expression.id,
+      );
+
+    expect(persistedExpression).toEqual({
+      id: expression.id,
+      name: expression.name,
+      assetId: replacement.id,
+    });
+    expect(reopened.project.characters[0]!.baseAssetId).toBe(
+      replacement.id,
+    );
+    expect(
+      reopened.project.shots[0]!.timelineEvents.find(
+        (event) => event.type === 'expression',
+      ),
+    ).toMatchObject({ expressionId: expression.id });
   });
 });

@@ -78,6 +78,7 @@ describe('character management components', () => {
         onDeleteCharacter: noop,
         onAddExpression: noop,
         onRenameExpression: noop,
+        onSetExpressionAsset: noop,
         onRemoveExpression: noop,
         onSetDefaultExpression: noop,
         onSetMouthOpenAsset: noop,

@@ -165,6 +165,8 @@ async function initialize(): Promise<void> {
   projectService = new ProjectService({
     coordinator: projectOperationCoordinator,
     pathService,
+    getCurrentProjectSnapshot: (projectRoot) =>
+      autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     onProjectSaved: async (projectRoot, project, revision) => {
       try {
         await recoveryService.cleanupAfterFormalSave(

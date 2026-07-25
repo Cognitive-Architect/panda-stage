@@ -722,6 +722,7 @@ button:disabled {
 .character-settings input,
 .character-settings select,
 .expression-fields input,
+.expression-fields select,
 .expression-add-form input,
 .expression-add-form select {
   width: 100%;

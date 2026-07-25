@@ -14,6 +14,7 @@ export interface ExpressionEditorProps {
   disabled?: boolean;
   onAdd: (name: string, assetId: string) => void;
   onRename: (expressionId: string, name: string) => void;
+  onSetAsset: (expressionId: string, assetId: string) => void;
   onRemove: (expressionId: string) => void;
   onSetDefault: (expressionId: string) => void;
   onThumbnailError: (assetId: string) => void;
@@ -27,6 +28,7 @@ export function ExpressionEditor({
   disabled = false,
   onAdd,
   onRename,
+  onSetAsset,
   onRemove,
   onSetDefault,
   onThumbnailError,
@@ -84,6 +86,24 @@ export function ExpressionEditor({
                     ? `${asset.name} · ${asset.width}×${asset.height}`
                     : expression.assetId}
                 </span>
+                <label>
+                  图片素材
+                  <select
+                    aria-label={`${expression.name} 表情图片素材`}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      onSetAsset(expression.id, event.target.value)
+                    }
+                    value={expression.assetId}
+                  >
+                    {imageAssets.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name} · {candidate.width}×
+                        {candidate.height}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <div className="expression-actions">
                 {isDefault ? (

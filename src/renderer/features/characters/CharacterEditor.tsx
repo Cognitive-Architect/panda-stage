@@ -17,6 +17,7 @@ export interface CharacterEditorProps {
   onDeleteCharacter: () => void;
   onAddExpression: (name: string, assetId: string) => void;
   onRenameExpression: (expressionId: string, name: string) => void;
+  onSetExpressionAsset: (expressionId: string, assetId: string) => void;
   onRemoveExpression: (expressionId: string) => void;
   onSetDefaultExpression: (expressionId: string) => void;
   onSetMouthOpenAsset: (assetId: string | null) => void;
@@ -34,6 +35,7 @@ export function CharacterEditor({
   onDeleteCharacter,
   onAddExpression,
   onRenameExpression,
+  onSetExpressionAsset,
   onRemoveExpression,
   onSetDefaultExpression,
   onSetMouthOpenAsset,
@@ -149,6 +151,7 @@ export function CharacterEditor({
         onAdd={onAddExpression}
         onRemove={onRemoveExpression}
         onRename={onRenameExpression}
+        onSetAsset={onSetExpressionAsset}
         onSetDefault={onSetDefaultExpression}
         onThumbnailError={onThumbnailError}
         thumbnails={thumbnails}
