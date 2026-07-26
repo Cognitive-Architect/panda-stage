@@ -36,6 +36,7 @@ export const LayerSchema = z
     rotationDeg: FiniteNumberSchema.default(0),
     opacity: FiniteNumberSchema.min(0).max(1).default(1),
     visible: z.boolean().default(true),
+    locked: z.boolean().default(false),
     zIndex: z.number().int().nonnegative(),
   })
   .strict();

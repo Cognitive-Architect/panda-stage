@@ -6,7 +6,6 @@ import {
 } from 'react';
 import Konva from 'konva';
 import {
-  Image as KonvaImage,
   Layer as KonvaLayer,
   Line,
   Rect,
@@ -26,9 +25,14 @@ import { editorProjectStore } from '../../stores/EditorProjectStore';
 import {
   canvasViewportStore,
 } from '../../stores/canvasViewportStore';
+import { layerStore } from '../../stores/layerStore';
+import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
+import { LayerPositionPanel } from '../properties/LayerPositionPanel';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
+import { SelectableLayer } from './SelectableLayer';
+import type { CanvasDropPreview } from './useCanvasDrop';
 
 Konva.pixelRatio = 1;
 
@@ -136,6 +140,15 @@ export function CanvasStage(): React.JSX.Element {
     useState<ViewportTransform>(() =>
       calculateViewportTransform({ width: 0, height: 0 }, 'fit'),
     );
+  const [dropPreview, setDropPreview] =
+    useState<CanvasDropPreview | null>(null);
+  const [interactionStatus, setInteractionStatus] = useState(
+    '从素材库拖入图片，或点击普通图层进行选择。',
+  );
+  const selectedLayerId = useSyncExternalStore(
+    selectionStore.subscribe,
+    selectionStore.getSelectedLayerId,
+  );
   const shot =
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
@@ -171,7 +184,29 @@ export function CanvasStage(): React.JSX.Element {
         <span>{shot ? shot.name : 'No shot selected'}</span>
       </div>
       <CanvasViewport
+        dropDisabled={!snapshot || !shot}
         mode={viewport.mode}
+        onAssetDrop={(payload, point) => {
+          try {
+            const layer = layerStore.createFromAsset({
+              assetId: payload.assetId,
+              type: payload.type,
+              position: point,
+            });
+            selectionStore.select(layer.id);
+            setInteractionStatus(
+              `已在 (${layer.x.toFixed(1)}, ${layer.y.toFixed(1)}) 创建并选择“${layer.name}”。`,
+            );
+          } catch (error) {
+            setInteractionStatus(
+              error instanceof Error
+                ? error.message
+                : '图层创建失败。',
+            );
+          }
+        }}
+        onDropError={setInteractionStatus}
+        onDropPreview={setDropPreview}
         onStagePoint={(point) =>
           canvasViewportStore.recordStagePoint(point)
         }
@@ -196,42 +231,52 @@ export function CanvasStage(): React.JSX.Element {
                 backgroundLayer?.render.coverScale ?? ''
               }
               data-center-guides="vertical,horizontal"
+              data-interaction-status={interactionStatus}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
+              data-rendered-asset-ids={JSON.stringify([
+                ...imageState.images.keys(),
+              ])}
               data-render-contract="shared-stage-layer-v1"
+              data-selected-layer-id={selectedLayerId ?? ''}
               data-stage-center="960,540"
               data-testid="project-canvas-stage"
             >
               <Stage
                 height={PROJECT_HEIGHT}
-                listening={false}
+                listening
                 width={PROJECT_WIDTH}
               >
-                <KonvaLayer listening={false}>
+                <KonvaLayer listening>
                   <Rect
                     fill="#111914"
                     height={PROJECT_HEIGHT}
-                    listening={false}
+                    listening
+                    onClick={() => selectionStore.clear()}
+                    onTap={() => selectionStore.clear()}
                     width={PROJECT_WIDTH}
                   />
                   {stageModel
-                    ? stageModel.layers.map(({ asset, render }) => {
+                    ? stageModel.layers.map(({ layer, asset, render }) => {
                         const image = imageState.images.get(asset.id);
-                        if (!render.visible || !image) return null;
+                        if (!image) return null;
                         return (
-                          <KonvaImage
-                            height={render.height}
+                          <SelectableLayer
                             image={image}
                             key={render.id}
-                            listening={render.listening}
-                            offsetX={render.offsetX}
-                            offsetY={render.offsetY}
-                            opacity={render.opacity}
-                            rotation={render.rotationDeg}
-                            scaleX={render.scaleX}
-                            scaleY={render.scaleY}
-                            width={render.width}
-                            x={render.x}
-                            y={render.y}
+                            layer={layer}
+                            onCommitPosition={(layerId, position) => {
+                              layerStore.updatePosition(layerId, position);
+                              setInteractionStatus(
+                                `图层位置已提交为 (${position.x.toFixed(1)}, ${position.y.toFixed(1)})。`,
+                              );
+                            }}
+                            onError={setInteractionStatus}
+                            onSelect={(layerId) => {
+                              selectionStore.select(layerId);
+                              setInteractionStatus('已选择图层。');
+                            }}
+                            render={render}
+                            selected={selectedLayerId === layer.id}
                           />
                         );
                       })
@@ -251,6 +296,22 @@ export function CanvasStage(): React.JSX.Element {
                 </KonvaLayer>
               </Stage>
             </div>
+            {dropPreview ? (
+              <div
+                className="canvas-drop-ghost"
+                data-testid="canvas-drop-ghost"
+                style={{
+                  left: dropPreview.point.x,
+                  top: dropPreview.point.y,
+                }}
+              >
+                <strong>放置图层</strong>
+                <span>
+                  x {dropPreview.point.x.toFixed(1)} · y{' '}
+                  {dropPreview.point.y.toFixed(1)}
+                </span>
+              </div>
+            ) : null}
             {empty ? (
               <div
                 className="canvas-stage-message"
@@ -286,6 +347,13 @@ export function CanvasStage(): React.JSX.Element {
         point={viewport.lastStagePoint}
         transform={toolbarTransform}
       />
+      <output
+        className="canvas-interaction-status"
+        data-testid="canvas-interaction-status"
+      >
+        {interactionStatus}
+      </output>
+      <LayerPositionPanel />
     </section>
   );
 }

@@ -61,6 +61,26 @@ describe('canvas viewport transform', () => {
     });
   });
 
+  it('uses an exact session-only 50% transform', () => {
+    const transform = calculateViewportTransform(
+      { width: 800, height: 600 },
+      'half',
+    );
+    expect(transform).toMatchObject({
+      scale: 0.5,
+      displayWidth: 960,
+      displayHeight: 540,
+      contentWidth: 960,
+      contentHeight: 600,
+    });
+    expect(
+      screenToStage(
+        stageToScreen({ x: 640, y: 360 }, transform),
+        transform,
+      ),
+    ).toEqual({ x: 640, y: 360 });
+  });
+
   it('is safe for zero, negative, non-finite, and tiny containers', () => {
     for (const container of [
       { width: 0, height: 0 },

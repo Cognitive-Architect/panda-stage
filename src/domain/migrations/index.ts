@@ -98,6 +98,7 @@ function migrateLegacyProject(
         rotationDeg: layer.rotationDeg,
         opacity: layer.opacity,
         visible: layer.visible,
+        locked: false,
         zIndex: layer.zIndex,
       }));
       return {

@@ -158,6 +158,11 @@ async function verifyDay21() {
     })),
     shots: exampleProject.shots.map((shot) => ({
       ...shot,
+      layers: shot.layers.map(({ zIndex, ...layer }) => ({
+        ...layer,
+        locked: false,
+        zIndex,
+      })),
       backgroundLayerId: shot.layers[0]?.id ?? null,
     })),
   };
