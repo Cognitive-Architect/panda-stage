@@ -1,4 +1,6 @@
 import {
+  LAYER_MAX_SCALE,
+  LAYER_MIN_SCALE,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
 } from '../constants';
@@ -18,6 +20,8 @@ export type LayerServiceErrorCode =
   | 'ASSET_TYPE_MISMATCH'
   | 'CHARACTER_IDENTITY_MISMATCH'
   | 'INVALID_POSITION'
+  | 'INVALID_TRANSFORM'
+  | 'BACKGROUND_LAYER_PROTECTED'
   | 'LAYER_LOCKED'
   | 'ID_GENERATION_FAILED';
 
@@ -43,6 +47,56 @@ export interface LayerServiceOptions {
 export interface CreateLayerResult {
   project: Project;
   layer: Layer;
+}
+
+export interface LayerTransformInput {
+  x: number;
+  y: number;
+  scale: number;
+  rotationDeg: number;
+  opacity: number;
+  flipX: boolean;
+}
+
+export type LayerOrderAction =
+  | 'forward'
+  | 'backward'
+  | 'front'
+  | 'back';
+
+export function normalizeLayerRotation(rotationDeg: number): number {
+  if (!Number.isFinite(rotationDeg)) {
+    throw new LayerServiceError(
+      'INVALID_TRANSFORM',
+      '图层旋转角度必须是有限数字。',
+    );
+  }
+  const normalized = ((rotationDeg + 180) % 360 + 360) % 360 - 180;
+  return Object.is(normalized, -0) ? 0 : normalized;
+}
+
+function validateLayerScale(scale: number): number {
+  if (
+    !Number.isFinite(scale) ||
+    scale < LAYER_MIN_SCALE ||
+    scale > LAYER_MAX_SCALE
+  ) {
+    throw new LayerServiceError(
+      'INVALID_TRANSFORM',
+      `图层缩放必须是 ${LAYER_MIN_SCALE}–${LAYER_MAX_SCALE} 之间的有限数字。`,
+    );
+  }
+  return scale;
+}
+
+function validateLayerOpacity(opacity: number): number {
+  if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) {
+    throw new LayerServiceError(
+      'INVALID_TRANSFORM',
+      '图层不透明度必须是 0–1 之间的有限数字。',
+    );
+  }
+  return opacity;
 }
 
 export function clampLayerPosition(point: Point): Point {
@@ -162,6 +216,10 @@ export class LayerService {
       opacity: 1,
       visible: true,
       locked: false,
+      flipX:
+        input.type === 'character-expression'
+          ? character!.defaultFlipX
+          : false,
       zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
     };
     const nextShot = {
@@ -183,6 +241,12 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
+    if (shot.backgroundLayerId === layer.id) {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_PROTECTED',
+        '背景图层不能移动、变换、排序或删除。',
+      );
+    }
     if (layer.locked) {
       throw new LayerServiceError(
         'LAYER_LOCKED',
@@ -198,6 +262,121 @@ export class LayerService {
     return this.replaceShot(project, { ...shot, layers });
   }
 
+  updateTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: LayerTransformInput,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const position = validateLayerPosition({ x: input.x, y: input.y });
+    const scale = validateLayerScale(input.scale);
+    const rotationDeg = normalizeLayerRotation(input.rotationDeg);
+    const opacity = validateLayerOpacity(input.opacity);
+    const replacement: Layer = {
+      ...layer,
+      ...position,
+      scaleX: scale,
+      scaleY: scale,
+      rotationDeg,
+      opacity,
+      flipX: input.flipX,
+    };
+    if (
+      layer.x === replacement.x &&
+      layer.y === replacement.y &&
+      layer.scaleX === replacement.scaleX &&
+      layer.scaleY === replacement.scaleY &&
+      layer.rotationDeg === replacement.rotationDeg &&
+      layer.opacity === replacement.opacity &&
+      layer.flipX === replacement.flipX
+    ) {
+      return project;
+    }
+    const layers = [...shot.layers];
+    layers[layerIndex] = replacement;
+    return this.replaceShot(project, { ...shot, layers });
+  }
+
+  toggleFlipX(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const layers = [...shot.layers];
+    layers[layerIndex] = { ...layer, flipX: !layer.flipX };
+    return this.replaceShot(project, { ...shot, layers });
+  }
+
+  reorder(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    action: LayerOrderAction,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const ordered = shot.layers
+      .filter((candidate) => candidate.id !== shot.backgroundLayerId)
+      .sort((left, right) => left.zIndex - right.zIndex);
+    const currentIndex = ordered.findIndex(
+      (candidate) => candidate.id === layer.id,
+    );
+    const targetIndex =
+      action === 'front'
+        ? ordered.length - 1
+        : action === 'back'
+          ? 0
+          : action === 'forward'
+            ? Math.min(ordered.length - 1, currentIndex + 1)
+            : Math.max(0, currentIndex - 1);
+    if (targetIndex === currentIndex) return project;
+    ordered.splice(currentIndex, 1);
+    ordered.splice(targetIndex, 0, layer);
+    return this.replaceShot(project, {
+      ...shot,
+      layers: this.normalizeLayerOrder(shot, ordered),
+    });
+  }
+
+  deleteLayer(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const remaining = shot.layers.filter(
+      (candidate) => candidate.id !== layer.id,
+    );
+    const remainingShot = { ...shot, layers: remaining };
+    return this.replaceShot(project, {
+      ...remainingShot,
+      layers: this.normalizeLayerOrder(
+        remainingShot,
+        remaining
+          .filter(
+            (candidate) => candidate.id !== shot.backgroundLayerId,
+          )
+          .sort((left, right) => left.zIndex - right.zIndex),
+      ),
+      timelineEvents: shot.timelineEvents.filter(
+        (event) => event.layerId !== layer.id,
+      ),
+    });
+  }
+
   setLocked(
     project: Project,
     shotId: string,
@@ -207,6 +386,12 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
+    if (shot.backgroundLayerId === layer.id) {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_PROTECTED',
+        '背景图层不能通过普通图层控件修改。',
+      );
+    }
     if (layer.locked === locked) return project;
     const layers = [...shot.layers];
     layers[layerIndex] = { ...layer, locked };
@@ -233,6 +418,40 @@ export class LayerService {
       );
     }
     return index;
+  }
+
+  private assertEditable(shot: Shot, layer: Layer): void {
+    if (shot.backgroundLayerId === layer.id) {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_PROTECTED',
+        '背景图层不能移动、变换、排序或删除。',
+      );
+    }
+    if (layer.locked) {
+      throw new LayerServiceError(
+        'LAYER_LOCKED',
+        `图层“${layer.name}”已锁定，请先解锁。`,
+      );
+    }
+  }
+
+  private normalizeLayerOrder(
+    shot: Shot,
+    orderedContent: readonly Layer[],
+  ): Layer[] {
+    const background = shot.backgroundLayerId
+      ? shot.layers.find(
+          (layer) => layer.id === shot.backgroundLayerId,
+        )
+      : undefined;
+    const start = background ? 1 : 0;
+    return [
+      ...(background ? [{ ...background, zIndex: 0 }] : []),
+      ...orderedContent.map((layer, index) => ({
+        ...layer,
+        zIndex: start + index,
+      })),
+    ];
   }
 
   private replaceShot(project: Project, shot: Shot): Project {

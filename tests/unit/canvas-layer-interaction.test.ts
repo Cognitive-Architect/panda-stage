@@ -129,9 +129,13 @@ describe('SelectableLayer interaction adapter', () => {
       selected: true,
       onSelect: vi.fn(),
       onCommitPosition: commit,
+      onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
-    const props = element.props as {
+    const group = (
+      element.props as { children: React.JSX.Element[] }
+    ).children[0]!;
+    const props = group.props as {
       draggable: boolean;
       onDragMove: (event: { target: typeof target }) => void;
       onDragEnd: (event: { target: typeof target }) => void;
@@ -150,6 +154,57 @@ describe('SelectableLayer interaction adapter', () => {
     expect(props.draggable).toBe(true);
   });
 
+  it('commits a Transformer gesture once using uniform positive model scale', () => {
+    const commit = vi.fn();
+    const element = SelectableLayer({
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      render: ordinary.render,
+      selected: true,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: commit,
+      onError: vi.fn(),
+    });
+    const group = (
+      element.props as { children: React.JSX.Element[] }
+    ).children[0]!;
+    let scaleX = 1.4;
+    let scaleY = 1.39;
+    const target = {
+      x: () => 810,
+      y: () => 420,
+      scaleX: (value?: number) => {
+        if (value !== undefined) scaleX = value;
+        return scaleX;
+      },
+      scaleY: (value?: number) => {
+        if (value !== undefined) scaleY = value;
+        return scaleY;
+      },
+      rotation: () => 405,
+      position: vi.fn(),
+      scale: vi.fn(),
+    };
+    const props = group.props as {
+      onTransformEnd: (event: { target: typeof target }) => void;
+    };
+
+    props.onTransformEnd({ target });
+
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledWith(ordinary.layer.id, {
+      x: 810,
+      y: 420,
+      scale: 1.4,
+      rotationDeg: 405,
+      opacity: ordinary.layer.opacity,
+      flipX: ordinary.layer.flipX,
+    });
+    expect(scaleX).toBe(1.4);
+    expect(scaleY).toBe(1.4);
+  });
+
   it('makes a locked layer non-draggable and a background non-listening', () => {
     const locked = SelectableLayer({
       image: {} as HTMLImageElement,
@@ -158,10 +213,14 @@ describe('SelectableLayer interaction adapter', () => {
       selected: true,
       onSelect: vi.fn(),
       onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
+    const lockedGroup = (
+      locked.props as { children: React.JSX.Element[] }
+    ).children[0]!;
     expect(
-      (locked.props as { draggable: boolean }).draggable,
+      (lockedGroup.props as { draggable: boolean }).draggable,
     ).toBe(false);
 
     const background = model.layers.find(
@@ -174,6 +233,7 @@ describe('SelectableLayer interaction adapter', () => {
       selected: false,
       onSelect: vi.fn(),
       onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
     expect(

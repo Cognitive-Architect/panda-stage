@@ -191,7 +191,7 @@ describe('project directory lifecycle', () => {
 
     expect(opened.sourceVersion).toBe(0);
     expect(opened.migrated).toBe(true);
-    expect(opened.project.schemaVersion).toBe(4);
+    expect(opened.project.schemaVersion).toBe(5);
     expect(afterHash).toBe(beforeHash);
 
     await service().save(projectRoot, opened.project);

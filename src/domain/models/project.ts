@@ -9,8 +9,13 @@ import { validateProjectReferences } from '../validators/projectReferences';
 import { AssetSchema, type Asset } from './asset';
 import { CharacterSchema, VoiceProfileSchema } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
-import type { Layer, LayerV3 } from './layer';
-import { ShotSchema, ShotV2Schema, ShotV3Schema } from './shot';
+import type { Layer, LayerV3, LayerV4 } from './layer';
+import {
+  ShotSchema,
+  ShotV2Schema,
+  ShotV3Schema,
+  ShotV4Schema,
+} from './shot';
 import { SubtitleStyleSchema } from './subtitle';
 
 const CharacterExpressionV1Schema = z
@@ -103,6 +108,24 @@ export const ProjectV3Schema = z
   })
   .strict();
 
+export const ProjectV4Schema = z
+  .object({
+    schemaVersion: z.literal(4),
+    id: IdSchema,
+    name: NameSchema,
+    width: z.literal(PROJECT_WIDTH),
+    height: z.literal(PROJECT_HEIGHT),
+    fps: z.literal(PROJECT_FPS),
+    assets: z.array(AssetSchema),
+    characters: z.array(CharacterSchema),
+    voiceProfiles: z.array(VoiceProfileSchema),
+    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
+    shots: z.array(ShotV4Schema),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
 const LEGACY_BACKGROUND_MIN_WIDTH_RATIO = 0.75;
 const LEGACY_BACKGROUND_MIN_HEIGHT_RATIO = 0.75;
 
@@ -114,7 +137,7 @@ const LEGACY_BACKGROUND_MIN_HEIGHT_RATIO = 0.75;
  */
 export function inferLegacyBackgroundLayerId(
   assets: readonly Asset[],
-  layers: readonly (Layer | LayerV3)[],
+  layers: readonly (Layer | LayerV3 | LayerV4)[],
 ): string | null {
   const imageAssets = new Map(
     assets
@@ -152,6 +175,7 @@ function addBackgroundIdentity<T extends {
     layers: shot.layers.map((layer) => ({
       ...layer,
       locked: false,
+      flipX: false,
     })),
     backgroundLayerId: inferLegacyBackgroundLayerId(
       project.assets,
@@ -161,6 +185,21 @@ function addBackgroundIdentity<T extends {
 }
 
 function migrateFormalProject(input: unknown): unknown {
+  const version4 = ProjectV4Schema.safeParse(input);
+  if (version4.success) {
+    return {
+      ...version4.data,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      shots: version4.data.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) => ({
+          ...layer,
+          flipX: false,
+        })),
+      })),
+    };
+  }
+
   const version3 = ProjectV3Schema.safeParse(input);
   if (version3.success) {
     return {
@@ -171,6 +210,7 @@ function migrateFormalProject(input: unknown): unknown {
         layers: shot.layers.map((layer) => ({
           ...layer,
           locked: false,
+          flipX: false,
         })),
       })),
     };

@@ -18,6 +18,7 @@ export interface StageLayerVisualInput {
   y: number;
   scaleX: number;
   scaleY: number;
+  flipX: boolean;
   rotationDeg: number;
   opacity: number;
   visible: boolean;
@@ -120,7 +121,7 @@ export function buildStageLayerRenderInstruction(
     height: layer.assetHeight,
     offsetX: layer.assetWidth / 2,
     offsetY: layer.assetHeight / 2,
-    scaleX: layer.scaleX,
+    scaleX: layer.flipX ? -layer.scaleX : layer.scaleX,
     scaleY: layer.scaleY,
     rotationDeg: layer.rotationDeg,
     opacity: layer.opacity,

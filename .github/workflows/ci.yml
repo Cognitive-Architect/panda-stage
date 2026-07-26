@@ -75,3 +75,6 @@ jobs:
 
       - name: Day 22 layer placement gate
         run: pnpm verify:day22
+
+      - name: Day 23 layer transform and order gate
+        run: pnpm verify:day23

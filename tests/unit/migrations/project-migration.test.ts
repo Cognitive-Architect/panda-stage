@@ -112,16 +112,17 @@ describe('legacy background candidate inference', () => {
 });
 
 describe('project migration framework', () => {
-  it('detects explicit v0 through v4 envelopes', () => {
+  it('detects explicit v0 through v5 envelopes', () => {
     expect(detectSchemaVersion(createV0Fixture())).toBe(0);
     expect(detectSchemaVersion(PROBE_PROJECT)).toBe(1);
     expect(detectSchemaVersion({ schemaVersion: 2 })).toBe(2);
     expect(detectSchemaVersion({ schemaVersion: 3 })).toBe(3);
     expect(detectSchemaVersion({ schemaVersion: 4 })).toBe(4);
+    expect(detectSchemaVersion({ schemaVersion: 5 })).toBe(5);
   });
 
   it.each([
-    { schemaVersion: 5 },
+    { schemaVersion: 6 },
     { schemaVersion: 99 },
     {},
   ])('rejects unknown or missing schema versions', (input) => {
@@ -138,7 +139,7 @@ describe('project migration framework', () => {
     expect(input).toEqual(snapshot);
     expect(ProjectSchema.parse(migrated)).toEqual(migrated);
     expect(migrated).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       id: PROBE_PROJECT.id,
       name: PROBE_PROJECT.name,
       createdAt: PROBE_PROJECT.createdAt,
@@ -159,6 +160,7 @@ describe('project migration framework', () => {
       opacity: legacyLayer.opacity,
       visible: legacyLayer.visible,
       locked: false,
+      flipX: false,
       zIndex: legacyLayer.zIndex,
     });
     const legacyEvent = PROBE_PROJECT.shots[0]!.timelineEvents[0]!;
@@ -184,13 +186,13 @@ describe('project migration framework', () => {
     expect(migrated.subtitleStyles).toHaveLength(1);
   });
 
-  it('migrates a formal v1 project to v4 with character defaults and explicit background', () => {
+  it('migrates a formal v1 project to v5 with character defaults and explicit background', () => {
     const snapshot = structuredClone(exampleProject);
     const migrated = migrateProject(exampleProject);
     const character = migrated.characters[0]!;
 
     expect(exampleProject).toEqual(snapshot);
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(character.defaultExpressionId).toBe(
       character.expressions[0]!.id,
     );
@@ -205,7 +207,7 @@ describe('project migration framework', () => {
     );
     expect(
       migrated.shots[0]!.layers.every(
-        (layer) => layer.locked === false,
+        (layer) => layer.locked === false && layer.flipX === false,
       ),
     ).toBe(true);
   });
@@ -219,8 +221,9 @@ describe('project migration framework', () => {
         void backgroundLayerId;
         return {
           ...shot,
-          layers: shot.layers.map(({ locked, ...layer }) => {
+          layers: shot.layers.map(({ locked, flipX, ...layer }) => {
             void locked;
+            void flipX;
             return layer;
           }),
         };
@@ -228,7 +231,7 @@ describe('project migration framework', () => {
     };
     const migrated = migrateProject(version2);
 
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.shots[0]!.backgroundLayerId).toBe(
       migrated.shots[0]!.layers[0]!.id,
     );
@@ -261,8 +264,9 @@ describe('project migration framework', () => {
               y: 540,
               zIndex: 0,
             },
-          ].map(({ locked, ...layer }) => {
+          ].map(({ locked, flipX, ...layer }) => {
             void locked;
+            void flipX;
             return layer;
           }),
           timelineEvents: [],
@@ -274,15 +278,16 @@ describe('project migration framework', () => {
     expect(migrateProject(contentOnly).shots[0]!.backgroundLayerId).toBeNull();
   });
 
-  it('migrates strict v3 layers to v4 with locked=false', () => {
+  it('migrates strict v3 layers to v5 with locked=false and flipX=false', () => {
     const current = ProjectSchema.parse(exampleProject);
     const version3 = {
       ...current,
       schemaVersion: 3 as const,
       shots: current.shots.map((shot) => ({
         ...shot,
-        layers: shot.layers.map(({ locked, ...layer }) => {
+        layers: shot.layers.map(({ locked, flipX, ...layer }) => {
           void locked;
+          void flipX;
           return layer;
         }),
       })),
@@ -290,46 +295,75 @@ describe('project migration framework', () => {
 
     const migrated = migrateProject(version3);
 
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(
       migrated.shots.flatMap((shot) => shot.layers)
-        .every((layer) => layer.locked === false),
+        .every(
+          (layer) => layer.locked === false && layer.flipX === false,
+        ),
     ).toBe(true);
   });
 
-  it('requires locked in v4 and rejects v3 files that smuggle it in', () => {
+  it('requires flipX in v5 and rejects v4 files that smuggle it in', () => {
     const current = ProjectSchema.parse(exampleProject);
-    const missingLocked = {
+    const missingFlip = {
       ...current,
       shots: current.shots.map((shot) => ({
         ...shot,
-        layers: shot.layers.map(({ locked, ...layer }) => {
-          void locked;
+        layers: shot.layers.map(({ flipX, ...layer }) => {
+          void flipX;
           return layer;
         }),
       })),
     };
-    const v3WithLocked = { ...current, schemaVersion: 3 };
+    const v4WithFlip = { ...current, schemaVersion: 4 };
 
-    expect(() => ProjectSchema.parse(missingLocked)).toThrow();
-    expect(() => migrateProject(v3WithLocked)).toThrow();
+    expect(() => ProjectSchema.parse(missingFlip)).toThrow();
+    expect(() => migrateProject(v4WithFlip)).toThrow();
   });
 
-  it('preserves explicit locked values in an existing v4 project', () => {
+  it('migrates v4 to v5, preserving locked and adding flipX=false', () => {
     const current = ProjectSchema.parse(exampleProject);
-    const version4 = ProjectSchema.parse({
+    const version4 = {
+      ...current,
+      schemaVersion: 4 as const,
+      shots: current.shots.map((shot, shotIndex) => ({
+        ...shot,
+        layers: shot.layers.map(
+          ({ flipX, ...layer }, layerIndex) => {
+            void flipX;
+            return {
+              ...layer,
+              locked: shotIndex === 0 && layerIndex === 1,
+            };
+          },
+        ),
+      })),
+    };
+
+    const migrated = migrateProject(version4);
+    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.shots[0]!.layers.map((layer) => layer.locked))
+      .toEqual([false, true]);
+    expect(migrated.shots[0]!.layers.map((layer) => layer.flipX))
+      .toEqual([false, false]);
+  });
+
+  it('preserves explicit flip values in an existing v5 project', () => {
+    const current = ProjectSchema.parse(exampleProject);
+    const version5 = ProjectSchema.parse({
       ...current,
       shots: current.shots.map((shot, shotIndex) => ({
         ...shot,
         layers: shot.layers.map((layer, layerIndex) => ({
           ...layer,
-          locked: shotIndex === 0 && layerIndex === 1,
+          flipX: shotIndex === 0 && layerIndex === 1,
         })),
       })),
     });
 
-    expect(migrateProject(version4)).toEqual(version4);
-    expect(version4.shots[0]!.layers.map((layer) => layer.locked))
+    expect(migrateProject(version5)).toEqual(version5);
+    expect(version5.shots[0]!.layers.map((layer) => layer.flipX))
       .toEqual([false, true]);
   });
 

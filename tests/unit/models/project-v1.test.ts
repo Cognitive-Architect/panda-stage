@@ -24,13 +24,13 @@ function issuePaths(input: unknown): string[] {
     : result.error.issues.map((issue) => issue.path.join('.'));
 }
 
-describe('ProjectSchema v4', () => {
+describe('ProjectSchema v5', () => {
   it('migrates the human-readable v1 example with every MVP entity', () => {
     const project = ProjectSchema.parse(exampleProject);
     const shot = project.shots[0]!;
 
     expect(project).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       width: 1920,
       height: 1080,
       fps: 24,

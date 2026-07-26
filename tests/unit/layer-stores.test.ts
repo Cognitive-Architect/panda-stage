@@ -156,4 +156,44 @@ describe('Day 22 layer stores', () => {
     expect(notifications).toBe(0);
     expect(input.editor.getSnapshot()!.project).toEqual(input.project);
   });
+
+  it('commits transform/order once and clears selection after deletion', () => {
+    const input = harness();
+    const shot = input.project.shots[0]!;
+    const layer = shot.layers[1]!;
+    let notifications = 0;
+    input.editor.subscribe(() => {
+      notifications += 1;
+    });
+    input.selection.select(layer.id);
+
+    input.layers.updateTransform(layer.id, {
+      x: 700,
+      y: 400,
+      scale: 1.5,
+      rotationDeg: 390,
+      opacity: 0.8,
+      flipX: true,
+    });
+    expect(notifications).toBe(1);
+    expect(input.editor.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 1,
+    });
+
+    input.layers.reorder(layer.id, 'front');
+    expect(notifications).toBe(1);
+    input.layers.deleteLayer(layer.id);
+    expect(notifications).toBe(2);
+    expect(input.selection.getSelectedLayerId()).toBeNull();
+    expect(input.editor.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 2,
+    });
+    expect(
+      input.editor.getSnapshot()!.project.shots[0]!.layers
+        .some((candidate) => candidate.id === layer.id),
+    ).toBe(false);
+    input.selection.dispose();
+  });
 });

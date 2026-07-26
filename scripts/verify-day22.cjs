@@ -238,7 +238,7 @@ async function verifyDay22() {
   const sha256 = 'b'.repeat(64);
   const project = {
     ...exampleProject,
-    schemaVersion: 4,
+    schemaVersion: 5,
     assets: [
       ...exampleProject.assets.map((asset) =>
         asset.kind === 'image' ? { ...asset, sha256 } : asset,
@@ -266,6 +266,7 @@ async function verifyDay22() {
       layers: shot.layers.map((layer) => ({
         ...layer,
         locked: false,
+        flipX: false,
       })),
     })),
   };
@@ -288,7 +289,7 @@ async function verifyDay22() {
       projectFilePath: `${request.projectRoot}\\project.json`,
       project: savedProject ?? project,
       migrated: false,
-      sourceVersion: 4,
+      sourceVersion: 5,
     },
   }));
   ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
@@ -301,7 +302,7 @@ async function verifyDay22() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 4,
+        sourceVersion: 5,
       },
     };
   });
@@ -504,16 +505,16 @@ async function verifyDay22() {
 
     await setInput(
       window,
-      '[data-testid="layer-position-panel"] label:nth-of-type(1) input',
+      '[data-testid="layer-transform-panel"] label:nth-of-type(1) input',
       900,
     );
     await setInput(
       window,
-      '[data-testid="layer-position-panel"] label:nth-of-type(2) input',
+      '[data-testid="layer-transform-panel"] label:nth-of-type(2) input',
       500,
     );
     await window.webContents.executeJavaScript(
-      `document.querySelector('[data-testid="layer-position-panel"] form')` +
+      `document.querySelector('[data-testid="layer-transform-panel"] form')` +
         `.requestSubmit()`,
     );
     await window.webContents.executeJavaScript(
@@ -529,10 +530,9 @@ async function verifyDay22() {
     const propertyAfter = await stageSnapshot(window);
 
     await window.webContents.executeJavaScript(`(() => {
-      const inputs = document.querySelectorAll(
-        '[data-testid="layer-position-panel"] input'
-      );
-      inputs[2].click();
+      document.querySelector(
+        '[data-testid="layer-transform-panel"] .layer-lock-control input'
+      ).click();
     })()`);
     await window.webContents.executeJavaScript(
       waitFor(
@@ -809,7 +809,7 @@ async function verifyDay22() {
       !evidence.invalidAsset.layerCountUnchanged ||
       !evidence.invalidAsset.revisionUnchanged ||
       !saveRequest ||
-      evidence.persistence.schemaVersion !== 4 ||
+      evidence.persistence.schemaVersion !== 5 ||
       reopenedLayer?.x !== 900 ||
       reopenedLayer?.y !== 500 ||
       reopenedLayer?.locked !== true ||

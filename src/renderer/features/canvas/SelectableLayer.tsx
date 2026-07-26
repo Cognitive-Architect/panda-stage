@@ -1,3 +1,4 @@
+import { createRef, Fragment } from 'react';
 import Konva from 'konva';
 import {
   Group,
@@ -7,8 +8,10 @@ import {
 import {
   clampLayerPosition,
   type Layer,
+  type LayerTransformInput,
 } from '../../../domain';
 import type { StageLayerRenderInstruction } from '../../../shared/stage/layer-render-contract';
+import { LayerTransformer } from './LayerTransformer';
 
 export interface SelectableLayerProps {
   image: HTMLImageElement;
@@ -19,6 +22,10 @@ export interface SelectableLayerProps {
   onCommitPosition: (
     layerId: string,
     position: { x: number; y: number },
+  ) => void;
+  onCommitTransform: (
+    layerId: string,
+    transform: LayerTransformInput,
   ) => void;
   onError: (message: string) => void;
 }
@@ -39,8 +46,10 @@ export function SelectableLayer({
   selected,
   onSelect,
   onCommitPosition,
+  onCommitTransform,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
+  const nodeRef = createRef<Konva.Group>();
   if (render.isBackground) {
     return (
       <KonvaImage
@@ -64,8 +73,15 @@ export function SelectableLayer({
     node.position(position);
   };
 
+  const resetNode = (node: Konva.Group): void => {
+    node.position({ x: render.x, y: render.y });
+    node.scale({ x: render.scaleX, y: render.scaleY });
+    node.rotation(render.rotationDeg);
+  };
+
   return (
-    <Group
+    <Fragment>
+      <Group
       draggable={!layer.locked}
       id={`canvas-layer-${layer.id}`}
       listening
@@ -94,23 +110,47 @@ export function SelectableLayer({
         stopAndSelect(event, layer.id, onSelect)
       }
       opacity={render.opacity}
+      onTransformEnd={(event) => {
+        const node = event.target as Konva.Group;
+        const scale = Math.abs(node.scaleX());
+        node.scaleX(layer.flipX ? -scale : scale);
+        node.scaleY(scale);
+        try {
+          onCommitTransform(layer.id, {
+            x: node.x(),
+            y: node.y(),
+            scale,
+            rotationDeg: node.rotation(),
+            opacity: layer.opacity,
+            flipX: layer.flipX,
+          });
+        } catch (error) {
+          resetNode(node);
+          onError(
+            error instanceof Error
+              ? error.message
+              : '图层变换提交失败。',
+          );
+        }
+      }}
+      ref={nodeRef}
       rotation={render.rotationDeg}
       scaleX={render.scaleX}
       scaleY={render.scaleY}
       visible={render.visible}
       x={render.x}
       y={render.y}
-    >
-      <KonvaImage
+      >
+        <KonvaImage
         height={render.height}
         image={image}
         listening
         offsetX={render.offsetX}
         offsetY={render.offsetY}
         width={render.width}
-      />
-      {selected ? (
-        <Rect
+        />
+        {selected ? (
+          <Rect
           dash={layer.locked ? [18, 12] : undefined}
           height={render.height}
           listening={false}
@@ -119,8 +159,15 @@ export function SelectableLayer({
           stroke={layer.locked ? '#ffd166' : '#83d39a'}
           strokeWidth={4}
           width={render.width}
-        />
-      ) : null}
-    </Group>
+          />
+        ) : null}
+      </Group>
+      <LayerTransformer
+        locked={layer.locked}
+        nodeRef={nodeRef}
+        scale={layer.scaleX}
+        selected={selected}
+      />
+    </Fragment>
   );
 }

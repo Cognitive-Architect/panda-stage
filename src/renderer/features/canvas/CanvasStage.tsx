@@ -28,7 +28,8 @@ import {
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
-import { LayerPositionPanel } from '../properties/LayerPositionPanel';
+import { LayerOrderControls } from '../properties/LayerOrderControls';
+import { LayerTransformPanel } from '../properties/LayerTransformPanel';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
 import { SelectableLayer } from './SelectableLayer';
@@ -160,6 +161,8 @@ export function CanvasStage(): React.JSX.Element {
         : null,
     [shot, snapshot],
   );
+  const selectedLayer =
+    shot?.layers.find((layer) => layer.id === selectedLayerId) ?? null;
   const imageState = useCanvasImages(snapshot, shot);
   const backgroundLayer =
     stageModel?.layers.find((layer) => layer.render.isBackground) ?? null;
@@ -238,6 +241,9 @@ export function CanvasStage(): React.JSX.Element {
               data-render-contract="shared-stage-layer-v1"
               data-selected-layer-id={selectedLayerId ?? ''}
               data-stage-center="960,540"
+              data-transformer-visible={String(
+                Boolean(selectedLayer && !selectedLayer.locked),
+              )}
               data-testid="project-canvas-stage"
             >
               <Stage
@@ -267,6 +273,12 @@ export function CanvasStage(): React.JSX.Element {
                               layerStore.updatePosition(layerId, position);
                               setInteractionStatus(
                                 `图层位置已提交为 (${position.x.toFixed(1)}, ${position.y.toFixed(1)})。`,
+                              );
+                            }}
+                            onCommitTransform={(layerId, transform) => {
+                              layerStore.updateTransform(layerId, transform);
+                              setInteractionStatus(
+                                `图层变换已提交：缩放 ${transform.scale.toFixed(3)}，旋转 ${transform.rotationDeg.toFixed(1)}°。`,
                               );
                             }}
                             onError={setInteractionStatus}
@@ -352,7 +364,8 @@ export function CanvasStage(): React.JSX.Element {
       >
         {interactionStatus}
       </output>
-      <LayerPositionPanel />
+      <LayerTransformPanel />
+      <LayerOrderControls />
     </section>
   );
 }
