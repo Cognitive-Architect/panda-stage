@@ -90,8 +90,9 @@ const LEGACY_BACKGROUND_MIN_HEIGHT_RATIO = 0.75;
 
 /**
  * V1/V2 had no background identity. Migration conservatively preserves a
- * single centered, large, direct-image layer; ambiguous shots migrate to null.
- * Runtime background resolution never calls this compatibility helper.
+ * single centered, direct-image layer that is large on both axes; ambiguous
+ * shots migrate to null. Runtime background resolution never calls this
+ * compatibility helper.
  */
 export function inferLegacyBackgroundLayerId(
   assets: readonly Asset[],
@@ -112,10 +113,12 @@ export function inferLegacyBackgroundLayerId(
     }
     const asset = imageAssets.get(layer.source.assetId);
     if (!asset) return false;
+    const displayedWidth = asset.width * layer.scaleX;
+    const displayedHeight = asset.height * layer.scaleY;
     return (
-      asset.width * layer.scaleX >=
-        PROJECT_WIDTH * LEGACY_BACKGROUND_MIN_WIDTH_RATIO ||
-      asset.height * layer.scaleY >=
+      displayedWidth >=
+        PROJECT_WIDTH * LEGACY_BACKGROUND_MIN_WIDTH_RATIO &&
+      displayedHeight >=
         PROJECT_HEIGHT * LEGACY_BACKGROUND_MIN_HEIGHT_RATIO
     );
   });
