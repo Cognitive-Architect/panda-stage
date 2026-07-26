@@ -81,6 +81,32 @@ async function focusInput(window, selector) {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
+async function clickElement(window, selector) {
+  const point = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!(element instanceof HTMLElement)) {
+      throw new Error('Element not found: ${selector}');
+    }
+    element.scrollIntoView({ block: 'center' });
+    const rect = element.getBoundingClientRect();
+    return {
+      x: Math.round(rect.left + rect.width / 2),
+      y: Math.round(rect.top + rect.height / 2)
+    };
+  })()`);
+  for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) {
+    window.webContents.sendInputEvent({
+      type,
+      ...(type === 'mouseMove'
+        ? {}
+        : { button: 'left', clickCount: 1 }),
+      x: point.x,
+      y: point.y,
+    });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 150));
+}
+
 async function openProject(window, projectRoot) {
   await setInput(window, '.recovery-open-row input', projectRoot);
   await window.webContents.executeJavaScript(
@@ -104,6 +130,7 @@ async function snapshot(window) {
     );
     return {
       layers: JSON.parse(stage.dataset.layerJson),
+      projectRevision: Number(stage.dataset.projectRevision),
       selectedLayerId: stage.dataset.selectedLayerId,
       undoCount: Number(history.dataset.undoCount),
       redoCount: Number(history.dataset.redoCount),
@@ -112,7 +139,11 @@ async function snapshot(window) {
       redoDisabled: history.querySelectorAll('button')[1].disabled,
       transformStatus: document.querySelector(
         '[data-testid="layer-transform-status"]'
-      ).textContent
+      ).textContent,
+      transformDraft: Array.from(document.querySelectorAll(
+        '[data-testid="layer-transform-panel"] form input[type="text"], ' +
+        '[data-testid="layer-transform-panel"] form input[inputmode="decimal"]'
+      )).map((input) => input.value)
     };
   })()`);
 }
@@ -216,6 +247,14 @@ async function blurToCanvas(window, point) {
   );
   await new Promise((resolve) => setTimeout(resolve, 120));
   await clickLogicalPoint(window, point);
+}
+
+async function focusCanvasStage(window) {
+  await window.webContents.executeJavaScript(
+    `document.querySelector(
+      '[data-testid="project-canvas-stage"]'
+    ).focus()`,
+  );
 }
 
 async function shortcut(window, key, modifiers) {
@@ -417,6 +456,10 @@ async function verifyDay24() {
       '[data-testid="layer-transform-panel"] label:nth-of-type(4) input',
       '[data-testid="layer-transform-panel"] label:nth-of-type(5) input',
     ];
+    const flipButton =
+      '[data-testid="layer-transform-panel"] button[type="button"]';
+    const lockCheckbox =
+      '[data-testid="layer-transform-panel"] .layer-lock-control input';
 
     const historyBeforeBlur = (await snapshot(window)).undoCount;
     await focusInput(window, transformInputs[0]);
@@ -488,20 +531,132 @@ async function verifyDay24() {
     const invalidAfter = await snapshot(window);
 
     await selectLayerAtPoint(window, target.id, { x: 620, y: 750 });
+    await focusInput(window, transformInputs[0]);
+    await setInput(window, transformInputs[0], '700');
+    const pendingFlipBefore = await snapshot(window);
+    await clickElement(window, flipButton);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="history-controls"]')` +
+          `.dataset.undoCount === '${
+            pendingFlipBefore.undoCount + 2
+          }'`,
+        'Pending X and flip did not create two history commands.',
+      ),
+    );
+    const pendingFlipAfter = await snapshot(window);
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const pendingFlipUndoAction = await snapshot(window);
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const pendingFlipUndoDraft = await snapshot(window);
+    await shortcut(window, 'Z', ['control', 'shift']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await shortcut(window, 'Z', ['control', 'shift']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const pendingFlipRedone = await snapshot(window);
+
+    await focusInput(window, transformInputs[2]);
+    await setInput(window, transformInputs[2], '1.2');
+    const pendingLockBefore = await snapshot(window);
+    await clickElement(window, lockCheckbox);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="history-controls"]')` +
+          `.dataset.undoCount === '${
+            pendingLockBefore.undoCount + 2
+          }'`,
+        'Pending scale and lock did not create two history commands.',
+      ),
+    );
+    const pendingLockAfter = await snapshot(window);
+    await focusCanvasStage(window);
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const pendingLockUndoAction = await snapshot(window);
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const pendingLockUndoDraft = await snapshot(window);
+    await shortcut(window, 'Z', ['control', 'shift']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await shortcut(window, 'Z', ['control', 'shift']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const pendingLockRedone = await snapshot(window);
+    await focusCanvasStage(window);
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    await focusInput(window, transformInputs[2]);
+    await setInput(window, transformInputs[2], '0');
+    const invalidInternalBefore = await snapshot(window);
+    await clickElement(window, flipButton);
+    const invalidFlipAfter = await snapshot(window);
+    await focusInput(window, transformInputs[2]);
+    await setInput(window, transformInputs[2], '0.8');
+    await focusInput(window, transformInputs[4]);
+    await setInput(window, transformInputs[4], '2');
+    const invalidLockBefore = await snapshot(window);
+    await clickElement(window, lockCheckbox);
+    const invalidLockAfter = await snapshot(window);
+
+    await focusInput(window, transformInputs[4]);
+    await setInput(window, transformInputs[4], '0.9');
+    await focusInput(window, transformInputs[3]);
+    await setInput(window, transformInputs[3], '16');
+    const submitActionBefore = await snapshot(window);
+    await window.webContents.executeJavaScript(
+      `document.querySelector(
+        '[data-testid="layer-transform-panel"] form'
+      ).requestSubmit()`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const submitActionAfterSubmit = await snapshot(window);
+    await clickElement(window, flipButton);
+    const submitActionAfterFlip = await snapshot(window);
+    await focusCanvasStage(window);
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const submitActionUndone = await snapshot(window);
+    await window.webContents.executeJavaScript(
+      `document.querySelector(
+        '[data-testid="layer-transform-panel"] form'
+      ).requestSubmit()`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const noChangeSubmit = await snapshot(window);
+    await clickElement(window, flipButton);
+    const noChangeFlipAfter = await snapshot(window);
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const noChangeFlipUndone = await snapshot(window);
+    await clickElement(window, lockCheckbox);
+    const noChangeLockAfter = await snapshot(window);
+    await focusCanvasStage(window);
+    await shortcut(window, 'Z', ['control']);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const noChangeLockUndone = await snapshot(window);
+
+    await selectLayerAtPoint(window, target.id, { x: 700, y: 750 });
     const historyBeforeOrder = (await snapshot(window)).undoCount;
     await window.webContents.executeJavaScript(
       `document.querySelectorAll(
         '[data-testid="layer-order-controls"] button'
       )[2].click()`,
     );
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector('[data-testid="history-controls"]')` +
-          `.dataset.undoCount === '4'`,
-        'Real front reorder did not create one history entry.',
-      ),
-    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
     const orderChanged = await snapshot(window);
+    if (orderChanged.undoCount !== historyBeforeOrder + 1) {
+      throw new Error(
+        `Real front reorder did not create one history entry: ${JSON.stringify(
+          { historyBeforeOrder, orderChanged },
+        )}`,
+      );
+    }
     await window.webContents.executeJavaScript(`(async () => {
       document.querySelector(
         '[data-testid="layer-order-controls"]'
@@ -530,7 +685,9 @@ async function verifyDay24() {
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="history-controls"]')` +
-          `.dataset.undoCount === '5'`,
+          `.dataset.undoCount === '${
+            orderRedone.undoCount + 1
+          }'`,
         'Layer lock did not commit.',
       ),
     );
@@ -551,7 +708,9 @@ async function verifyDay24() {
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="history-controls"]')` +
-          `.dataset.undoCount === '6'`,
+          `.dataset.undoCount === '${
+            lockedAfterSubmit.undoCount + 1
+          }'`,
         'Layer unlock did not commit.',
       ),
     );
@@ -684,6 +843,78 @@ async function verifyDay24() {
           status: lockedAfterSubmit.transformStatus,
           layer: layerAt(lockedAfterSubmit),
         },
+        internalActions: {
+          flip: {
+            before: {
+              history: pendingFlipBefore.undoCount,
+              revision: pendingFlipBefore.projectRevision,
+              layer: layerAt(pendingFlipBefore),
+            },
+            after: {
+              history: pendingFlipAfter.undoCount,
+              revision: pendingFlipAfter.projectRevision,
+              layer: layerAt(pendingFlipAfter),
+            },
+            undoAction: layerAt(pendingFlipUndoAction),
+            undoDraft: layerAt(pendingFlipUndoDraft),
+            redone: layerAt(pendingFlipRedone),
+          },
+          lock: {
+            before: {
+              history: pendingLockBefore.undoCount,
+              revision: pendingLockBefore.projectRevision,
+              layer: layerAt(pendingLockBefore),
+            },
+            after: {
+              history: pendingLockAfter.undoCount,
+              revision: pendingLockAfter.projectRevision,
+              layer: layerAt(pendingLockAfter),
+            },
+            undoAction: layerAt(pendingLockUndoAction),
+            undoDraft: layerAt(pendingLockUndoDraft),
+            redone: layerAt(pendingLockRedone),
+          },
+          invalid: {
+            beforeFlip: {
+              history: invalidInternalBefore.undoCount,
+              revision: invalidInternalBefore.projectRevision,
+              layer: layerAt(invalidInternalBefore),
+            },
+            afterFlip: {
+              history: invalidFlipAfter.undoCount,
+              revision: invalidFlipAfter.projectRevision,
+              layer: layerAt(invalidFlipAfter),
+              draft: invalidFlipAfter.transformDraft,
+              status: invalidFlipAfter.transformStatus,
+            },
+            beforeLock: {
+              history: invalidLockBefore.undoCount,
+              revision: invalidLockBefore.projectRevision,
+              layer: layerAt(invalidLockBefore),
+            },
+            afterLock: {
+              history: invalidLockAfter.undoCount,
+              revision: invalidLockAfter.projectRevision,
+              layer: layerAt(invalidLockAfter),
+              draft: invalidLockAfter.transformDraft,
+              status: invalidLockAfter.transformStatus,
+            },
+          },
+          submitActionDedupe: {
+            beforeHistory: submitActionBefore.undoCount,
+            afterSubmitHistory: submitActionAfterSubmit.undoCount,
+            afterActionHistory: submitActionAfterFlip.undoCount,
+            afterAction: layerAt(submitActionAfterFlip),
+            undone: layerAt(submitActionUndone),
+          },
+          noChange: {
+            afterSubmitHistory: noChangeSubmit.undoCount,
+            afterFlipHistory: noChangeFlipAfter.undoCount,
+            flipUndoneHistory: noChangeFlipUndone.undoCount,
+            afterLockHistory: noChangeLockAfter.undoCount,
+            lockUndoneHistory: noChangeLockUndone.undoCount,
+          },
+        },
       },
       zOrder: {
         historyBefore: historyBeforeOrder,
@@ -708,6 +939,15 @@ async function verifyDay24() {
           !JSON.stringify(saveRequest.project).includes('history') &&
           !JSON.stringify(saveRequest.project).includes('undoStack') &&
           !JSON.stringify(saveRequest.project).includes('redoStack'),
+        uiStateExcluded:
+          saveRequest &&
+          !JSON.stringify(saveRequest.project).includes(
+            'selectedLayerId',
+          ) &&
+          !JSON.stringify(saveRequest.project).includes(
+            'transformDraft',
+          ) &&
+          !JSON.stringify(saveRequest.project).includes('draftVersion'),
       },
       projectSwitch: {
         undoCount: switched.undoCount,
@@ -744,8 +984,94 @@ async function verifyDay24() {
       !evidence.propertyForm.invalid.status.includes('缩放必须在') ||
       evidence.propertyForm.locked.historyAfter !==
         evidence.propertyForm.locked.historyBefore ||
-      evidence.propertyForm.locked.layer.x !== 620 ||
+      evidence.propertyForm.locked.layer.x !== 700 ||
       !evidence.propertyForm.locked.status.includes('已锁定') ||
+      evidence.propertyForm.internalActions.flip.after.history !==
+        evidence.propertyForm.internalActions.flip.before.history + 2 ||
+      evidence.propertyForm.internalActions.flip.after.revision !==
+        evidence.propertyForm.internalActions.flip.before.revision + 2 ||
+      evidence.propertyForm.internalActions.flip.after.layer.x !== 700 ||
+      !evidence.propertyForm.internalActions.flip.after.layer.flipX ||
+      evidence.propertyForm.internalActions.flip.undoAction.x !== 700 ||
+      evidence.propertyForm.internalActions.flip.undoAction.flipX ||
+      evidence.propertyForm.internalActions.flip.undoDraft.x !== 620 ||
+      evidence.propertyForm.internalActions.flip.undoDraft.flipX ||
+      evidence.propertyForm.internalActions.flip.redone.x !== 700 ||
+      !evidence.propertyForm.internalActions.flip.redone.flipX ||
+      evidence.propertyForm.internalActions.lock.after.history !==
+        evidence.propertyForm.internalActions.lock.before.history + 2 ||
+      evidence.propertyForm.internalActions.lock.after.revision !==
+        evidence.propertyForm.internalActions.lock.before.revision + 2 ||
+      evidence.propertyForm.internalActions.lock.after.layer.scaleX !==
+        1.2 ||
+      !evidence.propertyForm.internalActions.lock.after.layer.locked ||
+      evidence.propertyForm.internalActions.lock.undoAction.scaleX !==
+        1.2 ||
+      evidence.propertyForm.internalActions.lock.undoAction.locked ||
+      evidence.propertyForm.internalActions.lock.undoDraft.scaleX !==
+        0.8 ||
+      evidence.propertyForm.internalActions.lock.undoDraft.locked ||
+      evidence.propertyForm.internalActions.lock.redone.scaleX !== 1.2 ||
+      !evidence.propertyForm.internalActions.lock.redone.locked ||
+      evidence.propertyForm.internalActions.invalid.afterFlip.history !==
+        evidence.propertyForm.internalActions.invalid.beforeFlip.history ||
+      evidence.propertyForm.internalActions.invalid.afterFlip.revision !==
+        evidence.propertyForm.internalActions.invalid.beforeFlip.revision ||
+      evidence.propertyForm.internalActions.invalid.afterLock.history !==
+        evidence.propertyForm.internalActions.invalid.beforeLock.history ||
+      evidence.propertyForm.internalActions.invalid.afterLock.revision !==
+        evidence.propertyForm.internalActions.invalid.beforeLock.revision ||
+      JSON.stringify(
+        evidence.propertyForm.internalActions.invalid.afterFlip.layer,
+      ) !==
+        JSON.stringify(
+          evidence.propertyForm.internalActions.invalid.beforeFlip.layer,
+        ) ||
+      evidence.propertyForm.internalActions.invalid.afterFlip.draft[2] !==
+        '0' ||
+      !evidence.propertyForm.internalActions.invalid.afterFlip.status.includes(
+        '缩放必须在',
+      ) ||
+      JSON.stringify(
+        evidence.propertyForm.internalActions.invalid.afterLock.layer,
+      ) !==
+        JSON.stringify(
+          evidence.propertyForm.internalActions.invalid.beforeLock.layer,
+        ) ||
+      evidence.propertyForm.internalActions.invalid.afterLock.draft[4] !==
+        '2' ||
+      !evidence.propertyForm.internalActions.invalid.afterLock.status.includes(
+        '不透明度必须在',
+      ) ||
+      evidence.propertyForm.internalActions.submitActionDedupe
+        .afterSubmitHistory !==
+        evidence.propertyForm.internalActions.submitActionDedupe
+          .beforeHistory +
+          1 ||
+      evidence.propertyForm.internalActions.submitActionDedupe
+        .afterActionHistory !==
+        evidence.propertyForm.internalActions.submitActionDedupe
+          .afterSubmitHistory +
+          1 ||
+      evidence.propertyForm.internalActions.submitActionDedupe.afterAction
+        .rotationDeg !== 16 ||
+      evidence.propertyForm.internalActions.submitActionDedupe.afterAction
+        .flipX ||
+      evidence.propertyForm.internalActions.submitActionDedupe.undone
+        .rotationDeg !== 15 ||
+      !evidence.propertyForm.internalActions.submitActionDedupe.undone
+        .flipX ||
+      evidence.propertyForm.internalActions.noChange.afterFlipHistory !==
+        evidence.propertyForm.internalActions.noChange.afterSubmitHistory +
+          1 ||
+      evidence.propertyForm.internalActions.noChange.flipUndoneHistory !==
+        evidence.propertyForm.internalActions.noChange.afterSubmitHistory ||
+      evidence.propertyForm.internalActions.noChange.afterLockHistory !==
+        evidence.propertyForm.internalActions.noChange.flipUndoneHistory +
+          1 ||
+      evidence.propertyForm.internalActions.noChange.lockUndoneHistory !==
+        evidence.propertyForm.internalActions.noChange
+          .flipUndoneHistory ||
       evidence.zOrder.historyAfter !==
         evidence.zOrder.historyBefore + 1 ||
       evidence.zOrder.changed.at(-1)?.id !== target.id ||
@@ -756,6 +1082,7 @@ async function verifyDay24() {
       evidence.zOrder.redone.at(-1)?.zIndex !== 2 ||
       !evidence.persistence.saved ||
       !evidence.persistence.historyExcluded ||
+      !evidence.persistence.uiStateExcluded ||
       evidence.projectSwitch.undoCount !== 0 ||
       evidence.projectSwitch.redoCount !== 0
     ) {

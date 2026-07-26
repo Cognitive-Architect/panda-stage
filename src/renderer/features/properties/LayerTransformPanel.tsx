@@ -23,6 +23,18 @@ export interface LayerTransformDraft {
   opacity: string;
 }
 
+export type CommitTransformDraftResult =
+  | 'committed'
+  | 'noop'
+  | 'invalid'
+  | 'locked';
+
+export function canRunTransformAction(
+  result: CommitTransformDraftResult,
+): boolean {
+  return result === 'committed' || result === 'noop';
+}
+
 export function parseLayerTransformDraft(
   draft: LayerTransformDraft,
   flipX: boolean,
@@ -135,11 +147,13 @@ export function LayerTransformPanel(): React.JSX.Element {
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
-  const commitDraft = (reason: 'blur' | 'submit'): void => {
-    if (!layer) return;
+  const commitPendingDraft = (
+    reason: 'action' | 'blur' | 'submit',
+  ): CommitTransformDraftResult => {
+    if (!layer) return 'invalid';
     if (layer.locked) {
       setStatus('图层已锁定；属性草稿未提交。');
-      return;
+      return 'locked';
     }
     const commitIdentity = {
       layerId: layer.id,
@@ -150,7 +164,7 @@ export function LayerTransformPanel(): React.JSX.Element {
       lastCommittedRef.current.draftVersion ===
         commitIdentity.draftVersion
     ) {
-      return;
+      return 'noop';
     }
     try {
       const transform = parseLayerTransformDraft(draft, layer.flipX);
@@ -161,28 +175,34 @@ export function LayerTransformPanel(): React.JSX.Element {
         editorProjectStore.getSnapshot()?.revision ?? null;
       lastCommittedRef.current = commitIdentity;
       preserveCommitErrorRef.current = false;
+      const result =
+        revisionAfter === revisionBefore ? 'noop' : 'committed';
       setStatus(
-        revisionAfter === revisionBefore
+        result === 'noop'
           ? '属性值未变化，未新增历史。'
           : reason === 'blur'
             ? '图层变换已在离开属性表单时写入项目。'
-            : '图层变换已通过表单提交写入项目。',
+            : reason === 'submit'
+              ? '图层变换已通过表单提交写入项目。'
+              : '图层变换已在执行图层动作前写入项目。',
       );
+      return result;
     } catch (error) {
       preserveCommitErrorRef.current = true;
       setStatus(
         error instanceof Error ? error.message : '图层变换失败。',
       );
+      return 'invalid';
     }
   };
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
-    commitDraft('submit');
+    commitPendingDraft('submit');
   };
 
-  const commitDraftRef = useRef(commitDraft);
-  commitDraftRef.current = commitDraft;
+  const commitDraftRef = useRef(commitPendingDraft);
+  commitDraftRef.current = commitPendingDraft;
 
   useEffect(() => {
     const onFocusOut = (event: FocusEvent): void => {
@@ -260,6 +280,13 @@ export function LayerTransformPanel(): React.JSX.Element {
           <button
             disabled={layer.locked}
             onClick={() => {
+              if (
+                !canRunTransformAction(
+                  commitPendingDraft('action'),
+                )
+              ) {
+                return;
+              }
               try {
                 layerStore.toggleFlipX(layer.id);
                 setStatus('水平翻转已切换，中心坐标保持不变。');
@@ -279,11 +306,17 @@ export function LayerTransformPanel(): React.JSX.Element {
             <input
               checked={layer.locked}
               onChange={(event) => {
+                const shouldLock = event.target.checked;
+                if (
+                  shouldLock &&
+                  !canRunTransformAction(
+                    commitPendingDraft('action'),
+                  )
+                ) {
+                  return;
+                }
                 try {
-                  layerStore.setLocked(
-                    layer.id,
-                    event.target.checked,
-                  );
+                  layerStore.setLocked(layer.id, shouldLock);
                 } catch (error) {
                   setStatus(
                     error instanceof Error

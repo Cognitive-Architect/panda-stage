@@ -12,6 +12,7 @@ import {
 } from '../../src/renderer/features/canvas/LayerTransformer';
 import { shouldDeleteSelectedLayer } from '../../src/renderer/features/properties/LayerOrderControls';
 import {
+  canRunTransformAction,
   parseLayerTransformDraft,
   shouldCommitTransformBlur,
 } from '../../src/renderer/features/properties/LayerTransformPanel';
@@ -59,6 +60,13 @@ describe('Day 23 layer control adapters', () => {
     expect(shouldCommitTransformBlur(contains, inputB)).toBe(false);
     expect(shouldCommitTransformBlur(contains, canvas)).toBe(true);
     expect(shouldCommitTransformBlur(contains, null)).toBe(true);
+  });
+
+  it('runs internal layer actions only after a valid pending-draft result', () => {
+    expect(canRunTransformAction('committed')).toBe(true);
+    expect(canRunTransformAction('noop')).toBe(true);
+    expect(canRunTransformAction('invalid')).toBe(false);
+    expect(canRunTransformAction('locked')).toBe(false);
   });
 
   it('limits Transformer boxes using the model scale bounds', () => {

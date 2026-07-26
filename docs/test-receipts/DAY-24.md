@@ -11,6 +11,8 @@
   Electron evidence
 - Issue #49 closeout: transform drafts commit when focus leaves the complete
   form, and real two-content-layer z-order history is proven.
+- Issue #50 closeout: pending transform drafts are resolved before internal
+  flip/lock actions, with invalid drafts blocking those project writes.
 - Planning note: the detailed `DAY-24-AGENT-TASK.md` is the authoritative
   acceptance contract. Its history work order is more specific than the stale
   Daily Plan Day 24 heading, whose layer controls were delivered on Day 23.
@@ -62,8 +64,8 @@
 
 ### DECISION-005 — transform draft commit boundary
 
-- Enter and form submit call the same `commitDraft('submit')` path used by
-  focus departure through `commitDraft('blur')`.
+- Enter and form submit call the same `commitPendingDraft('submit')` path used
+  by focus departure through `commitPendingDraft('blur')`.
 - Focus moving between inputs in the same form does not commit.
 - A document capture guard commits before an outside mouse action can clear
   the selected layer; native `focusout` covers keyboard focus departure.
@@ -72,6 +74,18 @@
   validation, normalization, and locked-layer boundary.
 - Invalid blur retains its explicit error even if the outside click clears
   selection.
+
+### DECISION-006 — internal project actions resolve pending drafts
+
+- `commitPendingDraft()` returns `committed`, `noop`, `invalid`, or `locked`.
+- Flip and lock proceed only after `committed` or `noop`; invalid drafts retain
+  their values and explicit error while the action is blocked.
+- A legal changed draft and the following flip/lock remain two independent
+  `LayerStore` commands, so undo first reverses the action and then the draft.
+- Unlock bypasses pending-draft commit because locked fields cannot create a
+  legal pending edit; formal `LayerService` lock protection remains intact.
+- The existing `(layerId, draftVersion)` identity also prevents submit followed
+  by an internal action from committing the same draft twice.
 
 ## Implemented behavior
 
@@ -94,8 +108,8 @@
 |---|---|---|
 | `pnpm typecheck` | PASS | renderer + Electron TypeScript |
 | `pnpm lint` | PASS | no ESLint errors |
-| `pnpm test:unit` | PASS | 66 files / 387 tests |
-| `pnpm test:integration` | PASS | 16 files / 81 tests |
+| `pnpm test:unit` | PASS | 66 files / 388 tests |
+| `pnpm test:integration` | PASS | 16 files / 83 tests |
 | `pnpm build` | PASS | renderer + Electron production build |
 | `pnpm verify:day19` | PASS | character definitions regression |
 | `pnpm verify:day20` | PASS | shot management regression |
@@ -126,13 +140,21 @@ Key tests:
    canvas; assert `(600, 740)` and exactly one blur command.
 6. Submit five changed fields and then click the canvas; assert submit + blur
    still produces one command.
-7. Verify unchanged blur, invalid scale blur, and locked submit produce no
-   history; the invalid/locked status remains explicit.
-8. With background + A + B, move A from `zIndex=1` to front (`2`), undo to
+7. Edit X then click flip; assert X and flip are committed as two commands,
+   undo action then draft, and redo both in the same order.
+8. Edit scale then click lock; assert scale and lock are two commands, undo
+   first unlocks and the second undo restores scale, then redo both.
+9. Assert scale `0` blocks flip and opacity `2` blocks lock with identical
+   Project, revision, and history; drafts and errors remain visible.
+10. Submit a changed rotation then immediately flip; assert one submit command
+    plus one flip command, with no duplicate draft.
+11. Verify unchanged drafts add no transform command before flip/lock, while
+    locked submit remains formally rejected.
+12. With background + A + B, move A from `zIndex=1` to front (`2`), undo to
    `A=1/B=2`, then redo to `A=2/B=1`.
-9. Delete the selected layer, undo with the button, redo with the button.
-10. Save without history fields, then open a second project and assert both
-    stacks are empty.
+13. Delete the selected layer, undo with the button, redo with the button.
+14. Save without history/UI draft fields, then open a second project and
+    assert both stacks are empty.
 
 Evidence:
 
@@ -156,7 +178,7 @@ Evidence:
 | NEG-001 | PASS | empty-stack unit test |
 | NEG-002 | PASS | locked LayerService rejection leaves count unchanged |
 | NEG-003 | PASS | distinct gesture IDs create distinct entries |
-| NEG-004 | PASS | internal focus, no-op, invalid, locked, submit+blur matrix |
+| NEG-004 | PASS | focus, no-op, invalid, locked, and dedupe matrix |
 | UX-001 | PASS | button disabled-state assertions and screenshot |
 | UX-002 | PASS | button and keyboard replay the same project path |
 | E2E-001 | PASS | drag → blur → z-order → delete → replay → save |
@@ -205,14 +227,30 @@ Evidence:
 | Redo branch clearing | PASS | undo → new B back → redo count `0` |
 | Background contract | PASS | background remains first with `zIndex=0` |
 
+## Issue #50 closure matrix
+
+| Requirement | Result | Evidence |
+|---|---|---|
+| Pending X before flip | PASS | X `620→700`, flip false→true, history/revision `+2` |
+| Flip undo/redo order | PASS | undo flip keeps X=700; second undo restores X=620; redo restores both |
+| Pending scale before lock | PASS | scale `0.8→1.2`, unlocked→locked, history/revision `+2` |
+| Lock undo/redo order | PASS | undo unlocks then restores scale; redo restores scale=1.2 + locked |
+| Invalid flip block | PASS | scale `0`, Project/history/revision unchanged, draft/error retained |
+| Invalid lock block | PASS | opacity `2`, Project/history/revision unchanged, draft/error retained |
+| Unchanged draft | PASS | flip and lock each add only their own one command |
+| Submit/action dedupe | PASS | changed submit adds one command; immediate flip adds only its own one |
+| Locked write protection | PASS | post-lock property submit rejected with no new history |
+| Blur/internal focus regressions | PASS | canvas blur commits once; input A→B remains uncommitted |
+| Z-order/history persistence | PASS | real A/B replay still exact; save payload excludes history |
+
 ## Debt
 
 - `DEBT-PERF-B24-001`: project equality currently uses deterministic JSON
   serialization at the central write boundary. This is acceptable for the
   current MVP project size; profile and replace with a cheaper revision/hash
   comparison if projects become materially larger.
-- `DEBT-TEST-B24-001`: none; real drag, keyboard, property commit, deletion,
-  save-payload, and project-switch paths are automated.
+- `DEBT-TEST-B24-001`: none; real drag, keyboard, blur/internal-action
+  commits, deletion, save-payload, and project-switch paths are automated.
 
 ## Rollback
 

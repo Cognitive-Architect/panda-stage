@@ -264,6 +264,7 @@ export function CanvasStage(): React.JSX.Element {
               data-center-guides="vertical,horizontal"
               data-interaction-status={interactionStatus}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
+              data-project-revision={snapshot?.revision ?? -1}
               data-rendered-asset-ids={JSON.stringify([
                 ...imageState.images.keys(),
               ])}

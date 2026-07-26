@@ -106,8 +106,8 @@
       }
     },
     "locked": {
-      "historyBefore": 5,
-      "historyAfter": 5,
+      "historyBefore": 7,
+      "historyAfter": 7,
       "status": "图层已锁定；属性草稿未提交。",
       "layer": {
         "id": "60000000-0000-4000-8000-000000000002",
@@ -118,7 +118,7 @@
           "expressionId": "20000000-0000-4000-8000-000000000002"
         },
         "anchor": "center",
-        "x": 620,
+        "x": 700,
         "y": 750,
         "scaleX": 0.8,
         "scaleY": 0.8,
@@ -127,13 +127,401 @@
         "visible": true,
         "zIndex": 2,
         "locked": true,
-        "flipX": false
+        "flipX": true
+      }
+    },
+    "internalActions": {
+      "flip": {
+        "before": {
+          "history": 3,
+          "revision": 5,
+          "layer": {
+            "id": "60000000-0000-4000-8000-000000000002",
+            "name": "Panda",
+            "source": {
+              "kind": "character",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "expressionId": "20000000-0000-4000-8000-000000000002"
+            },
+            "anchor": "center",
+            "x": 620,
+            "y": 750,
+            "scaleX": 0.8,
+            "scaleY": 0.8,
+            "rotationDeg": 15,
+            "opacity": 0.9,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": false
+          }
+        },
+        "after": {
+          "history": 5,
+          "revision": 7,
+          "layer": {
+            "id": "60000000-0000-4000-8000-000000000002",
+            "name": "Panda",
+            "source": {
+              "kind": "character",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "expressionId": "20000000-0000-4000-8000-000000000002"
+            },
+            "anchor": "center",
+            "x": 700,
+            "y": 750,
+            "scaleX": 0.8,
+            "scaleY": 0.8,
+            "rotationDeg": 15,
+            "opacity": 0.9,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": true
+          }
+        },
+        "undoAction": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 700,
+          "y": 750,
+          "scaleX": 0.8,
+          "scaleY": 0.8,
+          "rotationDeg": 15,
+          "opacity": 0.9,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        "undoDraft": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 620,
+          "y": 750,
+          "scaleX": 0.8,
+          "scaleY": 0.8,
+          "rotationDeg": 15,
+          "opacity": 0.9,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        "redone": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 700,
+          "y": 750,
+          "scaleX": 0.8,
+          "scaleY": 0.8,
+          "rotationDeg": 15,
+          "opacity": 0.9,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": true
+        }
+      },
+      "lock": {
+        "before": {
+          "history": 5,
+          "revision": 11,
+          "layer": {
+            "id": "60000000-0000-4000-8000-000000000002",
+            "name": "Panda",
+            "source": {
+              "kind": "character",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "expressionId": "20000000-0000-4000-8000-000000000002"
+            },
+            "anchor": "center",
+            "x": 700,
+            "y": 750,
+            "scaleX": 0.8,
+            "scaleY": 0.8,
+            "rotationDeg": 15,
+            "opacity": 0.9,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": true
+          }
+        },
+        "after": {
+          "history": 7,
+          "revision": 13,
+          "layer": {
+            "id": "60000000-0000-4000-8000-000000000002",
+            "name": "Panda",
+            "source": {
+              "kind": "character",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "expressionId": "20000000-0000-4000-8000-000000000002"
+            },
+            "anchor": "center",
+            "x": 700,
+            "y": 750,
+            "scaleX": 1.2,
+            "scaleY": 1.2,
+            "rotationDeg": 15,
+            "opacity": 0.9,
+            "visible": true,
+            "zIndex": 1,
+            "locked": true,
+            "flipX": true
+          }
+        },
+        "undoAction": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 700,
+          "y": 750,
+          "scaleX": 1.2,
+          "scaleY": 1.2,
+          "rotationDeg": 15,
+          "opacity": 0.9,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": true
+        },
+        "undoDraft": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 700,
+          "y": 750,
+          "scaleX": 0.8,
+          "scaleY": 0.8,
+          "rotationDeg": 15,
+          "opacity": 0.9,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": true
+        },
+        "redone": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 700,
+          "y": 750,
+          "scaleX": 1.2,
+          "scaleY": 1.2,
+          "rotationDeg": 15,
+          "opacity": 0.9,
+          "visible": true,
+          "zIndex": 1,
+          "locked": true,
+          "flipX": true
+        }
+      },
+      "invalid": {
+        "beforeFlip": {
+          "history": 5,
+          "revision": 19,
+          "layer": {
+            "id": "60000000-0000-4000-8000-000000000002",
+            "name": "Panda",
+            "source": {
+              "kind": "character",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "expressionId": "20000000-0000-4000-8000-000000000002"
+            },
+            "anchor": "center",
+            "x": 700,
+            "y": 750,
+            "scaleX": 0.8,
+            "scaleY": 0.8,
+            "rotationDeg": 15,
+            "opacity": 0.9,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": true
+          }
+        },
+        "afterFlip": {
+          "history": 5,
+          "revision": 19,
+          "layer": {
+            "id": "60000000-0000-4000-8000-000000000002",
+            "name": "Panda",
+            "source": {
+              "kind": "character",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "expressionId": "20000000-0000-4000-8000-000000000002"
+            },
+            "anchor": "center",
+            "x": 700,
+            "y": 750,
+            "scaleX": 0.8,
+            "scaleY": 0.8,
+            "rotationDeg": 15,
+            "opacity": 0.9,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": true
+          },
+          "draft": [
+            "700",
+            "750",
+            "0",
+            "15",
+            "0.9"
+          ],
+          "status": "缩放必须在 0.05–20 之间。"
+        },
+        "beforeLock": {
+          "history": 5,
+          "revision": 19,
+          "layer": {
+            "id": "60000000-0000-4000-8000-000000000002",
+            "name": "Panda",
+            "source": {
+              "kind": "character",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "expressionId": "20000000-0000-4000-8000-000000000002"
+            },
+            "anchor": "center",
+            "x": 700,
+            "y": 750,
+            "scaleX": 0.8,
+            "scaleY": 0.8,
+            "rotationDeg": 15,
+            "opacity": 0.9,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": true
+          }
+        },
+        "afterLock": {
+          "history": 5,
+          "revision": 19,
+          "layer": {
+            "id": "60000000-0000-4000-8000-000000000002",
+            "name": "Panda",
+            "source": {
+              "kind": "character",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "expressionId": "20000000-0000-4000-8000-000000000002"
+            },
+            "anchor": "center",
+            "x": 700,
+            "y": 750,
+            "scaleX": 0.8,
+            "scaleY": 0.8,
+            "rotationDeg": 15,
+            "opacity": 0.9,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": true
+          },
+          "draft": [
+            "700",
+            "750",
+            "0.8",
+            "15",
+            "2"
+          ],
+          "status": "不透明度必须在 0–1 之间。"
+        }
+      },
+      "submitActionDedupe": {
+        "beforeHistory": 5,
+        "afterSubmitHistory": 6,
+        "afterActionHistory": 7,
+        "afterAction": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 700,
+          "y": 750,
+          "scaleX": 0.8,
+          "scaleY": 0.8,
+          "rotationDeg": 16,
+          "opacity": 0.9,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        "undone": {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 700,
+          "y": 750,
+          "scaleX": 0.8,
+          "scaleY": 0.8,
+          "rotationDeg": 15,
+          "opacity": 0.9,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": true
+        }
+      },
+      "noChange": {
+        "afterSubmitHistory": 5,
+        "afterFlipHistory": 6,
+        "flipUndoneHistory": 5,
+        "afterLockHistory": 6,
+        "lockUndoneHistory": 5
       }
     }
   },
   "zOrder": {
-    "historyBefore": 3,
-    "historyAfter": 4,
+    "historyBefore": 5,
+    "historyAfter": 6,
     "changed": [
       {
         "id": "60000000-0000-4000-8000-000000000001",
@@ -179,7 +567,8 @@
   },
   "persistence": {
     "saved": true,
-    "historyExcluded": true
+    "historyExcluded": true,
+    "uiStateExcluded": true
   },
   "projectSwitch": {
     "undoCount": 0,

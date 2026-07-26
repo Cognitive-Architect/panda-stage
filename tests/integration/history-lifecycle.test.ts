@@ -193,6 +193,111 @@ describe('Day 24 history lifecycle', () => {
     expect(order()[0]!.id).toBe(background.id);
   });
 
+  it('replays pending transform commands before flip and lock actions', () => {
+    const flipInput = harness();
+    const flipLayer = flipInput.project.shots[0]!.layers[1]!;
+    const currentFlipLayer = () =>
+      flipInput.editor
+        .getSnapshot()!
+        .project.shots[0]!.layers.find(
+          (candidate) => candidate.id === flipLayer.id,
+        )!;
+
+    flipInput.layers.updateTransform(flipLayer.id, {
+      x: 700,
+      y: flipLayer.y,
+      scale: flipLayer.scaleX,
+      rotationDeg: flipLayer.rotationDeg,
+      opacity: flipLayer.opacity,
+      flipX: flipLayer.flipX,
+    });
+    flipInput.layers.toggleFlipX(flipLayer.id);
+    expect(currentFlipLayer()).toMatchObject({ x: 700, flipX: true });
+    expect(flipInput.editor.history.getSnapshot().undoCount).toBe(2);
+
+    expect(flipInput.editor.undo()).toBe(true);
+    expect(currentFlipLayer()).toMatchObject({
+      x: 700,
+      flipX: false,
+    });
+    expect(flipInput.editor.undo()).toBe(true);
+    expect(currentFlipLayer()).toMatchObject({
+      x: flipLayer.x,
+      flipX: false,
+    });
+    expect(flipInput.editor.redo()).toBe(true);
+    expect(flipInput.editor.redo()).toBe(true);
+    expect(currentFlipLayer()).toMatchObject({ x: 700, flipX: true });
+
+    const lockInput = harness();
+    const lockLayer = lockInput.project.shots[0]!.layers[1]!;
+    const currentLockLayer = () =>
+      lockInput.editor
+        .getSnapshot()!
+        .project.shots[0]!.layers.find(
+          (candidate) => candidate.id === lockLayer.id,
+        )!;
+
+    lockInput.layers.updateTransform(lockLayer.id, {
+      x: lockLayer.x,
+      y: lockLayer.y,
+      scale: 1.2,
+      rotationDeg: lockLayer.rotationDeg,
+      opacity: lockLayer.opacity,
+      flipX: lockLayer.flipX,
+    });
+    lockInput.layers.setLocked(lockLayer.id, true);
+    expect(currentLockLayer()).toMatchObject({
+      scaleX: 1.2,
+      scaleY: 1.2,
+      locked: true,
+    });
+    expect(lockInput.editor.history.getSnapshot().undoCount).toBe(2);
+
+    expect(lockInput.editor.undo()).toBe(true);
+    expect(currentLockLayer()).toMatchObject({
+      scaleX: 1.2,
+      scaleY: 1.2,
+      locked: false,
+    });
+    expect(lockInput.editor.undo()).toBe(true);
+    expect(currentLockLayer()).toMatchObject({
+      scaleX: lockLayer.scaleX,
+      scaleY: lockLayer.scaleY,
+      locked: false,
+    });
+  });
+
+  it('does not add a transform command for unchanged drafts before actions', () => {
+    const input = harness();
+    const layer = input.project.shots[0]!.layers[1]!;
+    input.layers.updateTransform(layer.id, {
+      x: layer.x,
+      y: layer.y,
+      scale: layer.scaleX,
+      rotationDeg: layer.rotationDeg,
+      opacity: layer.opacity,
+      flipX: layer.flipX,
+    });
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    input.layers.toggleFlipX(layer.id);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(1);
+
+    const lockInput = harness();
+    const lockLayer = lockInput.project.shots[0]!.layers[1]!;
+    lockInput.layers.updateTransform(lockLayer.id, {
+      x: lockLayer.x,
+      y: lockLayer.y,
+      scale: lockLayer.scaleX,
+      rotationDeg: lockLayer.rotationDeg,
+      opacity: lockLayer.opacity,
+      flipX: lockLayer.flipX,
+    });
+    lockInput.layers.setLocked(lockLayer.id, true);
+    expect(lockInput.editor.history.getSnapshot().undoCount).toBe(1);
+  });
+
   it('does not bypass locked-layer writes and clears history on project open', () => {
     const input = harness();
     const layer = input.project.shots[0]!.layers[1]!;
