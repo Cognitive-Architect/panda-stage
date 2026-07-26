@@ -26,12 +26,13 @@ export type DetectedSchemaVersion =
   | 1
   | 2
   | 3
+  | 4
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(readonly receivedVersion: unknown) {
     super(
-      `Unsupported project schemaVersion: ${String(receivedVersion)}. Supported versions are 0, 1, 2, 3, and ${PROJECT_SCHEMA_VERSION}.`,
+      `Unsupported project schemaVersion: ${String(receivedVersion)}. Supported versions are 0, 1, 2, 3, 4, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -51,6 +52,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 1 ||
     version === 2 ||
     version === 3 ||
+    version === 4 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version;
@@ -101,6 +103,7 @@ function migrateLegacyProject(
         opacity: layer.opacity,
         visible: layer.visible,
         locked: false,
+        flipX: 'flipX' in layer ? layer.flipX : false,
         zIndex: layer.zIndex,
       }));
       return {

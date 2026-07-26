@@ -2,6 +2,8 @@ import {
   LayerService,
   type CreateLayerInput,
   type Layer,
+  type LayerOrderAction,
+  type LayerTransformInput,
   type Point,
   type Project,
 } from '../../domain';
@@ -49,6 +51,47 @@ export class LayerStore {
       layerId,
       locked,
     );
+    if (next !== project) this.editorStore.updateProject(next);
+    return next;
+  }
+
+  updateTransform(
+    layerId: string,
+    input: LayerTransformInput,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateTransform(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (next !== project) this.editorStore.updateProject(next);
+    return next;
+  }
+
+  toggleFlipX(layerId: string): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.toggleFlipX(project, shotId, layerId);
+    if (next !== project) this.editorStore.updateProject(next);
+    return next;
+  }
+
+  reorder(layerId: string, action: LayerOrderAction): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.reorder(
+      project,
+      shotId,
+      layerId,
+      action,
+    );
+    if (next !== project) this.editorStore.updateProject(next);
+    return next;
+  }
+
+  deleteLayer(layerId: string): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.deleteLayer(project, shotId, layerId);
     if (next !== project) this.editorStore.updateProject(next);
     return next;
   }

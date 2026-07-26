@@ -3,7 +3,11 @@ import { SHOT_MIN_DURATION_MS } from '../constants';
 import { AudioClipSchema } from './audio';
 import { IdSchema, NameSchema } from './common';
 import { DialogueSchema } from './dialogue';
-import { LayerSchema, LayerV3Schema } from './layer';
+import {
+  LayerSchema,
+  LayerV3Schema,
+  LayerV4Schema,
+} from './layer';
 import { TimelineEventSchema } from './timeline-event';
 
 const ShotBaseShape = {
@@ -36,6 +40,14 @@ export const ShotV3Schema = z
   .object({
     ...ShotBaseShape,
     layers: z.array(LayerV3Schema),
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
+
+export const ShotV4Schema = z
+  .object({
+    ...ShotBaseShape,
+    layers: z.array(LayerV4Schema),
     backgroundLayerId: IdSchema.nullable(),
   })
   .strict();

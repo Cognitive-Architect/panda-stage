@@ -91,6 +91,26 @@ IPC 响应同时校验发送窗口、Job ID、帧序号与时间，迟到或错�
 
 Day 07 输出固定为静音 H.264/yuv420p MP4；Day 08 在同一 Adapter 内先用 ffprobe 验证单条 WAV 的声道数，再将整数 `startMs` 重复为逐声道 `adelay` 列表，视频流保持 H.264，音频编码为 AAC。当前不实现多轨 `amix`、sidecar 打包或正式导出 UI。外部工具路径来自显式配置或开发期环境变量，仓库不包含二进制。
 
+## Day 23：静态图层变换契约
+
+- 项目严格格式为 schema v5；v4 图层迁移时只补
+  `flipX=false`，不改变既有视觉。
+- `Layer.x/y` 始终是视觉中心；水平翻转使用显式 `flipX`，不得通过
+  改写中心坐标补偿。
+- `scaleX/scaleY` 在项目模型中保持相同的正有限值；负号只在
+  Konva 渲染边界根据 `flipX` 应用。
+- 编辑器和正式预览/隐藏导出都调用同一个
+  `buildStageLayerRenderInstruction()`；正式 `EvaluatedLayer` 保留
+  `flipX`，`buildStageRenderModel()` 不再生成第二套镜像规则。背景仍
+  固定使用 Cover 指令，忽略普通图层的 flip/rotation/scale。
+- `Layer.zIndex` 是持久化和渲染共同使用的顺序事实源；背景固定为
+  0，内容图层在排序和删除后连续归一化。
+- 内容 Group 全部绘制在第一个 Konva Layer；唯一 Transformer
+  绘制在其后的独立 overlay Layer，因此选中低层内容不会让控制框
+  被高层内容遮挡，也不会修改项目 `zIndex`。
+- 所有持久变换、排序、锁定和删除都经 `LayerService`；选择与
+  Transformer 附着状态仅存在于 Renderer Store。
+
 ## 当前性能观察
 
 真实 72 帧探针中，1920×1080 Canvas PNG 捕获约 143 秒，FFmpeg H.264 编码约 2.0 秒。当前主要瓶颈仍是帧捕获而非视频编码，后续优化必须保持共享 Renderer 和确定性时间轴不变。

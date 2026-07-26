@@ -41,13 +41,23 @@ const LayerV3Shape = {
 /** Schema v3 layer shape before persistent locking was introduced. */
 export const LayerV3Schema = z.object(LayerV3Shape).strict();
 
-export const LayerSchema = z
+/** Schema v4 layer shape before explicit horizontal flip was introduced. */
+export const LayerV4Schema = z
   .object({
     ...LayerV3Shape,
     locked: z.boolean(),
   })
   .strict();
 
+export const LayerSchema = z
+  .object({
+    ...LayerV3Shape,
+    locked: z.boolean(),
+    flipX: z.boolean(),
+  })
+  .strict();
+
 export type LayerSource = z.infer<typeof LayerSourceSchema>;
 export type LayerV3 = z.infer<typeof LayerV3Schema>;
+export type LayerV4 = z.infer<typeof LayerV4Schema>;
 export type Layer = z.infer<typeof LayerSchema>;

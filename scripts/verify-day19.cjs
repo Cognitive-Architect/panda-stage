@@ -236,7 +236,7 @@ async function verifyDay19() {
         projectFilePath: `${projectRoot}\\project.json`,
         project: savedProject,
         migrated: false,
-        sourceVersion: 4,
+        sourceVersion: 5,
       },
     };
   });
@@ -696,7 +696,7 @@ async function verifyDay19() {
       !importRequest ||
       importRequest.baseRevision !== 0 ||
       saveRequest?.revision !== 6 ||
-      savedProject?.schemaVersion !== 4 ||
+      savedProject?.schemaVersion !== 5 ||
       persistedCharacter?.defaultScale !== 0.75 ||
       persistedCharacter?.defaultFlipX !== true ||
       persistedCharacter?.mouthOpenAssetId !== assetIds.mouth ||

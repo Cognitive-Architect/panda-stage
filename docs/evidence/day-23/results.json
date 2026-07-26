@@ -1,0 +1,131 @@
+{
+  "day": 23,
+  "workOrder": "B-23/45",
+  "result": "PASS",
+  "branch": "feat/day-23-layer-transform",
+  "executedAt": "2026-07-26T06:50:22.025Z",
+  "baselineSha": "4a5266c",
+  "contract": {
+    "schemaVersion": 5,
+    "flipModel": "explicit flipX boolean; positive uniform scale",
+    "centerAnchor": "x/y remain the visual center",
+    "orderModel": "continuous zIndex; background pinned at zero",
+    "selectionSerialized": false
+  },
+  "transformer": {
+    "visibleOnSelection": true,
+    "overlay": {
+      "mode": "separate-konva-layer-after-content",
+      "konvaCanvasCount": 2
+    },
+    "selectedZIndex": 1,
+    "coveringLayerId": "60000000-0000-4000-8000-000000000002",
+    "coveringZIndex": 2,
+    "coveringLayerUnchanged": true,
+    "revisionBefore": 2,
+    "scaleRevisionAfter": 3,
+    "rotationRevisionAfter": 4,
+    "scaleBefore": 1,
+    "scaleAfter": 1.15527950310559,
+    "rotationAfter": 23.994030826339895
+  },
+  "properties": {
+    "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
+    "name": "Panda neutral",
+    "source": {
+      "kind": "character",
+      "characterId": "20000000-0000-4000-8000-000000000001",
+      "expressionId": "20000000-0000-4000-8000-000000000002"
+    },
+    "anchor": "center",
+    "x": 800,
+    "y": 450,
+    "scaleX": 1.25,
+    "scaleY": 1.25,
+    "rotationDeg": 90,
+    "opacity": 0.6,
+    "visible": true,
+    "zIndex": 1,
+    "locked": false,
+    "flipX": false
+  },
+  "flip": {
+    "centerBefore": {
+      "x": 800,
+      "y": 450
+    },
+    "centerAfter": {
+      "x": 800,
+      "y": 450
+    },
+    "flipX": true
+  },
+  "order": [
+    {
+      "id": "60000000-0000-4000-8000-000000000001",
+      "zIndex": 0
+    },
+    {
+      "id": "60000000-0000-4000-8000-000000000002",
+      "zIndex": 1
+    },
+    {
+      "id": "d2300000-0000-4000-8000-000000000020",
+      "zIndex": 2
+    },
+    {
+      "id": "d2300000-0000-4000-8000-000000000021",
+      "zIndex": 3
+    },
+    {
+      "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
+      "zIndex": 4
+    }
+  ],
+  "lock": {
+    "locked": true,
+    "transformerVisible": false,
+    "transformInputsDisabled": true,
+    "orderButtonsDisabled": true
+  },
+  "persistence": {
+    "saveRevision": 9,
+    "schemaVersion": 5,
+    "reopenedLayer": {
+      "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
+      "name": "Panda neutral",
+      "source": {
+        "kind": "character",
+        "characterId": "20000000-0000-4000-8000-000000000001",
+        "expressionId": "20000000-0000-4000-8000-000000000002"
+      },
+      "anchor": "center",
+      "x": 800,
+      "y": 450,
+      "scaleX": 1.25,
+      "scaleY": 1.25,
+      "rotationDeg": 90,
+      "opacity": 0.6,
+      "visible": true,
+      "zIndex": 4,
+      "locked": false,
+      "flipX": true
+    },
+    "selectedAfterReopen": ""
+  },
+  "deletion": {
+    "beforeRevision": 1,
+    "afterRevision": 2,
+    "selectedAfter": "",
+    "buttonLayerRemoved": true,
+    "buttonRevisionDelta": 1,
+    "keyboardLayerRemoved": true,
+    "emptyDeleteRevisionUnchanged": true
+  },
+  "autosaveUpdates": 14,
+  "screenshots": [
+    "docs/evidence/day-23/transformer-overlay.png",
+    "docs/evidence/day-23/locked.png",
+    "docs/evidence/day-23/deleted.png"
+  ]
+}

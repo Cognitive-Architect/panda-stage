@@ -12,6 +12,7 @@ export type EvaluatedLayer = Pick<
   | 'y'
   | 'scaleX'
   | 'scaleY'
+  | 'flipX'
   | 'rotationDeg'
   | 'opacity'
   | 'visible'
@@ -104,6 +105,7 @@ export function evaluateShotAtTime(
           y,
           scaleX: layer.scaleX,
           scaleY: layer.scaleY,
+          flipX: layer.flipX,
           rotationDeg: layer.rotationDeg,
           opacity: layer.opacity,
           visible: layer.visible,

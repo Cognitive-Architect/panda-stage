@@ -198,7 +198,7 @@ function shotEntityIds(shot) {
 async function verifyDay20() {
   const initialProject = {
     ...exampleProject,
-    schemaVersion: 4,
+    schemaVersion: 5,
     characters: exampleProject.characters.map((character) => ({
       ...character,
       defaultExpressionId: character.expressions[0].id,
@@ -210,6 +210,7 @@ async function verifyDay20() {
       layers: shot.layers.map((layer) => ({
         ...layer,
         locked: false,
+        flipX: false,
       })),
       backgroundLayerId: shot.layers[0]?.id ?? null,
     })),
@@ -241,7 +242,7 @@ async function verifyDay20() {
           ? alternateProject
           : savedProject ?? initialProject,
         migrated: false,
-        sourceVersion: 4,
+        sourceVersion: 5,
       },
     };
   });
@@ -255,7 +256,7 @@ async function verifyDay20() {
         projectFilePath: `${projectRoot}\\project.json`,
         project: savedProject,
         migrated: false,
-        sourceVersion: 4,
+        sourceVersion: 5,
       },
     };
   });

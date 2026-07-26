@@ -181,7 +181,18 @@ describe('project directory lifecycle', () => {
     const projectRoot = await newProjectRoot();
     await service().create(projectRoot, { name: 'Migration root' });
     const filePath = path.join(projectRoot, PROJECT_FILE_NAME);
-    const v0 = { ...structuredClone(PROBE_PROJECT), schemaVersion: 0 };
+    const probe = structuredClone(PROBE_PROJECT);
+    const v0 = {
+      ...probe,
+      schemaVersion: 0,
+      shots: probe.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map(({ flipX, ...layer }) => {
+          void flipX;
+          return layer;
+        }),
+      })),
+    };
     const source = `${JSON.stringify(v0, null, 2)}\n`;
     await writeFile(filePath, source, 'utf8');
     const beforeHash = sha256(await readFile(filePath, 'utf8'));
@@ -191,7 +202,7 @@ describe('project directory lifecycle', () => {
 
     expect(opened.sourceVersion).toBe(0);
     expect(opened.migrated).toBe(true);
-    expect(opened.project.schemaVersion).toBe(4);
+    expect(opened.project.schemaVersion).toBe(5);
     expect(afterHash).toBe(beforeHash);
 
     await service().save(projectRoot, opened.project);

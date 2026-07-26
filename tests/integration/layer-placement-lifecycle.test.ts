@@ -80,7 +80,7 @@ describe('layer placement persistence lifecycle', () => {
 
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 4,
+      sourceVersion: 5,
     });
     expect(reopenedLayer).toMatchObject({
       source: { kind: 'asset', assetId: asset.id },

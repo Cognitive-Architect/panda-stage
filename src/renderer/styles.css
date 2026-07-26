@@ -1614,6 +1614,93 @@ h1 {
   padding: 8px 11px;
 }
 
+.layer-transform-panel,
+.layer-order-controls {
+  display: grid;
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 12px;
+  background: rgb(7 12 9 / 58%);
+  gap: 10px;
+}
+
+.layer-transform-panel h3,
+.layer-transform-panel p,
+.layer-order-controls h3,
+.layer-order-controls p {
+  margin: 0;
+}
+
+.layer-transform-panel > p,
+.layer-transform-panel output,
+.layer-order-controls output {
+  color: #91a299;
+  font-size: 11px;
+}
+
+.layer-transform-panel form {
+  display: grid;
+  grid-template-columns:
+    minmax(130px, 1fr)
+    repeat(5, minmax(82px, 0.62fr))
+    auto
+    auto
+    auto;
+  align-items: end;
+  gap: 9px;
+}
+
+.layer-transform-panel label {
+  display: grid;
+  color: #a9b8ae;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.layer-transform-panel input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgb(154 216 172 / 25%);
+  border-radius: 8px;
+  color: #eef6f0;
+  background: #0b100e;
+  font: inherit;
+}
+
+.layer-transform-panel input:disabled {
+  color: #77847c;
+  background: #161b18;
+}
+
+.layer-transform-panel .layer-lock-control {
+  display: flex;
+  align-items: center;
+  padding-bottom: 8px;
+  white-space: nowrap;
+}
+
+.layer-transform-panel .layer-lock-control input {
+  width: auto;
+}
+
+.layer-transform-panel button,
+.layer-order-controls button {
+  padding: 8px 11px;
+}
+
+.layer-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.layer-order-controls .layer-delete-button {
+  border-color: rgb(232 126 112 / 35%);
+  color: #ffd7d2;
+  background: rgb(124 46 37 / 44%);
+}
+
 .transport-bar {
   justify-content: space-between;
   gap: 18px;

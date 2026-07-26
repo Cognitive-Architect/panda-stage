@@ -110,6 +110,7 @@ describe('SelectableLayer interaction adapter', () => {
   const ordinary = model.layers.find(
     ({ render }) => !render.isBackground,
   )!;
+  const nodeRef = { current: null };
 
   it('keeps drag move local and commits exactly once on drag end', () => {
     const commit = vi.fn();
@@ -125,10 +126,12 @@ describe('SelectableLayer interaction adapter', () => {
     const element = SelectableLayer({
       image: {} as HTMLImageElement,
       layer: ordinary.layer,
+      nodeRef,
       render: ordinary.render,
       selected: true,
       onSelect: vi.fn(),
       onCommitPosition: commit,
+      onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
     const props = element.props as {
@@ -150,14 +153,65 @@ describe('SelectableLayer interaction adapter', () => {
     expect(props.draggable).toBe(true);
   });
 
-  it('makes a locked layer non-draggable and a background non-listening', () => {
-    const locked = SelectableLayer({
+  it('commits a Transformer gesture once using uniform positive model scale', () => {
+    const commit = vi.fn();
+    const element = SelectableLayer({
       image: {} as HTMLImageElement,
-      layer: { ...ordinary.layer, locked: true },
+      layer: ordinary.layer,
+      nodeRef,
       render: ordinary.render,
       selected: true,
       onSelect: vi.fn(),
       onCommitPosition: vi.fn(),
+      onCommitTransform: commit,
+      onError: vi.fn(),
+    });
+    let scaleX = 1.4;
+    let scaleY = 1.39;
+    const target = {
+      x: () => 810,
+      y: () => 420,
+      scaleX: (value?: number) => {
+        if (value !== undefined) scaleX = value;
+        return scaleX;
+      },
+      scaleY: (value?: number) => {
+        if (value !== undefined) scaleY = value;
+        return scaleY;
+      },
+      rotation: () => 405,
+      position: vi.fn(),
+      scale: vi.fn(),
+    };
+    const props = element.props as {
+      onTransformEnd: (event: { target: typeof target }) => void;
+    };
+
+    props.onTransformEnd({ target });
+
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledWith(ordinary.layer.id, {
+      x: 810,
+      y: 420,
+      scale: 1.4,
+      rotationDeg: 405,
+      opacity: ordinary.layer.opacity,
+      flipX: ordinary.layer.flipX,
+    });
+    expect(scaleX).toBe(1.4);
+    expect(scaleY).toBe(1.4);
+  });
+
+  it('makes a locked layer non-draggable and a background non-listening', () => {
+    const locked = SelectableLayer({
+      image: {} as HTMLImageElement,
+      layer: { ...ordinary.layer, locked: true },
+      nodeRef,
+      render: ordinary.render,
+      selected: true,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
     expect(
@@ -170,14 +224,35 @@ describe('SelectableLayer interaction adapter', () => {
     const backgroundElement = SelectableLayer({
       image: {} as HTMLImageElement,
       layer: background.layer,
+      nodeRef,
       render: background.render,
       selected: false,
       onSelect: vi.fn(),
       onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
     expect(
       (backgroundElement.props as { listening: boolean }).listening,
     ).toBe(false);
+  });
+
+  it('renders content without an interleaved Transformer sibling', () => {
+    const element = SelectableLayer({
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      nodeRef,
+      render: ordinary.render,
+      selected: true,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(element.type).not.toBe(Symbol.for('react.fragment'));
+    expect(
+      (element.props as { name: string }).name,
+    ).toBe('selectable-canvas-layer');
   });
 });

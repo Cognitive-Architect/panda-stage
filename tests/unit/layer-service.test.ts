@@ -381,4 +381,187 @@ describe('LayerService', () => {
       }),
     );
   });
+
+  it('commits a finite uniform transform, normalizes rotation, and keeps the center while flipping', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const layer = shot.layers[1]!;
+    const transformed = service().updateTransform(
+      project,
+      shot.id,
+      layer.id,
+      {
+        x: layer.x,
+        y: layer.y,
+        scale: 1.25,
+        rotationDeg: 540,
+        opacity: 0.4,
+        flipX: true,
+      },
+    );
+    const result = transformed.shots[0]!.layers[1]!;
+
+    expect(result).toMatchObject({
+      x: layer.x,
+      y: layer.y,
+      scaleX: 1.25,
+      scaleY: 1.25,
+      rotationDeg: -180,
+      opacity: 0.4,
+      flipX: true,
+    });
+    const unflipped = service().toggleFlipX(
+      transformed,
+      shot.id,
+      layer.id,
+    );
+    expect(unflipped.shots[0]!.layers[1]).toMatchObject({
+      x: layer.x,
+      y: layer.y,
+      flipX: false,
+    });
+  });
+
+  it.each([
+    { label: 'NaN x', patch: { x: Number.NaN } },
+    { label: 'Infinity y', patch: { y: Number.POSITIVE_INFINITY } },
+    { label: 'zero scale', patch: { scale: 0 } },
+    { label: 'negative scale', patch: { scale: -1 } },
+    { label: 'too-small scale', patch: { scale: 0.049 } },
+    { label: 'too-large scale', patch: { scale: 20.01 } },
+    { label: 'NaN rotation', patch: { rotationDeg: Number.NaN } },
+    { label: 'Infinity opacity', patch: { opacity: Number.POSITIVE_INFINITY } },
+    { label: 'negative opacity', patch: { opacity: -0.01 } },
+    { label: 'oversized opacity', patch: { opacity: 1.01 } },
+  ])('rejects an invalid transform: $label', ({ patch }) => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const layer = shot.layers[1]!;
+    const input = {
+      x: layer.x,
+      y: layer.y,
+      scale: layer.scaleX,
+      rotationDeg: layer.rotationDeg,
+      opacity: layer.opacity,
+      flipX: layer.flipX,
+      ...patch,
+    };
+
+    expect(() =>
+      service().updateTransform(project, shot.id, layer.id, input),
+    ).toThrow();
+    expect(project).toEqual(fixture());
+  });
+
+  it('moves content forward/back/front/back and keeps zIndex continuous with the background pinned', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const ordinary = shot.layers[1]!;
+    const secondId = 'd2300000-0000-4000-8000-000000000002';
+    const thirdId = 'd2300000-0000-4000-8000-000000000003';
+    const layered = ProjectSchema.parse({
+      ...project,
+      shots: [
+        {
+          ...shot,
+          layers: [
+            shot.layers[0]!,
+            ordinary,
+            { ...ordinary, id: secondId, name: 'Second', zIndex: 2 },
+            { ...ordinary, id: thirdId, name: 'Third', zIndex: 3 },
+          ],
+        },
+      ],
+    });
+
+    const front = service().reorder(
+      layered,
+      shot.id,
+      ordinary.id,
+      'front',
+    );
+    expect(front.shots[0]!.layers.map((layer) => layer.id)).toEqual([
+      shot.backgroundLayerId,
+      secondId,
+      thirdId,
+      ordinary.id,
+    ]);
+    expect(front.shots[0]!.layers.map((layer) => layer.zIndex)).toEqual([
+      0, 1, 2, 3,
+    ]);
+
+    const back = service().reorder(
+      front,
+      shot.id,
+      ordinary.id,
+      'back',
+    );
+    expect(back.shots[0]!.layers.map((layer) => layer.id)).toEqual([
+      shot.backgroundLayerId,
+      ordinary.id,
+      secondId,
+      thirdId,
+    ]);
+    expect(
+      service().reorder(back, shot.id, ordinary.id, 'back'),
+    ).toBe(back);
+  });
+
+  it('deletes content, cascades its timeline events, and normalizes remaining order', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const layer = shot.layers[1]!;
+    expect(
+      shot.timelineEvents.some((event) => event.layerId === layer.id),
+    ).toBe(true);
+
+    const deleted = service().deleteLayer(project, shot.id, layer.id);
+    const result = deleted.shots[0]!;
+    expect(result.layers.map((candidate) => candidate.id)).toEqual([
+      shot.backgroundLayerId,
+    ]);
+    expect(result.layers[0]!.zIndex).toBe(0);
+    expect(
+      result.timelineEvents.some((event) => event.layerId === layer.id),
+    ).toBe(false);
+  });
+
+  it('protects backgrounds and makes locking block transform, flip, order, and delete', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const background = shot.layers[0]!;
+    const layer = shot.layers[1]!;
+    const transform = {
+      x: layer.x,
+      y: layer.y,
+      scale: layer.scaleX,
+      rotationDeg: layer.rotationDeg,
+      opacity: layer.opacity,
+      flipX: layer.flipX,
+    };
+
+    for (const operation of [
+      () => service().updateTransform(project, shot.id, background.id, transform),
+      () => service().toggleFlipX(project, shot.id, background.id),
+      () => service().reorder(project, shot.id, background.id, 'front'),
+      () => service().deleteLayer(project, shot.id, background.id),
+      () => service().setLocked(project, shot.id, background.id, true),
+    ]) {
+      expect(operation).toThrow(
+        expect.objectContaining({ code: 'BACKGROUND_LAYER_PROTECTED' }),
+      );
+    }
+
+    const locked = service().setLocked(project, shot.id, layer.id, true);
+    for (const operation of [
+      () => service().updateTransform(locked, shot.id, layer.id, transform),
+      () => service().toggleFlipX(locked, shot.id, layer.id),
+      () => service().reorder(locked, shot.id, layer.id, 'front'),
+      () => service().deleteLayer(locked, shot.id, layer.id),
+    ]) {
+      expect(operation).toThrow(
+        expect.objectContaining({ code: 'LAYER_LOCKED' }),
+      );
+    }
+  });
 });

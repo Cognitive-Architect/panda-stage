@@ -5,6 +5,7 @@ import type {
   ExportRenderFrameRequest,
 } from '../shared/export-types';
 import {
+  PROBE_CHARACTER_LAYER_ID,
   PROBE_PROJECT,
   PROBE_SHOT,
   PROBE_SUBTITLE_CUES,
@@ -29,6 +30,43 @@ function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
 }
 
 export function ExportRendererApp(): React.JSX.Element {
+  const evidenceParameters = new URLSearchParams(window.location.search);
+  const issue47FlipEvidence =
+    evidenceParameters.get('issue47FlipEvidence') === 'true';
+  const issue47FlipX =
+    evidenceParameters.get('issue47FlipX') === 'true';
+  const project = useMemo(() => {
+    if (!issue47FlipEvidence) return PROBE_PROJECT;
+    const characterLayer = PROBE_SHOT.layers.find(
+      (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
+    );
+    if (!characterLayer) {
+      throw new Error('Issue #47 probe character layer is missing.');
+    }
+    return {
+      ...PROBE_PROJECT,
+      shots: [
+        {
+          ...PROBE_SHOT,
+          name: 'Issue #47 production flip probe',
+          backgroundLayerId: null,
+          layers: [
+            {
+              ...characterLayer,
+              x: PROBE_PROJECT.width / 2,
+              y: PROBE_PROJECT.height / 2,
+              flipX: issue47FlipX,
+            },
+          ],
+          timelineEvents: [],
+        },
+      ],
+    };
+  }, [issue47FlipEvidence, issue47FlipX]);
+  const projectShot = project.shots[0];
+  if (!projectShot) {
+    throw new Error('Export renderer project must contain one shot.');
+  }
   const [durationMs, setDurationMs] = useState(PROBE_SHOT.durationMs);
   const [frameRequest, setFrameRequest] =
     useState<ExportRenderFrameRequest | null>(null);
@@ -41,8 +79,8 @@ export function ExportRendererApp(): React.JSX.Element {
   const cancelledJobIdsRef = useRef(new Set<string>());
 
   const shot = useMemo(
-    () => ({ ...PROBE_SHOT, durationMs }),
-    [durationMs],
+    () => ({ ...projectShot, durationMs }),
+    [durationMs, projectShot],
   );
   const requestedTimeMs = frameRequest?.timeMs ?? 0;
   const evaluatedShot = useMemo(
@@ -223,7 +261,7 @@ export function ExportRendererApp(): React.JSX.Element {
         evaluatedShot={evaluatedShot}
         onError={handleStageError}
         onReady={handleStageReady}
-        project={PROBE_PROJECT}
+        project={project}
         renderToken={
           frameRequest
             ? `${frameRequest.jobId}:${frameRequest.frameIndex}`
