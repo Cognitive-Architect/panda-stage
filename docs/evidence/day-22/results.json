@@ -3,7 +3,7 @@
   "workOrder": "B-22/45",
   "result": "PASS",
   "branch": "feat/day-22-layer-placement",
-  "executedAt": "2026-07-26T01:55:09.539Z",
+  "executedAt": "2026-07-26T02:09:25.030Z",
   "baselineSha": "27ba25a3287c421aa1c26041d5bc41ec86daca65",
   "contract": {
     "dropPayload": "version + assetId + controlled type only",
@@ -97,7 +97,7 @@
     "saveRevision": 6,
     "savedLayerCount": 5,
     "reopenedLayer": {
-      "id": "80028a51-ab5a-4efb-a725-7012ef04345d",
+      "id": "768a4b28-5611-475e-82c9-91dbb0454f85",
       "name": "Placement sticker",
       "source": {
         "kind": "asset",

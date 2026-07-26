@@ -108,6 +108,7 @@ Evidence:
 - No Transformer, rotation/scale editing, flip controls, undo/redo, timeline
   events, motion presets, or new background-design UI were added.
 - `DEBT-COORD-B22-001`: not opened; all three viewport scales have exact
-  automated coordinate evidence within one logical pixel.
+  automated coordinate evidence within one rendered CSS pixel after inverse
+  viewport mapping.
 - `DEBT-TEST-B22-001`: not opened; HTML drag/drop runs in a real BrowserWindow
   and layer movement uses real Electron mouse input.

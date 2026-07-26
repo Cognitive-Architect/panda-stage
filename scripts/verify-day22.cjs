@@ -772,7 +772,8 @@ async function verifyDay22() {
       ],
     };
 
-    const close = (left, right) => Math.abs(left - right) <= 1;
+    const closeAtScale = (left, right, scale) =>
+      Math.abs(left - right) * scale <= 1;
     if (
       initial.layers.length !== 2 ||
       fitPreview.payload.includes('relativePath') ||
@@ -780,22 +781,22 @@ async function verifyDay22() {
       !fitPreview.highlighted ||
       !fitPreview.ghost.includes('放置图层') ||
       fitPreview.scale === 1 ||
-      !close(fitLayer.x, 1200) ||
-      !close(fitLayer.y, 300) ||
+      !closeAtScale(fitLayer.x, 1200, fitPreview.scale) ||
+      !closeAtScale(fitLayer.y, 300, fitPreview.scale) ||
       halfPreview.scale !== 0.5 ||
-      !close(halfLayer.x, 500) ||
-      !close(halfLayer.y, 700) ||
+      !closeAtScale(halfLayer.x, 500, halfPreview.scale) ||
+      !closeAtScale(halfLayer.y, 700, halfPreview.scale) ||
       halfLayer.source.kind !== 'character' ||
       actualPreview.scale !== 1 ||
-      !close(actualLayer.x, 1400) ||
-      !close(actualLayer.y, 700) ||
+      !closeAtScale(actualLayer.x, 1400, actualPreview.scale) ||
+      !closeAtScale(actualLayer.y, 700, actualPreview.scale) ||
       actualDrop.selectedLayerId !== actualLayer.id ||
       dragDuring.revision !== actualDrop.revision ||
       JSON.stringify(dragDuring.layers) !==
         JSON.stringify(actualDrop.layers) ||
       dragAfter.revision !== actualDrop.revision + 1 ||
-      !close(evidence.drag.actual.x, dragTarget.x) ||
-      !close(evidence.drag.actual.y, dragTarget.y) ||
+      !closeAtScale(evidence.drag.actual.x, dragTarget.x, 1) ||
+      !closeAtScale(evidence.drag.actual.y, dragTarget.y, 1) ||
       evidence.drag.autosaveUpdateDelta !== 1 ||
       evidence.properties.x !== 900 ||
       evidence.properties.y !== 500 ||
