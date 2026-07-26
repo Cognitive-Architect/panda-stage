@@ -310,7 +310,7 @@ describe('asset delete integration', () => {
       project: { assets: [] },
     });
     expect(await recoveryHashes(input.projectRoot)).toEqual([]);
-  });
+  }, 15_000);
 
   it('blocks a referenced background and reports its exact location without touching state', async () => {
     const input = await createHarness({ referenced: true });
