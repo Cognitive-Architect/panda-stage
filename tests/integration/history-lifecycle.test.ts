@@ -10,7 +10,27 @@ import { CharacterStore } from '../../src/renderer/stores/characterStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
 
 function harness() {
-  const project = ProjectSchema.parse(exampleProject);
+  const initial = ProjectSchema.parse(exampleProject);
+  const shot = initial.shots[0]!;
+  const ordinary = shot.layers[1]!;
+  const project = ProjectSchema.parse({
+    ...initial,
+    shots: [
+      {
+        ...shot,
+        layers: [
+          ...shot.layers,
+          {
+            ...ordinary,
+            id: 'd2400000-0000-4000-8000-000000000010',
+            name: 'Second content layer',
+            x: 1_200,
+            zIndex: 2,
+          },
+        ],
+      },
+    ],
+  });
   const editor = new EditorProjectStore();
   editor.open('D:\\history-a.pandastage', project);
   const shotId = project.shots[0]!.id;
@@ -49,7 +69,7 @@ describe('Day 24 history lifecycle', () => {
       'Day 24 expression',
     );
     input.layers.deleteLayer(layer.id);
-    expect(input.editor.history.getSnapshot().undoCount).toBe(3);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(4);
     expect(
       input.editor.getSnapshot()!.project.shots[0]!.layers.some(
         (candidate) => candidate.id === layer.id,
@@ -67,6 +87,17 @@ describe('Day 24 history lifecycle', () => {
       input.editor.getSnapshot()!.project.characters[0]!.expressions[1]!
         .name,
     ).toBe(expression.name);
+    expect(input.editor.undo()).toBe(true);
+    expect(
+      input.editor.getSnapshot()!.project.shots[0]!.layers.map(
+        ({ id, zIndex }) => ({ id, zIndex }),
+      ),
+    ).toEqual(
+      input.project.shots[0]!.layers.map(({ id, zIndex }) => ({
+        id,
+        zIndex,
+      })),
+    );
     expect(input.editor.undo()).toBe(true);
     expect(input.editor.getSnapshot()).toMatchObject({
       dirty: false,
@@ -86,7 +117,7 @@ describe('Day 24 history lifecycle', () => {
       },
     });
 
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 4; index += 1) {
       expect(input.editor.redo()).toBe(true);
     }
     expect(
@@ -94,6 +125,72 @@ describe('Day 24 history lifecycle', () => {
         (candidate) => candidate.id === layer.id,
       ),
     ).toBe(false);
+  });
+
+  it('replays a real two-content-layer z-order and enforces branch boundaries', () => {
+    const input = harness();
+    const shot = input.project.shots[0]!;
+    const background = shot.layers[0]!;
+    const layerA = shot.layers[1]!;
+    const layerB = shot.layers[2]!;
+    const order = () =>
+      input.editor
+        .getSnapshot()!
+        .project.shots[0]!.layers.map(({ id, zIndex }) => ({
+          id,
+          zIndex,
+        }));
+    const initialOrder = order();
+
+    input.layers.reorder(layerA.id, 'front');
+    expect(order()).toEqual([
+      { id: background.id, zIndex: 0 },
+      { id: layerB.id, zIndex: 1 },
+      { id: layerA.id, zIndex: 2 },
+    ]);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+
+    expect(input.editor.undo()).toBe(true);
+    expect(order()).toEqual(initialOrder);
+    expect(input.editor.redo()).toBe(true);
+    expect(order()).toEqual([
+      { id: background.id, zIndex: 0 },
+      { id: layerB.id, zIndex: 1 },
+      { id: layerA.id, zIndex: 2 },
+    ]);
+
+    const beforeNoOp = input.editor.getSnapshot();
+    input.layers.reorder(layerA.id, 'front');
+    expect(input.editor.getSnapshot()).toBe(beforeNoOp);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(1);
+
+    expect(input.editor.undo()).toBe(true);
+    input.layers.reorder(layerB.id, 'back');
+    expect(order()).toEqual([
+      { id: background.id, zIndex: 0 },
+      { id: layerB.id, zIndex: 1 },
+      { id: layerA.id, zIndex: 2 },
+    ]);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+
+    input.layers.setLocked(layerA.id, true);
+    const historyBeforeLocked = input.editor.history.getSnapshot().undoCount;
+    const projectBeforeLocked = input.editor.getSnapshot()!.project;
+    expect(() => input.layers.reorder(layerA.id, 'back')).toThrow(
+      expect.objectContaining({ code: 'LAYER_LOCKED' }),
+    );
+    expect(input.editor.getSnapshot()!.project).toBe(projectBeforeLocked);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(
+      historyBeforeLocked,
+    );
+    expect(order().map(({ zIndex }) => zIndex)).toEqual([0, 1, 2]);
+    expect(order()[0]!.id).toBe(background.id);
   });
 
   it('does not bypass locked-layer writes and clears history on project open', () => {

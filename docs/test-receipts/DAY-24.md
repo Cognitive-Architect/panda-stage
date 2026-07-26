@@ -9,6 +9,8 @@
 - Scope: bounded in-memory command history, undo/redo buttons and shortcuts,
   gesture-safe coalescing, project-switch reset, dirty-state replay, and real
   Electron evidence
+- Issue #49 closeout: transform drafts commit when focus leaves the complete
+  form, and real two-content-layer z-order history is proven.
 - Planning note: the detailed `DAY-24-AGENT-TASK.md` is the authoritative
   acceptance contract. Its history work order is more specific than the stale
   Daily Plan Day 24 heading, whose layer controls were delivered on Day 23.
@@ -30,8 +32,12 @@
 
 - Coalescing requires the same operation key and the same unique gesture ID.
 - A merged project command keeps the first `before` and final `after`.
-- Day 22/23 canvas drag and Transformer handlers continue to persist only at
-  gesture end, so ten pointer moves naturally execute one command.
+- Production canvas drag and Transformer handlers persist only at `dragEnd` /
+  `transformEnd`. Ten pointer moves therefore call no project action and the
+  completed gesture naturally executes exactly one command.
+- `HistoryStore` coalescing is an additional defensive path for multiple
+  formal commits carrying the same explicit `gestureId`; it is not permission
+  to call `updateProject()` from every `pointermove`.
 - Independent gestures have different IDs (or separate end commits) and are
   never merged.
 
@@ -54,6 +60,19 @@
 - Saving does not clear history; undo after save remains useful and correctly
   marks the project dirty.
 
+### DECISION-005 — transform draft commit boundary
+
+- Enter and form submit call the same `commitDraft('submit')` path used by
+  focus departure through `commitDraft('blur')`.
+- Focus moving between inputs in the same form does not commit.
+- A document capture guard commits before an outside mouse action can clear
+  the selected layer; native `focusout` covers keyboard focus departure.
+- A `(layerId, draftVersion)` identity suppresses submit-followed-by-blur
+  duplicates. `LayerService.updateTransform()` remains the final no-op,
+  validation, normalization, and locked-layer boundary.
+- Invalid blur retains its explicit error even if the outside click clears
+  selection.
+
 ## Implemented behavior
 
 - Undo/redo buttons expose disabled states, counts, and next-command labels.
@@ -64,7 +83,8 @@
   expression store mutations receive readable command labels.
 - A new command clears the redo branch.
 - Empty-stack undo/redo returns `false` without changing editor state.
-- Property inputs remain local drafts; one form submit creates one command.
+- Property inputs remain local drafts. Leaving the complete form or submitting
+  commits once; moving between its inputs creates no history.
 - Restoring all commands to the saved project makes dirty false; replaying a
   mutation makes it true again.
 
@@ -74,8 +94,8 @@
 |---|---|---|
 | `pnpm typecheck` | PASS | renderer + Electron TypeScript |
 | `pnpm lint` | PASS | no ESLint errors |
-| `pnpm test:unit` | PASS | 66 files / 386 tests |
-| `pnpm test:integration` | PASS | 16 files / 80 tests |
+| `pnpm test:unit` | PASS | 66 files / 387 tests |
+| `pnpm test:integration` | PASS | 16 files / 81 tests |
 | `pnpm build` | PASS | renderer + Electron production build |
 | `pnpm verify:day19` | PASS | character definitions regression |
 | `pnpm verify:day20` | PASS | shot management regression |
@@ -102,16 +122,24 @@ Key tests:
 2. Assert one history entry and position `(430, 690) → (550, 730)`.
 3. Press native `Ctrl+Z`; assert the project returns to the exact origin.
 4. Press native `Ctrl+Shift+Z`; assert the same moved result returns.
-5. Type five property draft values; assert history remains unchanged, then
-   submit once and assert exactly one new command.
-6. Delete the selected layer, undo with the button, redo with the button.
-7. Save and assert the project payload contains no history fields.
-8. Open a second project and assert both stacks are empty.
+5. Move focus X → Y inside the property form; assert no commit. Click the
+   canvas; assert `(600, 740)` and exactly one blur command.
+6. Submit five changed fields and then click the canvas; assert submit + blur
+   still produces one command.
+7. Verify unchanged blur, invalid scale blur, and locked submit produce no
+   history; the invalid/locked status remains explicit.
+8. With background + A + B, move A from `zIndex=1` to front (`2`), undo to
+   `A=1/B=2`, then redo to `A=2/B=1`.
+9. Delete the selected layer, undo with the button, redo with the button.
+10. Save without history fields, then open a second project and assert both
+    stacks are empty.
 
 Evidence:
 
 - `docs/evidence/day-24/results.json`
 - `docs/evidence/day-24/history-controls.png`
+- `docs/evidence/day-24/property-blur.png`
+- `docs/evidence/day-24/z-order-history.png`
 
 ## Blade table
 
@@ -119,7 +147,7 @@ Evidence:
 |---|---|---|
 | FUNC-001 | PASS | HistoryStore execute/undo/redo unit path |
 | FUNC-002 | PASS | ten-move native drag + same-gesture unit test |
-| FUNC-003 | PASS | transform/delete/expression integration lifecycle |
+| FUNC-003 | PASS | real z-order/transform/delete/expression lifecycle |
 | FUNC-004 | PASS | shortcut unit mapping + native Electron keys |
 | CONST-001 | PASS | depth 50 and depth-20 truncation boundary |
 | CONST-002 | PASS | new-branch unit test |
@@ -128,10 +156,10 @@ Evidence:
 | NEG-001 | PASS | empty-stack unit test |
 | NEG-002 | PASS | locked LayerService rejection leaves count unchanged |
 | NEG-003 | PASS | distinct gesture IDs create distinct entries |
-| NEG-004 | PASS | five draft changes create zero; submit creates one |
+| NEG-004 | PASS | internal focus, no-op, invalid, locked, submit+blur matrix |
 | UX-001 | PASS | button disabled-state assertions and screenshot |
 | UX-002 | PASS | button and keyboard replay the same project path |
-| E2E-001 | PASS | drag → property → delete → undo → redo → save |
+| E2E-001 | PASS | drag → blur → z-order → delete → replay → save |
 | HIGH-001 | PASS | ten pointer moves return to origin with one undo |
 
 ## P4 self-test
@@ -159,6 +187,23 @@ Evidence:
 - `DATA-B24-001`: not triggered; schema and save payload exclude history.
 - `TEST-B24-001`: not triggered; native drag and shortcut evidence is
   automated.
+
+## Issue #49 closure matrix
+
+| Requirement | Result | Evidence |
+|---|---|---|
+| Legal blur commit | PASS | native X/Y edit → canvas click, history `1→2` |
+| Internal A→B focus | PASS | history remains `1` |
+| Submit + blur dedupe | PASS | history `2→3`, not `4` |
+| Unchanged blur | PASS | history/revision unchanged |
+| Invalid blur | PASS | scale `0` rejected, project/count unchanged, explicit status |
+| Locked submit | PASS | project/count unchanged, explicit locked status |
+| Real front reorder | PASS | A `1→2`, B `2→1`, one command |
+| Z-order undo/redo | PASS | exact three-layer order before/after replay |
+| Z-order no-op | PASS | same snapshot, revision, and history count |
+| Locked reorder | PASS | `LAYER_LOCKED`, no project/history mutation |
+| Redo branch clearing | PASS | undo → new B back → redo count `0` |
+| Background contract | PASS | background remains first with `zIndex=0` |
 
 ## Debt
 

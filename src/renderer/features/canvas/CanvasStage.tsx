@@ -275,6 +275,10 @@ export function CanvasStage(): React.JSX.Element {
                 transformerVisible,
               )}
               data-testid="project-canvas-stage"
+              onMouseDownCapture={(event) =>
+                event.currentTarget.focus()
+              }
+              tabIndex={-1}
             >
               <Stage
                 height={PROJECT_HEIGHT}

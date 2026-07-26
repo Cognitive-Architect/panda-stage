@@ -26,9 +26,156 @@
     "afterUndoRedoEnabled": true
   },
   "propertyForm": {
-    "historyBeforeTyping": 1,
-    "historyAfterTyping": 1,
-    "historyAfterCommit": 2
+    "blur": {
+      "historyBefore": 1,
+      "historyAfterInternalFocusMove": 1,
+      "historyAfterTyping": 1,
+      "historyAfter": 2,
+      "layer": {
+        "id": "60000000-0000-4000-8000-000000000002",
+        "name": "Panda",
+        "source": {
+          "kind": "character",
+          "characterId": "20000000-0000-4000-8000-000000000001",
+          "expressionId": "20000000-0000-4000-8000-000000000002"
+        },
+        "anchor": "center",
+        "x": 600,
+        "y": 740,
+        "scaleX": 0.72,
+        "scaleY": 0.72,
+        "rotationDeg": 0,
+        "opacity": 1,
+        "visible": true,
+        "zIndex": 1,
+        "locked": false,
+        "flipX": false
+      }
+    },
+    "submitThenBlur": {
+      "historyBefore": 2,
+      "historyAfter": 3,
+      "layer": {
+        "id": "60000000-0000-4000-8000-000000000002",
+        "name": "Panda",
+        "source": {
+          "kind": "character",
+          "characterId": "20000000-0000-4000-8000-000000000001",
+          "expressionId": "20000000-0000-4000-8000-000000000002"
+        },
+        "anchor": "center",
+        "x": 620,
+        "y": 750,
+        "scaleX": 0.8,
+        "scaleY": 0.8,
+        "rotationDeg": 15,
+        "opacity": 0.9,
+        "visible": true,
+        "zIndex": 1,
+        "locked": false,
+        "flipX": false
+      }
+    },
+    "noChange": {
+      "historyBefore": 3,
+      "historyAfter": 3
+    },
+    "invalid": {
+      "historyBefore": 3,
+      "historyAfter": 3,
+      "status": "缩放必须在 0.05–20 之间。",
+      "layer": {
+        "id": "60000000-0000-4000-8000-000000000002",
+        "name": "Panda",
+        "source": {
+          "kind": "character",
+          "characterId": "20000000-0000-4000-8000-000000000001",
+          "expressionId": "20000000-0000-4000-8000-000000000002"
+        },
+        "anchor": "center",
+        "x": 620,
+        "y": 750,
+        "scaleX": 0.8,
+        "scaleY": 0.8,
+        "rotationDeg": 15,
+        "opacity": 0.9,
+        "visible": true,
+        "zIndex": 1,
+        "locked": false,
+        "flipX": false
+      }
+    },
+    "locked": {
+      "historyBefore": 5,
+      "historyAfter": 5,
+      "status": "图层已锁定；属性草稿未提交。",
+      "layer": {
+        "id": "60000000-0000-4000-8000-000000000002",
+        "name": "Panda",
+        "source": {
+          "kind": "character",
+          "characterId": "20000000-0000-4000-8000-000000000001",
+          "expressionId": "20000000-0000-4000-8000-000000000002"
+        },
+        "anchor": "center",
+        "x": 620,
+        "y": 750,
+        "scaleX": 0.8,
+        "scaleY": 0.8,
+        "rotationDeg": 15,
+        "opacity": 0.9,
+        "visible": true,
+        "zIndex": 2,
+        "locked": true,
+        "flipX": false
+      }
+    }
+  },
+  "zOrder": {
+    "historyBefore": 3,
+    "historyAfter": 4,
+    "changed": [
+      {
+        "id": "60000000-0000-4000-8000-000000000001",
+        "zIndex": 0
+      },
+      {
+        "id": "d2400000-0000-4000-8000-000000000010",
+        "zIndex": 1
+      },
+      {
+        "id": "60000000-0000-4000-8000-000000000002",
+        "zIndex": 2
+      }
+    ],
+    "undone": [
+      {
+        "id": "60000000-0000-4000-8000-000000000001",
+        "zIndex": 0
+      },
+      {
+        "id": "60000000-0000-4000-8000-000000000002",
+        "zIndex": 1
+      },
+      {
+        "id": "d2400000-0000-4000-8000-000000000010",
+        "zIndex": 2
+      }
+    ],
+    "redone": [
+      {
+        "id": "60000000-0000-4000-8000-000000000001",
+        "zIndex": 0
+      },
+      {
+        "id": "d2400000-0000-4000-8000-000000000010",
+        "zIndex": 1
+      },
+      {
+        "id": "60000000-0000-4000-8000-000000000002",
+        "zIndex": 2
+      }
+    ]
   },
   "persistence": {
     "saved": true,

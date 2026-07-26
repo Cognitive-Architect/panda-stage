@@ -11,7 +11,10 @@ import {
   isTransformerOverlayVisible,
 } from '../../src/renderer/features/canvas/LayerTransformer';
 import { shouldDeleteSelectedLayer } from '../../src/renderer/features/properties/LayerOrderControls';
-import { parseLayerTransformDraft } from '../../src/renderer/features/properties/LayerTransformPanel';
+import {
+  parseLayerTransformDraft,
+  shouldCommitTransformBlur,
+} from '../../src/renderer/features/properties/LayerTransformPanel';
 
 describe('Day 23 layer control adapters', () => {
   it('accepts valid property drafts and rejects non-finite or out-of-range values', () => {
@@ -44,6 +47,18 @@ describe('Day 23 layer control adapters', () => {
     ]) {
       expect(() => parseLayerTransformDraft(draft, false)).toThrow();
     }
+  });
+
+  it('commits blur only when focus leaves the complete transform form', () => {
+    const inputA = {} as EventTarget;
+    const inputB = {} as EventTarget;
+    const canvas = {} as EventTarget;
+    const formTargets = new Set<EventTarget>([inputA, inputB]);
+    const contains = (target: EventTarget) => formTargets.has(target);
+
+    expect(shouldCommitTransformBlur(contains, inputB)).toBe(false);
+    expect(shouldCommitTransformBlur(contains, canvas)).toBe(true);
+    expect(shouldCommitTransformBlur(contains, null)).toBe(true);
   });
 
   it('limits Transformer boxes using the model scale bounds', () => {

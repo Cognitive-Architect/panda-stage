@@ -16,6 +16,8 @@ const evidenceDirectory = path.join(
 );
 const firstRoot = 'D:\\Projects\\Day 24 history.pandastage';
 const secondRoot = 'D:\\Projects\\Day 24 second.pandastage';
+const secondContentLayerId =
+  'd2400000-0000-4000-8000-000000000010';
 
 app.on('window-all-closed', () => {});
 
@@ -42,6 +44,41 @@ async function setInput(window, selector, value) {
     ).set.call(input, ${JSON.stringify(value)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
+}
+
+async function focusInput(window, selector) {
+  const point = await window.webContents.executeJavaScript(`(() => {
+    const input = document.querySelector(${JSON.stringify(selector)});
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error('Input not found: ${selector}');
+    }
+    input.scrollIntoView({ block: 'center' });
+    const rect = input.getBoundingClientRect();
+    return {
+      x: Math.round(rect.left + rect.width / 2),
+      y: Math.round(rect.top + rect.height / 2)
+    };
+  })()`);
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: point.x,
+    y: point.y,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    button: 'left',
+    clickCount: 1,
+    x: point.x,
+    y: point.y,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    button: 'left',
+    clickCount: 1,
+    x: point.x,
+    y: point.y,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
 async function openProject(window, projectRoot) {
@@ -72,7 +109,10 @@ async function snapshot(window) {
       redoCount: Number(history.dataset.redoCount),
       maxDepth: Number(history.dataset.historyDepth),
       undoDisabled: history.querySelectorAll('button')[0].disabled,
-      redoDisabled: history.querySelectorAll('button')[1].disabled
+      redoDisabled: history.querySelectorAll('button')[1].disabled,
+      transformStatus: document.querySelector(
+        '[data-testid="layer-transform-status"]'
+      ).textContent
     };
   })()`);
 }
@@ -168,6 +208,16 @@ async function selectLayerAtPoint(window, layerId, point) {
   throw new Error(`Moved layer could not be selected: ${layerId}`);
 }
 
+async function blurToCanvas(window, point) {
+  await window.webContents.executeJavaScript(
+    `document.querySelector('.project-canvas').scrollIntoView({
+      block: 'start'
+    })`,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  await clickLogicalPoint(window, point);
+}
+
 async function shortcut(window, key, modifiers) {
   window.webContents.sendInputEvent({
     type: 'keyDown',
@@ -195,15 +245,28 @@ async function verifyDay24() {
       defaultScale: 1,
       defaultFlipX: false,
     })),
-    shots: exampleProject.shots.map((shot) => ({
-      ...shot,
-      backgroundLayerId: shot.layers[0]?.id ?? null,
-      layers: shot.layers.map((layer) => ({
+    shots: exampleProject.shots.map((shot) => {
+      const layers = shot.layers.map((layer) => ({
         ...layer,
         locked: false,
         flipX: false,
-      })),
-    })),
+      }));
+      const ordinary = layers[1];
+      return {
+        ...shot,
+        backgroundLayerId: layers[0]?.id ?? null,
+        layers: [
+          ...layers,
+          {
+            ...ordinary,
+            id: secondContentLayerId,
+            name: 'Second content layer',
+            x: 1_200,
+            zIndex: 2,
+          },
+        ],
+      };
+    }),
   };
   const secondProject = {
     ...firstProject,
@@ -347,7 +410,6 @@ async function verifyDay24() {
       x: redoneLayer.x,
       y: redoneLayer.y,
     });
-    const historyBeforeTyping = (await snapshot(window)).undoCount;
     const transformInputs = [
       '[data-testid="layer-transform-panel"] label:nth-of-type(1) input',
       '[data-testid="layer-transform-panel"] label:nth-of-type(2) input',
@@ -355,10 +417,45 @@ async function verifyDay24() {
       '[data-testid="layer-transform-panel"] label:nth-of-type(4) input',
       '[data-testid="layer-transform-panel"] label:nth-of-type(5) input',
     ];
-    for (const [index, value] of [600, 730, 0.8, 15, 0.9].entries()) {
+
+    const historyBeforeBlur = (await snapshot(window)).undoCount;
+    await focusInput(window, transformInputs[0]);
+    await setInput(window, transformInputs[0], '600');
+    await focusInput(window, transformInputs[1]);
+    const historyAfterInternalFocusMove =
+      (await snapshot(window)).undoCount;
+    await setInput(window, transformInputs[1], '740');
+    const historyAfterBlurTyping = (await snapshot(window)).undoCount;
+    await blurToCanvas(window, { x: 1_700, y: 100 });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const blurCommitted = await snapshot(window);
+    if (blurCommitted.undoCount !== 2) {
+      throw new Error(
+        `Blur did not commit exactly one transform command: ${JSON.stringify(
+          {
+            historyBeforeBlur,
+            historyAfterInternalFocusMove,
+            historyAfterBlurTyping,
+            blurCommitted,
+          },
+        )}`,
+      );
+    }
+
+    await selectLayerAtPoint(window, target.id, { x: 600, y: 740 });
+    await window.webContents.executeJavaScript(`(async () => {
+      document.querySelector(
+        '[data-testid="layer-transform-panel"]'
+      ).scrollIntoView({ block: 'center' });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    })()`);
+    const propertyBlurScreenshot =
+      await window.webContents.capturePage();
+    const historyBeforeSubmit = (await snapshot(window)).undoCount;
+    await focusInput(window, transformInputs[0]);
+    for (const [index, value] of [620, 750, 0.8, 15, 0.9].entries()) {
       await setInput(window, transformInputs[index], String(value));
     }
-    const historyAfterTyping = (await snapshot(window)).undoCount;
     await window.webContents.executeJavaScript(
       `document.querySelector(
         '[data-testid="layer-transform-panel"] form'
@@ -367,11 +464,97 @@ async function verifyDay24() {
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="history-controls"]')` +
-          `.dataset.undoCount === '2'`,
+          `.dataset.undoCount === '3'`,
         'Property form did not commit exactly one history entry.',
       ),
     );
-    const historyAfterPropertyCommit = (await snapshot(window)).undoCount;
+    await blurToCanvas(window, { x: 1_700, y: 100 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const submitThenBlur = await snapshot(window);
+
+    await selectLayerAtPoint(window, target.id, { x: 620, y: 750 });
+    const historyBeforeNoChange = (await snapshot(window)).undoCount;
+    await focusInput(window, transformInputs[0]);
+    await blurToCanvas(window, { x: 1_700, y: 100 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const noChangeBlur = await snapshot(window);
+
+    await selectLayerAtPoint(window, target.id, { x: 620, y: 750 });
+    await focusInput(window, transformInputs[2]);
+    await setInput(window, transformInputs[2], '0');
+    const invalidBefore = await snapshot(window);
+    await blurToCanvas(window, { x: 1_700, y: 100 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const invalidAfter = await snapshot(window);
+
+    await selectLayerAtPoint(window, target.id, { x: 620, y: 750 });
+    const historyBeforeOrder = (await snapshot(window)).undoCount;
+    await window.webContents.executeJavaScript(
+      `document.querySelectorAll(
+        '[data-testid="layer-order-controls"] button'
+      )[2].click()`,
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="history-controls"]')` +
+          `.dataset.undoCount === '4'`,
+        'Real front reorder did not create one history entry.',
+      ),
+    );
+    const orderChanged = await snapshot(window);
+    await window.webContents.executeJavaScript(`(async () => {
+      document.querySelector(
+        '[data-testid="layer-order-controls"]'
+      ).scrollIntoView({ block: 'center' });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    })()`);
+    const zOrderScreenshot = await window.webContents.capturePage();
+    await window.webContents.executeJavaScript(
+      `document.querySelectorAll(
+        '[data-testid="history-controls"] button'
+      )[0].click()`,
+    );
+    const orderUndone = await snapshot(window);
+    await window.webContents.executeJavaScript(
+      `document.querySelectorAll(
+        '[data-testid="history-controls"] button'
+      )[1].click()`,
+    );
+    const orderRedone = await snapshot(window);
+
+    await window.webContents.executeJavaScript(
+      `document.querySelector(
+        '[data-testid="layer-transform-panel"] .layer-lock-control input'
+      ).click()`,
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="history-controls"]')` +
+          `.dataset.undoCount === '5'`,
+        'Layer lock did not commit.',
+      ),
+    );
+    const lockedBeforeSubmit = await snapshot(window);
+    await setInput(window, transformInputs[0], '999');
+    await window.webContents.executeJavaScript(
+      `document.querySelector(
+        '[data-testid="layer-transform-panel"] form'
+      ).requestSubmit()`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const lockedAfterSubmit = await snapshot(window);
+    await window.webContents.executeJavaScript(
+      `document.querySelector(
+        '[data-testid="layer-transform-panel"] .layer-lock-control input'
+      ).click()`,
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="history-controls"]')` +
+          `.dataset.undoCount === '6'`,
+        'Layer unlock did not commit.',
+      ),
+    );
 
     const deleteProbe = await window.webContents.executeJavaScript(`(() => {
       const button = document.querySelector(
@@ -473,9 +656,50 @@ async function verifyDay24() {
         afterUndoRedoEnabled: !undone.redoDisabled,
       },
       propertyForm: {
-        historyBeforeTyping,
-        historyAfterTyping,
-        historyAfterCommit: historyAfterPropertyCommit,
+        blur: {
+          historyBefore: historyBeforeBlur,
+          historyAfterInternalFocusMove,
+          historyAfterTyping: historyAfterBlurTyping,
+          historyAfter: blurCommitted.undoCount,
+          layer: layerAt(blurCommitted),
+        },
+        submitThenBlur: {
+          historyBefore: historyBeforeSubmit,
+          historyAfter: submitThenBlur.undoCount,
+          layer: layerAt(submitThenBlur),
+        },
+        noChange: {
+          historyBefore: historyBeforeNoChange,
+          historyAfter: noChangeBlur.undoCount,
+        },
+        invalid: {
+          historyBefore: invalidBefore.undoCount,
+          historyAfter: invalidAfter.undoCount,
+          status: invalidAfter.transformStatus,
+          layer: layerAt(invalidAfter),
+        },
+        locked: {
+          historyBefore: lockedBeforeSubmit.undoCount,
+          historyAfter: lockedAfterSubmit.undoCount,
+          status: lockedAfterSubmit.transformStatus,
+          layer: layerAt(lockedAfterSubmit),
+        },
+      },
+      zOrder: {
+        historyBefore: historyBeforeOrder,
+        historyAfter: orderChanged.undoCount,
+        changed: orderChanged.layers.map(({ id, zIndex }) => ({
+          id,
+          zIndex,
+        })),
+        undone: orderUndone.layers.map(({ id, zIndex }) => ({
+          id,
+          zIndex,
+        })),
+        redone: orderRedone.layers.map(({ id, zIndex }) => ({
+          id,
+          zIndex,
+        })),
       },
       persistence: {
         saved: Boolean(saveRequest),
@@ -500,10 +724,36 @@ async function verifyDay24() {
       !evidence.deletion.redoDeleted ||
       !evidence.buttons.initialUndoEnabled ||
       !evidence.buttons.afterUndoRedoEnabled ||
-      evidence.propertyForm.historyAfterTyping !==
-        evidence.propertyForm.historyBeforeTyping ||
-      evidence.propertyForm.historyAfterCommit !==
-        evidence.propertyForm.historyBeforeTyping + 1 ||
+      evidence.propertyForm.blur.historyAfterTyping !==
+        evidence.propertyForm.blur.historyBefore ||
+      evidence.propertyForm.blur.historyAfterInternalFocusMove !==
+        evidence.propertyForm.blur.historyBefore ||
+      evidence.propertyForm.blur.historyAfter !==
+        evidence.propertyForm.blur.historyBefore + 1 ||
+      evidence.propertyForm.blur.layer.x !== 600 ||
+      evidence.propertyForm.blur.layer.y !== 740 ||
+      evidence.propertyForm.submitThenBlur.historyAfter !==
+        evidence.propertyForm.submitThenBlur.historyBefore + 1 ||
+      evidence.propertyForm.submitThenBlur.layer.x !== 620 ||
+      evidence.propertyForm.submitThenBlur.layer.y !== 750 ||
+      evidence.propertyForm.noChange.historyAfter !==
+        evidence.propertyForm.noChange.historyBefore ||
+      evidence.propertyForm.invalid.historyAfter !==
+        evidence.propertyForm.invalid.historyBefore ||
+      evidence.propertyForm.invalid.layer.scaleX !== 0.8 ||
+      !evidence.propertyForm.invalid.status.includes('缩放必须在') ||
+      evidence.propertyForm.locked.historyAfter !==
+        evidence.propertyForm.locked.historyBefore ||
+      evidence.propertyForm.locked.layer.x !== 620 ||
+      !evidence.propertyForm.locked.status.includes('已锁定') ||
+      evidence.zOrder.historyAfter !==
+        evidence.zOrder.historyBefore + 1 ||
+      evidence.zOrder.changed.at(-1)?.id !== target.id ||
+      evidence.zOrder.changed.at(-1)?.zIndex !== 2 ||
+      evidence.zOrder.undone[1]?.id !== target.id ||
+      evidence.zOrder.undone[1]?.zIndex !== 1 ||
+      evidence.zOrder.redone.at(-1)?.id !== target.id ||
+      evidence.zOrder.redone.at(-1)?.zIndex !== 2 ||
       !evidence.persistence.saved ||
       !evidence.persistence.historyExcluded ||
       evidence.projectSwitch.undoCount !== 0 ||
@@ -518,6 +768,14 @@ async function verifyDay24() {
       writeFile(
         path.join(evidenceDirectory, 'history-controls.png'),
         screenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'property-blur.png'),
+        propertyBlurScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'z-order-history.png'),
+        zOrderScreenshot.toPNG(),
       ),
       writeFile(
         path.join(evidenceDirectory, 'results.json'),
