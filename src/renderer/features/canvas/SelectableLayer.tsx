@@ -1,4 +1,3 @@
-import { createRef, Fragment } from 'react';
 import Konva from 'konva';
 import {
   Group,
@@ -11,11 +10,11 @@ import {
   type LayerTransformInput,
 } from '../../../domain';
 import type { StageLayerRenderInstruction } from '../../../shared/stage/layer-render-contract';
-import { LayerTransformer } from './LayerTransformer';
 
 export interface SelectableLayerProps {
   image: HTMLImageElement;
   layer: Layer;
+  nodeRef: React.RefObject<Konva.Group | null>;
   render: StageLayerRenderInstruction;
   selected: boolean;
   onSelect: (layerId: string) => void;
@@ -42,6 +41,7 @@ function stopAndSelect(
 export function SelectableLayer({
   image,
   layer,
+  nodeRef,
   render,
   selected,
   onSelect,
@@ -49,7 +49,6 @@ export function SelectableLayer({
   onCommitTransform,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
-  const nodeRef = createRef<Konva.Group>();
   if (render.isBackground) {
     return (
       <KonvaImage
@@ -80,8 +79,7 @@ export function SelectableLayer({
   };
 
   return (
-    <Fragment>
-      <Group
+    <Group
       draggable={!layer.locked}
       id={`canvas-layer-${layer.id}`}
       listening
@@ -161,13 +159,6 @@ export function SelectableLayer({
           width={render.width}
           />
         ) : null}
-      </Group>
-      <LayerTransformer
-        locked={layer.locked}
-        nodeRef={nodeRef}
-        scale={layer.scaleX}
-        selected={selected}
-      />
-    </Fragment>
+    </Group>
   );
 }

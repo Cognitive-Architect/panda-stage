@@ -49,6 +49,7 @@ function models(project: Project) {
             y: layer.y,
             scaleX: layer.scaleX,
             scaleY: layer.scaleY,
+            flipX: layer.flipX,
             rotationDeg: layer.rotationDeg,
             opacity: layer.opacity,
             visible: layer.visible,
@@ -94,6 +95,14 @@ describe('shared stage layer render contract', () => {
           ? { ...asset, width: 1000, height: 1000 }
           : asset,
       ),
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) =>
+          layer.id === shot.backgroundLayerId
+            ? { ...layer, flipX: true }
+            : layer,
+        ),
+      })),
     });
     const contracts = renderContracts(square);
 
@@ -151,6 +160,7 @@ describe('shared stage layer render contract', () => {
                   y: 333,
                   scaleX: 1.25,
                   scaleY: 0.8,
+                  flipX: true,
                   rotationDeg: 17,
                   opacity: 0.4,
                   visible: false,
@@ -166,11 +176,47 @@ describe('shared stage layer render contract', () => {
       isBackground: false,
       x: 777,
       y: 333,
-      scaleX: 1.25,
+      scaleX: -1.25,
       scaleY: 0.8,
       rotationDeg: 17,
       opacity: 0.4,
       visible: false,
     });
+  });
+
+  it('keeps ordinary-layer center and geometry stable across a flip', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const ordinaryId = project.shots[0]!.layers.find(
+      (layer) => layer.id !== project.shots[0]!.backgroundLayerId,
+    )!.id;
+    const unflipped = renderContracts(project);
+    const flippedProject = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) =>
+          layer.id === ordinaryId ? { ...layer, flipX: true } : layer,
+        ),
+      })),
+    });
+    const flipped = renderContracts(flippedProject);
+    const before = unflipped.renderer.find(
+      (layer) => layer.id === ordinaryId,
+    )!;
+    const after = flipped.renderer.find(
+      (layer) => layer.id === ordinaryId,
+    )!;
+
+    expect(after).toMatchObject({
+      x: before.x,
+      y: before.y,
+      width: before.width,
+      height: before.height,
+      offsetX: before.offsetX,
+      offsetY: before.offsetY,
+      scaleX: -before.scaleX,
+      scaleY: before.scaleY,
+    });
+    expect(flipped.editor).toEqual(flipped.renderer);
   });
 });

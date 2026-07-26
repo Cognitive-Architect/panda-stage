@@ -1,6 +1,8 @@
 import {
+  createRef,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
@@ -32,6 +34,10 @@ import { LayerOrderControls } from '../properties/LayerOrderControls';
 import { LayerTransformPanel } from '../properties/LayerTransformPanel';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
+import {
+  isTransformerOverlayVisible,
+  LayerTransformer,
+} from './LayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
 import type { CanvasDropPreview } from './useCanvasDrop';
 
@@ -150,6 +156,18 @@ export function CanvasStage(): React.JSX.Element {
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const layerNodeRefs = useRef(
+    new Map<string, React.RefObject<Konva.Group | null>>(),
+  );
+  const getLayerNodeRef = (
+    layerId: string,
+  ): React.RefObject<Konva.Group | null> => {
+    const existing = layerNodeRefs.current.get(layerId);
+    if (existing) return existing;
+    const created = createRef<Konva.Group>();
+    layerNodeRefs.current.set(layerId, created);
+    return created;
+  };
   const shot =
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
@@ -161,8 +179,6 @@ export function CanvasStage(): React.JSX.Element {
         : null,
     [shot, snapshot],
   );
-  const selectedLayer =
-    shot?.layers.find((layer) => layer.id === selectedLayerId) ?? null;
   const imageState = useCanvasImages(snapshot, shot);
   const backgroundLayer =
     stageModel?.layers.find((layer) => layer.render.isBackground) ?? null;
@@ -176,6 +192,18 @@ export function CanvasStage(): React.JSX.Element {
     (!backgroundLayer ||
       !backgroundAsset ||
       imageState.missing.has(backgroundAsset.id));
+  const selectedStageLayer =
+    stageModel?.layers.find(
+      ({ layer }) => layer.id === selectedLayerId,
+    ) ?? null;
+  const transformerVisible = isTransformerOverlayVisible({
+    selected: Boolean(selectedStageLayer),
+    isBackground: selectedStageLayer?.render.isBackground ?? false,
+    locked: selectedStageLayer?.layer.locked ?? false,
+    imageReady: selectedStageLayer
+      ? imageState.images.has(selectedStageLayer.asset.id)
+      : false,
+  });
 
   return (
     <section className="project-canvas" aria-labelledby="canvas-heading">
@@ -241,8 +269,9 @@ export function CanvasStage(): React.JSX.Element {
               data-render-contract="shared-stage-layer-v1"
               data-selected-layer-id={selectedLayerId ?? ''}
               data-stage-center="960,540"
+              data-transformer-overlay="separate-konva-layer-after-content"
               data-transformer-visible={String(
-                Boolean(selectedLayer && !selectedLayer.locked),
+                transformerVisible,
               )}
               data-testid="project-canvas-stage"
             >
@@ -269,6 +298,7 @@ export function CanvasStage(): React.JSX.Element {
                             image={image}
                             key={render.id}
                             layer={layer}
+                            nodeRef={getLayerNodeRef(layer.id)}
                             onCommitPosition={(layerId, position) => {
                               layerStore.updatePosition(layerId, position);
                               setInteractionStatus(
@@ -304,6 +334,21 @@ export function CanvasStage(): React.JSX.Element {
                     stroke="rgba(255, 225, 125, 0.55)"
                     strokeWidth={2}
                   />
+                </KonvaLayer>
+                <KonvaLayer
+                  listening
+                  name="transformer-overlay-layer"
+                >
+                  {transformerVisible && selectedStageLayer ? (
+                    <LayerTransformer
+                      locked={selectedStageLayer.layer.locked}
+                      nodeRef={getLayerNodeRef(
+                        selectedStageLayer.layer.id,
+                      )}
+                      scale={selectedStageLayer.layer.scaleX}
+                      selected
+                    />
+                  ) : null}
                 </KonvaLayer>
               </Stage>
             </div>

@@ -271,6 +271,13 @@ async function createSelectedCharacterLayer(window, point) {
       'Dropped character layer was not selected.',
     ),
   );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="project-canvas-stage"]')` +
+        `.dataset.transformerVisible === 'true'`,
+      'Dropped character layer Transformer did not attach.',
+    ),
+  );
   return snapshot(window);
 }
 
@@ -324,14 +331,19 @@ async function verifyDay23() {
   let savedProject = null;
   let saveRequest = null;
   const autosaveUpdates = [];
-  const thumbnailBytes = await readFile(
+  const backgroundThumbnailBytes = await readFile(
     path.join(
       repositoryRoot,
       'tests/fixtures/characters/熊猫 normal.png',
     ),
   );
-  const thumbnailDataUrl =
-    `data:image/png;base64,${thumbnailBytes.toString('base64')}`;
+  const characterThumbnailBytes = await readFile(
+    path.join(repositoryRoot, 'public/probe/panda-character.png'),
+  );
+  const backgroundThumbnailDataUrl =
+    `data:image/png;base64,${backgroundThumbnailBytes.toString('base64')}`;
+  const characterThumbnailDataUrl =
+    `data:image/png;base64,${characterThumbnailBytes.toString('base64')}`;
 
   ipcMain.handle(IPC_CHANNELS.PROJECT_OPEN, (_event, request) => ({
     ok: true,
@@ -377,7 +389,10 @@ async function verifyDay23() {
       ok: true,
       status: 'ready',
       assetId: request.assetId,
-      dataUrl: thumbnailDataUrl,
+      dataUrl:
+        request.assetId === exampleProject.assets[0].id
+          ? backgroundThumbnailDataUrl
+          : characterThumbnailDataUrl,
     }),
   );
 
@@ -428,12 +443,40 @@ async function verifyDay23() {
         })}`,
       );
     }
+    await window.webContents.executeJavaScript(
+      `document.querySelectorAll(` +
+        `'[data-testid="layer-order-controls"] button'` +
+        `)[3].click()`,
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `JSON.parse(document.querySelector(` +
+          `'[data-testid="project-canvas-stage"]').dataset.layerJson)` +
+          `.find((item) => item.id === ${JSON.stringify(targetLayerId)})` +
+          `.zIndex === 1`,
+        'Selected layer did not move behind overlapping content.',
+      ),
+    );
     await scrollCanvasIntoView(window);
     const selected = await snapshot(window);
+    const overlayProbe = await window.webContents.executeJavaScript(
+      `(() => {
+        const stage = document.querySelector(
+          '[data-testid="project-canvas-stage"]'
+        );
+        return {
+          mode: stage.dataset.transformerOverlay,
+          konvaCanvasCount: stage.querySelectorAll('canvas').length
+        };
+      })()`,
+    );
     const transformerScreenshot = await captureCanvas(window);
 
-    const selectedLayer = selectionProbe.layers.find(
+    const selectedLayer = selected.layers.find(
       (layer) => layer.id === targetLayerId,
+    );
+    const coveringLayer = selected.layers.find(
+      (layer) => layer.id === ordinary.id,
     );
     const halfSize = (640 * selectedLayer.scaleX) / 2;
     await dragLogicalPoint(
@@ -447,9 +490,28 @@ async function verifyDay23() {
         y: selectedLayer.y - halfSize - 100,
       },
     );
+    const scaleAfter = await snapshot(window);
+    const scaledLayer = scaleAfter.layers.find(
+      (layer) => layer.id === targetLayerId,
+    );
+    const scaledHalfSize = (640 * scaledLayer.scaleX) / 2;
+    await dragLogicalPoint(
+      window,
+      {
+        x: scaledLayer.x,
+        y: scaledLayer.y - scaledHalfSize - 42,
+      },
+      {
+        x: scaledLayer.x + 150,
+        y: scaledLayer.y - scaledHalfSize + 35,
+      },
+    );
     const transformerAfter = await snapshot(window);
     const mouseLayer = transformerAfter.layers.find(
       (layer) => layer.id === targetLayerId,
+    );
+    const coveringLayerAfter = transformerAfter.layers.find(
+      (layer) => layer.id === ordinary.id,
     );
 
     const inputSelectors = [
@@ -655,10 +717,19 @@ async function verifyDay23() {
       },
       transformer: {
         visibleOnSelection: selected.transformerVisible,
+        overlay: overlayProbe,
+        selectedZIndex: selectedLayer.zIndex,
+        coveringLayerId: coveringLayer.id,
+        coveringZIndex: coveringLayer.zIndex,
+        coveringLayerUnchanged:
+          JSON.stringify(coveringLayerAfter) ===
+          JSON.stringify(coveringLayer),
         revisionBefore: selected.revision,
-        revisionAfter: transformerAfter.revision,
+        scaleRevisionAfter: scaleAfter.revision,
+        rotationRevisionAfter: transformerAfter.revision,
         scaleBefore: selectedLayer.scaleX,
         scaleAfter: mouseLayer.scaleX,
+        rotationAfter: mouseLayer.rotationDeg,
       },
       properties: propertyAfter.layers.find(
         (layer) => layer.id === targetLayerId,
@@ -711,7 +782,7 @@ async function verifyDay23() {
       },
       autosaveUpdates: autosaveUpdates.length,
       screenshots: [
-        'docs/evidence/day-23/transformer.png',
+        'docs/evidence/day-23/transformer-overlay.png',
         'docs/evidence/day-23/locked.png',
         'docs/evidence/day-23/deleted.png',
       ],
@@ -719,9 +790,18 @@ async function verifyDay23() {
 
     if (
       !evidence.transformer.visibleOnSelection ||
-      evidence.transformer.revisionAfter !==
+      evidence.transformer.overlay.mode !==
+        'separate-konva-layer-after-content' ||
+      evidence.transformer.overlay.konvaCanvasCount < 2 ||
+      !(evidence.transformer.selectedZIndex <
+        evidence.transformer.coveringZIndex) ||
+      !evidence.transformer.coveringLayerUnchanged ||
+      evidence.transformer.scaleRevisionAfter !==
         evidence.transformer.revisionBefore + 1 ||
+      evidence.transformer.rotationRevisionAfter !==
+        evidence.transformer.scaleRevisionAfter + 1 ||
       !(evidence.transformer.scaleAfter > evidence.transformer.scaleBefore) ||
+      Math.abs(evidence.transformer.rotationAfter) < 1 ||
       evidence.properties.x !== 800 ||
       evidence.properties.y !== 450 ||
       evidence.properties.scaleX !== 1.25 ||
@@ -758,7 +838,7 @@ async function verifyDay23() {
     await mkdir(evidenceDirectory, { recursive: true });
     await Promise.all([
       writeFile(
-        path.join(evidenceDirectory, 'transformer.png'),
+        path.join(evidenceDirectory, 'transformer-overlay.png'),
         transformerScreenshot,
       ),
       writeFile(

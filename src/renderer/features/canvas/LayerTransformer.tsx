@@ -11,6 +11,22 @@ export interface TransformerBox {
   height: number;
 }
 
+export interface TransformerOverlayState {
+  selected: boolean;
+  isBackground: boolean;
+  locked: boolean;
+  imageReady: boolean;
+}
+
+export function isTransformerOverlayVisible({
+  selected,
+  isBackground,
+  locked,
+  imageReady,
+}: TransformerOverlayState): boolean {
+  return selected && !isBackground && !locked && imageReady;
+}
+
 export function isTransformerBoxAllowed(
   oldBox: TransformerBox,
   newBox: TransformerBox,

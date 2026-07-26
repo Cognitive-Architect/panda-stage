@@ -94,7 +94,7 @@ export function buildStageRenderModel(
           y: layer.y,
           scaleX: layer.scaleX,
           scaleY: layer.scaleY,
-          flipX: false,
+          flipX: layer.flipX,
           rotationDeg: layer.rotationDeg,
           opacity: layer.opacity,
           visible: layer.visible,

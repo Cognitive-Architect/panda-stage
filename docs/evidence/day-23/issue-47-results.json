@@ -1,0 +1,69 @@
+{
+  "issue": 47,
+  "result": "PASS",
+  "branch": "feat/day-23-layer-transform",
+  "executedAt": "2026-07-26T06:50:23.131Z",
+  "path": "hidden ExportRendererApp -> evaluateShotAtTime -> buildStageRenderModel -> StageRenderer",
+  "evaluatorFlipX": true,
+  "modelScaleX": -0.72,
+  "unflipped": {
+    "hash": "a9e0d0d02f8395be697678eac0676fb8d09bcf8b76c70d23c98eda8a0cdba27f",
+    "render": {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "assetId": "10000000-0000-4000-8000-000000000002",
+      "isBackground": false,
+      "listening": false,
+      "x": 960,
+      "y": 540,
+      "width": 640,
+      "height": 640,
+      "offsetX": 320,
+      "offsetY": 320,
+      "scaleX": 0.72,
+      "scaleY": 0.72,
+      "rotationDeg": 0,
+      "opacity": 1,
+      "visible": true,
+      "zIndex": 1,
+      "coverScale": null
+    }
+  },
+  "flipped": {
+    "hash": "6f1feb27f4ec4529cc8da7aa492dcb623e19562e4faac5590f60b2e50d520888",
+    "render": {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "assetId": "10000000-0000-4000-8000-000000000002",
+      "isBackground": false,
+      "listening": false,
+      "x": 960,
+      "y": 540,
+      "width": 640,
+      "height": 640,
+      "offsetX": 320,
+      "offsetY": 320,
+      "scaleX": -0.72,
+      "scaleY": 0.72,
+      "rotationDeg": 0,
+      "opacity": 1,
+      "visible": true,
+      "zIndex": 1,
+      "coverScale": null
+    }
+  },
+  "centerStable": true,
+  "geometryStable": true,
+  "mirror": {
+    "bounds": {
+      "left": 729,
+      "right": 1191,
+      "top": 309,
+      "bottom": 771
+    },
+    "meanAbsoluteChannelDelta": 0.008325368714979105,
+    "pixelsWithinTolerance": 0.9998781881898765
+  },
+  "screenshots": [
+    "docs/evidence/day-23/production-unflipped.png",
+    "docs/evidence/day-23/production-flipped.png"
+  ]
+}

@@ -85,4 +85,21 @@ describe('evaluateShotAtTime', () => {
       evaluateShotAtTime(shot, 750),
     );
   });
+
+  it('preserves horizontal flip in the evaluated production snapshot', () => {
+    const shot = ShotSchema.parse({
+      ...createShot(),
+      layers: createShot().layers.map((layer) => ({
+        ...layer,
+        flipX: true,
+      })),
+    });
+
+    expect(evaluateShotAtTime(shot, 750).layers[0]).toMatchObject({
+      id: LAYER_ID,
+      x: 300,
+      y: 400,
+      flipX: true,
+    });
+  });
 });

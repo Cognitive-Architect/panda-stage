@@ -3,7 +3,7 @@
   "workOrder": "B-23/45",
   "result": "PASS",
   "branch": "feat/day-23-layer-transform",
-  "executedAt": "2026-07-26T05:24:54.082Z",
+  "executedAt": "2026-07-26T06:50:22.025Z",
   "baselineSha": "4a5266c",
   "contract": {
     "schemaVersion": 5,
@@ -14,13 +14,23 @@
   },
   "transformer": {
     "visibleOnSelection": true,
-    "revisionBefore": 1,
-    "revisionAfter": 2,
+    "overlay": {
+      "mode": "separate-konva-layer-after-content",
+      "konvaCanvasCount": 2
+    },
+    "selectedZIndex": 1,
+    "coveringLayerId": "60000000-0000-4000-8000-000000000002",
+    "coveringZIndex": 2,
+    "coveringLayerUnchanged": true,
+    "revisionBefore": 2,
+    "scaleRevisionAfter": 3,
+    "rotationRevisionAfter": 4,
     "scaleBefore": 1,
-    "scaleAfter": 1.1552795031055905
+    "scaleAfter": 1.15527950310559,
+    "rotationAfter": 23.994030826339895
   },
   "properties": {
-    "id": "3fc18e2c-17c2-4dd4-8feb-219a003f447f",
+    "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
     "name": "Panda neutral",
     "source": {
       "kind": "character",
@@ -35,7 +45,7 @@
     "rotationDeg": 90,
     "opacity": 0.6,
     "visible": true,
-    "zIndex": 4,
+    "zIndex": 1,
     "locked": false,
     "flipX": false
   },
@@ -68,7 +78,7 @@
       "zIndex": 3
     },
     {
-      "id": "3fc18e2c-17c2-4dd4-8feb-219a003f447f",
+      "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
       "zIndex": 4
     }
   ],
@@ -79,10 +89,10 @@
     "orderButtonsDisabled": true
   },
   "persistence": {
-    "saveRevision": 8,
+    "saveRevision": 9,
     "schemaVersion": 5,
     "reopenedLayer": {
-      "id": "3fc18e2c-17c2-4dd4-8feb-219a003f447f",
+      "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
       "name": "Panda neutral",
       "source": {
         "kind": "character",
@@ -112,9 +122,9 @@
     "keyboardLayerRemoved": true,
     "emptyDeleteRevisionUnchanged": true
   },
-  "autosaveUpdates": 13,
+  "autosaveUpdates": 14,
   "screenshots": [
-    "docs/evidence/day-23/transformer.png",
+    "docs/evidence/day-23/transformer-overlay.png",
     "docs/evidence/day-23/locked.png",
     "docs/evidence/day-23/deleted.png"
   ]

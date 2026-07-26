@@ -103,7 +103,7 @@ function migrateLegacyProject(
         opacity: layer.opacity,
         visible: layer.visible,
         locked: false,
-        flipX: false,
+        flipX: 'flipX' in layer ? layer.flipX : false,
         zIndex: layer.zIndex,
       }));
       return {

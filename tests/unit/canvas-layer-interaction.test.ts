@@ -110,6 +110,7 @@ describe('SelectableLayer interaction adapter', () => {
   const ordinary = model.layers.find(
     ({ render }) => !render.isBackground,
   )!;
+  const nodeRef = { current: null };
 
   it('keeps drag move local and commits exactly once on drag end', () => {
     const commit = vi.fn();
@@ -125,6 +126,7 @@ describe('SelectableLayer interaction adapter', () => {
     const element = SelectableLayer({
       image: {} as HTMLImageElement,
       layer: ordinary.layer,
+      nodeRef,
       render: ordinary.render,
       selected: true,
       onSelect: vi.fn(),
@@ -132,10 +134,7 @@ describe('SelectableLayer interaction adapter', () => {
       onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
-    const group = (
-      element.props as { children: React.JSX.Element[] }
-    ).children[0]!;
-    const props = group.props as {
+    const props = element.props as {
       draggable: boolean;
       onDragMove: (event: { target: typeof target }) => void;
       onDragEnd: (event: { target: typeof target }) => void;
@@ -159,6 +158,7 @@ describe('SelectableLayer interaction adapter', () => {
     const element = SelectableLayer({
       image: {} as HTMLImageElement,
       layer: ordinary.layer,
+      nodeRef,
       render: ordinary.render,
       selected: true,
       onSelect: vi.fn(),
@@ -166,9 +166,6 @@ describe('SelectableLayer interaction adapter', () => {
       onCommitTransform: commit,
       onError: vi.fn(),
     });
-    const group = (
-      element.props as { children: React.JSX.Element[] }
-    ).children[0]!;
     let scaleX = 1.4;
     let scaleY = 1.39;
     const target = {
@@ -186,7 +183,7 @@ describe('SelectableLayer interaction adapter', () => {
       position: vi.fn(),
       scale: vi.fn(),
     };
-    const props = group.props as {
+    const props = element.props as {
       onTransformEnd: (event: { target: typeof target }) => void;
     };
 
@@ -209,6 +206,7 @@ describe('SelectableLayer interaction adapter', () => {
     const locked = SelectableLayer({
       image: {} as HTMLImageElement,
       layer: { ...ordinary.layer, locked: true },
+      nodeRef,
       render: ordinary.render,
       selected: true,
       onSelect: vi.fn(),
@@ -216,11 +214,8 @@ describe('SelectableLayer interaction adapter', () => {
       onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
-    const lockedGroup = (
-      locked.props as { children: React.JSX.Element[] }
-    ).children[0]!;
     expect(
-      (lockedGroup.props as { draggable: boolean }).draggable,
+      (locked.props as { draggable: boolean }).draggable,
     ).toBe(false);
 
     const background = model.layers.find(
@@ -229,6 +224,7 @@ describe('SelectableLayer interaction adapter', () => {
     const backgroundElement = SelectableLayer({
       image: {} as HTMLImageElement,
       layer: background.layer,
+      nodeRef,
       render: background.render,
       selected: false,
       onSelect: vi.fn(),
@@ -239,5 +235,24 @@ describe('SelectableLayer interaction adapter', () => {
     expect(
       (backgroundElement.props as { listening: boolean }).listening,
     ).toBe(false);
+  });
+
+  it('renders content without an interleaved Transformer sibling', () => {
+    const element = SelectableLayer({
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      nodeRef,
+      render: ordinary.render,
+      selected: true,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(element.type).not.toBe(Symbol.for('react.fragment'));
+    expect(
+      (element.props as { name: string }).name,
+    ).toBe('selectable-canvas-layer');
   });
 });

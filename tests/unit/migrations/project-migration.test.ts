@@ -10,7 +10,18 @@ import { PROBE_PROJECT } from '../../../src/shared/probe/probe-project';
 import exampleProject from '../../../demo-project/project-v1.example.json';
 
 function createV0Fixture(): unknown {
-  return { ...structuredClone(PROBE_PROJECT), schemaVersion: 0 };
+  const project = structuredClone(PROBE_PROJECT);
+  return {
+    ...project,
+    schemaVersion: 0,
+    shots: project.shots.map((shot) => ({
+      ...shot,
+      layers: shot.layers.map(({ flipX, ...layer }) => {
+        void flipX;
+        return layer;
+      }),
+    })),
+  };
 }
 
 function createLegacyBackgroundCandidate(
@@ -184,6 +195,15 @@ describe('project migration framework', () => {
     expect(migrated.characters).toEqual([]);
     expect(migrated.voiceProfiles).toEqual([]);
     expect(migrated.subtitleStyles).toHaveLength(1);
+  });
+
+  it('preserves flip from the current shared probe v1 during migration', () => {
+    const flippedProbe = structuredClone(PROBE_PROJECT);
+    flippedProbe.shots[0]!.layers[1]!.flipX = true;
+
+    const migrated = migrateProject(flippedProbe);
+
+    expect(migrated.shots[0]!.layers[1]!.flipX).toBe(true);
   });
 
   it('migrates a formal v1 project to v5 with character defaults and explicit background', () => {

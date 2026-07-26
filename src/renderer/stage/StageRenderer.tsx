@@ -144,6 +144,9 @@ export function StageRenderer({
       data-logical-width={modelResult.model.width}
       data-caption-visible={String(Boolean(caption))}
       data-caption-text={caption ?? ''}
+      data-layer-render-json={JSON.stringify(
+        modelResult.model.layers.map((layer) => layer.render),
+      )}
       data-render-contract="shared-stage-layer-v1"
       data-stage-ready={String(ready)}
       data-stage-time={modelResult.model.timeMs}

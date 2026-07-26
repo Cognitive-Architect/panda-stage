@@ -6,7 +6,10 @@ import {
   ProjectSchema,
   buildEditorStageRenderModel,
 } from '../../src/domain';
-import { isTransformerBoxAllowed } from '../../src/renderer/features/canvas/LayerTransformer';
+import {
+  isTransformerBoxAllowed,
+  isTransformerOverlayVisible,
+} from '../../src/renderer/features/canvas/LayerTransformer';
 import { shouldDeleteSelectedLayer } from '../../src/renderer/features/properties/LayerOrderControls';
 import { parseLayerTransformDraft } from '../../src/renderer/features/properties/LayerTransformPanel';
 
@@ -64,6 +67,31 @@ describe('Day 23 layer control adapters', () => {
         { width: Number.NaN, height: 100 },
         1,
       ),
+    ).toBe(false);
+  });
+
+  it('only exposes the overlay for a ready, selected, unlocked content layer', () => {
+    const eligible = {
+      selected: true,
+      isBackground: false,
+      locked: false,
+      imageReady: true,
+    };
+    expect(isTransformerOverlayVisible(eligible)).toBe(true);
+    expect(
+      isTransformerOverlayVisible({ ...eligible, locked: true }),
+    ).toBe(false);
+    expect(
+      isTransformerOverlayVisible({
+        ...eligible,
+        isBackground: true,
+      }),
+    ).toBe(false);
+    expect(
+      isTransformerOverlayVisible({ ...eligible, selected: false }),
+    ).toBe(false);
+    expect(
+      isTransformerOverlayVisible({ ...eligible, imageReady: false }),
     ).toBe(false);
   });
 

@@ -39,20 +39,26 @@ const LegacyAssetSchema = z
       .strict(),
   ]);
 
-const LegacyLayerSchema = z
+const LegacyLayerShape = {
+  id: IdSchema,
+  assetId: IdSchema,
+  name: NameSchema,
+  anchor: z.literal('center'),
+  x: FiniteNumberSchema,
+  y: FiniteNumberSchema,
+  scaleX: FiniteNumberSchema.positive().default(1),
+  scaleY: FiniteNumberSchema.positive().default(1),
+  rotationDeg: FiniteNumberSchema.default(0),
+  opacity: FiniteNumberSchema.min(0).max(1).default(1),
+  visible: z.boolean().default(true),
+  zIndex: z.number().int().nonnegative(),
+};
+
+const LegacyLayerV0Schema = z.object(LegacyLayerShape).strict();
+const LegacyProbeLayerV1Schema = z
   .object({
-    id: IdSchema,
-    assetId: IdSchema,
-    name: NameSchema,
-    anchor: z.literal('center'),
-    x: FiniteNumberSchema,
-    y: FiniteNumberSchema,
-    scaleX: FiniteNumberSchema.positive().default(1),
-    scaleY: FiniteNumberSchema.positive().default(1),
-    rotationDeg: FiniteNumberSchema.default(0),
-    opacity: FiniteNumberSchema.min(0).max(1).default(1),
-    visible: z.boolean().default(true),
-    zIndex: z.number().int().nonnegative(),
+    ...LegacyLayerShape,
+    flipX: z.boolean().default(false),
   })
   .strict();
 
@@ -73,46 +79,59 @@ const LegacyMoveEventSchema = z
   })
   .strict();
 
-const LegacyShotSchema = z
-  .object({
-    id: IdSchema,
-    name: NameSchema,
-    durationMs: PositiveMillisecondsSchema,
-    backgroundLayerId: IdSchema.nullable().optional(),
-    layers: z.array(LegacyLayerSchema),
-    timelineEvents: z.array(LegacyMoveEventSchema),
-  })
-  .strict()
-  .superRefine((shot, context) => {
-    const layerIds = new Set(shot.layers.map((layer) => layer.id));
-    if (
-      shot.backgroundLayerId !== undefined &&
-      shot.backgroundLayerId !== null &&
-      !layerIds.has(shot.backgroundLayerId)
-    ) {
-      context.addIssue({
-        code: 'custom',
-        path: ['backgroundLayerId'],
-        message: `Legacy shot references unknown background layer: ${shot.backgroundLayerId}`,
+function createLegacyShotSchema(
+  layerSchema:
+    | typeof LegacyLayerV0Schema
+    | typeof LegacyProbeLayerV1Schema,
+) {
+  return z
+    .object({
+      id: IdSchema,
+      name: NameSchema,
+      durationMs: PositiveMillisecondsSchema,
+      backgroundLayerId: IdSchema.nullable().optional(),
+      layers: z.array(layerSchema),
+      timelineEvents: z.array(LegacyMoveEventSchema),
+    })
+    .strict()
+    .superRefine((shot, context) => {
+      const layerIds = new Set(shot.layers.map((layer) => layer.id));
+      if (
+        shot.backgroundLayerId !== undefined &&
+        shot.backgroundLayerId !== null &&
+        !layerIds.has(shot.backgroundLayerId)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['backgroundLayerId'],
+          message: `Legacy shot references unknown background layer: ${shot.backgroundLayerId}`,
+        });
+      }
+      shot.timelineEvents.forEach((event, eventIndex) => {
+        if (!layerIds.has(event.layerId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['timelineEvents', eventIndex, 'layerId'],
+            message: `Legacy event references unknown layer: ${event.layerId}`,
+          });
+        }
+        if (event.startMs + event.durationMs > shot.durationMs) {
+          context.addIssue({
+            code: 'custom',
+            path: ['timelineEvents', eventIndex, 'durationMs'],
+            message: 'Legacy event must end within the shot duration.',
+          });
+        }
       });
-    }
-    shot.timelineEvents.forEach((event, eventIndex) => {
-      if (!layerIds.has(event.layerId)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['timelineEvents', eventIndex, 'layerId'],
-          message: `Legacy event references unknown layer: ${event.layerId}`,
-        });
-      }
-      if (event.startMs + event.durationMs > shot.durationMs) {
-        context.addIssue({
-          code: 'custom',
-          path: ['timelineEvents', eventIndex, 'durationMs'],
-          message: 'Legacy event must end within the shot duration.',
-        });
-      }
     });
-  });
+}
+
+const LegacyShotV0Schema = createLegacyShotSchema(
+  LegacyLayerV0Schema,
+);
+const LegacyProbeShotV1Schema = createLegacyShotSchema(
+  LegacyProbeLayerV1Schema,
+);
 
 const LegacyProjectShape = {
   id: IdSchema,
@@ -121,18 +140,21 @@ const LegacyProjectShape = {
   height: z.literal(PROJECT_HEIGHT),
   fps: z.literal(PROJECT_FPS),
   assets: z.array(LegacyAssetSchema),
-  shots: z.array(LegacyShotSchema),
   createdAt: IsoDateTimeSchema,
   updatedAt: IsoDateTimeSchema,
 };
 
 function withReferenceValidation<T extends 0 | 1>(
   schemaVersion: T,
+  shotSchema:
+    | typeof LegacyShotV0Schema
+    | typeof LegacyProbeShotV1Schema,
 ): z.ZodType<LegacyProject<T>> {
   return z
     .object({
       schemaVersion: z.literal(schemaVersion),
       ...LegacyProjectShape,
+      shots: z.array(shotSchema),
     })
     .strict()
     .superRefine((project, context) => {
@@ -155,8 +177,14 @@ function withReferenceValidation<T extends 0 | 1>(
     });
 }
 
-export const ProjectV0Schema = withReferenceValidation(0);
-export const LegacyProbeProjectV1Schema = withReferenceValidation(1);
+export const ProjectV0Schema = withReferenceValidation(
+  0,
+  LegacyShotV0Schema,
+);
+export const LegacyProbeProjectV1Schema = withReferenceValidation(
+  1,
+  LegacyProbeShotV1Schema,
+);
 
 export type LegacyProject<T extends 0 | 1> = {
   schemaVersion: T;
@@ -166,7 +194,10 @@ export type LegacyProject<T extends 0 | 1> = {
   height: typeof PROJECT_HEIGHT;
   fps: typeof PROJECT_FPS;
   assets: z.infer<typeof LegacyAssetSchema>[];
-  shots: z.infer<typeof LegacyShotSchema>[];
+  shots: Array<
+    | z.infer<typeof LegacyShotV0Schema>
+    | z.infer<typeof LegacyProbeShotV1Schema>
+  >;
   createdAt: string;
   updatedAt: string;
 };
