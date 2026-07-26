@@ -3,10 +3,10 @@
   "workOrder": "B-22/45",
   "result": "PASS",
   "branch": "feat/day-22-layer-placement",
-  "executedAt": "2026-07-26T02:09:25.030Z",
+  "executedAt": "2026-07-26T03:09:24.736Z",
   "baselineSha": "27ba25a3287c421aa1c26041d5bc41ec86daca65",
   "contract": {
-    "dropPayload": "version + assetId + controlled type only",
+    "dropPayload": "v2 controlled IDs; character-expression includes characterId + expressionId",
     "coordinates": "client + scroll -> screenToStage -> clamp",
     "outsidePolicy": "clamp center to 1920x1080 logical stage",
     "selectionSerialized": false,
@@ -94,10 +94,11 @@
     "revisionUnchanged": true
   },
   "persistence": {
+    "schemaVersion": 4,
     "saveRevision": 6,
     "savedLayerCount": 5,
     "reopenedLayer": {
-      "id": "768a4b28-5611-475e-82c9-91dbb0454f85",
+      "id": "399ce9f0-6713-4f91-a993-ce32aa0a52d1",
       "name": "Placement sticker",
       "source": {
         "kind": "asset",
@@ -111,8 +112,8 @@
       "rotationDeg": 0,
       "opacity": 1,
       "visible": true,
-      "locked": true,
-      "zIndex": 4
+      "zIndex": 4,
+      "locked": true
     },
     "selectionAfterReopen": ""
   },

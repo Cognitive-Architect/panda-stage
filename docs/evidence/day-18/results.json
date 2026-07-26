@@ -22,9 +22,9 @@
     },
     "dragEvidence": {
       "payload": {
-        "version": 1,
+        "version": 2,
         "assetId": "18000000-0000-4000-8000-000000000001",
-        "type": "background-image"
+        "type": "asset-image"
       },
       "types": [
         "application/x-panda-stage-asset"

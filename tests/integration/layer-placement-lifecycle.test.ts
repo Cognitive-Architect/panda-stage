@@ -41,8 +41,9 @@ describe('layer placement persistence lifecycle', () => {
       now: () => new Date('2026-07-26T02:00:00.000Z'),
     });
     const created = service.createFromAsset(project, shot.id, {
+      version: 2,
       assetId: asset.id,
-      type: 'background-image',
+      type: 'asset-image',
       position: { x: 420.5, y: 260.25 },
     });
     const moved = service.updatePosition(
@@ -79,7 +80,7 @@ describe('layer placement persistence lifecycle', () => {
 
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 3,
+      sourceVersion: 4,
     });
     expect(reopenedLayer).toMatchObject({
       source: { kind: 'asset', assetId: asset.id },

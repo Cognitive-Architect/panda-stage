@@ -301,7 +301,7 @@ export function AssetLibrary({
             onDragStart={(assetId) => {
               setDraggingAssetId(assetId);
               setStatus(
-                '正在拖动素材；载荷仅包含素材 ID 和受控类型。',
+                '正在拖动素材；载荷仅包含受控身份 ID 和枚举类型。',
               );
             }}
             onRebuildThumbnail={(assetId) =>

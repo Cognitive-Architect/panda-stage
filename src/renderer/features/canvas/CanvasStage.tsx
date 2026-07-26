@@ -189,8 +189,7 @@ export function CanvasStage(): React.JSX.Element {
         onAssetDrop={(payload, point) => {
           try {
             const layer = layerStore.createFromAsset({
-              assetId: payload.assetId,
-              type: payload.type,
+              ...payload,
               position: point,
             });
             selectionStore.select(layer.id);

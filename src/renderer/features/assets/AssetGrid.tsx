@@ -44,20 +44,22 @@ export function AssetGrid({
       className="asset-grid"
       data-grid-count={entries.length}
     >
-      {entries.map(({ asset, category }) => (
+      {entries.map((entry) => (
         <AssetCard
-          asset={asset}
-          category={category}
-          dragging={draggingAssetId === asset.id}
-          key={asset.id}
+          asset={entry.asset}
+          category={entry.category}
+          contextLabel={entry.contextLabel}
+          dragging={draggingAssetId === entry.asset.id}
+          dropPayload={entry.dropPayload}
+          key={entry.id}
           onDragEnd={onDragEnd}
           onDragStart={onDragStart}
           onRebuildThumbnail={onRebuildThumbnail}
           onSelect={onSelect}
           onThumbnailError={onThumbnailError}
-          selected={selectedAssetId === asset.id}
+          selected={selectedAssetId === entry.asset.id}
           thumbnail={
-            thumbnails[asset.id] ?? { status: 'loading' }
+            thumbnails[entry.asset.id] ?? { status: 'loading' }
           }
         />
       ))}

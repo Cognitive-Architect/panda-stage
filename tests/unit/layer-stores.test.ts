@@ -72,8 +72,9 @@ describe('Day 22 layer stores', () => {
     });
 
     const layer = input.layers.createFromAsset({
+      version: 2,
       assetId: input.project.assets[0]!.id,
-      type: 'background-image',
+      type: 'asset-image',
       position: { x: 100, y: 200 },
     });
     expect(notifications).toBe(1);
@@ -91,5 +92,68 @@ describe('Day 22 layer stores', () => {
 
     input.layers.updatePosition(layer.id, { x: 300, y: 400 });
     expect(notifications).toBe(2);
+  });
+
+  it.each([
+    {
+      label: 'unknown character',
+      characterId:
+        'd2250000-0000-4000-8000-000000000001',
+      expressionId: null,
+      mismatchAsset: false,
+    },
+    {
+      label: 'foreign expression',
+      characterId: null,
+      expressionId:
+        'd2250000-0000-4000-8000-000000000002',
+      mismatchAsset: false,
+    },
+    {
+      label: 'mismatched asset',
+      characterId: null,
+      expressionId: null,
+      mismatchAsset: true,
+    },
+  ])('does not mutate renderer state for $label', ({
+    characterId,
+    expressionId,
+    mismatchAsset,
+  }) => {
+    const input = harness();
+    const character = input.project.characters[0]!;
+    const expression = character.expressions[0]!;
+    const assetId = mismatchAsset
+      ? input.project.assets.find(
+          (asset) =>
+            asset.kind === 'image' &&
+            asset.id !== expression.assetId,
+        )!.id
+      : expression.assetId;
+    let notifications = 0;
+    input.editor.subscribe(() => {
+      notifications += 1;
+    });
+
+    expect(() =>
+      input.layers.createFromAsset({
+        version: 2,
+        type: 'character-expression',
+        assetId,
+        characterId: characterId ?? character.id,
+        expressionId: expressionId ?? expression.id,
+        position: { x: 100, y: 200 },
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'CHARACTER_IDENTITY_MISMATCH',
+      }),
+    );
+    expect(input.editor.getSnapshot()).toMatchObject({
+      dirty: false,
+      revision: 0,
+    });
+    expect(notifications).toBe(0);
+    expect(input.editor.getSnapshot()!.project).toEqual(input.project);
   });
 });

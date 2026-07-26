@@ -62,7 +62,7 @@
       "oldAssetId": "19300000-0000-4000-8000-000000000002",
       "newAssetId": "19300000-0000-4000-8000-000000000004"
     },
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "character": {
       "id": "6fe12ea9-b141-4230-bcd9-ef6d6263d380",
       "name": "Panda",

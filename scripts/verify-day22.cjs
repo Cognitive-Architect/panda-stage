@@ -238,7 +238,7 @@ async function verifyDay22() {
   const sha256 = 'b'.repeat(64);
   const project = {
     ...exampleProject,
-    schemaVersion: 3,
+    schemaVersion: 4,
     assets: [
       ...exampleProject.assets.map((asset) =>
         asset.kind === 'image' ? { ...asset, sha256 } : asset,
@@ -288,7 +288,7 @@ async function verifyDay22() {
       projectFilePath: `${request.projectRoot}\\project.json`,
       project: savedProject ?? project,
       migrated: false,
-      sourceVersion: 3,
+      sourceVersion: 4,
     },
   }));
   ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
@@ -301,7 +301,7 @@ async function verifyDay22() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 3,
+        sourceVersion: 4,
       },
     };
   });
@@ -626,9 +626,9 @@ async function verifyDay22() {
       const rect = viewport.getBoundingClientRect();
       const transfer = new DataTransfer();
       transfer.setData(${JSON.stringify(assetDragMime)}, JSON.stringify({
-        version: 1,
+        version: 2,
         assetId: 'd2200000-0000-4000-8000-000000000099',
-        type: 'background-image'
+        type: 'asset-image'
       }));
       const options = {
         bubbles: true,
@@ -685,7 +685,8 @@ async function verifyDay22() {
       executedAt: new Date().toISOString(),
       baselineSha: '27ba25a3287c421aa1c26041d5bc41ec86daca65',
       contract: {
-        dropPayload: 'version + assetId + controlled type only',
+        dropPayload:
+          'v2 controlled IDs; character-expression includes characterId + expressionId',
         coordinates: 'client + scroll -> screenToStage -> clamp',
         outsidePolicy: 'clamp center to 1920x1080 logical stage',
         selectionSerialized: false,
@@ -760,6 +761,7 @@ async function verifyDay22() {
           invalidAfter.revision === beforeInvalid.revision,
       },
       persistence: {
+        schemaVersion: savedProject?.schemaVersion,
         saveRevision: saveRequest?.revision,
         savedLayerCount: savedProject?.shots[0]?.layers.length,
         reopenedLayer,
@@ -807,6 +809,7 @@ async function verifyDay22() {
       !evidence.invalidAsset.layerCountUnchanged ||
       !evidence.invalidAsset.revisionUnchanged ||
       !saveRequest ||
+      evidence.persistence.schemaVersion !== 4 ||
       reopenedLayer?.x !== 900 ||
       reopenedLayer?.y !== 500 ||
       reopenedLayer?.locked !== true ||

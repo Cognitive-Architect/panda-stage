@@ -17,6 +17,11 @@ import type { AssetLibraryEntry } from '../../src/renderer/stores/assetLibrarySe
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 const noop = () => undefined;
+const directPayload = (assetId: string) => ({
+  version: 2 as const,
+  type: 'asset-image' as const,
+  assetId,
+});
 
 describe('asset library components', () => {
   it('renders all three categories, thumbnail placeholders, import entry, and details guidance', () => {
@@ -44,6 +49,10 @@ describe('asset library components', () => {
       createElement(AssetCard, {
         asset: project.assets.find((asset) => asset.kind === 'image')!,
         category: 'background',
+        contextLabel: '图片',
+        dropPayload: directPayload(
+          project.assets.find((asset) => asset.kind === 'image')!.id,
+        ),
         selected: false,
         dragging: false,
         thumbnail: { status: 'missing' },
@@ -83,18 +92,24 @@ describe('asset library components', () => {
   it('renders 100 lazy thumbnail cards without any original asset URL', () => {
     const entries: AssetLibraryEntry[] = Array.from(
       { length: 100 },
-      (_, index) => ({
-        category: 'background',
-        asset: {
+      (_, index) => {
+        const asset = {
           id: randomUUID(),
           name: `Fixture ${index}`,
           relativePath: `assets/original-${index}.png`,
           mimeType: 'image/png',
-          kind: 'image',
+          kind: 'image' as const,
           width: 16,
           height: 12,
-        },
-      }),
+        };
+        return {
+          id: `asset:${asset.id}`,
+          category: 'background',
+          asset,
+          contextLabel: '图片',
+          dropPayload: directPayload(asset.id),
+        };
+      },
     );
     const startedAt = performance.now();
     const markup = renderToStaticMarkup(
@@ -136,6 +151,8 @@ describe('asset library components', () => {
     const readyCard = AssetCard({
       asset: failedAsset,
       category: 'background',
+      contextLabel: '图片',
+      dropPayload: directPayload(failedAsset.id),
       selected: true,
       dragging: false,
       thumbnail: states[failedAsset.id]!,
@@ -157,8 +174,20 @@ describe('asset library components', () => {
     const markup = renderToStaticMarkup(
       createElement(AssetGrid, {
         entries: [
-          { asset: failedAsset, category: 'background' },
-          { asset: healthyAsset, category: 'background' },
+          {
+            id: `asset:${failedAsset.id}`,
+            asset: failedAsset,
+            category: 'background',
+            contextLabel: '图片',
+            dropPayload: directPayload(failedAsset.id),
+          },
+          {
+            id: `asset:${healthyAsset.id}`,
+            asset: healthyAsset,
+            category: 'background',
+            contextLabel: '图片',
+            dropPayload: directPayload(healthyAsset.id),
+          },
         ],
         selectedAssetId: failedAsset.id,
         draggingAssetId: null,

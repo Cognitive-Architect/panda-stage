@@ -7,9 +7,9 @@ import {
 } from '../../src/renderer/features/assets/AssetDropPayload';
 
 const payload = {
-  version: 1 as const,
+  version: 2 as const,
   assetId: '10000000-0000-4000-8000-000000000002',
-  type: 'background-image' as const,
+  type: 'asset-image' as const,
 };
 
 describe('asset drag payload', () => {
@@ -18,11 +18,26 @@ describe('asset drag payload', () => {
     expect(parseAssetDropPayload(serialized)).toEqual(payload);
     expect(Object.keys(JSON.parse(serialized))).toEqual([
       'version',
-      'assetId',
       'type',
+      'assetId',
     ]);
     expect(serialized).not.toContain('assets/');
     expect(serialized).not.toContain(':\\');
+  });
+
+  it('preserves explicit character and expression identity', () => {
+    const characterPayload = {
+      version: 2 as const,
+      type: 'character-expression' as const,
+      assetId: '10000000-0000-4000-8000-000000000002',
+      characterId: '20000000-0000-4000-8000-000000000001',
+      expressionId: '20000000-0000-4000-8000-000000000002',
+    };
+    expect(
+      parseAssetDropPayload(
+        serializeAssetDropPayload(characterPayload),
+      ),
+    ).toEqual(characterPayload);
   });
 
   it('writes only the allowlisted custom MIME payload', () => {
@@ -52,6 +67,15 @@ describe('asset drag payload', () => {
     expect(() =>
       parseAssetDropPayload(
         JSON.stringify({ ...payload, type: 'file' }),
+      ),
+    ).toThrow();
+    expect(() =>
+      parseAssetDropPayload(
+        JSON.stringify({
+          version: 1,
+          assetId: payload.assetId,
+          type: 'character-image',
+        }),
       ),
     ).toThrow();
   });

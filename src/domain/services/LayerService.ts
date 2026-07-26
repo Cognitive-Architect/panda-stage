@@ -9,17 +9,14 @@ import {
   type Project,
   type Shot,
 } from '../models';
-
-export type LayerPlacementAssetType =
-  | 'character-image'
-  | 'background-image'
-  | 'audio';
+import type { AssetDropPayload } from '../assetDropPayload';
 
 export type LayerServiceErrorCode =
   | 'SHOT_NOT_FOUND'
   | 'LAYER_NOT_FOUND'
   | 'ASSET_NOT_FOUND'
   | 'ASSET_TYPE_MISMATCH'
+  | 'CHARACTER_IDENTITY_MISMATCH'
   | 'INVALID_POSITION'
   | 'LAYER_LOCKED'
   | 'ID_GENERATION_FAILED';
@@ -34,11 +31,9 @@ export class LayerServiceError extends Error {
   }
 }
 
-export interface CreateLayerInput {
-  assetId: string;
-  type: LayerPlacementAssetType;
+export type CreateLayerInput = AssetDropPayload & {
   position: Point;
-}
+};
 
 export interface LayerServiceOptions {
   createId?: () => string;
@@ -105,49 +100,57 @@ export class LayerService {
       );
     }
 
-    const characterMatch = project.characters
-      .flatMap((character) =>
-        character.expressions.map((expression) => ({
-          character,
-          expression,
-        })),
-      )
-      .find(({ expression }) => expression.assetId === asset.id);
-    const characterAssetIds = new Set(
+    const expressionAssetIds = new Set(
       project.characters.flatMap((character) => [
-        character.baseAssetId,
         ...character.expressions.map((expression) => expression.assetId),
-        ...(character.mouthOpenAssetId
-          ? [character.mouthOpenAssetId]
-          : []),
       ]),
     );
-    if (
-      (input.type === 'character-image' && !characterMatch) ||
-      (input.type === 'background-image' &&
-        characterAssetIds.has(asset.id))
-    ) {
+    if (input.type === 'asset-image' && expressionAssetIds.has(asset.id)) {
       throw new LayerServiceError(
         'ASSET_TYPE_MISMATCH',
         '素材类型与受控拖放载荷不一致。',
       );
     }
 
+    const character =
+      input.type === 'character-expression'
+        ? project.characters.find(
+            (candidate) => candidate.id === input.characterId,
+          )
+        : undefined;
+    const expression =
+      input.type === 'character-expression'
+        ? character?.expressions.find(
+            (candidate) => candidate.id === input.expressionId,
+          )
+        : undefined;
+    if (
+      input.type === 'character-expression' &&
+      (!character ||
+        !expression ||
+        expression.assetId !== input.assetId)
+    ) {
+      throw new LayerServiceError(
+        'CHARACTER_IDENTITY_MISMATCH',
+        '角色、表情与图片素材的身份关系不一致。',
+      );
+    }
+
     const usedIds = this.projectIds(project);
     const position = clampLayerPosition(input.position);
     const scale =
-      input.type === 'character-image'
-        ? characterMatch!.character.defaultScale
+      input.type === 'character-expression'
+        ? character!.defaultScale
         : 1;
     const layer: Layer = {
       id: this.nextUniqueId(usedIds),
       name: asset.name,
       source:
-        input.type === 'character-image'
+        input.type === 'character-expression'
           ? {
               kind: 'character',
-              characterId: characterMatch!.character.id,
-              expressionId: characterMatch!.expression.id,
+              characterId: character!.id,
+              expressionId: expression!.id,
             }
           : { kind: 'asset', assetId: asset.id },
       anchor: 'center',

@@ -11,16 +11,18 @@
 ## Placement and interaction contract
 
 - Asset cards and the canvas share the existing
-  `application/x-panda-stage-asset` protocol. The strict payload contains only
-  version, asset ID, and a controlled asset type; paths and file contents are
-  rejected.
+  `application/x-panda-stage-asset` protocol. Protocol v2 contains only
+  controlled IDs and a discriminated type; paths and file contents are
+  rejected. Character-expression payloads include the exact character and
+  expression IDs.
 - Fit, exact 50%, and Actual-size drops use the same inverse viewport
   transform. Client coordinates include viewport scroll before
   `screenToStage`; the resulting center point is clamped to the fixed
   `1920 × 1080` logical stage.
-- Character-image payloads create character/expression sources and inherit the
-  character default scale. Ordinary image payloads create direct asset
-  sources. Audio and missing/mismatched asset IDs are rejected.
+- Character-expression payloads create the explicitly named character and
+  expression source and inherit the character default scale. Ordinary
+  `asset-image` payloads create direct asset sources. Audio and
+  missing/mismatched identities are rejected.
 - New layers use center anchoring, a unique ID, `locked=false`, and the next
   z-index. A dropped ordinary image is not implicitly promoted to the formal
   shot background.
@@ -35,9 +37,12 @@
 - `DECISION-002`: Drops outside the logical stage clamp the layer center to the
   nearest stage edge. Property-panel coordinates outside the stage are
   rejected instead of silently clamped.
-- `DECISION-003`: `Layer.locked` is persisted in schema v3 with a backward
-  default of `false`. Locking disables pointer drag and X/Y editing; the lock
-  control itself remains available so the layer can be unlocked.
+- `DECISION-003`: `Layer.locked` is required in schema v4. Strict v3 projects
+  migrate once by adding `locked=false`; v4 preserves explicit true/false.
+  Locking disables pointer drag and X/Y editing; the lock control itself
+  remains available so the layer can be unlocked.
+- `DECISION-005`: a mouth-open-only image has no expression identity and is
+  offered as an `asset-image`, creating a direct layer without guessing.
 - `DECISION-004`: Fit, 50%, and Actual are renderer-session viewport modes.
   Neither viewport mode nor `selectedLayerId` is serialized.
 
@@ -74,8 +79,8 @@ Evidence:
 | TYPE | PASS | `pnpm typecheck` |
 | LINT | PASS | `pnpm lint` |
 | FMT | N/A | no Prettier dependency/configuration; ESLint is the repository formatter gate |
-| UNIT / COMPONENT | PASS | 62 files / 337 tests |
-| INTEGRATION | PASS | 13 files / 75 tests |
+| UNIT / COMPONENT | PASS | 62 files / 351 tests |
+| INTEGRATION | PASS | 14 files / 76 tests |
 | BUILD | PASS | `pnpm build` |
 | DAY 19 | PASS | `pnpm verify:day19` |
 | DAY 20 | PASS | `pnpm verify:day20` |

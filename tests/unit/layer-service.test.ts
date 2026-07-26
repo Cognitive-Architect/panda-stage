@@ -26,8 +26,9 @@ describe('LayerService', () => {
     const shot = project.shots[0]!;
     const asset = project.assets[0]!;
     const result = service().createFromAsset(project, shot.id, {
+      version: 2,
       assetId: asset.id,
-      type: 'background-image',
+      type: 'asset-image',
       position: { x: 640, y: 360 },
     });
 
@@ -54,8 +55,11 @@ describe('LayerService', () => {
       project,
       project.shots[0]!.id,
       {
+        version: 2,
         assetId: expression.assetId,
-        type: 'character-image',
+        type: 'character-expression',
+        characterId: character.id,
+        expressionId: expression.id,
         position: { x: 960, y: 540 },
       },
     );
@@ -71,14 +75,201 @@ describe('LayerService', () => {
     });
   });
 
+  it('keeps explicit identity when characters and expressions share one asset', () => {
+    const project = fixture();
+    const characterA = project.characters[0]!;
+    const sharedAssetId = characterA.expressions[0]!.assetId;
+    const angry = {
+      ...characterA.expressions[0]!,
+      id: 'd2230000-0000-4000-8000-000000000002',
+      name: 'angry',
+    };
+    const characterB = {
+      ...characterA,
+      id: 'd2230000-0000-4000-8000-000000000003',
+      name: 'Panda B',
+      expressions: [
+        {
+          ...characterA.expressions[0]!,
+          id: 'd2230000-0000-4000-8000-000000000004',
+        },
+      ],
+      defaultExpressionId:
+        'd2230000-0000-4000-8000-000000000004',
+      defaultVoiceProfileId:
+        'd2230000-0000-4000-8000-000000000005',
+    };
+    const shared = ProjectSchema.parse({
+      ...project,
+      characters: [
+        {
+          ...characterA,
+          expressions: [...characterA.expressions, angry],
+        },
+        characterB,
+      ],
+      voiceProfiles: [
+        ...project.voiceProfiles,
+        {
+          ...project.voiceProfiles[0]!,
+          id: characterB.defaultVoiceProfileId,
+          characterId: characterB.id,
+          name: 'Panda B default',
+        },
+      ],
+    });
+
+    const angryResult = service().createFromAsset(
+      shared,
+      shared.shots[0]!.id,
+      {
+        version: 2,
+        type: 'character-expression',
+        assetId: sharedAssetId,
+        characterId: characterA.id,
+        expressionId: angry.id,
+        position: { x: 100, y: 200 },
+      },
+    );
+    const characterBResult = service().createFromAsset(
+      shared,
+      shared.shots[0]!.id,
+      {
+        version: 2,
+        type: 'character-expression',
+        assetId: sharedAssetId,
+        characterId: characterB.id,
+        expressionId: characterB.expressions[0]!.id,
+        position: { x: 100, y: 200 },
+      },
+    );
+
+    expect(angryResult.layer.source).toEqual({
+      kind: 'character',
+      characterId: characterA.id,
+      expressionId: angry.id,
+    });
+    expect(characterBResult.layer.source).toEqual({
+      kind: 'character',
+      characterId: characterB.id,
+      expressionId: characterB.expressions[0]!.id,
+    });
+  });
+
+  it.each([
+    {
+      label: 'unknown character',
+      characterId: 'd2240000-0000-4000-8000-000000000001',
+      expressionId: null,
+      assetOffset: 0,
+    },
+    {
+      label: 'expression from another character',
+      characterId: null,
+      expressionId: 'd2240000-0000-4000-8000-000000000002',
+      assetOffset: 0,
+    },
+    {
+      label: 'asset mismatch',
+      characterId: null,
+      expressionId: null,
+      assetOffset: 1,
+    },
+  ])('rejects forged identity: $label', ({
+    characterId,
+    expressionId,
+    assetOffset,
+  }) => {
+    const project = fixture();
+    const character = project.characters[0]!;
+    const expression = character.expressions[0]!;
+    const before = structuredClone(project);
+
+    expect(() =>
+      service().createFromAsset(project, project.shots[0]!.id, {
+        version: 2,
+        type: 'character-expression',
+        assetId:
+          assetOffset === 1
+            ? project.assets.find(
+                (asset) =>
+                  asset.kind === 'image' &&
+                  asset.id !== expression.assetId,
+              )!.id
+            : expression.assetId,
+        characterId: characterId ?? character.id,
+        expressionId: expressionId ?? expression.id,
+        position: { x: 100, y: 200 },
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'CHARACTER_IDENTITY_MISMATCH',
+      }),
+    );
+    expect(project).toEqual(before);
+  });
+
+  it('places a mouth-open-only image as a direct asset layer', () => {
+    const project = fixture();
+    const character = project.characters[0]!;
+    const directAsset = project.assets.find(
+      (asset) =>
+        asset.kind === 'image' &&
+        !character.expressions.some(
+          (expression) => expression.assetId === asset.id,
+        ),
+    )!;
+    const withMouth = ProjectSchema.parse({
+      ...project,
+      characters: [
+        { ...character, mouthOpenAssetId: directAsset.id },
+      ],
+    });
+
+    const result = service().createFromAsset(
+      withMouth,
+      withMouth.shots[0]!.id,
+      {
+        version: 2,
+        type: 'asset-image',
+        assetId: directAsset.id,
+        position: { x: 100, y: 200 },
+      },
+    );
+
+    expect(result.layer.source).toEqual({
+      kind: 'asset',
+      assetId: directAsset.id,
+    });
+  });
+
+  it('rejects an expression image disguised as a direct asset payload', () => {
+    const project = fixture();
+    const expression = project.characters[0]!.expressions[0]!;
+    const before = structuredClone(project);
+
+    expect(() =>
+      service().createFromAsset(project, project.shots[0]!.id, {
+        version: 2,
+        type: 'asset-image',
+        assetId: expression.assetId,
+        position: { x: 100, y: 200 },
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'ASSET_TYPE_MISMATCH' }),
+    );
+    expect(project).toEqual(before);
+  });
+
   it('clamps a canvas-exterior drop to the logical stage', () => {
     const project = fixture();
     const result = service().createFromAsset(
       project,
       project.shots[0]!.id,
       {
+        version: 2,
         assetId: project.assets[0]!.id,
-        type: 'background-image',
+        type: 'asset-image',
         position: { x: -80, y: 1200 },
       },
     );
@@ -90,8 +281,9 @@ describe('LayerService', () => {
     {
       name: 'missing asset',
       input: {
+        version: 2 as const,
         assetId: 'd2200000-0000-4000-8000-000000000099',
-        type: 'background-image' as const,
+        type: 'asset-image' as const,
         position: { x: 10, y: 20 },
       },
       code: 'ASSET_NOT_FOUND',
@@ -99,6 +291,7 @@ describe('LayerService', () => {
     {
       name: 'audio',
       input: {
+        version: 2 as const,
         assetId: '10000000-0000-4000-8000-000000000005',
         type: 'audio' as const,
         position: { x: 10, y: 20 },
@@ -108,8 +301,9 @@ describe('LayerService', () => {
     {
       name: 'non-finite x',
       input: {
+        version: 2 as const,
         assetId: '10000000-0000-4000-8000-000000000002',
-        type: 'background-image' as const,
+        type: 'asset-image' as const,
         position: { x: Number.NaN, y: 20 },
       },
       code: 'INVALID_POSITION',
@@ -117,8 +311,9 @@ describe('LayerService', () => {
     {
       name: 'non-finite y',
       input: {
+        version: 2 as const,
         assetId: '10000000-0000-4000-8000-000000000002',
-        type: 'background-image' as const,
+        type: 'asset-image' as const,
         position: { x: 20, y: Number.POSITIVE_INFINITY },
       },
       code: 'INVALID_POSITION',
