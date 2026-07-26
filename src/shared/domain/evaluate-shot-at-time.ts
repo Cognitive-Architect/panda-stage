@@ -21,6 +21,7 @@ export type EvaluatedLayer = Pick<
 export interface EvaluatedShot {
   shotId: string;
   timeMs: number;
+  backgroundLayerId: string | null;
   layers: EvaluatedLayer[];
 }
 
@@ -77,6 +78,7 @@ export function evaluateShotAtTime(
   return {
     shotId: shot.id,
     timeMs,
+    backgroundLayerId: shot.backgroundLayerId,
     layers: [...shot.layers]
       .sort((left, right) => left.zIndex - right.zIndex)
       .map((layer) => {

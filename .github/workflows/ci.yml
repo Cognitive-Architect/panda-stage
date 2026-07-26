@@ -69,3 +69,6 @@ jobs:
 
       - name: Day 20 shot management M2 gate
         run: pnpm verify:day20
+
+      - name: Day 21 fixed canvas and viewport gate
+        run: pnpm verify:day21

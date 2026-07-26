@@ -13,6 +13,7 @@ function createShot(): Shot {
   return ShotSchema.parse({
     id: SHOT_ID,
     name: 'Move evaluator fixture',
+    backgroundLayerId: null,
     durationMs: 2_000,
     layers: [
       {

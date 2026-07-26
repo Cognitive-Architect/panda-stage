@@ -94,6 +94,7 @@ export const ShotSchema = z
     name: NameSchema,
     durationMs: DurationMillisecondsSchema,
     layers: z.array(LayerSchema),
+    backgroundLayerId: IdSchema.nullable(),
     timelineEvents: z.array(TimelineEventSchema),
   })
   .superRefine((shot, context) => {
@@ -110,6 +111,16 @@ export const ShotSchema = z
       }
       layerIds.add(layer.id);
     });
+    if (
+      shot.backgroundLayerId !== null &&
+      !layerIds.has(shot.backgroundLayerId)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: `Shot references unknown background layer: ${shot.backgroundLayerId}`,
+        path: ['backgroundLayerId'],
+      });
+    }
 
     shot.timelineEvents.forEach((event, index) => {
       if (eventIds.has(event.id)) {

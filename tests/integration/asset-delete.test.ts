@@ -127,6 +127,7 @@ async function createHarness(
     height: 12,
     sha256: hash,
   };
+  const referencedLayerId = randomUUID();
   const project = ProjectSchema.parse({
     ...created.project,
     assets: [asset],
@@ -138,9 +139,10 @@ async function createHarness(
             durationMs: 3_000,
             defaultSubtitleStyleId:
               created.project.subtitleStyles[0]!.id,
+            backgroundLayerId: referencedLayerId,
             layers: [
               {
-                id: randomUUID(),
+                id: referencedLayerId,
                 name: '背景',
                 source: { kind: 'asset', assetId: asset.id },
                 anchor: 'center',
@@ -395,6 +397,7 @@ describe('asset delete integration', () => {
 
     const deletion = input.deleteService.deleteAsset(request(input));
     await commitReached.promise;
+    const concurrentLayerId = randomUUID();
     const revision4 = ProjectSchema.parse({
       ...input.revision3,
       name: 'Revision 4 with new reference',
@@ -405,9 +408,10 @@ describe('asset delete integration', () => {
           durationMs: 3_000,
           defaultSubtitleStyleId:
             input.revision3.subtitleStyles[0]!.id,
+          backgroundLayerId: concurrentLayerId,
           layers: [
             {
-              id: randomUUID(),
+              id: concurrentLayerId,
               name: '并发背景',
               source: {
                 kind: 'asset',

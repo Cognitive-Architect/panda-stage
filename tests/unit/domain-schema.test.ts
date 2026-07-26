@@ -37,6 +37,7 @@ function createProjectInput(): unknown {
         id: SHOT_ID,
         name: 'Opening',
         durationMs: 2_000,
+        backgroundLayerId: null,
         layers: [
           {
             id: LAYER_ID,

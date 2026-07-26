@@ -5,7 +5,7 @@
   "result": "PASS",
   "branch": "feat/day-20-shot-management",
   "baselineSha": "c5c94beeacb7a458d9bca33acdc9766e041b3cb5",
-  "executedAt": "2026-07-25T13:58:26.141Z",
+  "executedAt": "2026-07-26T00:00:11.953Z",
   "configuredUi": {
     "names": [
       "Finale",
@@ -22,7 +22,7 @@
       1500
     ],
     "currentName": "Finale",
-    "currentShotId": "c0b0d50d-fc76-4476-b0b7-abb0a21d1c7f",
+    "currentShotId": "c7e7d36a-4be6-4f1b-b5e3-a7f803167f1c",
     "totalDurationMs": 11500,
     "placeholderCount": 6,
     "revisionText": "5 个镜头 · 总时长 11500ms · revision 10",
@@ -74,7 +74,7 @@
   "selectionAfterRemoval": "Opening",
   "copyIdSafety": {
     "sourceShotId": "50000000-0000-4000-8000-000000000001",
-    "copyShotId": "db6c4d8e-8768-4379-9e65-73634ce2ec0c",
+    "copyShotId": "a0dde8a4-bca5-4b21-bdeb-2849906e3068",
     "sourceEntityIds": [
       "50000000-0000-4000-8000-000000000001",
       "60000000-0000-4000-8000-000000000001",
@@ -90,18 +90,18 @@
       "90000000-0000-4000-8000-000000000007"
     ],
     "copyEntityIds": [
-      "db6c4d8e-8768-4379-9e65-73634ce2ec0c",
-      "574864f0-6e99-400b-b8e5-95c6fcf6812f",
-      "40dee8f9-27eb-44cf-8127-7448fb87578a",
-      "a13123a4-25b3-496b-8935-94fb7e94e978",
-      "9f78c18f-ac13-4c55-828b-f3b96ede5cca",
-      "0fe03243-e861-404c-b985-d177fab49572",
-      "7f84f76c-ad81-487d-b22e-3e212ba9efc2",
-      "3ae3cc72-b2bf-4324-b5e6-80691db4fdfd",
-      "c390080a-02b8-4959-ac2a-66687a83c344",
-      "2a9a1ea8-4ddb-4670-8a6f-ecc795c6827f",
-      "eeb3072e-4f0c-4ba5-9dcf-01b6ec535d82",
-      "bb8c533e-a350-4466-b1db-d26731bc6e88"
+      "a0dde8a4-bca5-4b21-bdeb-2849906e3068",
+      "32bb9a47-fb30-4451-b0e2-6f7283a7957f",
+      "b67c3e15-8942-4cd6-af65-f7fb2a20c846",
+      "15210144-661d-4dd5-b201-580e9e13819c",
+      "d14aa54f-c534-45b3-a47d-eaa056f1c7ee",
+      "3cf977fe-6195-4b04-8d44-5e96892c77c8",
+      "0999833b-7621-4a3e-b4ce-d835fd459e75",
+      "48947c4c-1647-4404-8e43-b47bacfe38a1",
+      "437d741b-b3b2-4821-9d0c-6924798d6d26",
+      "2e53ed6e-da91-456d-9f6b-4d6109ce5e0f",
+      "f4248656-3d7d-45b3-9942-fc3d8a82c672",
+      "3018cb74-5eec-4f19-afee-ff9521dabdf8"
     ],
     "allIdsDifferent": true,
     "timelineLayerReferencesRemapped": true,
@@ -127,11 +127,11 @@
     ],
     "savedTotalDurationMs": 11500,
     "savedShotIds": [
-      "c0b0d50d-fc76-4476-b0b7-abb0a21d1c7f",
+      "c7e7d36a-4be6-4f1b-b5e3-a7f803167f1c",
       "50000000-0000-4000-8000-000000000001",
-      "db6c4d8e-8768-4379-9e65-73634ce2ec0c",
-      "e0ecf2af-510d-4944-bbcf-2069ea327362",
-      "5032d31d-333f-4782-9b8e-f937c2f47d3c"
+      "a0dde8a4-bca5-4b21-bdeb-2849906e3068",
+      "a2644e65-675e-4cfd-b7a9-f8b43671d557",
+      "95726ebe-b0b7-4b24-b2b9-03bc4c7f38eb"
     ],
     "uniqueShotIds": true,
     "containsCurrentShot": false,

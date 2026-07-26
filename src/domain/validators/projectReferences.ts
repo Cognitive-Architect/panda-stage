@@ -171,6 +171,22 @@ export function validateProjectReferences(
     }
 
     const layers = new Map(shot.layers.map((layer) => [layer.id, layer]));
+    if (shot.backgroundLayerId !== null) {
+      const background = layers.get(shot.backgroundLayerId);
+      if (!background) {
+        addIssue(
+          context,
+          ['shots', shotIndex, 'backgroundLayerId'],
+          `Shot references unknown background layer: ${shot.backgroundLayerId}`,
+        );
+      } else if (background.source.kind !== 'asset') {
+        addIssue(
+          context,
+          ['shots', shotIndex, 'backgroundLayerId'],
+          'Shot background layer must directly reference an image asset.',
+        );
+      }
+    }
     const audioClips = new Map(
       shot.audioClips.map((clip) => [clip.id, clip]),
     );

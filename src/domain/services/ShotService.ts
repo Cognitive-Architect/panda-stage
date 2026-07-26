@@ -72,6 +72,7 @@ export class ShotService {
       durationMs,
       defaultSubtitleStyleId,
       layers: [],
+      backgroundLayerId: null,
       dialogues: [],
       audioClips: [],
       timelineEvents: [],
@@ -103,6 +104,10 @@ export class ShotService {
         ...layer,
         id: layerIds.get(layer.id)!,
       })),
+      backgroundLayerId:
+        source.backgroundLayerId === null
+          ? null
+          : layerIds.get(source.backgroundLayerId)!,
       audioClips: source.audioClips.map((clip) => ({
         ...clip,
         id: audioClipIds.get(clip.id)!,

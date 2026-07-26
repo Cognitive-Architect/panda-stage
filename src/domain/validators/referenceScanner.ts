@@ -83,8 +83,7 @@ export function scanAssetReferences(
       ) {
         return;
       }
-      const background =
-        layer.zIndex === 0 || /background|背景/iu.test(layer.name);
+      const background = shot.backgroundLayerId === layer.id;
       references.push({
         kind: background ? 'shot-background' : 'shot-layer',
         path:

@@ -121,7 +121,7 @@ describe('CharacterService', () => {
     const serialized = JSON.stringify(character);
     expect(serialized).not.toContain('assets/');
     expect(serialized).not.toContain('data:image');
-    expect(result.schemaVersion).toBe(2);
+    expect(result.schemaVersion).toBe(3);
   });
 
   it('rejects duplicate expression names and non-image mouth references', () => {

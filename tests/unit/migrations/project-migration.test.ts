@@ -3,6 +3,7 @@ import {
   ProjectSchema,
   UnsupportedSchemaVersionError,
   detectSchemaVersion,
+  inferLegacyBackgroundLayerId,
   migrateProject,
 } from '../../../src/domain';
 import { PROBE_PROJECT } from '../../../src/shared/probe/probe-project';
@@ -12,15 +13,114 @@ function createV0Fixture(): unknown {
   return { ...structuredClone(PROBE_PROJECT), schemaVersion: 0 };
 }
 
+function createLegacyBackgroundCandidate(
+  width: number,
+  height: number,
+  input?: {
+    assetId?: string;
+    layerId?: string;
+    name?: string;
+    zIndex?: number;
+  },
+) {
+  const project = ProjectSchema.parse(exampleProject);
+  const asset = project.assets[0]!;
+  const layer = project.shots[0]!.layers[0]!;
+  if (asset.kind !== 'image' || layer.source.kind !== 'asset') {
+    throw new Error('Expected direct image background fixture.');
+  }
+  const assetId = input?.assetId ?? asset.id;
+  return {
+    asset: {
+      ...asset,
+      id: assetId,
+      width,
+      height,
+    },
+    layer: {
+      ...layer,
+      id: input?.layerId ?? layer.id,
+      name: input?.name ?? layer.name,
+      source: { kind: 'asset' as const, assetId },
+      scaleX: 1,
+      scaleY: 1,
+      zIndex: input?.zIndex ?? layer.zIndex,
+    },
+  };
+}
+
+describe('legacy background candidate inference', () => {
+  it.each([
+    { label: 'narrow portrait', width: 200, height: 1000 },
+    { label: 'narrow landscape', width: 1600, height: 200 },
+  ])('does not infer a $label from one large axis', ({ width, height }) => {
+    const candidate = createLegacyBackgroundCandidate(width, height);
+
+    expect(
+      inferLegacyBackgroundLayerId(
+        [candidate.asset],
+        [candidate.layer],
+      ),
+    ).toBeNull();
+  });
+
+  it('infers one centered direct image when both axes meet the threshold', () => {
+    const candidate = createLegacyBackgroundCandidate(1600, 900);
+
+    expect(
+      inferLegacyBackgroundLayerId(
+        [candidate.asset],
+        [candidate.layer],
+      ),
+    ).toBe(candidate.layer.id);
+  });
+
+  it('returns null when multiple images meet both axis thresholds', () => {
+    const first = createLegacyBackgroundCandidate(1600, 900);
+    const second = createLegacyBackgroundCandidate(1920, 1080, {
+      assetId: '10000000-0000-4000-8000-000000000006',
+      layerId: '60000000-0000-4000-8000-000000000003',
+    });
+
+    expect(
+      inferLegacyBackgroundLayerId(
+        [first.asset, second.asset],
+        [first.layer, second.layer],
+      ),
+    ).toBeNull();
+  });
+
+  it('ignores background-like names and zIndex zero when an axis is too small', () => {
+    const english = createLegacyBackgroundCandidate(1600, 200, {
+      name: 'background banner',
+      zIndex: 0,
+    });
+    const chinese = createLegacyBackgroundCandidate(200, 1000, {
+      assetId: '10000000-0000-4000-8000-000000000006',
+      layerId: '60000000-0000-4000-8000-000000000003',
+      name: '背景装饰',
+      zIndex: 0,
+    });
+
+    expect(
+      inferLegacyBackgroundLayerId(
+        [english.asset, chinese.asset],
+        [english.layer, chinese.layer],
+      ),
+    ).toBeNull();
+  });
+});
+
 describe('project migration framework', () => {
-  it('detects explicit v0, v1, and v2 envelopes', () => {
+  it('detects explicit v0, v1, v2, and v3 envelopes', () => {
     expect(detectSchemaVersion(createV0Fixture())).toBe(0);
     expect(detectSchemaVersion(PROBE_PROJECT)).toBe(1);
     expect(detectSchemaVersion({ schemaVersion: 2 })).toBe(2);
+    expect(detectSchemaVersion({ schemaVersion: 3 })).toBe(3);
   });
 
   it.each([
-    { schemaVersion: 3 },
+    { schemaVersion: 4 },
     { schemaVersion: 99 },
     {},
   ])('rejects unknown or missing schema versions', (input) => {
@@ -37,7 +137,7 @@ describe('project migration framework', () => {
     expect(input).toEqual(snapshot);
     expect(ProjectSchema.parse(migrated)).toEqual(migrated);
     expect(migrated).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: PROBE_PROJECT.id,
       name: PROBE_PROJECT.name,
       createdAt: PROBE_PROJECT.createdAt,
@@ -82,13 +182,13 @@ describe('project migration framework', () => {
     expect(migrated.subtitleStyles).toHaveLength(1);
   });
 
-  it('migrates a formal v1 character to v2 with a valid default and bounded transform defaults', () => {
+  it('migrates a formal v1 project to v3 with character defaults and explicit background', () => {
     const snapshot = structuredClone(exampleProject);
     const migrated = migrateProject(exampleProject);
     const character = migrated.characters[0]!;
 
     expect(exampleProject).toEqual(snapshot);
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
     expect(character.defaultExpressionId).toBe(
       character.expressions[0]!.id,
     );
@@ -98,6 +198,59 @@ describe('project migration framework', () => {
     expect(character.defaultScale).toBe(1);
     expect(character.defaultFlipX).toBe(false);
     expect(character.mouthOpenAssetId).toBeUndefined();
+    expect(migrated.shots[0]!.backgroundLayerId).toBe(
+      migrated.shots[0]!.layers[0]!.id,
+    );
+  });
+
+  it('migrates v2 to an explicit background without name or zIndex runtime inference', () => {
+    const current = ProjectSchema.parse(exampleProject);
+    const version2 = {
+      ...current,
+      schemaVersion: 2 as const,
+      shots: current.shots.map(({ backgroundLayerId, ...shot }) => {
+        void backgroundLayerId;
+        return { ...shot };
+      }),
+    };
+    const migrated = migrateProject(version2);
+
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.shots[0]!.backgroundLayerId).toBe(
+      migrated.shots[0]!.layers[0]!.id,
+    );
+  });
+
+  it('leaves an ordinary small zIndex-0 asset layer as content during migration', () => {
+    const current = ProjectSchema.parse(exampleProject);
+    const contentOnly = {
+      ...current,
+      schemaVersion: 2 as const,
+      shots: current.shots.map(
+        ({ backgroundLayerId, ...shot }) => {
+          void backgroundLayerId;
+          return {
+          ...shot,
+          layers: [
+            {
+              ...shot.layers[1]!,
+              name: 'background sticker',
+              source: {
+                kind: 'asset' as const,
+                assetId: current.characters[0]!.baseAssetId,
+              },
+              x: 960,
+              y: 540,
+              zIndex: 0,
+            },
+          ],
+          timelineEvents: [],
+          };
+        },
+      ),
+    };
+
+    expect(migrateProject(contentOnly).shots[0]!.backgroundLayerId).toBeNull();
   });
 
   it('is deterministic and has no external-state-dependent output', () => {
