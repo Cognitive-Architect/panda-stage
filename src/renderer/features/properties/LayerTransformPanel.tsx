@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type FormEvent,
@@ -20,6 +21,18 @@ export interface LayerTransformDraft {
   scale: string;
   rotationDeg: string;
   opacity: string;
+}
+
+export type CommitTransformDraftResult =
+  | 'committed'
+  | 'noop'
+  | 'invalid'
+  | 'locked';
+
+export function canRunTransformAction(
+  result: CommitTransformDraftResult,
+): boolean {
+  return result === 'committed' || result === 'noop';
 }
 
 export function parseLayerTransformDraft(
@@ -57,6 +70,13 @@ export function parseLayerTransformDraft(
   };
 }
 
+export function shouldCommitTransformBlur(
+  contains: (target: EventTarget) => boolean,
+  relatedTarget: EventTarget | null,
+): boolean {
+  return relatedTarget === null || !contains(relatedTarget);
+}
+
 const EMPTY_DRAFT: LayerTransformDraft = {
   x: '',
   y: '',
@@ -87,6 +107,13 @@ export function LayerTransformPanel(): React.JSX.Element {
   const [status, setStatus] = useState(
     '选择普通图层后可编辑中心位置与静态变换。',
   );
+  const formRef = useRef<HTMLFormElement>(null);
+  const preserveCommitErrorRef = useRef(false);
+  const draftVersionRef = useRef(0);
+  const lastCommittedRef = useRef<{
+    layerId: string;
+    draftVersion: number;
+  } | null>(null);
 
   useEffect(() => {
     setDraft(
@@ -100,35 +127,121 @@ export function LayerTransformPanel(): React.JSX.Element {
           }
         : EMPTY_DRAFT,
     );
-    setStatus(
-      layer
-        ? layer.locked
+    if (layer) {
+      preserveCommitErrorRef.current = false;
+      setStatus(
+        layer.locked
           ? '图层已锁定；请先解锁再修改。'
-          : 'X/Y 始终表示视觉中心；缩放保持等比。'
-        : '选择普通图层后可编辑中心位置与静态变换。',
-    );
+          : 'X/Y 始终表示视觉中心；缩放保持等比。',
+      );
+    } else if (!preserveCommitErrorRef.current) {
+      setStatus('选择普通图层后可编辑中心位置与静态变换。');
+    }
   }, [layer]);
 
   const updateDraft = (
     key: keyof LayerTransformDraft,
     value: string,
   ): void => {
+    draftVersionRef.current += 1;
     setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const commitPendingDraft = (
+    reason: 'action' | 'blur' | 'submit',
+  ): CommitTransformDraftResult => {
+    if (!layer) return 'invalid';
+    if (layer.locked) {
+      setStatus('图层已锁定；属性草稿未提交。');
+      return 'locked';
+    }
+    const commitIdentity = {
+      layerId: layer.id,
+      draftVersion: draftVersionRef.current,
+    };
+    if (
+      lastCommittedRef.current?.layerId === commitIdentity.layerId &&
+      lastCommittedRef.current.draftVersion ===
+        commitIdentity.draftVersion
+    ) {
+      return 'noop';
+    }
+    try {
+      const transform = parseLayerTransformDraft(draft, layer.flipX);
+      const revisionBefore =
+        editorProjectStore.getSnapshot()?.revision ?? null;
+      layerStore.updateTransform(layer.id, transform);
+      const revisionAfter =
+        editorProjectStore.getSnapshot()?.revision ?? null;
+      lastCommittedRef.current = commitIdentity;
+      preserveCommitErrorRef.current = false;
+      const result =
+        revisionAfter === revisionBefore ? 'noop' : 'committed';
+      setStatus(
+        result === 'noop'
+          ? '属性值未变化，未新增历史。'
+          : reason === 'blur'
+            ? '图层变换已在离开属性表单时写入项目。'
+            : reason === 'submit'
+              ? '图层变换已通过表单提交写入项目。'
+              : '图层变换已在执行图层动作前写入项目。',
+      );
+      return result;
+    } catch (error) {
+      preserveCommitErrorRef.current = true;
+      setStatus(
+        error instanceof Error ? error.message : '图层变换失败。',
+      );
+      return 'invalid';
+    }
   };
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
-    if (!layer) return;
-    try {
-      const transform = parseLayerTransformDraft(draft, layer.flipX);
-      layerStore.updateTransform(layer.id, transform);
-      setStatus('图层变换已写入项目。');
-    } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : '图层变换失败。',
-      );
-    }
+    commitPendingDraft('submit');
   };
+
+  const commitDraftRef = useRef(commitPendingDraft);
+  commitDraftRef.current = commitPendingDraft;
+
+  useEffect(() => {
+    const onFocusOut = (event: FocusEvent): void => {
+      const form = formRef.current;
+      if (
+        !form ||
+        !shouldCommitTransformBlur(
+          (target) => form.contains(target as Node),
+          event.relatedTarget,
+        )
+      ) {
+        return;
+      }
+      commitDraftRef.current('blur');
+    };
+    const onMouseDown = (event: MouseEvent): void => {
+      // Konva can clear selection during this click, so commit while the
+      // focused form still owns its draft.
+      const form = formRef.current;
+      const activeElement = document.activeElement;
+      const target = event.target;
+      if (
+        form &&
+        activeElement instanceof Node &&
+        form.contains(activeElement) &&
+        target instanceof Node &&
+        !form.contains(target)
+      ) {
+        commitDraftRef.current('blur');
+      }
+    };
+    const form = formRef.current;
+    form?.addEventListener('focusout', onFocusOut);
+    document.addEventListener('mousedown', onMouseDown, true);
+    return () => {
+      form?.removeEventListener('focusout', onFocusOut);
+      document.removeEventListener('mousedown', onMouseDown, true);
+    };
+  }, [layer?.id]);
 
   return (
     <section
@@ -141,7 +254,7 @@ export function LayerTransformPanel(): React.JSX.Element {
         <h3>图层变换</h3>
       </div>
       {layer ? (
-        <form onSubmit={submit}>
+        <form onSubmit={submit} ref={formRef}>
           <strong>{layer.name}</strong>
           {(
             [
@@ -167,6 +280,13 @@ export function LayerTransformPanel(): React.JSX.Element {
           <button
             disabled={layer.locked}
             onClick={() => {
+              if (
+                !canRunTransformAction(
+                  commitPendingDraft('action'),
+                )
+              ) {
+                return;
+              }
               try {
                 layerStore.toggleFlipX(layer.id);
                 setStatus('水平翻转已切换，中心坐标保持不变。');
@@ -186,11 +306,17 @@ export function LayerTransformPanel(): React.JSX.Element {
             <input
               checked={layer.locked}
               onChange={(event) => {
+                const shouldLock = event.target.checked;
+                if (
+                  shouldLock &&
+                  !canRunTransformAction(
+                    commitPendingDraft('action'),
+                  )
+                ) {
+                  return;
+                }
                 try {
-                  layerStore.setLocked(
-                    layer.id,
-                    event.target.checked,
-                  );
+                  layerStore.setLocked(layer.id, shouldLock);
                 } catch (error) {
                   setStatus(
                     error instanceof Error

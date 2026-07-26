@@ -4,6 +4,9 @@ import {
   type Asset,
   type Project,
 } from '../../domain';
+import type { ExecuteHistoryOptions } from '../../history/HistoryCommand';
+import { HistoryStore } from '../../history/HistoryStore';
+import { ProjectCommand } from '../../history/commands/ProjectCommand';
 
 export interface EditorProjectSnapshot {
   projectRoot: string;
@@ -18,7 +21,10 @@ type Listener = () => void;
 
 export class EditorProjectStore {
   private snapshot: EditorProjectSnapshot | null = null;
+  private savedProjectJson: string | null = null;
   private readonly listeners = new Set<Listener>();
+
+  constructor(readonly history = new HistoryStore()) {}
 
   readonly getSnapshot = (): EditorProjectSnapshot | null => this.snapshot;
 
@@ -28,19 +34,43 @@ export class EditorProjectStore {
   };
 
   open(projectRoot: string, rawProject: Project): void {
+    this.history.clear();
+    const project = ProjectSchema.parse(rawProject);
+    this.savedProjectJson = JSON.stringify(project);
     this.snapshot = {
       projectRoot,
-      project: ProjectSchema.parse(rawProject),
+      project,
       dirty: false,
       revision: 0,
     };
     this.emit();
   }
 
-  updateProject(rawProject: Project): void {
+  updateProject(
+    rawProject: Project,
+    label = 'Edit project',
+    options: ExecuteHistoryOptions = {},
+  ): void {
     const current = this.requireSnapshot();
     const project = ProjectSchema.parse(rawProject);
     this.assertSameProject(current.project, project);
+    if (JSON.stringify(project) === JSON.stringify(current.project)) return;
+    this.history.execute(
+      new ProjectCommand(
+        label,
+        current.project,
+        project,
+        (next) => this.applyHistoryProject(next),
+      ),
+      options,
+    );
+  }
+
+  restore(rawProject: Project): void {
+    const current = this.requireSnapshot();
+    const project = ProjectSchema.parse(rawProject);
+    this.assertSameProject(current.project, project);
+    this.history.clear();
     this.snapshot = {
       ...current,
       project,
@@ -50,8 +80,12 @@ export class EditorProjectStore {
     this.emit();
   }
 
-  restore(rawProject: Project): void {
-    this.updateProject(rawProject);
+  undo(): boolean {
+    return this.history.undo();
+  }
+
+  redo(): boolean {
+    return this.history.redo();
   }
 
   applyAssetImport(
@@ -77,7 +111,9 @@ export class EditorProjectStore {
         `Asset import base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
+    this.history.clear();
     if (current.revision === baseRevision) {
+      this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
         project: savedProject,
@@ -135,7 +171,9 @@ export class EditorProjectStore {
         `Asset metadata base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
+    this.history.clear();
     if (current.revision === baseRevision) {
+      this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
         project: savedProject,
@@ -189,7 +227,9 @@ export class EditorProjectStore {
         `Asset delete base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
+    this.history.clear();
     if (current.revision === baseRevision) {
+      this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
         project: savedProject,
@@ -241,6 +281,7 @@ export class EditorProjectStore {
       );
     }
     if (savedRevision < current.revision) {
+      this.savedProjectJson = JSON.stringify(project);
       this.snapshot = {
         ...current,
         dirty: true,
@@ -253,11 +294,14 @@ export class EditorProjectStore {
       project,
       dirty: false,
     };
+    this.savedProjectJson = JSON.stringify(project);
     this.emit();
     return 'current';
   }
 
   clear(): void {
+    this.history.clear();
+    this.savedProjectJson = null;
     this.snapshot = null;
     this.emit();
   }
@@ -275,9 +319,22 @@ export class EditorProjectStore {
     }
   }
 
+  private applyHistoryProject(project: Project): void {
+    const current = this.requireSnapshot();
+    this.assertSameProject(current.project, project);
+    this.snapshot = {
+      ...current,
+      project,
+      dirty: JSON.stringify(project) !== this.savedProjectJson,
+      revision: current.revision + 1,
+    };
+    this.emit();
+  }
+
   private emit(): void {
     for (const listener of this.listeners) listener();
   }
 }
 
 export const editorProjectStore = new EditorProjectStore();
+export const historyStore = editorProjectStore.history;

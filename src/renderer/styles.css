@@ -1624,6 +1624,28 @@ h1 {
   gap: 10px;
 }
 
+.history-controls {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid rgba(131, 211, 154, 0.28);
+  border-radius: 14px;
+  background: rgba(15, 27, 20, 0.78);
+}
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.history-actions span {
+  color: #a9c5b0;
+  font-size: 0.85rem;
+}
+
 .layer-transform-panel h3,
 .layer-transform-panel p,
 .layer-order-controls h3,

@@ -32,6 +32,7 @@ import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { LayerOrderControls } from '../properties/LayerOrderControls';
 import { LayerTransformPanel } from '../properties/LayerTransformPanel';
+import { HistoryControls } from '../editor/HistoryControls';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
 import {
@@ -263,6 +264,7 @@ export function CanvasStage(): React.JSX.Element {
               data-center-guides="vertical,horizontal"
               data-interaction-status={interactionStatus}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
+              data-project-revision={snapshot?.revision ?? -1}
               data-rendered-asset-ids={JSON.stringify([
                 ...imageState.images.keys(),
               ])}
@@ -274,6 +276,10 @@ export function CanvasStage(): React.JSX.Element {
                 transformerVisible,
               )}
               data-testid="project-canvas-stage"
+              onMouseDownCapture={(event) =>
+                event.currentTarget.focus()
+              }
+              tabIndex={-1}
             >
               <Stage
                 height={PROJECT_HEIGHT}
@@ -411,6 +417,7 @@ export function CanvasStage(): React.JSX.Element {
       </output>
       <LayerTransformPanel />
       <LayerOrderControls />
+      <HistoryControls />
     </section>
   );
 }

@@ -78,3 +78,6 @@ jobs:
 
       - name: Day 23 layer transform and order gate
         run: pnpm verify:day23
+
+      - name: Day 24 command history gate
+        run: pnpm verify:day24
