@@ -1,18 +1,44 @@
 import type {
-  Asset,
   EvaluatedLayer,
   EvaluatedShot,
-  Project,
-} from '../domain';
+} from '../../domain';
 import {
   buildStageLayerRenderInstruction,
   type StageLayerRenderInstruction,
 } from './layer-render-contract';
 
+/**
+ * Structural asset accepted by the render model. Decoupled from the
+ * schema-specific `Asset` types (legacy v1 and formal v5) so the single render
+ * model serves both the editor path and the shared stage path after the
+ * Day 25 evaluator convergence (RISK-EVENT-001).
+ */
+export interface RenderModelAsset {
+  readonly id: string;
+  readonly kind: 'image' | 'audio';
+  readonly name: string;
+  readonly relativePath: string;
+  readonly mimeType: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+/**
+ * Structural project accepted by the render model. Intentionally decoupled
+ * from the schema-specific `Project` types so both the legacy (v1) and the
+ * formal (v5) domain projects render through one model.
+ */
+export interface RenderModelProject {
+  readonly width: number;
+  readonly height: number;
+  readonly shots: ReadonlyArray<{ readonly id: string }>;
+  readonly assets: ReadonlyArray<RenderModelAsset>;
+}
+
 export type StageAssetUrlMap = Readonly<Record<string, string | undefined>>;
 
 export interface StageRenderLayer extends EvaluatedLayer {
-  asset: Asset;
+  asset: RenderModelAsset;
   sourceUrl: string;
   render: StageLayerRenderInstruction;
 }
@@ -40,7 +66,7 @@ export class StageAssetError extends Error {
  * animation: callers must provide final layer coordinates for one exact time.
  */
 export function buildStageRenderModel(
-  project: Project,
+  project: RenderModelProject,
   evaluatedShot: EvaluatedShot,
   assetUrls: StageAssetUrlMap,
 ): StageRenderModel {

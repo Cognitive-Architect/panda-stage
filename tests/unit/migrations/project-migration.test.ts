@@ -10,17 +10,57 @@ import { PROBE_PROJECT } from '../../../src/shared/probe/probe-project';
 import exampleProject from '../../../demo-project/project-v1.example.json';
 
 function createV0Fixture(): unknown {
-  const project = structuredClone(PROBE_PROJECT);
+  const project = PROBE_PROJECT;
   return {
-    ...project,
     schemaVersion: 0,
+    id: project.id,
+    name: project.name,
+    width: project.width,
+    height: project.height,
+    fps: project.fps,
+    assets: project.assets.map((asset) => ({ ...asset })),
     shots: project.shots.map((shot) => ({
-      ...shot,
-      layers: shot.layers.map(({ flipX, ...layer }) => {
-        void flipX;
-        return layer;
+      id: shot.id,
+      name: shot.name,
+      durationMs: shot.durationMs,
+      backgroundLayerId: shot.backgroundLayerId,
+      layers: shot.layers.map((layer) => {
+        if (layer.source.kind !== 'asset') {
+          throw new Error('v0 fixture 仅支持 asset 图层。');
+        }
+        return {
+          id: layer.id,
+          assetId: layer.source.assetId,
+          name: layer.name,
+          anchor: layer.anchor,
+          x: layer.x,
+          y: layer.y,
+          scaleX: layer.scaleX,
+          scaleY: layer.scaleY,
+          rotationDeg: layer.rotationDeg,
+          opacity: layer.opacity,
+          visible: layer.visible,
+          zIndex: layer.zIndex,
+        };
       }),
+      timelineEvents: shot.timelineEvents
+        .filter(
+          (event): event is Extract<typeof event, { type: 'move' }> =>
+            event.type === 'move',
+        )
+        .map((event) => ({
+          id: event.id,
+          type: 'move' as const,
+          layerId: event.layerId,
+          startMs: event.startMs,
+          durationMs: event.endMs - event.startMs,
+          from: event.from,
+          to: event.to,
+          easing: event.easing,
+        })),
     })),
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
   };
 }
 
@@ -125,7 +165,7 @@ describe('legacy background candidate inference', () => {
 describe('project migration framework', () => {
   it('detects explicit v0 through v5 envelopes', () => {
     expect(detectSchemaVersion(createV0Fixture())).toBe(0);
-    expect(detectSchemaVersion(PROBE_PROJECT)).toBe(1);
+    expect(detectSchemaVersion(PROBE_PROJECT)).toBe(5);
     expect(detectSchemaVersion({ schemaVersion: 2 })).toBe(2);
     expect(detectSchemaVersion({ schemaVersion: 3 })).toBe(3);
     expect(detectSchemaVersion({ schemaVersion: 4 })).toBe(4);
@@ -158,10 +198,13 @@ describe('project migration framework', () => {
     });
     expect(migrated.assets).toEqual(PROBE_PROJECT.assets);
     const legacyLayer = PROBE_PROJECT.shots[0]!.layers[0]!;
+    if (legacyLayer.source.kind !== 'asset') {
+      throw new Error('Probe 首图层应为 asset 图层。');
+    }
     expect(migrated.shots[0]!.layers[0]).toMatchObject({
       id: legacyLayer.id,
       name: legacyLayer.name,
-      source: { kind: 'asset', assetId: legacyLayer.assetId },
+      source: { kind: 'asset', assetId: legacyLayer.source.assetId },
       anchor: legacyLayer.anchor,
       x: legacyLayer.x,
       y: legacyLayer.y,
@@ -175,6 +218,9 @@ describe('project migration framework', () => {
       zIndex: legacyLayer.zIndex,
     });
     const legacyEvent = PROBE_PROJECT.shots[0]!.timelineEvents[0]!;
+    if (legacyEvent.type !== 'move') {
+      throw new Error('Probe 首事件应为 move 事件。');
+    }
     expect(migrated.shots[0]!.timelineEvents[0]).toMatchObject({
       id: legacyEvent.id,
       type: 'move',

@@ -1,5 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { ExportJobUpdate } from '../shared/export-types';
+import exampleProject from '../../demo-project/project-v1.example.json';
+import { ProjectSchema } from '../domain';
+import { editorProjectStore } from './stores/EditorProjectStore';
+import type { EditorProjectSnapshot } from './stores/EditorProjectStore';
+import { CanvasStage } from './features/canvas/CanvasStage';
+import { ShotManager } from './features/shots/ShotManager';
+import { AssetLibrary } from './features/assets/AssetLibrary';
+import { ActionPresetPanel } from './features/actions/ActionPresetPanel';
+import { HistoryControls } from './features/editor/HistoryControls';
 import { StagePreview } from './stage/StagePreview';
 import { ProjectRecoveryPanel } from './features/recovery/ProjectRecoveryPanel';
 
@@ -11,6 +20,11 @@ interface GatePreviewRequest {
 }
 
 export function App(): React.JSX.Element {
+  const snapshot = useSyncExternalStore<EditorProjectSnapshot | null>(
+    editorProjectStore.subscribe,
+    editorProjectStore.getSnapshot,
+    editorProjectStore.getSnapshot,
+  );
   const [pingStatus, setPingStatus] = useState<
     'idle' | 'pending' | 'pong' | 'error'
   >('idle');
@@ -21,6 +35,21 @@ export function App(): React.JSX.Element {
   const [exportError, setExportError] = useState<string | null>(null);
   const [gatePreviewRequest, setGatePreviewRequest] =
     useState<GatePreviewRequest | null>(null);
+
+  // Day 25 (R1): mount the full editing shell. Open a demo project so the
+  // editor components have data to render without manual IPC open.
+  useEffect(() => {
+    if (!editorProjectStore.getSnapshot()) {
+      try {
+        editorProjectStore.open(
+          'D:\\day25-editor.pandastage',
+          ProjectSchema.parse(exampleProject),
+        );
+      } catch (error) {
+        console.error('无法打开示例项目用于编辑外壳。', error);
+      }
+    }
+  }, []);
 
   useEffect(() => window.pandaStage.export.onUpdate(setExportJob), []);
   useEffect(() => {
@@ -112,7 +141,7 @@ export function App(): React.JSX.Element {
           <span className="brand-mark" aria-hidden="true">熊</span>
           <div>
             <strong>Panda Stage</strong>
-            <span>共享渲染架构探针</span>
+            <span>共享渲染架构探针 · 编辑外壳</span>
           </div>
         </div>
         <div className="ipc-check">
@@ -133,6 +162,21 @@ export function App(): React.JSX.Element {
           </output>
         </div>
       </header>
+
+      <section className="day25-action-shell" aria-label="Day 25 动作预设">
+        <ActionPresetPanel />
+        <HistoryControls />
+      </section>
+
+      <section className="day25-editor-shell" aria-label="Day 25 编辑外壳">
+        <ShotManager snapshot={snapshot} />
+        <AssetLibrary snapshot={snapshot} />
+        <CanvasStage />
+      </section>
+
+      <ProjectRecoveryPanel />
+      <StagePreview gatePreviewRequest={gatePreviewRequest} />
+
       <section className="export-probe" aria-label="完整导出探针">
         <h2>完整导出探针</h2>
         <label>
@@ -185,8 +229,6 @@ export function App(): React.JSX.Element {
           {exportError ? ` · ${exportError}` : ''}
         </output>
       </section>
-      <ProjectRecoveryPanel />
-      <StagePreview gatePreviewRequest={gatePreviewRequest} />
     </main>
   );
 }

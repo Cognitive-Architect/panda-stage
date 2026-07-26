@@ -177,6 +177,11 @@ function addBackgroundIdentity<T extends {
       locked: false,
       flipX: false,
     })),
+    // Preserve timelineEvents authored against legacy schemas (the example
+    // project ships v1 shots with expression events). Fall back to an empty
+    // list only for shots that predate the field so they survive the strict
+    // v5 schema (contract #4).
+    timelineEvents: shot.timelineEvents ?? [],
     backgroundLayerId: inferLegacyBackgroundLayerId(
       project.assets,
       shot.layers,
@@ -196,6 +201,7 @@ function migrateFormalProject(input: unknown): unknown {
           ...layer,
           flipX: false,
         })),
+        timelineEvents: shot.timelineEvents ?? [],
       })),
     };
   }
@@ -212,6 +218,7 @@ function migrateFormalProject(input: unknown): unknown {
           locked: false,
           flipX: false,
         })),
+        timelineEvents: shot.timelineEvents ?? [],
       })),
     };
   }

@@ -17,7 +17,7 @@ const ShotBaseShape = {
   defaultSubtitleStyleId: IdSchema,
   dialogues: z.array(DialogueSchema),
   audioClips: z.array(AudioClipSchema),
-  timelineEvents: z.array(TimelineEventSchema),
+  timelineEvents: z.array(TimelineEventSchema).default([]),
 };
 
 export const ShotV2Schema = z

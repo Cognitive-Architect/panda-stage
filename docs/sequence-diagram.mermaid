@@ -1,0 +1,31 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant Panel as ActionPresetPanel
+    participant Sel as selectionStore/shotStore
+    participant Store as editorProjectStore
+    participant Factory as createPresetEvents
+    participant Valid as timelineEventValidator
+    participant Cmd as ProjectCommand
+    participant Eval as evaluateShotAtTime(正式)
+    participant Renderer as StageRenderer/Preview/Export
+
+    User->>Panel: 选择图层 + 选预设 + 填参数
+    Panel->>Sel: getSelectedLayerId / getCurrentShotId
+    Sel-->>Panel: layerId / shotId (none→禁用)
+    Panel->>Factory: createPresetEvents(project, shotId, layerId, presetId, params)
+    Factory->>Valid: validatePresetApplication(candidateEvents)
+    alt 越界/失效引用/锁定
+        Valid-->>Panel: { ok:false, errors }
+        Panel-->>User: 可理解错误反馈（不静默）
+    else 通过
+        Valid-->>Factory: ok
+        Factory-->>Panel: TimelineEvent[] (唯一id/整数ms)
+        Panel->>Store: updateProject(追加事件后的Project, label)
+        Store->>Cmd: new ProjectCommand(before, after, apply)
+        Cmd-->>Store: redo() 落地
+        Note over Cmd: History 记录 → undo/redo 可用
+        Renderer->>Eval: evaluateShotAtTime(shot, timeMs, project)
+        Eval-->>Renderer: EvaluatedShot (8类事件已生效)
+        Renderer-->>User: 所见=预览=导出一致
+    end

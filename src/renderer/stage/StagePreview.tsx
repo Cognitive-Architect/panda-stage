@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { evaluateShotAtTime } from '../../shared/domain';
+import { evaluateShotAtTime } from '../../domain';
 import {
   PROBE_CHARACTER_LAYER_ID,
   PROBE_PROJECT,
@@ -30,7 +30,7 @@ export function StagePreview({
   const preview = usePreviewController(PROBE_AUDIO_URL, PROBE_SHOT.durationMs);
   const renderedTimeMs = gatePreviewRequest?.timeMs ?? preview.timeMs;
   const evaluatedShot = useMemo(
-    () => evaluateShotAtTime(PROBE_SHOT, renderedTimeMs),
+    () => evaluateShotAtTime(PROBE_SHOT, renderedTimeMs, PROBE_PROJECT),
     [renderedTimeMs],
   );
   const subtitle = evaluateSubtitleAtTime(

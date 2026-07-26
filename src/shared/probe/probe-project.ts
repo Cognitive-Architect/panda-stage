@@ -1,4 +1,4 @@
-import { ProjectSchema, type Project, type Shot } from '../domain';
+import { ProjectSchema, type Project, type Shot } from '../../domain';
 import { SubtitleTrackSchema } from '../preview/subtitle-engine';
 
 export const PROBE_BACKGROUND_ASSET_ID =
@@ -26,7 +26,7 @@ export const PROBE_SUBTITLE_CUES = SubtitleTrackSchema.parse([
 ]);
 
 export const PROBE_PROJECT: Project = ProjectSchema.parse({
-  schemaVersion: 1,
+  schemaVersion: 5,
   id: '00000000-0000-4000-8000-000000000004',
   name: 'Day 04 共享舞台探针',
   width: 1920,
@@ -60,16 +60,34 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
       durationMs: 3_000,
     },
   ],
+  characters: [],
+  voiceProfiles: [],
+  subtitleStyles: [
+    {
+      id: '00000000-0000-4000-8000-000000000110',
+      name: '探针字幕样式',
+      fontFamily: 'Microsoft YaHei',
+      fontSize: 44,
+      textColor: '#fffdf6',
+      backgroundColor: '#0a1411c7',
+      position: 'bottom',
+      align: 'center',
+      maxWidth: 1600,
+    },
+  ],
   shots: [
     {
       id: '30000000-0000-4000-8000-000000000001',
       name: '熊猫横向移动探针',
       durationMs: 3_000,
+      defaultSubtitleStyleId: '00000000-0000-4000-8000-000000000110',
+      dialogues: [],
+      audioClips: [],
       backgroundLayerId: '20000000-0000-4000-8000-000000000001',
       layers: [
         {
           id: '20000000-0000-4000-8000-000000000001',
-          assetId: PROBE_BACKGROUND_ASSET_ID,
+          source: { kind: 'asset', assetId: PROBE_BACKGROUND_ASSET_ID },
           name: '背景',
           anchor: 'center',
           x: 960,
@@ -80,10 +98,12 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
           opacity: 1,
           visible: true,
           zIndex: 0,
+          locked: false,
+          flipX: false,
         },
         {
           id: PROBE_CHARACTER_LAYER_ID,
-          assetId: PROBE_CHARACTER_ASSET_ID,
+          source: { kind: 'asset', assetId: PROBE_CHARACTER_ASSET_ID },
           name: '熊猫角色',
           anchor: 'center',
           x: 430,
@@ -94,6 +114,8 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
           opacity: 1,
           visible: true,
           zIndex: 1,
+          locked: false,
+          flipX: false,
         },
       ],
       timelineEvents: [
@@ -102,7 +124,7 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
           type: 'move',
           layerId: PROBE_CHARACTER_LAYER_ID,
           startMs: 0,
-          durationMs: 3_000,
+          endMs: 3_000,
           from: { x: 430, y: 690 },
           to: { x: 1_490, y: 690 },
           easing: 'ease-in-out',
