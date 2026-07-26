@@ -3,7 +3,7 @@
   "workOrder": "B-19/45",
   "result": "PASS",
   "branch": "feat/day-19-character-definitions",
-  "executedAt": "2026-07-25T11:55:52.191Z",
+  "executedAt": "2026-07-25T23:59:47.556Z",
   "realFixtureMetadata": {
     "normal": {
       "width": 160,
@@ -57,30 +57,30 @@
     "saveRevision": 6,
     "autosaveUpdateCount": 9,
     "expressionReplacement": {
-      "expressionIdBefore": "7e959862-b30e-4749-a5ed-e49edbcb6efe",
-      "expressionIdAfter": "7e959862-b30e-4749-a5ed-e49edbcb6efe",
+      "expressionIdBefore": "a089dd6d-5906-4d11-8911-a01687449018",
+      "expressionIdAfter": "a089dd6d-5906-4d11-8911-a01687449018",
       "oldAssetId": "19300000-0000-4000-8000-000000000002",
       "newAssetId": "19300000-0000-4000-8000-000000000004"
     },
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "character": {
-      "id": "16a147c4-5f2b-444c-ae31-0d5f5db47b65",
+      "id": "6fe12ea9-b141-4230-bcd9-ef6d6263d380",
       "name": "Panda",
       "baseAssetId": "19300000-0000-4000-8000-000000000001",
-      "defaultVoiceProfileId": "c15ef740-0ff1-4045-9935-6e60f0ba0f8b",
+      "defaultVoiceProfileId": "a071522d-bc15-4bd0-a4d6-e949658cf275",
       "expressions": [
         {
-          "id": "cc40e793-1b2a-4d2a-a97a-2ab440724063",
+          "id": "22aedfee-b4c4-41b8-9c01-f3e17243b05e",
           "name": "normal",
           "assetId": "19300000-0000-4000-8000-000000000001"
         },
         {
-          "id": "7e959862-b30e-4749-a5ed-e49edbcb6efe",
+          "id": "a089dd6d-5906-4d11-8911-a01687449018",
           "name": "angry",
           "assetId": "19300000-0000-4000-8000-000000000004"
         }
       ],
-      "defaultExpressionId": "cc40e793-1b2a-4d2a-a97a-2ab440724063",
+      "defaultExpressionId": "22aedfee-b4c4-41b8-9c01-f3e17243b05e",
       "mouthOpenAssetId": "19300000-0000-4000-8000-000000000003",
       "defaultScale": 0.75,
       "defaultFlipX": true
