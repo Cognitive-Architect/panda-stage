@@ -27,7 +27,7 @@ export class LayerStore {
   createFromAsset(input: CreateLayerInput): Layer {
     const { project, shotId } = this.context();
     const result = this.service.createFromAsset(project, shotId, input);
-    this.editorStore.updateProject(result.project);
+    this.editorStore.updateProject(result.project, 'Create layer');
     return result.layer;
   }
 
@@ -39,7 +39,9 @@ export class LayerStore {
       layerId,
       position,
     );
-    if (next !== project) this.editorStore.updateProject(next);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Move layer');
+    }
     return next;
   }
 
@@ -51,7 +53,12 @@ export class LayerStore {
       layerId,
       locked,
     );
-    if (next !== project) this.editorStore.updateProject(next);
+    if (next !== project) {
+      this.editorStore.updateProject(
+        next,
+        locked ? 'Lock layer' : 'Unlock layer',
+      );
+    }
     return next;
   }
 
@@ -66,14 +73,18 @@ export class LayerStore {
       layerId,
       input,
     );
-    if (next !== project) this.editorStore.updateProject(next);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Transform layer');
+    }
     return next;
   }
 
   toggleFlipX(layerId: string): Project {
     const { project, shotId } = this.context();
     const next = this.service.toggleFlipX(project, shotId, layerId);
-    if (next !== project) this.editorStore.updateProject(next);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Flip layer');
+    }
     return next;
   }
 
@@ -85,14 +96,18 @@ export class LayerStore {
       layerId,
       action,
     );
-    if (next !== project) this.editorStore.updateProject(next);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Reorder layer');
+    }
     return next;
   }
 
   deleteLayer(layerId: string): Project {
     const { project, shotId } = this.context();
     const next = this.service.deleteLayer(project, shotId, layerId);
-    if (next !== project) this.editorStore.updateProject(next);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Delete layer');
+    }
     return next;
   }
 

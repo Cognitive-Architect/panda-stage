@@ -1,0 +1,41 @@
+{
+  "maxDepth": 50,
+  "drag": {
+    "pointerMoveCount": 10,
+    "historyEntries": 1,
+    "origin": {
+      "x": 430,
+      "y": 690
+    },
+    "result": {
+      "x": 550,
+      "y": 730
+    }
+  },
+  "shortcuts": {
+    "undoRestoredOrigin": true,
+    "redoRestoredResult": true
+  },
+  "deletion": {
+    "deleted": true,
+    "undoRestored": true,
+    "redoDeleted": true
+  },
+  "buttons": {
+    "initialUndoEnabled": true,
+    "afterUndoRedoEnabled": true
+  },
+  "propertyForm": {
+    "historyBeforeTyping": 1,
+    "historyAfterTyping": 1,
+    "historyAfterCommit": 2
+  },
+  "persistence": {
+    "saved": true,
+    "historyExcluded": true
+  },
+  "projectSwitch": {
+    "undoCount": 0,
+    "redoCount": 0
+  }
+}

@@ -46,8 +46,9 @@ export class ShotStore {
   }
 
   create(input: CreateShotInput): Project {
-    const project = this.apply((current) =>
-      this.service.create(current, input),
+    const project = this.apply(
+      (current) => this.service.create(current, input),
+      'Create shot',
     );
     this.setCurrentShotId(project.shots.at(-1)!.id);
     return project;
@@ -57,22 +58,25 @@ export class ShotStore {
     const sourceIndex = this.project().shots.findIndex(
       (shot) => shot.id === shotId,
     );
-    const project = this.apply((current) =>
-      this.service.duplicate(current, shotId),
+    const project = this.apply(
+      (current) => this.service.duplicate(current, shotId),
+      'Duplicate shot',
     );
     this.setCurrentShotId(project.shots[sourceIndex + 1]!.id);
     return project;
   }
 
   rename(shotId: string, name: string): Project {
-    return this.apply((project) =>
-      this.service.rename(project, shotId, name),
+    return this.apply(
+      (project) => this.service.rename(project, shotId, name),
+      'Rename shot',
     );
   }
 
   setDuration(shotId: string, durationMs: number): Project {
-    return this.apply((project) =>
-      this.service.setDuration(project, shotId, durationMs),
+    return this.apply(
+      (project) => this.service.setDuration(project, shotId, durationMs),
+      'Change shot duration',
     );
   }
 
@@ -80,7 +84,7 @@ export class ShotStore {
     const current = this.project();
     const next = this.service.move(current, shotId, targetIndex);
     if (next === current) return current;
-    this.editorStore.updateProject(next);
+    this.editorStore.updateProject(next, 'Reorder shot');
     return next;
   }
 
@@ -97,13 +101,16 @@ export class ShotStore {
           null,
       );
     }
-    this.editorStore.updateProject(next);
+    this.editorStore.updateProject(next, 'Delete shot');
     return next;
   }
 
-  private apply(mutation: (project: Project) => Project): Project {
+  private apply(
+    mutation: (project: Project) => Project,
+    label: string,
+  ): Project {
     const project = mutation(this.project());
-    this.editorStore.updateProject(project);
+    this.editorStore.updateProject(project, label);
     return project;
   }
 

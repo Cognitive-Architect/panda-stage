@@ -32,6 +32,7 @@ import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { LayerOrderControls } from '../properties/LayerOrderControls';
 import { LayerTransformPanel } from '../properties/LayerTransformPanel';
+import { HistoryControls } from '../editor/HistoryControls';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
 import {
@@ -411,6 +412,7 @@ export function CanvasStage(): React.JSX.Element {
       </output>
       <LayerTransformPanel />
       <LayerOrderControls />
+      <HistoryControls />
     </section>
   );
 }
