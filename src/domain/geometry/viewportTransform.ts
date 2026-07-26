@@ -1,6 +1,6 @@
 import { PROJECT_HEIGHT, PROJECT_WIDTH } from '../constants';
 
-export type CanvasViewportMode = 'fit' | 'actual';
+export type CanvasViewportMode = 'fit' | 'half' | 'actual';
 
 export interface Point {
   x: number;
@@ -51,6 +51,10 @@ export function calculateViewportTransform(
       ? logicalWidth > 0 && logicalHeight > 0
         ? 1
         : 0
+      : mode === 'half'
+        ? logicalWidth > 0 && logicalHeight > 0
+          ? 0.5
+          : 0
       : canScale
         ? Math.min(
             containerWidth / logicalWidth,

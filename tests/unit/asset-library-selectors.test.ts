@@ -41,6 +41,69 @@ describe('asset library selectors', () => {
       background: 0,
       audio: 1,
     });
+    const mouthEntry = selectAssetLibraryEntries(
+      withMouth,
+      'character',
+    ).find((entry) => entry.asset.id === project.assets[0]!.id);
+    expect(mouthEntry).toMatchObject({
+      contextLabel: '嘴型素材 · 作为普通图片放置',
+      dropPayload: {
+        version: 2,
+        type: 'asset-image',
+        assetId: project.assets[0]!.id,
+      },
+    });
+  });
+
+  it('emits one explicit identity entry per character expression even when assets are shared', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const characterA = project.characters[0]!;
+    const sharedAssetId = characterA.expressions[0]!.assetId;
+    const characterB = {
+      ...characterA,
+      id: 'a4500000-0000-4000-8000-000000000001',
+      name: 'Panda B',
+      expressions: [
+        {
+          ...characterA.expressions[0]!,
+          id: 'a4500000-0000-4000-8000-000000000002',
+          name: 'normal B',
+          assetId: sharedAssetId,
+        },
+      ],
+      defaultExpressionId:
+        'a4500000-0000-4000-8000-000000000002',
+      baseAssetId: sharedAssetId,
+      defaultVoiceProfileId:
+        'a4500000-0000-4000-8000-000000000003',
+    };
+    const shared = ProjectSchema.parse({
+      ...project,
+      characters: [characterA, characterB],
+      voiceProfiles: [
+        ...project.voiceProfiles,
+        {
+          ...project.voiceProfiles[0]!,
+          id: characterB.defaultVoiceProfileId,
+          characterId: characterB.id,
+          name: 'Panda B default',
+        },
+      ],
+    });
+
+    const entries = selectAssetLibraryEntries(
+      shared,
+      'character',
+    ).filter((entry) => entry.asset.id === sharedAssetId);
+
+    expect(entries).toHaveLength(2);
+    expect(entries.map((entry) => entry.dropPayload)).toContainEqual({
+      version: 2,
+      type: 'character-expression',
+      assetId: sharedAssetId,
+      characterId: characterB.id,
+      expressionId: characterB.expressions[0]!.id,
+    });
   });
 
   it('selects and sorts 100 background fixtures without loading file paths', () => {

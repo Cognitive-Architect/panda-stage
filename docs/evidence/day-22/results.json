@@ -1,0 +1,125 @@
+{
+  "day": 22,
+  "workOrder": "B-22/45",
+  "result": "PASS",
+  "branch": "feat/day-22-layer-placement",
+  "executedAt": "2026-07-26T03:09:24.736Z",
+  "baselineSha": "27ba25a3287c421aa1c26041d5bc41ec86daca65",
+  "contract": {
+    "dropPayload": "v2 controlled IDs; character-expression includes characterId + expressionId",
+    "coordinates": "client + scroll -> screenToStage -> clamp",
+    "outsidePolicy": "clamp center to 1920x1080 logical stage",
+    "selectionSerialized": false,
+    "dragMoveProjectCommits": 0,
+    "dragEndProjectCommits": 1
+  },
+  "drops": {
+    "fit": {
+      "scale": 0.537037,
+      "requested": {
+        "x": 1200,
+        "y": 300
+      },
+      "actual": {
+        "x": 1199.2758620689656,
+        "y": 299.17240905761713
+      },
+      "ghost": "放置图层x 1199.3 · y 299.2",
+      "highlighted": true
+    },
+    "half": {
+      "scale": 0.5,
+      "requested": {
+        "x": 500,
+        "y": 700
+      },
+      "actual": {
+        "x": 499,
+        "y": 699.3333282470703
+      },
+      "source": {
+        "kind": "character",
+        "characterId": "20000000-0000-4000-8000-000000000001",
+        "expressionId": "20000000-0000-4000-8000-000000000002"
+      }
+    },
+    "actual": {
+      "scale": 1,
+      "requested": {
+        "x": 1400,
+        "y": 700
+      },
+      "actual": {
+        "x": 1400,
+        "y": 699.6666641235352
+      }
+    }
+  },
+  "selection": {
+    "createdLayerSelected": true,
+    "blankCleared": true,
+    "backgroundId": "60000000-0000-4000-8000-000000000001"
+  },
+  "drag": {
+    "beforeRevision": 3,
+    "duringRevision": 3,
+    "afterRevision": 4,
+    "before": {
+      "x": 1400,
+      "y": 699.6666641235352
+    },
+    "requested": {
+      "x": 1100,
+      "y": 620
+    },
+    "actual": {
+      "x": 1100,
+      "y": 619.6666641235352
+    },
+    "autosaveUpdateDelta": 1
+  },
+  "properties": {
+    "revision": 5,
+    "x": 900,
+    "y": 500
+  },
+  "locked": {
+    "beforeRevision": 6,
+    "afterRevision": 6,
+    "unchanged": true
+  },
+  "invalidAsset": {
+    "rejected": true,
+    "layerCountUnchanged": true,
+    "revisionUnchanged": true
+  },
+  "persistence": {
+    "schemaVersion": 4,
+    "saveRevision": 6,
+    "savedLayerCount": 5,
+    "reopenedLayer": {
+      "id": "399ce9f0-6713-4f91-a993-ce32aa0a52d1",
+      "name": "Placement sticker",
+      "source": {
+        "kind": "asset",
+        "assetId": "d2200000-0000-4000-8000-000000000010"
+      },
+      "anchor": "center",
+      "x": 900,
+      "y": 500,
+      "scaleX": 1,
+      "scaleY": 1,
+      "rotationDeg": 0,
+      "opacity": 1,
+      "visible": true,
+      "zIndex": 4,
+      "locked": true
+    },
+    "selectionAfterReopen": ""
+  },
+  "screenshots": [
+    "docs/evidence/day-22/drop-ghost.png",
+    "docs/evidence/day-22/actual-placement.png",
+    "docs/evidence/day-22/reopened.png"
+  ]
+}

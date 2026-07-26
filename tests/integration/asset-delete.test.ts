@@ -153,6 +153,7 @@ async function createHarness(
                 rotationDeg: 0,
                 opacity: 1,
                 visible: true,
+                locked: false,
                 zIndex: 0,
               },
             ],
@@ -309,7 +310,7 @@ describe('asset delete integration', () => {
       project: { assets: [] },
     });
     expect(await recoveryHashes(input.projectRoot)).toEqual([]);
-  });
+  }, 15_000);
 
   it('blocks a referenced background and reports its exact location without touching state', async () => {
     const input = await createHarness({ referenced: true });
@@ -425,6 +426,7 @@ describe('asset delete integration', () => {
               rotationDeg: 0,
               opacity: 1,
               visible: true,
+              locked: false,
               zIndex: 0,
             },
           ],

@@ -24,13 +24,13 @@ function issuePaths(input: unknown): string[] {
     : result.error.issues.map((issue) => issue.path.join('.'));
 }
 
-describe('ProjectSchema v3', () => {
+describe('ProjectSchema v4', () => {
   it('migrates the human-readable v1 example with every MVP entity', () => {
     const project = ProjectSchema.parse(exampleProject);
     const shot = project.shots[0]!;
 
     expect(project).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       width: 1920,
       height: 1080,
       fps: 24,
@@ -56,7 +56,7 @@ describe('ProjectSchema v3', () => {
     expect(VoiceProfileSchema.parse(exampleProject.voiceProfiles[0])).toBeTruthy();
     expect(SubtitleStyleSchema.parse(exampleProject.subtitleStyles[0])).toBeTruthy();
     expect(ShotSchema.parse(migrated.shots[0])).toBeTruthy();
-    expect(LayerSchema.parse(exampleProject.shots[0]!.layers[0])).toBeTruthy();
+    expect(LayerSchema.parse(migrated.shots[0]!.layers[0])).toBeTruthy();
     expect(DialogueSchema.parse(exampleProject.shots[0]!.dialogues[0])).toBeTruthy();
     expect(AudioClipSchema.parse(exampleProject.shots[0]!.audioClips[0])).toBeTruthy();
   });

@@ -1,4 +1,7 @@
-import type { Asset } from '../../../domain';
+import type {
+  Asset,
+  AssetDropPayload,
+} from '../../../domain';
 import type {
   AssetLibraryCategory,
 } from '../../stores/assetLibrarySelectors';
@@ -12,6 +15,8 @@ export type ThumbnailState =
 export interface AssetCardProps {
   asset: Asset;
   category: AssetLibraryCategory;
+  contextLabel: string;
+  dropPayload: AssetDropPayload;
   selected: boolean;
   dragging: boolean;
   thumbnail: ThumbnailState;
@@ -22,19 +27,11 @@ export interface AssetCardProps {
   onThumbnailError: (assetId: string) => void;
 }
 
-function dragType(
-  category: AssetLibraryCategory,
-): 'character-image' | 'background-image' | 'audio' {
-  return category === 'audio'
-    ? 'audio'
-    : category === 'character'
-      ? 'character-image'
-      : 'background-image';
-}
-
 export function AssetCard({
   asset,
   category,
+  contextLabel,
+  dropPayload,
   selected,
   dragging,
   thumbnail,
@@ -53,15 +50,12 @@ export function AssetCard({
         dragging ? 'asset-card-dragging' : '',
       ].filter(Boolean).join(' ')}
       data-asset-id={asset.id}
+      data-category={category}
       draggable
       onClick={() => onSelect(asset.id)}
       onDragEnd={onDragEnd}
       onDragStart={(event) => {
-        writeAssetDropPayload(event.dataTransfer, {
-          version: 1,
-          assetId: asset.id,
-          type: dragType(category),
-        });
+        writeAssetDropPayload(event.dataTransfer, dropPayload);
         onDragStart(asset.id);
       }}
       onKeyDown={(event) => {
@@ -112,7 +106,7 @@ export function AssetCard({
         )}
       </div>
       <strong title={asset.name}>{asset.name}</strong>
-      <span>{category === 'audio' ? '音频' : '图片'}</span>
+      <span>{contextLabel}</span>
     </article>
   );
 }

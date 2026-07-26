@@ -29,6 +29,14 @@ export function CanvasToolbar({
           Fit
         </button>
         <button
+          aria-pressed={mode === 'half'}
+          data-testid="canvas-mode-half"
+          onClick={() => onModeChange('half')}
+          type="button"
+        >
+          50%
+        </button>
+        <button
           aria-pressed={mode === 'actual'}
           data-testid="canvas-mode-actual"
           onClick={() => onModeChange('actual')}
@@ -41,7 +49,11 @@ export function CanvasToolbar({
         className="canvas-mode-feedback"
         data-testid="canvas-mode-feedback"
       >
-        {mode === 'fit' ? 'Fit to viewport' : '1:1 pixels · scroll to inspect'}
+        {mode === 'fit'
+          ? 'Fit to viewport'
+          : mode === 'half'
+            ? '50% preview · scroll if needed'
+            : '1:1 pixels · scroll to inspect'}
         {' · '}
         {(transform.scale * 100).toFixed(1)}%
       </output>

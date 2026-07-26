@@ -146,7 +146,7 @@ async function verifyDay21() {
   const sha256 = 'a'.repeat(64);
   const project = {
     ...exampleProject,
-    schemaVersion: 3,
+    schemaVersion: 4,
     assets: exampleProject.assets.map((asset) =>
       asset.kind === 'image' ? { ...asset, sha256 } : asset,
     ),
@@ -158,6 +158,10 @@ async function verifyDay21() {
     })),
     shots: exampleProject.shots.map((shot) => ({
       ...shot,
+      layers: shot.layers.map((layer) => ({
+        ...layer,
+        locked: false,
+      })),
       backgroundLayerId: shot.layers[0]?.id ?? null,
     })),
   };
@@ -225,7 +229,7 @@ async function verifyDay21() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: selected,
         migrated: false,
-        sourceVersion: 3,
+        sourceVersion: 4,
       },
     };
   });
@@ -239,7 +243,7 @@ async function verifyDay21() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 3,
+        sourceVersion: 4,
       },
     };
   });
@@ -715,7 +719,7 @@ async function verifyDay21() {
       branch: 'feat/day-21-canvas-stage',
       executedAt: new Date().toISOString(),
       contract: {
-        projectSchemaVersion: 3,
+        projectSchemaVersion: 4,
         logicalCanvas: { width: 1920, height: 1080, center: [960, 540] },
         fitFormula: 'min(containerWidth / 1920, containerHeight / 1080)',
         actualSizeScale: 1,

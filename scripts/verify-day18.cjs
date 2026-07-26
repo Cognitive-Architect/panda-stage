@@ -479,7 +479,8 @@ async function verifyDay18() {
       performanceObservation.elapsedMs >= 1_000 ||
       performanceObservation.scrollTop <= 0 ||
       dragEvidence.payload.assetId !== removableAssetId ||
-      dragEvidence.payload.type !== 'background-image' ||
+      dragEvidence.payload.version !== 2 ||
+      dragEvidence.payload.type !== 'asset-image' ||
       dragEvidence.rawContainsPath ||
       dragEvidence.rawContainsAssetObject ||
       !referenceUi.cardStillPresent ||

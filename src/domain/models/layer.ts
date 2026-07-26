@@ -22,23 +22,32 @@ export const LayerSourceSchema = z.discriminatedUnion('kind', [
   CharacterLayerSourceSchema,
 ]);
 
+const LayerV3Shape = {
+  id: IdSchema,
+  name: NameSchema,
+  source: LayerSourceSchema,
+  /** x/y are always the visual center of the layer on the 1920×1080 canvas. */
+  anchor: z.literal(LAYER_ANCHOR),
+  x: FiniteNumberSchema,
+  y: FiniteNumberSchema,
+  scaleX: FiniteNumberSchema.positive().default(1),
+  scaleY: FiniteNumberSchema.positive().default(1),
+  rotationDeg: FiniteNumberSchema.default(0),
+  opacity: FiniteNumberSchema.min(0).max(1).default(1),
+  visible: z.boolean().default(true),
+  zIndex: z.number().int().nonnegative(),
+};
+
+/** Schema v3 layer shape before persistent locking was introduced. */
+export const LayerV3Schema = z.object(LayerV3Shape).strict();
+
 export const LayerSchema = z
   .object({
-    id: IdSchema,
-    name: NameSchema,
-    source: LayerSourceSchema,
-    /** x/y are always the visual center of the layer on the 1920×1080 canvas. */
-    anchor: z.literal(LAYER_ANCHOR),
-    x: FiniteNumberSchema,
-    y: FiniteNumberSchema,
-    scaleX: FiniteNumberSchema.positive().default(1),
-    scaleY: FiniteNumberSchema.positive().default(1),
-    rotationDeg: FiniteNumberSchema.default(0),
-    opacity: FiniteNumberSchema.min(0).max(1).default(1),
-    visible: z.boolean().default(true),
-    zIndex: z.number().int().nonnegative(),
+    ...LayerV3Shape,
+    locked: z.boolean(),
   })
   .strict();
 
 export type LayerSource = z.infer<typeof LayerSourceSchema>;
+export type LayerV3 = z.infer<typeof LayerV3Schema>;
 export type Layer = z.infer<typeof LayerSchema>;

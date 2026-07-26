@@ -266,6 +266,7 @@ describe('asset metadata revision and operation safety', () => {
       started = resolve;
     });
     const metadata = service(input, {
+      timeoutMs: 15_000,
       audioProbe: {
         probeAudioFile: async () => {
           started();

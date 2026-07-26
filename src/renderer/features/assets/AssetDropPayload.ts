@@ -1,23 +1,13 @@
-import { z } from 'zod';
+import {
+  AssetDropPayloadSchema,
+  type AssetDropPayload,
+} from '../../../domain';
 
 export const ASSET_DRAG_MIME =
   'application/x-panda-stage-asset' as const;
 
-export const AssetDropPayloadSchema = z
-  .object({
-    version: z.literal(1),
-    assetId: z.uuid(),
-    type: z.enum([
-      'character-image',
-      'background-image',
-      'audio',
-    ]),
-  })
-  .strict();
-
-export type AssetDropPayload = z.infer<
-  typeof AssetDropPayloadSchema
->;
+export { AssetDropPayloadSchema };
+export type { AssetDropPayload };
 
 export function serializeAssetDropPayload(
   payload: AssetDropPayload,

@@ -23,10 +23,10 @@
   rebuildable missing state.
 - Selected details include the name, media type, dimensions or duration,
   project-relative path, path ownership status, and human-readable references.
-- The custom drag payload is strictly
-  `{ version: 1, assetId, type }` under
+- The custom drag payload is strictly protocol v2 under
   `application/x-panda-stage-asset`. It contains neither a file path nor a
-  serialized `Asset`.
+  serialized `Asset`; direct images use
+  `{ version: 2, type: 'asset-image', assetId }`.
 - `scanAssetReferences(project, assetId)` is a pure domain function covering
   character base/expression images, direct shot background/layer sources,
   shot audio clips, and dialogue-to-audio-clip references.
@@ -74,7 +74,7 @@
 | Oversized PNG cache | valid 257×1 PNG → `missing`, no data URL |
 | Browser decode failure | failed card becomes selected missing placeholder; healthy cards remain ready |
 | Revision race | revision 3 staged delete + revision 4 edit → stale and complete rollback |
-| Drag payload | exactly version, asset ID, and `background-image` type |
+| Drag payload | exactly v2, asset ID, and `asset-image` type |
 | Referenced delete | Main blocks; exact Opening/Background location remains visible |
 | Unreferenced delete | count 100 → 99; success status confirms file/cache/model sync |
 | Machine evidence | `docs/evidence/day-18/results.json` |

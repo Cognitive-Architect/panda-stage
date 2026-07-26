@@ -72,3 +72,6 @@ jobs:
 
       - name: Day 21 fixed canvas and viewport gate
         run: pnpm verify:day21
+
+      - name: Day 22 layer placement gate
+        run: pnpm verify:day22

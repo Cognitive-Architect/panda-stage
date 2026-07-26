@@ -39,7 +39,13 @@ describe('explicit background identity lifecycle', () => {
       schemaVersion: 2,
       shots: current.shots.map(({ backgroundLayerId, ...shot }) => {
         void backgroundLayerId;
-        return shot;
+        return {
+          ...shot,
+          layers: shot.layers.map(({ locked, ...layer }) => {
+            void locked;
+            return layer;
+          }),
+        };
       }),
     };
     await writeFile(
@@ -53,7 +59,7 @@ describe('explicit background identity lifecycle', () => {
     expect(migrated).toMatchObject({
       migrated: true,
       sourceVersion: 2,
-      project: { schemaVersion: 3 },
+      project: { schemaVersion: 4 },
     });
     const source = migrated.project.shots[0]!;
     expect(source.backgroundLayerId).toBe(source.layers[0]!.id);
@@ -78,7 +84,7 @@ describe('explicit background identity lifecycle', () => {
 
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 3,
+      sourceVersion: 4,
     });
     expect(reopened.project.shots).toHaveLength(1);
     expect(reopened.project.shots[0]!.backgroundLayerId).toBe(
@@ -92,7 +98,7 @@ describe('explicit background identity lifecycle', () => {
     ).toBe(true);
     expect(JSON.parse(await readFile(path.join(root, 'project.json'), 'utf8')))
       .toMatchObject({
-        schemaVersion: 3,
+        schemaVersion: 4,
         shots: [{ backgroundLayerId: copy.backgroundLayerId }],
       });
   });

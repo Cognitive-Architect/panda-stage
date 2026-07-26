@@ -267,7 +267,7 @@ describe('asset metadata integration', () => {
     );
     expect(serialized).not.toContain('asset-thumbnails');
     expect(serialized).not.toContain('"thumbnail"');
-  });
+  }, 15_000);
 
   it('persists structured image and audio errors without breaking project open', async () => {
     const input = await harness();

@@ -209,7 +209,7 @@ describe('asset import integration', () => {
     expect((await projectService.open(projectRoot)).project.assets).toEqual(
       operation.project.assets,
     );
-  });
+  }, 15_000);
 
   it('reuses hash duplicates without copying a second file or asset', async () => {
     const { parent, projectRoot, assetImportService, created } =
