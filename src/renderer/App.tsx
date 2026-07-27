@@ -37,7 +37,14 @@ export function App(): React.JSX.Element {
 
   // Day 25 (R1): mount the full editing shell. Open a demo project so the
   // editor components have data to render without manual IPC open.
+  // Gated behind ?demo=1 so the CI/acceptance launch path stays identical to
+  // main (verify-day16.cjs opens the real project via the recovery row and
+  // must own the only store.open call — an unconditional auto-open reset
+  // editorProjectStore.revision to 0 and broke the Day 16 asset-import gate).
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('demo') !== '1') {
+      return;
+    }
     if (!editorProjectStore.getSnapshot()) {
       try {
         editorProjectStore.open(
