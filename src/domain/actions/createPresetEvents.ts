@@ -5,6 +5,7 @@ import {
   ACTION_PRESET_BY_ID,
   type ActionPresetId,
 } from './ActionPreset';
+import { evaluateShotAtTime } from '../evaluate-shot-at-time';
 
 export interface CreatePresetEventsOptions {
   /** Override id generation; defaults to `crypto.randomUUID`. */
@@ -149,6 +150,22 @@ export function createPresetEvents(
   const endMs = startMs + durationMs;
   const id = createId();
 
+  // Resolve the layer's *real* evaluated state at `startMs` so that the new
+  // event's `from`/`to` anchor to where the layer actually is at that moment
+  // (which may already be mid-animation from earlier events) instead of the
+  // static base-state defined on the Layer. When there are no prior events
+  // affecting this layer at `startMs`, the evaluated state equals the static
+  // base state, so existing single-event behavior is preserved.
+  const evaluatedShot = evaluateShotAtTime(shot, startMs, project);
+  const evaluatedLayer = evaluatedShot.layers.find(
+    (candidate) => candidate.id === layerId,
+  );
+  const baseX = evaluatedLayer?.x ?? layer.x;
+  const baseY = evaluatedLayer?.y ?? layer.y;
+  const baseScaleX = evaluatedLayer?.scaleX ?? layer.scaleX;
+  const baseScaleY = evaluatedLayer?.scaleY ?? layer.scaleY;
+  const baseOpacity = evaluatedLayer?.opacity ?? layer.opacity;
+
   // Map the preset's event *type* to its logical property so that e.g. a new
   // `move` event is correctly compared against existing `shake` events (both
   // mutate `position`). Passing the raw `preset.eventType` would never match.
@@ -158,21 +175,29 @@ export function createPresetEvents(
 
   switch (preset.eventType) {
     case 'move': {
-      const target = moveTarget(presetId, layer, params);
+      const fromX =
+        presetId === 'enter-left' || presetId === 'enter-right'
+          ? moveFromX(presetId, layer)
+          : baseX;
+      const fromY = baseY;
+      const target =
+        presetId === 'enter-left' || presetId === 'enter-right'
+          ? { x: baseX, y: baseY }
+          : moveTarget(presetId, layer, params);
       event = TimelineEventSchema.parse({
         id,
         type: 'move',
         layerId,
         startMs,
         endMs,
-        from: { x: moveFromX(presetId, layer), y: layer.y },
+        from: { x: fromX, y: fromY },
         to: target,
         easing: 'ease-in-out',
       });
       break;
     }
     case 'scale': {
-      const base = layer.scaleX;
+      const base = baseScaleX;
       const factor = params.scaleFactor ?? DEFAULT_SCALE_FACTOR;
       event = TimelineEventSchema.parse({
         id,
@@ -180,15 +205,15 @@ export function createPresetEvents(
         layerId,
         startMs,
         endMs,
-        from: { x: base, y: layer.scaleY },
-        to: { x: base * factor, y: layer.scaleY * factor },
+        from: { x: base, y: baseScaleY },
+        to: { x: base * factor, y: baseScaleY * factor },
         easing: 'ease-in-out',
       });
       break;
     }
     case 'opacity': {
-      const from = presetId === 'fade-in' ? 0 : layer.opacity;
-      const to = presetId === 'fade-in' ? layer.opacity : 0;
+      const from = presetId === 'fade-in' ? 0 : baseOpacity;
+      const to = presetId === 'fade-in' ? baseOpacity : 0;
       event = TimelineEventSchema.parse({
         id,
         type: 'opacity',

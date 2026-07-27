@@ -6,7 +6,6 @@ import { editorProjectStore } from './stores/EditorProjectStore';
 import type { EditorProjectSnapshot } from './stores/EditorProjectStore';
 import { CanvasStage } from './features/canvas/CanvasStage';
 import { ShotManager } from './features/shots/ShotManager';
-import { AssetLibrary } from './features/assets/AssetLibrary';
 import { ActionPresetPanel } from './features/actions/ActionPresetPanel';
 import { HistoryControls } from './features/editor/HistoryControls';
 import { StagePreview } from './stage/StagePreview';
@@ -170,7 +169,6 @@ export function App(): React.JSX.Element {
 
       <section className="day25-editor-shell" aria-label="Day 25 编辑外壳">
         <ShotManager snapshot={snapshot} />
-        <AssetLibrary snapshot={snapshot} />
         <CanvasStage />
       </section>
 
