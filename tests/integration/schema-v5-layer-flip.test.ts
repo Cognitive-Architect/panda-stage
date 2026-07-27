@@ -25,7 +25,7 @@ afterEach(async () => {
 describe('schema v5 explicit flip lifecycle', () => {
   it('migrates v4 once, saves v5, and preserves locked and flip values on reopen', async () => {
     const parent = await mkdtemp(
-      path.join(os.tmpdir(), 'panda-stage-schema-v4-'),
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-schema-v4-'),
     );
     temporaryRoots.push(parent);
     const projectRoot = path.join(parent, 'schema-v4.pandastage');

@@ -50,7 +50,7 @@ function service(
 }
 
 async function newProjectRoot(): Promise<string> {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-day12-'));
+  const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day12-'));
   temporaryParents.push(parent);
   return path.join(parent, '熊猫 项目 with spaces 🐼.pandastage');
 }

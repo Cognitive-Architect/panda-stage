@@ -72,7 +72,7 @@ async function stateHashes(projectRoot: string): Promise<{
 }
 
 async function createHarness(kind: 'audio' | 'image' = 'audio') {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-revision-'));
+  const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-revision-'));
   temporaryDirectories.push(parent);
   const projectRoot = path.join(parent, 'revision-safe.pandastage');
   const coordinator = new ProjectOperationCoordinator();

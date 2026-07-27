@@ -28,7 +28,7 @@ afterEach(async () => {
 describe('layer placement persistence lifecycle', () => {
   it('creates, moves, locks, saves, and reopens the exact center coordinates', async () => {
     const parent = await mkdtemp(
-      path.join(os.tmpdir(), 'panda-stage-day22-'),
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day22-'),
     );
     temporaryRoots.push(parent);
     const projectRoot = path.join(parent, 'placement.pandastage');

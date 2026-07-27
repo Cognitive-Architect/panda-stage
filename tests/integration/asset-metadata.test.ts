@@ -60,7 +60,7 @@ async function harness(): Promise<{
     revision: number;
   };
 }> {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-metadata-'));
+  const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-metadata-'));
   temporaryDirectories.push(parent);
   const projectRoot = path.join(parent, '元数据 项目 🐼.pandastage');
   let current:

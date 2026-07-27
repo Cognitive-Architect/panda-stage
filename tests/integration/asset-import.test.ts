@@ -57,7 +57,7 @@ async function harness(): Promise<{
     snapshot: AssetImportRevisionSnapshot,
   ) => void;
 }> {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-assets-'));
+  const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-assets-'));
   temporaryDirectories.push(parent);
   const projectRoot = path.join(
     parent,

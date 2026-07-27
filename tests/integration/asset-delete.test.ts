@@ -80,7 +80,7 @@ async function createHarness(
     beforeAtomicReplace?: () => void | Promise<void>;
   } = {},
 ) {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-delete-'));
+  const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-delete-'));
   temporaryDirectories.push(parent);
   const projectRoot = path.join(parent, '安全 删除 🐼.pandastage');
   const coordinator = new ProjectOperationCoordinator();

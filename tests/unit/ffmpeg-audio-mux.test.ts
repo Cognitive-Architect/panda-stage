@@ -88,7 +88,7 @@ describe('FFmpegAdapter single-audio mux', () => {
   let audioPath: string;
 
   beforeEach(async () => {
-    temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-mux-'));
+    temporaryRoot = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-mux-'));
     videoPath = path.join(temporaryRoot, 'silent video.mp4');
     audioPath = path.join(temporaryRoot, 'probe audio.wav');
     await writeFile(videoPath, 'video input');

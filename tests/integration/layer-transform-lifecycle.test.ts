@@ -31,7 +31,7 @@ afterEach(async () => {
 describe('Day 23 layer transform lifecycle', () => {
   it('transforms, flips, orders, locks, saves, reopens, then deletes and clears selection', async () => {
     const parent = await mkdtemp(
-      path.join(os.tmpdir(), 'panda-stage-day23-'),
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day23-'),
     );
     temporaryRoots.push(parent);
     const projectRoot = path.join(parent, 'transform.pandastage');

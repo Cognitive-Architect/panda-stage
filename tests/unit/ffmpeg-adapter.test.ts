@@ -82,7 +82,7 @@ describe('FFmpegAdapter', () => {
   let temporaryRoot: string;
 
   beforeEach(async () => {
-    temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-ffmpeg-'));
+    temporaryRoot = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-ffmpeg-'));
   });
 
   afterEach(async () => {

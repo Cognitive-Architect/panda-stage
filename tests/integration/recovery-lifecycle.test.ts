@@ -54,7 +54,7 @@ function deferred(): {
 
 async function newProjectRoot(): Promise<string> {
   const parent = await mkdtemp(
-    path.join(os.tmpdir(), 'panda-stage-day13-'),
+    path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day13-'),
   );
   temporaryParents.push(parent);
   return path.join(parent, '崩溃 恢复 project 🐼.pandastage');
