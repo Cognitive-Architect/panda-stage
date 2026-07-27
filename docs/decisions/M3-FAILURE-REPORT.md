@@ -18,7 +18,7 @@
 | TYPE | PASS（0 error） |
 | LINT | PASS（0 error） |
 | BUILD | PASS（`build:renderer` + `build:electron` exit 0） |
-| UNIT / COMPONENT | PASS（461 passed） |
+| UNIT / COMPONENT | PASS（466 passed） |
 | INTEGRATION | PASS（85 passed） |
 
 ### 5 个逻辑修复（合并前修复）
@@ -39,14 +39,21 @@
 
 ## Issue #54 合并前修复（2026-07-27）
 
-GitHub Issue #54 为 Issue #52 的后续，列出 2 个合并阻塞项，已随 `f503b4f` 修复并通过本地全部门禁（typecheck/lint/test:unit=461/0/test:integration=85/0），已推送。PR #53 仍保持 Draft，M3 仍 FAIL（HIGH-001 未变）。
+GitHub Issue #54 为 Issue #52 的后续，列出 2 个合并阻塞项（连续 preset 边界回弹 + Day 16 CI 资产导入门禁）。重跑完整 CI（Day 16~24）又暴露 Day 20、Day 23 两处 day25 既有回归，按判定规则同属本分支阻塞项。全部修复已提交并推送，CI 全绿（见下"CI 复核"）。**PR #53 仍保持 Draft，M3 仍 FAIL（HIGH-001 未变）**。
 
-| # | 问题 | 根因 | 文件 | 关键改动 |
-|---|---|---|---|---|
-| 1 | 连续 preset 在动作边界回弹 (rebound) | `createPresetEvents` 的 `from`/`to` 锚定到 Layer 静态基态，未考虑 `startMs` 时刻该 layer 已被前序事件改变的真实状态 | `src/domain/actions/createPresetEvents.ts` | 引入 `evaluateShotAtTime(shot, startMs, project)` 解析 `startMs` 时刻真实 layer 状态；`from`/`to` 锚定到该真实状态；非 enter 的 `move` 用 `baseX` 以正确链 `move-to → move-to`；保留 `?? layer.x` 回退。新增 9 个真实链式回归用例。 |
-| 2 | CI Day 16 资产导入门禁失败 | Day 25 R1 在 `App.tsx` 额外挂载一份 `<AssetLibrary>`，与 `ProjectRecoveryPanel.tsx` 原有挂载形成 DOM 双实例；`verify-day16.cjs` 单元素 `querySelector` 命中竞态的共享 store，读到陈旧状态而抛错 | `src/renderer/App.tsx` | 移除 `App.tsx` 中冗余的 `<AssetLibrary>` 挂载（2 行），DOM 恢复为 `main@5ad6911` 单实例结构；与 `main` CI 全绿一致。 |
+| # | 问题 | 根因 | 文件 | 提交 | 关键改动 |
+|---|---|---|---|---|---|
+| 1 | 连续 preset 在动作边界回弹 (rebound) | `createPresetEvents` 的 `from`/`to` 锚定到 Layer 静态基态，未考虑 `startMs` 时刻该 layer 已被前序事件改变的真实状态 | `src/domain/actions/createPresetEvents.ts` | `f503b4f` | 引入 `evaluateShotAtTime(shot, startMs, project)` 解析 `startMs` 时刻真实 layer 状态；新增 9 个链式回归用例（452→461）。 |
+| 2 | CI Day 16 资产导入门禁失败 | Day 25 R1 在 `App.tsx` 加了一段**无条件**的 demo 自动打开 `useEffect`（`main` 没有），改变启动时序使首次导入后 `revision` 停在 0，第二次导入 `baseRevision=0` 触发断言失败 | `src/renderer/App.tsx` | `e49254f` | demo 自动打开改为仅 `?demo=1` 时执行，启动路径与 `main@5ad6911` 一致；CI `30238994985` 证实 Day 16 转绿。 |
+| 3 | Day 20 shot 复制门禁失败（`Populated shot was not duplicated`） | `App.tsx` 编辑外壳重复挂载 `<ShotManager>`，与 `ProjectRecoveryPanel` 原有挂载重复，DOM 列表翻倍导致复制命中错误实例 | `src/renderer/App.tsx` | `2142003` | 移除 `App.tsx` 冗余 `<ShotManager>` 挂载及无用 `snapshot`/`useSyncExternalStore` 引入；CI 证实 Day 20 转绿。 |
+| 4 | Day 23 verify-issue47 门禁失败 | `scripts/verify-issue47.cjs` 误用 `@deprecated` 的 `shared/domain` evaluator | `scripts/verify-issue47.cjs` | `d1fb8b9` | import 改指 `dist-electron/domain/index.js`，调用补第 3 参 `project`；CI 证实 Day 16~24 全绿。 |
 
-> Day 16 门禁失败最初被误判为 CI runner 持久化目录残留文件的环境问题；经比对 `main@5ad6911`（仅 1 个 `AssetLibrary` → CI 全绿）并根因分析，确认真实回归是 Day 25 的 `AssetLibrary` 双挂载竞态，已修复。
+> 说明：Day 16 失败最初被误判为"App.tsx 重复挂载 `<AssetLibrary>`"并移除——经验证无效；复核 CI 失败 JSON 后锁定真实根因为 demo 自动打开污染启动时序（见 #2）。本表已据最终核实结论修正。
+
+### 方案2 回归护栏 + CI 复核
+
+- 新增 `tests/unit/shot-duplicate-regression.test.ts`（QA 严过关，5 用例）：store 层（shots 1→2 / 新副本选中 / 内容完整复制且 ID 全刷新）+ 渲染层（ShotManager 单 shot 仅渲染 1 个 `.shot-list-item` 防双挂载 / 真实"复制镜头"按钮 / DOM 出现"Opening 副本"）。单测总计 466 passed。
+- CI 复核 `30246579722` / `30246576419`：**success**，Day 13/16/17/18/19/20/21/22/23/24 + M1/M2 全部实际执行并 PASS；Issue #54 验收标准（Day 16~24 全实际运行并 PASS）**已达成**。
 
 ## 待补项（阻塞解除冻结）
 
