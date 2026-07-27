@@ -140,3 +140,9 @@ export const shotStore = new ShotStore(
   editorProjectStore,
   new ShotService(),
 );
+
+// Diagnostic-only exposure (Issue #54 / Day 20 gate investigation).
+// Guarded so the module stays safe under Node/SSR environments.
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__shotStore = shotStore;
+}

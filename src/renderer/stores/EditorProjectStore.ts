@@ -338,3 +338,10 @@ export class EditorProjectStore {
 
 export const editorProjectStore = new EditorProjectStore();
 export const historyStore = editorProjectStore.history;
+
+// Diagnostic-only exposure (Issue #54 / Day 20 gate investigation).
+// Guarded so the module stays safe under Node/SSR environments.
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__editorProjectStore =
+    editorProjectStore;
+}
