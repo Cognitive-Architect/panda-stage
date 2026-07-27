@@ -18,7 +18,7 @@
 | TYPE | PASS（0 error） |
 | LINT | PASS（0 error） |
 | BUILD | PASS（`build:renderer` + `build:electron` exit 0） |
-| UNIT / COMPONENT | PASS（452 passed） |
+| UNIT / COMPONENT | PASS（461 passed） |
 | INTEGRATION | PASS（85 passed） |
 
 ### 5 个逻辑修复（合并前修复）
@@ -36,6 +36,17 @@
 - `tests/unit/domain/actions/createPresetEvents.test.ts`：overlap 检测（move↔move、move↔shake、scale↔scale 触发；move vs scale 不误报；边界相接不算重叠；spy `console.warn` 验证 `[DEBT-CONFLICT-B25-001]`）。
 - `tests/unit/domain/evaluate-shot-at-time.test.ts`：evaluator 时间语义（expression/flip/visibility/move/scale/opacity 的「开始前=基态」「进行中」「结束后=最终态」「两连续事件之间不回跳」）。
 - `tests/unit/domain/validators/timelineEventValidator.test.ts`：ID 唯一性（新事件间重复拒绝；新事件与 shot 已有事件重复拒绝；全唯一通过）。
+
+## Issue #54 合并前修复（2026-07-27）
+
+GitHub Issue #54 为 Issue #52 的后续，列出 2 个合并阻塞项，已随 `f503b4f` 修复并通过本地全部门禁（typecheck/lint/test:unit=461/0/test:integration=85/0），已推送。PR #53 仍保持 Draft，M3 仍 FAIL（HIGH-001 未变）。
+
+| # | 问题 | 根因 | 文件 | 关键改动 |
+|---|---|---|---|---|
+| 1 | 连续 preset 在动作边界回弹 (rebound) | `createPresetEvents` 的 `from`/`to` 锚定到 Layer 静态基态，未考虑 `startMs` 时刻该 layer 已被前序事件改变的真实状态 | `src/domain/actions/createPresetEvents.ts` | 引入 `evaluateShotAtTime(shot, startMs, project)` 解析 `startMs` 时刻真实 layer 状态；`from`/`to` 锚定到该真实状态；非 enter 的 `move` 用 `baseX` 以正确链 `move-to → move-to`；保留 `?? layer.x` 回退。新增 9 个真实链式回归用例。 |
+| 2 | CI Day 16 资产导入门禁失败 | Day 25 R1 在 `App.tsx` 额外挂载一份 `<AssetLibrary>`，与 `ProjectRecoveryPanel.tsx` 原有挂载形成 DOM 双实例；`verify-day16.cjs` 单元素 `querySelector` 命中竞态的共享 store，读到陈旧状态而抛错 | `src/renderer/App.tsx` | 移除 `App.tsx` 中冗余的 `<AssetLibrary>` 挂载（2 行），DOM 恢复为 `main@5ad6911` 单实例结构；与 `main` CI 全绿一致。 |
+
+> Day 16 门禁失败最初被误判为 CI runner 持久化目录残留文件的环境问题；经比对 `main@5ad6911`（仅 1 个 `AssetLibrary` → CI 全绿）并根因分析，确认真实回归是 Day 25 的 `AssetLibrary` 双挂载竞态，已修复。
 
 ## 待补项（阻塞解除冻结）
 
