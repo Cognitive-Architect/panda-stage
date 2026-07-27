@@ -185,72 +185,6 @@ async function dragShot(window, sourceName, targetIndex) {
   );
 }
 
-async function dumpDay20State(window, label) {
-  const state = await window.webContents.executeJavaScript(`(() => {
-    const listItems = [...document.querySelectorAll('.shot-list-item')];
-    const actionsContainers = [
-      ...document.querySelectorAll('.shot-editor-actions'),
-    ];
-    const actionButtons = [
-      ...document.querySelectorAll('.shot-editor-actions button'),
-    ];
-    const editorEl = document.querySelector('.shot-editor');
-    const headingSpan = document.querySelector('.shot-manager-heading span');
-    const hasOpeningCopyText = [...document.querySelectorAll(
-      '.shot-list-item strong'
-    )].some((node) =>
-      (node.textContent || '').includes('Opening 副本')
-    );
-
-    const editorSnapshot = window.__editorProjectStore
-      ? window.__editorProjectStore.getSnapshot()
-      : null;
-    let shotStoreId = 'unknown';
-    const shotStore = window.__shotStore;
-    if (shotStore) {
-      if (typeof shotStore.getCurrentShotId === 'function') {
-        shotStoreId = shotStore.getCurrentShotId() ?? 'unknown';
-      } else if (typeof shotStore.getSnapshot === 'function') {
-        const snap = shotStore.getSnapshot();
-        shotStoreId =
-          (snap && (snap.currentShotId ?? snap.selectedShotId)) ?? 'unknown';
-      }
-    }
-
-    return {
-      shotListCount: listItems.length,
-      shotListItems: listItems.map((item) => ({
-        name: (item.querySelector('strong')?.textContent || '').trim(),
-        selected:
-          item.classList.contains('selected') ||
-          item.getAttribute('aria-selected') === 'true',
-      })),
-      shotEditorActionsCount: actionsContainers.length,
-      actionButtons: actionButtons.map((btn) => ({
-        text: (btn.textContent || '').trim(),
-        dataTestId: btn.getAttribute('data-testid') || null,
-        disabled: btn.disabled,
-        className: btn.className || '',
-      })),
-      selectedShotId: editorEl
-        ? editorEl.dataset.currentShotId || null
-        : null,
-      revisionText: headingSpan ? headingSpan.textContent.trim() : null,
-      hasOpeningCopyText,
-      projectShots:
-        editorSnapshot && editorSnapshot.project
-          ? editorSnapshot.project.shots.map((shot) => ({
-              id: shot.id,
-              name: shot.name,
-            }))
-          : [],
-      revision: editorSnapshot ? editorSnapshot.revision : null,
-      shotStoreCurrentShotId: shotStoreId,
-    };
-  })()`);
-  console.log('DAY20_DIAG ' + label + ' ' + JSON.stringify(state, null, 2));
-}
-
 function shotEntityIds(shot) {
   return [
     shot.id,
@@ -447,27 +381,17 @@ async function verifyDay20() {
         ).textContent.trim()
       }))()`);
 
-    await dumpDay20State(window, 'BEFORE_DUPLICATE_CLICK');
     await window.webContents.executeJavaScript(`
       document.querySelector('.shot-editor-actions button').click()
     `);
     await window.webContents.executeJavaScript(
-      'new Promise((resolve) => setTimeout(resolve, 400))',
-    );
-    await dumpDay20State(window, 'AFTER_DUPLICATE_CLICK_400MS');
-    try {
-      await window.webContents.executeJavaScript(
-        waitFor(
+      waitFor(
         "document.querySelectorAll('.shot-list-item').length === 2 && " +
           "document.querySelector('.shot-editor-heading h3')" +
           "?.textContent?.trim() === 'Opening 副本'",
         'Populated shot was not duplicated.',
-        )
-      );
-    } catch (error) {
-      await dumpDay20State(window, 'DUPLICATE_TIMEOUT');
-      throw error;
-    }
+      )
+    );
     await setInput(
       window,
       '.shot-fields label:nth-of-type(1) input',
