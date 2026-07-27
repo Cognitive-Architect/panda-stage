@@ -4,7 +4,7 @@ const { mkdir, writeFile } = require('node:fs/promises');
 const { app, nativeImage } = require('electron');
 const {
   evaluateShotAtTime,
-} = require('../dist-electron/shared/domain/index.js');
+} = require('../dist-electron/domain/index.js');
 const {
   PROBE_CHARACTER_LAYER_ID,
   PROBE_PROJECT,
@@ -170,6 +170,7 @@ async function verifyIssue47() {
         timelineEvents: [],
       },
       0,
+      PROBE_PROJECT,
     );
     const assetUrls = Object.fromEntries(
       PROBE_PROJECT.assets
