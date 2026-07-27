@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateShotAtTime } from '../../../src/domain';
-import type { Project, Shot, TimelineEvent } from '../../../src/domain';
+import type { EvaluatedLayer, Project, Shot, TimelineEvent } from '../../../src/domain';
 import { buildProject, IDS } from './testProject';
 
 function shotWithEvents(events: readonly TimelineEvent[]): Shot {
@@ -171,5 +171,209 @@ describe('T02 evaluateShotAtTime', () => {
     const evaluated = evaluateShotAtTime(shot, 0, project);
     expect(evaluated.backgroundLayerId).toBe(IDS.layerBg);
     expect(evaluated.layers.map((layer) => layer.zIndex)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('T02 evaluateShotAtTime — time semantics (before / in / after, no revert)', () => {
+  const project: Project = buildProject();
+
+  function evalChar(t: number, events: readonly TimelineEvent[]): EvaluatedLayer {
+    const shot = shotWithEvents(events);
+    return evaluateShotAtTime(shot, t, project).layers.find(
+      (layer) => layer.id === IDS.layerChar,
+    )!;
+  }
+
+  function exprEvent(
+    startMs: number,
+    endMs: number,
+    expressionId: string,
+    id = 'ev-expr',
+  ): TimelineEvent {
+    return {
+      id,
+      type: 'expression',
+      layerId: IDS.layerChar,
+      startMs,
+      endMs,
+      expressionId,
+    } as TimelineEvent;
+  }
+  function flipEvent(
+    startMs: number,
+    endMs: number,
+    flipped: boolean,
+    id = 'ev-flip',
+  ): TimelineEvent {
+    return {
+      id,
+      type: 'flip',
+      layerId: IDS.layerChar,
+      startMs,
+      endMs,
+      axis: 'horizontal',
+      flipped,
+    } as TimelineEvent;
+  }
+  function visEvent(
+    startMs: number,
+    endMs: number,
+    visible: boolean,
+    id = 'ev-vis',
+  ): TimelineEvent {
+    return {
+      id,
+      type: 'visibility',
+      layerId: IDS.layerChar,
+      startMs,
+      endMs,
+      visible,
+    } as TimelineEvent;
+  }
+  function moveEvent(
+    startMs: number,
+    endMs: number,
+    from = { x: 500, y: 600 },
+    to = { x: 1000, y: 600 },
+    id = 'ev-move',
+  ): TimelineEvent {
+    return {
+      id,
+      type: 'move',
+      layerId: IDS.layerChar,
+      startMs,
+      endMs,
+      easing: 'linear',
+      from,
+      to,
+    } as TimelineEvent;
+  }
+  function scaleEvent(
+    startMs: number,
+    endMs: number,
+    id = 'ev-scale',
+  ): TimelineEvent {
+    return {
+      id,
+      type: 'scale',
+      layerId: IDS.layerChar,
+      startMs,
+      endMs,
+      easing: 'linear',
+      from: { x: 0.5, y: 0.5 },
+      to: { x: 1, y: 1 },
+    } as TimelineEvent;
+  }
+  function opacityEvent(
+    startMs: number,
+    endMs: number,
+    from = 1,
+    to = 0,
+    id = 'ev-opacity',
+  ): TimelineEvent {
+    return {
+      id,
+      type: 'opacity',
+      layerId: IDS.layerChar,
+      startMs,
+      endMs,
+      easing: 'linear',
+      from,
+      to,
+    } as TimelineEvent;
+  }
+
+  // --- expression ---
+  it('expression: before=base, during=target, after=final', () => {
+    const ev = exprEvent(500, 1500, IDS.expressionAngry);
+    expect(evalChar(100, [ev]).assetId).toBe(IDS.assetChar);
+    expect(evalChar(1000, [ev]).assetId).toBe(IDS.assetChar2);
+    expect(evalChar(2000, [ev]).assetId).toBe(IDS.assetChar2);
+  });
+
+  it('expression: two consecutive events do not revert to base', () => {
+    const a = exprEvent(500, 1500, IDS.expressionAngry, 'a');
+    const b = exprEvent(1500, 2500, IDS.expressionNormal, 'b');
+    expect(evalChar(1000, [a, b]).assetId).toBe(IDS.assetChar2);
+    expect(evalChar(2000, [a, b]).assetId).toBe(IDS.assetChar);
+    expect(evalChar(2800, [a, b]).assetId).toBe(IDS.assetChar);
+  });
+
+  // --- flip ---
+  it('flip: before=base, during=target, after=final', () => {
+    const ev = flipEvent(500, 1500, true);
+    expect(evalChar(100, [ev]).flipX).toBe(false);
+    expect(evalChar(1000, [ev]).flipX).toBe(true);
+    expect(evalChar(2000, [ev]).flipX).toBe(true);
+  });
+
+  it('flip: two consecutive events do not revert', () => {
+    const a = flipEvent(500, 1500, true, 'a');
+    const b = flipEvent(1500, 2500, false, 'b');
+    expect(evalChar(1000, [a, b]).flipX).toBe(true);
+    expect(evalChar(2000, [a, b]).flipX).toBe(false);
+    expect(evalChar(2800, [a, b]).flipX).toBe(false);
+  });
+
+  // --- visibility ---
+  it('visibility: before=base, during=target, after=final', () => {
+    const ev = visEvent(500, 1500, false);
+    expect(evalChar(100, [ev]).visible).toBe(true);
+    expect(evalChar(1000, [ev]).visible).toBe(false);
+    expect(evalChar(2000, [ev]).visible).toBe(false);
+  });
+
+  it('visibility: two consecutive events do not revert', () => {
+    const a = visEvent(500, 1500, false, 'a');
+    const b = visEvent(1500, 2500, true, 'b');
+    expect(evalChar(1000, [a, b]).visible).toBe(false);
+    expect(evalChar(2000, [a, b]).visible).toBe(true);
+    expect(evalChar(2800, [a, b]).visible).toBe(true);
+  });
+
+  // --- move ---
+  it('move: before=base, during=interpolated, after=final', () => {
+    const ev = moveEvent(500, 1500);
+    expect(evalChar(100, [ev]).x).toBe(500);
+    expect(evalChar(1000, [ev]).x).toBeCloseTo(750, 6);
+    expect(evalChar(2000, [ev]).x).toBe(1000);
+  });
+
+  it('move: two consecutive events do not revert', () => {
+    const a = moveEvent(500, 1500, { x: 500, y: 600 }, { x: 1000, y: 600 }, 'a');
+    const b = moveEvent(
+      1500,
+      2500,
+      { x: 1000, y: 600 },
+      { x: 1500, y: 600 },
+      'b',
+    );
+    expect(evalChar(1000, [a, b]).x).toBeCloseTo(750, 6);
+    expect(evalChar(2000, [a, b]).x).toBeCloseTo(1250, 6);
+    expect(evalChar(2800, [a, b]).x).toBe(1500);
+  });
+
+  // --- scale ---
+  it('scale: before=base, during=interpolated, after=final', () => {
+    const ev = scaleEvent(500, 1500);
+    expect(evalChar(100, [ev]).scaleX).toBeCloseTo(0.5, 6);
+    expect(evalChar(1000, [ev]).scaleX).toBeCloseTo(0.75, 6);
+    expect(evalChar(2000, [ev]).scaleX).toBeCloseTo(1, 6);
+  });
+
+  // --- opacity ---
+  it('opacity: before=base, during=interpolated, after=final', () => {
+    const ev = opacityEvent(500, 1500);
+    expect(evalChar(100, [ev]).opacity).toBe(1);
+    expect(evalChar(1000, [ev]).opacity).toBeCloseTo(0.5, 6);
+    expect(evalChar(2000, [ev]).opacity).toBe(0);
+  });
+
+  it('opacity: two consecutive events do not revert', () => {
+    const a = opacityEvent(500, 1500, 1, 0, 'a');
+    const b = opacityEvent(1500, 2500, 0, 1, 'b');
+    expect(evalChar(1000, [a, b]).opacity).toBeCloseTo(0.5, 6);
+    expect(evalChar(2000, [a, b]).opacity).toBeCloseTo(0.5, 6);
+    expect(evalChar(2800, [a, b]).opacity).toBe(1);
   });
 });

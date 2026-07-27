@@ -31,7 +31,9 @@ export function validatePresetApplication(
     return { ok: false, errors: ['背景图层不能应用动作预设。'] };
   }
 
-  const seenIds = new Set<string>();
+  // Seed the seen set with ids already present on the shot so that a newly
+  // applied event cannot collide with an existing timeline event.
+  const seenIds = new Set(shot.timelineEvents.map((event) => event.id));
   for (const event of events) {
     if (seenIds.has(event.id)) {
       errors.push(`事件 ID 重复：${event.id}`);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createPresetEvents,
   type CreatePresetEventsOptions,
@@ -182,5 +182,78 @@ describe('T05 createPresetEvents', () => {
     const fadeIn = opacityEvent('fade-in');
     expect(fadeIn.from).toBeGreaterThanOrEqual(0);
     expect(fadeIn.to).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('T05 createPresetEvents — overlap detection (DEBT-CONFLICT-B25-001)', () => {
+  /** Builds a project whose shot already carries the given timeline events. */
+  function projectWith(existing: TimelineEvent[]): Project {
+    const project = buildProject();
+    project.shots[0]!.timelineEvents = existing;
+    return project;
+  }
+
+  /** Minimal event shape: overlap detection only reads type/layerId/start/end. */
+  function existingEvent(
+    type: TimelineEvent['type'],
+    startMs: number,
+    endMs: number,
+    id = 'existing-1',
+  ): TimelineEvent {
+    return {
+      id,
+      type,
+      layerId: IDS.layerChar,
+      startMs,
+      endMs,
+    } as TimelineEvent;
+  }
+
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it('warns when a new move overlaps an existing move (same position property)', () => {
+    const project = projectWith([existingEvent('move', 0, 1000)]);
+    createPresetEvents(project, SHOT_ID, CHAR_LAYER, 'move-to', { startMs: 500 });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[DEBT-CONFLICT-B25-001]'),
+    );
+  });
+
+  it('warns when a new move overlaps an existing shake (both position)', () => {
+    const project = projectWith([existingEvent('shake', 0, 600)]);
+    createPresetEvents(project, SHOT_ID, CHAR_LAYER, 'move-to', { startMs: 100 });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[DEBT-CONFLICT-B25-001]'),
+    );
+  });
+
+  it('warns when a new scale overlaps an existing scale', () => {
+    const project = projectWith([existingEvent('scale', 0, 1000)]);
+    createPresetEvents(project, SHOT_ID, CHAR_LAYER, 'scale-emphasis', {
+      startMs: 400,
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[DEBT-CONFLICT-B25-001]'),
+    );
+  });
+
+  it('does NOT warn for different properties (move vs scale)', () => {
+    const project = projectWith([existingEvent('move', 0, 1000)]);
+    createPresetEvents(project, SHOT_ID, CHAR_LAYER, 'scale-emphasis', {
+      startMs: 0,
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT warn when intervals just touch (endMs === other startMs)', () => {
+    const project = projectWith([existingEvent('move', 0, 1000)]);
+    createPresetEvents(project, SHOT_ID, CHAR_LAYER, 'move-to', { startMs: 1000 });
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });

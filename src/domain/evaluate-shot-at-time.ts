@@ -139,6 +139,14 @@ export function evaluateShotAtTime(
       );
 
       for (const event of events) {
+        // Future events (timeMs before the event starts) must not participate
+        // in evaluation: skipping them leaves the layer at its base state
+        // (or the state produced by earlier events) instead of overwriting it
+        // with `from`. Events whose start has passed keep contributing — for
+        // timeMs > endMs `rawProgress` resolves to 1, applying the final state.
+        if (timeMs < event.startMs) {
+          continue;
+        }
         const span = Math.max(1, event.endMs - event.startMs);
         const rawProgress =
           timeMs < event.startMs

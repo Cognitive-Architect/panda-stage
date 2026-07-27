@@ -41,8 +41,14 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function propertyOf(event: TimelineEvent): string {
-  switch (event.type) {
+/**
+ * Maps a timeline event *type* to the logical property it mutates. This is the
+ * single source of truth shared by `propertyOf` and by overlap detection, which
+ * has to compare against a preset's `eventType` string rather than a full event
+ * object. The mapping must stay in lock-step with `propertyOf`.
+ */
+function propertyOfType(type: TimelineEvent['type']): string {
+  switch (type) {
     case 'move':
     case 'shake':
       return 'position';
@@ -57,6 +63,10 @@ function propertyOf(event: TimelineEvent): string {
     case 'visibility':
       return 'visibility';
   }
+}
+
+function propertyOf(event: TimelineEvent): string {
+  return propertyOfType(event.type);
 }
 
 /**
@@ -139,7 +149,10 @@ export function createPresetEvents(
   const endMs = startMs + durationMs;
   const id = createId();
 
-  detectOverlap(shot, layerId, preset.eventType, startMs, endMs);
+  // Map the preset's event *type* to its logical property so that e.g. a new
+  // `move` event is correctly compared against existing `shake` events (both
+  // mutate `position`). Passing the raw `preset.eventType` would never match.
+  detectOverlap(shot, layerId, propertyOfType(preset.eventType), startMs, endMs);
 
   let event: TimelineEvent;
 

@@ -97,4 +97,51 @@ describe('T06 validatePresetApplication', () => {
     expect(result.ok).toBe(false);
     expect(result.errors.length).toBeGreaterThan(0);
   });
+
+  it('rejects a new event whose id collides with an existing shot event', () => {
+    // Use a fresh project so we don't mutate the shared PROJECT fixture.
+    const project = buildProject();
+    const shot = project.shots.find((candidate) => candidate.id === SHOT_ID)!;
+    shot.timelineEvents = [
+      {
+        id: 'existing-dup',
+        type: 'opacity',
+        layerId: IDS.layerChar,
+        startMs: 0,
+        endMs: 400,
+        from: 0,
+        to: 1,
+        easing: 'linear',
+      } as TimelineEvent,
+    ];
+    const result = validatePresetApplication(project, SHOT_ID, IDS.layerChar, [
+      opacityEvent({ id: 'existing-dup' }),
+    ]);
+    expect(result.ok).toBe(false);
+    expect(
+      result.errors.some((message) => message.includes('事件 ID 重复')),
+    ).toBe(true);
+  });
+
+  it('accepts unique ids that do not collide with existing shot events', () => {
+    const project = buildProject();
+    const shot = project.shots.find((candidate) => candidate.id === SHOT_ID)!;
+    shot.timelineEvents = [
+      {
+        id: 'existing-1',
+        type: 'opacity',
+        layerId: IDS.layerChar,
+        startMs: 0,
+        endMs: 400,
+        from: 0,
+        to: 1,
+        easing: 'linear',
+      } as TimelineEvent,
+    ];
+    const result = validatePresetApplication(project, SHOT_ID, IDS.layerChar, [
+      opacityEvent({ id: 'new-a' }),
+      opacityEvent({ id: 'new-b', endMs: 350 }),
+    ]);
+    expect(result.ok).toBe(true);
+  });
 });
