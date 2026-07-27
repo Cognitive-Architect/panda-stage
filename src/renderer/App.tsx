@@ -1,11 +1,9 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 import type { ExportJobUpdate } from '../shared/export-types';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { ProjectSchema } from '../domain';
 import { editorProjectStore } from './stores/EditorProjectStore';
-import type { EditorProjectSnapshot } from './stores/EditorProjectStore';
 import { CanvasStage } from './features/canvas/CanvasStage';
-import { ShotManager } from './features/shots/ShotManager';
 import { ActionPresetPanel } from './features/actions/ActionPresetPanel';
 import { HistoryControls } from './features/editor/HistoryControls';
 import { StagePreview } from './stage/StagePreview';
@@ -19,11 +17,6 @@ interface GatePreviewRequest {
 }
 
 export function App(): React.JSX.Element {
-  const snapshot = useSyncExternalStore<EditorProjectSnapshot | null>(
-    editorProjectStore.subscribe,
-    editorProjectStore.getSnapshot,
-    editorProjectStore.getSnapshot,
-  );
   const [pingStatus, setPingStatus] = useState<
     'idle' | 'pending' | 'pong' | 'error'
   >('idle');
@@ -175,7 +168,6 @@ export function App(): React.JSX.Element {
       </section>
 
       <section className="day25-editor-shell" aria-label="Day 25 编辑外壳">
-        <ShotManager snapshot={snapshot} />
         <CanvasStage />
       </section>
 
