@@ -39,7 +39,8 @@ afterEach(async () => {
 });
 
 async function projectRoot(): Promise<string> {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-close-'));
+  const base = process.env.RUNNER_TEMP ?? os.tmpdir();
+  const parent = await mkdtemp(path.join(base, 'panda-close-'));
   temporaryDirectories.push(parent);
   return path.join(parent, '关闭测试 中文.pandastage');
 }
@@ -61,7 +62,9 @@ describe('unsaved close integration lifecycle', () => {
         autosave.markFormalSaved(root, project, revision!);
       },
     });
+    console.time('unsaved-close: create');
     const created = await projects.create(root, { name: '关闭前' });
+    console.timeEnd('unsaved-close: create');
     const dirtyProject = {
       ...created.project,
       name: '保存后退出',
@@ -102,6 +105,7 @@ describe('unsaved close integration lifecycle', () => {
       quitApplication: vi.fn(),
     });
 
+    console.time('unsaved-close: cancel+save close');
     guard.handleWindowClose({ preventDefault: vi.fn() });
     await guard.waitForIdle();
     expect(closeWindow).not.toHaveBeenCalled();
@@ -109,6 +113,7 @@ describe('unsaved close integration lifecycle', () => {
 
     guard.handleWindowClose({ preventDefault: vi.fn() });
     await guard.waitForIdle();
+    console.timeEnd('unsaved-close: cancel+save close');
     expect(closeWindow).toHaveBeenCalledOnce();
     expect(autosave.getDirtyProjectSnapshot()).toBeNull();
     expect(
