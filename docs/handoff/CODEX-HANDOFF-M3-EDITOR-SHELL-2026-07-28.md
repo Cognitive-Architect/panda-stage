@@ -1,10 +1,10 @@
 # Codex 接管交接文档（Handoff）— M3 Editor Shell
 
 > 仓库：`Cognitive-Architect/panda-stage`
-> 分支：`fix/m3-editor-shell`（当前 HEAD `baacd1f35a53751149bbdc72688e3b59681d06ae`；阶段 0A 基线 `f16dba26a17485c250bfa18858f79fbd0e918ad1`）
+> 分支：`fix/m3-editor-shell`（提交链：阶段 0A 基线 `f16dba26a17485c250bfa18858f79fbd0e918ad1` → Handoff 初稿提交 `baacd1f35a53751149bbdc72688e3b59681d06ae` → 接管修订前当前 HEAD `fd24ed5126e6d3691968807857d75f829e724d96`；接管以 `git rev-parse HEAD` 与 `gh pr view 56 --json headRefOid` 动态核对相等为准，文档不预设未来「当前 HEAD」硬值）
 > 工作树：`D:/panda-stage/.worktrees/day25`
 > 对应工单：Issue #55（M3 产品集成修复单）、Issue #57（本交接文档的产出单）
-> 性质：**纯文档，不写 `src/` 生产代码**；本文基于阶段 0A 基线 `f16dba2` 编写，随后由 WorkBuddy 以 `baacd1f` 提交并推送，该提交仅新增本 Handoff 文档，`src/` 零改动。
+> 性质：**纯文档，不写 `src/` 生产代码**；本文基于阶段 0A 基线 `f16dba2` 编写，初稿由 WorkBuddy 以 `baacd1f` 提交并推送（仅新增本 Handoff 文档，`src/` 零改动），当前工作树 HEAD 为 `fd24ed5`（仅修订本 Handoff 文档事实口径，`src/` 零改动）。
 > 来源：本文档所有 SHA / 路径 / 状态均由本人（software-architect，高见远）于 2026-07-28 在 worktree 内实跑 `git`/`gh` 命令并实读指定文件后独立核验，非照单全收。
 
 ---
@@ -18,7 +18,7 @@
 | 核验项 | 预期 | 本人实跑结果 | 一致 |
 |---|---|---|---|
 | 分支 | `fix/m3-editor-shell` | `fix/m3-editor-shell` | ✅ |
-| 当前 HEAD（Handoff 提交 / PR #56 HEAD） | `baacd1f35a53751149bbdc72688e3b59681d06ae` | `baacd1f35a53751149bbdc72688e3b59681d06ae` | ✅ |
+| 当前 HEAD（动态核对） | `git rev-parse HEAD` 与 `gh pr view 56 --json headRefOid` 两值相等即通过 | 接管时实跑核对一致 | ✅（不再硬编码单值） |
 | 阶段 0A 基线 HEAD | `f16dba26a17485c250bfa18858f79fbd0e918ad1` | `f16dba26a17485c250bfa18858f79fbd0e918ad1` | ✅ |
 | 工作树 | 干净 | `git status --short` 无输出 | ✅ |
 | 父分支 | `feat/day-25-action-presets` @ `a907269ff4fb1ec072fea3a05b347caa1d867371` | 一致（`git diff feat/day-25-action-presets...HEAD` 可见） | ✅ |
@@ -29,7 +29,7 @@
 | M3 状态 | FAIL | FAIL（未改） | ✅ |
 | Day26~45 | 冻结 | 冻结 | ✅ |
 
-**HEAD 口径（明确区分）**：阶段 0A 基线 = `f16dba26a17485c250bfa18858f79fbd0e918ad1`（最后的生产代码基线提交）；当前 Handoff 提交 / PR #56 当前 HEAD = `baacd1f35a53751149bbdc72688e3b59681d06ae`（仅新增本 Handoff 文档，`src/` 零改动）。Codex 接管时应核对「当前 HEAD」为最新 Handoff 提交 `baacd1f…`，而非阶段 0A 基线 `f16dba2`。
+**HEAD 口径（明确区分 + 动态核对）**：阶段 0A 基线 = `f16dba26a17485c250bfa18858f79fbd0e918ad1`（最后的生产代码基线提交）；Handoff 初稿提交 = `baacd1f35a53751149bbdc72688e3b59681d06ae`（仅新增本 Handoff 文档，`src/` 零改动）；接管修订前当前 HEAD = `fd24ed5126e6d3691968807857d75f829e724d96`。**接管时不再要求「当前 HEAD 必须等于某一固定 SHA」**：Codex 须运行 `git rev-parse HEAD` 与 `gh pr view 56 --json headRefOid`，**两值相等即通过**，不必等于 `baacd1f` 或任何其他硬编码值。
 
 **一处措辞澄清（非差异，仅计数口径）**：主理人通报「5 新增设计/脚本/契约/截图 + vitest.config.ts 微调」。阶段 0A 基线（`f16dba2`）实测为 **6 个新增文件**（`docs/design/m3-editor-shell-design.md`、`docs/design/phase0a-baseline-report.md`、`docs/design/baseline-1366x768.png`、`scripts/baseline-preload-stub.cjs`、`scripts/capture-baseline-1366x768.cjs`、`tests/contract/dom-selectors.baseline.test.ts`）+ **1 个修改**（`vitest.config.ts`）= **7 文件**。「5」应为按类别（设计/脚本/契约/截图）的近似分组，实际新增为 6 个文件。随后本 Handoff 文档由 WorkBuddy 以 `baacd1f` 提交（仅新增本文件），故当前相对父分支为 **7 新增 + 1 修改 = 8 文件**。总量口径一致，无矛盾。
 
@@ -55,14 +55,14 @@
 ```text
 main
 └─ feat/day-25-action-presets   (HEAD a907269ff4fb1ec072fea3a05b347caa1d867371)
-   └─ fix/m3-editor-shell       (HEAD baacd1f35a53751149bbdc72688e3b59681d06ae；阶段 0A 基线 f16dba26a17485c250bfa18858f79fbd0e918ad1)  ← 你现在在这里
+   └─ fix/m3-editor-shell       (提交链 f16dba2 → baacd1f → fd24ed5；接管以 `git rev-parse HEAD` 与 `gh pr view 56 --json headRefOid` 动态核对相等为准)  ← 你现在在这里
 ```
 
 | 分支 | 完整 HEAD SHA | Base | PR | 状态 | CI | 用途 | 正确合并顺序 |
 |---|---|---|---|---|---|---|---|
 | `main` | （未实跑，推断为 main 当前 HEAD）「推断」 | — | — | — | — | 正式发布主线 | 最后合入 |
 | `feat/day-25-action-presets` | `a907269ff4fb1ec072fea3a05b347caa1d867371` | `main` | PR #53 | **Draft** | 末次 CI `30259335365` SUCCESS（含两次 PR SUCCESS） | 承载 Day 25 领域逻辑全部修复（Issue #52/#54） | 第 2 步：PR #53 再合入 `main` |
-| `fix/m3-editor-shell` | `baacd1f35a53751149bbdc72688e3b59681d06ae` | `feat/day-25-action-presets` | PR #56 | **Draft** | 末次 CI `30324231517` SUCCESS（pull_request，2026-07-28T02:50:07Z） | 承载 M3 Editor Shell 阶段 0A 基线（阶段 0A 基线 `f16dba2` 为生产代码提交；`baacd1f` 仅新增 Handoff 文档，src 零改动） | 第 1 步：PR #56 先合入 `feat/day-25-action-presets` |
+| `fix/m3-editor-shell` | 接管修订前当前 HEAD `fd24ed5126e6d3691968807857d75f829e724d96`（接管时以 `git rev-parse HEAD` 与 `gh pr view 56 --json headRefOid` 核对相等为准，不必等于固定值） | `feat/day-25-action-presets` | PR #56 | **Draft** | 末次 CI `30324231517` SUCCESS（pull_request，2026-07-28T02:50:07Z） | 承载 M3 Editor Shell 阶段 0A 基线（阶段 0A 基线 `f16dba2` 为生产代码提交；`baacd1f` 仅新增 Handoff 初稿文档，`fd24ed5` 仅修订 Handoff 文档，src 零改动） | 第 1 步：PR #56 先合入 `feat/day-25-action-presets` |
 
 **铁律（合并顺序）**：`fix/m3-editor-shell` **不得直接合入 `main`**。正确顺序：**① PR #56（`fix/m3-editor-shell → feat/day-25-action-presets`）先合入；② 待 PR #56 合入后，PR #53（`feat/day-25-action-presets → main`）再合入**。**PR #53 不得先于 PR #56 合并**。
 
@@ -153,7 +153,8 @@ main
 
 **阶段 0A 提交历史**（实跑 `git log --oneline -15`）：
 
-- `baacd1f` docs(handoff): prepare Codex takeover for M3 editor shell ← 当前 HEAD（仅新增本 Handoff 文档，`src/` 零改动）
+- `fd24ed5` docs(handoff): revise M3 Handoff facts per Issue #57 review ← 接管修订前当前 HEAD（仅修订本 Handoff 文档，`src/` 零改动）
+- `baacd1f` docs(handoff): prepare Codex takeover for M3 editor shell ← Handoff 初稿提交（仅新增本 Handoff 文档，`src/` 零改动）
 - `f16dba2` test(m3): drop empty editor-shell contract block (fixes CI TS6133) ← 阶段 0A 基线（当前 HEAD 之前最后的生产代码提交）
 - `53c7625` test(m3): phase 0A baseline fix — offscreen 1366x768 capture, drop old shell contracts
 - `b3da4a9` test(m3): lock editor shell phase 0A baseline（阶段 0A 首次基线提交，基于 `a907269`）
@@ -198,7 +199,7 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 
 **单一 Store 来源（铁律）**：全局只有一个正式打开的 Project（`EditorProjectStore`）、一个 `selectedShotId`（`ShotStore`）、一个 `selectedLayerId`（`selectionStore`）、一套 History（`editorProjectStore.history`）。**禁止新建第二套 Project / Selection / History 状态**（见第 8 章矩阵）。
 
-**`projectRoot` 拼接层级**：`projectRoot` 由**调用方（renderer）**在 Main/IPC 层拼接为 `<位置>/<名称>.pandastage`，再传给 `ProjectService.create(projectRoot, {name})`；`ProjectService.resolveProjectRoot` 要求以 `.pandastage` 结尾，否则抛 `INVALID_PROJECT_ROOT`（`ProjectService.ts:365-382`、`shared/project-api.ts:27-32`）。
+**`projectRoot` 拼接层级（已批准架构决策，全文档唯一口径）**：既有契约中 `projectRoot` 由调用方拼接为 `<位置>/<名称>.pandastage` 再传入 `ProjectService.create`；但**已批准决策**明确分层——**阶段 1A 不得由 Renderer 拼接 Windows `projectRoot`，也不得调用旧 `project.create` 完成真正创建**（`NewProjectEntry` 仅建 UI 骨架，正式接通「打开项目 / 最近项目 / 崩溃恢复」，创建按钮标为「后续阶段启用」）；**阶段 1B（需主理人再次授权）才新增最小安全 IPC `project.createAt`**，由 Renderer 提交 `parentDirectory` / `projectName` / `metadata`，**Main 使用 Node `path.join` 生成 `<parentDirectory>/<projectName>.pandastage`**，内部继续复用 `ProjectService.create`。`ProjectService.resolveProjectRoot` 仍要求以 `.pandastage` 结尾，否则抛 `INVALID_PROJECT_ROOT`（`ProjectService.ts:365-382`、`shared/project-api.ts:27-32`）。
 
 **Windows 窗口关闭合同**：主进程 `window.on('close')` + `UnsavedCloseGuard.handleWindowClose` 已存在（`main/index.ts:72`），dirty 时 `preventDefault()` 并经 `UnsavedCloseController.prompt` 用**原生 Electron `dialog.showMessageBox`** 弹「保存 / 不保存 / 取消」（`main/index.ts:278-289`）；保存失败保持窗口打开（`reportSaveFailure`，`main/index.ts:308-313`）。**现状未用** `beforeunload`。
 
@@ -308,7 +309,7 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 
 ### 9.13 `src/preload/index.ts`
 - **职责**：`contextBridge.exposeInMainWorld('pandaStage', ...)` 暴露全部 IPC（project.{create,open,save}、recentProjects、autosave、recovery、assets、export）；所有请求经 Zod schema 校验。
-- **已知问题**：无；新建项目真实通道 `window.pandaStage.project.create` 已存在（阶段 1A `NewProjectEntry` 复用）。
+- **已知问题**：无；既有 `window.pandaStage.project.create` 通道存在，但**阶段 1A 不调用它完成真正创建**（1A 仅建 UI 骨架并接通打开/最近/崩溃恢复，创建按钮标「后续阶段启用」）；真正新建经由**阶段 1B 新增的 `project.createAt` IPC**（`parentDirectory`/`projectName`/`metadata` → Main `path.join` → `ProjectService.create`）。
 - **预计修改阶段**：保持不变（阶段 1A 复用既有 IPC，不改 preload）。
 - **当前是否允许修改**：❌ 否。
 
@@ -320,14 +321,14 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 
 ### 9.15 `src/main/services/ProjectService.ts`
 - **职责**：项目 CRUD/保存。`resolveProjectRoot` 要求以 `.pandastage` 结尾（否则 `INVALID_PROJECT_ROOT`，line 365-382）；`create` 由调用方提供 `projectRoot`；`mapError` 映射 `ProjectServiceError.code`（PROJECT_ALREADY_EXISTS / INVALID_PROJECT_ROOT / OPEN_FAILED 等，line 403-463）。
-- **已知问题**：无；`projectRoot` 由 renderer 拼接为 `<位置>/<名称>.pandastage`（v1.1a 附录3）。
+- **已知问题**：无（现状）；**已批准决策**要求阶段 1B 起由 Main 经 `project.createAt` 用 Node `path.join` 生成 `<parentDirectory>/<projectName>.pandastage`，而非 Renderer 拼接 Windows `projectRoot`（v1.1a 附录3；详见第 7/10/11 章）。
 - **预计修改阶段**：保持不变。
 - **当前是否允许修改**：❌ 否。
 
 ### 9.16 `src/shared/project-api.ts`
 - **职责**：项目 IPC 契约。`ProjectCreateRequestSchema = {projectRoot, metadata:{name}}`、`ProjectOpenRequestSchema`、`ProjectSaveRequestSchema`、`ProjectOperationResponseSchema`、`ProjectErrorCode` 枚举。
-- **已知问题**：无。
-- **预计修改阶段**：保持不变。
+- **已知问题**：无；既有 `ProjectCreateRequestSchema = {projectRoot, metadata:{name}}`，但**已批准决策**要求阶段 1B 新增 `project.createAt` 契约（`parentDirectory` / `projectName` / `metadata`），由 Main `path.join` 生成 `projectRoot` 后再复用 `ProjectService.create`（1A 不碰）。
+- **预计修改阶段**：阶段 1B（新增 `createAt` IPC 契约）；阶段 0A / 1A 保持不变，禁止改。
 - **当前是否允许修改**：❌ 否。
 
 > 人话：上面 16 个文件就是这台机器的「零件清单+各自毛病+打算哪步修+现在能不能动」。统一口径：**现在一个都不许改**，等阶段 1A 拿到授权再说。
@@ -344,15 +345,16 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 - 产出：设计文档 v1.1a、`phase0a-baseline-report.md`、基线截图、契约测试、截图脚本，进入 Draft PR #56。
 
 ### 阶段 1A（初始授权）— 状态机 + 外壳骨架 + 入口层 + debug/gateA flag + Grid 布局
-- **修改/新增（仅 1A）**：`App.tsx`（精简为挂载 `EditorShell` + 保留 `?demo=1`/`?gateA=1`）、`styles.css`（E.1 网格 + 根 `overflow:hidden`）、新增 `shell/EditorShell.tsx`（固定骨架 + 路由 + History 快捷键预留 + `?debug`/`?gateA` 解析）、`shell/StartScreen.tsx`、`shell/EditorTopBar.tsx`、`shell/NewProjectEntry.tsx`（新建/打开/最近/崩溃恢复 四项，复用既有 `project.create`/`switchProject` IPC）、`shell/useDebugFlag.ts`（解析 `location.search` 的 `debug`/`gateA`）。
-- **初始 1A 允许**：落地 B 状态机（`no-project | editor` 两基础态）、E Grid 布局（根 `overflow:hidden` + 各栏 `overflow-y:auto` + 中央 `min-width:0`）、`EditorTopBar`（项目名/保存态/保存按钮/Ctrl+S/Debug 开关/预览按钮占位）、NewProjectEntry 四项基础接线。
-- **初始 1A 禁止**：`ProductPreviewOverlay` 新实现、`CloseConfirmDialog` 新实现、`createAt` IPC、阶段 2/3/4、Day 26 时间轴。
-- 回滚点：`git stash` 新增 `shell/*` 文件 + 还原 `App.tsx`/`styles.css` 至阶段 0A 基线（`f16dba2`，与当前 HEAD `baacd1f` 的 src 状态一致）。
+- **修改/新增（仅 1A）**：`App.tsx`（精简为挂载 `EditorShell` + 保留 `?demo=1`/`?gateA=1`）、`styles.css`（E.1 网格 + 根 `overflow:hidden`）、新增 `shell/EditorShell.tsx`（固定骨架 + 路由 + History 快捷键预留 + `?debug`/`?gateA` 解析）、`shell/StartScreen.tsx`、`shell/EditorTopBar.tsx`、`shell/NewProjectEntry.tsx`（UI 骨架：新建/打开/最近/崩溃恢复 四项；**阶段 1A 仅「打开项目 / 最近项目 / 崩溃恢复」接通对应 IPC，新建按钮标为「后续阶段启用」，不调用旧 `project.create` 完成真正创建、不由 Renderer 拼接 Windows `projectRoot`**）、`shell/useDebugFlag.ts`（解析 `location.search` 的 `debug`/`gateA`）。
+- **初始 1A 允许**：落地 B 状态机（`no-project | editor` 两基础态）、E Grid 布局（根 `overflow:hidden` + 各栏 `overflow-y:auto` + 中央 `min-width:0`）、`EditorTopBar`（项目名/保存态/保存按钮/Ctrl+S/Debug 开关/预览按钮占位）、NewProjectEntry UI 骨架（新建按钮标「后续阶段启用」；打开/最近/崩溃恢复 接通对应 IPC，不碰真实创建与 `projectRoot` 拼接）。
+- **初始 1A 禁止**：`ProductPreviewOverlay` 新实现、`CloseConfirmDialog` 新实现、**由 Renderer 拼接 Windows `projectRoot`**、**调用旧 `project.create` 完成真正创建**、`createAt` IPC、阶段 2/3/4、Day 26 时间轴。
+- 回滚点：`git stash` 新增 `shell/*` 文件 + 还原 `App.tsx`/`styles.css` 至阶段 0A 基线（`f16dba2`，接管时以 `git rev-parse HEAD` 为准）。
 
-### 阶段 1B（后续，需主理人再次授权）— 产品预览 / 新建项目完整 UX / 应用内关闭确认
+### 阶段 1B（后续，需主理人再次授权）— 产品预览 / 新建项目完整 UX / 应用内关闭确认 / 真实新建项目 IPC
 - `shell/ProductPreviewOverlay.tsx`（只读 overlay，复用 `evaluateShotAtTime`+`StageRenderer`，不写 Store）。
 - `shell/CloseConfirmDialog.tsx`（保存并退出/不保存退出/取消；dirty 弹确认，禁止直接 `clear`）。
-- 新建项目完整 UX 增强（超出 1A 入口层基础接线的部分）。
+- **新增最小安全 IPC `project.createAt`**：Renderer 提交 `parentDirectory` / `projectName` / `metadata`，**Main 使用 Node `path.join` 生成 `<parentDirectory>/<projectName>.pandastage`**，内部继续复用 `ProjectService.create`（不再由 Renderer 拼接 Windows `projectRoot`）。
+- 新建项目完整 UX 增强（超出 1A 入口层基础接线的部分；1A 新建按钮标「后续阶段启用」，1B 才真正接通 `createAt`）。
 - **未经主理人再次明确授权，阶段 1B 不得执行。**
 
 ### 阶段 2 — 左栏接入 + 画布唯一挂载 + Fit + Gate 导航
@@ -391,12 +393,13 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 - `EditorShell.tsx`（状态机 + 路由 + History 快捷键预留 + `?debug`/`?gateA` 解析）
 - `StartScreen.tsx`（仅 `no-project` 渲染）
 - `EditorTopBar.tsx`（项目名/保存态/保存按钮/Ctrl+S/Debug 开关/预览按钮占位）
-- `NewProjectEntry.tsx`（新建/打开/最近/崩溃恢复 四项；唯一 `.recovery-open-row` 位于此处 `ProjectOpenEntry` 子节点）
+- `NewProjectEntry.tsx`（UI 骨架：新建/打开/最近/崩溃恢复 四项；唯一 `.recovery-open-row` 位于此处 `ProjectOpenEntry` 子节点；**阶段 1A 仅「打开/最近/崩溃恢复」接通 IPC，新建按钮标「后续阶段启用」，不调用旧 `project.create`、不拼接 `projectRoot`**）
 - `useDebugFlag.ts`（解析 `location.search` 的 `debug`/`gateA`）
 
 **阶段 1B 文件（不在本任务单，需再次授权）**：
 - `ProductPreviewOverlay.tsx`（只读 overlay；复用 `evaluateShotAtTime`+`StageRenderer`；不写 Store；无镜头时禁用）
 - `CloseConfirmDialog.tsx`（保存并退出/不保存退出/取消）
+- **新增最小安全 IPC `project.createAt`**（preload + main + project-api 契约）：Renderer 提交 `parentDirectory` / `projectName` / `metadata`，Main 用 Node `path.join` 生成 `<parentDirectory>/<projectName>.pandastage`，内部复用 `ProjectService.create`（1B 才引入，1A 不碰）
 
 **必须保留的选择器**（来自白名单，阶段 1A 不得删除/改名）：
 - `.recovery-open-row`（input + button）、`.recovery-prompt`、`.recovery-panel`、`.recovery-heading`
@@ -423,13 +426,13 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 
 **每步完成标准**：
 1. `EditorShell` 渲染测试通过：no-project 显示入口；open 后显示顶/左/中/右/底；根无整页纵向滚动。
-2. `StartScreen`/`NewProjectEntry` 四项可触发对应 IPC（`project.create`/`switchProject`/`switchRecentProject`/恢复横幅），失败显示中文错误（`ProjectServiceError.code` 映射，见设计附录3）。
+2. `StartScreen`/`NewProjectEntry` 中「打开项目 / 最近项目 / 崩溃恢复」三项接通对应 IPC（`switchProject`/`switchRecentProject`/恢复横幅），失败显示中文错误（`ProjectServiceError.code` 映射，见设计附录3）；**新建项目按钮在 1A 仅标「后续阶段启用」，不调用旧 `project.create` 完成真正创建，也不由 Renderer 拼接 Windows `projectRoot`**（真正新建归阶段 1B 的 `createAt` IPC）。
 3. `EditorTopBar` 保存按钮 + `Ctrl+S` 经 `saveCurrentProject`；Debug 开关与 `?debug`/`?gateA` 解析生效；Grid 布局无整页纵向滚动。
 4. `verify-day16` 仍经 `.recovery-open-row` 打开项目，未破坏 Day16 Gate。
 5. 唯一挂载集成测试（阶段0A 延续）：断言当前已存在的 `project-canvas-stage`/`history-controls`/`action-preset-panel` 在阶段 1A 后**数量不减少、选择器仍可见**（注：阶段 1A 不强制 `===1`，该断言随阶段2/3 落地）。
 6. 阶段 1B 内容（`ProductPreviewOverlay` / `CloseConfirmDialog`）**未**被实现（除非已获主理人再次授权）。
 
-**回滚点**：`git stash` 全部新增 `shell/*` 文件 + 还原 `App.tsx`/`styles.css` 至阶段 0A 基线（`f16dba2`，与当前 HEAD `baacd1f` 的 src 状态一致）。
+**回滚点**：`git stash` 全部新增 `shell/*` 文件 + 还原 `App.tsx`/`styles.css` 至 `git rev-parse HEAD` 所得最新提交的 src 状态（`f16dba2` 为阶段 0A 基线，接管时以 `git rev-parse HEAD` 为准）。
 
 **停止条件（出现即停，汇报主理人）**：
 - 任何 `src/` 改动导致 `typecheck/lint/test:unit/test:integration/build` 红且 5 分钟无法定位；
@@ -545,19 +548,20 @@ pnpm build
    - 防复发：编辑画布只用 `buildEditorStageRenderModel`；产品预览/StagePreview 用 `src/domain/evaluateShotAtTime`；ESLint/注释禁止 `features/**` 与 `StagePreview` import shared 版本。
    - 证据：`design` H.7/H.8；`git log` `d1fb8b9`。
 
-5. **连续预设 from/to 静态基态导致边界回跳**
+5. **连续预设边界回跳（根因在 `createPresetEvents`，非仅 evaluator `rawProgress=1`）**
    - 症状：两连续事件之间图层回跳到静态基态。
-   - 根因：连续预设用静态 `from`/`to` 基态而非基于前事件结束态。
-   - 已修/未修：**已修**（Issue #53 时间语义修复，evaluator 正确版 `src/domain/evaluate-shot-at-time.ts` 已正确处理 `rawProgress=1` 应用最终态）。
-   - 防复发：evaluator 时间语义测试覆盖「两连续事件之间不回跳」。
-   - 证据：`gh pr view 53` body；`evaluate-shot-at-time.ts:141-157`。
+   - 根因：`createPresetEvents` 使用**静态 Layer 基态**生成后续事件的 `from`/`to`，未基于前一个预设事件的真实结束态。
+   - 已修/未修：**已修**：在 `startMs` 调用正式 `evaluateShotAtTime(shot, startMs, project)`，取得 `evaluatedLayer` 的**真实位置、缩放和透明度**，再据此生成后续预设事件（而非静态基态）。**不得**再将该问题表述为「仅由 evaluator `rawProgress=1` 修复」——边界回跳的根因与修复均在 `createPresetEvents` 预生成环节。
+   - 防复发：保持 `create → apply → create → evaluate` 真实链路回归测试覆盖（每次预生成都经真实 `evaluateShotAtTime` 取得起始态）。
+   - 证据：Issue #53 / `createPresetEvents` 在 `startMs` 调用 `evaluateShotAtTime` 的修复；`gh pr view 53`。
 
-6. **未来事件提前生效**
+6. **未来事件提前生效（与第 5 条「连续预设边界回跳」相互独立，勿混为一谈）**
    - 症状：事件在 `startMs` 前就用 `from` 覆盖基态。
    - 根因：evaluator 未跳过未来事件。
-   - 已修/未修：**已修**（`evaluate-shot-at-time.ts:147` `if (timeMs < event.startMs) continue;`）。
+   - 已修/未修：**已修**（`evaluate-shot-at-time.ts:147` `if (timeMs < event.startMs) continue;` 的 evaluator `continue` 修复）。
    - 防复发：evaluator 测试覆盖「开始前=基态」。
    - 证据：同上 + `gh pr view 53`。
+   - 注：本项修复属于 **evaluator `continue`**，仅解决「未来事件提前生效」；**不**等同也不覆盖第 5 条「连续预设边界回跳」（其根因在 `createPresetEvents`，修复在 `startMs` 的 `evaluateShotAtTime`），二者须分开记录。
 
 7. **Day 17 Windows runner 临时目录 / abort 竞态**
    - 症状：`run 30251740818`(push SUCCESS) 与 `run 30251743631`(pull_request Day17 FAIL) 结果不一致；`asset-metadata-revision-safety` 超时。
@@ -597,7 +601,7 @@ pnpm build
 4. **读取阶段 0A 报告**（`docs/design/phase0a-baseline-report.md`）。
 5. **读取 Draft PR #56**（`gh pr view 56`，确认范围=阶段0A基线、src 零改动、CI 状态）。
 6. **读取 Draft PR #53**（`gh pr view 53`，理解 Day25 领域修复与冻结约束）。
-7. **核对 Git / PR / CI / Issue**：重跑 `git branch --show-current`、`git rev-parse HEAD`、`git status --short`、`git diff feat/day-25-action-presets...HEAD --name-status`、`gh pr view 56/53`、`gh run list --branch fix/m3-editor-shell -L 5`、`gh issue view 54 --json state`（本文档第0章已核验，可参照）。重点核对：当前分支 = `fix/m3-editor-shell`；当前 HEAD = `baacd1f35a53751149bbdc72688e3b59681d06ae`（阶段 0A 基线为 `f16dba26a17485c250bfa18858f79fbd0e918ad1`）；PR #56 = Draft；Issue #54 = Closed/Completed；工作树干净（`git status --short` 为空）。
+7. **核对 Git / PR / CI / Issue**：重跑 `git branch --show-current`、`git rev-parse HEAD`、`git status --short`、`git diff feat/day-25-action-presets...HEAD --name-status`、`gh pr view 56/53`、`gh pr view 56 --json headRefOid`、`gh run list --branch fix/m3-editor-shell -L 5`、`gh issue view 54 --json state`（本文档第0章已核验，可参照）。重点核对：当前分支 = `fix/m3-editor-shell`；**当前 HEAD 以动态核对为准——运行 `git rev-parse HEAD` 与 `gh pr view 56 --json headRefOid`，两值相等即通过，不再要求等于 `baacd1f` 或任何固定 SHA**（阶段 0A 基线为 `f16dba26a17485c250bfa18858f79fbd0e918ad1`）；PR #56 = Draft；Issue #54 = Closed/Completed；工作树干净（`git status --short` 为空）。
 8. **检查工作树干净**：确认无 `src/` 变更（`git status --short` 应为空）。
 9. **不改代码，先输出接管审计**：书面列出「现场与预期是否一致 / 双挂载计数 / 阶段0A交付物 / 下一步建议」。
 10. **发现不一致时停止并汇报**：若发现 SHA、文件、CI、双挂载计数与本文档/Issue 不符，**立即停手**，在文档顶部单列「现场差异」并上报主理人，禁止静默修正。
@@ -647,4 +651,4 @@ Codex 独立审计 Handoff 与仓库现场；确认无差异后，仅执行 Issu
 
 ---
 
-> 文档完。本文件由 software-architect（高见远）于 2026-07-28 在 worktree `D:/panda-stage/.worktrees/day25` 内，基于实跑 `git`/`gh` 命令与实读指定源码后独立撰写，未修改任何 `src/` 生产代码。本文基于阶段 0A 基线 `f16dba2` 编写，随后由 WorkBuddy 以 `baacd1f` 提交并推送，该提交仅新增本 Handoff 文档、`src/` 零改动。所有 SHA 为完整 SHA，所有文件路径经实读确认存在，测试数字注明时间与来源，推断项已标注「推断」，未验证项已标注「未验证」。
+> 文档完。本文件由 software-architect（高见远）于 2026-07-28 在 worktree `D:/panda-stage/.worktrees/day25` 内，基于实跑 `git`/`gh` 命令与实读指定源码后独立撰写，未修改任何 `src/` 生产代码。本文基于阶段 0A 基线 `f16dba2` 编写，初稿由 WorkBuddy 以 `baacd1f` 提交并推送（仅新增本 Handoff 文档，`src/` 零改动）；本版在 `fd24ed5`（当前 HEAD）工作树上再次修订事实口径（HEAD 动态核对 / 阶段 1A·1B·projectRoot 唯一口径 / 边界回跳事故修正），仍仅修订文档、`src/` 零改动。所有 SHA 为完整 SHA，所有文件路径经实读确认存在，测试数字注明时间与来源，推断项已标注「推断」，未验证项已标注「未验证」。
