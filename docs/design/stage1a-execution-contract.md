@@ -1,10 +1,10 @@
 # Panda Stage Stage 1A 执行合同
 
-> Issue：#59 / #61
+> Issue：#59 / #61 / #63
 >
 > 分支：`fix/m3-editor-shell`
 >
-> 合同修订基线：`c020a79b9a5d4da88148a59b6b852a5ddb84d0eb`
+> 本轮修订基线：`0652eda3cf0ac8ba2261b6631b9cef2b12ed36e4`
 >
 > 适用范围：Issue #55 的 Stage 1A
 >
@@ -33,6 +33,7 @@ PR #53 = Draft
 PR #56 = Draft
 Day 26~45 = frozen
 Stage 1A implementation = not started
+1A-1 authorization = pending
 ```
 
 没有新增顶层 Stage，也没有授权 Stage 1B、2、3、4。
@@ -239,21 +240,60 @@ Issue #61 只授权修改 `scripts/verify-day19.cjs`、
 Day 19 还保留原有目标顶部偏移断言。三个脚本均不得放宽业务断言、增加 skip、
 吞异常、恢复根滚动或操作隐藏 DOM。Day 13/14/16 不修改。
 
-## 6. 精确白名单
+## 6. Stage 1A 精确白名单
 
-Stage 1A 后续生产与测试白名单仍以 Issue #59 为准；Issue #61 本次只允许：
+以下表格直接构成当前 Stage 1A 施工授权；不得以旧 Issue、聊天记录或历史 commit
+替代。
+
+### 6.1 Production 白名单
+
+| 文件 | 类型 | Stage 1A 允许做什么 | Stage 1A 禁止做什么 |
+|---|---|---|---|
+| `src/renderer/App.tsx` | 修改 | 只挂 `EditorShell`；保留并下传现有 gate/probe 输入 | 新挂第二套旧模块；修改 IPC/Store 行为 |
+| `src/renderer/styles.css` | 修改 | Grid、根 overflow、LegacyWorkspace 内滚动、Stage 1A 选择器样式 | 用压缩旧长页冒充信息架构修复 |
+| `src/renderer/features/recovery/ProjectRecoveryPanel.tsx` | 最小修改 | 移除私有 Controller owner；收敛为 legacy presenter；接受 props | 修改 Controller/Store 行为；修双挂载 |
+| `src/renderer/shell/EditorShell.tsx` | 新增 | 基础状态、唯一 Controller owner、session snapshot、flags、组合入口 | 创建第二套 Project/History/Selection 状态 |
+| `src/renderer/shell/StartScreen.tsx` | 新增 | `no-project` 入口组合 | 展示 recovery candidate |
+| `src/renderer/shell/EditorTopBar.tsx` | 新增 | 项目名、save 状态、editor 常驻 project switch、flags、preview 禁用占位 | 实现 ProductPreview / CloseConfirm |
+| `src/renderer/shell/NewProjectEntry.tsx` | 新增 | open、recent、真实新建禁用占位 | 调用 `project.create` / `project.createAt` |
+| `src/renderer/shell/LegacyWorkspace.tsx` | 新增 | 旧模块树唯一临时入口与内部滚动 | 正式迁移或复制第二棵旧树 |
+| `src/renderer/shell/RecoveryCandidateBanner.tsx` | 新增 | editor candidate、restore、ignore、Day 13 recovery 兼容 UI | 自建 Controller；第二份 candidate 状态；承担 project switch 唯一入口 |
+| `src/renderer/shell/useDebugFlag.ts` | 新增 | 解析 `debug` / `gateA` 正交 flags | 写入 Project Store |
+
+硬规则：
 
 ```text
-docs/design/stage1a-execution-contract.md
-docs/design/m3-editor-shell-design.md
-docs/handoff/CODEX-HANDOFF-M3-EDITOR-SHELL-2026-07-28.md
-scripts/verify-day19.cjs
-scripts/verify-day21.cjs
-scripts/verify-day22.cjs
+除上述文件外，Stage 1A 不得修改其他 src/ 文件。
+若实施必须越界，立即停止并新开授权 Issue。
 ```
 
-本次不得修改任何 `src/`。后续 Stage 1A 实施也不得把上述 Gate 脚本再作为
-业务断言调整入口，只需运行它们。
+### 6.2 Test 白名单
+
+| 文件 | 类型 | 目的 |
+|---|---|---|
+| `tests/contract/dom-selectors.baseline.test.ts` | 修改 | 新旧选择器及唯一来源合同 |
+| `tests/unit/editor-shell-state.test.ts` | 新增 | `no-project/editor`、flags、禁止 create |
+| `tests/unit/editor-shell-controller.test.ts` | 新增 | Controller 唯一 owner、autosave/dispose 生命周期 |
+| `tests/unit/project-session-controller.test.ts` | 修改（仅需时） | candidate 返回顺序既有行为回归，不改实现 |
+| `tests/integration/editor-shell-project-session.test.ts` | 新增 | open → editor → candidate Banner → restore/ignore |
+| `tests/integration/editor-shell-layout.test.ts` | 新增 | LegacyWorkspace 唯一、基线挂载数量、布局源码合同 |
+
+这些路径分别匹配当前 `tests/contract/**/*.test.ts`、
+`tests/unit/**/*.test.ts` 与 `tests/integration/**/*.test.ts` Vitest include。
+Stage 1A 不安装 jsdom 或新测试框架；Node 测试不得冒充真实 Electron 布局验收。
+
+硬规则：
+
+```text
+除上述测试文件外，Stage 1A 不得修改其他测试文件。
+若必须越界，立即停止并新开授权 Issue。
+```
+
+### 6.3 Gate 脚本
+
+Gate 脚本原则上只运行、不修改。Issue #61 已授权并完成的 Day 19/21/22 双路径
+滚动合同保持不变；Stage 1A 实施不得再次调整其业务断言。若仍需修改任何 Gate，
+立即停止并新开授权 Issue。
 
 ## 7. 测试与验收
 
@@ -288,8 +328,94 @@ pnpm build
 
 ### 1A-1：Shell 状态与 Controller 所有权 — READY
 
-EditorShell 是唯一 Controller owner；null/non-null snapshot 对应
-no-project/editor。不改 Controller、Store、IPC 行为。
+正式名称：
+
+```text
+Shell state boundary and single ProjectSessionController ownership
+```
+
+#### 1A-1 精确文件范围
+
+生产文件：
+
+```text
+src/renderer/App.tsx
+src/renderer/features/recovery/ProjectRecoveryPanel.tsx
+src/renderer/shell/EditorShell.tsx
+```
+
+测试文件：
+
+```text
+tests/unit/editor-shell-state.test.ts
+tests/unit/editor-shell-controller.test.ts
+tests/integration/editor-shell-project-session.test.ts
+```
+
+`tests/unit/project-session-controller.test.ts` 仅在补充既有行为回归时允许修改，
+且不得修改 `ProjectSessionController` 生产实现。
+
+#### 1A-1 只允许完成
+
+- 建立 EditorShell 基础边界；
+- 建立 `no-project / editor` 基础判定；
+- EditorShell 成为唯一 `ProjectSessionController` 构造点和生命周期 owner；
+- 将 autosave update / onError / dispose 生命周期提升到 EditorShell；
+- ProjectRecoveryPanel 移除私有 Controller 构造/销毁并改为最小 props presenter；
+- 保持现有 open / recent / save / restore / ignore API 行为不变；
+- 增加 state / owner / dispose / session 回归测试。
+
+1A-1 的过渡渲染仍保留当前可启动、可操作的 Electron UI 和 recovery selector。
+App 只组合 EditorShell；EditorShell 在本切片内继续挂载当前旧表面与
+ProjectRecoveryPanel presenter。打开、recent、save、restore、ignore 控件只改为
+接收 shell 的 session/callback props，不迁移到尚未实现的后续组件。
+
+#### 1A-1 明确禁止
+
+- StartScreen 完整 UI、NewProjectEntry；
+- RecoveryCandidateBanner、EditorTopBar；
+- Grid / LegacyWorkspace 或 CSS 布局重构；
+- ProductPreviewOverlay、CloseConfirmDialog、`project.createAt`；
+- 修改 ProjectSessionController、Store 或 IPC 行为；
+- 修复 CanvasStage / HistoryControls 双挂载；
+- 实施 1A-2～1A-5、Stage 1B～4 或 Day 26。
+
+#### 1A-1 完成标准
+
+- [ ] `EditorShell` 是唯一 Controller 构造点；
+- [ ] `ProjectRecoveryPanel` 不再 `new ProjectSessionController`；
+- [ ] Controller 行为与公开 API 未改；
+- [ ] `no-project / editor` 基础状态可独立测试；
+- [ ] autosave update / onError / dispose 生命周期由 EditorShell 单一管理；
+- [ ] StartScreen / Banner / TopBar / Grid 尚未实现；
+- [ ] typecheck、lint、unit、integration、build、当前 Electron UI 与既有关键
+      Gate 保持可用；
+- [ ] 不依赖 1A-2～1A-5 才能编译、启动或恢复运行。
+
+#### 1A-1 独立提交与回滚合同
+
+```text
+1A-1 必须作为单一独立 commit 提交。
+建议 commit message：
+refactor(m3): establish editor shell session ownership
+```
+
+1. 该单一 commit 必须独立通过 typecheck、lint、unit、integration、build，
+   能启动当前 Electron UI，并运行既有关键 Gate；
+2. 不允许依赖 1A-2～1A-5 才保持编译或启动；
+3. 回滚只允许 revert 该单一 commit；
+4. 回滚后必须精确恢复到 Issue #61 后的基线；
+5. 回滚不得撤销或破坏 Day 19/21/22 nested-scroll Gate 合同；
+6. 回滚不得改变 PR #56 Draft、M3 FAIL 或 Day 26～45 frozen 状态。
+
+立即停止条件：
+
+- 需要修改 ProjectSessionController 生产实现；
+- 需要修改 Store / IPC；
+- 需要提前实现 1A-2～1A-5；
+- 需要白名单外文件；
+- 单独完成后无法编译、启动或通过基础 Gate；
+- 无法用单一 commit 安全回滚。
 
 ### 1A-2：StartScreen + 入口 — READY
 
@@ -314,8 +440,18 @@ candidate null 不移除切换入口；Day 20/24 同窗口切换保持可用。
 每个切片仍须独立实现、测试、提交和回滚。需要改 Store / Controller / IPC、
 双挂载、Stage 1B/2/3/4 或 Day 26 时必须停止并重新授权。
 
-## 9. 当前唯一下一步
+## 9. 文档修订防回归规则
 
-Issue #61 完成、PR #56 CI 成功后，只执行一次短版 Stage 1A 开工复核，确认两项
-HIGH 阻塞已关闭且白名单无漂移。复核通过并获得主理人明确授权后，才可开始
-1A-1；不得自动进入生产实现。
+1. 局部 Issue 只能增量修改目标合同，不得删除其他已验收章节；
+2. 精简内容前必须做语义等价检查；
+3. production whitelist、test whitelist、slice DoD、rollback contract
+   属于不可省略章节；
+4. 禁止仅引用旧 Issue、聊天记录或历史 commit 作为当前施工授权；
+5. 若本轮只修 selector / Gate 导航，不得覆盖文件白名单或回滚合同；
+6. 每次修订后必须 grep 并通读核验上述四类章节仍存在。
+
+## 10. 当前唯一下一步
+
+Issue #63 完成、PR #56 CI 成功后，只执行一次一分钟级最终核对，确认精确白名单、
+1A-1 独立回滚合同、Issue #61 两项 HIGH 合同均仍存在。核对通过并获得主理人
+明确授权后，才可开始 1A-1；不得自动进入生产实现。

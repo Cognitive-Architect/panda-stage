@@ -4,11 +4,11 @@
 >
 > 分支：`fix/m3-editor-shell`
 >
-> 合同修订基线：`c020a79b9a5d4da88148a59b6b852a5ddb84d0eb`
+> 本轮修订基线：`0652eda3cf0ac8ba2261b6631b9cef2b12ed36e4`
 >
 > 权威合同：`docs/design/stage1a-execution-contract.md`
 >
-> 本版：Issue #61 两项 HIGH 合同闭环；不含生产代码
+> 本版：Issue #63 恢复权威白名单与 1A-1 回滚合同；不含生产代码
 
 ## 0. 接管结论
 
@@ -31,6 +31,7 @@ Gate 19/21/22 = nested container when present, window fallback otherwise
 
 1A-1～1A-5 contract = READY
 Stage 1A implementation = not started
+1A-1 authorization = pending
 ```
 
 M3 仍为 FAIL；PR #53 / #56 仍为 Draft；Day 26～45 继续冻结。
@@ -188,7 +189,71 @@ scripts/verify-day22.cjs
 
 READY 是合同就绪，不是代码完成。
 
-## 11. 验证清单
+## 11. Stage 1A 白名单与 1A-1 精确摘要
+
+完整、逐文件的允许/禁止表以执行合同第 6 节正文为唯一施工授权，不得回看旧
+Issue 或历史 commit 补全。
+
+Stage 1A production 白名单：
+
+```text
+src/renderer/App.tsx
+src/renderer/styles.css
+src/renderer/features/recovery/ProjectRecoveryPanel.tsx
+src/renderer/shell/EditorShell.tsx
+src/renderer/shell/StartScreen.tsx
+src/renderer/shell/EditorTopBar.tsx
+src/renderer/shell/NewProjectEntry.tsx
+src/renderer/shell/LegacyWorkspace.tsx
+src/renderer/shell/RecoveryCandidateBanner.tsx
+src/renderer/shell/useDebugFlag.ts
+```
+
+Stage 1A test 白名单：
+
+```text
+tests/contract/dom-selectors.baseline.test.ts
+tests/unit/editor-shell-state.test.ts
+tests/unit/editor-shell-controller.test.ts
+tests/unit/project-session-controller.test.ts（仅需时）
+tests/integration/editor-shell-project-session.test.ts
+tests/integration/editor-shell-layout.test.ts
+```
+
+1A-1 只允许：
+
+```text
+production:
+  src/renderer/App.tsx
+  src/renderer/features/recovery/ProjectRecoveryPanel.tsx
+  src/renderer/shell/EditorShell.tsx
+
+tests:
+  tests/unit/editor-shell-state.test.ts
+  tests/unit/editor-shell-controller.test.ts
+  tests/integration/editor-shell-project-session.test.ts
+  tests/unit/project-session-controller.test.ts（仅既有行为回归）
+```
+
+该切片只提升 shell 状态、唯一 Controller owner、session/autosave 生命周期，并把
+ProjectRecoveryPanel 最小 presenter 化。当前 UI 和 recovery selector 必须在
+1A-1 单独完成后继续启动、编译和通过关键 Gate；StartScreen、Banner、TopBar、
+Grid/LegacyWorkspace 均不得提前实现。
+
+1A-1 必须是单一独立 commit。回滚只 revert 该 commit，恢复到 Issue #61 后基线，
+不得撤销 Day 19/21/22 nested-scroll Gate 合同。需要改 Controller 生产实现、
+Store/IPC、后续切片或任何白名单外文件时立即停止。
+
+## 12. 文档修订防回归
+
+1. 局部 Issue 只增量修改目标合同，不删除其他已验收章节；
+2. 精简前必须完成语义等价检查；
+3. production/test whitelist、slice DoD、rollback contract 不可省略；
+4. 禁止仅引用旧 Issue、聊天记录或历史 commit 作为施工授权；
+5. selector/Gate 修订不得覆盖白名单或回滚合同；
+6. 修订后必须 grep 并通读核验四类章节仍存在。
+
+## 13. 验证清单
 
 Issue #61：
 
@@ -213,13 +278,16 @@ pnpm build
 
 推送后等待 PR #56 的 Day 13～24 GitHub Actions 成功。
 
-## 12. 短版开工复核
+Issue #63 还要求从当前三份文档直接核验白名单、1A-1 exact scope/DoD/rollback
+和防回归规则，并确认本轮只有三份文档改动。
 
-Issue #61 和 CI 完成后，建议只做一次短版复核：
+## 14. 一分钟级最终核对
 
-1. 核对两项 HIGH 均已关闭；
-2. 核对三份合同无 owner/scroll 冲突；
-3. 核对 Issue #61 白名单与 git diff；
+Issue #63 和 CI 完成后，只做一次一分钟级最终核对：
+
+1. 核对 production/test 白名单可直接从执行合同读取；
+2. 核对 1A-1 exact scope、DoD、单 commit/rollback 和停止条件；
+3. 核对 Issue #61 两项 HIGH 合同仍完整；
 4. 核对 PR #56 仍是 Draft；
 5. 得到主理人明确授权后才开始 1A-1。
 

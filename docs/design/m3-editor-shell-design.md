@@ -1,6 +1,6 @@
-# Panda Stage M3 Editor Shell 设计 v1.3
+# Panda Stage M3 Editor Shell 设计 v1.4
 
-> Issue #59 / #61 合同同步版
+> Issue #59 / #61 / #63 合同同步版
 >
 > 实施权威：`docs/design/stage1a-execution-contract.md`
 >
@@ -138,6 +138,35 @@ Issue #61 只修改三份合同文档和 Gate 19/21/22，不修改 `src`。Stage
 测试白名单及每个切片的停止条件，以执行合同为准。禁止进入 Stage 1B/2/3/4、
 Day 26，禁止修复双挂载。
 
+Issue #63 已把完整 production/test 白名单直接恢复到执行合同第 6 节；该正文表格
+是唯一施工授权，不再外链旧 Issue。Stage 1A 生产范围严格限制为 App、styles、
+ProjectRecoveryPanel 与 7 个 `shell/*` 文件；测试范围严格限制为执行合同列出的
+6 个 contract/unit/integration 文件。任何越界都必须停止并新开授权 Issue。
+
+### 1A-1 精确摘要
+
+```text
+production:
+  src/renderer/App.tsx
+  src/renderer/features/recovery/ProjectRecoveryPanel.tsx
+  src/renderer/shell/EditorShell.tsx
+
+tests:
+  tests/unit/editor-shell-state.test.ts
+  tests/unit/editor-shell-controller.test.ts
+  tests/integration/editor-shell-project-session.test.ts
+  tests/unit/project-session-controller.test.ts（仅既有行为回归）
+```
+
+1A-1 只建立 shell 状态边界、唯一 Controller owner、session 与 autosave
+生命周期，并将 ProjectRecoveryPanel 最小 props presenter 化。当前 Electron UI
+及 recovery selector 在本切片继续可用；不提前实现 StartScreen、Banner、
+TopBar、Grid 或 LegacyWorkspace。
+
+1A-1 必须是单一独立 commit，独立通过质量门禁、当前 Electron 启动和关键 Gate；
+只需 revert 该 commit 即恢复到 Issue #61 后基线，且不得触碰 Day 19/21/22
+nested-scroll 合同。完整 DoD、回滚步骤和停止条件以执行合同第 8 节为准。
+
 ```text
 1A-1 Controller ownership contract = READY
 1A-2 no-project entry contract = READY
@@ -154,7 +183,20 @@ Issue #61 真实运行 Day 19/21/22，以及 typecheck、lint、unit、integrati
 推送后等待 PR #56 Day 13～24 CI。静态审计确认三个 Gate 同时具有 nested/testid
 与 window fallback，且没有 skip、弱化断言或异常吞噬。
 
-## 10. 下一步
+Issue #63 还必须静态确认 production whitelist、test whitelist、1A-1 exact
+scope/DoD/rollback 与 document regression guard 可从当前 HEAD 直接读取，并确认
+本轮只有三份文档变化。
 
-CI 成功后做一次短版 Stage 1A 开工复核，只检查两项 HIGH 已关闭、合同互相一致、
-白名单未漂移。获得明确授权后才开始 1A-1。
+## 10. 文档修订治理
+
+- 局部 Issue 只增量修改目标合同，不删除其他已验收章节；
+- 精简前执行语义等价检查；
+- production/test 白名单、slice DoD、rollback contract 不可省略；
+- 当前施工授权不得只引用旧 Issue、聊天记录或历史 commit；
+- selector/Gate 导航修订不得覆盖白名单或回滚合同；
+- 修订后 grep 并通读核验上述章节仍存在。
+
+## 11. 下一步
+
+Issue #63 CI 成功后做一次一分钟级最终核对，只检查白名单、1A-1 回滚合同和
+Issue #61 两项 HIGH 合同仍在。获得明确授权后才开始 1A-1。
