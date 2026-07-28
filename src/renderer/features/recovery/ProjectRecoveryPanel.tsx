@@ -1,210 +1,48 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-} from 'react';
-import { editorProjectStore } from '../../stores/EditorProjectStore';
-import { ProjectSessionController } from './ProjectSessionController';
-import { saveCurrentProject } from './saveCurrentProject';
+import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import type { ProjectSessionSnapshot } from './ProjectSessionController';
 import { RecentProjectsPanel } from '../welcome/RecentProjectsPanel';
 import { AssetLibrary } from '../assets/AssetLibrary';
 import { CharacterManager } from '../characters/CharacterManager';
 import { ShotManager } from '../shots/ShotManager';
 import { CanvasStage } from '../canvas/CanvasStage';
 
-function failureMessage(
-  response: { ok: boolean; error?: { message: string } },
-  fallback: string,
-): string {
-  return response.ok ? fallback : response.error?.message ?? fallback;
-}
-
-export function ProjectRecoveryPanel(): React.JSX.Element | null {
-  const projectSnapshot = useSyncExternalStore(
-    editorProjectStore.subscribe,
-    editorProjectStore.getSnapshot,
-  );
-  const sessionController = useMemo(
-    () =>
-      new ProjectSessionController(
-        {
-          open: (projectRoot) =>
-            window.pandaStage.project.open({ projectRoot }),
-          openRecent: (projectRoot, expectedProjectId) =>
-            window.pandaStage.recentProjects.open({
-              projectRoot,
-              expectedProjectId,
-            }),
-          track: (request) => window.pandaStage.autosave.track(request),
-          stop: (projectRoot) =>
-            window.pandaStage.autosave.stop(projectRoot),
-          detect: (projectRoot) =>
-            window.pandaStage.recovery.detect(projectRoot),
-        },
-        editorProjectStore,
-      ),
-    [],
-  );
-  const [sessionSnapshot, setSessionSnapshot] = useState(() =>
-    sessionController.getSnapshot(),
-  );
-  const [projectRootInput, setProjectRootInput] = useState('');
-  const [status, setStatus] = useState(
-    'Open a .pandastage project to check crash recovery.',
-  );
-  const [busy, setBusy] = useState(false);
-  const [recentRefreshToken, setRecentRefreshToken] = useState(0);
-
-  useEffect(() => window.pandaStage.autosave.onError((error) => {
-    setStatus(error.message);
-  }), []);
-
-  useEffect(
-    () => () => {
-      void sessionController.dispose();
-    },
-    [sessionController],
-  );
-
-  useEffect(() => {
-    if (
-      !projectSnapshot ||
-      projectSnapshot.projectRoot !== sessionSnapshot.trackedProjectRoot
-    ) {
-      return;
-    }
-    void window.pandaStage.autosave
-      .update(projectSnapshot)
-      .then((response) => {
-        if (!response.ok) setStatus(response.error.message);
-      });
-  }, [projectSnapshot, sessionSnapshot.trackedProjectRoot]);
-
-  if (new URLSearchParams(window.location.search).get('gateA') === '1') {
-    return null;
-  }
-
-  const switchToProject = async (projectRoot: string): Promise<void> => {
-    const nextSession = await sessionController.switchProject(projectRoot);
-    setSessionSnapshot(nextSession);
-    setRecentRefreshToken((current) => current + 1);
-    setStatus(
-      nextSession.recoveryCandidate
-        ? 'A newer crash-recovery snapshot is available.'
-        : 'Project opened. No newer recovery snapshot was found.',
-    );
-  };
-
-  const switchToRecentProject = async (
+export interface ProjectRecoveryPanelProps {
+  projectSnapshot: EditorProjectSnapshot | null;
+  sessionSnapshot: ProjectSessionSnapshot;
+  projectRootInput: string;
+  status: string;
+  busy: boolean;
+  recentRefreshToken: number;
+  onProjectRootInputChange(value: string): void;
+  onOpenProject(): Promise<void>;
+  onOpenRecentProject(
     projectRoot: string,
     expectedProjectId: string,
-  ): Promise<void> => {
-    const nextSession = await sessionController.switchRecentProject(
-      projectRoot,
-      expectedProjectId,
-    );
-    setSessionSnapshot(nextSession);
-    setRecentRefreshToken((current) => current + 1);
-    setStatus(
-      nextSession.recoveryCandidate
-        ? 'A newer crash-recovery snapshot is available.'
-        : 'Project opened from recent list. No newer recovery snapshot was found.',
-    );
-  };
+  ): Promise<void>;
+  onRestoreRecovery(): Promise<void>;
+  onIgnoreRecovery(): Promise<void>;
+  onSaveRecoveredProject(): Promise<void>;
+}
 
-  const openProject = async (): Promise<void> => {
-    const projectRoot = projectRootInput.trim();
-    if (!projectRoot) return;
-    setBusy(true);
-    try {
-      await switchToProject(projectRoot);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Open failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
+export type RecoveryPanelControlsProps = Omit<
+  ProjectRecoveryPanelProps,
+  'recentRefreshToken' | 'onOpenRecentProject'
+>;
 
-  const restoreRecovery = async (): Promise<void> => {
-    const candidate = sessionSnapshot.recoveryCandidate;
-    if (!candidate) return;
-    setBusy(true);
-    try {
-      const response = await window.pandaStage.recovery.restore({
-        projectRoot: candidate.projectRoot,
-        recoveryFilePath: candidate.recoveryFilePath,
-      });
-      if (!response.ok) throw new Error(response.error.message);
-      editorProjectStore.restore(response.candidate.project);
-      setSessionSnapshot(sessionController.clearRecoveryCandidate());
-      setStatus(
-        'Recovery loaded in memory and marked dirty. Use Save recovered project to replace project.json.',
-      );
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Restore failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const ignoreRecovery = async (): Promise<void> => {
-    const candidate = sessionSnapshot.recoveryCandidate;
-    if (!candidate) return;
-    setBusy(true);
-    const response = await window.pandaStage.recovery.ignore({
-      projectRoot: candidate.projectRoot,
-      recoveryFilePath: candidate.recoveryFilePath,
-    });
-    if (response.ok) {
-      setSessionSnapshot(sessionController.clearRecoveryCandidate());
-      setStatus(
-        'Recovery ignored for this session. The evidence file was retained.',
-      );
-    } else {
-      setStatus(failureMessage(response, 'Ignore failed.'));
-    }
-    setBusy(false);
-  };
-
-  const saveRecoveredProject = async (): Promise<void> => {
-    const snapshot = editorProjectStore.getSnapshot();
-    if (!snapshot?.dirty) return;
-    setBusy(true);
-    try {
-      const result = await saveCurrentProject(
-        window.pandaStage.project,
-        editorProjectStore,
-      );
-      if (!result.ok) {
-        setStatus(result.error.message);
-      } else if (result.acknowledgement === 'stale') {
-        setStatus(
-          `Revision ${result.savedRevision} was saved, but newer unsaved changes remain.`,
-        );
-      } else {
-        setStatus(
-          'Recovered project saved explicitly; stale recovery was cleaned.',
-        );
-      }
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Save failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
+export function RecoveryPanelControls({
+  projectSnapshot,
+  sessionSnapshot,
+  projectRootInput,
+  status,
+  busy,
+  onProjectRootInputChange,
+  onOpenProject,
+  onRestoreRecovery,
+  onIgnoreRecovery,
+  onSaveRecoveredProject,
+}: RecoveryPanelControlsProps): React.JSX.Element {
   return (
-    <>
-      <RecentProjectsPanel
-        onOpenProject={switchToRecentProject}
-        refreshToken={recentRefreshToken}
-      />
-      <AssetLibrary snapshot={projectSnapshot} />
-      <CharacterManager snapshot={projectSnapshot} />
-      <ShotManager snapshot={projectSnapshot} />
-      <CanvasStage />
-      <section className="recovery-panel" aria-labelledby="recovery-heading">
+    <section className="recovery-panel" aria-labelledby="recovery-heading">
       <div className="recovery-heading-row">
         <div>
           <p className="eyebrow">Day 13 safety</p>
@@ -218,14 +56,16 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
         <label>
           Project directory
           <input
-            onChange={(event) => setProjectRootInput(event.target.value)}
+            onChange={(event) =>
+              onProjectRootInputChange(event.target.value)
+            }
             placeholder="D:\Projects\story.pandastage"
             value={projectRootInput}
           />
         </label>
         <button
           disabled={busy || !projectRootInput.trim()}
-          onClick={() => void openProject()}
+          onClick={() => void onOpenProject()}
           type="button"
         >
           Open and check recovery
@@ -246,14 +86,14 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
           <div>
             <button
               disabled={busy}
-              onClick={() => void restoreRecovery()}
+              onClick={() => void onRestoreRecovery()}
               type="button"
             >
               Restore in memory
             </button>
             <button
               disabled={busy}
-              onClick={() => void ignoreRecovery()}
+              onClick={() => void onIgnoreRecovery()}
               type="button"
             >
               Ignore and retain file
@@ -264,14 +104,36 @@ export function ProjectRecoveryPanel(): React.JSX.Element | null {
       <div className="recovery-status-row">
         <output>{status}</output>
         <button
+          className="editor-save-button"
           disabled={busy || !projectSnapshot?.dirty}
-          onClick={() => void saveRecoveredProject()}
+          onClick={() => void onSaveRecoveredProject()}
           type="button"
         >
           Save recovered project
         </button>
       </div>
-      </section>
+    </section>
+  );
+}
+
+export function ProjectRecoveryPanel(
+  props: ProjectRecoveryPanelProps,
+): React.JSX.Element | null {
+  if (new URLSearchParams(window.location.search).get('gateA') === '1') {
+    return null;
+  }
+
+  return (
+    <>
+      <RecentProjectsPanel
+        onOpenProject={props.onOpenRecentProject}
+        refreshToken={props.recentRefreshToken}
+      />
+      <AssetLibrary snapshot={props.projectSnapshot} />
+      <CharacterManager snapshot={props.projectSnapshot} />
+      <ShotManager snapshot={props.projectSnapshot} />
+      <CanvasStage />
+      <RecoveryPanelControls {...props} />
     </>
   );
 }

@@ -7,7 +7,7 @@ import { CanvasStage } from './features/canvas/CanvasStage';
 import { ActionPresetPanel } from './features/actions/ActionPresetPanel';
 import { HistoryControls } from './features/editor/HistoryControls';
 import { StagePreview } from './stage/StagePreview';
-import { ProjectRecoveryPanel } from './features/recovery/ProjectRecoveryPanel';
+import { EditorShell } from './shell/EditorShell';
 
 const GATE_PREVIEW_EVENT = 'panda-stage:gate-preview-time';
 
@@ -134,7 +134,9 @@ export function App(): React.JSX.Element {
   const exportCommitLocked = exportJob?.phase === 'committing';
 
   return (
-    <main className="app-shell">
+    <EditorShell
+      beforeRecovery={
+        <>
       <header className="app-header">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">熊</span>
@@ -171,7 +173,10 @@ export function App(): React.JSX.Element {
         <CanvasStage />
       </section>
 
-      <ProjectRecoveryPanel />
+        </>
+      }
+      afterRecovery={
+        <>
       <StagePreview gatePreviewRequest={gatePreviewRequest} />
 
       <section className="export-probe" aria-label="完整导出探针">
@@ -226,6 +231,8 @@ export function App(): React.JSX.Element {
           {exportError ? ` · ${exportError}` : ''}
         </output>
       </section>
-    </main>
+        </>
+      }
+    />
   );
 }
