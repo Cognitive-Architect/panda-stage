@@ -1,10 +1,10 @@
 # Codex 接管交接文档（Handoff）— M3 Editor Shell
 
 > 仓库：`Cognitive-Architect/panda-stage`
-> 分支：`fix/m3-editor-shell`（HEAD `f16dba26a17485c250bfa18858f79fbd0e918ad1`）
+> 分支：`fix/m3-editor-shell`（当前 HEAD `baacd1f35a53751149bbdc72688e3b59681d06ae`；阶段 0A 基线 `f16dba26a17485c250bfa18858f79fbd0e918ad1`）
 > 工作树：`D:/panda-stage/.worktrees/day25`
 > 对应工单：Issue #55（M3 产品集成修复单）、Issue #57（本交接文档的产出单）
-> 性质：**纯文档，不写 `src/` 生产代码、不 git commit/push**（由主理人统一提交）
+> 性质：**纯文档，不写 `src/` 生产代码**；本文基于阶段 0A 基线 `f16dba2` 编写，随后由 WorkBuddy 以 `baacd1f` 提交并推送，该提交仅新增本 Handoff 文档，`src/` 零改动。
 > 来源：本文档所有 SHA / 路径 / 状态均由本人（software-architect，高见远）于 2026-07-28 在 worktree 内实跑 `git`/`gh` 命令并实读指定文件后独立核验，非照单全收。
 
 ---
@@ -13,22 +13,25 @@
 
 > Issue #57 强制要求「独立核验，不照单全收；若与预期不一致，顶部单列现场差异，禁止静默修正」。
 
-本人独立重跑结果 **与团队主理人先行核验的预期完全一致，未发现任何现场差异**。逐项核对如下：
+本人独立重跑结果 **与团队主理人先行核验的预期完全一致，未发现任何现场差异**。逐项核对如下（注意：阶段 0A 基线与当前 Handoff 提交是两个不同 SHA，见下表）：
 
 | 核验项 | 预期 | 本人实跑结果 | 一致 |
 |---|---|---|---|
 | 分支 | `fix/m3-editor-shell` | `fix/m3-editor-shell` | ✅ |
-| HEAD | `f16dba26a17485c250bfa18858f79fbd0e918ad1` | `f16dba26a17485c250bfa18858f79fbd0e918ad1` | ✅ |
+| 当前 HEAD（Handoff 提交 / PR #56 HEAD） | `baacd1f35a53751149bbdc72688e3b59681d06ae` | `baacd1f35a53751149bbdc72688e3b59681d06ae` | ✅ |
+| 阶段 0A 基线 HEAD | `f16dba26a17485c250bfa18858f79fbd0e918ad1` | `f16dba26a17485c250bfa18858f79fbd0e918ad1` | ✅ |
 | 工作树 | 干净 | `git status --short` 无输出 | ✅ |
 | 父分支 | `feat/day-25-action-presets` @ `a907269ff4fb1ec072fea3a05b347caa1d867371` | 一致（`git diff feat/day-25-action-presets...HEAD` 可见） | ✅ |
-| 相对父分支变更 | 7 文件 | 6 新增 + 1 修改（`vitest.config.ts`）共 7 文件 | ✅（见下注） |
+| 相对父分支变更 | 8 文件 | 7 新增（含本 Handoff 文档）+ 1 修改（`vitest.config.ts`）共 8 文件 | ✅（见下注） |
 | 仓库 | `Cognitive-Architect/panda-stage` | `origin = https://github.com/Cognitive-Architect/panda-stage.git` | ✅ |
 | PR #56 | Draft，`fix/m3-editor-shell → feat/day-25-action-presets` | `state: DRAFT`，base 正确 | ✅ |
 | PR #53 | Draft，`feat/day-25-action-presets → main` | `state: DRAFT`，base 正确 | ✅ |
 | M3 状态 | FAIL | FAIL（未改） | ✅ |
 | Day26~45 | 冻结 | 冻结 | ✅ |
 
-**一处措辞澄清（非差异，仅计数口径）**：主理人通报「5 新增设计/脚本/契约/截图 + vitest.config.ts 微调」。本人 `git diff --name-status` 实测为 **6 个新增文件**（`docs/design/m3-editor-shell-design.md`、`docs/design/phase0a-baseline-report.md`、`docs/design/baseline-1366x768.png`、`scripts/baseline-preload-stub.cjs`、`scripts/capture-baseline-1366x768.cjs`、`tests/contract/dom-selectors.baseline.test.ts`）+ **1 个修改**（`vitest.config.ts`）= **7 文件**。「5」应为按类别（设计/脚本/契约/截图）的近似分组，实际新增为 6 个文件。总量与「7 文件变更」一致，无矛盾。
+**HEAD 口径（明确区分）**：阶段 0A 基线 = `f16dba26a17485c250bfa18858f79fbd0e918ad1`（最后的生产代码基线提交）；当前 Handoff 提交 / PR #56 当前 HEAD = `baacd1f35a53751149bbdc72688e3b59681d06ae`（仅新增本 Handoff 文档，`src/` 零改动）。Codex 接管时应核对「当前 HEAD」为最新 Handoff 提交 `baacd1f…`，而非阶段 0A 基线 `f16dba2`。
+
+**一处措辞澄清（非差异，仅计数口径）**：主理人通报「5 新增设计/脚本/契约/截图 + vitest.config.ts 微调」。阶段 0A 基线（`f16dba2`）实测为 **6 个新增文件**（`docs/design/m3-editor-shell-design.md`、`docs/design/phase0a-baseline-report.md`、`docs/design/baseline-1366x768.png`、`scripts/baseline-preload-stub.cjs`、`scripts/capture-baseline-1366x768.cjs`、`tests/contract/dom-selectors.baseline.test.ts`）+ **1 个修改**（`vitest.config.ts`）= **7 文件**。「5」应为按类别（设计/脚本/契约/截图）的近似分组，实际新增为 6 个文件。随后本 Handoff 文档由 WorkBuddy 以 `baacd1f` 提交（仅新增本文件），故当前相对父分支为 **7 新增 + 1 修改 = 8 文件**。总量口径一致，无矛盾。
 
 **结论：现场与预期一致，无差异需要修正。**
 
@@ -39,9 +42,9 @@
 - **Panda Stage 是什么**：一个用 Electron + React + Konva 做的「共享渲染架构」动画短片制作工具，用户导入素材/角色，在时间轴上加动作预设，渲染生成视频。
 - **当前在解决什么问题**：领域逻辑（Day 21–25：画布、图层、动作预设、撤销重做、保存重开）已全部写好并通过自动化，但**真实 Electron UI 是一张纵向堆叠的超长功能联调展板**，没有清晰的启动页、各模块在空间上分离、残留 Debug/DAY 标签、存在重复挂载——零代码用户无法顺畅走完「打开项目→选镜头→选图层→应用动作→撤销重做→保存重开」主路径。
 - **为什么 M3 仍 FAIL**：Issue #55 是**真实 Electron 人工验收**后的产品集成缺陷（HIGH-001 = REAL UI MAIN PATH FAILED），不是环境问题。当前主干路径本身未成立。
-- **当前所在阶段**：阶段 0A（基线 + 护栏，仅记录、不改生产代码）已完成并进入 Draft PR #56；阶段 1~4 未开始。
-- **Codex 接手后唯一下一步**：完成独立接管审计并获主理人确认后，**仅执行 Issue #55 阶段 1**（状态机 + 外壳骨架 + 入口层 + 产品预览 + 保存/关闭）。
-- **绝对不能做的事**：不改 `src/` 生产代码、不提前执行阶段 2/3/4、不做 ProductPreviewOverlay（阶段1已含？见第10章边界，本设计把预览放进阶段1）、不碰 Day26 时间轴、不把 M3 改 PASS、不把 PR #53/#56 转 Ready、不合并、不进 Day26、禁止用 `beforeunload` 替代 Electron 关闭合同、禁止只压缩 CSS 冒充信息架构修复、禁止新建第二套 Project/Selection/History 状态。
+- **当前所在阶段**：阶段 0A（基线 + 护栏，仅记录、不改生产代码）已完成并进入 Draft PR #56；阶段 1A（初始授权）~4 未开始，其中阶段 1B（产品预览 / 关闭确认 / 新建项目完整 UX）需主理人再次授权。
+- **Codex 接手后唯一下一步**：完成独立接管审计并获主理人确认后，**仅执行 Issue #55 阶段 1A**（状态机 + 外壳骨架 + 入口层 + `debug`/`gateA` flag + Grid 布局）；产品预览 / 新建项目完整 UX / 应用内关闭确认归后续阶段 1B，需主理人再次授权。
+- **绝对不能做的事**：不改 `src/` 生产代码、不执行阶段 1B（ProductPreviewOverlay / CloseConfirmDialog / 新建项目完整 UX，需主理人再次授权）、不提前执行阶段 2/3/4、不碰 Day26 时间轴、不把 M3 改 PASS、不把 PR #53/#56 转 Ready、不合并、不进 Day26、禁止用 `beforeunload` 替代 Electron 关闭合同、禁止只压缩 CSS 冒充信息架构修复、禁止新建第二套 Project/Selection/History 状态。
 
 > 人话：发动机、座椅、轮子都造好了，但还没装成一辆能开的车。现在只许你先把「车门/方向盘/仪表盘」的框架和启动页搭出来，不许先去改发动机，更不许说车已经能开了。
 
@@ -52,18 +55,18 @@
 ```text
 main
 └─ feat/day-25-action-presets   (HEAD a907269ff4fb1ec072fea3a05b347caa1d867371)
-   └─ fix/m3-editor-shell       (HEAD f16dba26a17485c250bfa18858f79fbd0e918ad1)  ← 你现在在这里
+   └─ fix/m3-editor-shell       (HEAD baacd1f35a53751149bbdc72688e3b59681d06ae；阶段 0A 基线 f16dba26a17485c250bfa18858f79fbd0e918ad1)  ← 你现在在这里
 ```
 
 | 分支 | 完整 HEAD SHA | Base | PR | 状态 | CI | 用途 | 正确合并顺序 |
 |---|---|---|---|---|---|---|---|
 | `main` | （未实跑，推断为 main 当前 HEAD）「推断」 | — | — | — | — | 正式发布主线 | 最后合入 |
-| `feat/day-25-action-presets` | `a907269ff4fb1ec072fea3a05b347caa1d867371` | `main` | PR #53 | **Draft** | 末次 CI `30259335365` SUCCESS（含两次 PR SUCCESS） | 承载 Day 25 领域逻辑全部修复（Issue #52/#54） | 第 1 步：PR #53 先合入 `main` |
-| `fix/m3-editor-shell` | `f16dba26a17485c250bfa18858f79fbd0e918ad1` | `feat/day-25-action-presets` | PR #56 | **Draft** | 末次 CI `30324231517` SUCCESS（pull_request，2026-07-28T02:50:07Z） | 承载 M3 Editor Shell 阶段 0A 基线（不改生产代码） | 第 2 步：PR #56 合入 `feat/day-25-action-presets` |
+| `feat/day-25-action-presets` | `a907269ff4fb1ec072fea3a05b347caa1d867371` | `main` | PR #53 | **Draft** | 末次 CI `30259335365` SUCCESS（含两次 PR SUCCESS） | 承载 Day 25 领域逻辑全部修复（Issue #52/#54） | 第 2 步：PR #53 再合入 `main` |
+| `fix/m3-editor-shell` | `baacd1f35a53751149bbdc72688e3b59681d06ae` | `feat/day-25-action-presets` | PR #56 | **Draft** | 末次 CI `30324231517` SUCCESS（pull_request，2026-07-28T02:50:07Z） | 承载 M3 Editor Shell 阶段 0A 基线（阶段 0A 基线 `f16dba2` 为生产代码提交；`baacd1f` 仅新增 Handoff 文档，src 零改动） | 第 1 步：PR #56 先合入 `feat/day-25-action-presets` |
 
-**铁律**：`fix/m3-editor-shell` **不得直接合入 `main`**。它必须先合入 `feat/day-25-action-presets`（经 PR #56），待 PR #53 先行合入 `main` 后，再由 `feat/day-25-action-presets` 整体合入 `main`。
+**铁律（合并顺序）**：`fix/m3-editor-shell` **不得直接合入 `main`**。正确顺序：**① PR #56（`fix/m3-editor-shell → feat/day-25-action-presets`）先合入；② 待 PR #56 合入后，PR #53（`feat/day-25-action-presets → main`）再合入**。**PR #53 不得先于 PR #56 合并**。
 
-**当前两者均保持 Draft，不得合并**；M3 FAIL、Day26~45 冻结期间不得推进合并。
+**当前两者均保持 Draft，不得合并**；M3 FAIL、Day26~45 冻结期间不得推进合并（任何拓扑 / 合并顺序图示与文字均保持一致）。
 
 > 人话：代码要像水流一样「功能分支 → 父分支 → 主干」逐级合并，不能直接从最底层的「M3 分支」灌进主干，否则会漏掉 Day 25 领域修复的把关。
 
@@ -90,17 +93,18 @@ main
 
 ## 4. Issue / PR 地图
 
-| # | 目标 | 状态 | 已完成 | 剩余 | 是否允许关闭/合并 |
+| # | 目标 | 状态（GitHub） | 已完成 | 剩余 | 是否允许关闭/合并 |
 |---|---|---|---|---|---|
-| **Issue #52** | Day 25 合并前修复（overlap 检测 / 未来事件提前生效 / 事件 ID 唯一性 / build 脚本 / M3 结论对齐） | 已随 PR #53 解决，关联关闭条件：CI + 真人验收 | 5 项修复全部落地，M3 结论改 FAIL，冻结 Day26~45 | 真人验收（依赖 M3 Editor Shell 修复后才可能完成） | **保持 Open**，待 M3 真人验收通过后一并关闭 |
-| **Issue #54** | Day 17 资产元数据 Gate 偶发失败调查与稳定性修复 | Open | 根因分两类（FS 延迟类走 `RUNNER_TEMP`；abort 竞态类 mock 复刻守卫）已修复，同一 tree 字节级一致证明纯环境 flake | CI runner 环境无法本地复现，需 GitHub Actions 持续观察 | **保持 Open**（按 PR #53 明文「Issue #54：保持 Open」） |
-| **Issue #55** | M3 产品集成修复单：用真实 Editor Shell 替代纵向堆叠展板，恢复无代码主路径 | **Open**（本 Handoff 的服务对象） | 设计文档 v1.1a 已核准；阶段 0A 基线完成 | 阶段 1~4 实现 + 真人 M3 验收 | **不得关闭**，直至真人 M3 验收 PASS |
+| **Issue #52** | Day 25 合并前修复（overlap 检测 / 未来事件提前生效 / 事件 ID 唯一性 / build 脚本 / M3 结论对齐） | **Open**（已随 PR #53 解决，关联关闭条件：CI + 真人验收） | 5 项修复全部落地，M3 结论改 FAIL，冻结 Day26~45 | 真人验收（依赖 M3 Editor Shell 修复后才可能完成） | **保持 Open**，待 M3 真人验收通过后一并关闭 |
+| **Issue #54** | Day 17 资产元数据 Gate 偶发失败调查与稳定性修复 | **Closed**（GitHub 实际状态 Closed/Completed；根因已修复，flake 已证明为纯环境） | 根因分两类（FS 延迟类走 `RUNNER_TEMP`；abort 竞态类 mock 复刻守卫）已修复，同一 tree 字节级一致证明纯环境 flake | —（已修复，无需持续观察） | 已 Closed（注意：PR #53 body 曾写「Issue #54：保持 Open」，以 GitHub 实际状态 Closed 为准） |
+| **Issue #55** | M3 产品集成修复单：用真实 Editor Shell 替代纵向堆叠展板，恢复无代码主路径 | **Open**（本 Handoff 的服务对象） | 设计文档 v1.1a 已核准；阶段 0A 基线完成 | 阶段 1A~4 实现（1B 需再次授权）+ 真人 M3 验收 | **不得关闭**，直至真人 M3 验收 PASS |
+| **Issue #57** | 本交接文档（Handoff）产出单 | **Open** | Handoff 文档已基于 `f16dba2` 编写、由 WorkBuddy 以 `baacd1f` 提交（仅新增文档，src 零改动） | 后续随 M3 真人验收推进 | **Open**（文档类，与 M3 同步） |
 | **PR #53** | `feat/day-25-action-presets → main`，Day 25 领域修复 | **Draft** | 全部 5 项修复 + CI 连续两次 SUCCESS | 合并前需 CI + 真实 UI 验收；当前 M3 FAIL | **保持 Draft，不得合并，不转 Ready** |
-| **PR #56** | `fix/m3-editor-shell → feat/day-25-action-presets`，阶段 0A 基线 | **Draft** | 7 文件（6 新增 + 1 修改），CI `30324231517` SUCCESS | 阶段 0A 仅基线，后续阶段另起 | **保持 Draft，不得合并，不转 Ready** |
+| **PR #56** | `fix/m3-editor-shell → feat/day-25-action-presets`，阶段 0A 基线 | **Draft** | 8 文件（7 新增 + 1 修改），CI `30324231517` SUCCESS | 阶段 0A 仅基线，后续阶段另起 | **保持 Draft，不得合并，不转 Ready** |
 
 **GitHub 状态 vs 旧文档标注**：`gh pr view 53` 的 body 注明「本 PR 保持 Draft，CI 与真实 UI 验收均完成前不得合并、不进入 Day 26」；`gh pr view 56` body 注明「不将上述结果伪装为完整全绿……M3 仍 FAIL……本 PR 保持 Draft，不合并」。两者与 Issue #57、Issue #55 的冻结约定**一致，未发现冲突**。
 
-> 人话：两张 PR 都还挂着「草稿」牌子，谁都不许私自合；两个 Issue（#52/#54）也先别关，得等真人在真实软件里走通主路径再说。
+> 人话：两张 PR 都还挂着「草稿」牌子，谁都不许私自合；Issue #52 先别关（#54 已 Closed），#55 不得关闭，得等真人在真实软件里走通主路径再说。
 
 ---
 
@@ -149,7 +153,8 @@ main
 
 **阶段 0A 提交历史**（实跑 `git log --oneline -15`）：
 
-- `f16dba2` test(m3): drop empty editor-shell contract block (fixes CI TS6133) ← 当前 HEAD
+- `baacd1f` docs(handoff): prepare Codex takeover for M3 editor shell ← 当前 HEAD（仅新增本 Handoff 文档，`src/` 零改动）
+- `f16dba2` test(m3): drop empty editor-shell contract block (fixes CI TS6133) ← 阶段 0A 基线（当前 HEAD 之前最后的生产代码提交）
 - `53c7625` test(m3): phase 0A baseline fix — offscreen 1366x768 capture, drop old shell contracts
 - `b3da4a9` test(m3): lock editor shell phase 0A baseline（阶段 0A 首次基线提交，基于 `a907269`）
 - `a907269` (origin/feat/day-25-action-presets) 系统性将测试临时目录路由到 `RUNNER_TEMP`（阶段 0A 的父基线，CI 两次连续 PR SUCCESS）
@@ -227,13 +232,13 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 
 ## 9. 关键代码地图
 
-> 实读路径 `src/`（worktree `fix/m3-editor-shell`）。每项列：当前职责 / 已知问题 / 预计修改阶段 / Codex 当前阶段是否允许修改。当前阶段 = 阶段 0A 已完成、阶段 1 未开始，**全部 `src/` 当前禁止修改**。
+> 实读路径 `src/`（worktree `fix/m3-editor-shell`）。每项列：当前职责 / 已知问题 / 预计修改阶段 / Codex 当前阶段是否允许修改。当前阶段 = 阶段 0A 已完成、阶段 1A 未开始，**全部 `src/` 当前禁止修改**。
 
 ### 9.1 `src/renderer/App.tsx`
 - **职责**：应用根组件。挂载整个纵向堆叠编辑外壳；`?demo=1` 时若 snapshot 为空则自动 `editorProjectStore.open` 示例项目（`App.tsx:37-51`，CI 启动路径不传）；`?gateA=1` 监听 Gate A 预览请求（`App.tsx:54-85`）；内联测试安全 IPC 按钮（`App.tsx:146-162`）、完整导出探针（`App.tsx:177-228`）、`<StagePreview>`（`App.tsx:175`）。
 - **已知问题**：纵向堆叠所有模块；`App.tsx:167` 渲染 `<HistoryControls/>`、`App.tsx:171` 渲染 `<CanvasStage/>`——**双挂载之源**；`day25-action-shell`/`day25-editor-shell` 旧壳 className（契约测试已不再断言）；内联 IPC/导出探针应迁入 `DebugWorkspace`。
-- **预计修改阶段**：阶段1（精简为挂载 `EditorShell` + 保留 `?demo=1`/`?gateA=1`）、阶段2（移除 `day25-editor-shell` 中的 `CanvasStage`）、阶段3（移除 `day25-action-shell` 中的 `ActionPresetPanel`/`HistoryControls`）、阶段4（移除内联 ping/export-probe）。
-- **当前是否允许修改**：❌ 否（阶段1前禁止改 `src/`）。
+- **预计修改阶段**：阶段 1A（精简为挂载 `EditorShell` + 保留 `?demo=1`/`?gateA=1`）、阶段2（移除 `day25-editor-shell` 中的 `CanvasStage`）、阶段3（移除 `day25-action-shell` 中的 `ActionPresetPanel`/`HistoryControls`）、阶段4（移除内联 ping/export-probe）。
+- **当前是否允许修改**：❌ 否（阶段 1A 前禁止改 `src/`）。
 
 ### 9.2 `src/renderer/features/recovery/ProjectRecoveryPanel.tsx`
 - **职责**：崩溃恢复面板。含 `RecentProjectsPanel`/`AssetLibrary`/`CharacterManager`/`ShotManager`/`CanvasStage` 挂载、`.recovery-open-row` 打开入口（line 217）、`.recovery-status-row` 保存状态（line 264）、恢复候选 restore/ignore、`saveRecoveredProject`；实例化 `ProjectSessionController`（autosave/recovery 跟踪，`useEffect` 卸载时 `dispose`）。
@@ -286,7 +291,7 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 ### 9.10 `src/renderer/stage/StageRenderer.tsx`
 - **职责**：非交互 Konva 渲染器（`data-testid="stage-renderer"`）。消费 `buildStageRenderModel`（`shared/stage` 契约）；编辑画布与 Gate-A Probe **共用**；只读 `project`/`evaluatedShot`，不写 Store。
 - **已知问题**：无；产品预览与 Gate-A Probe 应共用同一正确求值器（规避 Day23 deprecated，H.7/H.8）。
-- **预计修改阶段**：阶段1（产品预览复用）、Gate-A 保持。
+- **预计修改阶段**：阶段 1B（产品预览复用，需主理人再次授权）、Gate-A 保持。
 - **当前是否允许修改**：❌ 否。
 
 ### 9.11 `src/domain/evaluate-shot-at-time.ts`
@@ -303,8 +308,8 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 
 ### 9.13 `src/preload/index.ts`
 - **职责**：`contextBridge.exposeInMainWorld('pandaStage', ...)` 暴露全部 IPC（project.{create,open,save}、recentProjects、autosave、recovery、assets、export）；所有请求经 Zod schema 校验。
-- **已知问题**：无；新建项目真实通道 `window.pandaStage.project.create` 已存在（阶段1 `NewProjectEntry` 复用）。
-- **预计修改阶段**：保持不变（阶段1 复用既有 IPC，不改 preload）。
+- **已知问题**：无；新建项目真实通道 `window.pandaStage.project.create` 已存在（阶段 1A `NewProjectEntry` 复用）。
+- **预计修改阶段**：保持不变（阶段 1A 复用既有 IPC，不改 preload）。
 - **当前是否允许修改**：❌ 否。
 
 ### 9.14 `src/main/index.ts`
@@ -325,7 +330,7 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 - **预计修改阶段**：保持不变。
 - **当前是否允许修改**：❌ 否。
 
-> 人话：上面 16 个文件就是这台机器的「零件清单+各自毛病+打算哪步修+现在能不能动」。统一口径：**现在一个都不许改**，等阶段1拿到授权再说。
+> 人话：上面 16 个文件就是这台机器的「零件清单+各自毛病+打算哪步修+现在能不能动」。统一口径：**现在一个都不许改**，等阶段 1A 拿到授权再说。
 
 ---
 
@@ -338,10 +343,17 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 - **铁律**：不制造必然失败的 CI——不提前断言尚未实现的组件/选择器，不提前要求数量 `=== 1`。
 - 产出：设计文档 v1.1a、`phase0a-baseline-report.md`、基线截图、契约测试、截图脚本，进入 Draft PR #56。
 
-### 阶段 1 — 状态机 + 外壳骨架 + 入口层 + 产品预览 + 保存/关闭
-- 修改/新增：`App.tsx`（精简为挂载 `EditorShell` + 保留 `?demo=1`/`?gateA=1`）、`styles.css`（E.1 网格 + 根 `overflow:hidden`）、新增 `shell/EditorShell.tsx`、`shell/StartScreen.tsx`、`shell/EditorTopBar.tsx`、`shell/NewProjectEntry.tsx`、`shell/ProductPreviewOverlay.tsx`、`shell/CloseConfirmDialog.tsx`、`shell/useDebugFlag.ts`。
-- 动作：落地 B 状态机与 E 网格；NewProjectEntry 四项接线（新建→`project.create`+`switchProject`、打开→`switchProject`、最近→`RecentProjectsPanel`、崩溃恢复横幅）；产品预览 overlay（只读，复用 `evaluateShotAtTime`+`StageRenderer`，不写 Store）；保存/关闭合同（保存按钮+Ctrl+S→`saveCurrentProject`；dirty 弹 `CloseConfirmDialog`，禁止直接 `clear`）。
-- 回滚点：`git stash` 新 shell 文件 + 还原 `App.tsx`/`styles.css`。
+### 阶段 1A（初始授权）— 状态机 + 外壳骨架 + 入口层 + debug/gateA flag + Grid 布局
+- **修改/新增（仅 1A）**：`App.tsx`（精简为挂载 `EditorShell` + 保留 `?demo=1`/`?gateA=1`）、`styles.css`（E.1 网格 + 根 `overflow:hidden`）、新增 `shell/EditorShell.tsx`（固定骨架 + 路由 + History 快捷键预留 + `?debug`/`?gateA` 解析）、`shell/StartScreen.tsx`、`shell/EditorTopBar.tsx`、`shell/NewProjectEntry.tsx`（新建/打开/最近/崩溃恢复 四项，复用既有 `project.create`/`switchProject` IPC）、`shell/useDebugFlag.ts`（解析 `location.search` 的 `debug`/`gateA`）。
+- **初始 1A 允许**：落地 B 状态机（`no-project | editor` 两基础态）、E Grid 布局（根 `overflow:hidden` + 各栏 `overflow-y:auto` + 中央 `min-width:0`）、`EditorTopBar`（项目名/保存态/保存按钮/Ctrl+S/Debug 开关/预览按钮占位）、NewProjectEntry 四项基础接线。
+- **初始 1A 禁止**：`ProductPreviewOverlay` 新实现、`CloseConfirmDialog` 新实现、`createAt` IPC、阶段 2/3/4、Day 26 时间轴。
+- 回滚点：`git stash` 新增 `shell/*` 文件 + 还原 `App.tsx`/`styles.css` 至阶段 0A 基线（`f16dba2`，与当前 HEAD `baacd1f` 的 src 状态一致）。
+
+### 阶段 1B（后续，需主理人再次授权）— 产品预览 / 新建项目完整 UX / 应用内关闭确认
+- `shell/ProductPreviewOverlay.tsx`（只读 overlay，复用 `evaluateShotAtTime`+`StageRenderer`，不写 Store）。
+- `shell/CloseConfirmDialog.tsx`（保存并退出/不保存退出/取消；dirty 弹确认，禁止直接 `clear`）。
+- 新建项目完整 UX 增强（超出 1A 入口层基础接线的部分）。
+- **未经主理人再次明确授权，阶段 1B 不得执行。**
 
 ### 阶段 2 — 左栏接入 + 画布唯一挂载 + Fit + Gate 导航
 - 修改/新增：`shell/LeftWorkspace.tsx`（Shots/Assets/Characters 三 Tab，带 `data-workspace-tab`）、`shell/CanvasWorkspace.tsx`、`ProjectRecoveryPanel.tsx`（拆分，停止内嵌 `CanvasStage`）、`CanvasStage.tsx`（移出 `HistoryControls`/`LayerTransformPanel`/`LayerOrderControls`）、`App.tsx`（移除 `day25-editor-shell` 中的 `CanvasStage`）。
@@ -358,33 +370,35 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 **Codex 当前初始授权范围（明确）**：
 
 ```text
-接管审计完成并获主理人确认后，只执行阶段 1。
+接管审计完成并获主理人确认后，只执行阶段 1A（不含阶段 1B）。
 ```
 
-**当前禁止提前执行**：阶段 2（Canvas/LeftWorkspace 正式迁移）、阶段 3（History/Inspector/ActionPreset 正式迁移）、阶段 4（Debug 探针迁移）、`ProductPreviewOverlay`（注：设计把产品预览列入阶段 1 动作范围，但须以「只读、不写 Store、不引入时间轴」为边界；任何超出此边界的预览增强均视为阶段2+，禁止）、Day 26 时间轴（底栏仅预留占位，不实现）。
+**当前禁止提前执行**：阶段 1B（ProductPreviewOverlay / CloseConfirmDialog 新实现 / 新建项目完整 UX，需主理人再次授权）、阶段 2（Canvas/LeftWorkspace 正式迁移）、阶段 3（History/Inspector/ActionPreset 正式迁移）、阶段 4（Debug 探针迁移）、`createAt` IPC、Day 26 时间轴（底栏仅预留占位，不实现）。
 
-> 人话：阶段1=搭框架+启动页+保存关闭+只读预览；阶段2=把画布和左栏接进框架并修掉画布双挂载；阶段3=把右边属性和历史接进来并修掉历史双挂载；阶段4=把调试按钮藏起来。你现在只被授权干阶段1。
+> 人话：阶段 1A=搭框架+启动页+顶栏+debug/gateA flag+Grid；阶段 1B（需再次授权）=只读产品预览+应用内关闭确认+新建项目完整 UX；阶段2=把画布和左栏接进框架并修掉画布双挂载；阶段3=把右边属性和历史接进来并修掉历史双挂载；阶段4=把调试按钮藏起来。你现在只被授权干阶段 1A。
 
 ---
 
-## 11. 阶段 1 精确任务单（可执行 DoD）
+## 11. 阶段 1A 精确任务单（可执行 DoD）
 
-> 将设计文档 G 章阶段 1 转工程清单。所有选择器/文件路径以第 9 章与 design 附录为准。
+> 将设计文档 G 章阶段 1A（初始授权）转工程清单。**阶段 1B（ProductPreviewOverlay / CloseConfirmDialog / 新建项目完整 UX）不在此单，需主理人再次授权后方可执行**。所有选择器/文件路径以第 9 章与 design 附录为准。
 
-**允许修改文件**：
+**允许修改文件（仅 1A）**：
 - `src/renderer/App.tsx`（精简为挂载 `EditorShell` + 保留 `?demo=1`/`?gateA=1` 逻辑）
 - `src/renderer/styles.css`（E.1 网格 + 根 `overflow:hidden` + 各栏 `overflow-y:auto` + 中央 `min-width:0`）
 
-**预计新增文件**（位于 `src/renderer/shell/`）：
-- `EditorShell.tsx`（状态机 + 路由 + History 快捷键单点注册 + `?debug`/`?gateA` 解析）
+**预计新增文件（仅 1A，位于 `src/renderer/shell/`）**：
+- `EditorShell.tsx`（状态机 + 路由 + History 快捷键预留 + `?debug`/`?gateA` 解析）
 - `StartScreen.tsx`（仅 `no-project` 渲染）
-- `EditorTopBar.tsx`（项目名/保存态/保存按钮/Ctrl+S/Debug 开关/预览按钮）
+- `EditorTopBar.tsx`（项目名/保存态/保存按钮/Ctrl+S/Debug 开关/预览按钮占位）
 - `NewProjectEntry.tsx`（新建/打开/最近/崩溃恢复 四项；唯一 `.recovery-open-row` 位于此处 `ProjectOpenEntry` 子节点）
-- `ProductPreviewOverlay.tsx`（只读 overlay；复用 `evaluateShotAtTime`+`StageRenderer`；不写 Store；无镜头时禁用）
-- `CloseConfirmDialog.tsx`（保存并退出/不保存退出/取消）
 - `useDebugFlag.ts`（解析 `location.search` 的 `debug`/`gateA`）
 
-**必须保留的选择器**（来自白名单，阶段1不得删除/改名）：
+**阶段 1B 文件（不在本任务单，需再次授权）**：
+- `ProductPreviewOverlay.tsx`（只读 overlay；复用 `evaluateShotAtTime`+`StageRenderer`；不写 Store；无镜头时禁用）
+- `CloseConfirmDialog.tsx`（保存并退出/不保存退出/取消）
+
+**必须保留的选择器**（来自白名单，阶段 1A 不得删除/改名）：
 - `.recovery-open-row`（input + button）、`.recovery-prompt`、`.recovery-panel`、`.recovery-heading`
 - `.clean-state`、`.dirty-state`
 - `.recent-projects-panel`、`.recent-projects-list`、`.recent-project-path`
@@ -393,29 +407,29 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 - `[data-testid="action-preset-panel"]`
 - `.recovery-status-row`（保留于 `EditorTopBar` 保存区，与新增 `.editor-save-button` 共存，不得移除/弱化）
 
-**必须新增的选择器**（随阶段1实现一并提交契约测试，不得提前在阶段0A断言）：
+**必须新增的选择器（随阶段 1A 实现一并提交契约测试，不得提前在阶段0A断言）**：
 - `.new-project-entry`、`.new-project-button`、`.open-project-button`
-- `.editor-save-button`、`[data-testid="editor-preview-button"]`、`.close-confirm-dialog`
-- `[data-testid="product-preview-overlay"]`、`.product-preview-transport`、`.product-preview-close`
-- （左栏 Tab `[data-workspace-tab="shots|assets|characters"]` 属阶段2，阶段1**不**引入）
+- `.editor-save-button`、`[data-testid="editor-preview-button"]`（预览按钮占位，overlay 属阶段 1B）
+- （左栏 Tab `[data-workspace-tab="shots|assets|characters"]` 属阶段2，阶段 1A **不**引入）
+- （阶段 1B 选择器：`[data-testid="product-preview-overlay"]`、`.product-preview-transport`、`.product-preview-close`、`.close-confirm-dialog`，不在此单）
 
 **必须运行的测试（本地 + 提交前）**：
 - `pnpm typecheck`、`pnpm lint`
 - `pnpm test:unit`（含 `tests/contract/dom-selectors.baseline.test.ts` 5 项）
 - `pnpm test:integration`
 - `pnpm build`
-- 逐个体跑 `verify-day13/14/16`（确认阶段1后恢复入口仍经 `.recovery-open-row` 打开，未破坏）
+- 逐个体跑 `verify-day13/14/16`（确认阶段 1A 后恢复入口仍经 `.recovery-open-row` 打开，未破坏）
 - Gate A 以 GitHub Actions 打包运行为准「推断」
 
 **每步完成标准**：
 1. `EditorShell` 渲染测试通过：no-project 显示入口；open 后显示顶/左/中/右/底；根无整页纵向滚动。
 2. `StartScreen`/`NewProjectEntry` 四项可触发对应 IPC（`project.create`/`switchProject`/`switchRecentProject`/恢复横幅），失败显示中文错误（`ProjectServiceError.code` 映射，见设计附录3）。
-3. 产品预览 overlay 存在且只读：断言其**不触发** `editorProjectStore.updateProject`、不修改 `revision`、无镜头时按钮禁用。
-4. 保存/关闭确认对话框在 dirty 时出现；`Ctrl+S` 与保存按钮均经 `saveCurrentProject`；dirty 返回启动页/关闭弹 `CloseConfirmDialog`，**禁止**直接 `clear`。
-5. `verify-day16` 仍经 `.recovery-open-row` 打开项目，未破坏 Day16 Gate。
-6. 唯一挂载集成测试（阶段0A 延续）：断言当前已存在的 `project-canvas-stage`/`history-controls`/`action-preset-panel` 在阶段1后**数量不减少、选择器仍可见**（注：阶段1 不强制 `===1`，该断言随阶段2/3 落地）。
+3. `EditorTopBar` 保存按钮 + `Ctrl+S` 经 `saveCurrentProject`；Debug 开关与 `?debug`/`?gateA` 解析生效；Grid 布局无整页纵向滚动。
+4. `verify-day16` 仍经 `.recovery-open-row` 打开项目，未破坏 Day16 Gate。
+5. 唯一挂载集成测试（阶段0A 延续）：断言当前已存在的 `project-canvas-stage`/`history-controls`/`action-preset-panel` 在阶段 1A 后**数量不减少、选择器仍可见**（注：阶段 1A 不强制 `===1`，该断言随阶段2/3 落地）。
+6. 阶段 1B 内容（`ProductPreviewOverlay` / `CloseConfirmDialog`）**未**被实现（除非已获主理人再次授权）。
 
-**回滚点**：`git stash` 全部新增 `shell/*` 文件 + 还原 `App.tsx`/`styles.css` 至 `f16dba2` 状态。
+**回滚点**：`git stash` 全部新增 `shell/*` 文件 + 还原 `App.tsx`/`styles.css` 至阶段 0A 基线（`f16dba2`，与当前 HEAD `baacd1f` 的 src 状态一致）。
 
 **停止条件（出现即停，汇报主理人）**：
 - 任何 `src/` 改动导致 `typecheck/lint/test:unit/test:integration/build` 红且 5 分钟无法定位；
@@ -423,9 +437,9 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 - 发现需要改动 `src/domain/evaluate-shot-at-time.ts` 或复用 `src/shared/domain/evaluate-shot-at-time.ts`（违反 Day23 铁律）；
 - 发现需要改动 `src/main/index.ts` close 合同或引入 `beforeunload`；
 - 发现需要改动 `ProjectService`/`project-api` 契约；
-- 发现需要开始 Day26 时间轴或 ProductPreviewOverlay 超出只读边界（播放头/轨道/关键帧）。
+- 发现需要开始 Day26 时间轴，或需要新建 `ProductPreviewOverlay` / `CloseConfirmDialog`（属阶段 1B，需主理人再次授权），或 `createAt` IPC。
 
-> 人话：阶段1 的验收清单就像装修的「隐蔽工程验收表」——框架立起来、启动页能开项目、预览能看但不许改数据、关窗会问你要不要保存、老旧 Gate 测试不能红。任何一项卡住或发现要动发动机，立刻停工上报。
+> 人话：阶段 1A 的验收清单就像装修的「隐蔽工程验收表」——框架立起来、启动页能开项目、顶栏能保存、debug/gateA 开关生效、老旧 Gate 测试不能红；产品预览与关闭确认（1B）这次不碰。任何一项卡住或发现要动发动机，立刻停工上报。
 
 ---
 
@@ -435,9 +449,9 @@ HistoryControls = 2   （App.tsx:167  +  CanvasStage.tsx:420）
 
 | Gate | 依赖 UI 区域 | 关键选择器（须保留） | 重构后导航方式 | 可能影响阶段 | 如何避免操作隐藏 DOM |
 |---|---|---|---|---|---|
-| **Day 13** | 恢复入口 | `.recovery-panel`/`.recovery-open-row`/`.recovery-prompt`/`.recovery-heading` | 默认 `StartScreen` 内的 `NewProjectEntry` → `ProjectOpenEntry`（唯一 `.recovery-open-row`） | 阶段1（入口层） | 入口选择器保留在默认 UI，不得迁 `?debug=1` |
-| **Day 14** | 恢复状态 | `.recovery-status-row`/`output`、`.clean-state`/`.dirty-state` | 同上 + `EditorTopBar` 保存区保留 `.recovery-status-row` | 阶段1（顶栏） | `.recovery-status-row` 与新增 `.editor-save-button` **共存**，不得移除/弱化（附录6） |
-| **Day 16** | 资产导入（open 由 recovery row 独占） | `.recovery-open-row`/`.asset-library` | 同上 | 阶段1 | `open` 只在入口调用一次；导航不得 `clear`/`open`（H.4） |
+| **Day 13** | 恢复入口 | `.recovery-panel`/`.recovery-open-row`/`.recovery-prompt`/`.recovery-heading` | 默认 `StartScreen` 内的 `NewProjectEntry` → `ProjectOpenEntry`（唯一 `.recovery-open-row`） | 阶段 1A（入口层） | 入口选择器保留在默认 UI，不得迁 `?debug=1` |
+| **Day 14** | 恢复状态 | `.recovery-status-row`/`output`、`.clean-state`/`.dirty-state` | 同上 + `EditorTopBar` 保存区保留 `.recovery-status-row` | 阶段 1A（顶栏） | `.recovery-status-row` 与新增 `.editor-save-button` **共存**，不得移除/弱化（附录6） |
+| **Day 16** | 资产导入（open 由 recovery row 独占） | `.recovery-open-row`/`.asset-library` | 同上 | 阶段 1A | `open` 只在入口调用一次；导航不得 `clear`/`open`（H.4） |
 | **Day 17** | 资产元数据（node 脚本，env 依赖） | （无 DOM 强依赖） | 不变 | 不受影响 | 仅 CI 环境变量相关 |
 | **Day 18** | Assets 标签 | `.asset-library`/`.asset-grid`/`.asset-card`/`.asset-category-tabs` | 打开后 `click('[data-workspace-tab="assets"]')` | 阶段2 | Gate 脚本加导航点击，不得操作 `display:none` 隐藏节点（F.4） |
 | **Day 19** | Assets→Characters 标签 | `.asset-import-heading`/`.character-manager` | 先 assets 再 characters Tab | 阶段2 | 同上 |
@@ -583,11 +597,11 @@ pnpm build
 4. **读取阶段 0A 报告**（`docs/design/phase0a-baseline-report.md`）。
 5. **读取 Draft PR #56**（`gh pr view 56`，确认范围=阶段0A基线、src 零改动、CI 状态）。
 6. **读取 Draft PR #53**（`gh pr view 53`，理解 Day25 领域修复与冻结约束）。
-7. **核对 Git / PR / CI**：重跑 `git branch --show-current`、`git rev-parse HEAD`、`git status --short`、`git diff feat/day-25-action-presets...HEAD --name-status`、`gh pr view 56/53`、`gh run list --branch fix/m3-editor-shell -L 5`（本文档第0章已核验，可参照）。
+7. **核对 Git / PR / CI / Issue**：重跑 `git branch --show-current`、`git rev-parse HEAD`、`git status --short`、`git diff feat/day-25-action-presets...HEAD --name-status`、`gh pr view 56/53`、`gh run list --branch fix/m3-editor-shell -L 5`、`gh issue view 54 --json state`（本文档第0章已核验，可参照）。重点核对：当前分支 = `fix/m3-editor-shell`；当前 HEAD = `baacd1f35a53751149bbdc72688e3b59681d06ae`（阶段 0A 基线为 `f16dba26a17485c250bfa18858f79fbd0e918ad1`）；PR #56 = Draft；Issue #54 = Closed/Completed；工作树干净（`git status --short` 为空）。
 8. **检查工作树干净**：确认无 `src/` 变更（`git status --short` 应为空）。
 9. **不改代码，先输出接管审计**：书面列出「现场与预期是否一致 / 双挂载计数 / 阶段0A交付物 / 下一步建议」。
 10. **发现不一致时停止并汇报**：若发现 SHA、文件、CI、双挂载计数与本文档/Issue 不符，**立即停手**，在文档顶部单列「现场差异」并上报主理人，禁止静默修正。
-11. **获主理人确认后才执行阶段 1**：在确认「接管审计无差异」且主理人明确授权后，方可开始第 11 章阶段 1 任务单；之前任何 `src/` 改动均禁止。
+11. **获主理人确认后才执行阶段 1A**：在确认「接管审计无差异」且主理人明确授权后，方可开始第 11 章阶段 1A 任务单（不含阶段 1B）；之前任何 `src/` 改动均禁止。
 
 > 人话：先读完所有图纸和这本交接手册，自己动手核对现场，确认「工地和说明书对得上」并且拿到工头（主理人）开工许可，才许动第一块砖。
 
@@ -629,8 +643,8 @@ Day 26~45 冻结
 
 ## 17. 当前唯一下一步
 
-Codex 独立审计 Handoff 与仓库现场；确认无差异后，仅执行 Issue #55 阶段 1。
+Codex 独立审计 Handoff 与仓库现场；确认无差异后，仅执行 Issue #55 阶段 1A（初始授权；ProductPreviewOverlay / CloseConfirmDialog / 新建项目完整 UX 归后续 1B，需再次授权）。
 
 ---
 
-> 文档完。本文件由 software-architect（高见远）于 2026-07-28 在 worktree `D:/panda-stage/.worktrees/day25` 内，基于实跑 `git`/`gh` 命令与实读指定源码后独立撰写，未修改任何 `src/` 生产代码，未执行 git 提交（由主理人统一提交）。所有 SHA 为完整 SHA，所有文件路径经实读确认存在，测试数字注明时间与来源，推断项已标注「推断」，未验证项已标注「未验证」。
+> 文档完。本文件由 software-architect（高见远）于 2026-07-28 在 worktree `D:/panda-stage/.worktrees/day25` 内，基于实跑 `git`/`gh` 命令与实读指定源码后独立撰写，未修改任何 `src/` 生产代码。本文基于阶段 0A 基线 `f16dba2` 编写，随后由 WorkBuddy 以 `baacd1f` 提交并推送，该提交仅新增本 Handoff 文档、`src/` 零改动。所有 SHA 为完整 SHA，所有文件路径经实读确认存在，测试数字注明时间与来源，推断项已标注「推断」，未验证项已标注「未验证」。
