@@ -111,7 +111,7 @@
 
 | 文件 | 状态 | 说明 |
 |------|------|------|
-| `tests/contract/dom-selectors.baseline.test.ts` | **新增（已修正）** | 阶段 0A 选择器契约测试（源码级，见下注）。**已移除 `day25-action-shell` / `day25-editor-shell` 两条旧壳永久断言**（Issue #55 将主动替换它们，不应作为历史 Gate 白名单）。保留 recovery / canvas / history / action-preset 真实兼容合同。6 个 it 块全部通过。 |
+| `tests/contract/dom-selectors.baseline.test.ts` | **新增（已修正）** | 阶段 0A 选择器契约测试（源码级，见下注）。**已移除 `day25-action-shell` / `day25-editor-shell` 两条旧壳永久断言**（Issue #55 将主动替换它们，不应作为历史 Gate 白名单）；对应的空 `it` 块已一并删除，故现共 **5 个 it 块**。保留 recovery / canvas / history / action-preset 真实兼容合同。 |
 | `vitest.config.ts` | **修改** | 良性非生产改动：在 unit 的 `include` 中追加 `'tests/contract/**/*.test.ts'`，使上述契约测试被 `pnpm test:unit` 收录。未触碰 `src/`。 |
 | `scripts/capture-baseline-1366x768.cjs` | **新增（已修正）** | 无显示 Electron 截图辅助脚本。采用 offscreen rendering + preload stub + `setContentSize(1366,768)` + `force-device-scale-factor=1` + `capturePage({x:0,y:0,width:1366,height:768})` 原尺寸输出。**不使用 `NativeImage.resize`**，不改生产代码。 |
 | `scripts/baseline-preload-stub.cjs` | **新增** | 截图专用非生产 preload stub，暴露无害 `window.pandaStage` 代理，使 React 在无主进程/IPC 的沙箱中仍能挂载，避免空白/黑屏。 |
@@ -190,7 +190,7 @@
 ### 10.3 单测复测结果
 
 - `pnpm test:unit` → **472 passed / 0 failed**，74 个测试文件，退出码 0。
-- 契约测试文件仍被收录，6 个 it 块全部通过（editor-shell it 块保留为空，作为注释占位）。
+- 契约测试文件仍被收录，**5 个 it 块**全部通过（已删除空的 editor-shell `it` 块，因其两条旧壳断言已被移除）。
 
 ### 10.4 提交与 CI 补记
 

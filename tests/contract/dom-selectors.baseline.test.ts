@@ -53,14 +53,6 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(code).toContain('data-testid="history-controls"');
   });
 
-  it('locks editor-shell section selectors into App', () => {
-    const code = readSource('renderer/App.tsx');
-    // Intentionally empty: the old `day25-action-shell` / `day25-editor-shell`
-    // wrappers are Issue #55's replacement target and must NOT be locked as a
-    // permanent Gate-whitelist contract. The real compatibility contracts for
-    // recovery, canvas, history, and action-preset are kept above/below.
-  });
-
   it('locks canvas-stage selectors into CanvasStage', () => {
     const code = readSource('renderer/features/canvas/CanvasStage.tsx');
     expect(code).toContain('data-testid="project-canvas-stage"');
