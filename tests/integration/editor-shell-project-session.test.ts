@@ -5,6 +5,10 @@ import {
   RecoveryPanelControls,
 } from '../../src/renderer/features/recovery/ProjectRecoveryPanel';
 import {
+  ProjectSessionController,
+  type ProjectSessionApi,
+} from '../../src/renderer/features/recovery/ProjectSessionController';
+import {
   EditorShellSession,
 } from '../../src/renderer/shell/EditorShell';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -30,36 +34,57 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
   const order: string[] = [];
   const store = new EditorProjectStore();
   store.subscribe(() => order.push('store.open'));
+  let activeSubscriptions = 0;
+  let maximumActiveSubscriptions = 0;
+  const onError = vi.fn(() => {
+    activeSubscriptions += 1;
+    maximumActiveSubscriptions = Math.max(
+      maximumActiveSubscriptions,
+      activeSubscriptions,
+    );
+    let active = true;
+    return vi.fn(() => {
+      if (!active) return;
+      active = false;
+      activeSubscriptions -= 1;
+    });
+  });
+  const stop = vi.fn(async () => ({ ok: true as const }));
+  const sessionApi: ProjectSessionApi = {
+    open: vi.fn(async () => {
+      order.push('open');
+      return {
+        ok: true as const,
+        value: {
+          projectRoot: PROJECT_ROOT,
+          projectFilePath: `${PROJECT_ROOT}\\project.json`,
+          project: PROJECT,
+          migrated: false,
+          sourceVersion: 1 as const,
+        },
+      };
+    }),
+    openRecent: vi.fn(),
+    track: vi.fn(async () => {
+      order.push('track');
+      return { ok: true as const };
+    }),
+    stop,
+    detect: vi.fn(async () => {
+      order.push('detect');
+      return { ok: true as const, candidate: recoveryCandidate };
+    }),
+  };
+  const createController = vi.fn(
+    (api: ProjectSessionApi, projectStore: EditorProjectStore) =>
+      new ProjectSessionController(api, projectStore),
+  );
   const session = new EditorShellSession({
     store,
-    sessionApi: {
-      open: vi.fn(async () => {
-        order.push('open');
-        return {
-          ok: true as const,
-          value: {
-            projectRoot: PROJECT_ROOT,
-            projectFilePath: `${PROJECT_ROOT}\\project.json`,
-            project: PROJECT,
-            migrated: false,
-            sourceVersion: 1 as const,
-          },
-        };
-      }),
-      openRecent: vi.fn(),
-      track: vi.fn(async () => {
-        order.push('track');
-        return { ok: true as const };
-      }),
-      stop: vi.fn(async () => ({ ok: true as const })),
-      detect: vi.fn(async () => {
-        order.push('detect');
-        return { ok: true as const, candidate: recoveryCandidate };
-      }),
-    },
+    sessionApi,
     autosaveApi: {
       update: vi.fn(async () => ({ ok: true as const })),
-      onError: vi.fn(() => vi.fn()),
+      onError,
     },
     recoveryApi: {
       restore: vi.fn(async () => ({
@@ -83,8 +108,18 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
         },
       })),
     },
+    createController,
   });
-  return { session, store, order };
+  return {
+    session,
+    store,
+    order,
+    stop,
+    onError,
+    createController,
+    getActiveSubscriptions: () => activeSubscriptions,
+    getMaximumActiveSubscriptions: () => maximumActiveSubscriptions,
+  };
 }
 
 describe('EditorShell project session integration', () => {
@@ -159,5 +194,30 @@ describe('EditorShell project session integration', () => {
     expect(markup).toContain('class="recovery-open-row"');
     expect(markup).toContain('class="recovery-status-row"');
     expect(markup).toContain('class="editor-save-button"');
+  });
+
+  it('stops the tracked project after the final StrictMode cleanup', async () => {
+    const harness = createSession(null);
+    await harness.session.switchProject(PROJECT_ROOT);
+
+    harness.session.activateAutosaveErrors(vi.fn());
+    harness.session.deactivateAutosaveErrors();
+    const simulatedCleanup =
+      harness.session.scheduleControllerDisposal();
+    harness.session.activateAutosaveErrors(vi.fn());
+    await simulatedCleanup;
+
+    expect(harness.stop).not.toHaveBeenCalled();
+    expect(harness.getActiveSubscriptions()).toBe(1);
+    expect(harness.getMaximumActiveSubscriptions()).toBe(1);
+
+    harness.session.deactivateAutosaveErrors();
+    await harness.session.scheduleControllerDisposal();
+
+    expect(harness.onError).toHaveBeenCalledTimes(2);
+    expect(harness.getActiveSubscriptions()).toBe(0);
+    expect(harness.stop).toHaveBeenCalledTimes(1);
+    expect(harness.stop).toHaveBeenCalledWith(PROJECT_ROOT);
+    expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 });

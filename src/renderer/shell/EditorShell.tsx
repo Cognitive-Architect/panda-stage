@@ -88,7 +88,8 @@ export class EditorShellSession {
   private readonly projectSaveApi: ProjectSaveApi;
   private autosaveErrorUnsubscribe: (() => void) | null = null;
   private lastAutosaveSnapshot: EditorProjectSnapshot | null = null;
-  private disposed = false;
+  private lifecycleGeneration = 0;
+  private controllerDisposePromise: Promise<void> | null = null;
 
   constructor({
     store,
@@ -110,11 +111,34 @@ export class EditorShellSession {
     return this.controller.getSnapshot();
   }
 
-  subscribeToAutosaveErrors(
+  activateAutosaveErrors(
     onError: (error: RecoveryError) => void,
   ): void {
     if (this.autosaveErrorUnsubscribe) return;
+    if (this.controllerDisposePromise) {
+      throw new Error('Cannot activate a disposed editor shell session.');
+    }
+    this.lifecycleGeneration += 1;
     this.autosaveErrorUnsubscribe = this.autosaveApi.onError(onError);
+  }
+
+  deactivateAutosaveErrors(): void {
+    this.autosaveErrorUnsubscribe?.();
+    this.autosaveErrorUnsubscribe = null;
+  }
+
+  async scheduleControllerDisposal(): Promise<void> {
+    const cleanupGeneration = this.lifecycleGeneration;
+    // StrictMode immediately runs the replacement setup before this resumes.
+    await Promise.resolve();
+    if (
+      cleanupGeneration !== this.lifecycleGeneration ||
+      this.autosaveErrorUnsubscribe
+    ) {
+      return;
+    }
+    this.controllerDisposePromise ??= this.controller.dispose();
+    await this.controllerDisposePromise;
   }
 
   async syncAutosave(
@@ -173,14 +197,6 @@ export class EditorShellSession {
   saveCurrentProject(): Promise<EditorProjectSaveResult> {
     return saveCurrentProject(this.projectSaveApi, this.store);
   }
-
-  async dispose(): Promise<void> {
-    if (this.disposed) return;
-    this.disposed = true;
-    this.autosaveErrorUnsubscribe?.();
-    this.autosaveErrorUnsubscribe = null;
-    await this.controller.dispose();
-  }
 }
 
 function createBrowserSession(): EditorShellSession {
@@ -230,9 +246,10 @@ export function EditorShell({
   const [recentRefreshToken, setRecentRefreshToken] = useState(0);
 
   useEffect(() => {
-    session.subscribeToAutosaveErrors((error) => setStatus(error.message));
+    session.activateAutosaveErrors((error) => setStatus(error.message));
     return () => {
-      void session.dispose();
+      session.deactivateAutosaveErrors();
+      void session.scheduleControllerDisposal();
     };
   }, [session]);
 

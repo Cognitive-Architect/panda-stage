@@ -30,8 +30,24 @@ function createHarness() {
   };
   const createController = vi.fn(() => controller);
   const update = vi.fn(async () => ({ ok: true as const }));
-  const unsubscribe = vi.fn();
-  const onError = vi.fn(() => unsubscribe);
+  const unsubscribes: ReturnType<typeof vi.fn>[] = [];
+  let activeSubscriptions = 0;
+  let maximumActiveSubscriptions = 0;
+  const onError = vi.fn(() => {
+    activeSubscriptions += 1;
+    maximumActiveSubscriptions = Math.max(
+      maximumActiveSubscriptions,
+      activeSubscriptions,
+    );
+    let active = true;
+    const unsubscribe = vi.fn(() => {
+      if (!active) return;
+      active = false;
+      activeSubscriptions -= 1;
+    });
+    unsubscribes.push(unsubscribe);
+    return unsubscribe;
+  });
   const session = new EditorShellSession({
     store,
     sessionApi: {
@@ -58,7 +74,9 @@ function createHarness() {
     createController,
     update,
     onError,
-    unsubscribe,
+    unsubscribes,
+    getActiveSubscriptions: () => activeSubscriptions,
+    getMaximumActiveSubscriptions: () => maximumActiveSubscriptions,
   };
 }
 
@@ -88,8 +106,8 @@ describe('EditorShell ProjectSessionController ownership', () => {
     );
     const snapshot = harness.store.getSnapshot();
 
-    harness.session.subscribeToAutosaveErrors(vi.fn());
-    harness.session.subscribeToAutosaveErrors(vi.fn());
+    harness.session.activateAutosaveErrors(vi.fn());
+    harness.session.activateAutosaveErrors(vi.fn());
     await harness.session.syncAutosave(snapshot);
     await harness.session.syncAutosave(snapshot);
 
@@ -97,14 +115,32 @@ describe('EditorShell ProjectSessionController ownership', () => {
     expect(harness.update).toHaveBeenCalledTimes(1);
   });
 
-  it('unsubscribes and disposes exactly once on final unmount', async () => {
+  it('survives StrictMode setup -> cleanup -> setup -> final cleanup', async () => {
     const harness = createHarness();
-    harness.session.subscribeToAutosaveErrors(vi.fn());
 
-    await harness.session.dispose();
-    await harness.session.dispose();
+    harness.session.activateAutosaveErrors(vi.fn());
+    expect(harness.onError).toHaveBeenCalledTimes(1);
+    expect(harness.getActiveSubscriptions()).toBe(1);
 
-    expect(harness.unsubscribe).toHaveBeenCalledTimes(1);
+    harness.session.deactivateAutosaveErrors();
+    const simulatedCleanup =
+      harness.session.scheduleControllerDisposal();
+    expect(harness.unsubscribes[0]).toHaveBeenCalledTimes(1);
+    expect(harness.getActiveSubscriptions()).toBe(0);
+
+    harness.session.activateAutosaveErrors(vi.fn());
+    await simulatedCleanup;
+    expect(harness.onError).toHaveBeenCalledTimes(2);
+    expect(harness.getActiveSubscriptions()).toBe(1);
+    expect(harness.getMaximumActiveSubscriptions()).toBe(1);
+    expect(harness.controller.dispose).not.toHaveBeenCalled();
+
+    harness.session.deactivateAutosaveErrors();
+    await harness.session.scheduleControllerDisposal();
+
+    expect(harness.unsubscribes[1]).toHaveBeenCalledTimes(1);
+    expect(harness.getActiveSubscriptions()).toBe(0);
     expect(harness.controller.dispose).toHaveBeenCalledTimes(1);
+    expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 });
