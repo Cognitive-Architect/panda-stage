@@ -33,6 +33,71 @@ const assetIds = {
 
 app.on('window-all-closed', () => {});
 
+async function scrollTargetIntoActiveViewport(
+  window,
+  selector,
+  topOffset = 16,
+) {
+  return window.webContents.executeJavaScript(`(async () => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    if (!(target instanceof HTMLElement)) {
+      throw new Error('Scroll target was not found: ${selector}');
+    }
+    const legacyViewport = document.querySelector(
+      '[data-testid="legacy-workspace-scroll"]'
+    );
+    if (legacyViewport instanceof HTMLElement) {
+      const beforeTarget = target.getBoundingClientRect();
+      const beforeViewport = legacyViewport.getBoundingClientRect();
+      legacyViewport.scrollTop +=
+        beforeTarget.top - beforeViewport.top - ${topOffset};
+    } else {
+      window.scrollTo(
+        0,
+        target.getBoundingClientRect().top + window.scrollY - ${topOffset}
+      );
+    }
+    await document.fonts.ready;
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    const targetBounds = target.getBoundingClientRect();
+    const viewportBounds =
+      legacyViewport instanceof HTMLElement
+        ? legacyViewport.getBoundingClientRect()
+        : {
+            top: 0,
+            right: innerWidth,
+            bottom: innerHeight,
+            left: 0
+          };
+    const visible =
+      targetBounds.bottom > viewportBounds.top &&
+      targetBounds.top < viewportBounds.bottom &&
+      targetBounds.right > viewportBounds.left &&
+      targetBounds.left < viewportBounds.right;
+    if (!visible) {
+      throw new Error(
+        'Scroll target did not enter the active viewport: ${selector}'
+      );
+    }
+    const expectedTop = viewportBounds.top + ${topOffset};
+    if (Math.abs(targetBounds.top - expectedTop) > 4) {
+      throw new Error(
+        'Scroll target did not reach the requested viewport position: ${selector}'
+      );
+    }
+    return {
+      mode:
+        legacyViewport instanceof HTMLElement
+          ? 'legacy-workspace'
+          : 'window',
+      targetTop: targetBounds.top,
+      viewportTop: viewportBounds.top
+    };
+  })()`);
+}
+
 async function captureSection(window, selector) {
   const state = await window.webContents.executeJavaScript(`(async () => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -450,18 +515,11 @@ async function verifyDay19() {
       ),
     );
 
-    await window.webContents.executeJavaScript(`(async () => {
-      const manager = document.querySelector('.character-manager');
-      window.scrollTo(
-        0,
-        manager.getBoundingClientRect().top + window.scrollY - 16
-      );
-      await document.fonts.ready;
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      if (Math.abs(manager.getBoundingClientRect().top - 16) > 4) {
-        throw new Error('Character manager did not reach the screenshot top.');
-      }
-    })()`);
+    await scrollTargetIntoActiveViewport(
+      window,
+      '.character-manager',
+      16,
+    );
     const configuredScreenshot =
       await captureSection(window, '.character-manager');
     const configuredUi =
@@ -526,18 +584,11 @@ async function verifyDay19() {
         'Saved character did not reopen completely.',
       ),
     );
-    await window.webContents.executeJavaScript(`(async () => {
-      const manager = document.querySelector('.character-manager');
-      window.scrollTo(
-        0,
-        manager.getBoundingClientRect().top + window.scrollY - 16
-      );
-      await document.fonts.ready;
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      if (Math.abs(manager.getBoundingClientRect().top - 16) > 4) {
-        throw new Error('Character manager did not reach the screenshot top.');
-      }
-    })()`);
+    await scrollTargetIntoActiveViewport(
+      window,
+      '.character-manager',
+      16,
+    );
     const reopenedScreenshot =
       await captureSection(window, '.character-manager');
     const reopenedUi =

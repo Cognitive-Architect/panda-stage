@@ -77,16 +77,67 @@ async function openProject(window, root, expectedName) {
   );
 }
 
-async function scrollCanvasIntoView(window) {
-  await window.webContents.executeJavaScript(`(async () => {
-    const canvas = document.querySelector('.project-canvas');
-    window.scrollTo(
-      0,
-      canvas.getBoundingClientRect().top + window.scrollY - 12
+async function scrollTargetIntoActiveViewport(
+  window,
+  selector,
+  topOffset,
+) {
+  return window.webContents.executeJavaScript(`(async () => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    if (!(target instanceof HTMLElement)) {
+      throw new Error('Scroll target was not found: ${selector}');
+    }
+    const legacyViewport = document.querySelector(
+      '[data-testid="legacy-workspace-scroll"]'
     );
+    if (legacyViewport instanceof HTMLElement) {
+      const beforeTarget = target.getBoundingClientRect();
+      const beforeViewport = legacyViewport.getBoundingClientRect();
+      legacyViewport.scrollTop +=
+        beforeTarget.top - beforeViewport.top - ${topOffset};
+    } else {
+      window.scrollTo(
+        0,
+        target.getBoundingClientRect().top + window.scrollY - ${topOffset}
+      );
+    }
     await document.fonts.ready;
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    const targetBounds = target.getBoundingClientRect();
+    const viewportBounds =
+      legacyViewport instanceof HTMLElement
+        ? legacyViewport.getBoundingClientRect()
+        : {
+            top: 0,
+            right: innerWidth,
+            bottom: innerHeight,
+            left: 0
+          };
+    const visible =
+      targetBounds.bottom > viewportBounds.top &&
+      targetBounds.top < viewportBounds.bottom &&
+      targetBounds.right > viewportBounds.left &&
+      targetBounds.left < viewportBounds.right;
+    if (!visible) {
+      throw new Error(
+        'Scroll target did not enter the active viewport: ${selector}'
+      );
+    }
+    return {
+      mode:
+        legacyViewport instanceof HTMLElement
+          ? 'legacy-workspace'
+          : 'window',
+      targetTop: targetBounds.top,
+      viewportTop: viewportBounds.top
+    };
   })()`);
+}
+
+async function scrollCanvasIntoView(window) {
+  await scrollTargetIntoActiveViewport(window, '.project-canvas', 12);
 }
 
 async function captureCanvasSection(window) {
