@@ -11,10 +11,6 @@ import type {
   RecoveryIgnoreResponse,
   RecoveryRestoreResponse,
 } from '../../shared/recovery-api';
-import { AssetLibrary } from '../features/assets/AssetLibrary';
-import { CanvasStage } from '../features/canvas/CanvasStage';
-import { CharacterManager } from '../features/characters/CharacterManager';
-import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import {
   ProjectSessionController,
   type ProjectSessionApi,
@@ -25,20 +21,21 @@ import {
   type EditorProjectSaveResult,
   type ProjectSaveApi,
 } from '../features/recovery/saveCurrentProject';
-import { ShotManager } from '../features/shots/ShotManager';
 import {
   EditorProjectStore,
   editorProjectStore,
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
 import { EditorTopBar } from './EditorTopBar';
+import { LegacyWorkspace } from './LegacyWorkspace';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { StartScreen } from './StartScreen';
+import { useDebugFlag } from './useDebugFlag';
 
 export type EditorShellState = 'no-project' | 'editor';
 export type EditorShellSessionRegion =
   | 'start-screen'
-  | 'editor-top-bar';
+  | 'editor-layout';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
@@ -49,7 +46,7 @@ export function getEditorShellState(
 export function getEditorShellSessionRegion(
   state: EditorShellState,
 ): EditorShellSessionRegion {
-  return state === 'no-project' ? 'start-screen' : 'editor-top-bar';
+  return state === 'no-project' ? 'start-screen' : 'editor-layout';
 }
 
 export function getEditorShellRecoveryCandidate(
@@ -248,30 +245,13 @@ function createBrowserSession(): EditorShellSession {
 }
 
 export interface EditorShellProps {
-  beforeRecovery: ReactNode;
-  afterRecovery: ReactNode;
-}
-
-// Stage 1A-2 replaces only the session/recovery region. The remaining legacy
-// modules stay mounted in either branch until 1A-5 introduces LegacyWorkspace.
-function CurrentNoProjectLegacySurface({
-  projectSnapshot,
-}: {
-  projectSnapshot: EditorProjectSnapshot | null;
-}): React.JSX.Element {
-  return (
-    <>
-      <AssetLibrary snapshot={projectSnapshot} />
-      <CharacterManager snapshot={projectSnapshot} />
-      <ShotManager snapshot={projectSnapshot} />
-      <CanvasStage />
-    </>
-  );
+  debugSurface?: ReactNode;
+  gatePreview?: ReactNode;
 }
 
 export function EditorShell({
-  beforeRecovery,
-  afterRecovery,
+  debugSurface,
+  gatePreview,
 }: EditorShellProps): React.JSX.Element {
   const projectSnapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -293,8 +273,7 @@ export function EditorShell({
     shellState,
     sessionSnapshot,
   );
-  const gateA =
-    new URLSearchParams(window.location.search).get('gateA') === '1';
+  const { debug, gateA } = useDebugFlag();
 
   useEffect(() => {
     session.activateAutosaveErrors((error) => setStatus(error.message));
@@ -418,12 +397,13 @@ export function EditorShell({
 
   return (
     <main
-      className="app-shell"
+      className="app-shell editor-shell"
+      data-debug={debug ? 'enabled' : 'disabled'}
       data-editor-shell-state={shellState}
+      data-gate-a={gateA ? 'enabled' : 'disabled'}
     >
-      {beforeRecovery}
-      {gateA ? null : sessionRegion === 'start-screen' ? (
-        <>
+      {sessionRegion === 'start-screen' ? (
+        <div className="start-screen" data-testid="start-screen">
           <StartScreen
             busy={busy}
             onOpenProject={openProject}
@@ -433,12 +413,9 @@ export function EditorShell({
             recentRefreshToken={recentRefreshToken}
             status={status}
           />
-          <CurrentNoProjectLegacySurface
-            projectSnapshot={projectSnapshot}
-          />
-        </>
+        </div>
       ) : projectSnapshot ? (
-        <>
+        <div className="editor-layout" data-testid="editor-layout">
           <EditorTopBar
             busy={busy}
             onOpenProject={openProject}
@@ -458,14 +435,49 @@ export function EditorShell({
             }
             status={status}
           />
-          <ProjectRecoveryPanel
-            onOpenRecentProject={switchToRecentProject}
-            projectSnapshot={projectSnapshot}
-            recentRefreshToken={recentRefreshToken}
-          />
-        </>
+          <div className="editor-body" data-testid="editor-body">
+            <aside
+              className="workspace-placeholder left-workspace-placeholder"
+              data-testid="left-workspace-placeholder"
+            >
+              <strong>左侧工作区</strong>
+              <span>镜头、素材与角色将在后续阶段迁入</span>
+            </aside>
+            <LegacyWorkspace
+              onOpenRecentProject={switchToRecentProject}
+              projectSnapshot={projectSnapshot}
+              recentRefreshToken={recentRefreshToken}
+            />
+            <aside
+              className="workspace-placeholder right-inspector-placeholder"
+              data-testid="right-inspector-placeholder"
+            >
+              <strong>右侧检查器</strong>
+              <span>图层属性与动作预设将在后续阶段迁入</span>
+            </aside>
+          </div>
+          <footer
+            className="workspace-placeholder bottom-workspace-placeholder"
+            data-testid="bottom-workspace-placeholder"
+          >
+            <strong>底部工作区</strong>
+            <span>History 正式迁移与时间轴将在后续阶段进行</span>
+          </footer>
+        </div>
       ) : null}
-      {afterRecovery}
+      {gateA ? (
+        <div
+          className="gate-preview-overlay"
+          data-testid="gate-preview-overlay"
+        >
+          {gatePreview}
+        </div>
+      ) : null}
+      {debug ? (
+        <aside className="debug-probe-surface" data-testid="debug-probes">
+          {debugSurface}
+        </aside>
+      ) : null}
     </main>
   );
 }

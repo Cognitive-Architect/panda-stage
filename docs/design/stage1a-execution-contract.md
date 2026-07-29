@@ -8,7 +8,7 @@
 >
 > 适用范围：Issue #55 的 Stage 1A
 >
-> 状态：1A-1～1A-4 已完成；1A-5 尚未开始
+> 状态：1A-1～1A-5 已完成；Stage 1A 待人工验收
 
 ## 0. 冻结结论
 
@@ -26,7 +26,8 @@ Issue #60 的复核又发现两个 HIGH 阻塞；Issue #61 在合同和 Gate 导
 1A-2 implementation = completed
 1A-3 implementation = completed
 1A-4 implementation = completed
-1A-5 implementation = not started
+1A-5 implementation = completed
+Stage 1A implementation = completed / pending human acceptance
 
 M3 = FAIL
 PR #53 = Draft
@@ -430,7 +431,7 @@ Banner 只在 editor candidate 非空时出现，只拥有 prompt、restore、ig
 TopBar 在 editor 态永久拥有 ProjectSwitchEntry、clean/dirty、save status；
 candidate null 不移除切换入口；Day 20/24 同窗口切换保持可用。
 
-### 1A-5：Grid + LegacyWorkspace — not started
+### 1A-5：Grid + LegacyWorkspace — completed
 
 根 overflow hidden；唯一 LegacyWorkspace 内滚动并声明
 `data-testid="legacy-workspace-scroll"`；Day 19/21/22 使用已迁移的双路径导航。
@@ -450,5 +451,5 @@ candidate null 不移除切换入口；Day 20/24 同窗口切换保持可用。
 
 ## 10. 当前唯一下一步
 
-Issue #69 完成后停止。1A-5、Stage 1B～4 与 Day 26 仍未开始；
-必须取得新的明确授权后才能进入下一切片。
+Stage 1A 实现已完成，等待真实 Windows Electron 人工验收与主理人后续授权。
+Stage 1B～4 与 Day 26 仍未开始；M3 仍为 FAIL。

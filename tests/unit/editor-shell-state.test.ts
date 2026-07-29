@@ -6,6 +6,7 @@ import {
   getEditorShellState,
   getEditorShellSessionRegion,
 } from '../../src/renderer/shell/EditorShell';
+import { parseEditorShellFlags } from '../../src/renderer/shell/useDebugFlag';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -28,8 +29,31 @@ describe('EditorShell state boundary', () => {
 
     expect(state).toBe('editor');
     expect(getEditorShellSessionRegion(state)).toBe(
-      'editor-top-bar',
+      'editor-layout',
     );
+  });
+
+  it('keeps debug and gateA orthogonal to the no-project/editor state', () => {
+    expect(parseEditorShellFlags('')).toEqual({
+      debug: false,
+      gateA: false,
+    });
+    expect(parseEditorShellFlags('?debug=1')).toEqual({
+      debug: true,
+      gateA: false,
+    });
+    expect(parseEditorShellFlags('?gateA=1')).toEqual({
+      debug: false,
+      gateA: true,
+    });
+    expect(parseEditorShellFlags('?debug=1&gateA=1')).toEqual({
+      debug: true,
+      gateA: true,
+    });
+    expect(getEditorShellSessionRegion('no-project')).toBe(
+      'start-screen',
+    );
+    expect(getEditorShellSessionRegion('editor')).toBe('editor-layout');
   });
 
   it('keeps the no-project entry as a disabled placeholder without create APIs', () => {
@@ -107,7 +131,7 @@ describe('EditorShell state boundary', () => {
       'start-screen',
     );
     expect(getEditorShellSessionRegion('editor')).toBe(
-      'editor-top-bar',
+      'editor-layout',
     );
 
     const shell = readFileSync(
@@ -116,12 +140,26 @@ describe('EditorShell state boundary', () => {
     );
     expect(shell.indexOf('<StartScreen')).toBeGreaterThan(-1);
     expect(shell.indexOf('<EditorTopBar')).toBeGreaterThan(-1);
+    expect(shell.indexOf('<LegacyWorkspace')).toBeGreaterThan(-1);
     expect(shell).toContain(
       "sessionRegion === 'start-screen'",
     );
     expect(shell).toMatch(
       /<EditorTopBar[\s\S]*?recoveryBanner=\{[\s\S]*?recoveryCandidate/u,
     );
+  });
+
+  it('selects only StartScreen for no-project and one fixed layout for editor', () => {
+    const shell = readFileSync(
+      'src/renderer/shell/EditorShell.tsx',
+      'utf8',
+    );
+
+    expect(shell).not.toContain('CurrentNoProjectLegacySurface');
+    expect(shell).toContain('data-testid="start-screen"');
+    expect(shell).toContain('data-testid="editor-layout"');
+    expect(shell).toContain('data-testid="editor-body"');
+    expect(shell.match(/<LegacyWorkspace/gu)).toHaveLength(1);
   });
 
   it('keeps project state, controller, preview, and create behavior out of EditorTopBar', () => {

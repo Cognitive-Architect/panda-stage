@@ -13,9 +13,12 @@
 html,
 body,
 #root {
+  width: 100%;
+  height: 100%;
   min-width: 320px;
-  min-height: 100%;
+  min-height: 0;
   margin: 0;
+  overflow: hidden;
 }
 
 button {
@@ -43,11 +46,153 @@ button:disabled {
 }
 
 .app-shell {
-  min-height: 100vh;
-  padding: 20px clamp(16px, 3vw, 38px) 34px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   background:
     radial-gradient(circle at 82% 0%, rgb(70 139 91 / 22%), transparent 36%),
     linear-gradient(155deg, #141c18, #080c0a 72%);
+}
+
+.editor-shell {
+  position: relative;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.start-screen {
+  display: grid;
+  width: min(100%, 1180px);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px;
+  margin: 0 auto;
+  overflow-y: auto;
+  align-content: center;
+  gap: 18px;
+}
+
+.start-screen > .recovery-panel,
+.start-screen > .recent-projects-panel {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.editor-layout {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.editor-layout > .recovery-panel {
+  width: 100%;
+  max-width: none;
+  padding: 12px;
+  margin: 0;
+  gap: 8px;
+}
+
+.editor-body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-columns:
+    minmax(140px, 160px)
+    minmax(0, 1fr)
+    minmax(160px, 180px);
+  gap: 10px;
+}
+
+.legacy-workspace {
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 14px;
+  background: rgb(8 14 10 / 74%);
+  scrollbar-color: #3f6d4e #0a100c;
+}
+
+.legacy-workspace > :last-child {
+  margin-bottom: 0;
+}
+
+.legacy-workspace .recent-projects-panel,
+.legacy-workspace .asset-library,
+.legacy-workspace .character-manager,
+.legacy-workspace .shot-manager,
+.legacy-workspace .project-canvas {
+  max-width: none;
+}
+
+.workspace-placeholder {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  border: 1px dashed rgb(127 199 148 / 30%);
+  border-radius: 14px;
+  color: #91a299;
+  background: rgb(18 31 23 / 74%);
+  align-content: start;
+  gap: 6px;
+}
+
+.workspace-placeholder strong {
+  color: #d7ebdc;
+  font-size: 13px;
+}
+
+.workspace-placeholder span {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.bottom-workspace-placeholder {
+  min-height: 52px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  align-content: center;
+  gap: 12px;
+}
+
+.gate-preview-overlay,
+.debug-probe-surface {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #0b100e;
+}
+
+.gate-preview-overlay {
+  display: grid;
+  padding: 20px;
+  place-items: center;
+}
+
+.gate-preview-overlay > .preview-panel {
+  width: min(100%, 1180px);
+}
+
+.debug-probe-surface {
+  padding: 20px clamp(16px, 3vw, 38px) 34px;
 }
 
 .app-header,

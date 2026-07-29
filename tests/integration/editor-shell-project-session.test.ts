@@ -229,7 +229,7 @@ describe('EditorShell project session integration', () => {
       getEditorShellSessionRegion(
         getEditorShellState(harness.store.getSnapshot()),
       ),
-    ).toBe('editor-top-bar');
+    ).toBe('editor-layout');
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 

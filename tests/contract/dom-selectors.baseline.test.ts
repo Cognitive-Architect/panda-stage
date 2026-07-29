@@ -18,8 +18,8 @@
  * Guardrail rules honoured:
  *   - The original Phase 0A selector assertions remain unchanged.
  *   - Stage 1A assertions are added only as their owning slice is implemented.
- *   - Does NOT require later-slice selectors such as EditorTopBar or
- *     LegacyWorkspace.
+ *   - Locks the final Stage 1A Shell/Grid/LegacyWorkspace selectors without
+ *     changing the older Day 13–24 business selector assertions.
  *   - Runtime DOM counts remain the responsibility of Electron validation.
  */
 import { readFileSync } from 'node:fs';
@@ -44,11 +44,16 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const recentProjects = readSource(
       'renderer/features/welcome/RecentProjectsPanel.tsx',
     );
+    const legacyWorkspace = readSource(
+      'renderer/shell/LegacyWorkspace.tsx',
+    );
 
     expect(shell).toContain("sessionRegion === 'start-screen'");
     expect(shell).toContain('<StartScreen');
     expect(shell).toContain('<EditorTopBar');
-    expect(shell).toContain('<ProjectRecoveryPanel');
+    expect(shell).toContain('<LegacyWorkspace');
+    expect(shell).not.toContain('CurrentNoProjectLegacySurface');
+    expect(legacyWorkspace).toContain('<ProjectRecoveryPanel');
     expect(startScreen).toContain('className="recovery-panel"');
     expect(startScreen).toContain('id="recovery-heading"');
     expect(startScreen).toContain('className="clean-state"');
@@ -66,6 +71,41 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       (startScreen + newProjectEntry)
         .match(/className="recovery-open-row"/gu),
     ).toHaveLength(1);
+  });
+
+  it('locks the final Stage 1A Grid and nested-scroll selector owners', () => {
+    const shell = readSource('renderer/shell/EditorShell.tsx');
+    const legacyWorkspace = readSource(
+      'renderer/shell/LegacyWorkspace.tsx',
+    );
+    const app = readSource('renderer/App.tsx');
+    const styles = readSource('renderer/styles.css');
+
+    expect(app.match(/<EditorShell/gu)).toHaveLength(1);
+    expect(app).not.toContain('beforeRecovery=');
+    expect(app).not.toContain('afterRecovery=');
+    expect(shell).toContain('data-testid="editor-layout"');
+    expect(shell).toContain('data-testid="editor-body"');
+    expect(shell).toContain(
+      'data-testid="left-workspace-placeholder"',
+    );
+    expect(shell).toContain(
+      'data-testid="right-inspector-placeholder"',
+    );
+    expect(shell).toContain(
+      'data-testid="bottom-workspace-placeholder"',
+    );
+    expect(shell.match(/<LegacyWorkspace/gu)).toHaveLength(1);
+    expect(legacyWorkspace).toContain('className="legacy-workspace"');
+    expect(legacyWorkspace).toContain(
+      'data-testid="legacy-workspace-scroll"',
+    );
+    expect(styles).toMatch(
+      /\.legacy-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /html,[\s\S]*?#root\s*\{[\s\S]*?overflow:\s*hidden;/u,
+    );
   });
 
   it('locks editor recovery selectors into EditorTopBar only', () => {

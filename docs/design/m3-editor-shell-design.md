@@ -4,7 +4,7 @@
 >
 > 实施权威：`docs/design/stage1a-execution-contract.md`
 >
-> 状态：1A-1～1A-4 已完成；1A-5 尚未开始
+> 状态：1A-1～1A-5 已完成；Stage 1A 待人工验收
 
 ## 1. 目标与边界
 
@@ -172,7 +172,8 @@ nested-scroll 合同。完整 DoD、回滚步骤和停止条件以执行合同�
 1A-2 no-project entry implementation        = completed
 1A-3 candidate banner implementation        = completed
 1A-4 editor switch/topbar implementation    = completed
-1A-5 nested-scroll/grid implementation       = not started
+1A-5 nested-scroll/grid implementation       = completed
+Stage 1A implementation                      = completed / pending human acceptance
 ```
 
 M3 仍为 FAIL；以上状态不授权后续切片。
@@ -198,4 +199,5 @@ scope/DoD/rollback 与 document regression guard 可从当前 HEAD 直接读取�
 
 ## 11. 下一步
 
-Issue #69 完成后停止；获得新的明确授权后才可开始 1A-5。
+Stage 1A 实现已完成，等待真实 Windows Electron 人工验收与主理人后续授权。
+Stage 1B～4 与 Day 26 仍未开始；M3 仍为 FAIL。
