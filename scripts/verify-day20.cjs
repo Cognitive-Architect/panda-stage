@@ -288,8 +288,8 @@ async function verifyDay20() {
     window.setSize(1440, 1_050);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager')",
-        'Shot manager did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await openProject(window);
@@ -544,8 +544,8 @@ async function verifyDay20() {
     await window.webContents.reload();
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager')",
-        'Shot manager did not render after reload.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render after reload.',
       ),
     );
     await openProject(window);

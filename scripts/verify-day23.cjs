@@ -402,8 +402,8 @@ async function verifyDay23() {
     window.setSize(1440, 1000);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Project canvas did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await openProject(window);
@@ -635,8 +635,8 @@ async function verifyDay23() {
     await window.webContents.reload();
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Canvas did not render after reload.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render after reload.',
       ),
     );
     await openProject(window);

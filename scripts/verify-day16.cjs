@@ -111,9 +111,11 @@ async function verifyDay16() {
       new Promise((resolve, reject) => {
         const deadline = Date.now() + 10000;
         const poll = () => {
-          if (document.querySelector('.asset-import-panel')) return resolve();
+          if (document.querySelector('.recovery-open-row input')) {
+            return resolve();
+          }
           if (Date.now() >= deadline) {
-            return reject(new Error('Asset import panel did not render.'));
+            return reject(new Error('StartScreen did not render.'));
           }
           setTimeout(poll, 25);
         };

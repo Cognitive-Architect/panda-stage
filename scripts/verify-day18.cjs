@@ -163,8 +163,8 @@ async function verifyDay18() {
     window.setSize(1440, 1000);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.asset-library')",
-        'Asset library did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await window.webContents.executeJavaScript(`

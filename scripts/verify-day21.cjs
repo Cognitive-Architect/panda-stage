@@ -328,8 +328,8 @@ async function verifyDay21() {
     window.setSize(1440, 1000);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Project canvas did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await openProject(window, projectRoot, 'Opening');
@@ -543,8 +543,8 @@ async function verifyDay21() {
     await window.webContents.reload();
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Project canvas did not render after reload.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render after reload.',
       ),
     );
     await openProject(window, projectRoot, 'Opening');
@@ -609,8 +609,8 @@ async function verifyDay21() {
       );
       await dpiWindow.webContents.executeJavaScript(
         waitFor(
-          "document.querySelector('.project-canvas')",
-          'High-DPI project canvas did not render.',
+          "document.querySelector('.recovery-open-row input')",
+          'High-DPI StartScreen did not render.',
         ),
       );
       await openProject(dpiWindow, projectRoot, 'Opening');
