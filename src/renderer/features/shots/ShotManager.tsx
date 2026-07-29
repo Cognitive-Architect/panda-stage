@@ -24,7 +24,7 @@ export function ShotManager({
     shotStore.getCurrentShotId,
   );
   const [status, setStatus] = useState(
-    '拖拽镜头卡片可写回项目顺序；所有修改会进入自动保存队列。',
+    '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
   );
   const [busy, setBusy] = useState(false);
   const project = snapshot?.project ?? null;
@@ -49,7 +49,7 @@ export function ShotManager({
       setStatus(
         unchanged && next === current
           ? unchanged
-          : `${success} 修改已进入自动保存队列。`,
+          : `${success} 修改已应用，项目尚未保存。`,
       );
       return next;
     } catch (error) {
@@ -91,13 +91,13 @@ export function ShotManager({
     <section className="shot-manager" aria-labelledby="shot-manager-heading">
       <div className="shot-manager-heading">
         <div>
-          <p className="eyebrow">Day 20 shot management · M2 gate</p>
+          <p className="eyebrow">镜头编排</p>
           <h2 id="shot-manager-heading">镜头管理</h2>
         </div>
         <div>
           <span data-project-duration-ms={project ? projectDurationMs(project) : 0}>
             {project?.shots.length ?? 0} 个镜头 · 总时长{' '}
-            {project ? projectDurationMs(project) : 0}ms · revision{' '}
+            {project ? projectDurationMs(project) : 0}ms · 修订{' '}
             {snapshot?.revision ?? 0}
           </span>
           <button
@@ -105,7 +105,7 @@ export function ShotManager({
             onClick={() => void save()}
             type="button"
           >
-            {busy ? '正在保存…' : '保存镜头'}
+            {busy ? '正在保存…' : '保存整个项目'}
           </button>
         </div>
       </div>
@@ -157,7 +157,7 @@ export function ShotManager({
               `镜头“${selectedShot.name}”已移除。`,
             );
             if (next?.shots.length === 0) {
-              setStatus('最后一个镜头已移除；请创建新镜头继续。修改已进入自动保存队列。');
+              setStatus('最后一个镜头已移除；请创建新镜头继续。项目尚未保存。');
             }
           }}
           onRename={(name) => {

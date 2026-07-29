@@ -197,7 +197,7 @@ describe('EditorShell project session integration', () => {
 
     expect(markup.match(/class="recovery-open-row"/gu)).toHaveLength(1);
     expect(markup.match(/class="recent-projects-panel"/gu)).toHaveLength(1);
-    expect(markup).toContain('Open and check recovery');
+    expect(markup).toContain('打开项目');
     expect(markup).toContain('新建项目（后续阶段启用）');
     expect(markup).toMatch(
       /data-testid="new-project-button"[^>]*disabled/u,
@@ -288,8 +288,8 @@ describe('EditorShell project session integration', () => {
     expect(markup).toContain('data-testid="active-project-path"');
     expect(markup).toContain(PROJECT_ROOT);
     expect(markup).toContain(recoveryCandidate.recoveryFilePath);
-    expect(markup).toContain('Restore in memory');
-    expect(markup).toContain('Ignore and retain file');
+    expect(markup).toContain('恢复');
+    expect(markup).toContain('忽略');
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
@@ -421,10 +421,10 @@ describe('EditorShell project session integration', () => {
     const savedMarkup = renderEditorTopBar(
       restoreHarness.store.getSnapshot()!,
       restoreHarness.session.getSnapshot().recoveryCandidate,
-      'Recovered project saved explicitly; stale recovery was cleaned.',
+      '项目已保存。',
     );
     expect(savedMarkup).toContain(
-      'Recovered project saved explicitly; stale recovery was cleaned.',
+      '项目已保存。',
     );
     expect(savedMarkup).toMatch(
       /class="editor-save-button"[^>]*disabled/u,
@@ -465,6 +465,11 @@ describe('EditorShell project session integration', () => {
       /data-testid="product-preview-placeholder"[^>]*disabled/u,
     );
     expect(markup).not.toContain('class="recovery-prompt"');
+    expect(markup).not.toContain('Crash recovery');
+    expect(markup).not.toContain('recovered');
+    expect(markup).not.toContain('Recovered');
+    expect(markup).toContain('暂无未保存更改');
+    expect(markup).toContain('保存整个项目');
   });
 
   it('stops the tracked project after the final StrictMode cleanup', async () => {

@@ -114,8 +114,9 @@ async function openProject(window, projectRoot) {
   );
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('[data-testid="history-controls"]')`,
-      'History controls did not render.',
+      `document.querySelector('[data-testid="active-project-path"] code')` +
+        `?.textContent === ${JSON.stringify(projectRoot)}`,
+      `Project did not become active: ${projectRoot}`,
     ),
   );
 }
@@ -128,9 +129,21 @@ async function snapshot(window) {
     const history = document.querySelector(
       '[data-testid="history-controls"]'
     );
+    const activeProjectPath = document.querySelector(
+      '[data-testid="active-project-path"] code'
+    );
+    const projectName = document.querySelector(
+      '[data-testid="editor-top-bar"] .eyebrow'
+    );
+    const openCandidate = document.querySelector(
+      '[data-testid="editor-top-bar"] .recovery-open-row input'
+    );
     return {
       layers: JSON.parse(stage.dataset.layerJson),
       projectRevision: Number(stage.dataset.projectRevision),
+      activeProjectRoot: activeProjectPath?.textContent,
+      projectName: projectName?.textContent,
+      openCandidatePath: openCandidate?.value,
       selectedLayerId: stage.dataset.selectedLayerId,
       undoCount: Number(history.dataset.undoCount),
       redoCount: Number(history.dataset.redoCount),
@@ -776,6 +789,15 @@ async function verifyDay24() {
       ),
     );
     const switched = await snapshot(window);
+    await openProject(window, firstRoot);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="history-controls"]')` +
+          `.dataset.undoCount === '0'`,
+        'Returning to the first project did not clear history.',
+      ),
+    );
+    const returned = await snapshot(window);
     await window.webContents.executeJavaScript(`(async () => {
       document.querySelector(
         '[data-testid="history-controls"]'
@@ -934,6 +956,7 @@ async function verifyDay24() {
       },
       persistence: {
         saved: Boolean(saveRequest),
+        savedToActiveRoot: saveRequest?.projectRoot === firstRoot,
         historyExcluded:
           saveRequest &&
           !JSON.stringify(saveRequest.project).includes('history') &&
@@ -950,8 +973,20 @@ async function verifyDay24() {
           !JSON.stringify(saveRequest.project).includes('draftVersion'),
       },
       projectSwitch: {
-        undoCount: switched.undoCount,
-        redoCount: switched.redoCount,
+        second: {
+          activeProjectRoot: switched.activeProjectRoot,
+          openCandidatePath: switched.openCandidatePath,
+          projectName: switched.projectName,
+          undoCount: switched.undoCount,
+          redoCount: switched.redoCount,
+        },
+        returned: {
+          activeProjectRoot: returned.activeProjectRoot,
+          openCandidatePath: returned.openCandidatePath,
+          projectName: returned.projectName,
+          undoCount: returned.undoCount,
+          redoCount: returned.redoCount,
+        },
       },
     };
     if (
@@ -1081,10 +1116,19 @@ async function verifyDay24() {
       evidence.zOrder.redone.at(-1)?.id !== target.id ||
       evidence.zOrder.redone.at(-1)?.zIndex !== 2 ||
       !evidence.persistence.saved ||
+      !evidence.persistence.savedToActiveRoot ||
       !evidence.persistence.historyExcluded ||
       !evidence.persistence.uiStateExcluded ||
-      evidence.projectSwitch.undoCount !== 0 ||
-      evidence.projectSwitch.redoCount !== 0
+      evidence.projectSwitch.second.activeProjectRoot !== secondRoot ||
+      evidence.projectSwitch.second.openCandidatePath !== secondRoot ||
+      evidence.projectSwitch.second.projectName !== secondProject.name ||
+      evidence.projectSwitch.second.undoCount !== 0 ||
+      evidence.projectSwitch.second.redoCount !== 0 ||
+      evidence.projectSwitch.returned.activeProjectRoot !== firstRoot ||
+      evidence.projectSwitch.returned.openCandidatePath !== firstRoot ||
+      evidence.projectSwitch.returned.projectName !== firstProject.name ||
+      evidence.projectSwitch.returned.undoCount !== 0 ||
+      evidence.projectSwitch.returned.redoCount !== 0
     ) {
       throw new Error(
         `Day 24 verification failed: ${JSON.stringify(evidence)}`,

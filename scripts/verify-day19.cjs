@@ -202,7 +202,7 @@ async function openProject(window) {
     waitFor(
       "document.querySelector('.character-create-form') && " +
         "document.querySelector('.character-manager-heading span')" +
-        "?.textContent?.includes('revision 0')",
+        "?.textContent?.includes('修订 0')",
       'Day 19 project did not open.',
     ),
   );

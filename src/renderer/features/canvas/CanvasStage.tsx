@@ -210,10 +210,10 @@ export function CanvasStage(): React.JSX.Element {
     <section className="project-canvas" aria-labelledby="canvas-heading">
       <div className="project-canvas-heading">
         <div>
-          <p className="eyebrow">Day 21 canvas</p>
-          <h2 id="canvas-heading">Shot canvas</h2>
+          <p className="eyebrow">画布</p>
+          <h2 id="canvas-heading">镜头画布</h2>
         </div>
-        <span>{shot ? shot.name : 'No shot selected'}</span>
+        <span>{shot ? shot.name : '未选择镜头'}</span>
       </div>
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
@@ -277,7 +277,7 @@ export function CanvasStage(): React.JSX.Element {
               )}
               data-testid="project-canvas-stage"
               onMouseDownCapture={(event) =>
-                event.currentTarget.focus()
+                event.currentTarget.focus({ preventScroll: true })
               }
               tabIndex={-1}
             >
@@ -379,8 +379,8 @@ export function CanvasStage(): React.JSX.Element {
                 className="canvas-stage-message"
                 data-testid="canvas-empty-guidance"
               >
-                <strong>This shot has no layers yet</strong>
-                <span>Add a background or character from the project tools.</span>
+                <strong>当前镜头还没有图层</strong>
+                <span>请从项目工具中添加背景或角色。</span>
               </div>
             ) : null}
             {missingBackground ? (
@@ -388,10 +388,9 @@ export function CanvasStage(): React.JSX.Element {
                 className="canvas-stage-message canvas-stage-warning"
                 data-testid="canvas-background-warning"
               >
-                <strong>Background preview unavailable</strong>
+                <strong>背景预览不可用</strong>
                 <span>
-                  Add a background layer or rebuild its thumbnail in the asset
-                  library.
+                  请添加背景图层，或在项目素材库中重新生成缩略图。
                 </span>
               </div>
             ) : null}

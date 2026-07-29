@@ -124,7 +124,7 @@ async function snapshot(window) {
       layers: JSON.parse(stage.dataset.layerJson),
       selectedLayerId: stage.dataset.selectedLayerId,
       transformerVisible: stage.dataset.transformerVisible === 'true',
-      revision: Number(/revision (\\d+)/.exec(revisionText)?.[1]),
+      revision: Number(/修订 (\\d+)/.exec(revisionText)?.[1]),
       dirty: document.querySelector('.dirty-state') !== null
     };
   })()`);

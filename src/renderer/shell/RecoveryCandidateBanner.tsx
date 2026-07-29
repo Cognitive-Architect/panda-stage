@@ -21,7 +21,8 @@ export function RecoveryCandidateBanner({
     >
       <strong>{candidate.project.name}</strong>
       <span>
-        Recovery from {new Date(candidate.savedAtMs).toLocaleString()}
+        检测到未保存的恢复内容 ·{' '}
+        {new Date(candidate.savedAtMs).toLocaleString()}
       </span>
       <span className="recovery-path">{candidate.recoveryFilePath}</span>
       <div>
@@ -30,14 +31,14 @@ export function RecoveryCandidateBanner({
           onClick={() => void onRestore()}
           type="button"
         >
-          Restore in memory
+          恢复
         </button>
         <button
           disabled={busy}
           onClick={() => void onIgnore()}
           type="button"
         >
-          Ignore and retain file
+          忽略
         </button>
       </div>
     </div>

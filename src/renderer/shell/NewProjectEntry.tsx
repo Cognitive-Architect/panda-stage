@@ -18,12 +18,12 @@ export function NewProjectEntry({
     <>
       <div className="recovery-open-row">
         <label>
-          Project directory
+          项目文件夹（.pandastage）
           <input
             onChange={(event) =>
               onOpenCandidatePathChange(event.target.value)
             }
-            placeholder="例如：D:\Projects\我的项目.pandastage"
+            placeholder="输入 .pandastage 项目文件夹的完整路径"
             value={openCandidatePath}
           />
           <small className="open-path-hint">{validation.message}</small>
@@ -33,7 +33,7 @@ export function NewProjectEntry({
           onClick={() => void onOpenProject()}
           type="button"
         >
-          Open and check recovery
+          打开项目
         </button>
       </div>
       <button

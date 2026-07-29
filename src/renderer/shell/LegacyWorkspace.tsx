@@ -25,13 +25,13 @@ export function LegacyWorkspace({
     >
       <section
         className="day25-action-shell"
-        aria-label="Day 25 动作预设"
+        aria-label="动作预设"
       >
         <ActionPresetPanel />
       </section>
       <section
         className="day25-editor-shell"
-        aria-label="Day 25 编辑外壳"
+        aria-label="旧版编辑工作区"
       >
         <CanvasStage />
       </section>

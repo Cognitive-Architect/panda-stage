@@ -103,7 +103,7 @@ async function openProject(window, root = projectRoot) {
     waitFor(
       "document.querySelector('.shot-manager') && " +
         "document.querySelector('.shot-manager-heading span')" +
-        "?.textContent?.includes('revision 0')",
+        "?.textContent?.includes('修订 0')",
       'Day 20 project did not open.',
     ),
   );
@@ -573,7 +573,7 @@ async function verifyDay20() {
           ).dataset.projectDurationMs
         ),
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === 'Clean'
+          ?.textContent?.trim() === '暂无未保存更改'
       }))()`);
     const reopenedScreenshot =
       await captureSection(window, '.shot-manager');

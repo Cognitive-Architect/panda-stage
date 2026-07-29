@@ -94,7 +94,7 @@ export function AssetImportPanel({
     >
       <div className="asset-import-heading">
         <div>
-          <p className="eyebrow">Day 16 secure import</p>
+          <p className="eyebrow">安全素材导入</p>
           <h2 id="asset-import-heading">导入项目素材</h2>
         </div>
         <button

@@ -64,7 +64,7 @@ export function CharacterEditor({
     >
       <div className="character-editor-heading">
         <div>
-          <p className="eyebrow">Character definition</p>
+          <p className="eyebrow">角色定义</p>
           <h3>{character.name}</h3>
         </div>
         <button
@@ -91,7 +91,7 @@ export function CharacterEditor({
           onClick={() => onRenameCharacter(name)}
           type="button"
         >
-          保存名称
+          应用名称修改
         </button>
         <label>
           张嘴图
@@ -141,7 +141,7 @@ export function CharacterEditor({
           onClick={() => onSetDefaultTransform(scale, flipX)}
           type="button"
         >
-          保存默认变换
+          应用默认变换
         </button>
       </section>
       <ExpressionEditor
@@ -158,7 +158,7 @@ export function CharacterEditor({
         warnings={warnings}
       />
       <p className="voice-profile-notice">
-        VoiceProfile 仅保留最小项目数据。本页面不提供 TTS、声音克隆或嘴型识别入口。
+        语音配置仅保留最小项目数据。本页面不提供语音合成、声音克隆或嘴型识别入口。
       </p>
     </article>
   );

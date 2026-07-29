@@ -28,10 +28,10 @@ export function StartScreen({
       <section className="recovery-panel" aria-labelledby="recovery-heading">
         <div className="recovery-heading-row">
           <div>
-            <p className="eyebrow">Panda Stage project</p>
-            <h2 id="recovery-heading">Crash recovery</h2>
+            <p className="eyebrow">Panda Stage</p>
+            <h2 id="recovery-heading">打开项目</h2>
           </div>
-          <span className="clean-state">Clean</span>
+          <span className="clean-state">未打开项目</span>
         </div>
         <NewProjectEntry
           busy={busy}

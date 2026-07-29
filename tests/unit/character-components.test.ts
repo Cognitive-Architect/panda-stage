@@ -42,11 +42,11 @@ describe('character management components', () => {
     );
 
     expect(markup).toContain('角色与表情');
-    expect(markup).toContain('创建 normal / angry 角色');
+    expect(markup).toContain('创建含普通 / 生气表情的角色');
     expect(markup).toContain('张嘴图（可选）');
-    expect(markup).toContain('保存角色定义');
+    expect(markup).toContain('保存整个项目');
     expect(markup).toContain('默认表情');
-    expect(markup).toContain('VoiceProfile 仅保留最小项目数据');
+    expect(markup).toContain('语音配置仅保留最小项目数据');
     expect(markup).not.toContain('声音克隆按钮');
   });
 

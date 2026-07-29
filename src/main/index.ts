@@ -1,4 +1,4 @@
-import { app, dialog, type BrowserWindow } from 'electron';
+import { app, dialog, Menu, type BrowserWindow } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
@@ -37,6 +37,7 @@ import { registerAssetMetadataIpcHandlers } from './ipc/register-asset-metadata-
 import { registerAssetLibraryIpcHandlers } from './ipc/register-asset-library-ipc-handlers';
 import { AssetDeleteService } from './services/AssetDeleteService';
 import { AssetThumbnailService } from './services/AssetThumbnailService';
+import { shouldExposeDevelopmentMenu } from './menu-policy';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -81,6 +82,14 @@ async function createApplicationWindows(): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
+  if (
+    !shouldExposeDevelopmentMenu({
+      isPackaged: app.isPackaged,
+      gateA: process.env.PANDA_STAGE_GATE_A === '1',
+    })
+  ) {
+    Menu.setApplicationMenu(null);
+  }
   const resourcesPath =
     process.env.PANDA_STAGE_GATE_A_FORCE_MISSING_MEDIA === '1'
       ? `${process.resourcesPath}-missing-gate-fixture`

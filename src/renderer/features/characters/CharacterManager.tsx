@@ -29,7 +29,7 @@ export function CharacterManager({
   const [selectedCharacterId, setSelectedCharacterId] =
     useState<string | null>(snapshot?.project.characters[0]?.id ?? null);
   const [status, setStatus] = useState(
-    '将项目图片组织为可复用角色；所有修改先进入自动保存队列。',
+    '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
   );
   const [busy, setBusy] = useState(false);
   const [thumbnails, setThumbnails] = useState<
@@ -126,7 +126,7 @@ export function CharacterManager({
   ): Project | null => {
     try {
       const next = action();
-      setStatus(`${success} 修改已进入自动保存队列，正式保存前仍可关闭放弃。`);
+      setStatus(`${success} 修改已应用，项目尚未保存。`);
       return next;
     } catch (error) {
       reportError(error);
@@ -137,7 +137,7 @@ export function CharacterManager({
   const createCharacter = (input: CreateCharacterInput): void => {
     const next = mutate(
       () => characterStore.create(input),
-      '角色与 normal / angry 表情已创建。',
+      '角色与普通 / 生气表情已创建。',
     );
     if (next) {
       setSelectedCharacterId(next.characters.at(-1)!.id);
@@ -176,13 +176,13 @@ export function CharacterManager({
     >
       <div className="character-manager-heading">
         <div>
-          <p className="eyebrow">Day 19 character definitions</p>
+          <p className="eyebrow">角色定义</p>
           <h2 id="character-manager-heading">角色与表情</h2>
         </div>
         <div>
           <span>
             {snapshot
-              ? `${snapshot.project.characters.length} 个角色 · revision ${snapshot.revision}`
+              ? `${snapshot.project.characters.length} 个角色 · 修订 ${snapshot.revision}`
               : '尚未打开项目'}
           </span>
           <button
@@ -190,7 +190,7 @@ export function CharacterManager({
             onClick={() => void save()}
             type="button"
           >
-            {busy ? '正在保存…' : '保存角色定义'}
+            {busy ? '正在保存…' : '保存整个项目'}
           </button>
         </div>
       </div>

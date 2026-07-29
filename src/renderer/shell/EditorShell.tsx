@@ -267,7 +267,7 @@ export function EditorShell({
   );
   const [openCandidatePath, setOpenCandidatePath] = useState('');
   const [status, setStatus] = useState(
-    'Open a .pandastage project to check crash recovery.',
+    '请选择一个 .pandastage 项目文件夹。',
   );
   const [busy, setBusy] = useState(false);
   const [recentRefreshToken, setRecentRefreshToken] = useState(0);
@@ -304,7 +304,7 @@ export function EditorShell({
     setRecentRefreshToken((current) => current + 1);
     setStatus(
       nextSession.recoveryCandidate
-        ? 'A newer crash-recovery snapshot is available.'
+        ? '检测到未保存的恢复内容，请选择恢复或忽略。'
         : cleanStatus,
     );
   };
@@ -313,7 +313,7 @@ export function EditorShell({
     const nextSession = await session.switchProject(projectRoot);
     updateSession(
       nextSession,
-      'Project opened. No newer recovery snapshot was found.',
+      '项目已打开，暂无未保存更改。',
     );
   };
 
@@ -327,7 +327,7 @@ export function EditorShell({
     );
     updateSession(
       nextSession,
-      'Project opened from recent list. No newer recovery snapshot was found.',
+      '已从最近项目打开，暂无未保存更改。',
     );
   };
 
@@ -355,10 +355,10 @@ export function EditorShell({
       if (!response.ok) throw new Error(response.error.message);
       setSessionSnapshot(session.getSnapshot());
       setStatus(
-        'Recovery loaded in memory and marked dirty. Use Save recovered project to replace project.json.',
+        '恢复内容已载入内存，项目有未保存的更改。请点击“保存整个项目”写入 project.json。',
       );
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Restore failed.');
+      setStatus(error instanceof Error ? error.message : '恢复失败。');
     } finally {
       setBusy(false);
     }
@@ -371,19 +371,19 @@ export function EditorShell({
       if (response.ok) {
         setSessionSnapshot(session.getSnapshot());
         setStatus(
-          'Recovery ignored for this session. The evidence file was retained.',
+          '已忽略本次恢复内容，恢复文件仍保留。',
         );
       } else {
         setStatus(response.error.message);
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Ignore failed.');
+      setStatus(error instanceof Error ? error.message : '忽略恢复内容失败。');
     } finally {
       setBusy(false);
     }
   };
 
-  const saveRecoveredProject = async (): Promise<void> => {
+  const saveProject = async (): Promise<void> => {
     if (!projectSnapshot?.dirty) return;
     setBusy(true);
     try {
@@ -392,15 +392,15 @@ export function EditorShell({
         setStatus(result.error.message);
       } else if (result.acknowledgement === 'stale') {
         setStatus(
-          `Revision ${result.savedRevision} was saved, but newer unsaved changes remain.`,
+          `已保存修订 ${result.savedRevision}，但编辑器中仍有更新的未保存更改。`,
         );
       } else {
         setStatus(
-          'Recovered project saved explicitly; stale recovery was cleaned.',
+          '项目已保存。',
         );
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Save failed.');
+      setStatus(error instanceof Error ? error.message : '保存项目失败。');
     } finally {
       setBusy(false);
     }
@@ -431,7 +431,7 @@ export function EditorShell({
             busy={busy}
             onOpenProject={openProject}
             onOpenCandidatePathChange={setOpenCandidatePath}
-            onSaveProject={saveRecoveredProject}
+            onSaveProject={saveProject}
             openCandidatePath={openCandidatePath}
             projectSnapshot={projectSnapshot}
             recoveryBanner={
@@ -472,7 +472,7 @@ export function EditorShell({
             data-testid="bottom-workspace-placeholder"
           >
             <strong>底部工作区</strong>
-            <span>History 正式迁移与时间轴将在后续阶段进行</span>
+            <span>编辑历史正式迁移与时间轴将在后续阶段进行</span>
           </footer>
         </div>
       ) : null}

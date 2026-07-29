@@ -252,7 +252,7 @@ async function stageSnapshot(window) {
       interactionStatus: document.querySelector(
         '[data-testid="canvas-interaction-status"]'
       ).textContent.trim(),
-      revision: Number(/revision (\\d+)/.exec(revisionText)?.[1]),
+      revision: Number(/修订 (\\d+)/.exec(revisionText)?.[1]),
       dirty: document.querySelector('.dirty-state') !== null
     };
   })()`);

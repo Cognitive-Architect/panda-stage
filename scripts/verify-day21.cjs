@@ -410,10 +410,10 @@ async function verifyDay21() {
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim(),
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === 'Clean',
+          ?.textContent?.trim() === '暂无未保存更改',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('revision 0')
+        )?.textContent?.includes('修订 0')
       };
     })()`);
     const fitScreenshot = await captureCanvasSection(window);
@@ -440,10 +440,10 @@ async function verifyDay21() {
         ),
         layerJson: stage.dataset.layerJson,
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === 'Clean',
+          ?.textContent?.trim() === '暂无未保存更改',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('revision 0')
+        )?.textContent?.includes('修订 0')
       };
     })()`);
     const autosaveResizeDelta =
@@ -512,10 +512,10 @@ async function verifyDay21() {
         ).textContent.trim(),
         layerJson: stage.dataset.layerJson,
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === 'Clean',
+          ?.textContent?.trim() === '暂无未保存更改',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('revision 0'),
+        )?.textContent?.includes('修订 0'),
         modeFeedback: document.querySelector(
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim()
@@ -566,7 +566,7 @@ async function verifyDay21() {
         '[data-testid="project-canvas-viewport"]'
       ).dataset.logicalHeight),
       clean: document.querySelector('.clean-state')
-        ?.textContent?.trim() === 'Clean'
+        ?.textContent?.trim() === '暂无未保存更改'
     }))()`);
 
     await openProject(window, missingRoot, 'Missing background');
@@ -712,10 +712,10 @@ async function verifyDay21() {
             '[data-testid="project-canvas-stage"]'
           ).dataset.layerJson,
           clean: document.querySelector('.clean-state')
-            ?.textContent?.trim() === 'Clean',
+            ?.textContent?.trim() === '暂无未保存更改',
           revisionZero: document.querySelector(
             '.shot-manager-heading span'
-          )?.textContent?.includes('revision 0')
+          )?.textContent?.includes('修订 0')
         }))()`);
       const dpiFitPointer = /^x ([\d.]+) · y ([\d.]+)$/u.exec(
         dpiFit.pointer,
@@ -825,7 +825,7 @@ async function verifyDay21() {
       fit.backgroundOpacity !== 1 ||
       fit.renderContract !== 'shared-stage-layer-v1' ||
       fit.centerGuides !== 'vertical,horizontal' ||
-      !fit.modeFeedback.includes('Fit to viewport') ||
+      !fit.modeFeedback.includes('适应窗口') ||
       !fit.clean ||
       !fit.revisionZero ||
       Math.abs(resized.scale - resized.expectedScale) > 0.00001 ||
@@ -849,7 +849,7 @@ async function verifyDay21() {
       actual.autosaveUpdateDelta !== 0 ||
       !actual.clean ||
       !actual.revisionZero ||
-      !actual.modeFeedback.includes('1:1 pixels') ||
+      !actual.modeFeedback.includes('1:1 像素') ||
       !saveResponse.ok ||
       saveRequest?.revision !== 0 ||
       !evidence.persistence.exactProjectSaved ||
@@ -857,8 +857,8 @@ async function verifyDay21() {
       reopened.logicalWidth !== 1920 ||
       reopened.logicalHeight !== 1080 ||
       !reopened.clean ||
-      !missingMessage.includes('Background preview unavailable') ||
-      !emptyMessage.includes('This shot has no layers yet')
+      !missingMessage.includes('背景预览不可用') ||
+      !emptyMessage.includes('当前镜头还没有图层')
     ) {
       throw new Error(
         `Day 21 UI verification failed: ${JSON.stringify(evidence)}`,

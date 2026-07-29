@@ -33,7 +33,7 @@ export function AssetDetails({
   return (
     <aside className="asset-details">
       <div>
-        <p className="eyebrow">Selected asset</p>
+        <p className="eyebrow">已选素材</p>
         <h3>{asset.name}</h3>
       </div>
       <dl>

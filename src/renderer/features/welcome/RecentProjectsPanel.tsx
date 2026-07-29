@@ -102,7 +102,7 @@ export function RecentProjectsPanel({
     >
       <div className="recent-projects-heading">
         <div>
-          <p className="eyebrow">Day 14 workspace</p>
+          <p className="eyebrow">项目入口</p>
           <h2 id="recent-projects-heading">最近项目</h2>
         </div>
         <span>{entries.length}/12</span>

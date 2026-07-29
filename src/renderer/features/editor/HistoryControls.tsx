@@ -50,7 +50,7 @@ export function HistoryControls(): React.JSX.Element {
       data-undo-count={history.undoCount}
     >
       <div>
-        <p className="eyebrow">Day 24 history</p>
+        <p className="eyebrow">编辑历史</p>
         <h3>编辑历史</h3>
       </div>
       <div className="history-actions">

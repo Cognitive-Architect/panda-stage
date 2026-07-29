@@ -33,10 +33,10 @@ export function EditorTopBar({
       <div className="recovery-heading-row">
         <div>
           <p className="eyebrow">{projectSnapshot.project.name}</p>
-          <h2 id="recovery-heading">Crash recovery</h2>
+          <h2 id="recovery-heading">项目编辑</h2>
         </div>
         <span className={projectSnapshot.dirty ? 'dirty-state' : 'clean-state'}>
-          {projectSnapshot.dirty ? 'Unsaved recovered changes' : 'Clean'}
+          {projectSnapshot.dirty ? '有未保存的更改' : '暂无未保存更改'}
         </span>
       </div>
       <div className="active-project-path" data-testid="active-project-path">
@@ -60,7 +60,7 @@ export function EditorTopBar({
           onClick={() => void onOpenProject()}
           type="button"
         >
-          Open and check recovery
+          打开项目
         </button>
       </div>
       {recoveryBanner}
@@ -72,7 +72,7 @@ export function EditorTopBar({
           onClick={() => void onSaveProject()}
           type="button"
         >
-          Save recovered project
+          保存整个项目
         </button>
         <button
           data-testid="product-preview-placeholder"

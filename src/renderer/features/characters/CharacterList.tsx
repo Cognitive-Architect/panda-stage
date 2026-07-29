@@ -88,7 +88,7 @@ export function CharacterList({
           });
         }}
       >
-        <strong>创建 normal / angry 角色</strong>
+        <strong>创建含普通 / 生气表情的角色</strong>
         <label>
           角色名称
           <input
@@ -99,7 +99,7 @@ export function CharacterList({
           />
         </label>
         <label>
-          normal 图片
+          普通表情图片
           <select
             disabled={disabled}
             onChange={(event) => setNormalAssetId(event.target.value)}
@@ -114,7 +114,7 @@ export function CharacterList({
           </select>
         </label>
         <label>
-          angry 图片
+          生气表情图片
           <select
             disabled={disabled}
             onChange={(event) => setAngryAssetId(event.target.value)}

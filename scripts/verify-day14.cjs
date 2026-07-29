@@ -127,7 +127,7 @@ async function verifyDay14Ui() {
             const status = document.querySelector(
               '.recovery-status-row output'
             )?.textContent;
-            if (status?.includes('Project opened')) return resolve();
+            if (status?.includes('已从最近项目打开')) return resolve();
             if (Date.now() >= deadline) {
               return reject(new Error('Recent project did not reopen.'));
             }
@@ -158,6 +158,9 @@ async function verifyDay14Ui() {
         recoveryStatus: document.querySelector(
           '.recovery-status-row output'
         )?.textContent?.trim(),
+        activeProjectRoot: document.querySelector(
+          '[data-testid="active-project-path"] code'
+        )?.textContent,
         rendererHasNodeRequire: typeof window.require !== 'undefined'
       };
     })()`);
@@ -198,7 +201,8 @@ async function verifyDay14Ui() {
       result.projects[3]?.actions.length !== 3 ||
       result.recentProjectsApi.join(',') !== 'list,open,relocate,remove' ||
       openedRecentRoot !== availableRoot ||
-      !result.recoveryStatus?.includes('Project opened') ||
+      result.activeProjectRoot !== availableRoot ||
+      !result.recoveryStatus?.includes('已从最近项目打开') ||
       !evidence.configOutsideProject ||
       result.rendererHasNodeRequire ||
       closeOptions.buttons.join(',') !== '保存并退出,不保存,取消' ||
