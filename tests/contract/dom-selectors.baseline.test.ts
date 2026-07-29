@@ -1,5 +1,5 @@
 /**
- * Phase 0A baseline — DOM selector contract (existing selectors only).
+ * Phase 0A baseline plus authorized Stage 1A selector contracts.
  *
  * Purpose: lock the currently-shipped, Gate-whitelisted DOM selectors into the
  * components that render them, so a future refactor that removes/renames one of
@@ -15,11 +15,12 @@
  *   - A source-level contract is a faithful Phase 0A baseline: it proves the selector
  *     strings are wired into the default-UI components today.
  *
- * Phase 0A iron rules honoured:
- *   - Asserts ONLY selectors that already exist in the current source.
- *   - Does NOT assert not-yet-implemented selectors ([data-workspace-tab],
- *     .new-project-entry, .product-preview-overlay, .editor-save-button, ...).
- *   - Does NOT assert DOM count === 1 (the dual-mount fix lands in later phases).
+ * Guardrail rules honoured:
+ *   - The original Phase 0A selector assertions remain unchanged.
+ *   - Stage 1A assertions are added only as their owning slice is implemented.
+ *   - Does NOT require later-slice selectors such as EditorTopBar,
+ *     RecoveryCandidateBanner, or LegacyWorkspace.
+ *   - Runtime DOM counts remain the responsibility of Electron validation.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,38 @@ function readSource(relativePath: string): string {
 }
 
 describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () => {
+  it('locks the Stage 1A-2 no-project selector owners and disabled create placeholder', () => {
+    const shell = readSource('renderer/shell/EditorShell.tsx');
+    const startScreen = readSource('renderer/shell/StartScreen.tsx');
+    const newProjectEntry = readSource(
+      'renderer/shell/NewProjectEntry.tsx',
+    );
+    const recentProjects = readSource(
+      'renderer/features/welcome/RecentProjectsPanel.tsx',
+    );
+
+    expect(shell).toContain("sessionRegion === 'start-screen'");
+    expect(shell).toContain('<StartScreen');
+    expect(shell).toContain('<ProjectRecoveryPanel');
+    expect(startScreen).toContain('className="recovery-panel"');
+    expect(startScreen).toContain('id="recovery-heading"');
+    expect(startScreen).toContain('className="clean-state"');
+    expect(startScreen).toContain('<NewProjectEntry');
+    expect(startScreen).toContain('<RecentProjectsPanel');
+    expect(newProjectEntry).toContain('className="recovery-open-row"');
+    expect(newProjectEntry).toContain(
+      'data-testid="new-project-button"',
+    );
+    expect(newProjectEntry).toContain('disabled');
+    expect(recentProjects).toContain(
+      'className="recent-projects-panel"',
+    );
+    expect(
+      (startScreen + newProjectEntry)
+        .match(/className="recovery-open-row"/gu),
+    ).toHaveLength(1);
+  });
+
   it('locks recovery whitelist selectors into ProjectRecoveryPanel', () => {
     const code = readSource('renderer/features/recovery/ProjectRecoveryPanel.tsx');
     expect(code).toContain('className="recovery-panel"');

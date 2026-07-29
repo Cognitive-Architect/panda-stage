@@ -10,6 +10,9 @@ import type {
   RecoveryIgnoreResponse,
   RecoveryRestoreResponse,
 } from '../../shared/recovery-api';
+import { AssetLibrary } from '../features/assets/AssetLibrary';
+import { CanvasStage } from '../features/canvas/CanvasStage';
+import { CharacterManager } from '../features/characters/CharacterManager';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import {
   ProjectSessionController,
@@ -21,18 +24,29 @@ import {
   type EditorProjectSaveResult,
   type ProjectSaveApi,
 } from '../features/recovery/saveCurrentProject';
+import { ShotManager } from '../features/shots/ShotManager';
 import {
   EditorProjectStore,
   editorProjectStore,
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
+import { StartScreen } from './StartScreen';
 
 export type EditorShellState = 'no-project' | 'editor';
+export type EditorShellSessionRegion =
+  | 'start-screen'
+  | 'legacy-recovery';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
 ): EditorShellState {
   return snapshot === null ? 'no-project' : 'editor';
+}
+
+export function getEditorShellSessionRegion(
+  state: EditorShellState,
+): EditorShellSessionRegion {
+  return state === 'no-project' ? 'start-screen' : 'legacy-recovery';
 }
 
 interface AutosaveShellApi {
@@ -226,6 +240,23 @@ export interface EditorShellProps {
   afterRecovery: ReactNode;
 }
 
+// Stage 1A-2 replaces only the session/recovery region. The remaining legacy
+// modules stay mounted in either branch until 1A-5 introduces LegacyWorkspace.
+function CurrentNoProjectLegacySurface({
+  projectSnapshot,
+}: {
+  projectSnapshot: EditorProjectSnapshot | null;
+}): React.JSX.Element {
+  return (
+    <>
+      <AssetLibrary snapshot={projectSnapshot} />
+      <CharacterManager snapshot={projectSnapshot} />
+      <ShotManager snapshot={projectSnapshot} />
+      <CanvasStage />
+    </>
+  );
+}
+
 export function EditorShell({
   beforeRecovery,
   afterRecovery,
@@ -244,6 +275,10 @@ export function EditorShell({
   );
   const [busy, setBusy] = useState(false);
   const [recentRefreshToken, setRecentRefreshToken] = useState(0);
+  const shellState = getEditorShellState(projectSnapshot);
+  const sessionRegion = getEditorShellSessionRegion(shellState);
+  const gateA =
+    new URLSearchParams(window.location.search).get('gateA') === '1';
 
   useEffect(() => {
     session.activateAutosaveErrors((error) => setStatus(error.message));
@@ -368,23 +403,40 @@ export function EditorShell({
   return (
     <main
       className="app-shell"
-      data-editor-shell-state={getEditorShellState(projectSnapshot)}
+      data-editor-shell-state={shellState}
     >
       {beforeRecovery}
-      <ProjectRecoveryPanel
-        busy={busy}
-        onIgnoreRecovery={ignoreRecovery}
-        onOpenProject={openProject}
-        onOpenRecentProject={switchToRecentProject}
-        onProjectRootInputChange={setProjectRootInput}
-        onRestoreRecovery={restoreRecovery}
-        onSaveRecoveredProject={saveRecoveredProject}
-        projectRootInput={projectRootInput}
-        projectSnapshot={projectSnapshot}
-        recentRefreshToken={recentRefreshToken}
-        sessionSnapshot={sessionSnapshot}
-        status={status}
-      />
+      {gateA ? null : sessionRegion === 'start-screen' ? (
+        <>
+          <StartScreen
+            busy={busy}
+            onOpenProject={openProject}
+            onOpenRecentProject={switchToRecentProject}
+            onProjectRootInputChange={setProjectRootInput}
+            projectRootInput={projectRootInput}
+            recentRefreshToken={recentRefreshToken}
+            status={status}
+          />
+          <CurrentNoProjectLegacySurface
+            projectSnapshot={projectSnapshot}
+          />
+        </>
+      ) : (
+        <ProjectRecoveryPanel
+          busy={busy}
+          onIgnoreRecovery={ignoreRecovery}
+          onOpenProject={openProject}
+          onOpenRecentProject={switchToRecentProject}
+          onProjectRootInputChange={setProjectRootInput}
+          onRestoreRecovery={restoreRecovery}
+          onSaveRecoveredProject={saveRecoveredProject}
+          projectRootInput={projectRootInput}
+          projectSnapshot={projectSnapshot}
+          recentRefreshToken={recentRefreshToken}
+          sessionSnapshot={sessionSnapshot}
+          status={status}
+        />
+      )}
       {afterRecovery}
     </main>
   );

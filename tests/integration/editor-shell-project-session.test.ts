@@ -10,7 +10,12 @@ import {
 } from '../../src/renderer/features/recovery/ProjectSessionController';
 import {
   EditorShellSession,
+  getEditorShellSessionRegion,
+  getEditorShellState,
 } from '../../src/renderer/shell/EditorShell';
+import {
+  StartScreen,
+} from '../../src/renderer/shell/StartScreen';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import type {
   RecoveryCandidate,
@@ -64,7 +69,22 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
         },
       };
     }),
-    openRecent: vi.fn(),
+    openRecent: vi.fn(async (projectRoot, expectedProjectId) => {
+      order.push('openRecent');
+      return {
+        ok: true as const,
+        document: {
+          projectRoot,
+          projectFilePath: `${projectRoot}\\project.json`,
+          project: ProjectSchema.parse({
+            ...PROJECT,
+            id: expectedProjectId,
+          }),
+          migrated: false,
+          sourceVersion: 1 as const,
+        },
+      };
+    }),
     track: vi.fn(async () => {
       order.push('track');
       return { ok: true as const };
@@ -123,8 +143,37 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
 }
 
 describe('EditorShell project session integration', () => {
+  it('renders one no-project entry, recent projects, and a disabled create placeholder', () => {
+    const markup = renderToStaticMarkup(
+      StartScreen({
+        projectRootInput: '',
+        status: 'Ready',
+        busy: false,
+        recentRefreshToken: 0,
+        onProjectRootInputChange: vi.fn(),
+        onOpenProject: vi.fn(),
+        onOpenRecentProject: vi.fn(),
+      }),
+    );
+
+    expect(markup.match(/class="recovery-open-row"/gu)).toHaveLength(1);
+    expect(markup.match(/class="recent-projects-panel"/gu)).toHaveLength(1);
+    expect(markup).toContain('Open and check recovery');
+    expect(markup).toContain('新建项目（后续阶段启用）');
+    expect(markup).toMatch(
+      /data-testid="new-project-button"[^>]*disabled/u,
+    );
+    expect(markup).not.toContain('class="recovery-prompt"');
+    expect(markup).not.toContain('class="editor-save-button"');
+  });
+
   it('preserves open -> track -> detect -> store.open and returns session state to the shell', async () => {
     const harness = createSession(null);
+    expect(
+      getEditorShellSessionRegion(
+        getEditorShellState(harness.store.getSnapshot()),
+      ),
+    ).toBe('start-screen');
 
     const snapshot = await harness.session.switchProject(PROJECT_ROOT);
 
@@ -142,6 +191,34 @@ describe('EditorShell project session integration', () => {
       projectRoot: PROJECT_ROOT,
       dirty: false,
     });
+    expect(
+      getEditorShellSessionRegion(
+        getEditorShellState(harness.store.getSnapshot()),
+      ),
+    ).toBe('legacy-recovery');
+    expect(harness.createController).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a recent project through the same shell session and controller', async () => {
+    const harness = createSession(null);
+
+    const snapshot = await harness.session.switchRecentProject(
+      PROJECT_ROOT,
+      PROJECT.id,
+    );
+
+    expect(harness.order).toEqual([
+      'openRecent',
+      'track',
+      'detect',
+      'store.open',
+    ]);
+    expect(snapshot.trackedProjectRoot).toBe(PROJECT_ROOT);
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_ROOT,
+      project: { id: PROJECT.id },
+    });
+    expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
   it('keeps restore, save, and ignore semantics behind shell-owned actions', async () => {
