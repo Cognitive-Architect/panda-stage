@@ -1,27 +1,29 @@
 import type { ReactNode } from 'react';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
+import { validateProjectOpenCandidate } from './projectOpenFlow';
 
 export interface EditorTopBarProps {
   projectSnapshot: EditorProjectSnapshot;
-  projectRootInput: string;
+  openCandidatePath: string;
   status: string;
   busy: boolean;
   recoveryBanner?: ReactNode;
-  onProjectRootInputChange(value: string): void;
+  onOpenCandidatePathChange(value: string): void;
   onOpenProject(): Promise<void>;
   onSaveProject(): Promise<void>;
 }
 
 export function EditorTopBar({
   projectSnapshot,
-  projectRootInput,
+  openCandidatePath,
   status,
   busy,
   recoveryBanner,
-  onProjectRootInputChange,
+  onOpenCandidatePathChange,
   onOpenProject,
   onSaveProject,
 }: EditorTopBarProps): React.JSX.Element {
+  const validation = validateProjectOpenCandidate(openCandidatePath);
   return (
     <section
       aria-labelledby="recovery-heading"
@@ -37,19 +39,24 @@ export function EditorTopBar({
           {projectSnapshot.dirty ? 'Unsaved recovered changes' : 'Clean'}
         </span>
       </div>
+      <div className="active-project-path" data-testid="active-project-path">
+        <span>当前项目文件夹</span>
+        <code>{projectSnapshot.projectRoot}</code>
+      </div>
       <div className="recovery-open-row">
         <label>
-          Project directory
+          打开其他 .pandastage 项目文件夹
           <input
             onChange={(event) =>
-              onProjectRootInputChange(event.target.value)
+              onOpenCandidatePathChange(event.target.value)
             }
-            placeholder="D:\Projects\story.pandastage"
-            value={projectRootInput}
+            placeholder="输入另一个项目文件夹路径"
+            value={openCandidatePath}
           />
+          <small className="open-path-hint">{validation.message}</small>
         </label>
         <button
-          disabled={busy || !projectRootInput.trim()}
+          disabled={busy || !validation.valid}
           onClick={() => void onOpenProject()}
           type="button"
         >

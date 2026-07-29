@@ -1,16 +1,19 @@
+import { validateProjectOpenCandidate } from './projectOpenFlow';
+
 export interface NewProjectEntryProps {
-  projectRootInput: string;
+  openCandidatePath: string;
   busy: boolean;
-  onProjectRootInputChange(value: string): void;
+  onOpenCandidatePathChange(value: string): void;
   onOpenProject(): Promise<void>;
 }
 
 export function NewProjectEntry({
-  projectRootInput,
+  openCandidatePath,
   busy,
-  onProjectRootInputChange,
+  onOpenCandidatePathChange,
   onOpenProject,
 }: NewProjectEntryProps): React.JSX.Element {
+  const validation = validateProjectOpenCandidate(openCandidatePath);
   return (
     <>
       <div className="recovery-open-row">
@@ -18,14 +21,15 @@ export function NewProjectEntry({
           Project directory
           <input
             onChange={(event) =>
-              onProjectRootInputChange(event.target.value)
+              onOpenCandidatePathChange(event.target.value)
             }
-            placeholder="D:\Projects\story.pandastage"
-            value={projectRootInput}
+            placeholder="例如：D:\Projects\我的项目.pandastage"
+            value={openCandidatePath}
           />
+          <small className="open-path-hint">{validation.message}</small>
         </label>
         <button
-          disabled={busy || !projectRootInput.trim()}
+          disabled={busy || !validation.valid}
           onClick={() => void onOpenProject()}
           type="button"
         >

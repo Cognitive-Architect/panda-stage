@@ -125,6 +125,7 @@ export class ProjectSessionController {
         throw new ProjectSessionSwitchError(
           'OPEN_FAILED',
           opened.error.message,
+          { cause: opened.error },
         );
       }
       const preparedProject = ProjectSchema.parse(opened.document.project);

@@ -2,11 +2,11 @@ import { RecentProjectsPanel } from '../features/welcome/RecentProjectsPanel';
 import { NewProjectEntry } from './NewProjectEntry';
 
 export interface StartScreenProps {
-  projectRootInput: string;
+  openCandidatePath: string;
   status: string;
   busy: boolean;
   recentRefreshToken: number;
-  onProjectRootInputChange(value: string): void;
+  onOpenCandidatePathChange(value: string): void;
   onOpenProject(): Promise<void>;
   onOpenRecentProject(
     projectRoot: string,
@@ -15,11 +15,11 @@ export interface StartScreenProps {
 }
 
 export function StartScreen({
-  projectRootInput,
+  openCandidatePath,
   status,
   busy,
   recentRefreshToken,
-  onProjectRootInputChange,
+  onOpenCandidatePathChange,
   onOpenProject,
   onOpenRecentProject,
 }: StartScreenProps): React.JSX.Element {
@@ -36,8 +36,8 @@ export function StartScreen({
         <NewProjectEntry
           busy={busy}
           onOpenProject={onOpenProject}
-          onProjectRootInputChange={onProjectRootInputChange}
-          projectRootInput={projectRootInput}
+          onOpenCandidatePathChange={onOpenCandidatePathChange}
+          openCandidatePath={openCandidatePath}
         />
         <output>{status}</output>
       </section>

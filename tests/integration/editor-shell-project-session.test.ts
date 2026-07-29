@@ -46,7 +46,7 @@ function renderEditorTopBar(
   return renderToStaticMarkup(
     EditorTopBar({
       projectSnapshot,
-      projectRootInput: projectSnapshot.projectRoot,
+      openCandidatePath: projectSnapshot.projectRoot,
       status,
       busy: false,
       recoveryBanner: recoveryCandidate
@@ -57,7 +57,7 @@ function renderEditorTopBar(
             onIgnore: vi.fn(),
           })
         : null,
-      onProjectRootInputChange: vi.fn(),
+      onOpenCandidatePathChange: vi.fn(),
       onOpenProject: vi.fn(),
       onSaveProject: vi.fn(),
     }),
@@ -91,6 +91,20 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
   const ignore = vi.fn(async () => ({
     ok: true as const,
     retained: true as const,
+  }));
+  const saveProject = vi.fn(async (request: {
+    projectRoot: string;
+    project: Project;
+    revision: number;
+  }) => ({
+    ok: true as const,
+    value: {
+      projectRoot: request.projectRoot,
+      projectFilePath: `${request.projectRoot}\\project.json`,
+      project: request.project,
+      migrated: false,
+      sourceVersion: 1 as const,
+    },
   }));
   const sessionApi: ProjectSessionApi = {
     open: vi.fn(async (projectRoot) => {
@@ -148,16 +162,7 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
       ignore,
     },
     projectSaveApi: {
-      save: vi.fn(async (request) => ({
-        ok: true as const,
-        value: {
-          projectRoot: request.projectRoot,
-          projectFilePath: `${request.projectRoot}\\project.json`,
-          project: request.project,
-          migrated: false,
-          sourceVersion: 1 as const,
-        },
-      })),
+      save: saveProject,
     },
     createController,
   });
@@ -168,6 +173,7 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
     stop,
     restore,
     ignore,
+    saveProject,
     onError,
     createController,
     getActiveSubscriptions: () => activeSubscriptions,
@@ -179,11 +185,11 @@ describe('EditorShell project session integration', () => {
   it('renders one no-project entry, recent projects, and a disabled create placeholder', () => {
     const markup = renderToStaticMarkup(
       StartScreen({
-        projectRootInput: '',
+        openCandidatePath: '',
         status: 'Ready',
         busy: false,
         recentRefreshToken: 0,
-        onProjectRootInputChange: vi.fn(),
+        onOpenCandidatePathChange: vi.fn(),
         onOpenProject: vi.fn(),
         onOpenRecentProject: vi.fn(),
       }),
@@ -199,6 +205,25 @@ describe('EditorShell project session integration', () => {
     expect(markup).not.toContain('class="recovery-prompt"');
     expect(markup).not.toContain('class="editor-save-button"');
     expect(markup).not.toContain('data-testid="editor-top-bar"');
+  });
+
+  it('rejects an arbitrary non-path candidate before enabling open', () => {
+    const markup = renderToStaticMarkup(
+      StartScreen({
+        openCandidatePath: '?',
+        status: 'Ready',
+        busy: false,
+        recentRefreshToken: 0,
+        onOpenCandidatePathChange: vi.fn(),
+        onOpenProject: vi.fn(),
+        onOpenRecentProject: vi.fn(),
+      }),
+    );
+
+    expect(markup).toContain('项目文件夹路径包含 Windows 不允许的字符');
+    expect(markup).toMatch(
+      /class="recovery-open-row"[\s\S]*?<button disabled=""/u,
+    );
   });
 
   it('preserves open -> track -> detect -> store.open and returns session state to the shell', async () => {
@@ -260,6 +285,8 @@ describe('EditorShell project session integration', () => {
     expect(markup.match(/class="editor-save-button"/gu)).toHaveLength(1);
     expect(markup).toContain('role="alert"');
     expect(markup).toContain(PROJECT.name);
+    expect(markup).toContain('data-testid="active-project-path"');
+    expect(markup).toContain(PROJECT_ROOT);
     expect(markup).toContain(recoveryCandidate.recoveryFilePath);
     expect(markup).toContain('Restore in memory');
     expect(markup).toContain('Ignore and retain file');
@@ -312,6 +339,54 @@ describe('EditorShell project session integration', () => {
       project: { id: PROJECT.id },
     });
     expect(harness.createController).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps A -> B -> A identity, visible active path, dirty state, and save target aligned', async () => {
+    const harness = createSession(null);
+
+    await harness.session.switchProject(PROJECT_ROOT);
+    harness.store.updateProject({ ...PROJECT, name: 'Project A edited' });
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_ROOT,
+      project: { name: 'Project A edited' },
+      dirty: true,
+    });
+    await harness.session.saveCurrentProject();
+    expect(harness.saveProject).toHaveBeenLastCalledWith(
+      expect.objectContaining({ projectRoot: PROJECT_ROOT }),
+    );
+
+    await harness.session.switchProject(SECOND_PROJECT_ROOT);
+    harness.store.updateProject({ ...PROJECT, name: 'Project B edited' });
+    await harness.session.saveCurrentProject();
+    expect(harness.saveProject).toHaveBeenLastCalledWith(
+      expect.objectContaining({ projectRoot: SECOND_PROJECT_ROOT }),
+    );
+
+    await harness.session.switchRecentProject(PROJECT_ROOT, PROJECT.id);
+    const current = harness.store.getSnapshot()!;
+    expect(current).toMatchObject({
+      projectRoot: PROJECT_ROOT,
+      project: { id: PROJECT.id, name: PROJECT.name },
+      dirty: false,
+    });
+    const markup = renderToStaticMarkup(
+      EditorTopBar({
+        projectSnapshot: current,
+        openCandidatePath: SECOND_PROJECT_ROOT,
+        status: 'Ready',
+        busy: false,
+        onOpenCandidatePathChange: vi.fn(),
+        onOpenProject: vi.fn(),
+        onSaveProject: vi.fn(),
+      }),
+    );
+    expect(markup).toMatch(
+      new RegExp(
+        `data-testid="active-project-path"[\\s\\S]*?${PROJECT_ROOT.replaceAll('\\', '\\\\')}`,
+        'u',
+      ),
+    );
   });
 
   it('keeps restore, save, and ignore semantics behind shell-owned actions', async () => {

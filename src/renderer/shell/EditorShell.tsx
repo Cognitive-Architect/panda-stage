@@ -31,6 +31,10 @@ import { LegacyWorkspace } from './LegacyWorkspace';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { StartScreen } from './StartScreen';
 import { useDebugFlag } from './useDebugFlag';
+import {
+  projectOpenErrorMessage,
+  validateProjectOpenCandidate,
+} from './projectOpenFlow';
 
 export type EditorShellState = 'no-project' | 'editor';
 export type EditorShellSessionRegion =
@@ -261,7 +265,7 @@ export function EditorShell({
   const [sessionSnapshot, setSessionSnapshot] = useState(() =>
     session.getSnapshot(),
   );
-  const [projectRootInput, setProjectRootInput] = useState('');
+  const [openCandidatePath, setOpenCandidatePath] = useState('');
   const [status, setStatus] = useState(
     'Open a .pandastage project to check crash recovery.',
   );
@@ -294,6 +298,9 @@ export function EditorShell({
     cleanStatus: string,
   ): void => {
     setSessionSnapshot(nextSession);
+    if (nextSession.trackedProjectRoot) {
+      setOpenCandidatePath(nextSession.trackedProjectRoot);
+    }
     setRecentRefreshToken((current) => current + 1);
     setStatus(
       nextSession.recoveryCandidate
@@ -325,13 +332,17 @@ export function EditorShell({
   };
 
   const openProject = async (): Promise<void> => {
-    const projectRoot = projectRootInput.trim();
-    if (!projectRoot) return;
+    const projectRoot = openCandidatePath.trim();
+    const validation = validateProjectOpenCandidate(projectRoot);
+    if (!validation.valid) {
+      setStatus(validation.message);
+      return;
+    }
     setBusy(true);
     try {
       await switchToProject(projectRoot);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Open failed.');
+      setStatus(projectOpenErrorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -408,8 +419,8 @@ export function EditorShell({
             busy={busy}
             onOpenProject={openProject}
             onOpenRecentProject={switchToRecentProject}
-            onProjectRootInputChange={setProjectRootInput}
-            projectRootInput={projectRootInput}
+            onOpenCandidatePathChange={setOpenCandidatePath}
+            openCandidatePath={openCandidatePath}
             recentRefreshToken={recentRefreshToken}
             status={status}
           />
@@ -419,9 +430,9 @@ export function EditorShell({
           <EditorTopBar
             busy={busy}
             onOpenProject={openProject}
-            onProjectRootInputChange={setProjectRootInput}
+            onOpenCandidatePathChange={setOpenCandidatePath}
             onSaveProject={saveRecoveredProject}
-            projectRootInput={projectRootInput}
+            openCandidatePath={openCandidatePath}
             projectSnapshot={projectSnapshot}
             recoveryBanner={
               recoveryCandidate ? (
