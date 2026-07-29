@@ -18,8 +18,8 @@
  * Guardrail rules honoured:
  *   - The original Phase 0A selector assertions remain unchanged.
  *   - Stage 1A assertions are added only as their owning slice is implemented.
- *   - Does NOT require later-slice selectors such as EditorTopBar,
- *     RecoveryCandidateBanner, or LegacyWorkspace.
+ *   - Does NOT require later-slice selectors such as EditorTopBar or
+ *     LegacyWorkspace.
  *   - Runtime DOM counts remain the responsibility of Electron validation.
  */
 import { readFileSync } from 'node:fs';
@@ -67,17 +67,43 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     ).toHaveLength(1);
   });
 
-  it('locks recovery whitelist selectors into ProjectRecoveryPanel', () => {
-    const code = readSource('renderer/features/recovery/ProjectRecoveryPanel.tsx');
-    expect(code).toContain('className="recovery-panel"');
-    expect(code).toContain('className="recovery-heading-row"');
-    expect(code).toContain('id="recovery-heading"');
-    expect(code).toContain('className="recovery-open-row"');
-    expect(code).toContain('className="recovery-prompt"');
-    expect(code).toContain('className="recovery-status-row"');
+  it('locks legacy recovery selectors into ProjectRecoveryPanel', () => {
+    const panel = readSource(
+      'renderer/features/recovery/ProjectRecoveryPanel.tsx',
+    );
+    expect(panel).toContain('className="recovery-panel"');
+    expect(panel).toContain('className="recovery-heading-row"');
+    expect(panel).toContain('id="recovery-heading"');
+    expect(panel).toContain('className="recovery-open-row"');
+    expect(panel).toContain('className="recovery-status-row"');
+    expect(panel).toContain('className="editor-save-button"');
+    expect(panel).toContain('<RecoveryCandidateBanner');
+    expect(panel).not.toContain('className="recovery-prompt"');
     // clean/dirty state classes are both present in the ternary.
-    expect(code).toContain("'clean-state'");
-    expect(code).toContain("'dirty-state'");
+    expect(panel).toContain("'clean-state'");
+    expect(panel).toContain("'dirty-state'");
+  });
+
+  it('locks the Stage 1A-3 prompt to RecoveryCandidateBanner only', () => {
+    const banner = readSource(
+      'renderer/shell/RecoveryCandidateBanner.tsx',
+    );
+    const panel = readSource(
+      'renderer/features/recovery/ProjectRecoveryPanel.tsx',
+    );
+
+    expect(banner).toContain('className="recovery-prompt"');
+    expect(banner).toContain(
+      'data-testid="recovery-candidate-banner"',
+    );
+    expect(banner).toContain('role="alert"');
+    expect(banner.match(/disabled=\{busy\}/gu)).toHaveLength(2);
+    expect(
+      (banner + panel).match(/className="recovery-prompt"/gu),
+    ).toHaveLength(1);
+    expect(banner).not.toContain('className="recovery-open-row"');
+    expect(banner).not.toContain('className="editor-save-button"');
+    expect(banner).not.toContain('className="recovery-status-row"');
   });
 
   it('locks history-controls selectors into HistoryControls', () => {

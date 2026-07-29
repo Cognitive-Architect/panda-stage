@@ -6,6 +6,7 @@ import {
 } from 'react';
 import type {
   RecoveryAcknowledgeResponse,
+  RecoveryCandidate,
   RecoveryError,
   RecoveryIgnoreResponse,
   RecoveryRestoreResponse,
@@ -47,6 +48,15 @@ export function getEditorShellSessionRegion(
   state: EditorShellState,
 ): EditorShellSessionRegion {
   return state === 'no-project' ? 'start-screen' : 'legacy-recovery';
+}
+
+export function getEditorShellRecoveryCandidate(
+  state: EditorShellState,
+  sessionSnapshot: ProjectSessionSnapshot,
+): RecoveryCandidate | null {
+  return state === 'editor'
+    ? sessionSnapshot.recoveryCandidate
+    : null;
 }
 
 interface AutosaveShellApi {
@@ -277,6 +287,10 @@ export function EditorShell({
   const [recentRefreshToken, setRecentRefreshToken] = useState(0);
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
+  const recoveryCandidate = getEditorShellRecoveryCandidate(
+    shellState,
+    sessionSnapshot,
+  );
   const gateA =
     new URLSearchParams(window.location.search).get('gateA') === '1';
 
@@ -432,8 +446,8 @@ export function EditorShell({
           onSaveRecoveredProject={saveRecoveredProject}
           projectRootInput={projectRootInput}
           projectSnapshot={projectSnapshot}
+          recoveryCandidate={recoveryCandidate}
           recentRefreshToken={recentRefreshToken}
-          sessionSnapshot={sessionSnapshot}
           status={status}
         />
       )}

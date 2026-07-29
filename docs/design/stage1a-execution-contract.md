@@ -8,7 +8,7 @@
 >
 > 适用范围：Issue #55 的 Stage 1A
 >
-> 状态：合同已就绪；本文本身不授权生产实现
+> 状态：1A-1～1A-3 已完成；1A-4/1A-5 尚未开始
 
 ## 0. 冻结结论
 
@@ -19,21 +19,19 @@ Issue #60 的复核又发现两个 HIGH 阻塞；Issue #61 在合同和 Gate 导
 2. 根页面继续禁止滚动，Day 19/21/22 Gate 同时支持当前 window 滚动和未来
    `LegacyWorkspace` 内部滚动。
 
-以下只表示施工合同具备可执行性，不表示任何切片已经实现：
+当前合同与实施状态：
 
 ```text
-1A-1 contract = READY
-1A-2 contract = READY
-1A-3 contract = READY
-1A-4 contract = READY
-1A-5 contract = READY
+1A-1 implementation = completed
+1A-2 implementation = completed
+1A-3 implementation = completed
+1A-4 implementation = not started
+1A-5 implementation = not started
 
 M3 = FAIL
 PR #53 = Draft
 PR #56 = Draft
 Day 26~45 = frozen
-Stage 1A implementation = not started
-1A-1 authorization = pending
 ```
 
 没有新增顶层 Stage，也没有授权 Stage 1B、2、3、4。
@@ -326,7 +324,7 @@ pnpm build
 
 ## 8. 1A-1～1A-5 合同状态
 
-### 1A-1：Shell 状态与 Controller 所有权 — READY
+### 1A-1：Shell 状态与 Controller 所有权 — completed
 
 正式名称：
 
@@ -417,22 +415,22 @@ refactor(m3): establish editor shell session ownership
 - 单独完成后无法编译、启动或通过基础 Gate；
 - 无法用单一 commit 安全回滚。
 
-### 1A-2：StartScreen + 入口 — READY
+### 1A-2：StartScreen + 入口 — completed
 
 StartScreen 拥有 no-project 唯一 ProjectOpenEntry；open / recent 使用 shell
 callbacks；NewProjectButton 禁用。
 
-### 1A-3：RecoveryCandidateBanner — READY
+### 1A-3：RecoveryCandidateBanner — completed
 
 Banner 只在 editor candidate 非空时出现，只拥有 prompt、restore、ignore；
 它不拥有 `.recovery-open-row`，也不建立第二份 candidate state。
 
-### 1A-4：EditorTopBar — READY
+### 1A-4：EditorTopBar — not started
 
 TopBar 在 editor 态永久拥有 ProjectSwitchEntry、clean/dirty、save status；
 candidate null 不移除切换入口；Day 20/24 同窗口切换保持可用。
 
-### 1A-5：Grid + LegacyWorkspace — READY
+### 1A-5：Grid + LegacyWorkspace — not started
 
 根 overflow hidden；唯一 LegacyWorkspace 内滚动并声明
 `data-testid="legacy-workspace-scroll"`；Day 19/21/22 使用已迁移的双路径导航。
@@ -452,6 +450,5 @@ candidate null 不移除切换入口；Day 20/24 同窗口切换保持可用。
 
 ## 10. 当前唯一下一步
 
-Issue #63 完成、PR #56 CI 成功后，只执行一次一分钟级最终核对，确认精确白名单、
-1A-1 独立回滚合同、Issue #61 两项 HIGH 合同均仍存在。核对通过并获得主理人
-明确授权后，才可开始 1A-1；不得自动进入生产实现。
+Issue #68 完成后停止。1A-4/1A-5、Stage 1B～4 与 Day 26 仍未开始；
+必须取得新的明确授权后才能进入下一切片。

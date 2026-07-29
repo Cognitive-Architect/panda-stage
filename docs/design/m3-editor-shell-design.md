@@ -4,7 +4,7 @@
 >
 > 实施权威：`docs/design/stage1a-execution-contract.md`
 >
-> 状态：1A-1～1A-5 合同 READY，生产实现未开始
+> 状态：1A-1～1A-3 已完成；1A-4/1A-5 尚未开始
 
 ## 1. 目标与边界
 
@@ -168,14 +168,14 @@ TopBar、Grid 或 LegacyWorkspace。
 nested-scroll 合同。完整 DoD、回滚步骤和停止条件以执行合同第 8 节为准。
 
 ```text
-1A-1 Controller ownership contract = READY
-1A-2 no-project entry contract = READY
-1A-3 candidate banner contract = READY
-1A-4 editor switch/topbar contract = READY
-1A-5 nested-scroll/grid contract = READY
+1A-1 Controller ownership implementation = completed
+1A-2 no-project entry implementation        = completed
+1A-3 candidate banner implementation        = completed
+1A-4 editor switch/topbar implementation    = not started
+1A-5 nested-scroll/grid implementation       = not started
 ```
 
-READY 仅代表设计无阻塞，不代表实现完成或 M3 PASS。
+M3 仍为 FAIL；以上状态不授权后续切片。
 
 ## 9. 验证
 
@@ -198,5 +198,4 @@ scope/DoD/rollback 与 document regression guard 可从当前 HEAD 直接读取�
 
 ## 11. 下一步
 
-Issue #63 CI 成功后做一次一分钟级最终核对，只检查白名单、1A-1 回滚合同和
-Issue #61 两项 HIGH 合同仍在。获得明确授权后才开始 1A-1。
+Issue #68 完成后停止；获得新的明确授权后才可开始 1A-4。

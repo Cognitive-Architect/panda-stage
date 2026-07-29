@@ -1,14 +1,15 @@
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
-import type { ProjectSessionSnapshot } from './ProjectSessionController';
+import type { RecoveryCandidate } from '../../../shared/recovery-api';
 import { RecentProjectsPanel } from '../welcome/RecentProjectsPanel';
 import { AssetLibrary } from '../assets/AssetLibrary';
 import { CharacterManager } from '../characters/CharacterManager';
 import { ShotManager } from '../shots/ShotManager';
 import { CanvasStage } from '../canvas/CanvasStage';
+import { RecoveryCandidateBanner } from '../../shell/RecoveryCandidateBanner';
 
 export interface ProjectRecoveryPanelProps {
   projectSnapshot: EditorProjectSnapshot | null;
-  sessionSnapshot: ProjectSessionSnapshot;
+  recoveryCandidate: RecoveryCandidate | null;
   projectRootInput: string;
   status: string;
   busy: boolean;
@@ -31,7 +32,7 @@ export type RecoveryPanelControlsProps = Omit<
 
 export function RecoveryPanelControls({
   projectSnapshot,
-  sessionSnapshot,
+  recoveryCandidate,
   projectRootInput,
   status,
   busy,
@@ -71,35 +72,13 @@ export function RecoveryPanelControls({
           Open and check recovery
         </button>
       </div>
-      {sessionSnapshot.recoveryCandidate ? (
-        <div className="recovery-prompt" role="alert">
-          <strong>{sessionSnapshot.recoveryCandidate.project.name}</strong>
-          <span>
-            Recovery from{' '}
-            {new Date(
-              sessionSnapshot.recoveryCandidate.savedAtMs,
-            ).toLocaleString()}
-          </span>
-          <span className="recovery-path">
-            {sessionSnapshot.recoveryCandidate.recoveryFilePath}
-          </span>
-          <div>
-            <button
-              disabled={busy}
-              onClick={() => void onRestoreRecovery()}
-              type="button"
-            >
-              Restore in memory
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => void onIgnoreRecovery()}
-              type="button"
-            >
-              Ignore and retain file
-            </button>
-          </div>
-        </div>
+      {recoveryCandidate ? (
+        <RecoveryCandidateBanner
+          busy={busy}
+          candidate={recoveryCandidate}
+          onIgnore={onIgnoreRecovery}
+          onRestore={onRestoreRecovery}
+        />
       ) : null}
       <div className="recovery-status-row">
         <output>{status}</output>

@@ -55,6 +55,14 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
     });
   });
   const stop = vi.fn(async () => ({ ok: true as const }));
+  const restore = vi.fn(async () => ({
+    ok: true as const,
+    candidate: recoveryCandidate!,
+  }));
+  const ignore = vi.fn(async () => ({
+    ok: true as const,
+    retained: true as const,
+  }));
   const sessionApi: ProjectSessionApi = {
     open: vi.fn(async () => {
       order.push('open');
@@ -107,14 +115,8 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
       onError,
     },
     recoveryApi: {
-      restore: vi.fn(async () => ({
-        ok: true as const,
-        candidate: recoveryCandidate!,
-      })),
-      ignore: vi.fn(async () => ({
-        ok: true as const,
-        retained: true as const,
-      })),
+      restore,
+      ignore,
     },
     projectSaveApi: {
       save: vi.fn(async (request) => ({
@@ -135,6 +137,8 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
     store,
     order,
     stop,
+    restore,
+    ignore,
     onError,
     createController,
     getActiveSubscriptions: () => activeSubscriptions,
@@ -199,6 +203,46 @@ describe('EditorShell project session integration', () => {
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
+  it('renders one editor candidate banner without changing open or save cardinality', async () => {
+    const recoveryCandidate = candidate(PROJECT);
+    const harness = createSession(recoveryCandidate);
+    const sessionSnapshot =
+      await harness.session.switchProject(PROJECT_ROOT);
+    const markup = renderToStaticMarkup(
+      RecoveryPanelControls({
+        projectSnapshot: harness.store.getSnapshot(),
+        recoveryCandidate: sessionSnapshot.recoveryCandidate,
+        projectRootInput: PROJECT_ROOT,
+        status: 'Recovery available',
+        busy: false,
+        onProjectRootInputChange: vi.fn(),
+        onOpenProject: vi.fn(),
+        onRestoreRecovery: vi.fn(),
+        onIgnoreRecovery: vi.fn(),
+        onSaveRecoveredProject: vi.fn(),
+      }),
+    );
+
+    expect(harness.order).toEqual([
+      'open',
+      'track',
+      'detect',
+      'store.open',
+    ]);
+    expect(
+      markup.match(/data-testid="recovery-candidate-banner"/gu),
+    ).toHaveLength(1);
+    expect(markup.match(/class="recovery-prompt"/gu)).toHaveLength(1);
+    expect(markup.match(/class="recovery-open-row"/gu)).toHaveLength(1);
+    expect(markup.match(/class="editor-save-button"/gu)).toHaveLength(1);
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain(PROJECT.name);
+    expect(markup).toContain(recoveryCandidate.recoveryFilePath);
+    expect(markup).toContain('Restore in memory');
+    expect(markup).toContain('Ignore and retain file');
+    expect(harness.createController).toHaveBeenCalledTimes(1);
+  });
+
   it('opens a recent project through the same shell session and controller', async () => {
     const harness = createSession(null);
 
@@ -230,10 +274,32 @@ describe('EditorShell project session integration', () => {
     await restoreHarness.session.switchProject(PROJECT_ROOT);
 
     expect((await restoreHarness.session.restoreRecovery()).ok).toBe(true);
+    expect(restoreHarness.restore).toHaveBeenCalledTimes(1);
+    expect(
+      restoreHarness.session.getSnapshot().recoveryCandidate,
+    ).toBeNull();
     expect(restoreHarness.store.getSnapshot()).toMatchObject({
       project: { name: 'Recovered project' },
       dirty: true,
     });
+    const restoredMarkup = renderToStaticMarkup(
+      RecoveryPanelControls({
+        projectSnapshot: restoreHarness.store.getSnapshot(),
+        recoveryCandidate:
+          restoreHarness.session.getSnapshot().recoveryCandidate,
+        projectRootInput: PROJECT_ROOT,
+        status: 'Recovered',
+        busy: false,
+        onProjectRootInputChange: vi.fn(),
+        onOpenProject: vi.fn(),
+        onRestoreRecovery: vi.fn(),
+        onIgnoreRecovery: vi.fn(),
+        onSaveRecoveredProject: vi.fn(),
+      }),
+    );
+    expect(restoredMarkup).not.toContain('class="recovery-prompt"');
+    expect(restoredMarkup).toContain('class="editor-save-button"');
+    expect(restoredMarkup).toContain('dirty-state');
     expect(await restoreHarness.session.saveCurrentProject()).toMatchObject({
       ok: true,
       acknowledgement: 'current',
@@ -245,17 +311,32 @@ describe('EditorShell project session integration', () => {
       ok: true,
       retained: true,
     });
+    expect(ignoreHarness.ignore).toHaveBeenCalledTimes(1);
     expect(ignoreHarness.session.getSnapshot().recoveryCandidate).toBeNull();
+    const ignoredMarkup = renderToStaticMarkup(
+      RecoveryPanelControls({
+        projectSnapshot: ignoreHarness.store.getSnapshot(),
+        recoveryCandidate:
+          ignoreHarness.session.getSnapshot().recoveryCandidate,
+        projectRootInput: PROJECT_ROOT,
+        status: 'Ignored; evidence retained',
+        busy: false,
+        onProjectRootInputChange: vi.fn(),
+        onOpenProject: vi.fn(),
+        onRestoreRecovery: vi.fn(),
+        onIgnoreRecovery: vi.fn(),
+        onSaveRecoveredProject: vi.fn(),
+      }),
+    );
+    expect(ignoredMarkup).not.toContain('class="recovery-prompt"');
+    expect(ignoredMarkup.match(/class="recovery-open-row"/gu)).toHaveLength(1);
   });
 
   it('renders the existing recovery selectors through presenter props', () => {
     const markup = renderToStaticMarkup(
       RecoveryPanelControls({
         projectSnapshot: null,
-        sessionSnapshot: {
-          trackedProjectRoot: null,
-          recoveryCandidate: null,
-        },
+        recoveryCandidate: null,
         projectRootInput: '',
         status: 'Ready',
         busy: false,

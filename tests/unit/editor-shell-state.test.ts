@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ProjectSchema } from '../../src/domain';
 import {
+  getEditorShellRecoveryCandidate,
   getEditorShellState,
   getEditorShellSessionRegion,
 } from '../../src/renderer/shell/EditorShell';
@@ -50,5 +51,54 @@ describe('EditorShell state boundary', () => {
     expect(startScreenSource).not.toContain('editorProjectStore');
     expect(startScreenSource).not.toContain('ProjectSessionController');
     expect(startScreenSource).not.toContain('window.pandaStage.project');
+  });
+
+  it('selects one recovery banner only for editor state with a candidate', () => {
+    const recoveryCandidate = {
+      projectRoot: 'D:\\projects\\shell.pandastage',
+      recoveryFilePath:
+        'D:\\projects\\shell.pandastage\\recovery\\candidate.json',
+      projectId: exampleProject.id,
+      savedAtMs: 4_102_444_800_000,
+      project: ProjectSchema.parse(exampleProject),
+    };
+    const withCandidate = {
+      trackedProjectRoot: recoveryCandidate.projectRoot,
+      recoveryCandidate,
+    };
+
+    expect(
+      getEditorShellRecoveryCandidate('no-project', withCandidate),
+    ).toBeNull();
+    expect(
+      getEditorShellRecoveryCandidate('editor', {
+        ...withCandidate,
+        recoveryCandidate: null,
+      }),
+    ).toBeNull();
+    expect(
+      getEditorShellRecoveryCandidate('editor', withCandidate),
+    ).toBe(recoveryCandidate);
+    expect(
+      getEditorShellRecoveryCandidate('editor', {
+        ...withCandidate,
+        recoveryCandidate: null,
+      }),
+    ).toBeNull();
+  });
+
+  it('keeps candidate state and project/session ownership out of the banner', () => {
+    const banner = readFileSync(
+      'src/renderer/shell/RecoveryCandidateBanner.tsx',
+      'utf8',
+    );
+
+    expect(banner).not.toContain('useState');
+    expect(banner).not.toContain('editorProjectStore');
+    expect(banner).not.toContain('ProjectSessionController');
+    expect(banner).not.toContain('window.pandaStage');
+    expect(banner).not.toContain('recovery-open-row');
+    expect(banner).not.toContain('editor-save-button');
+    expect(banner).not.toContain('recovery-status-row');
   });
 });

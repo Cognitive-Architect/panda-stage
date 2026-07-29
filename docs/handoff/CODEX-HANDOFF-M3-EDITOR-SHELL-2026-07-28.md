@@ -8,7 +8,7 @@
 >
 > 权威合同：`docs/design/stage1a-execution-contract.md`
 >
-> 本版：Issue #63 恢复权威白名单与 1A-1 回滚合同；不含生产代码
+> 本版：Issue #68 同步 1A-1～1A-3 完成状态
 
 ## 0. 接管结论
 
@@ -29,9 +29,11 @@ production legacy scroll container =
   [data-testid="legacy-workspace-scroll"]
 Gate 19/21/22 = nested container when present, window fallback otherwise
 
-1A-1～1A-5 contract = READY
-Stage 1A implementation = not started
-1A-1 authorization = pending
+1A-1 implementation = completed
+1A-2 implementation = completed
+1A-3 implementation = completed
+1A-4 implementation = not started
+1A-5 implementation = not started
 ```
 
 M3 仍为 FAIL；PR #53 / #56 仍为 Draft；Day 26～45 继续冻结。
@@ -180,14 +182,14 @@ scripts/verify-day22.cjs
 ## 10. 切片合同状态
 
 ```text
-1A-1 Shell state / sole Controller owner = READY
-1A-2 StartScreen / no-project open        = READY
-1A-3 Banner prompt / restore / ignore     = READY
-1A-4 TopBar editor switch / save          = READY
-1A-5 Grid / nested LegacyWorkspace scroll = READY
+1A-1 Shell state / sole Controller owner = completed
+1A-2 StartScreen / no-project open        = completed
+1A-3 Banner prompt / restore / ignore     = completed
+1A-4 TopBar editor switch / save          = not started
+1A-5 Grid / nested LegacyWorkspace scroll = not started
 ```
 
-READY 是合同就绪，不是代码完成。
+M3 仍为 FAIL；以上状态不授权后续切片。
 
 ## 11. Stage 1A 白名单与 1A-1 精确摘要
 
@@ -281,14 +283,7 @@ pnpm build
 Issue #63 还要求从当前三份文档直接核验白名单、1A-1 exact scope/DoD/rollback
 和防回归规则，并确认本轮只有三份文档改动。
 
-## 14. 一分钟级最终核对
+## 14. 当前下一步
 
-Issue #63 和 CI 完成后，只做一次一分钟级最终核对：
-
-1. 核对 production/test 白名单可直接从执行合同读取；
-2. 核对 1A-1 exact scope、DoD、单 commit/rollback 和停止条件；
-3. 核对 Issue #61 两项 HIGH 合同仍完整；
-4. 核对 PR #56 仍是 Draft；
-5. 得到主理人明确授权后才开始 1A-1。
-
-不得因合同 READY 自动开始生产实现，也不得把 M3 改为 PASS。
+Issue #68 完成后停止；PR #56 保持 Draft，M3 保持 FAIL，Day 26～45 继续冻结。
+得到新的明确授权后才可开始 1A-4。
