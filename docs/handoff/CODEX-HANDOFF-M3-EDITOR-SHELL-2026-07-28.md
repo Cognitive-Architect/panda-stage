@@ -8,7 +8,7 @@
 >
 > 权威合同：`docs/design/stage1a-execution-contract.md`
 >
-> 本版：Issue #68 同步 1A-1～1A-3 完成状态
+> 本版：Issue #69 同步 1A-1～1A-4 完成状态
 
 ## 0. 接管结论
 
@@ -32,7 +32,7 @@ Gate 19/21/22 = nested container when present, window fallback otherwise
 1A-1 implementation = completed
 1A-2 implementation = completed
 1A-3 implementation = completed
-1A-4 implementation = not started
+1A-4 implementation = completed
 1A-5 implementation = not started
 ```
 
@@ -185,7 +185,7 @@ scripts/verify-day22.cjs
 1A-1 Shell state / sole Controller owner = completed
 1A-2 StartScreen / no-project open        = completed
 1A-3 Banner prompt / restore / ignore     = completed
-1A-4 TopBar editor switch / save          = not started
+1A-4 TopBar editor switch / save          = completed
 1A-5 Grid / nested LegacyWorkspace scroll = not started
 ```
 
@@ -285,5 +285,5 @@ Issue #63 还要求从当前三份文档直接核验白名单、1A-1 exact scope
 
 ## 14. 当前下一步
 
-Issue #68 完成后停止；PR #56 保持 Draft，M3 保持 FAIL，Day 26～45 继续冻结。
-得到新的明确授权后才可开始 1A-4。
+Issue #69 完成后停止；PR #56 保持 Draft，M3 保持 FAIL，Day 26～45 继续冻结。
+得到新的明确授权后才可开始 1A-5。

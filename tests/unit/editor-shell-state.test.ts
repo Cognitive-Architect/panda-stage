@@ -28,7 +28,7 @@ describe('EditorShell state boundary', () => {
 
     expect(state).toBe('editor');
     expect(getEditorShellSessionRegion(state)).toBe(
-      'legacy-recovery',
+      'editor-top-bar',
     );
   });
 
@@ -100,5 +100,46 @@ describe('EditorShell state boundary', () => {
     expect(banner).not.toContain('recovery-open-row');
     expect(banner).not.toContain('editor-save-button');
     expect(banner).not.toContain('recovery-status-row');
+  });
+
+  it('selects EditorTopBar for every editor candidate state and never for no-project', () => {
+    expect(getEditorShellSessionRegion('no-project')).toBe(
+      'start-screen',
+    );
+    expect(getEditorShellSessionRegion('editor')).toBe(
+      'editor-top-bar',
+    );
+
+    const shell = readFileSync(
+      'src/renderer/shell/EditorShell.tsx',
+      'utf8',
+    );
+    expect(shell.indexOf('<StartScreen')).toBeGreaterThan(-1);
+    expect(shell.indexOf('<EditorTopBar')).toBeGreaterThan(-1);
+    expect(shell).toContain(
+      "sessionRegion === 'start-screen'",
+    );
+    expect(shell).toMatch(
+      /<EditorTopBar[\s\S]*?recoveryBanner=\{[\s\S]*?recoveryCandidate/u,
+    );
+  });
+
+  it('keeps project state, controller, preview, and create behavior out of EditorTopBar', () => {
+    const topBar = readFileSync(
+      'src/renderer/shell/EditorTopBar.tsx',
+      'utf8',
+    );
+
+    expect(topBar).not.toContain('useState');
+    expect(topBar).not.toContain('editorProjectStore');
+    expect(topBar).not.toContain('ProjectSessionController');
+    expect(topBar).not.toContain('window.pandaStage');
+    expect(topBar).not.toContain('StagePreview');
+    expect(topBar).not.toMatch(/\.project\.create\s*\(/u);
+    expect(topBar).not.toContain('createAt');
+    expect(topBar).toContain('产品预览（后续阶段启用）');
+    expect(topBar).toMatch(
+      /data-testid="product-preview-placeholder"[\s\S]*?disabled/u,
+    );
   });
 });

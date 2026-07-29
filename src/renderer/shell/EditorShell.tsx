@@ -31,12 +31,14 @@ import {
   editorProjectStore,
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
+import { EditorTopBar } from './EditorTopBar';
+import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { StartScreen } from './StartScreen';
 
 export type EditorShellState = 'no-project' | 'editor';
 export type EditorShellSessionRegion =
   | 'start-screen'
-  | 'legacy-recovery';
+  | 'editor-top-bar';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
@@ -47,7 +49,7 @@ export function getEditorShellState(
 export function getEditorShellSessionRegion(
   state: EditorShellState,
 ): EditorShellSessionRegion {
-  return state === 'no-project' ? 'start-screen' : 'legacy-recovery';
+  return state === 'no-project' ? 'start-screen' : 'editor-top-bar';
 }
 
 export function getEditorShellRecoveryCandidate(
@@ -435,22 +437,34 @@ export function EditorShell({
             projectSnapshot={projectSnapshot}
           />
         </>
-      ) : (
-        <ProjectRecoveryPanel
-          busy={busy}
-          onIgnoreRecovery={ignoreRecovery}
-          onOpenProject={openProject}
-          onOpenRecentProject={switchToRecentProject}
-          onProjectRootInputChange={setProjectRootInput}
-          onRestoreRecovery={restoreRecovery}
-          onSaveRecoveredProject={saveRecoveredProject}
-          projectRootInput={projectRootInput}
-          projectSnapshot={projectSnapshot}
-          recoveryCandidate={recoveryCandidate}
-          recentRefreshToken={recentRefreshToken}
-          status={status}
-        />
-      )}
+      ) : projectSnapshot ? (
+        <>
+          <EditorTopBar
+            busy={busy}
+            onOpenProject={openProject}
+            onProjectRootInputChange={setProjectRootInput}
+            onSaveProject={saveRecoveredProject}
+            projectRootInput={projectRootInput}
+            projectSnapshot={projectSnapshot}
+            recoveryBanner={
+              recoveryCandidate ? (
+                <RecoveryCandidateBanner
+                  busy={busy}
+                  candidate={recoveryCandidate}
+                  onIgnore={ignoreRecovery}
+                  onRestore={restoreRecovery}
+                />
+              ) : null
+            }
+            status={status}
+          />
+          <ProjectRecoveryPanel
+            onOpenRecentProject={switchToRecentProject}
+            projectSnapshot={projectSnapshot}
+            recentRefreshToken={recentRefreshToken}
+          />
+        </>
+      ) : null}
       {afterRecovery}
     </main>
   );
