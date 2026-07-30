@@ -56,6 +56,7 @@ function createHarness() {
       track: vi.fn(),
       stop: vi.fn(),
       detect: vi.fn(),
+      confirmSwitch: vi.fn(),
     },
     autosaveApi: { update, onError },
     recoveryApi: {

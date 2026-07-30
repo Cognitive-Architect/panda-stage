@@ -11,6 +11,7 @@ import {
 } from '../../src/renderer/features/recovery/ProjectSessionController';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import type { RecoveryCandidate } from '../../src/shared/recovery-api';
+import type { ProjectSwitchGuardOutcome } from '../../src/shared/project-api';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 const PROJECT_A_ROOT = 'D:\\projects\\a.pandastage';
@@ -74,6 +75,8 @@ interface Harness {
   track: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   detect: ReturnType<typeof vi.fn>;
+  confirmSwitch: ReturnType<typeof vi.fn>;
+  guardOutcomes: ProjectSwitchGuardOutcome[];
   trackFailures: Set<string>;
   stopFailures: Set<string>;
   detectFailures: Set<string>;
@@ -85,6 +88,8 @@ function createHarness(): Harness {
   const autosave = new AutosaveService({
     recoveryService: {
       writeRecovery,
+      cleanupAfterFormalSave: vi.fn().mockResolvedValue(undefined),
+      assertDiscarded: vi.fn().mockResolvedValue(undefined),
     } as unknown as RecoveryService,
     clock: inertClock,
   });
@@ -96,6 +101,7 @@ function createHarness(): Harness {
   const stopFailures = new Set<string>();
   const detectFailures = new Set<string>();
   const candidates = new Map<string, RecoveryCandidate | null>();
+  const guardOutcomes: ProjectSwitchGuardOutcome[] = [];
   const open = vi.fn(async (projectRoot: string) => {
     const normalizedRoot =
       projectRoot === PROJECT_A_ALIAS ? PROJECT_A_ROOT : projectRoot;
@@ -165,12 +171,26 @@ function createHarness(): Harness {
       }
       return { ok: true as const, document: response.value };
     });
+  const confirmSwitch = vi.fn(async (request) => {
+    const outcome = guardOutcomes.shift() ?? 'saved';
+    if (outcome === 'saved') {
+      autosave.markFormalSaved(
+        request.projectRoot,
+        request.project,
+        request.revision,
+      );
+    } else if (outcome === 'discarded') {
+      await autosave.discard(request.projectRoot, request.project.id);
+    }
+    return { outcome };
+  });
   const api: ProjectSessionApi = {
     open,
     openRecent,
     track,
     stop,
     detect,
+    confirmSwitch,
   };
   const store = new EditorProjectStore();
   const controller = new ProjectSessionController(api, store);
@@ -184,6 +204,8 @@ function createHarness(): Harness {
     track,
     stop,
     detect,
+    confirmSwitch,
+    guardOutcomes,
     trackFailures,
     stopFailures,
     detectFailures,
@@ -248,6 +270,7 @@ describe('ProjectSessionController transactional switching', () => {
   it('rolls back a failed new-project track without stopping the old session', async () => {
     await openDirtyProjectA(harness);
     const oldSnapshot = harness.store.getSnapshot();
+    harness.guardOutcomes.push('discarded');
     harness.trackFailures.add(PROJECT_B_ROOT);
 
     await expect(
@@ -260,16 +283,20 @@ describe('ProjectSessionController transactional switching', () => {
     expect(harness.stop).not.toHaveBeenCalledWith(PROJECT_A_ROOT);
   });
 
-  it('removes the temporary session when recovery detection fails', async () => {
+  it('keeps Dirty A untouched when target recovery detection fails before prompting', async () => {
     await openDirtyProjectA(harness);
-    const oldSnapshot = harness.store.getSnapshot();
     harness.detectFailures.add(PROJECT_B_ROOT);
 
     await expect(
       harness.controller.switchProject(PROJECT_B_ROOT),
     ).rejects.toMatchObject({ code: 'DETECT_FAILED' });
 
-    expect(harness.store.getSnapshot()).toBe(oldSnapshot);
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_A_ROOT,
+      project: { name: 'Unsaved A' },
+      dirty: true,
+    });
+    expect(harness.confirmSwitch).not.toHaveBeenCalled();
     expect(harness.autosave.trackedProjectCount()).toBe(1);
     expect(harness.stop).toHaveBeenCalledWith(PROJECT_B_ROOT);
     expect(harness.stop).not.toHaveBeenCalledWith(PROJECT_A_ROOT);
@@ -300,6 +327,7 @@ describe('ProjectSessionController transactional switching', () => {
   it('restores the old autosave session when stopping it reports failure', async () => {
     await openDirtyProjectA(harness);
     const oldSnapshot = harness.store.getSnapshot();
+    harness.guardOutcomes.push('discarded');
     harness.stopFailures.add(PROJECT_A_ROOT);
 
     await expect(
@@ -318,21 +346,22 @@ describe('ProjectSessionController transactional switching', () => {
     );
   });
 
-  it('blocks reopening the current dirty path without duplicating or stopping its timer', async () => {
+  it('reports the current dirty path as already open without prompting or stopping', async () => {
     await openDirtyProjectA(harness);
     const oldSnapshot = harness.store.getSnapshot();
 
     await expect(
       harness.controller.switchProject('d:/projects/a.pandastage/'),
-    ).rejects.toMatchObject({ code: 'CURRENT_PROJECT_DIRTY' });
+    ).resolves.toMatchObject({ trackedProjectRoot: PROJECT_A_ROOT });
 
     expect(harness.store.getSnapshot()).toBe(oldSnapshot);
     expect(harness.autosave.trackedProjectCount()).toBe(1);
     expect(harness.open).toHaveBeenCalledTimes(1);
+    expect(harness.confirmSwitch).not.toHaveBeenCalled();
     expect(harness.stop).not.toHaveBeenCalled();
   });
 
-  it('blocks a dirty same-project dot-segment alias after Main normalizes it', async () => {
+  it('re-detects a dirty same-project alias without prompting or replacing its session', async () => {
     harness.candidates.set(
       PROJECT_A_ROOT,
       candidate(PROJECT_A_ROOT, PROJECT_A),
@@ -343,18 +372,143 @@ describe('ProjectSessionController transactional switching', () => {
 
     await expect(
       harness.controller.switchProject(PROJECT_A_ALIAS),
-    ).rejects.toMatchObject({ code: 'CURRENT_PROJECT_DIRTY' });
+    ).resolves.toMatchObject({
+      trackedProjectRoot: PROJECT_A_ROOT,
+      recoveryCandidate: expect.objectContaining({
+        projectRoot: PROJECT_A_ROOT,
+      }),
+    });
 
     expect(harness.open).toHaveBeenCalledWith(PROJECT_A_ALIAS);
     expect(harness.store.getSnapshot()).toBe(oldSnapshot);
     expect(harness.controller.getSnapshot().trackedProjectRoot).toBe(
       PROJECT_A_ROOT,
     );
-    expect(harness.controller.getSnapshot()).toBe(oldSessionSnapshot);
+    expect(harness.controller.getSnapshot()).not.toBe(oldSessionSnapshot);
     expect(harness.autosave.trackedProjectCount()).toBe(1);
     expect(harness.track).toHaveBeenCalledTimes(1);
+    expect(harness.confirmSwitch).not.toHaveBeenCalled();
     expect(harness.stop).not.toHaveBeenCalled();
   });
+
+  it('keeps Dirty A unchanged when a recent-project switch is cancelled', async () => {
+    await openDirtyProjectA(harness);
+    const oldSnapshot = harness.store.getSnapshot();
+    harness.guardOutcomes.push('cancelled');
+
+    await expect(
+      harness.controller.switchRecentProject(
+        PROJECT_B_ROOT,
+        PROJECT_B.id,
+      ),
+    ).rejects.toMatchObject({ code: 'SWITCH_CANCELLED' });
+
+    expect(harness.confirmSwitch).toHaveBeenCalledWith(oldSnapshot);
+    expect(harness.store.getSnapshot()).toBe(oldSnapshot);
+    expect(harness.autosave.trackedProjectCount()).toBe(1);
+    expect(harness.track).toHaveBeenCalledTimes(2);
+    expect(harness.stop).toHaveBeenCalledWith(PROJECT_B_ROOT);
+  });
+
+  it('discards Dirty A only after approval and switches through the recent-project entry', async () => {
+    await openDirtyProjectA(harness);
+    harness.guardOutcomes.push('discarded');
+
+    await harness.controller.switchRecentProject(
+      PROJECT_B_ROOT,
+      PROJECT_B.id,
+    );
+
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_B_ROOT,
+      dirty: false,
+    });
+    expect(harness.autosave.trackedProjectCount()).toBe(1);
+  });
+
+  it('saves Dirty A before switching through the recent-project entry', async () => {
+    await openDirtyProjectA(harness);
+    harness.guardOutcomes.push('saved');
+
+    await harness.controller.switchRecentProject(
+      PROJECT_B_ROOT,
+      PROJECT_B.id,
+    );
+
+    expect(harness.confirmSwitch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot: PROJECT_A_ROOT,
+        dirty: true,
+      }),
+    );
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_B_ROOT,
+      dirty: false,
+    });
+  });
+
+  it('saves Dirty A before switching through the path entry', async () => {
+    await openDirtyProjectA(harness);
+    harness.guardOutcomes.push('saved');
+
+    await harness.controller.switchProject(PROJECT_B_ROOT);
+
+    expect(harness.confirmSwitch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot: PROJECT_A_ROOT,
+        dirty: true,
+        revision: 1,
+      }),
+    );
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_B_ROOT,
+      dirty: false,
+    });
+  });
+
+  it('keeps Dirty A when the path-entry switch is cancelled', async () => {
+    await openDirtyProjectA(harness);
+    const oldSnapshot = harness.store.getSnapshot();
+    harness.guardOutcomes.push('cancelled');
+
+    await expect(
+      harness.controller.switchProject(PROJECT_B_ROOT),
+    ).rejects.toMatchObject({ code: 'SWITCH_CANCELLED' });
+
+    expect(harness.store.getSnapshot()).toBe(oldSnapshot);
+  });
+
+  it('discards Dirty A before switching through the path entry', async () => {
+    await openDirtyProjectA(harness);
+    harness.guardOutcomes.push('discarded');
+
+    await harness.controller.switchProject(PROJECT_B_ROOT);
+
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_B_ROOT,
+      dirty: false,
+    });
+  });
+
+  it.each([
+    ['save-failed', 'SWITCH_SAVE_FAILED'],
+    ['discard-failed', 'SWITCH_DISCARD_FAILED'],
+  ] as const)(
+    'does not switch when the shared guard returns %s',
+    async (outcome, code) => {
+      await openDirtyProjectA(harness);
+      const oldSnapshot = harness.store.getSnapshot();
+      harness.guardOutcomes.push(outcome);
+
+      await expect(
+        harness.controller.switchProject(PROJECT_B_ROOT),
+      ).rejects.toMatchObject({ code });
+
+      expect(harness.store.getSnapshot()).toBe(oldSnapshot);
+      expect(harness.track).toHaveBeenCalledTimes(2);
+      expect(harness.stop).toHaveBeenCalledWith(PROJECT_B_ROOT);
+    },
+  );
 
   it('re-detects a clean same-project dot-segment alias without replacing its session', async () => {
     await harness.controller.switchProject(PROJECT_A_ROOT);

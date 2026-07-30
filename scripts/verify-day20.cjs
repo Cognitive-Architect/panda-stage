@@ -305,7 +305,7 @@ async function verifyDay20() {
           '.shot-manager-heading span'
         ).textContent.trim(),
         saveDisabled: document.querySelector(
-          '.shot-manager-heading button'
+          '.editor-save-button'
         ).disabled
       }))()`);
     const noOpAutosaveBefore = autosaveUpdates.length;
@@ -328,7 +328,7 @@ async function verifyDay20() {
           '.shot-manager-heading span'
         ).textContent.trim(),
         saveDisabled: document.querySelector(
-          '.shot-manager-heading button'
+          '.editor-save-button'
         ).disabled,
         status: document.querySelector(
           '.shot-manager-status'
@@ -531,12 +531,12 @@ async function verifyDay20() {
       await captureSection(window, '.shot-manager');
 
     await window.webContents.executeJavaScript(`
-      document.querySelector('.shot-manager-heading button').click()
+      document.querySelector('.editor-save-button').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager-status')" +
-          "?.textContent?.includes('已保存到 project.json')",
+        "document.querySelector('.recovery-status-row output')" +
+          "?.textContent?.includes('项目已保存')",
         'Five-shot project did not save.',
       ),
     );

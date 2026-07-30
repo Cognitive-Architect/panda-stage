@@ -81,3 +81,6 @@ jobs:
 
       - name: Day 24 command history gate
         run: pnpm verify:day24
+
+      - name: Issue 73 project-switch and open-flow gate
+        run: pnpm verify:issue73

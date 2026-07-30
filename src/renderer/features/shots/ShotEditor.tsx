@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SHOT_MIN_DURATION_MS, type Shot } from '../../../domain';
 import { ShotThumbnailPlaceholder } from './ShotThumbnailPlaceholder';
 
@@ -25,6 +25,11 @@ export function ShotEditor({
   const [durationMs, setDurationMs] = useState(
     shot?.durationMs ?? SHOT_MIN_DURATION_MS,
   );
+
+  useEffect(() => {
+    setName(shot?.name ?? '');
+    setDurationMs(shot?.durationMs ?? SHOT_MIN_DURATION_MS);
+  }, [shot?.id, shot?.name, shot?.durationMs]);
 
   if (!shot) {
     return (

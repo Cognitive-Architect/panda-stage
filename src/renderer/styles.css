@@ -1445,13 +1445,55 @@ button:disabled {
 }
 
 .recovery-prompt {
-  display: grid;
-  padding: 12px;
+  display: flex;
+  position: relative;
+  min-height: 56px;
+  padding: 9px 12px;
   border: 1px solid rgb(233 181 80 / 38%);
   border-radius: 12px;
   color: #f8e7bd;
   background: rgb(101 66 15 / 24%);
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.recovery-prompt-summary {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.recovery-prompt-summary span {
+  color: #d8c69c;
+  font-size: 11px;
+}
+
+.recovery-details {
+  font-size: 11px;
+}
+
+.recovery-details[open] {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  width: min(640px, 100%);
+  padding: 10px;
+  border: 1px solid rgb(233 181 80 / 38%);
+  border-radius: 10px;
+  background: #1d1a10;
+  gap: 4px;
+  box-shadow: 0 14px 32px rgb(0 0 0 / 38%);
+}
+
+.recovery-details summary {
+  cursor: pointer;
+}
+
+.recovery-details code {
+  overflow-wrap: anywhere;
 }
 
 .recovery-path,

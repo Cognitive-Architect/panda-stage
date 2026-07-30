@@ -11,6 +11,8 @@ export const IPC_CHANNELS = Object.freeze({
   EXPORT_CANCEL_JOB: 'export:cancel-job',
   EXPORT_JOB_UPDATE: 'export:job-update',
   PROJECT_CREATE: 'project:create',
+  PROJECT_CHOOSE_DIRECTORY: 'project:choose-directory',
+  PROJECT_CONFIRM_SWITCH: 'project:confirm-switch',
   PROJECT_OPEN: 'project:open',
   PROJECT_SAVE: 'project:save',
   ASSET_IMPORT_CHOOSE: 'asset-import:choose',

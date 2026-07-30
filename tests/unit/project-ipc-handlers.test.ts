@@ -55,13 +55,15 @@ describe('project IPC handlers', () => {
     electronMocks.removeHandler.mockClear();
   });
 
-  it('registers only the three allowlisted project operations', () => {
+  it('registers only the five allowlisted project operations', () => {
     const remove = registerProjectIpcHandlers({
       getMainWindow: () => mainWindow(),
       projectService: projectService(),
     });
 
     expect([...electronMocks.handlers.keys()]).toEqual([
+      IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY,
+      IPC_CHANNELS.PROJECT_CONFIRM_SWITCH,
       IPC_CHANNELS.PROJECT_CREATE,
       IPC_CHANNELS.PROJECT_OPEN,
       IPC_CHANNELS.PROJECT_SAVE,
@@ -86,6 +88,58 @@ describe('project IPC handlers', () => {
       }),
     ).rejects.toThrow();
     expect(service.save).not.toHaveBeenCalled();
+  });
+
+  it('returns selected and cancelled native project directories without opening them', async () => {
+    const service = projectService();
+    const selectProjectDirectory = vi
+      .fn()
+      .mockResolvedValueOnce('D:\\projects\\picked.pandastage')
+      .mockResolvedValueOnce(null);
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+      selectProjectDirectory,
+    });
+    const handler = electronMocks.handlers.get(
+      IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY,
+    )!;
+
+    await expect(handler(event(), {})).resolves.toEqual({
+      ok: true,
+      status: 'selected',
+      projectRoot: 'D:\\projects\\picked.pandastage',
+    });
+    await expect(handler(event(), {})).resolves.toEqual({
+      ok: true,
+      status: 'cancelled',
+    });
+    expect(service.open).not.toHaveBeenCalled();
+  });
+
+  it('validates and forwards the exact dirty snapshot to the shared switch guard', async () => {
+    const service = projectService();
+    const confirmProjectSwitch = vi.fn().mockResolvedValue('discarded');
+    const project = ProjectSchema.parse(exampleProject);
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+      confirmProjectSwitch,
+    });
+    const request = {
+      projectRoot: 'D:\\projects\\dirty.pandastage',
+      project,
+      dirty: true as const,
+      revision: 8,
+    };
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH)!(
+        event(),
+        request,
+      ),
+    ).resolves.toEqual({ outcome: 'discarded' });
+    expect(confirmProjectSwitch).toHaveBeenCalledWith(request);
   });
 
   it('rejects an untrusted renderer before parsing input', async () => {

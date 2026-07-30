@@ -156,7 +156,13 @@ async function snapshot(window) {
       transformDraft: Array.from(document.querySelectorAll(
         '[data-testid="layer-transform-panel"] form input[type="text"], ' +
         '[data-testid="layer-transform-panel"] form input[inputmode="decimal"]'
-      )).map((input) => input.value)
+      )).map((input) => input.value),
+      shotNameDraft: document.querySelector(
+        '.shot-fields label:nth-of-type(1) input'
+      )?.value,
+      shotDurationDraft: Number(document.querySelector(
+        '.shot-fields label:nth-of-type(2) input'
+      )?.value)
     };
   })()`);
 }
@@ -324,6 +330,11 @@ async function verifyDay24() {
     ...firstProject,
     id: 'd2400000-0000-4000-8000-000000000002',
     name: 'Day 24 second project',
+    shots: firstProject.shots.map((shot) => ({
+      ...shot,
+      name: 'Second project shot',
+      durationMs: 4_321,
+    })),
   };
   let saveRequest = null;
   const backgroundBytes = await readFile(
@@ -977,6 +988,8 @@ async function verifyDay24() {
           activeProjectRoot: switched.activeProjectRoot,
           openCandidatePath: switched.openCandidatePath,
           projectName: switched.projectName,
+          shotNameDraft: switched.shotNameDraft,
+          shotDurationDraft: switched.shotDurationDraft,
           undoCount: switched.undoCount,
           redoCount: switched.redoCount,
         },
@@ -984,6 +997,8 @@ async function verifyDay24() {
           activeProjectRoot: returned.activeProjectRoot,
           openCandidatePath: returned.openCandidatePath,
           projectName: returned.projectName,
+          shotNameDraft: returned.shotNameDraft,
+          shotDurationDraft: returned.shotDurationDraft,
           undoCount: returned.undoCount,
           redoCount: returned.redoCount,
         },
@@ -1122,11 +1137,19 @@ async function verifyDay24() {
       evidence.projectSwitch.second.activeProjectRoot !== secondRoot ||
       evidence.projectSwitch.second.openCandidatePath !== secondRoot ||
       evidence.projectSwitch.second.projectName !== secondProject.name ||
+      evidence.projectSwitch.second.shotNameDraft !==
+        secondProject.shots[0].name ||
+      evidence.projectSwitch.second.shotDurationDraft !==
+        secondProject.shots[0].durationMs ||
       evidence.projectSwitch.second.undoCount !== 0 ||
       evidence.projectSwitch.second.redoCount !== 0 ||
       evidence.projectSwitch.returned.activeProjectRoot !== firstRoot ||
       evidence.projectSwitch.returned.openCandidatePath !== firstRoot ||
       evidence.projectSwitch.returned.projectName !== firstProject.name ||
+      evidence.projectSwitch.returned.shotNameDraft !==
+        firstProject.shots[0].name ||
+      evidence.projectSwitch.returned.shotDurationDraft !==
+        firstProject.shots[0].durationMs ||
       evidence.projectSwitch.returned.undoCount !== 0 ||
       evidence.projectSwitch.returned.redoCount !== 0
     ) {

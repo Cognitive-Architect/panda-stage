@@ -7,6 +7,7 @@ export const ProjectErrorCodeSchema = z.enum([
   'INVALID_PROJECT_ROOT',
   'PROJECT_ALREADY_EXISTS',
   'PROJECT_NOT_FOUND',
+  'PROJECT_FILE_NOT_FOUND',
   'INVALID_JSON',
   'UNSUPPORTED_VERSION',
   'INVALID_PROJECT',
@@ -17,6 +18,47 @@ export const ProjectErrorCodeSchema = z.enum([
   'OPEN_FAILED',
   'SAVE_FAILED',
 ]);
+
+export const ProjectChooseDirectoryRequestSchema = z.object({}).strict();
+
+export const ProjectChooseDirectoryResponseSchema = z.union([
+  z
+    .object({
+      ok: z.literal(true),
+      status: z.literal('selected'),
+      projectRoot: FileSystemPathSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ok: z.literal(true),
+      status: z.literal('cancelled'),
+    })
+    .strict(),
+]);
+
+export const ProjectSwitchGuardRequestSchema = z
+  .object({
+    projectRoot: FileSystemPathSchema,
+    project: ProjectSchema,
+    dirty: z.literal(true),
+    revision: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const ProjectSwitchGuardOutcomeSchema = z.enum([
+  'saved',
+  'discarded',
+  'cancelled',
+  'save-failed',
+  'discard-failed',
+]);
+
+export const ProjectSwitchGuardResponseSchema = z
+  .object({
+    outcome: ProjectSwitchGuardOutcomeSchema,
+  })
+  .strict();
 
 export const ProjectCreateMetadataSchema = z
   .object({
@@ -88,6 +130,18 @@ export const ProjectOperationResponseSchema = z.discriminatedUnion('ok', [
 ]);
 
 export type ProjectErrorCode = z.infer<typeof ProjectErrorCodeSchema>;
+export type ProjectChooseDirectoryResponse = z.infer<
+  typeof ProjectChooseDirectoryResponseSchema
+>;
+export type ProjectSwitchGuardRequest = z.infer<
+  typeof ProjectSwitchGuardRequestSchema
+>;
+export type ProjectSwitchGuardOutcome = z.infer<
+  typeof ProjectSwitchGuardOutcomeSchema
+>;
+export type ProjectSwitchGuardResponse = z.infer<
+  typeof ProjectSwitchGuardResponseSchema
+>;
 export type ProjectCreateMetadata = z.infer<
   typeof ProjectCreateMetadataSchema
 >;

@@ -554,12 +554,12 @@ async function verifyDay19() {
       }))()`);
 
     await window.webContents.executeJavaScript(`
-      document.querySelector('.character-manager-heading button').click()
+      document.querySelector('.editor-save-button').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-manager-status')" +
-          "?.textContent?.includes('可安全重开')",
+        "document.querySelector('.recovery-status-row output')" +
+          "?.textContent?.includes('项目已保存')",
         'Character project did not save.',
       ),
     );

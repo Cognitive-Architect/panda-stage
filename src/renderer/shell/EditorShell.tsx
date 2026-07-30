@@ -241,6 +241,8 @@ function createBrowserSession(): EditorShellSession {
       stop: (projectRoot) => window.pandaStage.autosave.stop(projectRoot),
       detect: (projectRoot) =>
         window.pandaStage.recovery.detect(projectRoot),
+      confirmSwitch: (request) =>
+        window.pandaStage.project.confirmSwitch(request),
     },
     autosaveApi: window.pandaStage.autosave,
     recoveryApi: window.pandaStage.recovery,
@@ -321,19 +323,26 @@ export function EditorShell({
     projectRoot: string,
     expectedProjectId: string,
   ): Promise<void> => {
-    const nextSession = await session.switchRecentProject(
-      projectRoot,
-      expectedProjectId,
-    );
-    updateSession(
-      nextSession,
-      '已从最近项目打开，暂无未保存更改。',
-    );
+    try {
+      const nextSession = await session.switchRecentProject(
+        projectRoot,
+        expectedProjectId,
+      );
+      updateSession(
+        nextSession,
+        '已从最近项目打开，暂无未保存更改。',
+      );
+    } catch (error) {
+      throw new Error(projectOpenErrorMessage(error), { cause: error });
+    }
   };
 
   const openProject = async (): Promise<void> => {
     const projectRoot = openCandidatePath.trim();
-    const validation = validateProjectOpenCandidate(projectRoot);
+    const validation = validateProjectOpenCandidate(
+      projectRoot,
+      projectSnapshot?.projectRoot,
+    );
     if (!validation.valid) {
       setStatus(validation.message);
       return;
@@ -343,6 +352,27 @@ export function EditorShell({
       await switchToProject(projectRoot);
     } catch (error) {
       setStatus(projectOpenErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const chooseProjectDirectory = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const response = await window.pandaStage.project.chooseDirectory();
+      if (response.status === 'cancelled') {
+        setStatus('已取消选择，当前项目与待打开路径保持不变。');
+        return;
+      }
+      setOpenCandidatePath(response.projectRoot);
+      setStatus('已选择项目文件夹，请确认后点击“打开项目”。');
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? `无法选择项目文件夹：${error.message}`
+          : '无法选择项目文件夹，请稍后重试。',
+      );
     } finally {
       setBusy(false);
     }
@@ -417,6 +447,7 @@ export function EditorShell({
         <div className="start-screen" data-testid="start-screen">
           <StartScreen
             busy={busy}
+            onChooseProjectDirectory={chooseProjectDirectory}
             onOpenProject={openProject}
             onOpenRecentProject={switchToRecentProject}
             onOpenCandidatePathChange={setOpenCandidatePath}
@@ -429,6 +460,7 @@ export function EditorShell({
         <div className="editor-layout" data-testid="editor-layout">
           <EditorTopBar
             busy={busy}
+            onChooseProjectDirectory={chooseProjectDirectory}
             onOpenProject={openProject}
             onOpenCandidatePathChange={setOpenCandidatePath}
             onSaveProject={saveProject}
@@ -455,6 +487,7 @@ export function EditorShell({
               <span>镜头、素材与角色将在后续阶段迁入</span>
             </aside>
             <LegacyWorkspace
+              key={projectSnapshot.projectRoot}
               onOpenRecentProject={switchToRecentProject}
               projectSnapshot={projectSnapshot}
               recentRefreshToken={recentRefreshToken}

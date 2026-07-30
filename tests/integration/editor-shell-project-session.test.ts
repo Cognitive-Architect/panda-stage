@@ -58,6 +58,7 @@ function renderEditorTopBar(
           })
         : null,
       onOpenCandidatePathChange: vi.fn(),
+      onChooseProjectDirectory: vi.fn(),
       onOpenProject: vi.fn(),
       onSaveProject: vi.fn(),
     }),
@@ -145,6 +146,7 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
       order.push('detect');
       return { ok: true as const, candidate: recoveryCandidate };
     }),
+    confirmSwitch: vi.fn(async () => ({ outcome: 'saved' as const })),
   };
   const createController = vi.fn(
     (api: ProjectSessionApi, projectStore: EditorProjectStore) =>
@@ -190,6 +192,7 @@ describe('EditorShell project session integration', () => {
         busy: false,
         recentRefreshToken: 0,
         onOpenCandidatePathChange: vi.fn(),
+        onChooseProjectDirectory: vi.fn(),
         onOpenProject: vi.fn(),
         onOpenRecentProject: vi.fn(),
       }),
@@ -198,6 +201,8 @@ describe('EditorShell project session integration', () => {
     expect(markup.match(/class="recovery-open-row"/gu)).toHaveLength(1);
     expect(markup.match(/class="recent-projects-panel"/gu)).toHaveLength(1);
     expect(markup).toContain('打开项目');
+    expect(markup).toContain('浏览…');
+    expect(markup).toContain('data-testid="choose-project-directory"');
     expect(markup).toContain('新建项目（后续阶段启用）');
     expect(markup).toMatch(
       /data-testid="new-project-button"[^>]*disabled/u,
@@ -215,6 +220,7 @@ describe('EditorShell project session integration', () => {
         busy: false,
         recentRefreshToken: 0,
         onOpenCandidatePathChange: vi.fn(),
+        onChooseProjectDirectory: vi.fn(),
         onOpenProject: vi.fn(),
         onOpenRecentProject: vi.fn(),
       }),
@@ -377,6 +383,7 @@ describe('EditorShell project session integration', () => {
         status: 'Ready',
         busy: false,
         onOpenCandidatePathChange: vi.fn(),
+        onChooseProjectDirectory: vi.fn(),
         onOpenProject: vi.fn(),
         onSaveProject: vi.fn(),
       }),
@@ -470,6 +477,11 @@ describe('EditorShell project session integration', () => {
     expect(markup).not.toContain('Recovered');
     expect(markup).toContain('暂无未保存更改');
     expect(markup).toContain('保存整个项目');
+    expect(markup).toContain('浏览…');
+    expect(markup).toContain('该项目当前已经打开');
+    expect(markup).toMatch(
+      /class="recovery-open-row"[\s\S]*?<button disabled=""[^>]*>打开项目<\/button>/u,
+    );
   });
 
   it('stops the tracked project after the final StrictMode cleanup', async () => {

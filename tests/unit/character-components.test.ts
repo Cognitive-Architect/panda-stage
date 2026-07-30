@@ -28,7 +28,7 @@ function projectWithWarning(): Project {
 }
 
 describe('character management components', () => {
-  it('renders the manager, two-expression creation form, and project-save action', () => {
+  it('renders the manager and creation form without duplicating the global save action', () => {
     const project = ProjectSchema.parse(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(CharacterManager, {
@@ -44,7 +44,7 @@ describe('character management components', () => {
     expect(markup).toContain('角色与表情');
     expect(markup).toContain('创建含普通 / 生气表情的角色');
     expect(markup).toContain('张嘴图（可选）');
-    expect(markup).toContain('保存整个项目');
+    expect(markup).not.toMatch(/<button[^>]*>保存整个项目/u);
     expect(markup).toContain('默认表情');
     expect(markup).toContain('语音配置仅保留最小项目数据');
     expect(markup).not.toContain('声音克隆按钮');

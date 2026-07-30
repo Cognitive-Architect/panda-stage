@@ -19,6 +19,7 @@ import {
 } from '../../shared/project-api';
 import {
   AtomicWriteCommitRejectedError,
+  ProjectFileNotFoundError,
   ProjectFileSystemService,
   ProjectRootAlreadyExistsError,
 } from './ProjectFileSystemService';
@@ -411,6 +412,16 @@ export class ProjectService {
         'PROJECT_ALREADY_EXISTS',
         projectRoot,
         `Cannot create project at ${projectRoot}: the target directory already exists.`,
+        { cause: error },
+      );
+    }
+    if (error instanceof ProjectFileNotFoundError) {
+      return new ProjectServiceError(
+        operation === 'open'
+          ? 'PROJECT_FILE_NOT_FOUND'
+          : 'PROJECT_NOT_FOUND',
+        projectRoot,
+        `Cannot ${operation} project at ${projectRoot}: project.json does not exist.`,
         { cause: error },
       );
     }

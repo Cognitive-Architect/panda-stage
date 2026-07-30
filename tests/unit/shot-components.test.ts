@@ -30,7 +30,7 @@ describe('shot management components', () => {
     expect(markup).toContain('镜头管理');
     expect(markup).toContain('拖拽排序');
     expect(markup).toContain('总时长 3000ms');
-    expect(markup).toContain('保存整个项目');
+    expect(markup).not.toMatch(/<button[^>]*>保存整个项目/u);
     expect(markup).toContain('复制镜头');
     expect(markup).toContain('移除镜头');
     expect(markup).toContain('画布预览将在后续版本提供');

@@ -113,10 +113,20 @@ async function verifyDay13Ui() {
         defaultState: panel?.querySelector('.clean-state')?.textContent?.trim(),
         inputPlaceholder: input?.getAttribute('placeholder'),
         actions: buttons,
-        candidateProject: panel?.querySelector('.recovery-prompt strong')
+        candidateSummary: panel?.querySelector(
+          '.recovery-prompt-summary strong'
+        )
           ?.textContent?.trim(),
-        candidateTime: panel?.querySelector('.recovery-prompt span')
+        candidateTime: panel?.querySelector(
+          '.recovery-prompt-summary span'
+        )
           ?.textContent?.trim(),
+        candidateProject: panel?.querySelector(
+          '.recovery-details span'
+        )?.textContent?.trim(),
+        candidateDetails: panel?.querySelector(
+          '.recovery-details summary'
+        )?.textContent?.trim(),
         candidateActions: [...(panel?.querySelectorAll(
           '.recovery-prompt button'
         ) ?? [])].map((button) => button.textContent?.trim()),
@@ -138,12 +148,15 @@ async function verifyDay13Ui() {
       result.heading !== '项目编辑' ||
       result.defaultState !== '暂无未保存更改' ||
       !result.actions.includes('打开项目') ||
+      !result.actions.includes('浏览…') ||
       !result.actions.includes('保存整个项目') ||
       !result.invalidCandidate.disabled ||
       result.invalidCandidate.hint !==
         '项目文件夹路径包含 Windows 不允许的字符。' ||
+      result.candidateSummary !== '检测到未保存的恢复内容' ||
       result.candidateProject !== 'Recovered crash draft' ||
-      !result.candidateTime?.startsWith('检测到未保存的恢复内容') ||
+      result.candidateDetails !== '查看详情' ||
+      !result.candidateTime ||
       result.candidateActions.join(',') !==
         '恢复,忽略' ||
       result.rendererHasNodeRequire ||

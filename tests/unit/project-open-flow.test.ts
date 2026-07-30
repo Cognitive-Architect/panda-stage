@@ -34,10 +34,16 @@ describe('project open flow', () => {
         code: 'OPEN_FAILED',
         cause: { code: 'PROJECT_NOT_FOUND' },
       }),
-    ).toBe('找不到项目文件夹或其中的 project.json。');
+    ).toBe('项目文件夹不存在，请检查路径后重试。');
     expect(
       projectOpenErrorMessage({ code: 'CURRENT_PROJECT_DIRTY' }),
-    ).toBe('当前项目有未保存的更改，请先保存整个项目再切换。');
+    ).toBe('当前项目有未保存的更改，无法重复打开。');
+    expect(
+      projectOpenErrorMessage({
+        code: 'OPEN_FAILED',
+        cause: { code: 'PROJECT_FILE_NOT_FOUND' },
+      }),
+    ).toBe('该文件夹不是有效的 Panda Stage 项目：缺少 project.json。');
     expect(
       projectOpenErrorMessage({
         code: 'OPEN_FAILED',

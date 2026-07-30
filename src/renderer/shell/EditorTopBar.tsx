@@ -9,6 +9,7 @@ export interface EditorTopBarProps {
   busy: boolean;
   recoveryBanner?: ReactNode;
   onOpenCandidatePathChange(value: string): void;
+  onChooseProjectDirectory(): Promise<void>;
   onOpenProject(): Promise<void>;
   onSaveProject(): Promise<void>;
 }
@@ -20,10 +21,14 @@ export function EditorTopBar({
   busy,
   recoveryBanner,
   onOpenCandidatePathChange,
+  onChooseProjectDirectory,
   onOpenProject,
   onSaveProject,
 }: EditorTopBarProps): React.JSX.Element {
-  const validation = validateProjectOpenCandidate(openCandidatePath);
+  const validation = validateProjectOpenCandidate(
+    openCandidatePath,
+    projectSnapshot.projectRoot,
+  );
   return (
     <section
       aria-labelledby="recovery-heading"
@@ -61,6 +66,15 @@ export function EditorTopBar({
           type="button"
         >
           打开项目
+        </button>
+        <button
+          className="choose-project-directory-button"
+          data-testid="choose-project-directory"
+          disabled={busy}
+          onClick={() => void onChooseProjectDirectory()}
+          type="button"
+        >
+          浏览…
         </button>
       </div>
       {recoveryBanner}

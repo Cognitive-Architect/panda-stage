@@ -283,6 +283,7 @@ export class AssetDeleteService {
       if (
         error instanceof ProjectServiceError &&
         (error.code === 'PROJECT_NOT_FOUND' ||
+          error.code === 'PROJECT_FILE_NOT_FOUND' ||
           error.code === 'INVALID_PROJECT_ROOT')
       ) {
         throw new AssetDeleteServiceError(

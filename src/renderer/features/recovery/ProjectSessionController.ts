@@ -1,6 +1,8 @@
 import { ProjectSchema } from '../../../domain';
 import type {
   ProjectOperationResponse,
+  ProjectSwitchGuardRequest,
+  ProjectSwitchGuardResponse,
 } from '../../../shared/project-api';
 import type { RecentProjectsOpenResponse } from '../../../shared/recent-projects-api';
 import type {
@@ -9,7 +11,9 @@ import type {
   RecoveryCandidate,
   RecoveryDetectResponse,
 } from '../../../shared/recovery-api';
-import { EditorProjectStore } from '../../stores/EditorProjectStore';
+import {
+  EditorProjectStore,
+} from '../../stores/EditorProjectStore';
 
 export interface ProjectSessionApi {
   open(projectRoot: string): Promise<ProjectOperationResponse>;
@@ -22,6 +26,9 @@ export interface ProjectSessionApi {
   ): Promise<RecoveryAcknowledgeResponse>;
   stop(projectRoot: string): Promise<RecoveryAcknowledgeResponse>;
   detect(projectRoot: string): Promise<RecoveryDetectResponse>;
+  confirmSwitch(
+    request: ProjectSwitchGuardRequest,
+  ): Promise<ProjectSwitchGuardResponse>;
 }
 
 export interface ProjectSessionSnapshot {
@@ -33,6 +40,9 @@ export class ProjectSessionSwitchError extends Error {
   constructor(
     readonly code:
       | 'CURRENT_PROJECT_DIRTY'
+      | 'SWITCH_CANCELLED'
+      | 'SWITCH_SAVE_FAILED'
+      | 'SWITCH_DISCARD_FAILED'
       | 'OPEN_FAILED'
       | 'TRACK_FAILED'
       | 'DETECT_FAILED'
@@ -96,12 +106,6 @@ export class ProjectSessionController {
       currentEditor &&
       this.sameRoot(currentEditor.projectRoot, requestedRoot)
     ) {
-      if (currentEditor.dirty) {
-        throw new ProjectSessionSwitchError(
-          'CURRENT_PROJECT_DIRTY',
-          `Cannot reopen ${currentEditor.projectRoot}: the current project has unsaved changes.`,
-        );
-      }
       const detected = await this.api.detect(currentEditor.projectRoot);
       if (!detected.ok) {
         throw new ProjectSessionSwitchError(
@@ -119,6 +123,8 @@ export class ProjectSessionController {
     let temporaryProjectRoot: string | null = null;
     let temporaryTracked = false;
     let oldStopAttempted = false;
+    let discardedCurrentSession = false;
+    let currentForRollback = currentEditor;
     try {
       const opened = await open(requestedRoot);
       if (!opened.ok) {
@@ -136,12 +142,6 @@ export class ProjectSessionController {
           opened.document.projectRoot,
         )
       ) {
-        if (currentEditor.dirty) {
-          throw new ProjectSessionSwitchError(
-            'CURRENT_PROJECT_DIRTY',
-            `Cannot reopen ${currentEditor.projectRoot}: the current project has unsaved changes.`,
-          );
-        }
         const detected = await this.api.detect(
           currentEditor.projectRoot,
         );
@@ -157,6 +157,7 @@ export class ProjectSessionController {
         };
         return this.snapshot;
       }
+
       temporaryProjectRoot = opened.document.projectRoot;
       temporaryTracked = true;
       const tracked = await this.api.track({
@@ -178,6 +179,40 @@ export class ProjectSessionController {
           'DETECT_FAILED',
           detected.error.message,
         );
+      }
+
+      if (currentEditor?.dirty) {
+        const guarded = await this.api.confirmSwitch({
+          ...currentEditor,
+          dirty: true,
+        });
+        if (guarded.outcome === 'cancelled') {
+          throw new ProjectSessionSwitchError(
+            'SWITCH_CANCELLED',
+            'Project switch was cancelled.',
+          );
+        }
+        if (guarded.outcome === 'save-failed') {
+          throw new ProjectSessionSwitchError(
+            'SWITCH_SAVE_FAILED',
+            'The current project could not be saved, so the switch was cancelled.',
+          );
+        }
+        if (guarded.outcome === 'discard-failed') {
+          throw new ProjectSessionSwitchError(
+            'SWITCH_DISCARD_FAILED',
+            'The current project recovery state could not be discarded, so the switch was cancelled.',
+          );
+        }
+        if (guarded.outcome === 'saved') {
+          this.store.markSaved(
+            currentEditor.project,
+            currentEditor.revision,
+          );
+          currentForRollback = this.store.getSnapshot();
+        } else {
+          discardedCurrentSession = true;
+        }
       }
 
       const oldProjectRoot = this.snapshot.trackedProjectRoot;
@@ -215,9 +250,12 @@ export class ProjectSessionController {
           );
         }
       }
-      if (oldStopAttempted && currentEditor) {
+      if (
+        (oldStopAttempted || discardedCurrentSession) &&
+        currentForRollback
+      ) {
         try {
-          const restored = await this.api.track(currentEditor);
+          const restored = await this.api.track(currentForRollback);
           if (!restored.ok) {
             rollbackFailures.push(restored.error.message);
           }

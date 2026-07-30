@@ -9,6 +9,7 @@ const WINDOWS_INVALID_PATH_CHARACTER = /[<>"|?*]/u;
 
 export function validateProjectOpenCandidate(
   rawCandidate: string,
+  activeProjectRoot?: string | null,
 ): ProjectOpenCandidateValidation {
   const candidate = rawCandidate.trim();
   if (!candidate) {
@@ -41,6 +42,15 @@ export function validateProjectOpenCandidate(
       message: '请选择以 .pandastage 结尾的项目文件夹。',
     };
   }
+  if (
+    activeProjectRoot &&
+    sameProjectRoot(candidate, activeProjectRoot)
+  ) {
+    return {
+      valid: false,
+      message: '该项目当前已经打开。',
+    };
+  }
   return {
     valid: true,
     message: '将检查项目文件夹中的 project.json。',
@@ -48,10 +58,14 @@ export function validateProjectOpenCandidate(
 }
 
 const PROJECT_OPEN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  CURRENT_PROJECT_DIRTY: '当前项目有未保存的更改，请先保存整个项目再切换。',
+  CURRENT_PROJECT_DIRTY: '当前项目有未保存的更改，无法重复打开。',
+  SWITCH_CANCELLED: '已取消项目切换，当前修改保持不变。',
+  SWITCH_SAVE_FAILED: '保存当前项目失败，未切换项目。',
+  SWITCH_DISCARD_FAILED: '无法安全放弃当前修改，未切换项目。',
   INVALID_PROJECT_ROOT: '请选择以 .pandastage 结尾的有效项目文件夹。',
-  PROJECT_NOT_FOUND: '找不到项目文件夹或其中的 project.json。',
-  INVALID_JSON: 'project.json 不是有效的 JSON 文件。',
+  PROJECT_NOT_FOUND: '项目文件夹不存在，请检查路径后重试。',
+  PROJECT_FILE_NOT_FOUND: '该文件夹不是有效的 Panda Stage 项目：缺少 project.json。',
+  INVALID_JSON: '项目文件损坏或格式不受支持，请检查 project.json。',
   UNSUPPORTED_VERSION: '该项目版本暂不受当前 Panda Stage 支持。',
   INVALID_PROJECT: 'project.json 的项目数据不完整或格式无效。',
   PROJECT_ID_MISMATCH: '项目身份与最近项目记录不一致。',
@@ -77,6 +91,16 @@ function errorCode(value: unknown): string | null {
     return value.code;
   }
   return null;
+}
+
+export function sameProjectRoot(left: string, right: string): boolean {
+  const normalize = (value: string) =>
+    value
+      .trim()
+      .replaceAll('/', '\\')
+      .replace(/\\+$/u, '')
+      .toLowerCase();
+  return normalize(left) === normalize(right);
 }
 
 export function projectOpenErrorMessage(error: unknown): string {

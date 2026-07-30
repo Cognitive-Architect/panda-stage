@@ -7,7 +7,6 @@ import {
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
-import { saveCurrentProject } from '../recovery/saveCurrentProject';
 import { ShotEditor } from './ShotEditor';
 import { ShotList } from './ShotList';
 
@@ -26,7 +25,6 @@ export function ShotManager({
   const [status, setStatus] = useState(
     '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
   );
-  const [busy, setBusy] = useState(false);
   const project = snapshot?.project ?? null;
   const effectiveSelectedId =
     project?.shots.some((shot) => shot.id === selectedShotId)
@@ -62,31 +60,6 @@ export function ShotManager({
     }
   };
 
-  const save = async (): Promise<void> => {
-    if (!editorProjectStore.getSnapshot()?.dirty) {
-      setStatus('当前镜头数据没有待保存修改。');
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await saveCurrentProject(
-        window.pandaStage.project,
-        editorProjectStore,
-      );
-      setStatus(
-        result.ok
-          ? result.acknowledgement === 'current'
-            ? '镜头顺序、名称和时长已保存到 project.json。'
-            : '较新修改仍保留在编辑器中，请再次保存。'
-          : result.error.message,
-      );
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : '镜头保存失败。');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <section className="shot-manager" aria-labelledby="shot-manager-heading">
       <div className="shot-manager-heading">
@@ -100,18 +73,11 @@ export function ShotManager({
             {project ? projectDurationMs(project) : 0}ms · 修订{' '}
             {snapshot?.revision ?? 0}
           </span>
-          <button
-            disabled={busy || !snapshot?.dirty}
-            onClick={() => void save()}
-            type="button"
-          >
-            {busy ? '正在保存…' : '保存整个项目'}
-          </button>
         </div>
       </div>
       <div className="shot-workspace">
         <ShotList
-          disabled={busy || !snapshot}
+          disabled={!snapshot}
           key={project?.id ?? 'no-project'}
           onCreate={(name, durationMs) => {
             return (
@@ -133,7 +99,7 @@ export function ShotManager({
           shots={project?.shots ?? []}
         />
         <ShotEditor
-          disabled={busy}
+          disabled={!snapshot}
           index={selectedIndex}
           key={selectedShot?.id ?? 'empty'}
           onDuplicate={() => {

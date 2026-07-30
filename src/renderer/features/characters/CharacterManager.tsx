@@ -11,9 +11,7 @@ import {
   type Project,
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
-import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { characterStore } from '../../stores/characterStore';
-import { saveCurrentProject } from '../recovery/saveCurrentProject';
 import type { ThumbnailState } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
 import { CharacterList } from './CharacterList';
@@ -31,7 +29,6 @@ export function CharacterManager({
   const [status, setStatus] = useState(
     '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
   );
-  const [busy, setBusy] = useState(false);
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
@@ -144,31 +141,6 @@ export function CharacterManager({
     }
   };
 
-  const save = async (): Promise<void> => {
-    if (!editorProjectStore.getSnapshot()?.dirty) {
-      setStatus('当前角色定义没有待保存修改。');
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await saveCurrentProject(
-        window.pandaStage.project,
-        editorProjectStore,
-      );
-      setStatus(
-        result.ok
-          ? result.acknowledgement === 'current'
-            ? '角色定义已保存到 project.json，可安全重开。'
-            : '保存完成，但较新的未保存修改仍保留在编辑器中。'
-          : result.error.message,
-      );
-    } catch (error) {
-      reportError(error);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <section
       className="character-manager"
@@ -185,19 +157,12 @@ export function CharacterManager({
               ? `${snapshot.project.characters.length} 个角色 · 修订 ${snapshot.revision}`
               : '尚未打开项目'}
           </span>
-          <button
-            disabled={busy || !snapshot?.dirty}
-            onClick={() => void save()}
-            type="button"
-          >
-            {busy ? '正在保存…' : '保存整个项目'}
-          </button>
         </div>
       </div>
       <div className="character-workspace">
         <CharacterList
           characters={project?.characters ?? []}
-          disabled={busy || !snapshot}
+          disabled={!snapshot}
           imageAssets={imageAssets}
           onCreate={createCharacter}
           onSelect={setSelectedCharacterId}
@@ -205,7 +170,7 @@ export function CharacterManager({
         />
         <CharacterEditor
           character={selectedCharacter}
-          disabled={busy}
+          disabled={!snapshot}
           imageAssets={imageAssets}
           key={selectedCharacter?.id ?? 'empty'}
           onAddExpression={(name, assetId) => {

@@ -4,6 +4,7 @@ export interface NewProjectEntryProps {
   openCandidatePath: string;
   busy: boolean;
   onOpenCandidatePathChange(value: string): void;
+  onChooseProjectDirectory(): Promise<void>;
   onOpenProject(): Promise<void>;
 }
 
@@ -11,6 +12,7 @@ export function NewProjectEntry({
   openCandidatePath,
   busy,
   onOpenCandidatePathChange,
+  onChooseProjectDirectory,
   onOpenProject,
 }: NewProjectEntryProps): React.JSX.Element {
   const validation = validateProjectOpenCandidate(openCandidatePath);
@@ -34,6 +36,15 @@ export function NewProjectEntry({
           type="button"
         >
           打开项目
+        </button>
+        <button
+          className="choose-project-directory-button"
+          data-testid="choose-project-directory"
+          disabled={busy}
+          onClick={() => void onChooseProjectDirectory()}
+          type="button"
+        >
+          浏览…
         </button>
       </div>
       <button
