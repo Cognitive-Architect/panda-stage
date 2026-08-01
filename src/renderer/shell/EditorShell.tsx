@@ -28,9 +28,14 @@ import {
 } from '../stores/EditorProjectStore';
 import { EditorTopBar } from './EditorTopBar';
 import { LegacyWorkspace } from './LegacyWorkspace';
+import { NewProjectDialog } from './NewProjectDialog';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { StartScreen } from './StartScreen';
 import { useDebugFlag } from './useDebugFlag';
+import {
+  projectCreateErrorMessage,
+  validateNewProjectInput,
+} from './projectCreateFlow';
 import {
   projectOpenErrorMessage,
   validateProjectOpenCandidate,
@@ -273,6 +278,13 @@ export function EditorShell({
   );
   const [busy, setBusy] = useState(false);
   const [recentRefreshToken, setRecentRefreshToken] = useState(0);
+  const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
+  const [newProjectParentDirectory, setNewProjectParentDirectory] =
+    useState('');
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectStatus, setNewProjectStatus] = useState(
+    '请选择存放文件夹并填写项目名称。',
+  );
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
   const recoveryCandidate = getEditorShellRecoveryCandidate(
@@ -311,12 +323,12 @@ export function EditorShell({
     );
   };
 
-  const switchToProject = async (projectRoot: string): Promise<void> => {
+  const switchToProject = async (
+    projectRoot: string,
+    cleanStatus = '项目已打开，暂无未保存更改。',
+  ): Promise<void> => {
     const nextSession = await session.switchProject(projectRoot);
-    updateSession(
-      nextSession,
-      '项目已打开，暂无未保存更改。',
-    );
+    updateSession(nextSession, cleanStatus);
   };
 
   const switchToRecentProject = async (
@@ -373,6 +385,84 @@ export function EditorShell({
           ? `无法选择项目文件夹：${error.message}`
           : '无法选择项目文件夹，请稍后重试。',
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const requestNewProject = (): void => {
+    setNewProjectStatus('请选择存放文件夹并填写项目名称。');
+    setNewProjectDialogOpen(true);
+  };
+
+  const cancelNewProject = (): void => {
+    setNewProjectDialogOpen(false);
+    setNewProjectStatus('已取消新建项目。');
+  };
+
+  const chooseNewProjectParentDirectory = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const response = await window.pandaStage.project.chooseDirectory();
+      if (response.status === 'cancelled') {
+        setNewProjectStatus('已取消选择，存放文件夹保持不变。');
+        return;
+      }
+      // The shared directory picker returns the chosen folder in `projectRoot`.
+      // For creation that folder is only the parent: the Main Process appends
+      // the project directory name and performs the join.
+      setNewProjectParentDirectory(response.projectRoot);
+      setNewProjectStatus('已选择存放文件夹，请填写项目名称。');
+    } catch (error) {
+      setNewProjectStatus(
+        error instanceof Error
+          ? `无法选择存放文件夹：${error.message}`
+          : '无法选择存放文件夹，请稍后重试。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createProject = async (): Promise<void> => {
+    const parentDirectory = newProjectParentDirectory.trim();
+    const projectName = newProjectName.trim();
+    const validation = validateNewProjectInput(parentDirectory, projectName);
+    if (!validation.valid) {
+      setNewProjectStatus(
+        validation.parentDirectory.valid
+          ? validation.projectName.message
+          : validation.parentDirectory.message,
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await window.pandaStage.project.createAt({
+        parentDirectory,
+        projectName,
+        metadata: { name: projectName },
+      });
+      if (!response.ok) {
+        setNewProjectStatus(projectCreateErrorMessage(response.error));
+        return;
+      }
+      try {
+        await switchToProject(
+          response.value.projectRoot,
+          '新项目已创建并打开，暂无未保存更改。',
+        );
+      } catch (error) {
+        setNewProjectStatus(
+          `项目已创建，但无法自动打开：${projectOpenErrorMessage(error)}`,
+        );
+        return;
+      }
+      setNewProjectDialogOpen(false);
+      setNewProjectName('');
+      setNewProjectStatus('请选择存放文件夹并填写项目名称。');
+    } catch (error) {
+      setNewProjectStatus(projectCreateErrorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -447,14 +537,29 @@ export function EditorShell({
         <div className="start-screen" data-testid="start-screen">
           <StartScreen
             busy={busy}
+            newProjectDialogOpen={newProjectDialogOpen}
             onChooseProjectDirectory={chooseProjectDirectory}
             onOpenProject={openProject}
             onOpenRecentProject={switchToRecentProject}
             onOpenCandidatePathChange={setOpenCandidatePath}
+            onRequestNewProject={requestNewProject}
             openCandidatePath={openCandidatePath}
             recentRefreshToken={recentRefreshToken}
             status={status}
           />
+          {newProjectDialogOpen ? (
+            <NewProjectDialog
+              busy={busy}
+              onCancel={cancelNewProject}
+              onChooseParentDirectory={chooseNewProjectParentDirectory}
+              onCreateProject={createProject}
+              onParentDirectoryChange={setNewProjectParentDirectory}
+              onProjectNameChange={setNewProjectName}
+              parentDirectory={newProjectParentDirectory}
+              projectName={newProjectName}
+              status={newProjectStatus}
+            />
+          ) : null}
         </div>
       ) : projectSnapshot ? (
         <div className="editor-layout" data-testid="editor-layout">

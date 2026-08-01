@@ -73,6 +73,92 @@ export const ProjectCreateRequestSchema = z
   })
   .strict();
 
+/**
+ * Directory suffix that identifies a Panda Stage project root.
+ *
+ * Only the Main Process is allowed to append it: the Renderer submits the bare
+ * project name and never assembles the final project root itself.
+ */
+export const PROJECT_ROOT_EXTENSION = '.pandastage';
+
+/** Maximum length of the bare (extension-less) project directory name. */
+export const PROJECT_NAME_MAX_LENGTH = 120;
+
+/**
+ * Reasons a bare project name cannot be turned into a project directory name.
+ *
+ * The codes are shared so the Renderer can render localized guidance and the
+ * Main Process can reject the very same inputs without duplicating the rules.
+ */
+export const ProjectNameIssueCodeSchema = z.enum([
+  'EMPTY',
+  'TOO_LONG',
+  'PATH_SEPARATOR',
+  'RELATIVE_SEGMENT',
+  'INVALID_CHARACTER',
+  'RESERVED_DEVICE_NAME',
+  'TRAILING_DOT_OR_SPACE',
+  'REDUNDANT_EXTENSION',
+]);
+
+export type ProjectNameIssueCode = z.infer<typeof ProjectNameIssueCodeSchema>;
+
+const PROJECT_NAME_PATH_SEPARATOR = /[\\/]/u;
+// Windows forbids these characters in a path component; control characters and
+// the colon are included because they can create alternate data streams.
+// eslint-disable-next-line no-control-regex
+const PROJECT_NAME_INVALID_CHARACTER = /[<>:"|?*\u0000-\u001f]/u;
+const PROJECT_NAME_RESERVED_DEVICE =
+  /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu;
+
+/**
+ * Validates a bare project name against the Windows directory-name contract.
+ *
+ * @param rawProjectName - Untrimmed project name exactly as the user typed it.
+ * @returns The first violated rule, or `null` when the name is safe to use as a
+ *   single directory component.
+ */
+export function projectNameIssue(
+  rawProjectName: string,
+): ProjectNameIssueCode | null {
+  const projectName = rawProjectName.trim();
+  if (!projectName) return 'EMPTY';
+  if (projectName.length > PROJECT_NAME_MAX_LENGTH) return 'TOO_LONG';
+  if (PROJECT_NAME_PATH_SEPARATOR.test(projectName)) return 'PATH_SEPARATOR';
+  if (projectName === '.' || projectName === '..') return 'RELATIVE_SEGMENT';
+  if (PROJECT_NAME_INVALID_CHARACTER.test(projectName)) {
+    return 'INVALID_CHARACTER';
+  }
+  if (PROJECT_NAME_RESERVED_DEVICE.test(projectName)) {
+    return 'RESERVED_DEVICE_NAME';
+  }
+  if (/[. ]$/u.test(projectName)) return 'TRAILING_DOT_OR_SPACE';
+  if (projectName.toLowerCase().endsWith(PROJECT_ROOT_EXTENSION)) {
+    return 'REDUNDANT_EXTENSION';
+  }
+  return null;
+}
+
+export const ProjectNameSchema = z
+  .string()
+  .trim()
+  .refine((value) => projectNameIssue(value) === null, {
+    message: 'Project name is not a valid Windows directory component.',
+  });
+
+/**
+ * Secure creation request: the Renderer submits only the parent directory, the
+ * bare project name, and the project metadata. The Main Process performs the
+ * path join, the duplicate check, and the disk write.
+ */
+export const ProjectCreateAtRequestSchema = z
+  .object({
+    parentDirectory: FileSystemPathSchema,
+    projectName: ProjectNameSchema,
+    metadata: ProjectCreateMetadataSchema,
+  })
+  .strict();
+
 export const ProjectOpenRequestSchema = z
   .object({
     projectRoot: FileSystemPathSchema,
@@ -146,6 +232,9 @@ export type ProjectCreateMetadata = z.infer<
   typeof ProjectCreateMetadataSchema
 >;
 export type ProjectCreateRequest = z.infer<typeof ProjectCreateRequestSchema>;
+export type ProjectCreateAtRequest = z.infer<
+  typeof ProjectCreateAtRequestSchema
+>;
 export type ProjectOpenRequest = z.infer<typeof ProjectOpenRequestSchema>;
 export type ProjectSaveRequest = z.infer<typeof ProjectSaveRequestSchema>;
 export type ProjectDocument = z.infer<typeof ProjectDocumentSchema>;

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const PRODUCT_SURFACE_FILES = [
   'src/renderer/shell/StartScreen.tsx',
   'src/renderer/shell/NewProjectEntry.tsx',
+  'src/renderer/shell/NewProjectDialog.tsx',
   'src/renderer/shell/EditorTopBar.tsx',
   'src/renderer/shell/RecoveryCandidateBanner.tsx',
   'src/renderer/shell/LegacyWorkspace.tsx',

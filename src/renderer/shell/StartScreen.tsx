@@ -6,6 +6,7 @@ export interface StartScreenProps {
   status: string;
   busy: boolean;
   recentRefreshToken: number;
+  newProjectDialogOpen: boolean;
   onOpenCandidatePathChange(value: string): void;
   onChooseProjectDirectory(): Promise<void>;
   onOpenProject(): Promise<void>;
@@ -13,6 +14,7 @@ export interface StartScreenProps {
     projectRoot: string,
     expectedProjectId: string,
   ): Promise<void>;
+  onRequestNewProject(): void;
 }
 
 export function StartScreen({
@@ -20,10 +22,12 @@ export function StartScreen({
   status,
   busy,
   recentRefreshToken,
+  newProjectDialogOpen,
   onOpenCandidatePathChange,
   onChooseProjectDirectory,
   onOpenProject,
   onOpenRecentProject,
+  onRequestNewProject,
 }: StartScreenProps): React.JSX.Element {
   return (
     <>
@@ -37,9 +41,11 @@ export function StartScreen({
         </div>
         <NewProjectEntry
           busy={busy}
+          newProjectDialogOpen={newProjectDialogOpen}
           onChooseProjectDirectory={onChooseProjectDirectory}
           onOpenProject={onOpenProject}
           onOpenCandidatePathChange={onOpenCandidatePathChange}
+          onRequestNewProject={onRequestNewProject}
           openCandidatePath={openCandidatePath}
         />
         <output>{status}</output>

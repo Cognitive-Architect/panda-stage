@@ -11,6 +11,7 @@ import {
   getEditorShellState,
 } from '../../src/renderer/shell/EditorShell';
 import { EditorTopBar } from '../../src/renderer/shell/EditorTopBar';
+import { NewProjectDialog } from '../../src/renderer/shell/NewProjectDialog';
 import { RecoveryCandidateBanner } from '../../src/renderer/shell/RecoveryCandidateBanner';
 import {
   StartScreen,
@@ -184,17 +185,19 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
 }
 
 describe('EditorShell project session integration', () => {
-  it('renders one no-project entry, recent projects, and a disabled create placeholder', () => {
+  it('renders one no-project entry, recent projects, and an enabled create entry', () => {
     const markup = renderToStaticMarkup(
       StartScreen({
         openCandidatePath: '',
         status: 'Ready',
         busy: false,
         recentRefreshToken: 0,
+        newProjectDialogOpen: false,
         onOpenCandidatePathChange: vi.fn(),
         onChooseProjectDirectory: vi.fn(),
         onOpenProject: vi.fn(),
         onOpenRecentProject: vi.fn(),
+        onRequestNewProject: vi.fn(),
       }),
     );
 
@@ -203,13 +206,95 @@ describe('EditorShell project session integration', () => {
     expect(markup).toContain('打开项目');
     expect(markup).toContain('浏览…');
     expect(markup).toContain('data-testid="choose-project-directory"');
-    expect(markup).toContain('新建项目（后续阶段启用）');
-    expect(markup).toMatch(
+    expect(markup).toContain('新建项目');
+    expect(markup).not.toContain('新建项目（后续阶段启用）');
+    expect(markup).not.toMatch(
       /data-testid="new-project-button"[^>]*disabled/u,
     );
     expect(markup).not.toContain('class="recovery-prompt"');
     expect(markup).not.toContain('class="editor-save-button"');
     expect(markup).not.toContain('data-testid="editor-top-bar"');
+    expect(markup).not.toContain('data-testid="new-project-dialog"');
+  });
+
+  it('disables the create entry while the dialog is already open', () => {
+    const markup = renderToStaticMarkup(
+      StartScreen({
+        openCandidatePath: '',
+        status: 'Ready',
+        busy: false,
+        recentRefreshToken: 0,
+        newProjectDialogOpen: true,
+        onOpenCandidatePathChange: vi.fn(),
+        onChooseProjectDirectory: vi.fn(),
+        onOpenProject: vi.fn(),
+        onOpenRecentProject: vi.fn(),
+        onRequestNewProject: vi.fn(),
+      }),
+    );
+
+    expect(markup).toMatch(
+      /data-testid="new-project-button"[^>]*disabled/u,
+    );
+  });
+
+  it('gates the create button until both submitted parts are valid', () => {
+    const empty = renderToStaticMarkup(
+      NewProjectDialog({
+        parentDirectory: '',
+        projectName: '',
+        status: '请选择存放文件夹并填写项目名称。',
+        busy: false,
+        onParentDirectoryChange: vi.fn(),
+        onProjectNameChange: vi.fn(),
+        onChooseParentDirectory: vi.fn(),
+        onCreateProject: vi.fn(),
+        onCancel: vi.fn(),
+      }),
+    );
+    const illegal = renderToStaticMarkup(
+      NewProjectDialog({
+        parentDirectory: 'D:\\作品',
+        projectName: '子目录\\短片',
+        status: '请修正项目名称。',
+        busy: false,
+        onParentDirectoryChange: vi.fn(),
+        onProjectNameChange: vi.fn(),
+        onChooseParentDirectory: vi.fn(),
+        onCreateProject: vi.fn(),
+        onCancel: vi.fn(),
+      }),
+    );
+    const ready = renderToStaticMarkup(
+      NewProjectDialog({
+        parentDirectory: 'D:\\作品',
+        projectName: '短片',
+        status: '已选择存放文件夹，请填写项目名称。',
+        busy: false,
+        onParentDirectoryChange: vi.fn(),
+        onProjectNameChange: vi.fn(),
+        onChooseParentDirectory: vi.fn(),
+        onCreateProject: vi.fn(),
+        onCancel: vi.fn(),
+      }),
+    );
+
+    expect(empty.match(/data-testid="new-project-dialog"/gu)).toHaveLength(1);
+    expect(empty).toContain('请先选择新项目的存放文件夹');
+    expect(empty).toMatch(
+      /data-testid="new-project-confirm"[^>]*disabled/u,
+    );
+    expect(illegal).toContain('不能包含斜杠或反斜杠');
+    expect(illegal).toMatch(
+      /data-testid="new-project-confirm"[^>]*disabled/u,
+    );
+    expect(ready).not.toMatch(
+      /data-testid="new-project-confirm"[^>]*disabled/u,
+    );
+    expect(ready).toContain('将在所选文件夹中创建同名项目文件夹');
+    // The dialog only ever renders the two submitted parts.
+    expect(ready).not.toContain('.pandastage"');
+    expect(ready).not.toContain('D:\\作品\\短片');
   });
 
   it('rejects an arbitrary non-path candidate before enabling open', () => {
@@ -219,10 +304,12 @@ describe('EditorShell project session integration', () => {
         status: 'Ready',
         busy: false,
         recentRefreshToken: 0,
+        newProjectDialogOpen: false,
         onOpenCandidatePathChange: vi.fn(),
         onChooseProjectDirectory: vi.fn(),
         onOpenProject: vi.fn(),
         onOpenRecentProject: vi.fn(),
+        onRequestNewProject: vi.fn(),
       }),
     );
 

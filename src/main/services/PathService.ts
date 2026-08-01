@@ -34,4 +34,8 @@ export class PathService {
   basename(rawPath: string): string {
     return this.pathImplementation.basename(this.resolve(rawPath));
   }
+
+  dirname(rawPath: string): string {
+    return this.pathImplementation.dirname(this.resolve(rawPath));
+  }
 }

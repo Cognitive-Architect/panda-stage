@@ -3,17 +3,21 @@ import { validateProjectOpenCandidate } from './projectOpenFlow';
 export interface NewProjectEntryProps {
   openCandidatePath: string;
   busy: boolean;
+  newProjectDialogOpen: boolean;
   onOpenCandidatePathChange(value: string): void;
   onChooseProjectDirectory(): Promise<void>;
   onOpenProject(): Promise<void>;
+  onRequestNewProject(): void;
 }
 
 export function NewProjectEntry({
   openCandidatePath,
   busy,
+  newProjectDialogOpen,
   onOpenCandidatePathChange,
   onChooseProjectDirectory,
   onOpenProject,
+  onRequestNewProject,
 }: NewProjectEntryProps): React.JSX.Element {
   const validation = validateProjectOpenCandidate(openCandidatePath);
   return (
@@ -48,11 +52,13 @@ export function NewProjectEntry({
         </button>
       </div>
       <button
+        className="new-project-button"
         data-testid="new-project-button"
-        disabled
+        disabled={busy || newProjectDialogOpen}
+        onClick={onRequestNewProject}
         type="button"
       >
-        新建项目（后续阶段启用）
+        新建项目
       </button>
     </>
   );

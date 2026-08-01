@@ -46,6 +46,7 @@ import type {
 } from '../shared/recovery-api';
 import type {
   ProjectChooseDirectoryResponse,
+  ProjectCreateAtRequest,
   ProjectCreateRequest,
   ProjectOpenRequest,
   ProjectOperationResponse,
@@ -73,6 +74,9 @@ declare global {
         ) => Promise<ProjectSwitchGuardResponse>;
         create: (
           request: ProjectCreateRequest,
+        ) => Promise<ProjectOperationResponse>;
+        createAt: (
+          request: ProjectCreateAtRequest,
         ) => Promise<ProjectOperationResponse>;
         open: (
           request: ProjectOpenRequest,

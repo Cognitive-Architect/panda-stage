@@ -56,25 +56,46 @@ describe('EditorShell state boundary', () => {
     expect(getEditorShellSessionRegion('editor')).toBe('editor-layout');
   });
 
-  it('keeps the no-project entry as a disabled placeholder without create APIs', () => {
+  it('owns the secure create flow in the shell and keeps the entry presentational', () => {
     const sources = [
       'src/renderer/shell/EditorShell.tsx',
       'src/renderer/shell/StartScreen.tsx',
       'src/renderer/shell/NewProjectEntry.tsx',
+      'src/renderer/shell/NewProjectDialog.tsx',
     ].map((path) => readFileSync(path, 'utf8'));
+    const [shellSource, ...presentationalSources] = sources;
     const source = sources.join('\n');
-    const startScreenSource = sources.slice(1).join('\n');
+    const startScreenSource = presentationalSources.join('\n');
 
-    expect(source).not.toMatch(/\.project\.create\s*\(/u);
-    expect(source).not.toContain('createAt');
-    expect(source).toContain('新建项目（后续阶段启用）');
-    expect(source).toMatch(
-      /data-testid="new-project-button"[\s\S]*?disabled/u,
+    // The legacy "coming soon" placeholder is gone; creation is real now.
+    expect(source).not.toContain('新建项目（后续阶段启用）');
+    expect(source).not.toMatch(
+      /data-testid="new-project-button"[^>]*\sdisabled\s*(?:>|\/>)/u,
     );
+    // The shell is the only owner of the creation IPC call.
+    expect(shellSource).toContain('window.pandaStage.project.createAt');
+    expect(shellSource).not.toMatch(/\.project\.create\s*\(/u);
+    // The Renderer submits parts only and never assembles the project root.
+    expect(source).not.toMatch(/\+\s*['"`]\.pandastage/u);
+    expect(source).not.toMatch(/\$\{[^}]*\}\.pandastage/u);
+    expect(source).not.toMatch(/\bjoin\s*\(/u);
+    // Presentational surfaces stay free of session, store, and IPC ownership.
     expect(startScreenSource).not.toContain('recoveryCandidate');
     expect(startScreenSource).not.toContain('editorProjectStore');
     expect(startScreenSource).not.toContain('ProjectSessionController');
-    expect(startScreenSource).not.toContain('window.pandaStage.project');
+    expect(startScreenSource).not.toContain('window.pandaStage');
+  });
+
+  it('opens a created project through the one session, never the store directly', () => {
+    const shell = readFileSync(
+      'src/renderer/shell/EditorShell.tsx',
+      'utf8',
+    );
+
+    expect(shell).toContain('session.switchProject(projectRoot)');
+    expect(shell).not.toContain('editorProjectStore.open(');
+    expect(shell.match(/<NewProjectDialog/gu)).toHaveLength(1);
+    expect(shell.match(/session\.switchProject\(/gu)).toHaveLength(1);
   });
 
   it('selects one recovery banner only for editor state with a candidate', () => {

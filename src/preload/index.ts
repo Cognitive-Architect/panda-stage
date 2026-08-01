@@ -40,12 +40,14 @@ import {
 import {
   ProjectChooseDirectoryRequestSchema,
   ProjectChooseDirectoryResponseSchema,
+  ProjectCreateAtRequestSchema,
   ProjectCreateRequestSchema,
   ProjectOpenRequestSchema,
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
   ProjectSwitchGuardRequestSchema,
   ProjectSwitchGuardResponseSchema,
+  type ProjectCreateAtRequest,
   type ProjectCreateRequest,
   type ProjectOpenRequest,
   type ProjectSaveRequest,
@@ -114,6 +116,14 @@ const pandaStageApi = Object.freeze({
       const request = ProjectCreateRequestSchema.parse(rawRequest);
       const response: unknown = await ipcRenderer.invoke(
         IPC_CHANNELS.PROJECT_CREATE,
+        request,
+      );
+      return ProjectOperationResponseSchema.parse(response);
+    },
+    createAt: async (rawRequest: ProjectCreateAtRequest) => {
+      const request = ProjectCreateAtRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_CREATE_AT,
         request,
       );
       return ProjectOperationResponseSchema.parse(response);

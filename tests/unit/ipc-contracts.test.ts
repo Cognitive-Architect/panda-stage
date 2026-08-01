@@ -30,6 +30,7 @@ describe('IPC channel registry', () => {
       'export:cancel-job',
       'export:job-update',
       'project:create',
+      'project:create-at',
       'project:choose-directory',
       'project:confirm-switch',
       'project:open',

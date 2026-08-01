@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import {
   ProjectChooseDirectoryRequestSchema,
   ProjectChooseDirectoryResponseSchema,
+  ProjectCreateAtRequestSchema,
   ProjectCreateRequestSchema,
   ProjectOpenRequestSchema,
   ProjectOperationResponseSchema,
@@ -150,6 +151,29 @@ export function registerProjectIpcHandlers(
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.PROJECT_CREATE_AT,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.PROJECT_CREATE_AT,
+      );
+      const request = ProjectCreateAtRequestSchema.parse(rawRequest);
+      try {
+        const value = await dependencies.projectService.createAt(
+          request.parentDirectory,
+          request.projectName,
+          request.metadata,
+        );
+        await recordProjectAccess(dependencies, value);
+        return ProjectOperationResponseSchema.parse({ ok: true, value });
+      } catch (error) {
+        return failure(error, request.parentDirectory, 'CREATE_FAILED');
+      }
+    },
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.PROJECT_OPEN,
     async (event, rawRequest: unknown) => {
       assertTrustedSender(
@@ -197,6 +221,7 @@ export function registerProjectIpcHandlers(
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CREATE);
+    ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CREATE_AT);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_OPEN);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_SAVE);
   };

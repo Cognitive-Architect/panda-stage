@@ -35,7 +35,7 @@ function readSource(relativePath: string): string {
 }
 
 describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () => {
-  it('locks the Stage 1A-2 no-project selector owners and disabled create placeholder', () => {
+  it('locks the Stage 1A-2 no-project selector owners and the create entry', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const startScreen = readSource('renderer/shell/StartScreen.tsx');
     const newProjectEntry = readSource(
@@ -63,7 +63,8 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(newProjectEntry).toContain(
       'data-testid="new-project-button"',
     );
-    expect(newProjectEntry).toContain('disabled');
+    expect(newProjectEntry).toContain('disabled={busy || newProjectDialogOpen}');
+    expect(newProjectEntry).toContain('onClick={onRequestNewProject}');
     expect(recentProjects).toContain(
       'className="recent-projects-panel"',
     );
@@ -71,6 +72,33 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       (startScreen + newProjectEntry)
         .match(/className="recovery-open-row"/gu),
     ).toHaveLength(1);
+  });
+
+  it('locks the Stage 1B new-project dialog selectors into one owner', () => {
+    const shell = readSource('renderer/shell/EditorShell.tsx');
+    const dialog = readSource('renderer/shell/NewProjectDialog.tsx');
+    const startScreen = readSource('renderer/shell/StartScreen.tsx');
+    const newProjectEntry = readSource(
+      'renderer/shell/NewProjectEntry.tsx',
+    );
+    const styles = readSource('renderer/styles.css');
+
+    expect(dialog).toContain('data-testid="new-project-dialog"');
+    expect(dialog).toContain('data-testid="new-project-parent-directory"');
+    expect(dialog).toContain('data-testid="new-project-name"');
+    expect(dialog).toContain('data-testid="new-project-choose-directory"');
+    expect(dialog).toContain('data-testid="new-project-confirm"');
+    expect(dialog).toContain('data-testid="new-project-cancel"');
+    expect(dialog).toContain('role="dialog"');
+    expect(dialog).toContain('aria-modal="true"');
+    expect(dialog).not.toContain('className="recovery-open-row"');
+    expect(shell.match(/<NewProjectDialog/gu)).toHaveLength(1);
+    expect(
+      (startScreen + newProjectEntry).match(
+        /data-testid="new-project-dialog"/gu,
+      ),
+    ).toBeNull();
+    expect(styles).toMatch(/\.new-project-dialog\s*\{[\s\S]*?inset:\s*0;/u);
   });
 
   it('locks the final Stage 1A Grid and nested-scroll selector owners', () => {
