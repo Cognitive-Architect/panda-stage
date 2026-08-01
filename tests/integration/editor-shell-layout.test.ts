@@ -130,7 +130,7 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     expect(count(shell, /<LegacyWorkspace/gu)).toBe(1);
   });
 
-  it('does not implement later-stage workspace migrations or real product preview', () => {
+  it('does not implement later-stage workspace migrations', () => {
     const sources = [
       readSource('src/renderer/shell/EditorShell.tsx'),
       readSource('src/renderer/shell/LegacyWorkspace.tsx'),
@@ -140,7 +140,30 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     expect(sources).not.toContain('CanvasWorkspace');
     expect(sources).not.toContain('RightInspector');
     expect(sources).not.toContain('BottomHistory');
-    expect(sources).not.toContain('ProductPreviewOverlay');
     expect(sources).not.toContain('CloseConfirmDialog');
+  });
+
+  it('mounts the Stage 1B product preview overlay inside the editor layout only', () => {
+    const shell = readSource('src/renderer/shell/EditorShell.tsx');
+    const legacy = readSource('src/renderer/shell/LegacyWorkspace.tsx');
+    const styles = readSource('src/renderer/styles.css');
+
+    expect(count(shell, /<ProductPreviewOverlay/gu)).toBe(1);
+    expect(legacy).not.toContain('ProductPreviewOverlay');
+    // The overlay lives in the editor branch, never in the start screen.
+    expect(shell.indexOf('<ProductPreviewOverlay')).toBeGreaterThan(
+      shell.indexOf(': projectSnapshot ?'),
+    );
+    // It must not become a second permanent grid row.
+    expect(styles).toMatch(
+      /\.product-preview-overlay\s*\{[\s\S]*?position:\s*fixed;/u,
+    );
+    expect(styles).toMatch(
+      /\.product-preview-overlay\s*\{[\s\S]*?inset:\s*0;/u,
+    );
+    // Grid contract from Stage 1A stays exactly three rows.
+    expect(styles).toMatch(
+      /\.editor-layout\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u,
+    );
   });
 });

@@ -101,6 +101,37 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(styles).toMatch(/\.new-project-dialog\s*\{[\s\S]*?inset:\s*0;/u);
   });
 
+  it('locks the Stage 1B product preview selectors into one owner', () => {
+    const shell = readSource('renderer/shell/EditorShell.tsx');
+    const overlay = readSource('renderer/shell/ProductPreviewOverlay.tsx');
+    const topBar = readSource('renderer/shell/EditorTopBar.tsx');
+    const styles = readSource('renderer/styles.css');
+
+    for (const selector of [
+      'data-testid="product-preview-overlay"',
+      'data-testid="product-preview-close"',
+      'data-testid="product-preview-play"',
+      'data-testid="product-preview-pause"',
+      'data-testid="product-preview-stop"',
+      'data-testid="product-preview-scrubber"',
+      'data-testid="product-preview-timecode"',
+      'data-testid="product-preview-empty"',
+    ]) {
+      expect(overlay).toContain(selector);
+    }
+    expect(overlay).toContain('role="dialog"');
+    expect(overlay).toContain('aria-modal="true"');
+    expect(shell.match(/<ProductPreviewOverlay/gu)).toHaveLength(1);
+    // The overlay owns the surface; the top bar only owns the entry button.
+    expect(
+      (shell + topBar).match(/data-testid="product-preview-overlay"/gu),
+    ).toBeNull();
+    expect(overlay).not.toContain('data-testid="product-preview-open"');
+    expect(styles).toMatch(
+      /\.product-preview-overlay\s*\{[\s\S]*?inset:\s*0;/u,
+    );
+  });
+
   it('locks the final Stage 1A Grid and nested-scroll selector owners', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const legacyWorkspace = readSource(
@@ -150,12 +181,11 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(topBar).toContain('className="editor-save-button"');
     expect(topBar).toContain("'clean-state'");
     expect(topBar).toContain("'dirty-state'");
-    expect(topBar).toContain(
-      'data-testid="product-preview-placeholder"',
-    );
+    expect(topBar).toContain('data-testid="product-preview-open"');
     expect(topBar).toMatch(
-      /data-testid="product-preview-placeholder"[\s\S]*?disabled/u,
+      /data-testid="product-preview-open"[\s\S]*?disabled=\{busy \|\| productPreviewOpen\}/u,
     );
+    expect(topBar).not.toContain('product-preview-placeholder');
     expect(panel).not.toContain('id="recovery-heading"');
     expect(panel).not.toContain('className="recovery-open-row"');
     expect(panel).not.toContain('className="recovery-status-row"');

@@ -26,9 +26,11 @@ import {
   editorProjectStore,
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
+import { shotStore } from '../stores/shotStore';
 import { EditorTopBar } from './EditorTopBar';
 import { LegacyWorkspace } from './LegacyWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
+import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { StartScreen } from './StartScreen';
 import { useDebugFlag } from './useDebugFlag';
@@ -268,6 +270,12 @@ export function EditorShell({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  // Read-only subscription to the single existing shot selection. The product
+  // preview reuses it instead of owning a second selection source.
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+  );
   const [session] = useState(createBrowserSession);
   const [sessionSnapshot, setSessionSnapshot] = useState(() =>
     session.getSnapshot(),
@@ -285,6 +293,7 @@ export function EditorShell({
   const [newProjectStatus, setNewProjectStatus] = useState(
     '请选择存放文件夹并填写项目名称。',
   );
+  const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
   const recoveryCandidate = getEditorShellRecoveryCandidate(
@@ -328,6 +337,8 @@ export function EditorShell({
     cleanStatus = '项目已打开，暂无未保存更改。',
   ): Promise<void> => {
     const nextSession = await session.switchProject(projectRoot);
+    // The preview belongs to the project that was open when it was requested.
+    setProductPreviewOpen(false);
     updateSession(nextSession, cleanStatus);
   };
 
@@ -468,6 +479,14 @@ export function EditorShell({
     }
   };
 
+  const openProductPreview = (): void => {
+    setProductPreviewOpen(true);
+  };
+
+  const closeProductPreview = (): void => {
+    setProductPreviewOpen(false);
+  };
+
   const restoreRecovery = async (): Promise<void> => {
     setBusy(true);
     try {
@@ -566,10 +585,12 @@ export function EditorShell({
           <EditorTopBar
             busy={busy}
             onChooseProjectDirectory={chooseProjectDirectory}
+            onOpenProductPreview={openProductPreview}
             onOpenProject={openProject}
             onOpenCandidatePathChange={setOpenCandidatePath}
             onSaveProject={saveProject}
             openCandidatePath={openCandidatePath}
+            productPreviewOpen={productPreviewOpen}
             projectSnapshot={projectSnapshot}
             recoveryBanner={
               recoveryCandidate ? (
@@ -612,6 +633,14 @@ export function EditorShell({
             <strong>底部工作区</strong>
             <span>编辑历史正式迁移与时间轴将在后续阶段进行</span>
           </footer>
+          {productPreviewOpen ? (
+            <ProductPreviewOverlay
+              onClose={closeProductPreview}
+              project={projectSnapshot.project}
+              projectRoot={projectSnapshot.projectRoot}
+              shotId={currentShotId}
+            />
+          ) : null}
         </div>
       ) : null}
       {gateA ? (

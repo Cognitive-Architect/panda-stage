@@ -6,6 +6,7 @@ const PRODUCT_SURFACE_FILES = [
   'src/renderer/shell/NewProjectEntry.tsx',
   'src/renderer/shell/NewProjectDialog.tsx',
   'src/renderer/shell/EditorTopBar.tsx',
+  'src/renderer/shell/ProductPreviewOverlay.tsx',
   'src/renderer/shell/RecoveryCandidateBanner.tsx',
   'src/renderer/shell/LegacyWorkspace.tsx',
   'src/renderer/features/welcome/RecentProjectsPanel.tsx',
@@ -59,6 +60,9 @@ describe('Stage 1A product copy', () => {
       '动作预设',
       '当前镜头还没有图层',
       '背景预览不可用',
+      '产品预览',
+      '当前项目还没有可预览的镜头',
+      '关闭预览',
     ]) {
       expect(source).toContain(text);
     }
@@ -68,6 +72,9 @@ describe('Stage 1A product copy', () => {
       'This shot has no layers yet',
       'Fit to viewport',
       'Actual size',
+      'Product preview',
+      'No shot to preview',
+      'Close preview',
     ]) {
       expect(source).not.toContain(text);
     }

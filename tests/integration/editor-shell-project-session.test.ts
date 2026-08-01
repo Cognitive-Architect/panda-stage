@@ -43,6 +43,7 @@ function renderEditorTopBar(
   projectSnapshot: EditorProjectSnapshot,
   recoveryCandidate: RecoveryCandidate | null,
   status = 'Ready',
+  productPreviewOpen = false,
 ): string {
   return renderToStaticMarkup(
     EditorTopBar({
@@ -50,6 +51,7 @@ function renderEditorTopBar(
       openCandidatePath: projectSnapshot.projectRoot,
       status,
       busy: false,
+      productPreviewOpen,
       recoveryBanner: recoveryCandidate
         ? RecoveryCandidateBanner({
             candidate: recoveryCandidate,
@@ -62,6 +64,7 @@ function renderEditorTopBar(
       onChooseProjectDirectory: vi.fn(),
       onOpenProject: vi.fn(),
       onSaveProject: vi.fn(),
+      onOpenProductPreview: vi.fn(),
     }),
   );
 }
@@ -469,10 +472,12 @@ describe('EditorShell project session integration', () => {
         openCandidatePath: SECOND_PROJECT_ROOT,
         status: 'Ready',
         busy: false,
+        productPreviewOpen: false,
         onOpenCandidatePathChange: vi.fn(),
         onChooseProjectDirectory: vi.fn(),
         onOpenProject: vi.fn(),
         onSaveProject: vi.fn(),
+        onOpenProductPreview: vi.fn(),
       }),
     );
     expect(markup).toMatch(
@@ -541,7 +546,7 @@ describe('EditorShell project session integration', () => {
     expect(ignoredMarkup.match(/class="recovery-open-row"/gu)).toHaveLength(1);
   });
 
-  it('renders the editor controls and disabled preview through EditorTopBar', async () => {
+  it('renders the editor controls and an enabled product preview entry', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
     const markup = renderEditorTopBar(
@@ -555,9 +560,14 @@ describe('EditorShell project session integration', () => {
     expect(markup).toContain('class="recovery-status-row"');
     expect(markup).toContain('class="editor-save-button"');
     expect(markup).toContain(PROJECT.name);
-    expect(markup).toMatch(
-      /data-testid="product-preview-placeholder"[^>]*disabled/u,
+    expect(markup).toContain('data-testid="product-preview-open"');
+    expect(markup).toContain('产品预览');
+    expect(markup).not.toContain('产品预览（后续阶段启用）');
+    expect(markup).not.toMatch(
+      /data-testid="product-preview-open"[^>]*disabled/u,
     );
+    // The overlay itself is never rendered by the top bar.
+    expect(markup).not.toContain('data-testid="product-preview-overlay"');
     expect(markup).not.toContain('class="recovery-prompt"');
     expect(markup).not.toContain('Crash recovery');
     expect(markup).not.toContain('recovered');
@@ -569,6 +579,24 @@ describe('EditorShell project session integration', () => {
     expect(markup).toMatch(
       /class="recovery-open-row"[\s\S]*?<button disabled=""[^>]*>打开项目<\/button>/u,
     );
+  });
+
+  it('disables the preview entry while the overlay is already open', async () => {
+    const harness = createSession(null);
+    await harness.session.switchProject(PROJECT_ROOT);
+    const markup = renderEditorTopBar(
+      harness.store.getSnapshot()!,
+      null,
+      'Ready',
+      true,
+    );
+
+    expect(markup).toMatch(
+      /<button[^>]*data-testid="product-preview-open"[^>]*disabled/u,
+    );
+    // Opening the preview must not change the saved/dirty presentation.
+    expect(markup).toContain('暂无未保存更改');
+    expect(markup).toMatch(/class="editor-save-button"[^>]*disabled/u);
   });
 
   it('stops the tracked project after the final StrictMode cleanup', async () => {

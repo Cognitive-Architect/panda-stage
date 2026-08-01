@@ -196,9 +196,42 @@ describe('EditorShell state boundary', () => {
     expect(topBar).not.toContain('StagePreview');
     expect(topBar).not.toMatch(/\.project\.create\s*\(/u);
     expect(topBar).not.toContain('createAt');
-    expect(topBar).toContain('产品预览（后续阶段启用）');
+    // The top bar owns the entry only; the overlay itself lives in the shell.
+    expect(topBar).not.toContain('ProductPreviewOverlay');
+    expect(topBar).not.toContain('evaluateShotAtTime');
+    expect(topBar).toContain('产品预览');
+    expect(topBar).not.toContain('产品预览（后续阶段启用）');
     expect(topBar).toMatch(
-      /data-testid="product-preview-placeholder"[\s\S]*?disabled/u,
+      /data-testid="product-preview-open"[\s\S]*?onClick=\{onOpenProductPreview\}/u,
     );
+  });
+
+  it('keeps the product preview read-only and owned by the one shell session', () => {
+    const shell = readFileSync(
+      'src/renderer/shell/EditorShell.tsx',
+      'utf8',
+    );
+    const overlay = readFileSync(
+      'src/renderer/shell/ProductPreviewOverlay.tsx',
+      'utf8',
+    );
+
+    // The shell passes the already-open project down; no second tree is built.
+    expect(shell).toContain('project={projectSnapshot.project}');
+    expect(shell).toContain('projectRoot={projectSnapshot.projectRoot}');
+    expect(shell).toContain('shotId={currentShotId}');
+    expect(shell).toContain('shotStore.getCurrentShotId');
+    // Opening the preview must not mutate project/session state.
+    expect(shell).toMatch(
+      /const openProductPreview = \(\): void => \{\s*setProductPreviewOpen\(true\);\s*\};/u,
+    );
+    expect(shell).toMatch(
+      /const closeProductPreview = \(\): void => \{\s*setProductPreviewOpen\(false\);\s*\};/u,
+    );
+    // The overlay never re-enters the session or store layer.
+    expect(overlay).not.toContain('EditorShellSession');
+    expect(overlay).not.toContain('ProjectSessionController');
+    expect(overlay).not.toContain('switchProject');
+    expect(overlay).not.toContain('saveCurrentProject');
   });
 });
