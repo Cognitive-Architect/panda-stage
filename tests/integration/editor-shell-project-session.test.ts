@@ -44,6 +44,7 @@ function renderEditorTopBar(
   recoveryCandidate: RecoveryCandidate | null,
   status = 'Ready',
   productPreviewOpen = false,
+  closeConfirmOpen = false,
 ): string {
   return renderToStaticMarkup(
     EditorTopBar({
@@ -52,6 +53,7 @@ function renderEditorTopBar(
       status,
       busy: false,
       productPreviewOpen,
+      closeConfirmOpen,
       recoveryBanner: recoveryCandidate
         ? RecoveryCandidateBanner({
             candidate: recoveryCandidate,
@@ -65,6 +67,7 @@ function renderEditorTopBar(
       onOpenProject: vi.fn(),
       onSaveProject: vi.fn(),
       onOpenProductPreview: vi.fn(),
+      onRequestCloseProject: vi.fn(),
     }),
   );
 }
@@ -473,11 +476,13 @@ describe('EditorShell project session integration', () => {
         status: 'Ready',
         busy: false,
         productPreviewOpen: false,
+        closeConfirmOpen: false,
         onOpenCandidatePathChange: vi.fn(),
         onChooseProjectDirectory: vi.fn(),
         onOpenProject: vi.fn(),
         onSaveProject: vi.fn(),
         onOpenProductPreview: vi.fn(),
+        onRequestCloseProject: vi.fn(),
       }),
     );
     expect(markup).toMatch(
@@ -597,6 +602,64 @@ describe('EditorShell project session integration', () => {
     // Opening the preview must not change the saved/dirty presentation.
     expect(markup).toContain('暂无未保存更改');
     expect(markup).toMatch(/class="editor-save-button"[^>]*disabled/u);
+  });
+
+  it('renders exactly one in-app close entry next to the save control', async () => {
+    const harness = createSession(null);
+    await harness.session.switchProject(PROJECT_ROOT);
+    const markup = renderEditorTopBar(harness.store.getSnapshot()!, null);
+
+    expect(
+      markup.match(/data-testid="close-project-open"/gu),
+    ).toHaveLength(1);
+    expect(markup).toContain('关闭当前项目');
+    expect(markup).not.toMatch(
+      /<button[^>]*data-testid="close-project-open"[^>]*disabled/u,
+    );
+    // The top bar only opens the dialog; it never renders it.
+    expect(markup).not.toContain('data-testid="close-confirm-dialog"');
+    expect(markup).not.toContain('不保存关闭');
+    expect(markup.match(/class="editor-save-button"/gu)).toHaveLength(1);
+  });
+
+  it('disables the close entry while the confirmation is already open', async () => {
+    const harness = createSession(null);
+    await harness.session.switchProject(PROJECT_ROOT);
+    const markup = renderEditorTopBar(
+      harness.store.getSnapshot()!,
+      null,
+      'Ready',
+      false,
+      true,
+    );
+
+    expect(markup).toMatch(
+      /<button[^>]*data-testid="close-project-open"[^>]*disabled/u,
+    );
+    // Confirming a close must not pre-emptively change project state.
+    expect(markup).toContain('暂无未保存更改');
+    expect(markup).toContain(PROJECT_ROOT);
+  });
+
+  it('closes the tracked project through the owned session', async () => {
+    const harness = createSession(null);
+    await harness.session.switchProject(PROJECT_ROOT);
+    expect(harness.store.getSnapshot()?.projectRoot).toBe(PROJECT_ROOT);
+
+    const snapshot = await harness.session.closeProject();
+
+    expect(harness.stop).toHaveBeenCalledWith(PROJECT_ROOT);
+    expect(snapshot).toEqual({
+      trackedProjectRoot: null,
+      recoveryCandidate: null,
+    });
+    expect(harness.store.getSnapshot()).toBeNull();
+    expect(
+      getEditorShellSessionRegion(
+        getEditorShellState(harness.store.getSnapshot()),
+      ),
+    ).toBe('start-screen');
+    expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
   it('stops the tracked project after the final StrictMode cleanup', async () => {

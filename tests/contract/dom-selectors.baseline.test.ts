@@ -132,6 +132,53 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     );
   });
 
+  it('locks the Stage 1B close confirmation selectors into one owner', () => {
+    const shell = readSource('renderer/shell/EditorShell.tsx');
+    const dialog = readSource('renderer/shell/CloseConfirmDialog.tsx');
+    const topBar = readSource('renderer/shell/EditorTopBar.tsx');
+    const styles = readSource('renderer/styles.css');
+
+    for (const selector of [
+      'data-testid="close-confirm-dialog"',
+      'data-testid="close-confirm-project"',
+      'data-testid="close-confirm-prompt"',
+      'data-testid="close-confirm-recovery-notice"',
+      'data-testid="close-confirm-status"',
+      'data-testid="close-confirm-save"',
+      'data-testid="close-confirm-discard"',
+      'data-testid="close-confirm-cancel"',
+    ]) {
+      expect(dialog.match(new RegExp(selector, 'gu'))).toHaveLength(1);
+    }
+    expect(dialog).toContain('role="dialog"');
+    expect(dialog).toContain('aria-modal="true"');
+    expect(shell.match(/<CloseConfirmDialog/gu)).toHaveLength(1);
+    // The dialog owns the confirmation surface; the top bar owns the entry.
+    expect(
+      (shell + topBar).match(/data-testid="close-confirm-dialog"/gu),
+    ).toBeNull();
+    expect(dialog).not.toContain('data-testid="close-project-open"');
+    expect(
+      topBar.match(/data-testid="close-project-open"/gu),
+    ).toHaveLength(1);
+    expect(styles).toMatch(
+      /\.close-confirm-overlay\s*\{[\s\S]*?inset:\s*0;/u,
+    );
+    // Exactly three branch buttons, no more and no fewer.
+    const actions = dialog.slice(
+      dialog.indexOf('className="close-confirm-actions"'),
+      dialog.indexOf('className="close-confirm-hint"'),
+    );
+    expect(actions.match(/<button/gu)).toHaveLength(3);
+    expect(actions.match(/onChoose\('/gu)).toHaveLength(3);
+    expect(actions).toContain("onChoose('save-and-close')");
+    expect(actions).toContain("onChoose('close-without-saving')");
+    expect(actions).toContain("onChoose('cancel')");
+    // Escape is an alias of the cancel branch, never a fourth outcome.
+    expect(dialog.match(/onChoose\('/gu)).toHaveLength(4);
+    expect(dialog.match(/onChoose\('cancel'\)/gu)).toHaveLength(2);
+  });
+
   it('locks the final Stage 1A Grid and nested-scroll selector owners', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const legacyWorkspace = readSource(
@@ -186,6 +233,10 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       /data-testid="product-preview-open"[\s\S]*?disabled=\{busy \|\| productPreviewOpen\}/u,
     );
     expect(topBar).not.toContain('product-preview-placeholder');
+    expect(topBar).toContain('data-testid="close-project-open"');
+    expect(topBar).toMatch(
+      /data-testid="close-project-open"[\s\S]*?disabled=\{busy \|\| closeConfirmOpen\}/u,
+    );
     expect(panel).not.toContain('id="recovery-heading"');
     expect(panel).not.toContain('className="recovery-open-row"');
     expect(panel).not.toContain('className="recovery-status-row"');

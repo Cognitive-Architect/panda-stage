@@ -8,12 +8,14 @@ export interface EditorTopBarProps {
   status: string;
   busy: boolean;
   productPreviewOpen: boolean;
+  closeConfirmOpen: boolean;
   recoveryBanner?: ReactNode;
   onOpenCandidatePathChange(value: string): void;
   onChooseProjectDirectory(): Promise<void>;
   onOpenProject(): Promise<void>;
   onSaveProject(): Promise<void>;
   onOpenProductPreview(): void;
+  onRequestCloseProject(): void;
 }
 
 export function EditorTopBar({
@@ -22,12 +24,14 @@ export function EditorTopBar({
   status,
   busy,
   productPreviewOpen,
+  closeConfirmOpen,
   recoveryBanner,
   onOpenCandidatePathChange,
   onChooseProjectDirectory,
   onOpenProject,
   onSaveProject,
   onOpenProductPreview,
+  onRequestCloseProject,
 }: EditorTopBarProps): React.JSX.Element {
   const validation = validateProjectOpenCandidate(
     openCandidatePath,
@@ -100,6 +104,15 @@ export function EditorTopBar({
           type="button"
         >
           产品预览
+        </button>
+        <button
+          className="close-project-button"
+          data-testid="close-project-open"
+          disabled={busy || closeConfirmOpen}
+          onClick={onRequestCloseProject}
+          type="button"
+        >
+          关闭当前项目
         </button>
       </div>
     </section>

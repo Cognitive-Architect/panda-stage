@@ -140,7 +140,9 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     expect(sources).not.toContain('CanvasWorkspace');
     expect(sources).not.toContain('RightInspector');
     expect(sources).not.toContain('BottomHistory');
-    expect(sources).not.toContain('CloseConfirmDialog');
+    expect(readSource('src/renderer/shell/LegacyWorkspace.tsx')).not.toContain(
+      'CloseConfirmDialog',
+    );
   });
 
   it('mounts the Stage 1B product preview overlay inside the editor layout only', () => {
@@ -162,6 +164,32 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
       /\.product-preview-overlay\s*\{[\s\S]*?inset:\s*0;/u,
     );
     // Grid contract from Stage 1A stays exactly three rows.
+    expect(styles).toMatch(
+      /\.editor-layout\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u,
+    );
+  });
+
+  it('mounts the Stage 1B close confirmation as a transient overlay only', () => {
+    const shell = readSource('src/renderer/shell/EditorShell.tsx');
+    const legacy = readSource('src/renderer/shell/LegacyWorkspace.tsx');
+    const start = readSource('src/renderer/shell/StartScreen.tsx');
+    const styles = readSource('src/renderer/styles.css');
+
+    expect(count(shell, /<CloseConfirmDialog/gu)).toBe(1);
+    expect(legacy).not.toContain('CloseConfirmDialog');
+    expect(start).not.toContain('CloseConfirmDialog');
+    // The dialog lives in the editor branch, never in the start screen.
+    expect(shell.indexOf('<CloseConfirmDialog')).toBeGreaterThan(
+      shell.indexOf(': projectSnapshot ?'),
+    );
+    // It is conditional, so it can never become a fourth grid row.
+    expect(shell).toContain('{closeConfirmOpen ? (');
+    expect(styles).toMatch(
+      /\.close-confirm-overlay\s*\{[\s\S]*?position:\s*fixed;/u,
+    );
+    expect(styles).toMatch(
+      /\.close-confirm-overlay\s*\{[\s\S]*?inset:\s*0;/u,
+    );
     expect(styles).toMatch(
       /\.editor-layout\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u,
     );

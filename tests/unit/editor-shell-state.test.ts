@@ -234,4 +234,72 @@ describe('EditorShell state boundary', () => {
     expect(overlay).not.toContain('switchProject');
     expect(overlay).not.toContain('saveCurrentProject');
   });
+
+  it('keeps the in-app close inside the shell and off the top bar', () => {
+    const shell = readFileSync(
+      'src/renderer/shell/EditorShell.tsx',
+      'utf8',
+    );
+    const topBar = readFileSync(
+      'src/renderer/shell/EditorTopBar.tsx',
+      'utf8',
+    );
+    const dialog = readFileSync(
+      'src/renderer/shell/CloseConfirmDialog.tsx',
+      'utf8',
+    );
+
+    // The top bar stays presentational: it reports intent, nothing else.
+    expect(topBar).toContain('onRequestCloseProject(): void;');
+    expect(topBar).toContain('onClick={onRequestCloseProject}');
+    expect(topBar).not.toContain('closeProject(');
+    expect(topBar).not.toContain('useState');
+    expect(topBar).not.toContain('editorProjectStore');
+    // The dialog is a pure choice reporter with no lifecycle authority.
+    expect(dialog).not.toContain('useState');
+    expect(dialog).not.toContain('editorProjectStore');
+    expect(dialog).not.toContain('useSyncExternalStore');
+    // Only the shell owns the confirmation state and the close consequences.
+    expect(shell).toContain(
+      'const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);',
+    );
+    expect(shell).toContain('closeConfirmOpen={closeConfirmOpen}');
+    expect(shell).toContain('dirty={projectSnapshot.dirty}');
+    expect(shell).toContain('projectName={projectSnapshot.project.name}');
+    expect(shell).toContain('await session.closeProject()');
+    // Closing the project also tears down the preview it was showing.
+    const finishBody = shell.slice(
+      shell.indexOf('const finishCloseProject'),
+      shell.indexOf('const closeProject = async'),
+    );
+    expect(finishBody).toContain('setProductPreviewOpen(false)');
+    expect(finishBody).toContain('setCloseConfirmOpen(false)');
+    expect(finishBody).toContain("setOpenCandidatePath('')");
+  });
+
+  it('never closes the project before a successful save completes', () => {
+    const shell = readFileSync(
+      'src/renderer/shell/EditorShell.tsx',
+      'utf8',
+    );
+    const closeBody = shell.slice(
+      shell.indexOf('const closeProject = async'),
+      shell.indexOf('const restoreRecovery = async'),
+    );
+
+    // Both failure branches return before the close runs.
+    expect(closeBody).toMatch(
+      /if \(!result\.ok\) \{[\s\S]*?closeProjectSaveFailureMessage[\s\S]*?return;/u,
+    );
+    expect(closeBody).toMatch(
+      /if \(result\.acknowledgement === 'stale'\) \{[\s\S]*?return;/u,
+    );
+    expect(closeBody.indexOf('session.saveCurrentProject()')).toBeLessThan(
+      closeBody.indexOf('finishCloseProject(choice, dirtyBeforeClose)'),
+    );
+    // Cancel short-circuits before any async work.
+    expect(closeBody.indexOf("if (choice === 'cancel')")).toBeLessThan(
+      closeBody.indexOf('setBusy(true)'),
+    );
+  });
 });

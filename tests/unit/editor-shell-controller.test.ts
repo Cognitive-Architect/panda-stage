@@ -22,6 +22,13 @@ function createHarness() {
       trackedProjectRoot: 'D:\\projects\\shell.pandastage',
       recoveryCandidate: null,
     })),
+    closeProject: vi.fn(async () => {
+      store.clear();
+      return {
+        trackedProjectRoot: null,
+        recoveryCandidate: null,
+      };
+    }),
     clearRecoveryCandidate: vi.fn(() => ({
       trackedProjectRoot: 'D:\\projects\\shell.pandastage',
       recoveryCandidate: null,
@@ -143,5 +150,28 @@ describe('EditorShell ProjectSessionController ownership', () => {
     expect(harness.getActiveSubscriptions()).toBe(0);
     expect(harness.controller.dispose).toHaveBeenCalledTimes(1);
     expect(harness.createController).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes the in-app close through the same single controller', async () => {
+    const harness = createHarness();
+    harness.store.open(
+      'D:\\projects\\shell.pandastage',
+      ProjectSchema.parse(exampleProject),
+    );
+    expect(getEditorShellState(harness.store.getSnapshot())).toBe('editor');
+
+    const snapshot = await harness.session.closeProject();
+
+    expect(harness.controller.closeProject).toHaveBeenCalledTimes(1);
+    expect(snapshot).toEqual({
+      trackedProjectRoot: null,
+      recoveryCandidate: null,
+    });
+    // Closing a project must not dispose or replace the owned controller.
+    expect(harness.controller.dispose).not.toHaveBeenCalled();
+    expect(harness.createController).toHaveBeenCalledTimes(1);
+    expect(getEditorShellState(harness.store.getSnapshot())).toBe(
+      'no-project',
+    );
   });
 });

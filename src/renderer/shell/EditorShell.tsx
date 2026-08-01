@@ -27,6 +27,7 @@ import {
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
+import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { EditorTopBar } from './EditorTopBar';
 import { LegacyWorkspace } from './LegacyWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
@@ -34,6 +35,15 @@ import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { StartScreen } from './StartScreen';
 import { useDebugFlag } from './useDebugFlag';
+import {
+  CLOSE_PROJECT_CLEAN_PROMPT,
+  CLOSE_PROJECT_DIRTY_PROMPT,
+  CLOSE_PROJECT_STALE_SAVE_MESSAGE,
+  closeProjectErrorMessage,
+  closeProjectSaveFailureMessage,
+  closeProjectStatusMessage,
+  type CloseProjectChoice,
+} from './closeProjectFlow';
 import {
   projectCreateErrorMessage,
   validateNewProjectInput,
@@ -98,6 +108,7 @@ interface SessionController {
     projectRoot: string,
     expectedProjectId: string,
   ): Promise<ProjectSessionSnapshot>;
+  closeProject(): Promise<ProjectSessionSnapshot>;
   clearRecoveryCandidate(): ProjectSessionSnapshot;
   dispose(): Promise<void>;
 }
@@ -203,6 +214,14 @@ export class EditorShellSession {
     );
   }
 
+  /**
+   * Closes the current project through the one owned session controller.
+   * The window itself stays open; the native `×` guard is untouched.
+   */
+  closeProject(): Promise<ProjectSessionSnapshot> {
+    return this.controller.closeProject();
+  }
+
   async restoreRecovery(): Promise<RecoveryRestoreResponse> {
     const candidate = this.getSnapshot().recoveryCandidate;
     if (!candidate) throw new Error('No recovery candidate is available.');
@@ -294,6 +313,8 @@ export function EditorShell({
     '请选择存放文件夹并填写项目名称。',
   );
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [closeConfirmStatus, setCloseConfirmStatus] = useState('');
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
   const recoveryCandidate = getEditorShellRecoveryCandidate(
@@ -487,6 +508,75 @@ export function EditorShell({
     setProductPreviewOpen(false);
   };
 
+  const requestCloseProject = (): void => {
+    if (!projectSnapshot) return;
+    setCloseConfirmStatus(
+      projectSnapshot.dirty
+        ? CLOSE_PROJECT_DIRTY_PROMPT
+        : CLOSE_PROJECT_CLEAN_PROMPT,
+    );
+    setCloseConfirmOpen(true);
+  };
+
+  const cancelCloseProject = (): void => {
+    setCloseConfirmOpen(false);
+    setCloseConfirmStatus('');
+    setStatus('已取消关闭，当前项目保持打开。');
+  };
+
+  /**
+   * Runs the actual close after the user's branch decision.
+   *
+   * `session.closeProject()` only stops autosave tracking, so an unsaved close
+   * keeps the recovery file on disk (ruling ④). Any failure leaves the project
+   * open and reports the reason inside the dialog.
+   */
+  const finishCloseProject = async (
+    choice: Exclude<CloseProjectChoice, 'cancel'>,
+    dirtyBeforeClose: boolean,
+  ): Promise<void> => {
+    const nextSession = await session.closeProject();
+    setSessionSnapshot(nextSession);
+    setProductPreviewOpen(false);
+    setCloseConfirmOpen(false);
+    setCloseConfirmStatus('');
+    setOpenCandidatePath('');
+    setRecentRefreshToken((current) => current + 1);
+    setStatus(closeProjectStatusMessage(choice, dirtyBeforeClose));
+  };
+
+  const closeProject = async (
+    choice: CloseProjectChoice,
+  ): Promise<void> => {
+    if (choice === 'cancel') {
+      cancelCloseProject();
+      return;
+    }
+    if (!projectSnapshot) return;
+    const dirtyBeforeClose = projectSnapshot.dirty;
+    setBusy(true);
+    try {
+      if (choice === 'save-and-close' && dirtyBeforeClose) {
+        const result = await session.saveCurrentProject();
+        if (!result.ok) {
+          setCloseConfirmStatus(
+            closeProjectSaveFailureMessage(result.error.message),
+          );
+          return;
+        }
+        if (result.acknowledgement === 'stale') {
+          setCloseConfirmStatus(CLOSE_PROJECT_STALE_SAVE_MESSAGE);
+          return;
+        }
+      }
+      await finishCloseProject(choice, dirtyBeforeClose);
+    } catch (error) {
+      setCloseConfirmStatus(closeProjectErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const restoreRecovery = async (): Promise<void> => {
     setBusy(true);
     try {
@@ -584,10 +674,12 @@ export function EditorShell({
         <div className="editor-layout" data-testid="editor-layout">
           <EditorTopBar
             busy={busy}
+            closeConfirmOpen={closeConfirmOpen}
             onChooseProjectDirectory={chooseProjectDirectory}
             onOpenProductPreview={openProductPreview}
             onOpenProject={openProject}
             onOpenCandidatePathChange={setOpenCandidatePath}
+            onRequestCloseProject={requestCloseProject}
             onSaveProject={saveProject}
             openCandidatePath={openCandidatePath}
             productPreviewOpen={productPreviewOpen}
@@ -639,6 +731,15 @@ export function EditorShell({
               project={projectSnapshot.project}
               projectRoot={projectSnapshot.projectRoot}
               shotId={currentShotId}
+            />
+          ) : null}
+          {closeConfirmOpen ? (
+            <CloseConfirmDialog
+              busy={busy}
+              dirty={projectSnapshot.dirty}
+              onChoose={(choice) => void closeProject(choice)}
+              projectName={projectSnapshot.project.name}
+              status={closeConfirmStatus}
             />
           ) : null}
         </div>

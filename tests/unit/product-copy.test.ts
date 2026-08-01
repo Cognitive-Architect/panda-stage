@@ -7,6 +7,8 @@ const PRODUCT_SURFACE_FILES = [
   'src/renderer/shell/NewProjectDialog.tsx',
   'src/renderer/shell/EditorTopBar.tsx',
   'src/renderer/shell/ProductPreviewOverlay.tsx',
+  'src/renderer/shell/CloseConfirmDialog.tsx',
+  'src/renderer/shell/closeProjectFlow.ts',
   'src/renderer/shell/RecoveryCandidateBanner.tsx',
   'src/renderer/shell/LegacyWorkspace.tsx',
   'src/renderer/features/welcome/RecentProjectsPanel.tsx',
@@ -63,6 +65,10 @@ describe('Stage 1A product copy', () => {
       '产品预览',
       '当前项目还没有可预览的镜头',
       '关闭预览',
+      '关闭当前项目',
+      '保存后关闭',
+      '不保存关闭',
+      '取消',
     ]) {
       expect(source).toContain(text);
     }
@@ -75,9 +81,23 @@ describe('Stage 1A product copy', () => {
       'Product preview',
       'No shot to preview',
       'Close preview',
+      'Close project',
+      'Save and close',
+      'Close without saving',
     ]) {
       expect(source).not.toContain(text);
     }
+  });
+
+  it('warns that an unsaved close keeps the recovery record', () => {
+    const source = productSources();
+
+    expect(source).toContain(
+      '不保存关闭会保留恢复记录，下次打开该项目可能出现恢复候选。',
+    );
+    // The in-app close must never promise to delete anything.
+    expect(source).not.toContain('恢复记录将被删除');
+    expect(source).not.toContain('丢弃恢复');
   });
 
   it('distinguishes local apply actions from whole-project disk save', () => {

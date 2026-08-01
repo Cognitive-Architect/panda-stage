@@ -47,6 +47,7 @@ export class ProjectSessionSwitchError extends Error {
       | 'TRACK_FAILED'
       | 'DETECT_FAILED'
       | 'STOP_FAILED'
+      | 'CLOSE_STOP_FAILED'
       | 'ROLLBACK_FAILED',
     message: string,
     options?: ErrorOptions,
@@ -276,6 +277,40 @@ export class ProjectSessionController {
       }
       throw error;
     }
+  }
+
+  /**
+   * Closes the currently tracked project without closing the window.
+   *
+   * This is an additive lifecycle method: it does not change `switchProject`,
+   * `switchRecentProject`, or `dispose`. It performs exactly one Main Process
+   * call — the existing `autosave.stop` — which clears the autosave timer and
+   * drains the in-flight write. It deliberately never asks the Main Process to
+   * discard, so the recovery file that autosave already produced stays on disk
+   * and can surface as a recovery candidate the next time the project opens.
+   *
+   * Saving is the caller's decision: the shell saves before calling this when
+   * the user picks "save and close", and skips saving when the user picks
+   * "close without saving".
+   */
+  async closeProject(): Promise<ProjectSessionSnapshot> {
+    const trackedProjectRoot = this.snapshot.trackedProjectRoot;
+    if (trackedProjectRoot) {
+      const stopped = await this.api.stop(trackedProjectRoot);
+      if (!stopped.ok) {
+        // Keep the session intact so the user can retry or keep editing.
+        throw new ProjectSessionSwitchError(
+          'CLOSE_STOP_FAILED',
+          stopped.error.message,
+        );
+      }
+    }
+    this.store.clear();
+    this.snapshot = {
+      trackedProjectRoot: null,
+      recoveryCandidate: null,
+    };
+    return this.snapshot;
   }
 
   clearRecoveryCandidate(): ProjectSessionSnapshot {

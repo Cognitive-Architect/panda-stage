@@ -533,4 +533,85 @@ describe('ProjectSessionController transactional switching', () => {
       recoveryCandidate: projectACandidate,
     });
   });
+  it('closes the tracked project by stopping autosave only', async () => {
+    await harness.controller.switchProject(PROJECT_A_ROOT);
+    harness.store.updateProject({
+      ...PROJECT_A,
+      name: 'Dirty before the in-app close',
+    });
+    expect(harness.store.getSnapshot()?.dirty).toBe(true);
+    harness.stop.mockClear();
+
+    const closed = await harness.controller.closeProject();
+
+    expect(harness.stop).toHaveBeenCalledTimes(1);
+    expect(harness.stop).toHaveBeenCalledWith(PROJECT_A_ROOT);
+    // Exactly one Main Process call: no open/track/detect/guard round trips.
+    expect(harness.track).toHaveBeenCalledTimes(1);
+    expect(harness.detect).toHaveBeenCalledTimes(1);
+    expect(harness.confirmSwitch).not.toHaveBeenCalled();
+    expect(harness.autosave.trackedProjectCount()).toBe(0);
+    expect(harness.store.getSnapshot()).toBeNull();
+    expect(closed).toEqual({
+      trackedProjectRoot: null,
+      recoveryCandidate: null,
+    });
+    expect(harness.controller.getSnapshot()).toEqual(closed);
+  });
+
+  it('clears a pending recovery candidate when the project closes', async () => {
+    harness.candidates.set(
+      PROJECT_A_ROOT,
+      candidate(PROJECT_A_ROOT, PROJECT_A),
+    );
+    const opened = await harness.controller.switchProject(PROJECT_A_ROOT);
+    expect(opened.recoveryCandidate).not.toBeNull();
+
+    const closed = await harness.controller.closeProject();
+
+    expect(closed.recoveryCandidate).toBeNull();
+    expect(closed.trackedProjectRoot).toBeNull();
+  });
+
+  it('keeps the session intact when the close cannot stop autosave', async () => {
+    await harness.controller.switchProject(PROJECT_A_ROOT);
+    harness.stopFailures.add(PROJECT_A_ROOT);
+
+    await expect(harness.controller.closeProject()).rejects.toMatchObject({
+      name: 'ProjectSessionSwitchError',
+      code: 'CLOSE_STOP_FAILED',
+    });
+
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_A_ROOT,
+    });
+    expect(harness.controller.getSnapshot().trackedProjectRoot).toBe(
+      PROJECT_A_ROOT,
+    );
+  });
+
+  it('closing with nothing open issues no Main Process call', async () => {
+    const closed = await harness.controller.closeProject();
+
+    expect(harness.stop).not.toHaveBeenCalled();
+    expect(harness.open).not.toHaveBeenCalled();
+    expect(closed).toEqual({
+      trackedProjectRoot: null,
+      recoveryCandidate: null,
+    });
+  });
+
+  it('reopens a project cleanly after an in-app close', async () => {
+    await harness.controller.switchProject(PROJECT_A_ROOT);
+    await harness.controller.closeProject();
+
+    const reopened = await harness.controller.switchProject(PROJECT_B_ROOT);
+
+    expect(reopened.trackedProjectRoot).toBe(PROJECT_B_ROOT);
+    expect(harness.autosave.trackedProjectCount()).toBe(1);
+    expect(harness.store.getSnapshot()).toMatchObject({
+      projectRoot: PROJECT_B_ROOT,
+      dirty: false,
+    });
+  });
 });
