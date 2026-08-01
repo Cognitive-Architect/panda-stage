@@ -116,8 +116,8 @@ describe('renderer project creation flow', () => {
       /project\.createAt\(\{[\s\S]{0,240}?parentDirectory,[\s\S]{0,240}?projectName,[\s\S]{0,240}?metadata:[\s\S]{0,240}?\}\)/u,
     );
     expect(shell).not.toMatch(/createAt\(\{[\s\S]{0,240}?projectRoot/u);
-    expect(shell).toContain(
-      'await switchToProject(\n          response.value.projectRoot,',
+    expect(shell).toMatch(
+      /await\s+switchToProject\(\s*response\.value\.projectRoot/u,
     );
     expect(shell).not.toContain('editorProjectStore.open(');
   });
