@@ -4,8 +4,8 @@
   "result": "PASS",
   "branch": "fix/m3-editor-shell",
   "baselineSha": "b47877c0d3df3eff1dba8ec6509430638314da49",
-  "testedSha": "be70b3db02209763b4412966c49fc7aca226b5b8",
-  "executedAt": "2026-08-02T03:01:25.139Z",
+  "testedSha": "2182d301821abdae929af309a6b687aa1e9ad2fa",
+  "executedAt": "2026-08-02T05:33:23.784Z",
   "environment": {
     "platform": "win32",
     "node": "v22.22.2"
