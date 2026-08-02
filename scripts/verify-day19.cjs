@@ -43,13 +43,14 @@ async function scrollTargetIntoActiveViewport(
     if (!(target instanceof HTMLElement)) {
       throw new Error('Scroll target was not found: ${selector}');
     }
-    const legacyViewport = document.querySelector(
-      '[data-testid="legacy-workspace-scroll"]'
+    const scrollViewport = target.closest(
+      '[data-testid="left-workspace-scroll"], ' +
+        '[data-testid="legacy-workspace-scroll"]'
     );
-    if (legacyViewport instanceof HTMLElement) {
+    if (scrollViewport instanceof HTMLElement) {
       const beforeTarget = target.getBoundingClientRect();
-      const beforeViewport = legacyViewport.getBoundingClientRect();
-      legacyViewport.scrollTop +=
+      const beforeViewport = scrollViewport.getBoundingClientRect();
+      scrollViewport.scrollTop +=
         beforeTarget.top - beforeViewport.top - ${topOffset};
     } else {
       window.scrollTo(
@@ -63,8 +64,8 @@ async function scrollTargetIntoActiveViewport(
     );
     const targetBounds = target.getBoundingClientRect();
     const viewportBounds =
-      legacyViewport instanceof HTMLElement
-        ? legacyViewport.getBoundingClientRect()
+      scrollViewport instanceof HTMLElement
+        ? scrollViewport.getBoundingClientRect()
         : {
             top: 0,
             right: innerWidth,
@@ -89,8 +90,10 @@ async function scrollTargetIntoActiveViewport(
     }
     return {
       mode:
-        legacyViewport instanceof HTMLElement
-          ? 'legacy-workspace'
+        scrollViewport instanceof HTMLElement
+          ? scrollViewport.dataset.testid === 'left-workspace-scroll'
+            ? 'left-workspace'
+            : 'legacy-workspace'
           : 'window',
       targetTop: targetBounds.top,
       viewportTop: viewportBounds.top
@@ -195,15 +198,42 @@ async function openProject(window) {
     '.recovery-open-row input',
     projectRoot,
   );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      "document.querySelector('.recovery-open-row button')",
+      'Project open button did not render.',
+    ),
+  );
   await window.webContents.executeJavaScript(`
     document.querySelector('.recovery-open-row button').click()
   `);
   await window.webContents.executeJavaScript(
     waitFor(
-      "document.querySelector('.character-create-form') && " +
-        "document.querySelector('.character-manager-heading span')" +
-        "?.textContent?.includes('修订 0')",
-      'Day 19 project did not open.',
+      `document.querySelector(${JSON.stringify(
+        '[data-testid="resource-activity-tabs"] [data-activity="characters"]',
+      )})`,
+      'Resource activity tabs did not render.',
+    ),
+  );
+}
+
+async function selectResourceActivity(window, activity) {
+  const selector =
+    `[data-testid="resource-activity-tabs"] [data-activity="${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Resource activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="resource-activity-panel"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+      `Resource activity did not activate: ${activity}`,
     ),
   );
 }
@@ -368,16 +398,37 @@ async function verifyDay19() {
       ),
     );
     await openProject(window);
+    await selectResourceActivity(window, 'assets');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-import-heading button')",
+        'Asset activity did not render.',
+      ),
+    );
     await window.webContents.executeJavaScript(`
       document.querySelector('.asset-import-heading button').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelectorAll('.asset-import-result').length === 4 && " +
-          "document.querySelectorAll(" +
+        "document.querySelectorAll('.asset-import-result').length === 4",
+        'Four real character fixtures were not imported.',
+      ),
+    );
+    await selectResourceActivity(window, 'characters');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelectorAll(" +
           "'.character-create-form label:nth-of-type(2) option'" +
           ").length === 5",
-        'Four real character fixtures were not imported.',
+        'Imported character fixtures did not reach the character activity.',
+      ),
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+          "document.querySelector('.character-create-form') && " +
+            "document.querySelector('.character-manager-heading span')" +
+          "?.textContent?.includes('修订 1')",
+        'Character activity did not render.',
       ),
     );
 
@@ -550,7 +601,13 @@ async function verifyDay19() {
         rendererHasNodeRequire: typeof window.require !== 'undefined',
         hasTtsControl: Boolean(document.querySelector(
           '[data-tts], button[aria-label*="TTS"]'
-        ))
+        )),
+        resourceOwner: Boolean(document.querySelector(
+          '.character-manager'
+        )?.closest('[data-testid="left-workspace-scroll"]')),
+        legacyResourceOwner: Boolean(document.querySelector(
+          '.character-manager'
+        )?.closest('[data-testid="legacy-workspace-scroll"]'))
       }))()`);
 
     await window.webContents.executeJavaScript(`
@@ -572,6 +629,15 @@ async function verifyDay19() {
       ),
     );
     await openProject(window);
+    await selectResourceActivity(window, 'characters');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.character-create-form') && " +
+          "document.querySelector('.character-manager-heading span')" +
+          "?.textContent?.includes('修订 0')",
+        'Character activity did not render after reopen.',
+      ),
+    );
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelectorAll('.expression-list li').length === 2 && " +
@@ -740,6 +806,8 @@ async function verifyDay19() {
       configuredUi.scaleValue !== '0.75' ||
       !configuredUi.flipChecked ||
       !configuredUi.warning?.includes('超过 30%') ||
+      !configuredUi.resourceOwner ||
+      configuredUi.legacyResourceOwner ||
       configuredUi.rendererHasNodeRequire ||
       configuredUi.hasTtsControl ||
       !defaultProtection.deleteDisabled ||

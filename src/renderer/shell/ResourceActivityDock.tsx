@@ -65,6 +65,7 @@ export function ResourceActivityDock({
         aria-live="polite"
         className="resource-activity-panel"
         data-active-activity={activeActivity}
+        data-testid="resource-activity-panel"
         id="resource-activity-panel"
       >
         {activeActivity === 'shots' ? (

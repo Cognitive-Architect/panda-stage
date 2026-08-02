@@ -525,7 +525,13 @@ async function verifyDay20() {
         rendererHasNodeRequire: typeof window.require !== 'undefined',
         hasCanvasEditor: Boolean(document.querySelector(
           '.canvas-editor, .timeline-editor, .transition-editor'
-        ))
+        )),
+        resourceOwner: Boolean(document.querySelector(
+          '.shot-manager'
+        )?.closest('[data-testid="left-workspace-scroll"]')),
+        legacyResourceOwner: Boolean(document.querySelector(
+          '.shot-manager'
+        )?.closest('[data-testid="legacy-workspace-scroll"]'))
       }))()`);
     const configuredScreenshot =
       await captureSection(window, '.shot-manager');
@@ -697,6 +703,8 @@ async function verifyDay20() {
       configuredUi.currentName !== 'Finale' ||
       configuredUi.totalDurationMs !== 11_500 ||
       configuredUi.placeholderCount < 6 ||
+      !configuredUi.resourceOwner ||
+      configuredUi.legacyResourceOwner ||
       configuredUi.rendererHasNodeRequire ||
       configuredUi.hasCanvasEditor ||
       noOpMove.before.names.join(',') !==

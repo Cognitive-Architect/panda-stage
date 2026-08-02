@@ -37,6 +37,27 @@ function waitFor(expression, failureMessage) {
   `;
 }
 
+async function selectResourceActivity(window, activity) {
+  const selector =
+    `[data-testid="resource-activity-tabs"] [data-activity="${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Resource activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="resource-activity-panel"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+      `Resource activity did not activate: ${activity}`,
+    ),
+  );
+}
+
 async function setInput(window, selector, value) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
@@ -117,14 +138,11 @@ async function snapshot(window) {
     const stage = document.querySelector(
       '[data-testid="project-canvas-stage"]'
     );
-    const revisionText = document.querySelector(
-      '.shot-manager-heading span'
-    ).textContent;
     return {
       layers: JSON.parse(stage.dataset.layerJson),
       selectedLayerId: stage.dataset.selectedLayerId,
       transformerVisible: stage.dataset.transformerVisible === 'true',
-      revision: Number(/修订 (\\d+)/.exec(revisionText)?.[1]),
+      revision: Number(stage.dataset.projectRevision),
       dirty: document.querySelector('.dirty-state') !== null
     };
   })()`);
@@ -225,6 +243,7 @@ async function dragLogicalPoint(window, from, to) {
 
 async function createSelectedCharacterLayer(window, point) {
   const assetId = exampleProject.characters[0].expressions[0].assetId;
+  await selectResourceActivity(window, 'assets');
   await window.webContents.executeJavaScript(
     `document.querySelectorAll('.asset-category-tabs button')[0].click()`,
   );

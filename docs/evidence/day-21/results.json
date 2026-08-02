@@ -3,9 +3,9 @@
   "workOrder": "B-21/45",
   "result": "PASS",
   "branch": "feat/day-21-canvas-stage",
-  "executedAt": "2026-07-26T00:00:40.332Z",
+  "executedAt": "2026-08-02T02:53:25.375Z",
   "contract": {
-    "projectSchemaVersion": 4,
+    "projectSchemaVersion": 5,
     "logicalCanvas": {
       "width": 1920,
       "height": 1080,
@@ -25,14 +25,14 @@
   "fit": {
     "logicalWidth": 1920,
     "logicalHeight": 1080,
-    "scale": 0.537037,
-    "expectedScale": 0.5370370370370371,
-    "offsetX": 54.944,
-    "offsetY": 0,
+    "scale": 0.441146,
+    "expectedScale": 0.44114583333333335,
+    "offsetX": 0,
+    "offsetY": 51.781,
     "centeredX": true,
     "centeredY": true,
-    "pointer": "x 959.1 · y 539.4",
-    "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1}]",
+    "pointer": "x 960.4 · y 540.4",
+    "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",
     "backgroundPolicy": "cover-centered-no-stretch",
     "backgroundListening": "false",
     "backgroundScaleX": 1,
@@ -41,14 +41,14 @@
     "backgroundOpacity": 1,
     "renderContract": "shared-stage-layer-v1",
     "centerGuides": "vertical,horizontal",
-    "modeFeedback": "Fit to viewport · 53.7%",
+    "modeFeedback": "适应窗口 · 44.1%",
     "clean": true,
     "revisionZero": true
   },
   "resize": {
-    "scale": 0.364815,
-    "expectedScale": 0.3648148148148148,
-    "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1}]",
+    "scale": 0.211979,
+    "expectedScale": 0.21197916666666666,
+    "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",
     "clean": true,
     "revisionZero": true,
     "layerJsonUnchanged": true,
@@ -62,11 +62,11 @@
     "scrollHeight": 1080,
     "contentWidth": 1920,
     "contentHeight": 1080,
-    "pointer": "x 721.3 · y 487.0",
-    "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1}]",
+    "pointer": "x 721.0 · y 487.5",
+    "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",
     "clean": true,
     "revisionZero": true,
-    "modeFeedback": "1:1 pixels · scroll to inspect · 100.0%",
+    "modeFeedback": "1:1 像素 · 可滚动查看 · 100.0%",
     "autosaveUpdateDelta": 0,
     "expectedPointer": {
       "x": 721.3333435058594,
@@ -77,14 +77,14 @@
     "devicePixelRatio": 1.5,
     "fit": {
       "devicePixelRatio": 1.5,
-      "pointer": "x 958.9 · y 540.4",
-      "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1}]"
+      "pointer": "x 960.5 · y 539.1",
+      "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]"
     },
     "actual": {
-      "pointer": "x 461.3 · y 333.0",
+      "pointer": "x 461.0 · y 333.5",
       "scrollLeft": 211.3333282470703,
       "scrollTop": 133.3333282470703,
-      "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1}]",
+      "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",
       "clean": true,
       "revisionZero": true,
       "expectedPointer": {
@@ -100,7 +100,7 @@
     "exactProjectSaved": true,
     "openCount": 5,
     "reopened": {
-      "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1}]",
+      "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",
       "logicalWidth": 1920,
       "logicalHeight": 1080,
       "clean": true
@@ -108,8 +108,8 @@
     "layerJsonUnchanged": true
   },
   "negativeStates": {
-    "missingBackground": "Background preview unavailableAdd a background layer or rebuild its thumbnail in the asset library.",
-    "emptyShot": "This shot has no layers yetAdd a background or character from the project tools."
+    "missingBackground": "背景预览不可用请添加背景图层，或在项目素材库中重新生成缩略图。",
+    "emptyShot": "当前镜头还没有图层请从项目工具中添加背景或角色。"
   },
   "screenshots": [
     "docs/evidence/day-21/canvas-fit.png",

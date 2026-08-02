@@ -181,6 +181,19 @@ async function verifyDay18() {
     `);
     await window.webContents.executeJavaScript(
       waitFor(
+        "document.querySelector(" +
+          "'[data-testid=\\\"resource-activity-tabs\\\"] " +
+          "[data-activity=\\\"assets\\\"]'" +
+          ")",
+        'Resource activity tabs did not render.',
+      ),
+    );
+    await window.webContents.executeJavaScript(
+      `document.querySelector('[data-testid="resource-activity-tabs"] ` +
+        `[data-activity="assets"]').click()`,
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
         "document.querySelectorAll('.asset-card').length === 100 && " +
           "document.querySelectorAll('.asset-card img').length === 98 && " +
           "document.querySelector('[data-thumbnail-status=\"missing\"]')",

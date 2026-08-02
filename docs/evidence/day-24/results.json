@@ -567,11 +567,28 @@
   },
   "persistence": {
     "saved": true,
+    "savedToActiveRoot": true,
     "historyExcluded": true,
     "uiStateExcluded": true
   },
   "projectSwitch": {
-    "undoCount": 0,
-    "redoCount": 0
+    "second": {
+      "activeProjectRoot": "D:\\Projects\\Day 24 second.pandastage",
+      "openCandidatePath": "D:\\Projects\\Day 24 second.pandastage",
+      "projectName": "Day 24 second project",
+      "shotNameDraft": "Second project shot",
+      "shotDurationDraft": 4321,
+      "undoCount": 0,
+      "redoCount": 0
+    },
+    "returned": {
+      "activeProjectRoot": "D:\\Projects\\Day 24 history.pandastage",
+      "openCandidatePath": "D:\\Projects\\Day 24 history.pandastage",
+      "projectName": "Panda Stage MVP Project v1 Example",
+      "shotNameDraft": "Opening",
+      "shotDurationDraft": 3000,
+      "undoCount": 0,
+      "redoCount": 0
+    }
   }
 }

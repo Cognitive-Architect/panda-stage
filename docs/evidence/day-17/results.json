@@ -3,8 +3,8 @@
   "workOrder": "B-17/45",
   "result": "PASS",
   "branch": "feat/day-17-asset-metadata",
-  "testedSha": "a42ca41cb3de977d24679ac21ebda64eb785da69",
-  "executedAt": "2026-07-25T00:27:43.222Z",
+  "testedSha": "be70b3db02209763b4412966c49fc7aca226b5b8",
+  "executedAt": "2026-08-02T02:52:40.381Z",
   "dependencyDecision": {
     "image": "Existing packaged FFmpeg 4.1 sidecar",
     "audio": "Existing packaged FFprobe 5.1 sidecar",
@@ -90,28 +90,28 @@
     "perAsset": [
       {
         "asset": "熊猫 图片",
-        "elapsedMs": 104
+        "elapsedMs": 110
       },
       {
         "asset": "熊猫 照片",
-        "elapsedMs": 97
+        "elapsedMs": 103
       },
       {
         "asset": "熊猫 声音",
-        "elapsedMs": 63
+        "elapsedMs": 64
       },
       {
         "asset": "熊猫 声音",
-        "elapsedMs": 58
+        "elapsedMs": 61
       },
       {
         "asset": "512x300",
-        "elapsedMs": 109
+        "elapsedMs": 113
       }
     ],
-    "mainProcessRssBeforeBytes": 57786368,
-    "mainProcessPeakRssBytes": 59543552,
-    "mainProcessRssDeltaBytes": 1757184,
+    "mainProcessRssBeforeBytes": 68046848,
+    "mainProcessPeakRssBytes": 71819264,
+    "mainProcessRssDeltaBytes": 3772416,
     "note": "Thumbnail decoding runs in the FFmpeg child process; the 40,000,000-pixel preflight threshold skips oversized decoding."
   },
   "tests": {

@@ -3,7 +3,7 @@
   "workOrder": "B-18/45",
   "result": "PASS",
   "branch": "feat/day-18-asset-library-ui",
-  "executedAt": "2026-07-25T03:38:22.062Z",
+  "executedAt": "2026-08-02T02:52:50.420Z",
   "ui": {
     "categories": [
       "角色图片",
@@ -13,18 +13,18 @@
     "backgroundItemsBeforeDelete": 100,
     "thumbnailRequestCount": 197,
     "performanceObservation": {
-      "elapsedMs": 28.299999997019768,
+      "elapsedMs": 23.80000001192093,
       "itemCount": 100,
       "selectedName": "Bamboo background",
-      "scrollTop": 2647.333251953125,
-      "scrollHeight": 3087,
-      "clientHeight": 440
+      "scrollTop": 22836.666015625,
+      "scrollHeight": 23117,
+      "clientHeight": 280
     },
     "dragEvidence": {
       "payload": {
         "version": 2,
-        "assetId": "18000000-0000-4000-8000-000000000001",
-        "type": "asset-image"
+        "type": "asset-image",
+        "assetId": "18000000-0000-4000-8000-000000000001"
       },
       "types": [
         "application/x-panda-stage-asset"

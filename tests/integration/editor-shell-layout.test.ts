@@ -82,6 +82,7 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     expect(dock).toContain('<ShotManager');
     expect(dock).toContain('<AssetLibrary');
     expect(dock).toContain('<CharacterManager');
+    expect(dock).toContain('data-testid="resource-activity-panel"');
     expect(styles).toMatch(
       /\.left-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
@@ -91,6 +92,28 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     expect(styles).toMatch(
       /\.legacy-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
+  });
+
+  it('locks the Stage 2-A resource activity cardinality and owner', () => {
+    const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
+    const dock = readSource(
+      'src/renderer/shell/ResourceActivityDock.tsx',
+    );
+    const panel = readSource(
+      'src/renderer/features/recovery/ProjectRecoveryPanel.tsx',
+    );
+
+    expect(count(left, /data-testid="left-workspace-scroll"/gu)).toBe(1);
+    expect(count(left, /<ProjectRecoveryPanel/gu)).toBe(1);
+    expect(count(left, /<ResourceActivityDock/gu)).toBe(1);
+    expect(count(dock, /<ShotManager/gu)).toBe(1);
+    expect(count(dock, /<AssetLibrary/gu)).toBe(1);
+    expect(count(dock, /<CharacterManager/gu)).toBe(1);
+    expect(dock).toContain("useState<ResourceActivity>('shots')");
+    expect(dock).not.toContain('display: none');
+    expect(dock).not.toContain('hidden');
+    expect(panel.match(/<RecentProjectsPanel/gu)).toHaveLength(1);
+    expect(panel).not.toMatch(/<(?:ShotManager|AssetLibrary|CharacterManager|CanvasStage)/u);
   });
 
   it('removes the no-project legacy transition without hiding a duplicate tree', () => {
