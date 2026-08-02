@@ -21,15 +21,7 @@ const corepackShims = join(
   dirname(process.execPath),
   'node_modules/corepack/shims',
 );
-const electronExecutable =
-  process.platform === 'win32'
-    ? join(repositoryRoot, 'node_modules/electron/dist/electron.exe')
-    : process.platform === 'darwin'
-      ? join(
-          repositoryRoot,
-          'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron',
-        )
-      : join(repositoryRoot, 'node_modules/electron/dist/electron');
+const electronCli = join(repositoryRoot, 'node_modules/electron/cli.js');
 
 interface Issue81Evidence {
   aAsset: {
@@ -703,8 +695,8 @@ describe('Issue #81 resource workspace isolation', () => {
       );
       try {
         const output = execFileSync(
-          electronExecutable,
-          [gatePath],
+          process.execPath,
+          [electronCli, gatePath],
           {
             cwd: repositoryRoot,
             encoding: 'utf8',
