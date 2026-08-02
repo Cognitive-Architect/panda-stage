@@ -27,7 +27,10 @@ export function LeftWorkspace({
         projectSnapshot={projectSnapshot}
         recentRefreshToken={recentRefreshToken}
       />
-      <ResourceActivityDock snapshot={projectSnapshot} />
+      <ResourceActivityDock
+        key={projectSnapshot.projectRoot}
+        snapshot={projectSnapshot}
+      />
     </aside>
   );
 }
