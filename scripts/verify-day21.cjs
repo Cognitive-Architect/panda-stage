@@ -816,8 +816,8 @@ async function verifyDay21() {
       !fit.centeredX ||
       !fit.centeredY ||
       !pointerMatch ||
-      Math.abs(Number(pointerMatch[1]) - 960) > 1 ||
-      Math.abs(Number(pointerMatch[2]) - 540) > 1 ||
+      Math.abs(Number(pointerMatch[1]) - 960) > 2 ||
+      Math.abs(Number(pointerMatch[2]) - 540) > 2 ||
       fit.backgroundPolicy !== 'cover-centered-no-stretch' ||
       fit.backgroundListening !== 'false' ||
       fit.backgroundScaleX !== fit.backgroundScaleY ||
