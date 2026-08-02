@@ -37,6 +37,9 @@ function readSource(relativePath: string): string {
 describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () => {
   it('locks the Stage 1A-2 no-project selector owners and the create entry', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
+    const leftWorkspace = readSource(
+      'renderer/shell/LeftWorkspace.tsx',
+    );
     const startScreen = readSource('renderer/shell/StartScreen.tsx');
     const newProjectEntry = readSource(
       'renderer/shell/NewProjectEntry.tsx',
@@ -44,16 +47,13 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const recentProjects = readSource(
       'renderer/features/welcome/RecentProjectsPanel.tsx',
     );
-    const legacyWorkspace = readSource(
-      'renderer/shell/LegacyWorkspace.tsx',
-    );
 
     expect(shell).toContain("sessionRegion === 'start-screen'");
     expect(shell).toContain('<StartScreen');
     expect(shell).toContain('<EditorTopBar');
     expect(shell).toContain('<LegacyWorkspace');
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
-    expect(legacyWorkspace).toContain('<ProjectRecoveryPanel');
+    expect(leftWorkspace).toContain('<ProjectRecoveryPanel');
     expect(startScreen).toContain('className="recovery-panel"');
     expect(startScreen).toContain('id="recovery-heading"');
     expect(startScreen).toContain('className="clean-state"');
@@ -181,6 +181,9 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
 
   it('locks the final Stage 1A Grid and nested-scroll selector owners', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
+    const leftWorkspace = readSource(
+      'renderer/shell/LeftWorkspace.tsx',
+    );
     const legacyWorkspace = readSource(
       'renderer/shell/LegacyWorkspace.tsx',
     );
@@ -192,8 +195,9 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(app).not.toContain('afterRecovery=');
     expect(shell).toContain('data-testid="editor-layout"');
     expect(shell).toContain('data-testid="editor-body"');
-    expect(shell).toContain(
-      'data-testid="left-workspace-placeholder"',
+    expect(shell).toContain('<LeftWorkspace');
+    expect(leftWorkspace).toContain(
+      'data-testid="left-workspace-scroll"',
     );
     expect(shell).toContain(
       'data-testid="right-inspector-placeholder"',

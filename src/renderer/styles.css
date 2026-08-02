@@ -112,10 +112,129 @@ button:disabled {
   min-height: 0;
   overflow: hidden;
   grid-template-columns:
-    minmax(140px, 160px)
+    minmax(240px, 280px)
     minmax(0, 1fr)
     minmax(160px, 180px);
   gap: 10px;
+}
+
+.left-workspace {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 14px;
+  background: rgb(8 14 10 / 74%);
+  scrollbar-color: #3f6d4e #0a100c;
+  align-content: start;
+  gap: 10px;
+}
+
+.left-workspace .recent-projects-panel,
+.left-workspace .resource-activity-dock,
+.left-workspace .shot-manager,
+.left-workspace .asset-library,
+.left-workspace .character-manager {
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+}
+
+.left-workspace .recent-projects-list li {
+  display: grid;
+  align-items: start;
+}
+
+.left-workspace .recent-project-actions {
+  flex-wrap: wrap;
+}
+
+.resource-activity-dock {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgb(127 199 148 / 20%);
+  border-radius: 12px;
+  background: rgb(18 31 23 / 74%);
+  gap: 10px;
+}
+
+.resource-activity-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.resource-activity-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.resource-activity-heading > span {
+  color: #91a299;
+  font-size: 11px;
+  text-align: right;
+}
+
+.resource-activity-tabs {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.resource-activity-tabs button {
+  min-width: 0;
+  padding: 8px 4px;
+  color: #a9c5b0;
+  background: rgb(18 44 28 / 80%);
+  font-size: 12px;
+}
+
+.resource-activity-tabs button.resource-activity-tab-active {
+  color: #0a130d;
+  background: #8ed9a2;
+}
+
+.resource-activity-panel {
+  min-width: 0;
+}
+
+.left-workspace .shot-workspace,
+.left-workspace .character-workspace {
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.left-workspace .asset-library-browser,
+.left-workspace .asset-library-content {
+  min-height: 0;
+  flex-direction: column;
+}
+
+.left-workspace .asset-category-tabs {
+  width: auto;
+  flex: none;
+  flex-direction: row;
+  overflow-x: auto;
+}
+
+.left-workspace .asset-category-tabs button {
+  min-width: 82px;
+}
+
+.left-workspace .asset-details {
+  width: auto;
+  flex: none;
+}
+
+.left-workspace .asset-grid {
+  max-height: 280px;
 }
 
 .legacy-workspace {
@@ -132,14 +251,6 @@ button:disabled {
 
 .legacy-workspace > :last-child {
   margin-bottom: 0;
-}
-
-.legacy-workspace .recent-projects-panel,
-.legacy-workspace .asset-library,
-.legacy-workspace .character-manager,
-.legacy-workspace .shot-manager,
-.legacy-workspace .project-canvas {
-  max-width: none;
 }
 
 .workspace-placeholder {

@@ -29,6 +29,7 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { EditorTopBar } from './EditorTopBar';
+import { LeftWorkspace } from './LeftWorkspace';
 import { LegacyWorkspace } from './LegacyWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
@@ -697,19 +698,12 @@ export function EditorShell({
             status={status}
           />
           <div className="editor-body" data-testid="editor-body">
-            <aside
-              className="workspace-placeholder left-workspace-placeholder"
-              data-testid="left-workspace-placeholder"
-            >
-              <strong>左侧工作区</strong>
-              <span>镜头、素材与角色将在后续阶段迁入</span>
-            </aside>
-            <LegacyWorkspace
-              key={projectSnapshot.projectRoot}
+            <LeftWorkspace
               onOpenRecentProject={switchToRecentProject}
               projectSnapshot={projectSnapshot}
               recentRefreshToken={recentRefreshToken}
             />
+            <LegacyWorkspace key={projectSnapshot.projectRoot} />
             <aside
               className="workspace-placeholder right-inspector-placeholder"
               data-testid="right-inspector-placeholder"
