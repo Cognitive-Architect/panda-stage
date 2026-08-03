@@ -156,5 +156,8 @@ Renderer 不直接访问 Node.js、文件系统或子进程。后续跨进程能
 - [ROADMAP.md](./ROADMAP.md)：产品范围、架构原则和里程碑
 - [DAILY_PLAN.md](./DAILY_PLAN.md)：45 个开发日计划
 - [agent task](./agent%20task/README.md)：逐日 Agent 工单
+- [Day 26～45 前端与交互技术实施蓝图](./docs/design/day26-45-ux-implementation-blueprint.md)：工作区信息架构、逐日实现、交互合同与验收矩阵
+- [Panda Stage 视觉设计规范](./docs/design/DESIGN.md)：颜色、字体、布局、组件状态、响应式、无障碍与高保真参考图
+- [沙雕动画工作流后续功能路线](./docs/product/sand-animation-workflow-roadmap.md)：Day 45 后的对白工厂、沙雕节奏导演、系列化生产与受约束智能化方向
 
 GitHub：<https://github.com/Cognitive-Architect/panda-stage>
