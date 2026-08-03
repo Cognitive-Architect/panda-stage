@@ -99,10 +99,11 @@ export function RecentProjectsPanel({
     <section
       className="recent-projects-panel"
       aria-labelledby="recent-projects-heading"
+      data-testid="recent-projects-panel"
     >
       <div className="recent-projects-heading">
         <div>
-          <p className="eyebrow">Day 14 workspace</p>
+          <p className="eyebrow">项目入口</p>
           <h2 id="recent-projects-heading">最近项目</h2>
         </div>
         <span>{entries.length}/12</span>
@@ -110,12 +111,20 @@ export function RecentProjectsPanel({
       {entries.length === 0 ? (
         <p className="recent-projects-empty">新建或打开项目后会显示在这里。</p>
       ) : (
-        <ul className="recent-projects-list">
+        <ul
+          className="recent-projects-list"
+          data-testid="recent-projects-list"
+        >
           {entries.map((entry) => (
             <li key={`${entry.projectId}:${entry.projectRoot}`}>
               <div>
                 <strong>{entry.projectName}</strong>
-                <span className="recent-project-path">{entry.projectRoot}</span>
+                <span
+                  className="recent-projects-path recent-project-path"
+                  data-testid="recent-projects-path"
+                >
+                  {entry.projectRoot}
+                </span>
                 <span>
                   {entry.status === 'available'
                     ? '可用'
@@ -128,7 +137,10 @@ export function RecentProjectsPanel({
                   {new Date(entry.lastOpenedAt).toLocaleString()}
                 </span>
               </div>
-              <div className="recent-project-actions">
+              <div
+                className="recent-projects-actions recent-project-actions"
+                data-testid="recent-projects-actions"
+              >
                 <button
                   disabled={
                     busyRoot !== null || entry.status !== 'available'
@@ -159,7 +171,12 @@ export function RecentProjectsPanel({
           ))}
         </ul>
       )}
-      <output className="recent-projects-status">{status}</output>
+      <output
+        className="recent-projects-status"
+        data-testid="recent-projects-status"
+      >
+        {status}
+      </output>
     </section>
   );
 }

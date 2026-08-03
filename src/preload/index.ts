@@ -38,13 +38,20 @@ import {
   type FullProbeExportRequest,
 } from '../shared/export-types';
 import {
+  ProjectChooseDirectoryRequestSchema,
+  ProjectChooseDirectoryResponseSchema,
+  ProjectCreateAtRequestSchema,
   ProjectCreateRequestSchema,
   ProjectOpenRequestSchema,
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
+  ProjectSwitchGuardRequestSchema,
+  ProjectSwitchGuardResponseSchema,
+  type ProjectCreateAtRequest,
   type ProjectCreateRequest,
   type ProjectOpenRequest,
   type ProjectSaveRequest,
+  type ProjectSwitchGuardRequest,
 } from '../shared/project-api';
 import {
   AutosaveErrorEventSchema,
@@ -89,10 +96,34 @@ const pandaStageApi = Object.freeze({
     },
   }),
   project: Object.freeze({
+    chooseDirectory: async () => {
+      const request = ProjectChooseDirectoryRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY,
+        request,
+      );
+      return ProjectChooseDirectoryResponseSchema.parse(response);
+    },
+    confirmSwitch: async (rawRequest: ProjectSwitchGuardRequest) => {
+      const request = ProjectSwitchGuardRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_CONFIRM_SWITCH,
+        request,
+      );
+      return ProjectSwitchGuardResponseSchema.parse(response);
+    },
     create: async (rawRequest: ProjectCreateRequest) => {
       const request = ProjectCreateRequestSchema.parse(rawRequest);
       const response: unknown = await ipcRenderer.invoke(
         IPC_CHANNELS.PROJECT_CREATE,
+        request,
+      );
+      return ProjectOperationResponseSchema.parse(response);
+    },
+    createAt: async (rawRequest: ProjectCreateAtRequest) => {
+      const request = ProjectCreateAtRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_CREATE_AT,
         request,
       );
       return ProjectOperationResponseSchema.parse(response);

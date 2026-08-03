@@ -103,8 +103,143 @@ async function openProject(window, root = projectRoot) {
     waitFor(
       "document.querySelector('.shot-manager') && " +
         "document.querySelector('.shot-manager-heading span')" +
-        "?.textContent?.includes('revision 0')",
+        "?.textContent?.includes('修订 0')",
       'Day 20 project did not open.',
+    ),
+  );
+}
+
+async function assertStage2CComposition(window) {
+  const defaultComposition = await window.webContents.executeJavaScript(`(() => ({
+    leftWorkspace: document.querySelectorAll(
+      '[data-testid="left-workspace-scroll"]'
+    ).length,
+    recentProjects: document.querySelectorAll(
+      '[data-testid="recent-projects-panel"]'
+    ).length,
+    recentList: document.querySelectorAll(
+      '[data-testid="recent-projects-list"]'
+    ).length,
+    recentPath: document.querySelectorAll(
+      '[data-testid="recent-projects-path"]'
+    ).length,
+    recentActions: document.querySelectorAll(
+      '[data-testid="recent-projects-actions"]'
+    ).length,
+    recentStatus: document.querySelectorAll(
+      '[data-testid="recent-projects-status"]'
+    ).length,
+    resourceDock: document.querySelectorAll(
+      '[data-testid="resource-activity-dock"]'
+    ).length,
+    canvasWorkspace: document.querySelectorAll(
+      '[data-testid="canvas-workspace-scroll"]'
+    ).length,
+    canvasStage: document.querySelectorAll(
+      '[data-testid="project-canvas-stage"]'
+    ).length,
+    canvasViewport: document.querySelectorAll(
+      '[data-testid="project-canvas-viewport"]'
+    ).length,
+    logicalStage: document.querySelectorAll(
+      '[data-testid="canvas-logical-stage"]'
+    ).length,
+    historyControls: document.querySelectorAll(
+      '[data-testid="history-controls"]'
+    ).length,
+    shotManager: document.querySelectorAll(
+      '[data-testid="shot-manager"]'
+    ).length,
+    assetLibrary: document.querySelectorAll(
+      '[data-testid="asset-library"]'
+    ).length,
+    characterManager: document.querySelectorAll(
+      '[data-testid="character-manager"]'
+    ).length,
+    legacyWorkspace: document.querySelectorAll(
+      '[data-testid="legacy-workspace-scroll"]'
+    ).length,
+    actionPresetPanel: document.querySelectorAll(
+      '[data-testid="action-preset-panel"]'
+    ).length
+  }))()`);
+  const expectedDefault = {
+    leftWorkspace: 1,
+    recentProjects: 1,
+    recentList: 1,
+    recentPath: 1,
+    recentActions: 1,
+    recentStatus: 1,
+    resourceDock: 1,
+    canvasWorkspace: 1,
+    canvasStage: 1,
+    canvasViewport: 1,
+    logicalStage: 1,
+    historyControls: 1,
+    shotManager: 1,
+    assetLibrary: 0,
+    characterManager: 0,
+    legacyWorkspace: 0,
+    actionPresetPanel: 0
+  };
+  if (JSON.stringify(defaultComposition) !== JSON.stringify(expectedDefault)) {
+    throw new Error(
+      `Stage 2-C default composition failed: ${JSON.stringify({
+        expected: expectedDefault,
+        actual: defaultComposition
+      })}`
+    );
+  }
+
+  await window.webContents.executeJavaScript(`
+    document.querySelector('[data-testid="legacy-compatibility-toggle"]').click()
+  `);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="legacy-workspace-scroll"]') && ` +
+        `document.querySelector('[data-testid="action-preset-panel"]')`,
+      'Stage 2-C compatibility workspace did not mount.',
+    ),
+  );
+  const compatibilityComposition =
+    await window.webContents.executeJavaScript(`(() => ({
+      canvasStage: document.querySelectorAll(
+        '[data-testid="project-canvas-stage"]'
+      ).length,
+      historyControls: document.querySelectorAll(
+        '[data-testid="history-controls"]'
+      ).length,
+      legacyWorkspace: document.querySelectorAll(
+        '[data-testid="legacy-workspace-scroll"]'
+      ).length,
+      actionPresetPanel: document.querySelectorAll(
+        '[data-testid="action-preset-panel"]'
+      ).length
+    }))()`);
+  if (
+    JSON.stringify(compatibilityComposition) !==
+    JSON.stringify({
+      canvasStage: 1,
+      historyControls: 1,
+      legacyWorkspace: 1,
+      actionPresetPanel: 1
+    })
+  ) {
+    throw new Error(
+      `Stage 2-C compatibility composition failed: ${JSON.stringify(
+        compatibilityComposition,
+      )}`,
+    );
+  }
+
+  await window.webContents.executeJavaScript(`
+    document.querySelector('[data-testid="legacy-compatibility-toggle"]').click()
+  `);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `!document.querySelector('[data-testid="legacy-workspace-scroll"]') && ` +
+        `!document.querySelector('[data-testid="action-preset-panel"]')`,
+      'Stage 2-C compatibility workspace did not unmount.',
     ),
   );
 }
@@ -272,7 +407,13 @@ async function verifyDay20() {
   }));
   ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({
     ok: true,
-    entries: [],
+    entries: [{
+      projectId: initialProject.id,
+      projectName: initialProject.name,
+      projectRoot,
+      lastOpenedAt: '2026-08-03T00:00:00.000Z',
+      status: 'available'
+    }],
   }));
   ipcMain.handle(
     IPC_CHANNELS.ASSET_THUMBNAIL_READ,
@@ -288,11 +429,12 @@ async function verifyDay20() {
     window.setSize(1440, 1_050);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager')",
-        'Shot manager did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await openProject(window);
+    await assertStage2CComposition(window);
 
     await window.webContents.executeJavaScript(
       'new Promise((resolve) => setTimeout(resolve, 150))',
@@ -305,7 +447,7 @@ async function verifyDay20() {
           '.shot-manager-heading span'
         ).textContent.trim(),
         saveDisabled: document.querySelector(
-          '.shot-manager-heading button'
+          '.editor-save-button'
         ).disabled
       }))()`);
     const noOpAutosaveBefore = autosaveUpdates.length;
@@ -328,7 +470,7 @@ async function verifyDay20() {
           '.shot-manager-heading span'
         ).textContent.trim(),
         saveDisabled: document.querySelector(
-          '.shot-manager-heading button'
+          '.editor-save-button'
         ).disabled,
         status: document.querySelector(
           '.shot-manager-status'
@@ -525,18 +667,24 @@ async function verifyDay20() {
         rendererHasNodeRequire: typeof window.require !== 'undefined',
         hasCanvasEditor: Boolean(document.querySelector(
           '.canvas-editor, .timeline-editor, .transition-editor'
-        ))
+        )),
+        resourceOwner: Boolean(document.querySelector(
+          '.shot-manager'
+        )?.closest('[data-testid="left-workspace-scroll"]')),
+        legacyResourceOwner: Boolean(document.querySelector(
+          '.shot-manager'
+        )?.closest('[data-testid="legacy-workspace-scroll"]'))
       }))()`);
     const configuredScreenshot =
       await captureSection(window, '.shot-manager');
 
     await window.webContents.executeJavaScript(`
-      document.querySelector('.shot-manager-heading button').click()
+      document.querySelector('.editor-save-button').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager-status')" +
-          "?.textContent?.includes('已保存到 project.json')",
+        "document.querySelector('.recovery-status-row output')" +
+          "?.textContent?.includes('项目已保存')",
         'Five-shot project did not save.',
       ),
     );
@@ -544,8 +692,8 @@ async function verifyDay20() {
     await window.webContents.reload();
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager')",
-        'Shot manager did not render after reload.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render after reload.',
       ),
     );
     await openProject(window);
@@ -573,7 +721,7 @@ async function verifyDay20() {
           ).dataset.projectDurationMs
         ),
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === 'Clean'
+          ?.textContent?.trim() === '暂无未保存更改'
       }))()`);
     const reopenedScreenshot =
       await captureSection(window, '.shot-manager');
@@ -697,6 +845,8 @@ async function verifyDay20() {
       configuredUi.currentName !== 'Finale' ||
       configuredUi.totalDurationMs !== 11_500 ||
       configuredUi.placeholderCount < 6 ||
+      !configuredUi.resourceOwner ||
+      configuredUi.legacyResourceOwner ||
       configuredUi.rendererHasNodeRequire ||
       configuredUi.hasCanvasEditor ||
       noOpMove.before.names.join(',') !==

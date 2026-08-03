@@ -3,7 +3,7 @@
   "workOrder": "B-22/45",
   "result": "PASS",
   "branch": "feat/day-22-layer-placement",
-  "executedAt": "2026-07-26T03:09:24.736Z",
+  "executedAt": "2026-08-02T02:56:20.623Z",
   "baselineSha": "27ba25a3287c421aa1c26041d5bc41ec86daca65",
   "contract": {
     "dropPayload": "v2 controlled IDs; character-expression includes characterId + expressionId",
@@ -15,16 +15,16 @@
   },
   "drops": {
     "fit": {
-      "scale": 0.537037,
+      "scale": 0.441146,
       "requested": {
         "x": 1200,
         "y": 300
       },
       "actual": {
-        "x": 1199.2758620689656,
-        "y": 299.17240905761713
+        "x": 1198.3943098804605,
+        "y": 297.827603859209
       },
-      "ghost": "放置图层x 1199.3 · y 299.2",
+      "ghost": "放置图层x 1198.4 · y 297.8",
       "highlighted": true
     },
     "half": {
@@ -34,8 +34,8 @@
         "y": 700
       },
       "actual": {
-        "x": 499,
-        "y": 699.3333282470703
+        "x": 499.33331298828125,
+        "y": 699.3333129882812
       },
       "source": {
         "kind": "character",
@@ -50,8 +50,8 @@
         "y": 700
       },
       "actual": {
-        "x": 1400,
-        "y": 699.6666641235352
+        "x": 1399.6666564941406,
+        "y": 699.1666564941406
       }
     }
   },
@@ -65,16 +65,16 @@
     "duringRevision": 3,
     "afterRevision": 4,
     "before": {
-      "x": 1400,
-      "y": 699.6666641235352
+      "x": 1399.6666564941406,
+      "y": 699.1666564941406
     },
     "requested": {
       "x": 1100,
       "y": 620
     },
     "actual": {
-      "x": 1100,
-      "y": 619.6666641235352
+      "x": 1099.6666564941406,
+      "y": 620.1666564941406
     },
     "autosaveUpdateDelta": 1
   },
@@ -94,11 +94,11 @@
     "revisionUnchanged": true
   },
   "persistence": {
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "saveRevision": 6,
     "savedLayerCount": 5,
     "reopenedLayer": {
-      "id": "399ce9f0-6713-4f91-a993-ce32aa0a52d1",
+      "id": "3355381e-92bf-42c6-869b-c5e170b0f01d",
       "name": "Placement sticker",
       "source": {
         "kind": "asset",
@@ -113,7 +113,8 @@
       "opacity": 1,
       "visible": true,
       "zIndex": 4,
-      "locked": true
+      "locked": true,
+      "flipX": false
     },
     "selectionAfterReopen": ""
   },

@@ -11,8 +11,11 @@
     "resultMessage": "已导入“熊猫 图片.png”。",
     "status": "素材已复制并保存到项目。",
     "assetsApi": [
+      "cancelMetadata",
       "choose",
+      "delete",
       "importDropped",
+      "readThumbnail",
       "refreshMetadata"
     ],
     "rendererHasNodeRequire": false
@@ -29,7 +32,7 @@
   "chooseRequest": {
     "projectRoot": "D:\\项目\\素材 导入 🐼.pandastage",
     "project": {
-      "schemaVersion": 1,
+      "schemaVersion": 5,
       "id": "10000000-0000-4000-8000-000000000001",
       "name": "Panda Stage MVP Project v1 Example",
       "width": 1920,
@@ -98,7 +101,10 @@
               "name": "Happy",
               "assetId": "10000000-0000-4000-8000-000000000004"
             }
-          ]
+          ],
+          "defaultExpressionId": "20000000-0000-4000-8000-000000000002",
+          "defaultScale": 1,
+          "defaultFlipX": false
         }
       ],
       "voiceProfiles": [
@@ -130,43 +136,6 @@
           "name": "Opening",
           "durationMs": 3000,
           "defaultSubtitleStyleId": "40000000-0000-4000-8000-000000000001",
-          "layers": [
-            {
-              "id": "60000000-0000-4000-8000-000000000001",
-              "name": "Background",
-              "source": {
-                "kind": "asset",
-                "assetId": "10000000-0000-4000-8000-000000000002"
-              },
-              "anchor": "center",
-              "x": 960,
-              "y": 540,
-              "scaleX": 1,
-              "scaleY": 1,
-              "rotationDeg": 0,
-              "opacity": 1,
-              "visible": true,
-              "zIndex": 0
-            },
-            {
-              "id": "60000000-0000-4000-8000-000000000002",
-              "name": "Panda",
-              "source": {
-                "kind": "character",
-                "characterId": "20000000-0000-4000-8000-000000000001",
-                "expressionId": "20000000-0000-4000-8000-000000000002"
-              },
-              "anchor": "center",
-              "x": 430,
-              "y": 690,
-              "scaleX": 0.72,
-              "scaleY": 0.72,
-              "rotationDeg": 0,
-              "opacity": 1,
-              "visible": true,
-              "zIndex": 1
-            }
-          ],
           "dialogues": [
             {
               "id": "80000000-0000-4000-8000-000000000001",
@@ -268,7 +237,49 @@
               "type": "visibility",
               "visible": false
             }
-          ]
+          ],
+          "layers": [
+            {
+              "id": "60000000-0000-4000-8000-000000000001",
+              "name": "Background",
+              "source": {
+                "kind": "asset",
+                "assetId": "10000000-0000-4000-8000-000000000002"
+              },
+              "anchor": "center",
+              "x": 960,
+              "y": 540,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotationDeg": 0,
+              "opacity": 1,
+              "visible": true,
+              "zIndex": 0,
+              "locked": false,
+              "flipX": false
+            },
+            {
+              "id": "60000000-0000-4000-8000-000000000002",
+              "name": "Panda",
+              "source": {
+                "kind": "character",
+                "characterId": "20000000-0000-4000-8000-000000000001",
+                "expressionId": "20000000-0000-4000-8000-000000000002"
+              },
+              "anchor": "center",
+              "x": 430,
+              "y": 690,
+              "scaleX": 0.72,
+              "scaleY": 0.72,
+              "rotationDeg": 0,
+              "opacity": 1,
+              "visible": true,
+              "zIndex": 1,
+              "locked": false,
+              "flipX": false
+            }
+          ],
+          "backgroundLayerId": "60000000-0000-4000-8000-000000000001"
         }
       ],
       "createdAt": "2026-07-23T00:00:00.000Z",

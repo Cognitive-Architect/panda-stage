@@ -37,6 +37,47 @@ function waitFor(expression, failureMessage) {
   `;
 }
 
+async function selectResourceActivity(window, activity) {
+  const selector =
+    `[data-testid="resource-activity-tabs"] [data-activity="${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Resource activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="resource-activity-panel"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+      `Resource activity did not activate: ${activity}`,
+    ),
+  );
+  const managerCounts = await window.webContents.executeJavaScript(`(() => ({
+    shots: document.querySelectorAll('[data-testid="shot-manager"]').length,
+    assets: document.querySelectorAll('[data-testid="asset-library"]').length,
+    characters: document.querySelectorAll(
+      '[data-testid="character-manager"]'
+    ).length
+  }))()`);
+  const expected = {
+    shots: activity === 'shots' ? 1 : 0,
+    assets: activity === 'assets' ? 1 : 0,
+    characters: activity === 'characters' ? 1 : 0
+  };
+  if (JSON.stringify(managerCounts) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Resource manager cardinality failed for ${activity}: ${JSON.stringify({
+        expected,
+        actual: managerCounts
+      })}`
+    );
+  }
+}
+
 async function setInput(window, selector, value) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
@@ -117,14 +158,11 @@ async function snapshot(window) {
     const stage = document.querySelector(
       '[data-testid="project-canvas-stage"]'
     );
-    const revisionText = document.querySelector(
-      '.shot-manager-heading span'
-    ).textContent;
     return {
       layers: JSON.parse(stage.dataset.layerJson),
       selectedLayerId: stage.dataset.selectedLayerId,
       transformerVisible: stage.dataset.transformerVisible === 'true',
-      revision: Number(/revision (\\d+)/.exec(revisionText)?.[1]),
+      revision: Number(stage.dataset.projectRevision),
       dirty: document.querySelector('.dirty-state') !== null
     };
   })()`);
@@ -225,6 +263,7 @@ async function dragLogicalPoint(window, from, to) {
 
 async function createSelectedCharacterLayer(window, point) {
   const assetId = exampleProject.characters[0].expressions[0].assetId;
+  await selectResourceActivity(window, 'assets');
   await window.webContents.executeJavaScript(
     `document.querySelectorAll('.asset-category-tabs button')[0].click()`,
   );
@@ -402,8 +441,8 @@ async function verifyDay23() {
     window.setSize(1440, 1000);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Project canvas did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await openProject(window);
@@ -635,8 +674,8 @@ async function verifyDay23() {
     await window.webContents.reload();
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Canvas did not render after reload.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render after reload.',
       ),
     );
     await openProject(window);

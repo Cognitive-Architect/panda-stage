@@ -3,11 +3,8 @@ import type { ExportJobUpdate } from '../shared/export-types';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { ProjectSchema } from '../domain';
 import { editorProjectStore } from './stores/EditorProjectStore';
-import { CanvasStage } from './features/canvas/CanvasStage';
-import { ActionPresetPanel } from './features/actions/ActionPresetPanel';
-import { HistoryControls } from './features/editor/HistoryControls';
 import { StagePreview } from './stage/StagePreview';
-import { ProjectRecoveryPanel } from './features/recovery/ProjectRecoveryPanel';
+import { EditorShell } from './shell/EditorShell';
 
 const GATE_PREVIEW_EVENT = 'panda-stage:gate-preview-time';
 
@@ -134,98 +131,101 @@ export function App(): React.JSX.Element {
   const exportCommitLocked = exportJob?.phase === 'committing';
 
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true">熊</span>
-          <div>
-            <strong>Panda Stage</strong>
-            <span>共享渲染架构探针 · 编辑外壳</span>
-          </div>
-        </div>
-        <div className="ipc-check">
-          <button
-            className="ping-button"
-            data-testid="ping-button"
-            disabled={pingStatus === 'pending'}
-            onClick={() => void pingMainProcess()}
-            type="button"
-          >
-            {pingStatus === 'pending' ? '通信中…' : '测试安全 IPC'}
-          </button>
-          <output className="ping-result" data-testid="ping-result">
-            {pingStatus === 'idle' && '等待测试'}
-            {pingStatus === 'pending' && '等待 Main Process 响应'}
-            {pingStatus === 'pong' && 'pong'}
-            {pingStatus === 'error' && '通信失败'}
-          </output>
-        </div>
-      </header>
-
-      <section className="day25-action-shell" aria-label="Day 25 动作预设">
-        <ActionPresetPanel />
-        <HistoryControls />
-      </section>
-
-      <section className="day25-editor-shell" aria-label="Day 25 编辑外壳">
-        <CanvasStage />
-      </section>
-
-      <ProjectRecoveryPanel />
-      <StagePreview gatePreviewRequest={gatePreviewRequest} />
-
-      <section className="export-probe" aria-label="完整导出探针">
-        <h2>完整导出探针</h2>
-        <label>
-          项目目录
-          <input
-            onChange={(event) => setProjectDirectory(event.target.value)}
-            placeholder="支持中文、空格与 Unicode 路径"
-            value={projectDirectory}
-          />
-        </label>
-        <label>
-          WAV 音频路径
-          <input
-            onChange={(event) => setAudioPath(event.target.value)}
-            value={audioPath}
-          />
-        </label>
-        <label>
-          MP4 输出路径
-          <input
-            onChange={(event) => setOutputPath(event.target.value)}
-            value={outputPath}
-          />
-        </label>
-        <div>
-          <button
-            disabled={exportBusy || !projectDirectory || !audioPath || !outputPath}
-            onClick={() => void startExport()}
-            type="button"
-          >
-            开始导出
-          </button>
-          <button
-            disabled={!exportBusy || exportCommitLocked}
-            onClick={() => void cancelExport()}
-            type="button"
-          >
-            {exportCommitLocked
-              ? '正在提交…'
-              : exportJob?.status === 'cancelling'
-                ? '正在取消…'
-                : '取消导出'}
-          </button>
-        </div>
-        <output data-testid="export-status">
-          {exportJob
-            ? `Job ${exportJob.jobId} · ${exportJob.status} · ${exportJob.phase} · ${exportJob.completedFrames}/${exportJob.totalFrames}`
-            : '尚未开始导出'}
-          {exportJob?.error ? ` · ${exportJob.error}` : ''}
-          {exportError ? ` · ${exportError}` : ''}
-        </output>
-      </section>
-    </main>
+    <EditorShell
+      debugSurface={
+        <>
+          <header className="app-header">
+            <div className="brand-lockup">
+              <span className="brand-mark" aria-hidden="true">
+                熊
+              </span>
+              <div>
+                <strong>Panda Stage</strong>
+                <span>共享渲染架构探针 · 编辑外壳</span>
+              </div>
+            </div>
+            <div className="ipc-check">
+              <button
+                className="ping-button"
+                data-testid="ping-button"
+                disabled={pingStatus === 'pending'}
+                onClick={() => void pingMainProcess()}
+                type="button"
+              >
+                {pingStatus === 'pending' ? '通信中…' : '测试安全 IPC'}
+              </button>
+              <output className="ping-result" data-testid="ping-result">
+                {pingStatus === 'idle' && '等待测试'}
+                {pingStatus === 'pending' && '等待 Main Process 响应'}
+                {pingStatus === 'pong' && 'pong'}
+                {pingStatus === 'error' && '通信失败'}
+              </output>
+            </div>
+          </header>
+          <section className="export-probe" aria-label="完整导出探针">
+            <h2>完整导出探针</h2>
+            <label>
+              项目目录
+              <input
+                onChange={(event) =>
+                  setProjectDirectory(event.target.value)
+                }
+                placeholder="支持中文、空格与 Unicode 路径"
+                value={projectDirectory}
+              />
+            </label>
+            <label>
+              WAV 音频路径
+              <input
+                onChange={(event) => setAudioPath(event.target.value)}
+                value={audioPath}
+              />
+            </label>
+            <label>
+              MP4 输出路径
+              <input
+                onChange={(event) => setOutputPath(event.target.value)}
+                value={outputPath}
+              />
+            </label>
+            <div>
+              <button
+                disabled={
+                  exportBusy ||
+                  !projectDirectory ||
+                  !audioPath ||
+                  !outputPath
+                }
+                onClick={() => void startExport()}
+                type="button"
+              >
+                开始导出
+              </button>
+              <button
+                disabled={!exportBusy || exportCommitLocked}
+                onClick={() => void cancelExport()}
+                type="button"
+              >
+                {exportCommitLocked
+                  ? '正在提交…'
+                  : exportJob?.status === 'cancelling'
+                    ? '正在取消…'
+                    : '取消导出'}
+              </button>
+            </div>
+            <output data-testid="export-status">
+              {exportJob
+                ? `Job ${exportJob.jobId} · ${exportJob.status} · ${exportJob.phase} · ${exportJob.completedFrames}/${exportJob.totalFrames}`
+                : '尚未开始导出'}
+              {exportJob?.error ? ` · ${exportJob.error}` : ''}
+              {exportError ? ` · ${exportError}` : ''}
+            </output>
+          </section>
+        </>
+      }
+      gatePreview={
+        <StagePreview gatePreviewRequest={gatePreviewRequest} />
+      }
+    />
   );
 }

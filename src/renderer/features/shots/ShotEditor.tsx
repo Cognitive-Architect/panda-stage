@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SHOT_MIN_DURATION_MS, type Shot } from '../../../domain';
 import { ShotThumbnailPlaceholder } from './ShotThumbnailPlaceholder';
 
@@ -26,6 +26,11 @@ export function ShotEditor({
     shot?.durationMs ?? SHOT_MIN_DURATION_MS,
   );
 
+  useEffect(() => {
+    setName(shot?.name ?? '');
+    setDurationMs(shot?.durationMs ?? SHOT_MIN_DURATION_MS);
+  }, [shot?.id, shot?.name, shot?.durationMs]);
+
   if (!shot) {
     return (
       <div className="shot-editor shot-editor-empty">
@@ -39,7 +44,7 @@ export function ShotEditor({
     <article className="shot-editor" data-current-shot-id={shot.id}>
       <div className="shot-editor-heading">
         <div>
-          <p className="eyebrow">Shot {index + 1}</p>
+          <p className="eyebrow">镜头 {index + 1}</p>
           <h3>{shot.name}</h3>
         </div>
         <div className="shot-editor-actions">
@@ -73,7 +78,7 @@ export function ShotEditor({
                 onClick={() => onRename(name)}
                 type="button"
               >
-                保存名称
+                应用名称修改
               </button>
             </span>
           </label>
@@ -99,7 +104,7 @@ export function ShotEditor({
                 onClick={() => onSetDuration(durationMs)}
                 type="button"
               >
-                保存时长
+                应用时长修改
               </button>
             </span>
           </label>

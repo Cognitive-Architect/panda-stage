@@ -39,6 +39,8 @@
     "verify:day23": "pnpm build && pnpm test:integration && electron scripts/verify-day23.cjs && electron scripts/verify-issue47.cjs",
     "verify:day24": "pnpm build && pnpm test:integration && electron scripts/verify-day24.cjs",
     "verify:issue47": "pnpm build && electron scripts/verify-issue47.cjs",
+    "verify:issue73": "pnpm build && electron scripts/verify-issue73.cjs",
+    "verify:issue76": "pnpm build && electron scripts/verify-issue76.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",
     "dist": "pnpm build && node scripts/build-distribution.cjs",

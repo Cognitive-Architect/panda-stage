@@ -33,6 +33,74 @@ const assetIds = {
 
 app.on('window-all-closed', () => {});
 
+async function scrollTargetIntoActiveViewport(
+  window,
+  selector,
+  topOffset = 16,
+) {
+  return window.webContents.executeJavaScript(`(async () => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    if (!(target instanceof HTMLElement)) {
+      throw new Error('Scroll target was not found: ${selector}');
+    }
+    const scrollViewport = target.closest(
+      '[data-testid="left-workspace-scroll"], ' +
+        '[data-testid="legacy-workspace-scroll"]'
+    );
+    if (scrollViewport instanceof HTMLElement) {
+      const beforeTarget = target.getBoundingClientRect();
+      const beforeViewport = scrollViewport.getBoundingClientRect();
+      scrollViewport.scrollTop +=
+        beforeTarget.top - beforeViewport.top - ${topOffset};
+    } else {
+      window.scrollTo(
+        0,
+        target.getBoundingClientRect().top + window.scrollY - ${topOffset}
+      );
+    }
+    await document.fonts.ready;
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    const targetBounds = target.getBoundingClientRect();
+    const viewportBounds =
+      scrollViewport instanceof HTMLElement
+        ? scrollViewport.getBoundingClientRect()
+        : {
+            top: 0,
+            right: innerWidth,
+            bottom: innerHeight,
+            left: 0
+          };
+    const visible =
+      targetBounds.bottom > viewportBounds.top &&
+      targetBounds.top < viewportBounds.bottom &&
+      targetBounds.right > viewportBounds.left &&
+      targetBounds.left < viewportBounds.right;
+    if (!visible) {
+      throw new Error(
+        'Scroll target did not enter the active viewport: ${selector}'
+      );
+    }
+    const expectedTop = viewportBounds.top + ${topOffset};
+    if (Math.abs(targetBounds.top - expectedTop) > 4) {
+      throw new Error(
+        'Scroll target did not reach the requested viewport position: ${selector}'
+      );
+    }
+    return {
+      mode:
+        scrollViewport instanceof HTMLElement
+          ? scrollViewport.dataset.testid === 'left-workspace-scroll'
+            ? 'left-workspace'
+            : 'legacy-workspace'
+          : 'window',
+      targetTop: targetBounds.top,
+      viewportTop: viewportBounds.top
+    };
+  })()`);
+}
+
 async function captureSection(window, selector) {
   const state = await window.webContents.executeJavaScript(`(async () => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -130,15 +198,42 @@ async function openProject(window) {
     '.recovery-open-row input',
     projectRoot,
   );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      "document.querySelector('.recovery-open-row button')",
+      'Project open button did not render.',
+    ),
+  );
   await window.webContents.executeJavaScript(`
     document.querySelector('.recovery-open-row button').click()
   `);
   await window.webContents.executeJavaScript(
     waitFor(
-      "document.querySelector('.character-create-form') && " +
-        "document.querySelector('.character-manager-heading span')" +
-        "?.textContent?.includes('revision 0')",
-      'Day 19 project did not open.',
+      `document.querySelector(${JSON.stringify(
+        '[data-testid="resource-activity-tabs"] [data-activity="characters"]',
+      )})`,
+      'Resource activity tabs did not render.',
+    ),
+  );
+}
+
+async function selectResourceActivity(window, activity) {
+  const selector =
+    `[data-testid="resource-activity-tabs"] [data-activity="${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Resource activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="resource-activity-panel"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+      `Resource activity did not activate: ${activity}`,
     ),
   );
 }
@@ -298,21 +393,42 @@ async function verifyDay19() {
     window.setSize(1440, 1100);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-manager')",
-        'Character manager did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await openProject(window);
+    await selectResourceActivity(window, 'assets');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-import-heading button')",
+        'Asset activity did not render.',
+      ),
+    );
     await window.webContents.executeJavaScript(`
       document.querySelector('.asset-import-heading button').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelectorAll('.asset-import-result').length === 4 && " +
-          "document.querySelectorAll(" +
+        "document.querySelectorAll('.asset-import-result').length === 4",
+        'Four real character fixtures were not imported.',
+      ),
+    );
+    await selectResourceActivity(window, 'characters');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelectorAll(" +
           "'.character-create-form label:nth-of-type(2) option'" +
           ").length === 5",
-        'Four real character fixtures were not imported.',
+        'Imported character fixtures did not reach the character activity.',
+      ),
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+          "document.querySelector('.character-create-form') && " +
+            "document.querySelector('.character-manager-heading span')" +
+          "?.textContent?.includes('修订 1')",
+        'Character activity did not render.',
       ),
     );
 
@@ -450,18 +566,11 @@ async function verifyDay19() {
       ),
     );
 
-    await window.webContents.executeJavaScript(`(async () => {
-      const manager = document.querySelector('.character-manager');
-      window.scrollTo(
-        0,
-        manager.getBoundingClientRect().top + window.scrollY - 16
-      );
-      await document.fonts.ready;
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      if (Math.abs(manager.getBoundingClientRect().top - 16) > 4) {
-        throw new Error('Character manager did not reach the screenshot top.');
-      }
-    })()`);
+    await scrollTargetIntoActiveViewport(
+      window,
+      '.character-manager',
+      16,
+    );
     const configuredScreenshot =
       await captureSection(window, '.character-manager');
     const configuredUi =
@@ -492,16 +601,22 @@ async function verifyDay19() {
         rendererHasNodeRequire: typeof window.require !== 'undefined',
         hasTtsControl: Boolean(document.querySelector(
           '[data-tts], button[aria-label*="TTS"]'
-        ))
+        )),
+        resourceOwner: Boolean(document.querySelector(
+          '.character-manager'
+        )?.closest('[data-testid="left-workspace-scroll"]')),
+        legacyResourceOwner: Boolean(document.querySelector(
+          '.character-manager'
+        )?.closest('[data-testid="legacy-workspace-scroll"]'))
       }))()`);
 
     await window.webContents.executeJavaScript(`
-      document.querySelector('.character-manager-heading button').click()
+      document.querySelector('.editor-save-button').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-manager-status')" +
-          "?.textContent?.includes('可安全重开')",
+        "document.querySelector('.recovery-status-row output')" +
+          "?.textContent?.includes('项目已保存')",
         'Character project did not save.',
       ),
     );
@@ -509,11 +624,20 @@ async function verifyDay19() {
     await window.webContents.reload();
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-manager')",
-        'Character manager did not render after reload.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render after reload.',
       ),
     );
     await openProject(window);
+    await selectResourceActivity(window, 'characters');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.character-create-form') && " +
+          "document.querySelector('.character-manager-heading span')" +
+          "?.textContent?.includes('修订 0')",
+        'Character activity did not render after reopen.',
+      ),
+    );
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelectorAll('.expression-list li').length === 2 && " +
@@ -526,18 +650,11 @@ async function verifyDay19() {
         'Saved character did not reopen completely.',
       ),
     );
-    await window.webContents.executeJavaScript(`(async () => {
-      const manager = document.querySelector('.character-manager');
-      window.scrollTo(
-        0,
-        manager.getBoundingClientRect().top + window.scrollY - 16
-      );
-      await document.fonts.ready;
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      if (Math.abs(manager.getBoundingClientRect().top - 16) > 4) {
-        throw new Error('Character manager did not reach the screenshot top.');
-      }
-    })()`);
+    await scrollTargetIntoActiveViewport(
+      window,
+      '.character-manager',
+      16,
+    );
     const reopenedScreenshot =
       await captureSection(window, '.character-manager');
     const reopenedUi =
@@ -689,6 +806,8 @@ async function verifyDay19() {
       configuredUi.scaleValue !== '0.75' ||
       !configuredUi.flipChecked ||
       !configuredUi.warning?.includes('超过 30%') ||
+      !configuredUi.resourceOwner ||
+      configuredUi.legacyResourceOwner ||
       configuredUi.rendererHasNodeRequire ||
       configuredUi.hasTtsControl ||
       !defaultProtection.deleteDisabled ||

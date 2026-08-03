@@ -105,7 +105,7 @@ export function ActionPresetPanel(): React.JSX.Element {
       data-has-selection={String(Boolean(layer) && !isBackground)}
     >
       <div>
-        <p className="eyebrow">Day 25 action presets</p>
+        <p className="eyebrow">动作预设</p>
         <h3>动作预设</h3>
       </div>
       <div className="action-preset-grid">

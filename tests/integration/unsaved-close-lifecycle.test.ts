@@ -177,6 +177,7 @@ describe('unsaved close integration lifecycle', () => {
     expect(reportSaveFailure).toHaveBeenCalledWith(
       dirtySnapshot,
       expect.objectContaining({ code: 'SAVE_FAILED' }),
+      'close',
     );
     expect(await readFile(path.join(root, 'project.json'), 'utf8')).toBe(
       before,

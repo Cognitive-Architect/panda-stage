@@ -5,7 +5,7 @@
   "result": "PASS",
   "branch": "feat/day-20-shot-management",
   "baselineSha": "c5c94beeacb7a458d9bca33acdc9766e041b3cb5",
-  "executedAt": "2026-07-26T00:00:11.953Z",
+  "executedAt": "2026-08-02T02:44:27.497Z",
   "configuredUi": {
     "names": [
       "Finale",
@@ -22,26 +22,28 @@
       1500
     ],
     "currentName": "Finale",
-    "currentShotId": "c7e7d36a-4be6-4f1b-b5e3-a7f803167f1c",
+    "currentShotId": "ce4614ba-b209-4976-a628-6085afee5d2d",
     "totalDurationMs": 11500,
     "placeholderCount": 6,
-    "revisionText": "5 个镜头 · 总时长 11500ms · revision 10",
+    "revisionText": "5 个镜头 · 总时长 11500ms · 修订 10",
     "rendererHasNodeRequire": false,
-    "hasCanvasEditor": false
+    "hasCanvasEditor": false,
+    "resourceOwner": true,
+    "legacyResourceOwner": false
   },
   "noOpMove": {
     "before": {
       "names": [
         "Opening"
       ],
-      "revisionText": "1 个镜头 · 总时长 3000ms · revision 0",
+      "revisionText": "1 个镜头 · 总时长 3000ms · 修订 0",
       "saveDisabled": true
     },
     "after": {
       "names": [
         "Opening"
       ],
-      "revisionText": "1 个镜头 · 总时长 3000ms · revision 0",
+      "revisionText": "1 个镜头 · 总时长 3000ms · 修订 0",
       "saveDisabled": true,
       "status": "镜头位置未变化，未新增待保存修改。"
     },
@@ -74,7 +76,7 @@
   "selectionAfterRemoval": "Opening",
   "copyIdSafety": {
     "sourceShotId": "50000000-0000-4000-8000-000000000001",
-    "copyShotId": "a0dde8a4-bca5-4b21-bdeb-2849906e3068",
+    "copyShotId": "f37d45b5-3b87-4b46-9143-7dd1843920ba",
     "sourceEntityIds": [
       "50000000-0000-4000-8000-000000000001",
       "60000000-0000-4000-8000-000000000001",
@@ -90,18 +92,18 @@
       "90000000-0000-4000-8000-000000000007"
     ],
     "copyEntityIds": [
-      "a0dde8a4-bca5-4b21-bdeb-2849906e3068",
-      "32bb9a47-fb30-4451-b0e2-6f7283a7957f",
-      "b67c3e15-8942-4cd6-af65-f7fb2a20c846",
-      "15210144-661d-4dd5-b201-580e9e13819c",
-      "d14aa54f-c534-45b3-a47d-eaa056f1c7ee",
-      "3cf977fe-6195-4b04-8d44-5e96892c77c8",
-      "0999833b-7621-4a3e-b4ce-d835fd459e75",
-      "48947c4c-1647-4404-8e43-b47bacfe38a1",
-      "437d741b-b3b2-4821-9d0c-6924798d6d26",
-      "2e53ed6e-da91-456d-9f6b-4d6109ce5e0f",
-      "f4248656-3d7d-45b3-9942-fc3d8a82c672",
-      "3018cb74-5eec-4f19-afee-ff9521dabdf8"
+      "f37d45b5-3b87-4b46-9143-7dd1843920ba",
+      "90db7d0f-ffcb-4819-a69d-d2cdcf0cba8e",
+      "dfad1e2a-26c3-44cb-a183-93b9964462bf",
+      "aee98998-b268-4c74-a28c-d27ed31feee3",
+      "ce8506e1-8032-4f43-a06b-3b10f1fda252",
+      "83520f2e-1616-47e8-a5e5-a8317458c23e",
+      "219713d4-4970-46ba-a931-3bb5e837fb63",
+      "c199539c-4c64-4819-ad08-bb3382c764d1",
+      "d7b71099-ee93-45be-8c61-48ece0efc3cb",
+      "e1943637-8a8a-4939-9f60-2dad837708a1",
+      "7b53c718-6738-44fc-b276-b02a7cdeafb4",
+      "7d85560f-2508-4e60-bb0b-69d385146076"
     ],
     "allIdsDifferent": true,
     "timelineLayerReferencesRemapped": true,
@@ -127,11 +129,11 @@
     ],
     "savedTotalDurationMs": 11500,
     "savedShotIds": [
-      "c7e7d36a-4be6-4f1b-b5e3-a7f803167f1c",
+      "ce4614ba-b209-4976-a628-6085afee5d2d",
       "50000000-0000-4000-8000-000000000001",
-      "a0dde8a4-bca5-4b21-bdeb-2849906e3068",
-      "a2644e65-675e-4cfd-b7a9-f8b43671d557",
-      "95726ebe-b0b7-4b24-b2b9-03bc4c7f38eb"
+      "f37d45b5-3b87-4b46-9143-7dd1843920ba",
+      "0492e6b2-f469-463f-8784-6b9dd7279f04",
+      "7ab6bf84-d97b-4fc6-863f-3c93aa956bf5"
     ],
     "uniqueShotIds": true,
     "containsCurrentShot": false,

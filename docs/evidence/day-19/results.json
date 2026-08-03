@@ -3,7 +3,7 @@
   "workOrder": "B-19/45",
   "result": "PASS",
   "branch": "feat/day-19-character-definitions",
-  "executedAt": "2026-07-25T23:59:47.556Z",
+  "executedAt": "2026-08-02T02:44:09.854Z",
   "realFixtureMetadata": {
     "normal": {
       "width": 160,
@@ -42,7 +42,9 @@
     "flipChecked": true,
     "warning": "图片尺寸差异超过 30%表情“angry”：320×200；默认基准为 160×120。中心位置 保持不变，请人工确认视觉缩放。张嘴图片：160×52；默认基准为 160×120。中心位置 保持不变，请人工确认视觉缩放。",
     "rendererHasNodeRequire": false,
-    "hasTtsControl": false
+    "hasTtsControl": false,
+    "resourceOwner": true,
+    "legacyResourceOwner": false
   },
   "defaultProtection": {
     "defaultName": "normal",
@@ -57,30 +59,30 @@
     "saveRevision": 6,
     "autosaveUpdateCount": 9,
     "expressionReplacement": {
-      "expressionIdBefore": "a089dd6d-5906-4d11-8911-a01687449018",
-      "expressionIdAfter": "a089dd6d-5906-4d11-8911-a01687449018",
+      "expressionIdBefore": "85e72fc8-0587-4f96-b2f3-42a390097902",
+      "expressionIdAfter": "85e72fc8-0587-4f96-b2f3-42a390097902",
       "oldAssetId": "19300000-0000-4000-8000-000000000002",
       "newAssetId": "19300000-0000-4000-8000-000000000004"
     },
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "character": {
-      "id": "6fe12ea9-b141-4230-bcd9-ef6d6263d380",
+      "id": "c70d0933-8d69-41ee-8c1c-22a2cba3609e",
       "name": "Panda",
       "baseAssetId": "19300000-0000-4000-8000-000000000001",
-      "defaultVoiceProfileId": "a071522d-bc15-4bd0-a4d6-e949658cf275",
+      "defaultVoiceProfileId": "387e61c9-2a6f-4474-b102-5495eabfb89e",
       "expressions": [
         {
-          "id": "22aedfee-b4c4-41b8-9c01-f3e17243b05e",
+          "id": "2b820a3b-a881-4822-bb5e-7cb824d07ce3",
           "name": "normal",
           "assetId": "19300000-0000-4000-8000-000000000001"
         },
         {
-          "id": "a089dd6d-5906-4d11-8911-a01687449018",
+          "id": "85e72fc8-0587-4f96-b2f3-42a390097902",
           "name": "angry",
           "assetId": "19300000-0000-4000-8000-000000000004"
         }
       ],
-      "defaultExpressionId": "22aedfee-b4c4-41b8-9c01-f3e17243b05e",
+      "defaultExpressionId": "2b820a3b-a881-4822-bb5e-7cb824d07ce3",
       "mouthOpenAssetId": "19300000-0000-4000-8000-000000000003",
       "defaultScale": 0.75,
       "defaultFlipX": true

@@ -60,7 +60,47 @@ describe('UnsavedCloseController', () => {
     expect(
       createUnsavedCloseDialogOptions('我的项目').cancelId,
     ).toBe(2);
+    expect(
+      createUnsavedCloseDialogOptions('我的项目', 'switch').buttons,
+    ).toEqual(['保存并切换', '不保存并切换', '取消']);
   });
+
+  it.each([
+    ['save', 'saved'],
+    ['discard', 'discarded'],
+    ['cancel', 'cancelled'],
+  ] as const)(
+    'reuses the unsaved guard for project switching: %s',
+    async (choice, outcome) => {
+      const harness = controller(choice);
+
+      await expect(
+        harness.value.requestSwitch(dirtyProject),
+      ).resolves.toBe(outcome);
+      expect(harness.prompt).toHaveBeenCalledWith(
+        dirtyProject,
+        'switch',
+      );
+    },
+  );
+
+  it.each([
+    ['save', 'save-failed', { saveError: new Error('save') }],
+    [
+      'discard',
+      'discard-failed',
+      { discardError: new Error('discard') },
+    ],
+  ] as const)(
+    'blocks switching when %s fails',
+    async (choice, outcome, options) => {
+      const harness = controller(choice, options);
+
+      await expect(
+        harness.value.requestSwitch(dirtyProject),
+      ).resolves.toBe(outcome);
+    },
+  );
 
   it('saves the exact dirty revision before allowing close', async () => {
     const harness = controller('save');
@@ -113,6 +153,7 @@ describe('UnsavedCloseController', () => {
     expect(harness.reportDiscardFailure).toHaveBeenCalledWith(
       dirtyProject,
       injected,
+      'close',
     );
   });
 
@@ -151,6 +192,7 @@ describe('UnsavedCloseController', () => {
     expect(harness.reportSaveFailure).toHaveBeenCalledWith(
       dirtyProject,
       injected,
+      'close',
     );
   });
 

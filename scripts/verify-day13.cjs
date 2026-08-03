@@ -65,6 +65,21 @@ async function verifyDay13Ui() {
         poll();
       })
     `);
+    const invalidCandidate = await window.webContents.executeJavaScript(`(() => {
+      const input = document.querySelector('.recovery-panel input');
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value'
+      ).set;
+      setter.call(input, 'D:\\\\Evidence\\\\invalid?.pandastage');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      const button = document.querySelector('.recovery-open-row button');
+      return new Promise((resolve) => requestAnimationFrame(() => resolve({
+        disabled: button.disabled,
+        hint: document.querySelector('.open-path-hint')?.textContent?.trim()
+      })));
+    })()`);
     await window.webContents.executeJavaScript(`(() => {
       const input = document.querySelector('.recovery-panel input');
       const setter = Object.getOwnPropertyDescriptor(
@@ -98,10 +113,20 @@ async function verifyDay13Ui() {
         defaultState: panel?.querySelector('.clean-state')?.textContent?.trim(),
         inputPlaceholder: input?.getAttribute('placeholder'),
         actions: buttons,
-        candidateProject: panel?.querySelector('.recovery-prompt strong')
+        candidateSummary: panel?.querySelector(
+          '.recovery-prompt-summary strong'
+        )
           ?.textContent?.trim(),
-        candidateTime: panel?.querySelector('.recovery-prompt span')
+        candidateTime: panel?.querySelector(
+          '.recovery-prompt-summary span'
+        )
           ?.textContent?.trim(),
+        candidateProject: panel?.querySelector(
+          '.recovery-details span'
+        )?.textContent?.trim(),
+        candidateDetails: panel?.querySelector(
+          '.recovery-details summary'
+        )?.textContent?.trim(),
         candidateActions: [...(panel?.querySelectorAll(
           '.recovery-prompt button'
         ) ?? [])].map((button) => button.textContent?.trim()),
@@ -110,6 +135,7 @@ async function verifyDay13Ui() {
         rendererHasNodeRequire: typeof window.require !== 'undefined'
       };
     })()`);
+    result.invalidCandidate = invalidCandidate;
     await window.webContents.executeJavaScript(`
       document.fonts.ready.then(
         () => new Promise((resolve) =>
@@ -119,14 +145,20 @@ async function verifyDay13Ui() {
     `);
 
     if (
-      result.heading !== 'Crash recovery' ||
-      result.defaultState !== 'Clean' ||
-      !result.actions.includes('Open and check recovery') ||
-      !result.actions.includes('Save recovered project') ||
+      result.heading !== '项目编辑' ||
+      result.defaultState !== '暂无未保存更改' ||
+      !result.actions.includes('打开项目') ||
+      !result.actions.includes('浏览…') ||
+      !result.actions.includes('保存整个项目') ||
+      !result.invalidCandidate.disabled ||
+      result.invalidCandidate.hint !==
+        '项目文件夹路径包含 Windows 不允许的字符。' ||
+      result.candidateSummary !== '检测到未保存的恢复内容' ||
       result.candidateProject !== 'Recovered crash draft' ||
-      !result.candidateTime?.startsWith('Recovery from ') ||
+      result.candidateDetails !== '查看详情' ||
+      !result.candidateTime ||
       result.candidateActions.join(',') !==
-        'Restore in memory,Ignore and retain file' ||
+        '恢复,忽略' ||
       result.rendererHasNodeRequire ||
       result.autosaveApi.join(',') !== 'onError,stop,track,update' ||
       result.recoveryApi.join(',') !== 'detect,ignore,restore'

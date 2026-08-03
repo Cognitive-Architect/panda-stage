@@ -226,6 +226,7 @@ export function AssetLibrary({
         dragOver ? 'asset-library-drag-over' : '',
       ].filter(Boolean).join(' ')}
       aria-labelledby="asset-library-heading"
+      data-testid="asset-library"
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node)) {
           setDragOver(false);
@@ -256,7 +257,7 @@ export function AssetLibrary({
     >
       <div className="asset-library-heading">
         <div>
-          <p className="eyebrow">Day 18 asset library</p>
+          <p className="eyebrow">项目素材</p>
           <h2 id="asset-library-heading">项目素材库</h2>
         </div>
         <output>

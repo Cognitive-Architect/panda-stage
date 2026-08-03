@@ -2,19 +2,19 @@
   "gate": "M1 Project Lifecycle",
   "workOrder": "B-15/45",
   "result": "PASS",
-  "branch": "chore/day-15-m1-gate",
+  "branch": "fix/m3-editor-shell",
   "baselineSha": "b47877c0d3df3eff1dba8ec6509430638314da49",
-  "testedSha": "5f28b3e737a06b099c5395404b1b957588c9d6f1",
-  "executedAt": "2026-07-24T08:24:53.130Z",
+  "testedSha": "2182d301821abdae929af309a6b687aa1e9ad2fa",
+  "executedAt": "2026-08-02T05:33:23.784Z",
   "environment": {
     "platform": "win32",
-    "node": "v22.23.1"
+    "node": "v22.22.2"
   },
   "lifecycle": {
     "unicodeAndSpaces": true,
     "createSaveCloseReopen": true,
-    "formalHashAfterSave": "8321ef61c903e3c819cb24d39110de529c9b3931adc65267fd683463c9b7b548",
-    "formalHashBeforeRestore": "8321ef61c903e3c819cb24d39110de529c9b3931adc65267fd683463c9b7b548",
+    "formalHashAfterSave": "ccb3de62dac3b5aca467a6a2f9c8c09a286faf3c3f855fb22f6236800f10dd11",
+    "formalHashBeforeRestore": "ccb3de62dac3b5aca467a6a2f9c8c09a286faf3c3f855fb22f6236800f10dd11",
     "recoveryDidNotOverwriteFormal": true,
     "recoveryDetectedAfterRestart": true,
     "recoveryMovedWithProject": true,
@@ -29,8 +29,8 @@
   },
   "atomicSave": {
     "injectedFailureCode": "SAVE_FAILED",
-    "beforeSha256": "8321ef61c903e3c819cb24d39110de529c9b3931adc65267fd683463c9b7b548",
-    "afterSha256": "8321ef61c903e3c819cb24d39110de529c9b3931adc65267fd683463c9b7b548",
+    "beforeSha256": "ccb3de62dac3b5aca467a6a2f9c8c09a286faf3c3f855fb22f6236800f10dd11",
+    "afterSha256": "ccb3de62dac3b5aca467a6a2f9c8c09a286faf3c3f855fb22f6236800f10dd11",
     "oldFormalFilePreserved": true
   },
   "architecture": {

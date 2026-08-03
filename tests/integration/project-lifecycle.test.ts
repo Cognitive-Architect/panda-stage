@@ -145,10 +145,25 @@ describe('project directory lifecycle', () => {
 
     await expectServiceError(
       service().save(emptyRoot, incoming.project),
-      'PROJECT_NOT_FOUND',
+      'PROJECT_FILE_NOT_FOUND',
     );
 
     expect(await readdir(emptyRoot)).toEqual([]);
+  });
+
+  it('distinguishes a missing project.json from a missing project directory', async () => {
+    const emptyRoot = await newProjectRoot();
+    await mkdir(emptyRoot);
+    const missingRoot = await newProjectRoot();
+
+    await expectServiceError(
+      service().open(emptyRoot),
+      'PROJECT_FILE_NOT_FOUND',
+    );
+    await expectServiceError(
+      service().open(missingRoot),
+      'PROJECT_NOT_FOUND',
+    );
   });
 
   it('rejects saving one project into another project root without side effects', async () => {

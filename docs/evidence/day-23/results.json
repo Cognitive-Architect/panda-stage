@@ -3,7 +3,7 @@
   "workOrder": "B-23/45",
   "result": "PASS",
   "branch": "feat/day-23-layer-transform",
-  "executedAt": "2026-07-26T06:50:22.025Z",
+  "executedAt": "2026-08-02T02:56:34.672Z",
   "baselineSha": "4a5266c",
   "contract": {
     "schemaVersion": 5,
@@ -26,11 +26,11 @@
     "scaleRevisionAfter": 3,
     "rotationRevisionAfter": 4,
     "scaleBefore": 1,
-    "scaleAfter": 1.15527950310559,
-    "rotationAfter": 23.994030826339895
+    "scaleAfter": 1.1552795031055905,
+    "rotationAfter": 23.99403082633978
   },
   "properties": {
-    "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
+    "id": "fc8c6e62-7d20-46fd-91c8-a76015aeddbc",
     "name": "Panda neutral",
     "source": {
       "kind": "character",
@@ -78,7 +78,7 @@
       "zIndex": 3
     },
     {
-      "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
+      "id": "fc8c6e62-7d20-46fd-91c8-a76015aeddbc",
       "zIndex": 4
     }
   ],
@@ -92,7 +92,7 @@
     "saveRevision": 9,
     "schemaVersion": 5,
     "reopenedLayer": {
-      "id": "46d91d6c-01bb-4cb3-9ecf-66888476e3f0",
+      "id": "fc8c6e62-7d20-46fd-91c8-a76015aeddbc",
       "name": "Panda neutral",
       "source": {
         "kind": "character",

@@ -43,6 +43,7 @@ function event(senderId = 42): IpcMainInvokeEvent {
 function projectService(): ProjectService {
   return {
     create: vi.fn(),
+    createAt: vi.fn(),
     open: vi.fn(),
     save: vi.fn(),
   } as unknown as ProjectService;
@@ -55,20 +56,115 @@ describe('project IPC handlers', () => {
     electronMocks.removeHandler.mockClear();
   });
 
-  it('registers only the three allowlisted project operations', () => {
+  it('registers only the six allowlisted project operations', () => {
     const remove = registerProjectIpcHandlers({
       getMainWindow: () => mainWindow(),
       projectService: projectService(),
     });
 
     expect([...electronMocks.handlers.keys()]).toEqual([
+      IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY,
+      IPC_CHANNELS.PROJECT_CONFIRM_SWITCH,
       IPC_CHANNELS.PROJECT_CREATE,
+      IPC_CHANNELS.PROJECT_CREATE_AT,
       IPC_CHANNELS.PROJECT_OPEN,
       IPC_CHANNELS.PROJECT_SAVE,
     ]);
 
     remove();
     expect(electronMocks.handlers.size).toBe(0);
+  });
+
+  it('forwards only the parent directory, name, and metadata to createAt', async () => {
+    const service = projectService();
+    const project = ProjectSchema.parse(exampleProject);
+    const document = {
+      projectRoot: 'D:\\projects\\新项目.pandastage',
+      projectFilePath: 'D:\\projects\\新项目.pandastage\\project.json',
+      project,
+      migrated: false,
+      sourceVersion: 1 as const,
+    };
+    vi.spyOn(service, 'createAt').mockResolvedValue(document);
+    const onProjectAccessed = vi.fn();
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+      onProjectAccessed,
+    });
+    const handler = electronMocks.handlers.get(
+      IPC_CHANNELS.PROJECT_CREATE_AT,
+    )!;
+
+    await expect(
+      handler(event(), {
+        parentDirectory: 'D:\\projects',
+        projectName: '新项目',
+        metadata: { name: '新项目' },
+      }),
+    ).resolves.toEqual({ ok: true, value: document });
+    expect(service.createAt).toHaveBeenCalledWith(
+      'D:\\projects',
+      '新项目',
+      { name: '新项目' },
+    );
+    expect(service.create).not.toHaveBeenCalled();
+    expect(onProjectAccessed).toHaveBeenCalledWith(document);
+  });
+
+  it('rejects a createAt request that smuggles a project root or traversal', async () => {
+    const service = projectService();
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+    });
+    const handler = electronMocks.handlers.get(
+      IPC_CHANNELS.PROJECT_CREATE_AT,
+    )!;
+
+    await expect(
+      handler(event(), {
+        parentDirectory: 'D:\\projects',
+        projectName: '新项目',
+        metadata: { name: '新项目' },
+        projectRoot: 'D:\\elsewhere\\evil.pandastage',
+      }),
+    ).rejects.toThrow();
+    await expect(
+      handler(event(), {
+        parentDirectory: 'D:\\projects',
+        projectName: '..\\..\\evil',
+        metadata: { name: 'evil' },
+      }),
+    ).rejects.toThrow();
+    expect(service.createAt).not.toHaveBeenCalled();
+  });
+
+  it('maps a duplicate project directory to PROJECT_ALREADY_EXISTS', async () => {
+    const service = projectService();
+    const projectRoot = 'D:\\projects\\重名.pandastage';
+    vi.spyOn(service, 'createAt').mockRejectedValue(
+      new ProjectServiceError(
+        'PROJECT_ALREADY_EXISTS',
+        projectRoot,
+        `Cannot create project at ${projectRoot}: the target directory already exists.`,
+      ),
+    );
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+    });
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.PROJECT_CREATE_AT)!(event(), {
+        parentDirectory: 'D:\\projects',
+        projectName: '重名',
+        metadata: { name: '重名' },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'PROJECT_ALREADY_EXISTS', projectRoot },
+    });
   });
 
   it('rejects malformed input before calling ProjectService', async () => {
@@ -86,6 +182,58 @@ describe('project IPC handlers', () => {
       }),
     ).rejects.toThrow();
     expect(service.save).not.toHaveBeenCalled();
+  });
+
+  it('returns selected and cancelled native project directories without opening them', async () => {
+    const service = projectService();
+    const selectProjectDirectory = vi
+      .fn()
+      .mockResolvedValueOnce('D:\\projects\\picked.pandastage')
+      .mockResolvedValueOnce(null);
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+      selectProjectDirectory,
+    });
+    const handler = electronMocks.handlers.get(
+      IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY,
+    )!;
+
+    await expect(handler(event(), {})).resolves.toEqual({
+      ok: true,
+      status: 'selected',
+      projectRoot: 'D:\\projects\\picked.pandastage',
+    });
+    await expect(handler(event(), {})).resolves.toEqual({
+      ok: true,
+      status: 'cancelled',
+    });
+    expect(service.open).not.toHaveBeenCalled();
+  });
+
+  it('validates and forwards the exact dirty snapshot to the shared switch guard', async () => {
+    const service = projectService();
+    const confirmProjectSwitch = vi.fn().mockResolvedValue('discarded');
+    const project = ProjectSchema.parse(exampleProject);
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+      confirmProjectSwitch,
+    });
+    const request = {
+      projectRoot: 'D:\\projects\\dirty.pandastage',
+      project,
+      dirty: true as const,
+      revision: 8,
+    };
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH)!(
+        event(),
+        request,
+      ),
+    ).resolves.toEqual({ outcome: 'discarded' });
+    expect(confirmProjectSwitch).toHaveBeenCalledWith(request);
   });
 
   it('rejects an untrusted renderer before parsing input', async () => {

@@ -84,7 +84,7 @@ export function LayerPositionPanel(): React.JSX.Element {
       data-testid="layer-position-panel"
     >
       <div>
-        <p className="eyebrow">Day 22 layer properties</p>
+        <p className="eyebrow">图层属性</p>
         <h3>图层位置</h3>
       </div>
       {layer ? (
