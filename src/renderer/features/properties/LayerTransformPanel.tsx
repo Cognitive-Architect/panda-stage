@@ -98,11 +98,14 @@ export function LayerTransformPanel(): React.JSX.Element {
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const shot = snapshot?.project.shots.find(
+    (candidate) => candidate.id === shotId,
+  ) ?? null;
   const layer =
-    snapshot?.project.shots
-      .find((shot) => shot.id === shotId)
-      ?.layers.find((candidate) => candidate.id === selectedLayerId) ??
-    null;
+    shot?.layers.find((candidate) => candidate.id === selectedLayerId) ?? null;
+  const isBackgroundLayer = Boolean(
+    shot && layer && shot.backgroundLayerId === layer.id,
+  );
   const [draft, setDraft] = useState<LayerTransformDraft>(EMPTY_DRAFT);
   const [status, setStatus] = useState(
     '选择普通图层后可编辑中心位置与静态变换。',
@@ -130,14 +133,16 @@ export function LayerTransformPanel(): React.JSX.Element {
     if (layer) {
       preserveCommitErrorRef.current = false;
       setStatus(
-        layer.locked
-          ? '图层已锁定；请先解锁再修改。'
+        isBackgroundLayer
+          ? '背景层不可编辑普通图层变换。'
+          : layer.locked
+            ? '图层已锁定；请先解锁再修改。'
           : 'X/Y 始终表示视觉中心；缩放保持等比。',
       );
     } else if (!preserveCommitErrorRef.current) {
       setStatus('选择普通图层后可编辑中心位置与静态变换。');
     }
-  }, [layer]);
+  }, [isBackgroundLayer, layer]);
 
   const updateDraft = (
     key: keyof LayerTransformDraft,
@@ -151,6 +156,10 @@ export function LayerTransformPanel(): React.JSX.Element {
     reason: 'action' | 'blur' | 'submit',
   ): CommitTransformDraftResult => {
     if (!layer) return 'invalid';
+    if (isBackgroundLayer) {
+      setStatus('背景层不可编辑普通图层变换。');
+      return 'invalid';
+    }
     if (layer.locked) {
       setStatus('图层已锁定；属性草稿未提交。');
       return 'locked';
@@ -268,7 +277,7 @@ export function LayerTransformPanel(): React.JSX.Element {
             <label key={key}>
               {label}
               <input
-                disabled={layer.locked}
+                disabled={layer.locked || isBackgroundLayer}
                 inputMode="decimal"
                 onChange={(event) =>
                   updateDraft(key, event.target.value)
@@ -278,7 +287,7 @@ export function LayerTransformPanel(): React.JSX.Element {
             </label>
           ))}
           <button
-            disabled={layer.locked}
+            disabled={layer.locked || isBackgroundLayer}
             onClick={() => {
               if (
                 !canRunTransformAction(
@@ -305,6 +314,7 @@ export function LayerTransformPanel(): React.JSX.Element {
           <label className="layer-lock-control">
             <input
               checked={layer.locked}
+              disabled={isBackgroundLayer}
               onChange={(event) => {
                 const shouldLock = event.target.checked;
                 if (
@@ -329,13 +339,25 @@ export function LayerTransformPanel(): React.JSX.Element {
             />
             锁定图层
           </label>
-          <button disabled={layer.locked} type="submit">
+          <button
+            disabled={layer.locked || isBackgroundLayer}
+            type="submit"
+          >
             应用变换
           </button>
         </form>
       ) : (
         <p>未选择普通图层。</p>
       )}
+      <p data-testid="layer-transform-guidance">
+        {isBackgroundLayer
+          ? '背景层不可执行普通图层变换。'
+          : layer?.locked
+            ? '图层已锁定，请先解锁后再修改变换。'
+          : layer
+            ? 'X/Y 为视觉中心，缩放保持等比。'
+            : '请先在画布选择普通图层。'}
+      </p>
       <output data-testid="layer-transform-status">{status}</output>
     </section>
   );

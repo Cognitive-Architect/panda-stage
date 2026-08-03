@@ -187,6 +187,9 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const canvasWorkspace = readSource(
       'renderer/shell/CanvasWorkspace.tsx',
     );
+    const rightInspector = readSource(
+      'renderer/shell/RightInspector.tsx',
+    );
     const legacyCompatibility = readSource(
       'renderer/shell/LegacyCompatibilityActivity.tsx',
     );
@@ -205,9 +208,8 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(leftWorkspace).toContain(
       'data-testid="left-workspace-scroll"',
     );
-    expect(shell).toContain(
-      'data-testid="right-inspector-placeholder"',
-    );
+    expect(shell).toContain('<RightInspector');
+    expect(rightInspector).toContain('data-testid="right-inspector"');
     expect(shell).toContain(
       'data-testid="bottom-workspace-placeholder"',
     );
@@ -375,6 +377,49 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     );
     expect(styles).toMatch(
       /\.legacy-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+  });
+
+  it('locks the Stage 3-A RightInspector owner and selection contract', () => {
+    const shell = readSource('renderer/shell/EditorShell.tsx');
+    const inspector = readSource('renderer/shell/RightInspector.tsx');
+    const canvas = readSource('renderer/features/canvas/CanvasStage.tsx');
+    const transform = readSource(
+      'renderer/features/properties/LayerTransformPanel.tsx',
+    );
+    const order = readSource(
+      'renderer/features/properties/LayerOrderControls.tsx',
+    );
+    const legacy = readSource('renderer/shell/LegacyWorkspace.tsx');
+    const styles = readSource('renderer/styles.css');
+
+    expect(shell.match(/<RightInspector/gu)).toHaveLength(1);
+    expect(shell).not.toContain('right-inspector-placeholder');
+    expect(inspector).toContain('data-testid="right-inspector"');
+    expect(inspector).toContain(
+      'data-testid="right-inspector-selection"',
+    );
+    expect(inspector).toContain(
+      'data-testid="right-inspector-selection-message"',
+    );
+    expect(inspector.match(/<LayerTransformPanel/gu)).toHaveLength(1);
+    expect(inspector.match(/<LayerOrderControls/gu)).toHaveLength(1);
+    expect(inspector).toContain('editorProjectStore.subscribe');
+    expect(inspector).toContain('shotStore.subscribe');
+    expect(inspector).toContain('selectionStore.subscribe');
+    expect(canvas).not.toContain('<LayerTransformPanel');
+    expect(canvas).not.toContain('<LayerOrderControls');
+    expect(canvas.match(/<HistoryControls/gu)).toHaveLength(1);
+    expect(transform).toContain(
+      'data-testid="layer-transform-guidance"',
+    );
+    expect(order).toContain('data-testid="layer-order-guidance"');
+    expect(legacy).toContain('<ActionPresetPanel');
+    expect(styles).toMatch(
+      /\.right-inspector\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.editor-body\s*\{[\s\S]*?grid-template-columns:/u,
     );
   });
 });

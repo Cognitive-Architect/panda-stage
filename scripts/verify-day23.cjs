@@ -106,6 +106,89 @@ async function openProject(window) {
   );
 }
 
+async function assertStage3AComposition(window) {
+  window.setSize(1366, 768);
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  try {
+    const contract = await window.webContents.executeJavaScript(`(() => {
+      const right = document.querySelector('[data-testid="right-inspector"]');
+      const canvas = document.querySelector('[data-testid="project-canvas-stage"]');
+      const canvasOwner = document.querySelector('.project-canvas');
+      const root = document.documentElement;
+      const body = document.body;
+      return {
+        rightCount: document.querySelectorAll('[data-testid="right-inspector"]').length,
+        placeholderCount: document.querySelectorAll('[data-testid="right-inspector-placeholder"]').length,
+        transformInRight: right?.querySelectorAll('[data-testid="layer-transform-panel"]').length ?? 0,
+        orderInRight: right?.querySelectorAll('[data-testid="layer-order-controls"]').length ?? 0,
+        transformInCanvas: canvas?.querySelectorAll('[data-testid="layer-transform-panel"]').length ?? 0,
+        orderInCanvas: canvas?.querySelectorAll('[data-testid="layer-order-controls"]').length ?? 0,
+        historyInCanvas: canvasOwner?.querySelectorAll('[data-testid="history-controls"]').length ?? 0,
+        canvasCount: document.querySelectorAll('[data-testid="project-canvas-stage"]').length,
+        actionCount: document.querySelectorAll('[data-testid="action-preset-panel"]').length,
+        legacyCount: document.querySelectorAll('[data-testid="legacy-workspace-scroll"]').length,
+        selectionState: right?.dataset.selectionState ?? '',
+        rightOverflowY: right ? getComputedStyle(right).overflowY : '',
+        rootFits: root.scrollWidth <= root.clientWidth &&
+          root.scrollHeight <= root.clientHeight &&
+          body.scrollWidth <= body.clientWidth &&
+          body.scrollHeight <= body.clientHeight
+      };
+    })()`);
+    const expected = {
+      rightCount: 1,
+      placeholderCount: 0,
+      transformInRight: 1,
+      orderInRight: 1,
+      transformInCanvas: 0,
+      orderInCanvas: 0,
+      historyInCanvas: 1,
+      canvasCount: 1,
+      actionCount: 0,
+      legacyCount: 0,
+      selectionState: 'empty',
+      rightOverflowY: 'auto',
+      rootFits: true
+    };
+    for (const [key, value] of Object.entries(expected)) {
+      if (contract[key] !== value) {
+        throw new Error(
+          `Stage 3-A default composition failed for ${key}: ${JSON.stringify({
+            expected: value,
+            actual: contract[key],
+            contract
+          })}`
+        );
+      }
+    }
+
+    await window.webContents.executeJavaScript(
+      `document.querySelector('[data-testid="legacy-compatibility-toggle"]').click()`,
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelectorAll('[data-testid="legacy-workspace-scroll"]').length === 1 &&` +
+          `document.querySelectorAll('[data-testid="action-preset-panel"]').length === 1 &&` +
+          `document.querySelectorAll('[data-testid="right-inspector"]').length === 1`,
+        'Stage 3-A compatibility tree did not mount without duplicating the inspector.',
+      ),
+    );
+    await window.webContents.executeJavaScript(
+      `document.querySelector('[data-testid="legacy-compatibility-toggle"]').click()`,
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelectorAll('[data-testid="legacy-workspace-scroll"]').length === 0 &&` +
+          `document.querySelectorAll('[data-testid="action-preset-panel"]').length === 0`,
+        'Stage 3-A compatibility tree did not unmount cleanly.',
+      ),
+    );
+  } finally {
+    window.setSize(1440, 1000);
+    await new Promise((resolve) => setTimeout(resolve, 180));
+  }
+}
+
 async function scrollCanvasIntoView(window) {
   return window.webContents.executeJavaScript(`(async () => {
     const canvas = document.querySelector('.project-canvas');
@@ -446,6 +529,7 @@ async function verifyDay23() {
       ),
     );
     await openProject(window);
+    await assertStage3AComposition(window);
     await scrollCanvasIntoView(window);
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,

@@ -49,6 +49,9 @@ export function LayerOrderControls(): React.JSX.Element {
   const layer =
     shot?.layers.find((candidate) => candidate.id === selectedLayerId) ??
     null;
+  const isBackgroundLayer = Boolean(
+    shot && layer && shot.backgroundLayerId === layer.id,
+  );
   const [status, setStatus] = useState(
     '层级操作只影响当前镜头中的普通图层。',
   );
@@ -62,6 +65,10 @@ export function LayerOrderControls(): React.JSX.Element {
 
   const deleteLayer = (): void => {
     if (!layer) return;
+    if (isBackgroundLayer) {
+      setStatus('背景层不可排序或删除。');
+      return;
+    }
     try {
       layerStore.deleteLayer(layer.id);
       selectionStore.clear();
@@ -85,6 +92,10 @@ export function LayerOrderControls(): React.JSX.Element {
 
   const reorder = (action: LayerOrderAction): void => {
     if (!layer) return;
+    if (isBackgroundLayer) {
+      setStatus('背景层不可排序或删除。');
+      return;
+    }
     try {
       layerStore.reorder(layer.id, action);
       setStatus('图层顺序已写入项目并同步画布。');
@@ -95,7 +106,7 @@ export function LayerOrderControls(): React.JSX.Element {
     }
   };
 
-  const disabled = !layer || layer.locked;
+  const disabled = !layer || layer.locked || isBackgroundLayer;
   return (
     <section
       className="layer-order-controls"
@@ -143,6 +154,15 @@ export function LayerOrderControls(): React.JSX.Element {
           删除图层
         </button>
       </div>
+      <p data-testid="layer-order-guidance">
+        {isBackgroundLayer
+          ? '背景层不可执行普通图层层级操作。'
+          : layer?.locked
+            ? '图层已锁定，请先解锁后再调整层级或删除。'
+          : layer
+            ? '层级操作只影响当前镜头中的普通图层。'
+            : '请先在画布选择普通图层。'}
+      </p>
       <output data-testid="layer-order-status">{status}</output>
     </section>
   );

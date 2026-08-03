@@ -34,6 +34,7 @@ import { LeftWorkspace } from './LeftWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
+import { RightInspector } from './RightInspector';
 import { StartScreen } from './StartScreen';
 import { useDebugFlag } from './useDebugFlag';
 import {
@@ -757,13 +758,7 @@ export function EditorShell({
               recentRefreshToken={recentRefreshToken}
             />
             <CanvasWorkspace />
-            <aside
-              className="workspace-placeholder right-inspector-placeholder"
-              data-testid="right-inspector-placeholder"
-            >
-              <strong>右侧检查器</strong>
-              <span>图层属性与动作预设将在后续阶段迁入</span>
-            </aside>
+            <RightInspector />
           </div>
           <footer
             className="workspace-placeholder bottom-workspace-placeholder"

@@ -26,16 +26,14 @@ describe('EditorShell Stage 2-B composition contract', () => {
   it('builds one fixed top/body/bottom Grid with visible placeholders', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
+    const right = readSource('src/renderer/shell/RightInspector.tsx');
     const styles = readSource('src/renderer/styles.css');
 
-    for (const selector of [
-      'data-testid="editor-layout"',
-      'data-testid="editor-body"',
-      'data-testid="right-inspector-placeholder"',
-      'data-testid="bottom-workspace-placeholder"',
-    ]) {
-      expect(shell).toContain(selector);
-    }
+    expect(shell).toContain('data-testid="editor-layout"');
+    expect(shell).toContain('data-testid="editor-body"');
+    expect(shell).toContain('<RightInspector');
+    expect(right).toContain('data-testid="right-inspector"');
+    expect(shell).toContain('data-testid="bottom-workspace-placeholder"');
     expect(shell.indexOf('<EditorTopBar')).toBeLessThan(
       shell.indexOf('<LeftWorkspace'),
     );
@@ -47,7 +45,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
       /\.editor-body\s*\{[\s\S]*?grid-template-columns:/u,
     );
     expect(left).toContain('左侧工作区');
-    expect(shell).toContain('右侧检查器');
+    expect(right).toContain('右侧检查器');
     expect(shell).toContain('底部工作区');
   });
 
@@ -195,17 +193,19 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(count(shell, /<LegacyWorkspace/gu)).toBe(0);
   });
 
-  it('implements only the Stage 2-B central canvas migration', () => {
+  it('keeps the Stage 3-A right inspector migration inside the shell whitelist', () => {
     const sources = [
       readSource('src/renderer/shell/EditorShell.tsx'),
       readSource('src/renderer/shell/CanvasWorkspace.tsx'),
       readSource('src/renderer/shell/LegacyWorkspace.tsx'),
+      readSource('src/renderer/shell/RightInspector.tsx'),
     ].join('\n');
 
     expect(sources).toContain('LeftWorkspace');
     expect(sources).toContain('CanvasWorkspace');
-    expect(sources).not.toContain('RightInspector');
+    expect(sources).toContain('RightInspector');
     expect(sources).not.toContain('BottomHistory');
+    expect(sources).not.toContain('right-inspector-placeholder');
     expect(readSource('src/renderer/shell/LegacyWorkspace.tsx')).not.toContain(
       'CloseConfirmDialog',
     );
