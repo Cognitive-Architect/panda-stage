@@ -148,7 +148,7 @@ button:disabled {
   align-items: start;
 }
 
-.left-workspace .recent-project-actions {
+.left-workspace .recent-projects-actions {
   flex-wrap: wrap;
 }
 
@@ -1469,7 +1469,7 @@ button:disabled {
 
 .recent-projects-heading,
 .recent-projects-list li,
-.recent-project-actions {
+.recent-projects-actions {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1518,7 +1518,7 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.recent-project-actions {
+.recent-projects-actions {
   flex: 0 0 auto;
 }
 

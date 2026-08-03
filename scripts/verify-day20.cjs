@@ -109,6 +109,141 @@ async function openProject(window, root = projectRoot) {
   );
 }
 
+async function assertStage2CComposition(window) {
+  const defaultComposition = await window.webContents.executeJavaScript(`(() => ({
+    leftWorkspace: document.querySelectorAll(
+      '[data-testid="left-workspace-scroll"]'
+    ).length,
+    recentProjects: document.querySelectorAll(
+      '[data-testid="recent-projects-panel"]'
+    ).length,
+    recentList: document.querySelectorAll(
+      '[data-testid="recent-projects-list"]'
+    ).length,
+    recentPath: document.querySelectorAll(
+      '[data-testid="recent-projects-path"]'
+    ).length,
+    recentActions: document.querySelectorAll(
+      '[data-testid="recent-projects-actions"]'
+    ).length,
+    recentStatus: document.querySelectorAll(
+      '[data-testid="recent-projects-status"]'
+    ).length,
+    resourceDock: document.querySelectorAll(
+      '[data-testid="resource-activity-dock"]'
+    ).length,
+    canvasWorkspace: document.querySelectorAll(
+      '[data-testid="canvas-workspace-scroll"]'
+    ).length,
+    canvasStage: document.querySelectorAll(
+      '[data-testid="project-canvas-stage"]'
+    ).length,
+    canvasViewport: document.querySelectorAll(
+      '[data-testid="project-canvas-viewport"]'
+    ).length,
+    logicalStage: document.querySelectorAll(
+      '[data-testid="canvas-logical-stage"]'
+    ).length,
+    historyControls: document.querySelectorAll(
+      '[data-testid="history-controls"]'
+    ).length,
+    shotManager: document.querySelectorAll(
+      '[data-testid="shot-manager"]'
+    ).length,
+    assetLibrary: document.querySelectorAll(
+      '[data-testid="asset-library"]'
+    ).length,
+    characterManager: document.querySelectorAll(
+      '[data-testid="character-manager"]'
+    ).length,
+    legacyWorkspace: document.querySelectorAll(
+      '[data-testid="legacy-workspace-scroll"]'
+    ).length,
+    actionPresetPanel: document.querySelectorAll(
+      '[data-testid="action-preset-panel"]'
+    ).length
+  }))()`);
+  const expectedDefault = {
+    leftWorkspace: 1,
+    recentProjects: 1,
+    recentList: 1,
+    recentPath: 1,
+    recentActions: 1,
+    recentStatus: 1,
+    resourceDock: 1,
+    canvasWorkspace: 1,
+    canvasStage: 1,
+    canvasViewport: 1,
+    logicalStage: 1,
+    historyControls: 1,
+    shotManager: 1,
+    assetLibrary: 0,
+    characterManager: 0,
+    legacyWorkspace: 0,
+    actionPresetPanel: 0
+  };
+  if (JSON.stringify(defaultComposition) !== JSON.stringify(expectedDefault)) {
+    throw new Error(
+      `Stage 2-C default composition failed: ${JSON.stringify({
+        expected: expectedDefault,
+        actual: defaultComposition
+      })}`
+    );
+  }
+
+  await window.webContents.executeJavaScript(`
+    document.querySelector('[data-testid="legacy-compatibility-toggle"]').click()
+  `);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="legacy-workspace-scroll"]') && ` +
+        `document.querySelector('[data-testid="action-preset-panel"]')`,
+      'Stage 2-C compatibility workspace did not mount.',
+    ),
+  );
+  const compatibilityComposition =
+    await window.webContents.executeJavaScript(`(() => ({
+      canvasStage: document.querySelectorAll(
+        '[data-testid="project-canvas-stage"]'
+      ).length,
+      historyControls: document.querySelectorAll(
+        '[data-testid="history-controls"]'
+      ).length,
+      legacyWorkspace: document.querySelectorAll(
+        '[data-testid="legacy-workspace-scroll"]'
+      ).length,
+      actionPresetPanel: document.querySelectorAll(
+        '[data-testid="action-preset-panel"]'
+      ).length
+    }))()`);
+  if (
+    JSON.stringify(compatibilityComposition) !==
+    JSON.stringify({
+      canvasStage: 1,
+      historyControls: 1,
+      legacyWorkspace: 1,
+      actionPresetPanel: 1
+    })
+  ) {
+    throw new Error(
+      `Stage 2-C compatibility composition failed: ${JSON.stringify(
+        compatibilityComposition,
+      )}`,
+    );
+  }
+
+  await window.webContents.executeJavaScript(`
+    document.querySelector('[data-testid="legacy-compatibility-toggle"]').click()
+  `);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `!document.querySelector('[data-testid="legacy-workspace-scroll"]') && ` +
+        `!document.querySelector('[data-testid="action-preset-panel"]')`,
+      'Stage 2-C compatibility workspace did not unmount.',
+    ),
+  );
+}
+
 async function createShot(window, name, durationMs, expectedCount) {
   await setInput(
     window,
@@ -272,7 +407,13 @@ async function verifyDay20() {
   }));
   ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({
     ok: true,
-    entries: [],
+    entries: [{
+      projectId: initialProject.id,
+      projectName: initialProject.name,
+      projectRoot,
+      lastOpenedAt: '2026-08-03T00:00:00.000Z',
+      status: 'available'
+    }],
   }));
   ipcMain.handle(
     IPC_CHANNELS.ASSET_THUMBNAIL_READ,
@@ -293,6 +434,7 @@ async function verifyDay20() {
       ),
     );
     await openProject(window);
+    await assertStage2CComposition(window);
 
     await window.webContents.executeJavaScript(
       'new Promise((resolve) => setTimeout(resolve, 150))',

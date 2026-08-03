@@ -61,7 +61,11 @@ export function ShotManager({
   };
 
   return (
-    <section className="shot-manager" aria-labelledby="shot-manager-heading">
+    <section
+      className="shot-manager"
+      aria-labelledby="shot-manager-heading"
+      data-testid="shot-manager"
+    >
       <div className="shot-manager-heading">
         <div>
           <p className="eyebrow">镜头编排</p>

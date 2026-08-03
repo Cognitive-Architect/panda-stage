@@ -145,6 +145,7 @@ export function CharacterManager({
     <section
       className="character-manager"
       aria-labelledby="character-manager-heading"
+      data-testid="character-manager"
     >
       <div className="character-manager-heading">
         <div>

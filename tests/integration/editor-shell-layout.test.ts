@@ -260,4 +260,42 @@ describe('EditorShell Stage 2-B composition contract', () => {
       /\.editor-layout\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u,
     );
   });
+
+  it('keeps Stage 2-C selector contracts on the visible owners', () => {
+    const recent = readSource(
+      'src/renderer/features/welcome/RecentProjectsPanel.tsx',
+    );
+    const shot = readSource('src/renderer/features/shots/ShotManager.tsx');
+    const asset = readSource('src/renderer/features/assets/AssetLibrary.tsx');
+    const character = readSource(
+      'src/renderer/features/characters/CharacterManager.tsx',
+    );
+    const dock = readSource('src/renderer/shell/ResourceActivityDock.tsx');
+    const compatibility = readSource(
+      'src/renderer/shell/LegacyCompatibilityActivity.tsx',
+    );
+
+    for (const selector of [
+      'data-testid="recent-projects-list"',
+      'data-testid="recent-projects-path"',
+      'data-testid="recent-projects-actions"',
+      'data-testid="recent-projects-status"',
+    ]) {
+      expect(recent).toContain(selector);
+    }
+    expect(recent).toContain(
+      'className="recent-projects-path recent-project-path"',
+    );
+    expect(recent).toContain(
+      'className="recent-projects-actions recent-project-actions"',
+    );
+    expect(shot).toContain('data-testid="shot-manager"');
+    expect(asset).toContain('data-testid="asset-library"');
+    expect(character).toContain('data-testid="character-manager"');
+    expect(dock.match(/<ShotManager/gu)).toHaveLength(1);
+    expect(dock.match(/<AssetLibrary/gu)).toHaveLength(1);
+    expect(dock.match(/<CharacterManager/gu)).toHaveLength(1);
+    expect(compatibility).toContain('{active ? <LegacyWorkspace');
+    expect(compatibility).not.toContain('display: none');
+  });
 });

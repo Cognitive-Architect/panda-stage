@@ -56,6 +56,26 @@ async function selectResourceActivity(window, activity) {
       `Resource activity did not activate: ${activity}`,
     ),
   );
+  const managerCounts = await window.webContents.executeJavaScript(`(() => ({
+    shots: document.querySelectorAll('[data-testid="shot-manager"]').length,
+    assets: document.querySelectorAll('[data-testid="asset-library"]').length,
+    characters: document.querySelectorAll(
+      '[data-testid="character-manager"]'
+    ).length
+  }))()`);
+  const expected = {
+    shots: activity === 'shots' ? 1 : 0,
+    assets: activity === 'assets' ? 1 : 0,
+    characters: activity === 'characters' ? 1 : 0
+  };
+  if (JSON.stringify(managerCounts) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Resource manager cardinality failed for ${activity}: ${JSON.stringify({
+        expected,
+        actual: managerCounts
+      })}`
+    );
+  }
 }
 
 async function setInput(window, selector, value) {

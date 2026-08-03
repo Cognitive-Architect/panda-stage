@@ -315,4 +315,66 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const code = readSource('renderer/features/actions/ActionPresetPanel.tsx');
     expect(code).toContain('data-testid="action-preset-panel"');
   });
+
+  it('locks Stage 2-C visible selector owners and cardinality contracts', () => {
+    const shell = readSource('renderer/shell/EditorShell.tsx');
+    const left = readSource('renderer/shell/LeftWorkspace.tsx');
+    const dock = readSource('renderer/shell/ResourceActivityDock.tsx');
+    const compatibility = readSource(
+      'renderer/shell/LegacyCompatibilityActivity.tsx',
+    );
+    const canvasWorkspace = readSource(
+      'renderer/shell/CanvasWorkspace.tsx',
+    );
+    const legacy = readSource('renderer/shell/LegacyWorkspace.tsx');
+    const recent = readSource(
+      'renderer/features/welcome/RecentProjectsPanel.tsx',
+    );
+    const shot = readSource('renderer/features/shots/ShotManager.tsx');
+    const asset = readSource('renderer/features/assets/AssetLibrary.tsx');
+    const character = readSource(
+      'renderer/features/characters/CharacterManager.tsx',
+    );
+    const styles = readSource('renderer/styles.css');
+
+    expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
+    expect(shell.match(/<LegacyWorkspace/gu) ?? []).toHaveLength(0);
+    expect(left.match(/<ProjectRecoveryPanel/gu)).toHaveLength(1);
+    expect(left.match(/<ResourceActivityDock/gu)).toHaveLength(1);
+    expect(left.match(/<LegacyCompatibilityActivity/gu)).toHaveLength(1);
+    expect(canvasWorkspace.match(/<CanvasStage/gu)).toHaveLength(1);
+    expect(legacy.match(/<ActionPresetPanel/gu)).toHaveLength(1);
+    expect(legacy.match(/<CanvasStage/gu) ?? []).toHaveLength(0);
+    expect(compatibility).toContain('{active ? <LegacyWorkspace');
+
+    for (const selector of [
+      'data-testid="recent-projects-panel"',
+      'data-testid="recent-projects-list"',
+      'data-testid="recent-projects-path"',
+      'data-testid="recent-projects-actions"',
+      'data-testid="recent-projects-status"',
+    ]) {
+      expect(recent).toContain(selector);
+    }
+    expect(shot).toContain('data-testid="shot-manager"');
+    expect(asset).toContain('data-testid="asset-library"');
+    expect(character).toContain('data-testid="character-manager"');
+
+    expect(dock.match(/<ShotManager/gu)).toHaveLength(1);
+    expect(dock.match(/<AssetLibrary/gu)).toHaveLength(1);
+    expect(dock.match(/<CharacterManager/gu)).toHaveLength(1);
+    expect(dock).toContain("useState<ResourceActivity>('shots')");
+    expect(styles).toMatch(
+      /html,[\s\S]*?#root\s*\{[\s\S]*?overflow:\s*hidden;/u,
+    );
+    expect(styles).toMatch(
+      /\.left-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.canvas-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.legacy-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+  });
 });

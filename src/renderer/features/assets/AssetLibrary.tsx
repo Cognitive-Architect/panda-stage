@@ -226,6 +226,7 @@ export function AssetLibrary({
         dragOver ? 'asset-library-drag-over' : '',
       ].filter(Boolean).join(' ')}
       aria-labelledby="asset-library-heading"
+      data-testid="asset-library"
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node)) {
           setDragOver(false);
