@@ -154,7 +154,8 @@ describe('in-app close project contract locks', () => {
 
   it('routes the close through the single owned editor shell session', () => {
     expect(shellSource).toContain('closeProject(): Promise<ProjectSessionSnapshot>');
-    expect(shellSource).toContain('return this.controller.closeProject();');
+    expect(shellSource).toContain('this.controller.closeProject()');
+    expect(shellSource).toContain('runControllerTransition');
     expect(shellSource).toContain('await session.closeProject()');
     // The shell owns the consequences; the dialog only reports a choice.
     expect(dialogSource).not.toContain('pandaStage');

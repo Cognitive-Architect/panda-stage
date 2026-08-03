@@ -136,6 +136,7 @@ export class EditorShellSession {
   private lastAutosaveSnapshot: EditorProjectSnapshot | null = null;
   private autosaveUpdateQueue: Promise<void> = Promise.resolve();
   private autosaveUpdateFailure: Error | null = null;
+  private controllerTransitionDepth = 0;
   private lifecycleGeneration = 0;
   private controllerDisposePromise: Promise<void> | null = null;
 
@@ -195,6 +196,7 @@ export class EditorShellSession {
   ): Promise<RecoveryAcknowledgeResponse | null> {
     if (
       !snapshot ||
+      this.controllerTransitionDepth > 0 ||
       snapshot === this.lastAutosaveSnapshot ||
       snapshot.projectRoot !== this.getSnapshot().trackedProjectRoot
     ) {
@@ -220,7 +222,9 @@ export class EditorShellSession {
 
   async switchProject(projectRoot: string): Promise<ProjectSessionSnapshot> {
     await this.flushAutosave();
-    return this.controller.switchProject(projectRoot);
+    return this.runControllerTransition(() =>
+      this.controller.switchProject(projectRoot),
+    );
   }
 
   async switchRecentProject(
@@ -228,9 +232,11 @@ export class EditorShellSession {
     expectedProjectId: string,
   ): Promise<ProjectSessionSnapshot> {
     await this.flushAutosave();
-    return this.controller.switchRecentProject(
-      projectRoot,
-      expectedProjectId,
+    return this.runControllerTransition(() =>
+      this.controller.switchRecentProject(
+        projectRoot,
+        expectedProjectId,
+      ),
     );
   }
 
@@ -240,7 +246,9 @@ export class EditorShellSession {
    */
   async closeProject(): Promise<ProjectSessionSnapshot> {
     await this.flushAutosave();
-    return this.controller.closeProject();
+    return this.runControllerTransition(() =>
+      this.controller.closeProject(),
+    );
   }
 
   async restoreRecovery(): Promise<RecoveryRestoreResponse> {
@@ -278,6 +286,17 @@ export class EditorShellSession {
     const failure = this.autosaveUpdateFailure;
     this.autosaveUpdateFailure = null;
     if (failure) throw failure;
+  }
+
+  private async runControllerTransition<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.controllerTransitionDepth += 1;
+    try {
+      return await operation();
+    } finally {
+      this.controllerTransitionDepth -= 1;
+    }
   }
 }
 

@@ -2,6 +2,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectSchema, type Project } from '../../src/domain';
 import {
+  AutosaveService,
+  type AutosaveClock,
+} from '../../src/main/services/AutosaveService';
+import type { RecoveryService } from '../../src/main/services/RecoveryService';
+import {
   ProjectSessionController,
   type ProjectSessionApi,
 } from '../../src/renderer/features/recovery/ProjectSessionController';
@@ -28,6 +33,11 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 const PROJECT_ROOT = 'D:\\projects\\shell.pandastage';
 const SECOND_PROJECT_ROOT = 'D:\\projects\\second.pandastage';
 const PROJECT = ProjectSchema.parse(exampleProject);
+const inertClock: AutosaveClock = {
+  setInterval: () =>
+    1 as unknown as ReturnType<typeof setInterval>,
+  clearInterval: () => undefined,
+};
 
 function candidate(project: Project): RecoveryCandidate {
   return {
@@ -438,6 +448,121 @@ describe('EditorShell project session integration', () => {
       project: { id: PROJECT.id },
     });
     expect(harness.createController).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not update the stopped A autosave session during save-and-switch', async () => {
+    const store = new EditorProjectStore();
+    const projectB = ProjectSchema.parse({
+      ...structuredClone(exampleProject),
+      id: 'c0000000-0000-4000-8000-000000000001',
+      name: 'Project B',
+    });
+    const autosave = new AutosaveService({
+      recoveryService: {
+        writeRecovery: vi.fn().mockResolvedValue(undefined),
+      } as unknown as RecoveryService,
+      clock: inertClock,
+    });
+    const update = vi.fn(async (request) => {
+      autosave.update(request);
+      return { ok: true as const };
+    });
+    let session: EditorShellSession | null = null;
+    const sessionApi: ProjectSessionApi = {
+      open: vi.fn(async (projectRoot) => ({
+        ok: true as const,
+        value: {
+          projectRoot,
+          projectFilePath: `${projectRoot}\\project.json`,
+          project: PROJECT,
+          migrated: false,
+          sourceVersion: 1 as const,
+        },
+      })),
+      openRecent: vi.fn(async (projectRoot) => ({
+        ok: true as const,
+        document: {
+          projectRoot,
+          projectFilePath: `${projectRoot}\\project.json`,
+          project: projectB,
+          migrated: false,
+          sourceVersion: 1 as const,
+        },
+      })),
+      track: vi.fn(async (request) => {
+        autosave.track(request);
+        return { ok: true as const };
+      }),
+      stop: vi.fn(async (projectRoot) => {
+        await autosave.stop(projectRoot);
+        // This models the React effect that can observe the saved A snapshot
+        // after Main has already stopped A during the controller transition.
+        await session?.syncAutosave(store.getSnapshot());
+        return { ok: true as const };
+      }),
+      detect: vi.fn(async () => ({
+        ok: true as const,
+        candidate: null,
+      })),
+      confirmSwitch: vi.fn(async (request) => {
+        // The Main Process has completed the real formal save before the
+        // controller marks A clean and stops its autosave session.
+        autosave.markFormalSaved(
+          request.projectRoot,
+          request.project,
+          request.revision,
+        );
+        return { outcome: 'saved' as const };
+      }),
+    };
+    session = new EditorShellSession({
+      store,
+      sessionApi,
+      autosaveApi: {
+        update,
+        onError: vi.fn(() => vi.fn()),
+      },
+      recoveryApi: {
+        restore: vi.fn(),
+        ignore: vi.fn(),
+      },
+      projectSaveApi: {
+        save: vi.fn(),
+      },
+    });
+
+    await session.switchProject(PROJECT_ROOT);
+    await session.syncAutosave(store.getSnapshot());
+    store.updateProject({ ...PROJECT, name: 'Project A edited' });
+    await session.syncAutosave(store.getSnapshot());
+
+    await expect(
+      session.switchRecentProject(SECOND_PROJECT_ROOT, projectB.id),
+    ).resolves.toMatchObject({
+      trackedProjectRoot: SECOND_PROJECT_ROOT,
+    });
+
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        projectRoot: PROJECT_ROOT,
+        dirty: false,
+      }),
+    );
+    expect(update).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        projectRoot: PROJECT_ROOT,
+        dirty: true,
+      }),
+    );
+    expect(autosave.trackedProjectCount()).toBe(1);
+    expect(store.getSnapshot()).toMatchObject({
+      projectRoot: SECOND_PROJECT_ROOT,
+      project: { id: projectB.id },
+      dirty: false,
+    });
   });
 
   it('keeps A -> B -> A identity, visible active path, dirty state, and save target aligned', async () => {
