@@ -19,9 +19,9 @@ describe('canvas components', () => {
     );
 
     expect(markup).toContain('aria-pressed="true"');
-    expect(markup).toContain('Fit to viewport');
+    expect(markup).toContain('适应窗口');
     expect(markup).toContain('41.7%');
-    expect(markup).toContain('Logical canvas 1920 × 1080');
+    expect(markup).toContain('逻辑画布 1920 × 1080');
     expect(markup).toContain('x 960.0 · y 540.0');
   });
 
@@ -38,8 +38,8 @@ describe('canvas components', () => {
       }),
     );
 
-    expect(markup).toContain('Actual size');
-    expect(markup).toContain('1:1 pixels · scroll to inspect');
+    expect(markup).toContain('实际尺寸');
+    expect(markup).toContain('1:1 像素 · 可滚动查看');
     expect(markup).toContain('100.0%');
   });
 });

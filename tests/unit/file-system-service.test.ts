@@ -29,7 +29,7 @@ describe('FileSystemService Unicode paths and cleanup', () => {
   });
 
   it('writes in a Unicode root and cleans the same Job idempotently', async () => {
-    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-day09-'));
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day09-'));
     temporaryRoots.push(parent);
     const unicodeRoot = path.join(parent, '熊猫 临时帧 🐼');
     const projectDirectory = path.join(parent, '项目 空格 🎬');
@@ -60,7 +60,7 @@ describe('FileSystemService Unicode paths and cleanup', () => {
   });
 
   it('commits a same-directory Job staging file without pre-deleting the formal output', async () => {
-    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-day09-'));
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day09-'));
     temporaryRoots.push(parent);
     const service = new FileSystemService(path.join(parent, 'frames'));
     const outputPath = path.join(parent, '正式 输出.MP4');

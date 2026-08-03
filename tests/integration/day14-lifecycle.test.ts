@@ -39,7 +39,7 @@ afterEach(async () => {
 
 describe('Day 14 complete moved-project lifecycle', () => {
   it('retains a missing recent record, relocates the moved project, recovery, and relative asset', async () => {
-    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-day14-real-'));
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-day14-real-'));
     temporaryDirectories.push(parent);
     const oldRoot = path.join(
       parent,
@@ -166,7 +166,7 @@ describe('Day 14 complete moved-project lifecycle', () => {
   });
 
   it('rejects relocating a missing record to a different project identity', async () => {
-    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-day14-id-'));
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-day14-id-'));
     temporaryDirectories.push(parent);
     const configPath = path.join(parent, 'user-data', 'recent.json');
     const firstRoot = path.join(parent, 'first.pandastage');

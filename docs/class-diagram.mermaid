@@ -1,0 +1,99 @@
+classDiagram
+    direction LR
+
+    class Project {
+        +string schemaVersion
+        +Shot[] shots
+        +Character[] characters
+        +Asset[] assets
+    }
+    class Shot {
+        +string id
+        +number durationMs
+        +Layer[] layers
+        +string backgroundLayerId
+        +TimelineEvent[] timelineEvents
+    }
+    class Layer {
+        +string id
+        +LayerSource source
+        +number x
+        +number y
+        +number scaleX
+        +number scaleY
+        +boolean locked
+        +boolean visible
+        +number opacity
+    }
+    class TimelineEvent {
+        <<discriminatedUnion startMs/endMs>>
+    }
+    class MoveEvent {
+        +from Point
+        +to Point
+        +easing
+    }
+    class ScaleEvent {
+        +from Scale
+        +to Scale
+        +easing
+    }
+    class OpacityEvent {
+        +number from
+        +number to
+    }
+    class ShakeEvent {
+        +number amplitudeX
+        +number amplitudeY
+        +number frequencyHz
+    }
+    class ExpressionEvent {
+        +string expressionId
+    }
+
+    Project "1" *-- "many" Shot
+    Shot "1" *-- "many" Layer
+    Shot "1" *-- "many" TimelineEvent
+    TimelineEvent <|-- MoveEvent
+    TimelineEvent <|-- ScaleEvent
+    TimelineEvent <|-- OpacityEvent
+    TimelineEvent <|-- ShakeEvent
+    TimelineEvent <|-- ExpressionEvent
+
+    class ActionPreset {
+        <<data-driven>>
+        +id
+        +eventType
+        +defaultParams
+    }
+    class createPresetEvents {
+        +createPresetEvents(project, shotId, layerId, presetId, params) TimelineEvent[]
+    }
+    class timelineEventValidator {
+        +validatePresetApplication(project, shotId, layerId, events) Result
+    }
+    class EditorProjectStore {
+        +updateProject(project, label, options)
+    }
+    class ProjectCommand {
+        +before Project
+        +after Project
+        +redo() / undo()
+    }
+    class evaluateShotAtTime {
+        +evaluateShotAtTime(shot, timeMs, project) EvaluatedShot
+    }
+    class StageRenderer {
+        +buildStageRenderModel + Konva
+    }
+
+    ActionPreset ..> createPresetEvents : 定义
+    createPresetEvents ..> timelineEventValidator : 经
+    createPresetEvents ..> TimelineEvent : 产出
+    timelineEventValidator ..> Shot : 校验
+    EditorProjectStore *-- ProjectCommand
+    createPresetEvents ..> EditorProjectStore : 经 updateProject 写入
+    ProjectCommand ..> Project : before/after
+    evaluateShotAtTime ..> Shot : 消费
+    evaluateShotAtTime ..> Project : 解析 expression→asset
+    StageRenderer ..> evaluateShotAtTime : 调用

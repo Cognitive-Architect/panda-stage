@@ -42,6 +42,13 @@ export class ProjectRootAlreadyExistsError extends Error {
   }
 }
 
+export class ProjectFileNotFoundError extends Error {
+  constructor(readonly projectRoot: string, options?: ErrorOptions) {
+    super(`Project file does not exist: ${path.join(projectRoot, PROJECT_FILE_NAME)}`, options);
+    this.name = 'ProjectFileNotFoundError';
+  }
+}
+
 export class ProjectFileSystemService {
   constructor(
     private readonly faults: ProjectFileSystemFaultInjector = {},
@@ -86,7 +93,14 @@ export class ProjectFileSystemService {
 
   async readProjectFile(projectRoot: string): Promise<string> {
     await this.assertProjectRoot(projectRoot);
-    return readFile(this.projectFilePath(projectRoot), 'utf8');
+    try {
+      return await readFile(this.projectFilePath(projectRoot), 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new ProjectFileNotFoundError(projectRoot, { cause: error });
+      }
+      throw error;
+    }
   }
 
   async removeNewProjectRoot(projectRoot: string): Promise<void> {

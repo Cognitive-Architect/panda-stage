@@ -12,13 +12,16 @@ import {
   type Project,
 } from '../../domain';
 import {
+  PROJECT_ROOT_EXTENSION,
   ProjectCreateMetadataSchema,
+  projectNameIssue,
   type ProjectCreateMetadata,
   type ProjectDocument,
   type ProjectErrorCode,
 } from '../../shared/project-api';
 import {
   AtomicWriteCommitRejectedError,
+  ProjectFileNotFoundError,
   ProjectFileSystemService,
   ProjectRootAlreadyExistsError,
 } from './ProjectFileSystemService';
@@ -164,6 +167,30 @@ export class ProjectService {
       }
       throw this.mapError('create', projectRoot, error);
     }
+  }
+
+  /**
+   * Creates a project inside `rawParentDirectory` from a bare project name.
+   *
+   * The Renderer is never allowed to assemble the final project root, so this
+   * method owns the path join, the containment check, and the `.pandastage`
+   * suffix. The actual tree creation and duplicate rejection are delegated to
+   * {@link ProjectService.create}, which keeps a single creation code path.
+   *
+   * @param rawParentDirectory - Directory that will contain the project root.
+   * @param rawProjectName - Bare project name without the `.pandastage` suffix.
+   * @param rawMetadata - Project metadata used to seed `project.json`.
+   * @returns The freshly created project document.
+   */
+  async createAt(
+    rawParentDirectory: string,
+    rawProjectName: string,
+    rawMetadata: ProjectCreateMetadata,
+  ): Promise<ProjectDocument> {
+    return this.create(
+      this.resolveNewProjectRoot(rawParentDirectory, rawProjectName),
+      rawMetadata,
+    );
   }
 
   async open(rawProjectRoot: string): Promise<ProjectDocument> {
@@ -362,6 +389,57 @@ export class ProjectService {
     }
   }
 
+  /**
+   * Joins a trusted parent directory with an untrusted bare project name.
+   *
+   * Path traversal (`..`), embedded separators, Windows reserved device names,
+   * and forbidden characters are rejected before the join. After the join the
+   * resulting basename is compared against the expected directory name, which
+   * proves the project root stays directly inside the parent directory.
+   */
+  private resolveNewProjectRoot(
+    rawParentDirectory: string,
+    rawProjectName: string,
+  ): string {
+    const trimmedParent = rawParentDirectory.trim();
+    if (!trimmedParent) {
+      throw new ProjectServiceError(
+        'INVALID_PROJECT_ROOT',
+        rawParentDirectory,
+        'Cannot create project: the parent directory must not be empty.',
+      );
+    }
+    const parentDirectory = this.pathService.resolve(trimmedParent);
+    const projectName = rawProjectName.trim();
+    const issue = projectNameIssue(projectName);
+    if (issue) {
+      throw new ProjectServiceError(
+        'INVALID_PROJECT_ROOT',
+        parentDirectory,
+        `Cannot create project in ${parentDirectory}: the project name is rejected (${issue}).`,
+      );
+    }
+    const expectedDirectoryName = `${projectName}${PROJECT_ROOT_EXTENSION}`;
+    const projectRoot = this.pathService.join(
+      parentDirectory,
+      expectedDirectoryName,
+    );
+    if (
+      this.pathService.basename(projectRoot) !== expectedDirectoryName ||
+      !this.pathService.same(
+        this.pathService.dirname(projectRoot),
+        parentDirectory,
+      )
+    ) {
+      throw new ProjectServiceError(
+        'INVALID_PROJECT_ROOT',
+        parentDirectory,
+        `Cannot create project in ${parentDirectory}: the project name escapes the selected parent directory.`,
+      );
+    }
+    return projectRoot;
+  }
+
   private resolveProjectRoot(rawProjectRoot: string): string {
     const trimmedRoot = rawProjectRoot.trim();
     const projectRoot = this.pathService.resolve(trimmedRoot || '.');
@@ -411,6 +489,16 @@ export class ProjectService {
         'PROJECT_ALREADY_EXISTS',
         projectRoot,
         `Cannot create project at ${projectRoot}: the target directory already exists.`,
+        { cause: error },
+      );
+    }
+    if (error instanceof ProjectFileNotFoundError) {
+      return new ProjectServiceError(
+        operation === 'open'
+          ? 'PROJECT_FILE_NOT_FOUND'
+          : 'PROJECT_NOT_FOUND',
+        projectRoot,
+        `Cannot ${operation} project at ${projectRoot}: project.json does not exist.`,
         { cause: error },
       );
     }

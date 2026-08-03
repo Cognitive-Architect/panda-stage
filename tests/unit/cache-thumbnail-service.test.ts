@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 async function projectRoot(): Promise<string> {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'panda-cache-'));
+  const root = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-cache-'));
   temporaryDirectories.push(root);
   return root;
 }

@@ -29,7 +29,7 @@ async function harness(): Promise<{
   projectService: ProjectService;
   recentProjects: RecentProjectsService;
 }> {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-day14-unit-'));
+  const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-day14-unit-'));
   temporaryDirectories.push(parent);
   const projectRoot = path.join(parent, '熊猫 项目 🐼.pandastage');
   const configPath = path.join(parent, 'app-user-data', 'recent-projects.json');

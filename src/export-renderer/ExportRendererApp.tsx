@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { evaluateShotAtTime } from '../shared/domain';
+import { evaluateShotAtTime } from '../domain';
 import type {
   ExportLoadProbeRequest,
   ExportRenderFrameRequest,
@@ -84,8 +84,8 @@ export function ExportRendererApp(): React.JSX.Element {
   );
   const requestedTimeMs = frameRequest?.timeMs ?? 0;
   const evaluatedShot = useMemo(
-    () => evaluateShotAtTime(shot, requestedTimeMs),
-    [requestedTimeMs, shot],
+    () => evaluateShotAtTime(shot, requestedTimeMs, project),
+    [requestedTimeMs, shot, project],
   );
   const subtitle = evaluateSubtitleAtTime(
     PROBE_SUBTITLE_CUES,

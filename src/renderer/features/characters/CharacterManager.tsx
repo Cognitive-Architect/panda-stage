@@ -11,9 +11,7 @@ import {
   type Project,
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
-import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { characterStore } from '../../stores/characterStore';
-import { saveCurrentProject } from '../recovery/saveCurrentProject';
 import type { ThumbnailState } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
 import { CharacterList } from './CharacterList';
@@ -29,9 +27,8 @@ export function CharacterManager({
   const [selectedCharacterId, setSelectedCharacterId] =
     useState<string | null>(snapshot?.project.characters[0]?.id ?? null);
   const [status, setStatus] = useState(
-    '将项目图片组织为可复用角色；所有修改先进入自动保存队列。',
+    '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
   );
-  const [busy, setBusy] = useState(false);
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
@@ -126,7 +123,7 @@ export function CharacterManager({
   ): Project | null => {
     try {
       const next = action();
-      setStatus(`${success} 修改已进入自动保存队列，正式保存前仍可关闭放弃。`);
+      setStatus(`${success} 修改已应用，项目尚未保存。`);
       return next;
     } catch (error) {
       reportError(error);
@@ -137,35 +134,10 @@ export function CharacterManager({
   const createCharacter = (input: CreateCharacterInput): void => {
     const next = mutate(
       () => characterStore.create(input),
-      '角色与 normal / angry 表情已创建。',
+      '角色与普通 / 生气表情已创建。',
     );
     if (next) {
       setSelectedCharacterId(next.characters.at(-1)!.id);
-    }
-  };
-
-  const save = async (): Promise<void> => {
-    if (!editorProjectStore.getSnapshot()?.dirty) {
-      setStatus('当前角色定义没有待保存修改。');
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await saveCurrentProject(
-        window.pandaStage.project,
-        editorProjectStore,
-      );
-      setStatus(
-        result.ok
-          ? result.acknowledgement === 'current'
-            ? '角色定义已保存到 project.json，可安全重开。'
-            : '保存完成，但较新的未保存修改仍保留在编辑器中。'
-          : result.error.message,
-      );
-    } catch (error) {
-      reportError(error);
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -173,31 +145,25 @@ export function CharacterManager({
     <section
       className="character-manager"
       aria-labelledby="character-manager-heading"
+      data-testid="character-manager"
     >
       <div className="character-manager-heading">
         <div>
-          <p className="eyebrow">Day 19 character definitions</p>
+          <p className="eyebrow">角色定义</p>
           <h2 id="character-manager-heading">角色与表情</h2>
         </div>
         <div>
           <span>
             {snapshot
-              ? `${snapshot.project.characters.length} 个角色 · revision ${snapshot.revision}`
+              ? `${snapshot.project.characters.length} 个角色 · 修订 ${snapshot.revision}`
               : '尚未打开项目'}
           </span>
-          <button
-            disabled={busy || !snapshot?.dirty}
-            onClick={() => void save()}
-            type="button"
-          >
-            {busy ? '正在保存…' : '保存角色定义'}
-          </button>
         </div>
       </div>
       <div className="character-workspace">
         <CharacterList
           characters={project?.characters ?? []}
-          disabled={busy || !snapshot}
+          disabled={!snapshot}
           imageAssets={imageAssets}
           onCreate={createCharacter}
           onSelect={setSelectedCharacterId}
@@ -205,7 +171,7 @@ export function CharacterManager({
         />
         <CharacterEditor
           character={selectedCharacter}
-          disabled={busy}
+          disabled={!snapshot}
           imageAssets={imageAssets}
           key={selectedCharacter?.id ?? 'empty'}
           onAddExpression={(name, assetId) => {

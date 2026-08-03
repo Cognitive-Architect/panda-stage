@@ -1,18 +1,23 @@
 {
-  "heading": "Crash recovery",
-  "defaultState": "Clean",
-  "inputPlaceholder": "D:\\Projects\\story.pandastage",
+  "heading": "项目编辑",
+  "defaultState": "暂无未保存更改",
+  "inputPlaceholder": "输入另一个项目文件夹路径",
   "actions": [
-    "Open and check recovery",
-    "Restore in memory",
-    "Ignore and retain file",
-    "Save recovered project"
+    "打开项目",
+    "浏览…",
+    "恢复",
+    "忽略",
+    "保存整个项目",
+    "产品预览",
+    "关闭当前项目"
   ],
+  "candidateSummary": "检测到未保存的恢复内容",
+  "candidateTime": "2100/1/1 08:00:00",
   "candidateProject": "Recovered crash draft",
-  "candidateTime": "Recovery from 2100/1/1 08:00:00",
+  "candidateDetails": "查看详情",
   "candidateActions": [
-    "Restore in memory",
-    "Ignore and retain file"
+    "恢复",
+    "忽略"
   ],
   "autosaveApi": [
     "onError",
@@ -25,5 +30,9 @@
     "ignore",
     "restore"
   ],
-  "rendererHasNodeRequire": false
+  "rendererHasNodeRequire": false,
+  "invalidCandidate": {
+    "disabled": true,
+    "hint": "项目文件夹路径包含 Windows 不允许的字符。"
+  }
 }

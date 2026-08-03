@@ -41,7 +41,7 @@ function deferred(): {
 
 async function createRoot(): Promise<string> {
   const parent = await mkdtemp(
-    path.join(os.tmpdir(), 'panda-stage-project-save-cas-'),
+    path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-project-save-cas-'),
   );
   temporaryParents.push(parent);
   return path.join(parent, '角色 保存 CAS 🐼.pandastage');

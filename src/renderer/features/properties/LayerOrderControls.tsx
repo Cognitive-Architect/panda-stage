@@ -102,7 +102,7 @@ export function LayerOrderControls(): React.JSX.Element {
       data-testid="layer-order-controls"
     >
       <div>
-        <p className="eyebrow">Day 23 layer order</p>
+        <p className="eyebrow">图层顺序</p>
         <h3>层级与删除</h3>
       </div>
       <div className="layer-order-actions">

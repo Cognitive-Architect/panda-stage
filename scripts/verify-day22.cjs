@@ -36,6 +36,27 @@ function waitFor(expression, failureMessage) {
   `;
 }
 
+async function selectResourceActivity(window, activity) {
+  const selector =
+    `[data-testid="resource-activity-tabs"] [data-activity="${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Resource activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="resource-activity-panel"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+      `Resource activity did not activate: ${activity}`,
+    ),
+  );
+}
+
 async function setInput(window, selector, value) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
@@ -64,16 +85,67 @@ async function openProject(window) {
   );
 }
 
-async function scrollCanvasIntoView(window) {
-  await window.webContents.executeJavaScript(`(async () => {
-    const canvas = document.querySelector('.project-canvas');
-    window.scrollTo(
-      0,
-      canvas.getBoundingClientRect().top + window.scrollY - 8
+async function scrollTargetIntoActiveViewport(
+  window,
+  selector,
+  topOffset,
+) {
+  return window.webContents.executeJavaScript(`(async () => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    if (!(target instanceof HTMLElement)) {
+      throw new Error('Scroll target was not found: ${selector}');
+    }
+    const canvasViewport = document.querySelector(
+      '[data-testid="canvas-workspace-scroll"]'
     );
+    if (canvasViewport instanceof HTMLElement) {
+      const beforeTarget = target.getBoundingClientRect();
+      const beforeViewport = canvasViewport.getBoundingClientRect();
+      canvasViewport.scrollTop +=
+        beforeTarget.top - beforeViewport.top - ${topOffset};
+    } else {
+      window.scrollTo(
+        0,
+        target.getBoundingClientRect().top + window.scrollY - ${topOffset}
+      );
+    }
     await document.fonts.ready;
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    const targetBounds = target.getBoundingClientRect();
+    const viewportBounds =
+      canvasViewport instanceof HTMLElement
+        ? canvasViewport.getBoundingClientRect()
+        : {
+            top: 0,
+            right: innerWidth,
+            bottom: innerHeight,
+            left: 0
+          };
+    const visible =
+      targetBounds.bottom > viewportBounds.top &&
+      targetBounds.top < viewportBounds.bottom &&
+      targetBounds.right > viewportBounds.left &&
+      targetBounds.left < viewportBounds.right;
+    if (!visible) {
+      throw new Error(
+        'Scroll target did not enter the active viewport: ${selector}'
+      );
+    }
+    return {
+      mode:
+        canvasViewport instanceof HTMLElement
+          ? 'canvas-workspace'
+          : 'window',
+      targetTop: targetBounds.top,
+      viewportTop: viewportBounds.top
+    };
   })()`);
+}
+
+async function scrollCanvasIntoView(window) {
+  await scrollTargetIntoActiveViewport(window, '.project-canvas', 8);
 }
 
 async function captureElement(window, selector) {
@@ -95,6 +167,7 @@ async function captureElement(window, selector) {
 }
 
 async function selectCategory(window, index, assetId) {
+  await selectResourceActivity(window, 'assets');
   await window.webContents.executeJavaScript(`(() => {
     document.querySelectorAll('.asset-category-tabs button')[${index}].click();
   })()`);
@@ -191,9 +264,6 @@ async function stageSnapshot(window) {
     const stage = document.querySelector(
       '[data-testid="project-canvas-stage"]'
     );
-    const revisionText = document.querySelector(
-      '.shot-manager-heading span'
-    ).textContent;
     return {
       layers: JSON.parse(stage.dataset.layerJson),
       renderedAssetIds: JSON.parse(stage.dataset.renderedAssetIds),
@@ -201,7 +271,7 @@ async function stageSnapshot(window) {
       interactionStatus: document.querySelector(
         '[data-testid="canvas-interaction-status"]'
       ).textContent.trim(),
-      revision: Number(/revision (\\d+)/.exec(revisionText)?.[1]),
+      revision: Number(stage.dataset.projectRevision),
       dirty: document.querySelector('.dirty-state') !== null
     };
   })()`);
@@ -335,8 +405,8 @@ async function verifyDay22() {
     window.setSize(1440, 1000);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Project canvas did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await openProject(window);
@@ -662,8 +732,8 @@ async function verifyDay22() {
     await window.webContents.reload();
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Canvas did not render after reload.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render after reload.',
       ),
     );
     await openProject(window);

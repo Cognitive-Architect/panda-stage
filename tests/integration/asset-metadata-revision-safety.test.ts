@@ -72,7 +72,7 @@ async function stateHashes(projectRoot: string): Promise<{
 }
 
 async function createHarness(kind: 'audio' | 'image' = 'audio') {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-revision-'));
+  const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-revision-'));
   temporaryDirectories.push(parent);
   const projectRoot = path.join(parent, 'revision-safe.pandastage');
   const coordinator = new ProjectOperationCoordinator();
@@ -365,6 +365,10 @@ describe('asset metadata revision and operation safety', () => {
     const input = await createHarness('image');
     let active = 0;
     let aborted = false;
+    let markAborted!: () => void;
+    const abortDone = new Promise<void>((resolve) => {
+      markAborted = resolve;
+    });
     const cache = new CacheService();
     const thumbnailService = new ThumbnailService(cache, {
       generate: async (
@@ -376,15 +380,17 @@ describe('asset metadata revision and operation safety', () => {
       ) => {
         active += 1;
         await new Promise<void>((_resolve, reject) => {
-          signal?.addEventListener(
-            'abort',
-            () => {
-              aborted = true;
-              active -= 1;
-              reject(new Error('aborted'));
-            },
-            { once: true },
-          );
+          const onAbort = () => {
+            aborted = true;
+            active -= 1;
+            markAborted();
+            reject(new Error('aborted'));
+          };
+          if (signal?.aborted) {
+            onAbort();
+            return;
+          }
+          signal?.addEventListener('abort', onAbort, { once: true });
         });
       },
     });
@@ -406,6 +412,7 @@ describe('asset metadata revision and operation safety', () => {
     await expect(
       metadata.refresh(request(input, input.revision3, 3)),
     ).rejects.toMatchObject({ code: 'ASSET_METADATA_TIMEOUT' });
+    await abortDone;
     expect({ active, aborted }).toEqual({ active: 0, aborted: true });
     expect(await stateHashes(input.projectRoot)).toEqual(before);
     const cacheFiles = await readdir(
@@ -430,21 +437,27 @@ describe('asset metadata revision and operation safety', () => {
       const started = new Promise<void>((resolve) => {
         markStarted = resolve;
       });
+      let markAborted!: () => void;
+      const abortDone = new Promise<void>((resolve) => {
+        markAborted = resolve;
+      });
       const metadata = service(input, {
         audioProbe: {
           probeAudioFile: async (_path, signal) => {
             active += 1;
             markStarted();
             await new Promise<void>((_resolve, reject) => {
-              signal?.addEventListener(
-                'abort',
-                () => {
-                  active -= 1;
-                  aborted += 1;
-                  reject(new Error('aborted'));
-                },
-                { once: true },
-              );
+              const onAbort = () => {
+                active -= 1;
+                aborted += 1;
+                markAborted();
+                reject(new Error('aborted'));
+              };
+              if (signal?.aborted) {
+                onAbort();
+                return;
+              }
+              signal?.addEventListener('abort', onAbort, { once: true });
             });
             throw new Error('unreachable');
           },
@@ -467,6 +480,7 @@ describe('asset metadata revision and operation safety', () => {
             ? 'ASSET_METADATA_TIMEOUT'
             : 'ASSET_METADATA_CANCELLED',
       });
+      await abortDone;
       expect({ active, aborted }).toEqual({ active: 0, aborted: 1 });
       expect(await stateHashes(input.projectRoot)).toEqual(before);
 

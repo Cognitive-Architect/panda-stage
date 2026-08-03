@@ -81,7 +81,8 @@
     "relocate",
     "remove"
   ],
-  "recoveryStatus": "Project opened from recent list. No newer recovery snapshot was found.",
+  "recoveryStatus": "已从最近项目打开，暂无未保存更改。",
+  "activeProjectRoot": "D:\\项目\\可用 熊猫.pandastage",
   "rendererHasNodeRequire": false,
   "openedRecentRoot": "D:\\项目\\可用 熊猫.pandastage",
   "recentProjectsConfigPath": "C:\\Users\\admin\\AppData\\Roaming\\Electron\\recent-projects.json",

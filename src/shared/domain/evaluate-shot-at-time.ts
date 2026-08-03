@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import type { Layer, MoveEvent, Shot } from './schema';
 
+/**
+ * @deprecated Legacy move-only timeline evaluator. Production render/preview/
+ * export chains now use the formal `evaluateShotAtTime` from `src/domain`
+ * (which supports all seven event kinds and resolves expressions). This file
+ * is retained only for legacy probe/history tests and will be removed in a
+ * later day. Do not introduce new callers.
+ */
+
 const EvaluationTimeSchema = z.number().int().nonnegative();
 
 export type EvaluatedLayer = Pick<

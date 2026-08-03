@@ -250,4 +250,41 @@ describe('AutosaveService', () => {
     });
     await service.stopAll();
   });
+
+  it('cleans recovery when history returns to the formal saved baseline', async () => {
+    const cleanupAfterFormalSave = vi.fn().mockResolvedValue(undefined);
+    const base = project('Base');
+    const service = new AutosaveService({
+      recoveryService: {
+        writeRecovery: vi.fn().mockResolvedValue({}),
+        cleanupAfterFormalSave,
+      } as unknown as RecoveryService,
+    });
+    service.track({
+      projectRoot: PROJECT_ROOT,
+      project: base,
+      dirty: false,
+      revision: 0,
+    });
+    service.update({
+      projectRoot: PROJECT_ROOT,
+      project: project('Unsaved history edit'),
+      dirty: true,
+      revision: 1,
+    });
+    service.update({
+      projectRoot: PROJECT_ROOT,
+      project: base,
+      dirty: false,
+      revision: 2,
+    });
+
+    await service.stop(PROJECT_ROOT);
+
+    expect(cleanupAfterFormalSave).toHaveBeenCalledOnce();
+    expect(cleanupAfterFormalSave).toHaveBeenCalledWith(
+      PROJECT_ROOT,
+      base.id,
+    );
+  });
 });

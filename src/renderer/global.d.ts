@@ -45,10 +45,14 @@ import type {
   RecoverySelectionRequest,
 } from '../shared/recovery-api';
 import type {
+  ProjectChooseDirectoryResponse,
+  ProjectCreateAtRequest,
   ProjectCreateRequest,
   ProjectOpenRequest,
   ProjectOperationResponse,
   ProjectSaveRequest,
+  ProjectSwitchGuardRequest,
+  ProjectSwitchGuardResponse,
 } from '../shared/project-api';
 import type {
   ExportCancelResponse,
@@ -64,8 +68,15 @@ declare global {
         ping: () => Promise<AppPingResponse>;
       };
       project: {
+        chooseDirectory: () => Promise<ProjectChooseDirectoryResponse>;
+        confirmSwitch: (
+          request: ProjectSwitchGuardRequest,
+        ) => Promise<ProjectSwitchGuardResponse>;
         create: (
           request: ProjectCreateRequest,
+        ) => Promise<ProjectOperationResponse>;
+        createAt: (
+          request: ProjectCreateAtRequest,
         ) => Promise<ProjectOperationResponse>;
         open: (
           request: ProjectOpenRequest,

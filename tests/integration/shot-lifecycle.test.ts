@@ -27,7 +27,7 @@ const temporaryParents: string[] = [];
 
 async function projectRoot(): Promise<string> {
   const parent = await mkdtemp(
-    path.join(os.tmpdir(), 'panda-stage-day20-'),
+    path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day20-'),
   );
   temporaryParents.push(parent);
   return path.join(parent, '五 镜头 M2 🐼.pandastage');

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   access,
   mkdtemp,
@@ -10,7 +10,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Project } from '../../src/domain';
+import { ProjectSchema, type Project } from '../../src/domain';
 import {
   AutosaveService,
   type AutosaveClock,
@@ -27,6 +27,10 @@ import {
 import {
   RecoveryService,
 } from '../../src/main/services/RecoveryService';
+import {
+  ProjectSessionController,
+  type ProjectSessionApi,
+} from '../../src/renderer/features/recovery/ProjectSessionController';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 
 const temporaryParents: string[] = [];
@@ -54,7 +58,7 @@ function deferred(): {
 
 async function newProjectRoot(): Promise<string> {
   const parent = await mkdtemp(
-    path.join(os.tmpdir(), 'panda-stage-day13-'),
+    path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day13-'),
   );
   temporaryParents.push(parent);
   return path.join(parent, '崩溃 恢复 project 🐼.pandastage');
@@ -187,6 +191,124 @@ describe('crash recovery lifecycle', () => {
     console.info(
       `DAY13_SAVE_RACE_EVIDENCE scenario=A formal=revision-2 recoveryAfterSave=0 liveSessions=${autosave.trackedProjectCount()} laterRecovery=revision-3`,
     );
+  });
+
+  it('clears an on-disk recovery after undo to baseline before A to B to A', async () => {
+    const projectARoot = await newProjectRoot();
+    const projectBRoot = await newProjectRoot();
+    const projectService = new ProjectService({
+      now: () => new Date(FIXED_NOW),
+      createId: randomUUID,
+    });
+    const projectA = (
+      await projectService.create(projectARoot, { name: 'History A' })
+    ).project;
+    await projectService.create(projectBRoot, { name: 'History B' });
+    const documents = new Map([
+      [projectARoot, await projectService.open(projectARoot)],
+      [projectBRoot, await projectService.open(projectBRoot)],
+    ]);
+    let recoveryTime = RECOVERY_TIME;
+    const recoveryService = new RecoveryService({
+      nowMs: () => recoveryTime,
+    });
+    const autosave = new AutosaveService({
+      recoveryService,
+      clock: inertClock,
+    });
+    const store = new EditorProjectStore();
+    const sessionApi: ProjectSessionApi = {
+      open: async (projectRoot) => ({
+        ok: true as const,
+        value: documents.get(projectRoot)!,
+      }),
+      openRecent: async (projectRoot, expectedProjectId) => {
+        const document = documents.get(projectRoot)!;
+        if (document.project.id !== expectedProjectId) {
+          throw new Error('Recent project identity mismatch.');
+        }
+        return { ok: true as const, document };
+      },
+      track: async (request) => {
+        autosave.track(request);
+        return { ok: true as const };
+      },
+      stop: async (projectRoot) => {
+        await autosave.stop(projectRoot);
+        return { ok: true as const };
+      },
+      detect: async (projectRoot) => ({
+        ok: true as const,
+        candidate: await recoveryService.detectLatest(
+          projectRoot,
+          documents.get(projectRoot)!.project,
+        ),
+      }),
+      confirmSwitch: async () => ({ outcome: 'cancelled' as const }),
+    };
+    const controller = new ProjectSessionController(sessionApi, store);
+
+    await controller.switchProject(projectARoot);
+    const baseline = store.getSnapshot()!;
+    const historyEdit = ProjectSchema.parse({
+      ...baseline.project,
+      name: 'H4_HISTORY_A',
+    });
+    store.updateProject(historyEdit, 'Create history recovery edit');
+    autosave.update(store.getSnapshot()!);
+    await autosave.tick(projectARoot);
+
+    const recoveryDirectory = path.join(projectARoot, 'recovery');
+    expect(await readdir(recoveryDirectory)).toHaveLength(1);
+    expect(
+      (
+        await recoveryService.detectLatest(
+          projectARoot,
+          baseline.project,
+        )
+      )?.project.name,
+    ).toBe('H4_HISTORY_A');
+    expect(await projectService.open(projectARoot)).toMatchObject({
+      project: { name: 'History A' },
+    });
+
+    expect(store.undo()).toBe(true);
+    const cleanBaseline = store.getSnapshot()!;
+    expect(cleanBaseline).toMatchObject({
+      dirty: false,
+      project: { name: 'History A' },
+    });
+    autosave.update(cleanBaseline);
+
+    await controller.switchProject(projectBRoot);
+    expect(await readdir(recoveryDirectory)).toEqual([]);
+    await controller.switchRecentProject(projectARoot, projectA.id);
+    expect(controller.getSnapshot().recoveryCandidate).toBeNull();
+    expect(await readdir(recoveryDirectory)).toEqual([]);
+    expect(store.getSnapshot()).toMatchObject({
+      projectRoot: projectARoot,
+      dirty: false,
+      project: { name: 'History A' },
+    });
+
+    recoveryTime += 30_000;
+    const realDirtyProject = ProjectSchema.parse({
+      ...store.getSnapshot()!.project,
+      name: 'Real unsaved recovery edit',
+    });
+    store.updateProject(realDirtyProject, 'Create real recovery edit');
+    autosave.update(store.getSnapshot()!);
+    await autosave.tick(projectARoot);
+    const realDirtyCandidate = await recoveryService.detectLatest(
+      projectARoot,
+      projectA,
+    );
+    expect(realDirtyCandidate?.project.name).toBe(
+      'Real unsaved recovery edit',
+    );
+    expect(store.getSnapshot()).toMatchObject({ dirty: true });
+
+    await controller.closeProject();
   });
 
   it('preserves formal data, recovery evidence, and the live session when formal save fails', async () => {

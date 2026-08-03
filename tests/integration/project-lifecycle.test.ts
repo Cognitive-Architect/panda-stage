@@ -50,7 +50,7 @@ function service(
 }
 
 async function newProjectRoot(): Promise<string> {
-  const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-day12-'));
+  const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day12-'));
   temporaryParents.push(parent);
   return path.join(parent, '熊猫 项目 with spaces 🐼.pandastage');
 }
@@ -145,10 +145,25 @@ describe('project directory lifecycle', () => {
 
     await expectServiceError(
       service().save(emptyRoot, incoming.project),
-      'PROJECT_NOT_FOUND',
+      'PROJECT_FILE_NOT_FOUND',
     );
 
     expect(await readdir(emptyRoot)).toEqual([]);
+  });
+
+  it('distinguishes a missing project.json from a missing project directory', async () => {
+    const emptyRoot = await newProjectRoot();
+    await mkdir(emptyRoot);
+    const missingRoot = await newProjectRoot();
+
+    await expectServiceError(
+      service().open(emptyRoot),
+      'PROJECT_FILE_NOT_FOUND',
+    );
+    await expectServiceError(
+      service().open(missingRoot),
+      'PROJECT_NOT_FOUND',
+    );
   });
 
   it('rejects saving one project into another project root without side effects', async () => {
@@ -182,15 +197,54 @@ describe('project directory lifecycle', () => {
     await service().create(projectRoot, { name: 'Migration root' });
     const filePath = path.join(projectRoot, PROJECT_FILE_NAME);
     const probe = structuredClone(PROBE_PROJECT);
+    // PROBE_PROJECT is a v5 project; downgrade it to a valid v0 envelope so
+    // the migration path is actually exercised (v0 has no characters, voice
+    // profiles, subtitle styles, and uses assetId layers + durationMs move
+    // events rather than the v5 source shape + startMs/endMs).
     const v0 = {
-      ...probe,
       schemaVersion: 0,
+      id: probe.id,
+      name: probe.name,
+      width: probe.width,
+      height: probe.height,
+      fps: probe.fps,
+      assets: probe.assets,
+      createdAt: probe.createdAt,
+      updatedAt: probe.updatedAt,
       shots: probe.shots.map((shot) => ({
-        ...shot,
-        layers: shot.layers.map(({ flipX, ...layer }) => {
-          void flipX;
-          return layer;
-        }),
+        id: shot.id,
+        name: shot.name,
+        durationMs: shot.durationMs,
+        backgroundLayerId: shot.backgroundLayerId,
+        layers: shot.layers.map((layer) => ({
+          id: layer.id,
+          assetId:
+            layer.source.kind === 'asset'
+              ? layer.source.assetId
+              : layer.source.characterId,
+          name: layer.name,
+          anchor: layer.anchor,
+          x: layer.x,
+          y: layer.y,
+          scaleX: layer.scaleX,
+          scaleY: layer.scaleY,
+          rotationDeg: layer.rotationDeg,
+          opacity: layer.opacity,
+          visible: layer.visible,
+          zIndex: layer.zIndex,
+        })),
+        timelineEvents: shot.timelineEvents
+          .filter((event) => event.type === 'move')
+          .map((event) => ({
+            id: event.id,
+            type: 'move',
+            layerId: event.layerId,
+            startMs: event.startMs,
+            durationMs: event.endMs - event.startMs,
+            from: event.from,
+            to: event.to,
+            easing: event.easing,
+          })),
       })),
     };
     const source = `${JSON.stringify(v0, null, 2)}\n`;

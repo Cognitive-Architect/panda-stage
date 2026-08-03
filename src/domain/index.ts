@@ -6,3 +6,11 @@ export * from './models';
 export * from './selectors';
 export * from './services';
 export * from './validators';
+export * from './actions';
+export {
+  evaluateShotAtTime,
+} from './evaluate-shot-at-time';
+export type {
+  EvaluatedLayer,
+  EvaluatedShot,
+} from './evaluate-shot-at-time';

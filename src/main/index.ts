@@ -1,4 +1,4 @@
-import { app, dialog, type BrowserWindow } from 'electron';
+import { app, dialog, Menu, type BrowserWindow } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
@@ -37,6 +37,7 @@ import { registerAssetMetadataIpcHandlers } from './ipc/register-asset-metadata-
 import { registerAssetLibraryIpcHandlers } from './ipc/register-asset-library-ipc-handlers';
 import { AssetDeleteService } from './services/AssetDeleteService';
 import { AssetThumbnailService } from './services/AssetThumbnailService';
+import { shouldExposeDevelopmentMenu } from './menu-policy';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -52,6 +53,18 @@ let autosaveService: AutosaveService | null = null;
 let projectService: ProjectService | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
+
+async function selectProjectDirectory(
+  window: BrowserWindow,
+  title: string,
+): Promise<string | null> {
+  const selection = await dialog.showOpenDialog(window, {
+    title,
+    buttonLabel: '选择项目文件夹',
+    properties: ['openDirectory'],
+  });
+  return selection.canceled ? null : selection.filePaths[0] ?? null;
+}
 
 if (process.env.PANDA_STAGE_GATE_A === '1') {
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -81,6 +94,14 @@ async function createApplicationWindows(): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
+  if (
+    !shouldExposeDevelopmentMenu({
+      isPackaged: app.isPackaged,
+      gateA: process.env.PANDA_STAGE_GATE_A === '1',
+    })
+  ) {
+    Menu.setApplicationMenu(null);
+  }
   const resourcesPath =
     process.env.PANDA_STAGE_GATE_A_FORCE_MISSING_MEDIA === '1'
       ? `${process.resourcesPath}-missing-gate-fixture`
@@ -192,6 +213,15 @@ async function initialize(): Promise<void> {
   removeProjectIpcHandlers = registerProjectIpcHandlers({
     getMainWindow: () => mainWindow,
     projectService,
+    selectProjectDirectory: (window) =>
+      selectProjectDirectory(window, '选择 Panda Stage 项目文件夹'),
+    confirmProjectSwitch: async (request) => {
+      if (!unsavedCloseController || !autosaveService) {
+        throw new Error('Unsaved changes guard is unavailable.');
+      }
+      autosaveService.track(request);
+      return unsavedCloseController.requestSwitch(request);
+    },
     onProjectAccessed: (document) =>
       recentProjectsService.record(document).then(() => undefined),
     onRecentProjectError: (error) => {
@@ -208,14 +238,8 @@ async function initialize(): Promise<void> {
     getMainWindow: () => mainWindow,
     projectService,
     recentProjectsService,
-    selectProjectDirectory: async (window) => {
-      const selection = await dialog.showOpenDialog(window, {
-        title: '重新定位 Panda Stage 项目',
-        buttonLabel: '选择项目目录',
-        properties: ['openDirectory'],
-      });
-      return selection.canceled ? null : selection.filePaths[0] ?? null;
-    },
+    selectProjectDirectory: (window) =>
+      selectProjectDirectory(window, '重新定位 Panda Stage 项目'),
   });
   const assetImportService = new AssetImportService({
     projectService,
@@ -275,12 +299,12 @@ async function initialize(): Promise<void> {
   unsavedCloseController = new UnsavedCloseController({
     getDirtyProject: () =>
       autosaveService?.getDirtyProjectSnapshot() ?? null,
-    prompt: async (project) => {
+    prompt: async (project, intent) => {
       const window = mainWindow;
       if (!window || window.isDestroyed()) return 'cancel';
       const result = await dialog.showMessageBox(
         window,
-        createUnsavedCloseDialogOptions(project.project.name),
+        createUnsavedCloseDialogOptions(project.project.name, intent),
       );
       return result.response === 0
         ? 'save'
@@ -305,18 +329,24 @@ async function initialize(): Promise<void> {
         snapshot.project.id,
       );
     },
-    reportSaveFailure: (snapshot, error) => {
+    reportSaveFailure: (snapshot, error, intent) => {
       console.error('Save before close failed.', error);
       dialog.showErrorBox(
         '无法保存项目',
-        `“${snapshot.project.name}”保存失败，窗口将保持打开。请检查磁盘和目录权限后重试。`,
+        intent === 'switch'
+          ? `“${snapshot.project.name}”保存失败，仍将停留在当前项目。请检查磁盘和目录权限后重试。`
+          : `“${snapshot.project.name}”保存失败，窗口将保持打开。请检查磁盘和目录权限后重试。`,
       );
     },
-    reportDiscardFailure: (snapshot, error) => {
+    reportDiscardFailure: (snapshot, error, intent) => {
       console.error('Discard before close failed.', error);
       dialog.showErrorBox(
-        '无法放弃修改并安全退出',
-        `“${snapshot.project.name}”的恢复数据清理失败，窗口将保持打开。请检查磁盘和目录权限后重试。`,
+        intent === 'switch'
+          ? '无法放弃修改并安全切换'
+          : '无法放弃修改并安全退出',
+        intent === 'switch'
+          ? `“${snapshot.project.name}”的恢复数据清理失败，仍将停留在当前项目。请检查磁盘和目录权限后重试。`
+          : `“${snapshot.project.name}”的恢复数据清理失败，窗口将保持打开。请检查磁盘和目录权限后重试。`,
       );
     },
   });

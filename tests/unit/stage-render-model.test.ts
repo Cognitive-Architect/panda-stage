@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateShotAtTime } from '../../src/shared/domain';
+import { evaluateShotAtTime } from '../../src/domain';
 import {
   PROBE_BACKGROUND_ASSET_ID,
   PROBE_CHARACTER_ASSET_ID,
@@ -22,7 +22,7 @@ describe('shared stage render model', () => {
   it('keeps a fixed 1920x1080 logical coordinate system', () => {
     const model = buildStageRenderModel(
       PROBE_PROJECT,
-      evaluateShotAtTime(PROBE_SHOT, 1_500),
+      evaluateShotAtTime(PROBE_SHOT, 1_500, PROBE_PROJECT),
       assetUrls,
     );
     const character = model.layers.find(
@@ -37,7 +37,7 @@ describe('shared stage render model', () => {
   });
 
   it('uses evaluated positions without calculating animation itself', () => {
-    const evaluated = evaluateShotAtTime(PROBE_SHOT, 750);
+    const evaluated = evaluateShotAtTime(PROBE_SHOT, 750, PROBE_PROJECT);
     const model = buildStageRenderModel(PROBE_PROJECT, evaluated, assetUrls);
 
     expect(model.layers).toEqual(
@@ -48,10 +48,10 @@ describe('shared stage render model', () => {
   });
 
   it('moves the probe character from left to right over three seconds', () => {
-    const start = evaluateShotAtTime(PROBE_SHOT, 0).layers.find(
+    const start = evaluateShotAtTime(PROBE_SHOT, 0, PROBE_PROJECT).layers.find(
       (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
     );
-    const end = evaluateShotAtTime(PROBE_SHOT, 3_000).layers.find(
+    const end = evaluateShotAtTime(PROBE_SHOT, 3_000, PROBE_PROJECT).layers.find(
       (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
     );
 
@@ -63,7 +63,7 @@ describe('shared stage render model', () => {
   it('renders a background before the transparent PNG character', () => {
     const model = buildStageRenderModel(
       PROBE_PROJECT,
-      evaluateShotAtTime(PROBE_SHOT, 0),
+      evaluateShotAtTime(PROBE_SHOT, 0, PROBE_PROJECT),
       assetUrls,
     );
 
@@ -89,14 +89,14 @@ describe('shared stage render model', () => {
     expect(() =>
       buildStageRenderModel(
         PROBE_PROJECT,
-        evaluateShotAtTime(PROBE_SHOT, 0),
+        evaluateShotAtTime(PROBE_SHOT, 0, PROBE_PROJECT),
         { [PROBE_BACKGROUND_ASSET_ID]: 'probe/stage-background.svg' },
       ),
     ).toThrowError(StageAssetError);
     expect(() =>
       buildStageRenderModel(
         PROBE_PROJECT,
-        evaluateShotAtTime(PROBE_SHOT, 0),
+        evaluateShotAtTime(PROBE_SHOT, 0, PROBE_PROJECT),
         { [PROBE_BACKGROUND_ASSET_ID]: 'probe/stage-background.svg' },
       ),
     ).toThrow(/透明熊猫角色.*probe\/panda-character\.png/);

@@ -111,9 +111,11 @@ async function verifyDay16() {
       new Promise((resolve, reject) => {
         const deadline = Date.now() + 10000;
         const poll = () => {
-          if (document.querySelector('.asset-import-panel')) return resolve();
+          if (document.querySelector('.recovery-open-row input')) {
+            return resolve();
+          }
           if (Date.now() >= deadline) {
-            return reject(new Error('Asset import panel did not render.'));
+            return reject(new Error('StartScreen did not render.'));
           }
           setTimeout(poll, 25);
         };
@@ -130,13 +132,30 @@ async function verifyDay16() {
         setter.call(input, ${JSON.stringify(projectRoot)});
         input.dispatchEvent(new Event('input', { bubbles: true }));
         document.querySelector('.recovery-open-row button').click();
+        let activitySelected = false;
         return new Promise((resolve, reject) => {
           const deadline = Date.now() + 10000;
           const poll = () => {
+            const activityTab = document.querySelector(
+              '[data-testid="resource-activity-tabs"] [data-activity="assets"]'
+            );
+            if (activityTab && !activitySelected) {
+              activitySelected = true;
+              activityTab.click();
+            }
             const button = document.querySelector(
               '.asset-import-heading button'
             );
-            if (button && !button.disabled) return resolve();
+            const panel = document.querySelector(
+              '[data-testid="resource-activity-panel"]'
+            );
+            if (
+              panel?.dataset.activeActivity === 'assets' &&
+              button &&
+              !button.disabled
+            ) {
+              return resolve();
+            }
             if (Date.now() >= deadline) {
               return reject(new Error('Project did not open for import.'));
             }

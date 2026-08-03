@@ -250,7 +250,7 @@ export function LayerTransformPanel(): React.JSX.Element {
       data-testid="layer-transform-panel"
     >
       <div>
-        <p className="eyebrow">Day 23 layer transform</p>
+        <p className="eyebrow">图层变换</p>
         <h3>图层变换</h3>
       </div>
       {layer ? (

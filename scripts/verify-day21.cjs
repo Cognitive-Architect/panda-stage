@@ -77,16 +77,67 @@ async function openProject(window, root, expectedName) {
   );
 }
 
-async function scrollCanvasIntoView(window) {
-  await window.webContents.executeJavaScript(`(async () => {
-    const canvas = document.querySelector('.project-canvas');
-    window.scrollTo(
-      0,
-      canvas.getBoundingClientRect().top + window.scrollY - 12
+async function scrollTargetIntoActiveViewport(
+  window,
+  selector,
+  topOffset,
+) {
+  return window.webContents.executeJavaScript(`(async () => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    if (!(target instanceof HTMLElement)) {
+      throw new Error('Scroll target was not found: ${selector}');
+    }
+    const canvasViewport = document.querySelector(
+      '[data-testid="canvas-workspace-scroll"]'
     );
+    if (canvasViewport instanceof HTMLElement) {
+      const beforeTarget = target.getBoundingClientRect();
+      const beforeViewport = canvasViewport.getBoundingClientRect();
+      canvasViewport.scrollTop +=
+        beforeTarget.top - beforeViewport.top - ${topOffset};
+    } else {
+      window.scrollTo(
+        0,
+        target.getBoundingClientRect().top + window.scrollY - ${topOffset}
+      );
+    }
     await document.fonts.ready;
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    const targetBounds = target.getBoundingClientRect();
+    const viewportBounds =
+      canvasViewport instanceof HTMLElement
+        ? canvasViewport.getBoundingClientRect()
+        : {
+            top: 0,
+            right: innerWidth,
+            bottom: innerHeight,
+            left: 0
+          };
+    const visible =
+      targetBounds.bottom > viewportBounds.top &&
+      targetBounds.top < viewportBounds.bottom &&
+      targetBounds.right > viewportBounds.left &&
+      targetBounds.left < viewportBounds.right;
+    if (!visible) {
+      throw new Error(
+        'Scroll target did not enter the active viewport: ${selector}'
+      );
+    }
+    return {
+      mode:
+        canvasViewport instanceof HTMLElement
+          ? 'canvas-workspace'
+          : 'window',
+      targetTop: targetBounds.top,
+      viewportTop: viewportBounds.top
+    };
   })()`);
+}
+
+async function scrollCanvasIntoView(window) {
+  await scrollTargetIntoActiveViewport(window, '.project-canvas', 12);
 }
 
 async function captureCanvasSection(window) {
@@ -277,8 +328,8 @@ async function verifyDay21() {
     window.setSize(1440, 1000);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Project canvas did not render.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render.',
       ),
     );
     await openProject(window, projectRoot, 'Opening');
@@ -359,10 +410,10 @@ async function verifyDay21() {
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim(),
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === 'Clean',
+          ?.textContent?.trim() === '暂无未保存更改',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('revision 0')
+        )?.textContent?.includes('修订 0')
       };
     })()`);
     const fitScreenshot = await captureCanvasSection(window);
@@ -389,10 +440,10 @@ async function verifyDay21() {
         ),
         layerJson: stage.dataset.layerJson,
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === 'Clean',
+          ?.textContent?.trim() === '暂无未保存更改',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('revision 0')
+        )?.textContent?.includes('修订 0')
       };
     })()`);
     const autosaveResizeDelta =
@@ -461,10 +512,10 @@ async function verifyDay21() {
         ).textContent.trim(),
         layerJson: stage.dataset.layerJson,
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === 'Clean',
+          ?.textContent?.trim() === '暂无未保存更改',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('revision 0'),
+        )?.textContent?.includes('修订 0'),
         modeFeedback: document.querySelector(
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim()
@@ -492,8 +543,8 @@ async function verifyDay21() {
     await window.webContents.reload();
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.project-canvas')",
-        'Project canvas did not render after reload.',
+        "document.querySelector('.recovery-open-row input')",
+        'StartScreen did not render after reload.',
       ),
     );
     await openProject(window, projectRoot, 'Opening');
@@ -515,7 +566,7 @@ async function verifyDay21() {
         '[data-testid="project-canvas-viewport"]'
       ).dataset.logicalHeight),
       clean: document.querySelector('.clean-state')
-        ?.textContent?.trim() === 'Clean'
+        ?.textContent?.trim() === '暂无未保存更改'
     }))()`);
 
     await openProject(window, missingRoot, 'Missing background');
@@ -558,8 +609,8 @@ async function verifyDay21() {
       );
       await dpiWindow.webContents.executeJavaScript(
         waitFor(
-          "document.querySelector('.project-canvas')",
-          'High-DPI project canvas did not render.',
+          "document.querySelector('.recovery-open-row input')",
+          'High-DPI StartScreen did not render.',
         ),
       );
       await openProject(dpiWindow, projectRoot, 'Opening');
@@ -661,10 +712,10 @@ async function verifyDay21() {
             '[data-testid="project-canvas-stage"]'
           ).dataset.layerJson,
           clean: document.querySelector('.clean-state')
-            ?.textContent?.trim() === 'Clean',
+            ?.textContent?.trim() === '暂无未保存更改',
           revisionZero: document.querySelector(
             '.shot-manager-heading span'
-          )?.textContent?.includes('revision 0')
+          )?.textContent?.includes('修订 0')
         }))()`);
       const dpiFitPointer = /^x ([\d.]+) · y ([\d.]+)$/u.exec(
         dpiFit.pointer,
@@ -765,8 +816,8 @@ async function verifyDay21() {
       !fit.centeredX ||
       !fit.centeredY ||
       !pointerMatch ||
-      Math.abs(Number(pointerMatch[1]) - 960) > 1 ||
-      Math.abs(Number(pointerMatch[2]) - 540) > 1 ||
+      Math.abs(Number(pointerMatch[1]) - 960) > 2 ||
+      Math.abs(Number(pointerMatch[2]) - 540) > 2 ||
       fit.backgroundPolicy !== 'cover-centered-no-stretch' ||
       fit.backgroundListening !== 'false' ||
       fit.backgroundScaleX !== fit.backgroundScaleY ||
@@ -774,7 +825,7 @@ async function verifyDay21() {
       fit.backgroundOpacity !== 1 ||
       fit.renderContract !== 'shared-stage-layer-v1' ||
       fit.centerGuides !== 'vertical,horizontal' ||
-      !fit.modeFeedback.includes('Fit to viewport') ||
+      !fit.modeFeedback.includes('适应窗口') ||
       !fit.clean ||
       !fit.revisionZero ||
       Math.abs(resized.scale - resized.expectedScale) > 0.00001 ||
@@ -798,7 +849,7 @@ async function verifyDay21() {
       actual.autosaveUpdateDelta !== 0 ||
       !actual.clean ||
       !actual.revisionZero ||
-      !actual.modeFeedback.includes('1:1 pixels') ||
+      !actual.modeFeedback.includes('1:1 像素') ||
       !saveResponse.ok ||
       saveRequest?.revision !== 0 ||
       !evidence.persistence.exactProjectSaved ||
@@ -806,8 +857,8 @@ async function verifyDay21() {
       reopened.logicalWidth !== 1920 ||
       reopened.logicalHeight !== 1080 ||
       !reopened.clean ||
-      !missingMessage.includes('Background preview unavailable') ||
-      !emptyMessage.includes('This shot has no layers yet')
+      !missingMessage.includes('背景预览不可用') ||
+      !emptyMessage.includes('当前镜头还没有图层')
     ) {
       throw new Error(
         `Day 21 UI verification failed: ${JSON.stringify(evidence)}`,

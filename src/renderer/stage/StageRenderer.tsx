@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Konva from 'konva';
 import { Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
-import type { EvaluatedShot, Project } from '../../shared/domain';
+import type { EvaluatedShot, Project } from '../../domain';
 import {
   buildStageRenderModel,
   type StageAssetUrlMap,

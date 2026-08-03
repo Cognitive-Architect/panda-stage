@@ -28,7 +28,7 @@ afterEach(async () => {
 describe('explicit background identity lifecycle', () => {
   it('migrates v2, saves, copies, removes, and reopens without a dangling background', async () => {
     const parent = await mkdtemp(
-      path.join(os.tmpdir(), 'panda-stage-background-v3-'),
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-background-v3-'),
     );
     temporaryParents.push(parent);
     const root = path.join(parent, 'background.pandastage');

@@ -64,7 +64,7 @@ async function serviceWithCachedBytes(
   assetIndex = 0,
 ) {
   const projectRoot = await mkdtemp(
-    path.join(os.tmpdir(), 'panda-thumbnail-invalid-'),
+    path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-thumbnail-invalid-'),
   );
   temporaryDirectories.push(projectRoot);
   const sha256 = 'a'.repeat(64);
@@ -105,7 +105,7 @@ afterEach(async () => {
 describe('AssetThumbnailService', () => {
   it('reads only the hash-addressed cache PNG as a data URL', async () => {
     const projectRoot = await mkdtemp(
-      path.join(os.tmpdir(), 'panda-thumbnail-read-'),
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-thumbnail-read-'),
     );
     temporaryDirectories.push(projectRoot);
     const bytes = await readFile('tests/fixtures/assets/熊猫 图片.png');
@@ -145,7 +145,7 @@ describe('AssetThumbnailService', () => {
 
   it('returns a rebuildable missing state for absent or corrupt cache', async () => {
     const projectRoot = await mkdtemp(
-      path.join(os.tmpdir(), 'panda-thumbnail-missing-'),
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-thumbnail-missing-'),
     );
     temporaryDirectories.push(projectRoot);
     const sha256 = 'a'.repeat(64);
