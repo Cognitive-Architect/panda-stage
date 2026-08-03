@@ -28,9 +28,9 @@ import {
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import { CanvasWorkspace } from './CanvasWorkspace';
 import { EditorTopBar } from './EditorTopBar';
 import { LeftWorkspace } from './LeftWorkspace';
-import { LegacyWorkspace } from './LegacyWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
@@ -110,7 +110,7 @@ interface SessionController {
     expectedProjectId: string,
   ): Promise<ProjectSessionSnapshot>;
   closeProject(): Promise<ProjectSessionSnapshot>;
-  clearRecoveryCandidate(): ProjectSessionSnapshot;
+  clearRecoveryCandidate(ignored?: boolean): ProjectSessionSnapshot;
   dispose(): Promise<void>;
 }
 
@@ -134,6 +134,8 @@ export class EditorShellSession {
   private readonly projectSaveApi: ProjectSaveApi;
   private autosaveErrorUnsubscribe: (() => void) | null = null;
   private lastAutosaveSnapshot: EditorProjectSnapshot | null = null;
+  private autosaveUpdateQueue: Promise<void> = Promise.resolve();
+  private autosaveUpdateFailure: Error | null = null;
   private lifecycleGeneration = 0;
   private controllerDisposePromise: Promise<void> | null = null;
 
@@ -183,6 +185,7 @@ export class EditorShellSession {
     ) {
       return;
     }
+    await this.flushAutosave();
     this.controllerDisposePromise ??= this.controller.dispose();
     await this.controllerDisposePromise;
   }
@@ -198,17 +201,33 @@ export class EditorShellSession {
       return null;
     }
     this.lastAutosaveSnapshot = snapshot;
-    return this.autosaveApi.update(snapshot);
+    const update = this.autosaveUpdateQueue.then(() =>
+      this.autosaveApi.update(snapshot),
+    );
+    this.autosaveUpdateQueue = update.then(
+      (response) => {
+        this.autosaveUpdateFailure = response.ok
+          ? null
+          : new Error(response.error.message);
+      },
+      (error: unknown) => {
+        this.autosaveUpdateFailure =
+          error instanceof Error ? error : new Error(String(error));
+      },
+    );
+    return update;
   }
 
-  switchProject(projectRoot: string): Promise<ProjectSessionSnapshot> {
+  async switchProject(projectRoot: string): Promise<ProjectSessionSnapshot> {
+    await this.flushAutosave();
     return this.controller.switchProject(projectRoot);
   }
 
-  switchRecentProject(
+  async switchRecentProject(
     projectRoot: string,
     expectedProjectId: string,
   ): Promise<ProjectSessionSnapshot> {
+    await this.flushAutosave();
     return this.controller.switchRecentProject(
       projectRoot,
       expectedProjectId,
@@ -219,7 +238,8 @@ export class EditorShellSession {
    * Closes the current project through the one owned session controller.
    * The window itself stays open; the native `×` guard is untouched.
    */
-  closeProject(): Promise<ProjectSessionSnapshot> {
+  async closeProject(): Promise<ProjectSessionSnapshot> {
+    await this.flushAutosave();
     return this.controller.closeProject();
   }
 
@@ -244,12 +264,20 @@ export class EditorShellSession {
       projectRoot: candidate.projectRoot,
       recoveryFilePath: candidate.recoveryFilePath,
     });
-    if (response.ok) this.controller.clearRecoveryCandidate();
+    if (response.ok) this.controller.clearRecoveryCandidate(true);
     return response;
   }
 
-  saveCurrentProject(): Promise<EditorProjectSaveResult> {
+  async saveCurrentProject(): Promise<EditorProjectSaveResult> {
+    await this.flushAutosave();
     return saveCurrentProject(this.projectSaveApi, this.store);
+  }
+
+  private async flushAutosave(): Promise<void> {
+    await this.autosaveUpdateQueue;
+    const failure = this.autosaveUpdateFailure;
+    this.autosaveUpdateFailure = null;
+    if (failure) throw failure;
   }
 }
 
@@ -335,6 +363,12 @@ export function EditorShell({
   useEffect(() => {
     void session.syncAutosave(projectSnapshot).then((response) => {
       if (response && !response.ok) setStatus(response.error.message);
+    }).catch((error: unknown) => {
+      const current = editorProjectStore.getSnapshot();
+      if (current?.projectRoot !== projectSnapshot?.projectRoot) return;
+      setStatus(
+        error instanceof Error ? error.message : 'Autosave 更新失败。',
+      );
     });
   }, [projectSnapshot, session]);
 
@@ -703,7 +737,7 @@ export function EditorShell({
               projectSnapshot={projectSnapshot}
               recentRefreshToken={recentRefreshToken}
             />
-            <LegacyWorkspace key={projectSnapshot.projectRoot} />
+            <CanvasWorkspace />
             <aside
               className="workspace-placeholder right-inspector-placeholder"
               data-testid="right-inspector-placeholder"

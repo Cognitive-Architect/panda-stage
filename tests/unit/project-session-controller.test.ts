@@ -533,6 +533,23 @@ describe('ProjectSessionController transactional switching', () => {
       recoveryCandidate: projectACandidate,
     });
   });
+
+  it('does not re-offer an ignored recovery file during a later project switch', async () => {
+    const projectACandidate = candidate(PROJECT_A_ROOT, PROJECT_A);
+    harness.candidates.set(PROJECT_A_ROOT, projectACandidate);
+
+    await harness.controller.switchProject(PROJECT_A_ROOT);
+    expect(harness.controller.getSnapshot().recoveryCandidate).toEqual(
+      projectACandidate,
+    );
+    harness.controller.clearRecoveryCandidate(true);
+
+    await harness.controller.switchProject(PROJECT_B_ROOT);
+    await harness.controller.switchProject(PROJECT_A_ROOT);
+
+    expect(harness.controller.getSnapshot().recoveryCandidate).toBeNull();
+  });
+
   it('closes the tracked project by stopping autosave only', async () => {
     await harness.controller.switchProject(PROJECT_A_ROOT);
     harness.store.updateProject({

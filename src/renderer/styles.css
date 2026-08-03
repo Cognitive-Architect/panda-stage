@@ -237,6 +237,57 @@ button:disabled {
   max-height: 280px;
 }
 
+.legacy-compatibility-activity {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgb(127 199 148 / 20%);
+  border-radius: 12px;
+  background: rgb(18 31 23 / 74%);
+  gap: 10px;
+}
+
+.legacy-compatibility-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.legacy-compatibility-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.legacy-compatibility-heading > span {
+  color: #91a299;
+  font-size: 11px;
+  text-align: right;
+}
+
+.legacy-compatibility-activity > button {
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.canvas-workspace {
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 14px;
+  background: rgb(8 14 10 / 74%);
+  scrollbar-color: #3f6d4e #0a100c;
+}
+
+.canvas-workspace .project-canvas {
+  max-width: none;
+  margin: 0;
+}
+
 .legacy-workspace {
   min-width: 0;
   min-height: 0;

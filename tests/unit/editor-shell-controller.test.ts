@@ -123,6 +123,60 @@ describe('EditorShell ProjectSessionController ownership', () => {
     expect(harness.update).toHaveBeenCalledTimes(1);
   });
 
+  it('flushes a pending autosave before switching projects', async () => {
+    const harness = createHarness();
+    harness.store.open(
+      'D:\\projects\\shell.pandastage',
+      ProjectSchema.parse(exampleProject),
+    );
+
+    let release!: (response: { ok: true }) => void;
+    const pendingUpdate = new Promise<{ ok: true }>((resolve) => {
+      release = resolve;
+    });
+    harness.update.mockImplementationOnce(() => pendingUpdate);
+
+    const snapshot = harness.store.getSnapshot();
+    const updatePromise = harness.session.syncAutosave(snapshot);
+    const switchPromise = harness.session.switchProject(
+      'D:\\projects\\next.pandastage',
+    );
+
+    await Promise.resolve();
+    expect(harness.controller.switchProject).not.toHaveBeenCalled();
+
+    release({ ok: true });
+    await expect(updatePromise).resolves.toEqual({ ok: true });
+    await expect(switchPromise).resolves.toEqual({
+      trackedProjectRoot: 'D:\\projects\\shell.pandastage',
+      recoveryCandidate: null,
+    });
+    expect(harness.controller.switchProject).toHaveBeenCalledWith(
+      'D:\\projects\\next.pandastage',
+    );
+  });
+
+  it('does not switch after an autosave update failure', async () => {
+    const harness = createHarness();
+    harness.store.open(
+      'D:\\projects\\shell.pandastage',
+      ProjectSchema.parse(exampleProject),
+    );
+    const failure = new Error('Injected autosave update failure.');
+    harness.update.mockRejectedValueOnce(failure);
+
+    const updatePromise = harness.session.syncAutosave(
+      harness.store.getSnapshot(),
+    );
+    const switchPromise = harness.session.switchProject(
+      'D:\\projects\\next.pandastage',
+    );
+
+    await expect(updatePromise).rejects.toThrow(failure);
+    await expect(switchPromise).rejects.toThrow(failure);
+    expect(harness.controller.switchProject).not.toHaveBeenCalled();
+  });
+
   it('survives StrictMode setup -> cleanup -> setup -> final cleanup', async () => {
     const harness = createHarness();
 

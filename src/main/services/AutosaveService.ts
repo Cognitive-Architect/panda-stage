@@ -21,11 +21,14 @@ export interface AutosaveClock {
 interface AutosaveSession {
   projectRoot: string;
   project: Project;
+  savedProject: Project;
+  savedRevision: number;
   dirty: boolean;
   revision: number;
   lastSavedRevision: number;
   timer: IntervalHandle;
   inFlight: Promise<void> | null;
+  recoveryCleanup: Promise<void> | null;
   discarding: boolean;
 }
 
@@ -69,6 +72,8 @@ export class AutosaveService {
     const session: AutosaveSession = {
       projectRoot,
       project: request.project,
+      savedProject: request.project,
+      savedRevision: request.revision,
       dirty: request.dirty,
       revision: request.revision,
       lastSavedRevision: request.dirty
@@ -80,6 +85,7 @@ export class AutosaveService {
         });
       }, AUTOSAVE_INTERVAL_MS),
       inFlight: null,
+      recoveryCleanup: null,
       discarding: false,
     };
     this.sessions.set(projectRoot, session);
@@ -131,6 +137,15 @@ export class AutosaveService {
     if (!session) return;
     this.clock.clearInterval(session.timer);
     await session.inFlight?.catch(() => undefined);
+    const recoveryCleanup = session.recoveryCleanup;
+    if (recoveryCleanup) {
+      try {
+        await recoveryCleanup;
+      } catch (error) {
+        session.timer = this.createTimer(projectRoot);
+        throw error;
+      }
+    }
     this.sessions.delete(projectRoot);
   }
 
@@ -235,6 +250,8 @@ export class AutosaveService {
       (revision === session.revision &&
         !projectsEqual(session.project, project))
     ) {
+      session.savedProject = project;
+      session.savedRevision = revision;
       session.lastSavedRevision = Math.max(
         session.lastSavedRevision,
         revision,
@@ -242,6 +259,8 @@ export class AutosaveService {
       return;
     }
     session.project = project;
+    session.savedProject = project;
+    session.savedRevision = revision;
     session.dirty = false;
     session.revision = revision;
     session.lastSavedRevision = Math.max(
@@ -281,9 +300,47 @@ export class AutosaveService {
         `Autosave revision cannot move backwards at ${session.projectRoot}.`,
       );
     }
+    const wasDirty = session.dirty;
     session.project = request.project;
     session.dirty = request.dirty;
     session.revision = request.revision;
+    if (
+      wasDirty &&
+      !request.dirty &&
+      projectsEqual(request.project, session.savedProject)
+    ) {
+      this.scheduleRecoveryCleanup(session);
+    }
+  }
+
+  /**
+   * A history undo can make the live editor exactly match the last formal
+   * project save without going through ProjectService.save. In that case the
+   * recovery snapshot is no longer unsaved work and must be removed before a
+   * later A → B → A detection can offer it again.
+   *
+   * The cleanup is queued through the same per-project coordinator as writes
+   * and is awaited by stop(), so a project switch cannot race it.
+   */
+  private scheduleRecoveryCleanup(session: AutosaveSession): void {
+    const previous = session.recoveryCleanup ?? Promise.resolve();
+    const cleanup = previous.then(() =>
+      this.coordinator.runExclusive(session.projectRoot, async () => {
+        await this.recoveryService.cleanupAfterFormalSave?.(
+          session.projectRoot,
+          session.savedProject.id,
+        );
+      }),
+    );
+    const tracked = cleanup.finally(() => {
+      if (session.recoveryCleanup === tracked) {
+        session.recoveryCleanup = null;
+      }
+    });
+    session.recoveryCleanup = tracked;
+    void tracked.catch((error: unknown) => {
+      this.onError(this.toRecoveryError(session.projectRoot, error));
+    });
   }
 
   private toRecoveryError(

@@ -161,7 +161,7 @@ describe('EditorShell state boundary', () => {
     );
     expect(shell.indexOf('<StartScreen')).toBeGreaterThan(-1);
     expect(shell.indexOf('<EditorTopBar')).toBeGreaterThan(-1);
-    expect(shell.indexOf('<LegacyWorkspace')).toBeGreaterThan(-1);
+    expect(shell.indexOf('<CanvasWorkspace')).toBeGreaterThan(-1);
     expect(shell).toContain(
       "sessionRegion === 'start-screen'",
     );
@@ -180,7 +180,7 @@ describe('EditorShell state boundary', () => {
     expect(shell).toContain('data-testid="start-screen"');
     expect(shell).toContain('data-testid="editor-layout"');
     expect(shell).toContain('data-testid="editor-body"');
-    expect(shell.match(/<LegacyWorkspace/gu)).toHaveLength(1);
+    expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
   });
 
   it('keeps project state, controller, preview, and create behavior out of EditorTopBar', () => {

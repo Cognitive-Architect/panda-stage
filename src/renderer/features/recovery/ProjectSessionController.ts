@@ -62,6 +62,7 @@ export class ProjectSessionController {
     trackedProjectRoot: null,
     recoveryCandidate: null,
   };
+  private readonly ignoredRecoveryFiles = new Set<string>();
 
   constructor(
     private readonly api: ProjectSessionApi,
@@ -116,7 +117,9 @@ export class ProjectSessionController {
       }
       this.snapshot = {
         trackedProjectRoot: currentEditor.projectRoot,
-        recoveryCandidate: detected.candidate,
+        recoveryCandidate: this.visibleRecoveryCandidate(
+          detected.candidate,
+        ),
       };
       return this.snapshot;
     }
@@ -154,7 +157,9 @@ export class ProjectSessionController {
         }
         this.snapshot = {
           trackedProjectRoot: currentEditor.projectRoot,
-          recoveryCandidate: detected.candidate,
+          recoveryCandidate: this.visibleRecoveryCandidate(
+            detected.candidate,
+          ),
         };
         return this.snapshot;
       }
@@ -231,7 +236,9 @@ export class ProjectSessionController {
       this.store.open(temporaryProjectRoot, preparedProject);
       this.snapshot = {
         trackedProjectRoot: temporaryProjectRoot,
-        recoveryCandidate: detected.candidate,
+        recoveryCandidate: this.visibleRecoveryCandidate(
+          detected.candidate,
+        ),
       };
       temporaryTracked = false;
       return this.snapshot;
@@ -313,7 +320,12 @@ export class ProjectSessionController {
     return this.snapshot;
   }
 
-  clearRecoveryCandidate(): ProjectSessionSnapshot {
+  clearRecoveryCandidate(ignored = false): ProjectSessionSnapshot {
+    if (ignored && this.snapshot.recoveryCandidate) {
+      this.ignoredRecoveryFiles.add(
+        this.recoveryKey(this.snapshot.recoveryCandidate),
+      );
+    }
     this.snapshot = {
       ...this.snapshot,
       recoveryCandidate: null,
@@ -330,5 +342,18 @@ export class ProjectSessionController {
     const normalize = (value: string) =>
       value.trim().replaceAll('/', '\\').replace(/\\+$/u, '').toLowerCase();
     return normalize(left) === normalize(right);
+  }
+
+  private visibleRecoveryCandidate(
+    candidate: RecoveryCandidate | null,
+  ): RecoveryCandidate | null {
+    if (!candidate) return null;
+    return this.ignoredRecoveryFiles.has(this.recoveryKey(candidate))
+      ? null
+      : candidate;
+  }
+
+  private recoveryKey(candidate: RecoveryCandidate): string {
+    return `${candidate.projectRoot}\u0000${candidate.recoveryFilePath}`;
   }
 }

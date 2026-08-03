@@ -87,13 +87,13 @@ async function scrollTargetIntoActiveViewport(
     if (!(target instanceof HTMLElement)) {
       throw new Error('Scroll target was not found: ${selector}');
     }
-    const legacyViewport = document.querySelector(
-      '[data-testid="legacy-workspace-scroll"]'
+    const canvasViewport = document.querySelector(
+      '[data-testid="canvas-workspace-scroll"]'
     );
-    if (legacyViewport instanceof HTMLElement) {
+    if (canvasViewport instanceof HTMLElement) {
       const beforeTarget = target.getBoundingClientRect();
-      const beforeViewport = legacyViewport.getBoundingClientRect();
-      legacyViewport.scrollTop +=
+      const beforeViewport = canvasViewport.getBoundingClientRect();
+      canvasViewport.scrollTop +=
         beforeTarget.top - beforeViewport.top - ${topOffset};
     } else {
       window.scrollTo(
@@ -107,8 +107,8 @@ async function scrollTargetIntoActiveViewport(
     );
     const targetBounds = target.getBoundingClientRect();
     const viewportBounds =
-      legacyViewport instanceof HTMLElement
-        ? legacyViewport.getBoundingClientRect()
+      canvasViewport instanceof HTMLElement
+        ? canvasViewport.getBoundingClientRect()
         : {
             top: 0,
             right: innerWidth,
@@ -127,8 +127,8 @@ async function scrollTargetIntoActiveViewport(
     }
     return {
       mode:
-        legacyViewport instanceof HTMLElement
-          ? 'legacy-workspace'
+        canvasViewport instanceof HTMLElement
+          ? 'canvas-workspace'
           : 'window',
       targetTop: targetBounds.top,
       viewportTop: viewportBounds.top

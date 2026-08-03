@@ -1,6 +1,7 @@
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import { ResourceActivityDock } from './ResourceActivityDock';
+import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
 
 export interface LeftWorkspaceProps {
   projectSnapshot: EditorProjectSnapshot;
@@ -28,8 +29,12 @@ export function LeftWorkspace({
         recentRefreshToken={recentRefreshToken}
       />
       <ResourceActivityDock
-        key={projectSnapshot.projectRoot}
+        key={`resource:${projectSnapshot.projectRoot}`}
         snapshot={projectSnapshot}
+      />
+      <LegacyCompatibilityActivity
+        key={`compatibility:${projectSnapshot.projectRoot}`}
+        projectRoot={projectSnapshot.projectRoot}
       />
     </aside>
   );

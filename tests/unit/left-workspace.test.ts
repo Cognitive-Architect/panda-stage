@@ -5,7 +5,7 @@ function readSource(path: string): string {
   return readFileSync(path, 'utf8');
 }
 
-describe('Stage 2-A left workspace composition contract', () => {
+describe('Stage 2-B left workspace composition contract', () => {
   it('owns project recovery and one mutually exclusive resource activity', () => {
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
     const dock = readSource('src/renderer/shell/ResourceActivityDock.tsx');
@@ -33,21 +33,37 @@ describe('Stage 2-A left workspace composition contract', () => {
     expect(recovery).not.toContain('<CanvasStage');
   });
 
-  it('keeps the central legacy workspace as the only action/canvas owner', () => {
+  it('keeps the central canvas separate and gates legacy actions in the left workspace', () => {
+    const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const legacy = readSource('src/renderer/shell/LegacyWorkspace.tsx');
+    const canvas = readSource('src/renderer/shell/CanvasWorkspace.tsx');
+    const compatibility = readSource(
+      'src/renderer/shell/LegacyCompatibilityActivity.tsx',
+    );
     const styles = readSource('src/renderer/styles.css');
 
     expect(shell).toContain('<LeftWorkspace');
     expect(shell).not.toContain('left-workspace-placeholder');
-    expect(legacy.match(/<CanvasStage/gu)).toHaveLength(1);
+    expect(shell).toContain('<CanvasWorkspace');
+    expect(left).toContain('key={`resource:${projectSnapshot.projectRoot}`}');
+    expect(left).toContain(
+      'key={`compatibility:${projectSnapshot.projectRoot}`}',
+    );
+    expect(legacy.match(/<CanvasStage/gu) ?? []).toHaveLength(0);
     expect(legacy.match(/<ActionPresetPanel/gu)).toHaveLength(1);
     expect(legacy).not.toContain('<ProjectRecoveryPanel');
+    expect(canvas.match(/<CanvasStage/gu)).toHaveLength(1);
+    expect(compatibility).toContain('data-testid="legacy-compatibility-toggle"');
+    expect(compatibility).toContain('{active ? <LegacyWorkspace');
     expect(styles).toMatch(
       /\.left-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
     expect(styles).toMatch(
       /\.left-workspace\s*\{[\s\S]*?overflow-x:\s*hidden;/u,
+    );
+    expect(styles).toMatch(
+      /\.canvas-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
   });
 });

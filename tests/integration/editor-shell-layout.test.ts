@@ -9,7 +9,7 @@ function count(source: string, pattern: RegExp): number {
   return source.match(pattern)?.length ?? 0;
 }
 
-describe('EditorShell Stage 1A-5 composition contract', () => {
+describe('EditorShell Stage 2-B composition contract', () => {
   it('keeps App as one EditorShell product entry without the old long-page splice', () => {
     const app = readSource('src/renderer/App.tsx');
 
@@ -51,9 +51,13 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     expect(shell).toContain('底部工作区');
   });
 
-  it('uses LeftWorkspace for resources and LegacyWorkspace for the central old tree', () => {
+  it('keeps CanvasWorkspace central and gates LegacyWorkspace behind a left compatibility entry', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
+    const canvas = readSource('src/renderer/shell/CanvasWorkspace.tsx');
+    const compatibility = readSource(
+      'src/renderer/shell/LegacyCompatibilityActivity.tsx',
+    );
     const dock = readSource(
       'src/renderer/shell/ResourceActivityDock.tsx',
     );
@@ -63,17 +67,28 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     );
     const styles = readSource('src/renderer/styles.css');
 
-    expect(count(shell, /<LegacyWorkspace/gu)).toBe(1);
+    expect(count(shell, /<CanvasWorkspace/gu)).toBe(1);
+    expect(count(shell, /<LegacyWorkspace/gu)).toBe(0);
     expect(count(shell, /<LeftWorkspace/gu)).toBe(1);
     expect(left).toContain('data-testid="left-workspace-scroll"');
     expect(left).toContain('<ProjectRecoveryPanel');
     expect(left).toContain('<ResourceActivityDock');
+    expect(left).toContain('<LegacyCompatibilityActivity');
+    expect(compatibility).toContain(
+      'data-testid="legacy-compatibility-activity"',
+    );
+    expect(compatibility).toContain(
+      'data-testid="legacy-compatibility-toggle"',
+    );
+    expect(count(compatibility, /<LegacyWorkspace/gu)).toBe(1);
+    expect(canvas).toContain('data-testid="canvas-workspace-scroll"');
+    expect(count(canvas, /<CanvasStage/gu)).toBe(1);
     expect(legacy).toContain('className="legacy-workspace"');
     expect(legacy).toContain('data-testid="legacy-workspace-scroll"');
     expect(count(legacy, /data-testid="legacy-workspace-scroll"/gu)).toBe(1);
     expect(legacy).not.toContain('<ProjectRecoveryPanel');
     expect(legacy).toContain('<ActionPresetPanel');
-    expect(count(legacy, /<CanvasStage/gu)).toBe(1);
+    expect(count(legacy, /<CanvasStage/gu)).toBe(0);
     expect(panel).toContain('<RecentProjectsPanel');
     expect(panel).not.toContain('<AssetLibrary');
     expect(panel).not.toContain('<CharacterManager');
@@ -91,6 +106,9 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     );
     expect(styles).toMatch(
       /\.legacy-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.canvas-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
   });
 
@@ -116,24 +134,30 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     expect(panel).not.toMatch(/<(?:ShotManager|AssetLibrary|CharacterManager|CanvasStage)/u);
   });
 
-  it('removes the no-project legacy transition without hiding a duplicate tree', () => {
+  it('keeps the compatibility tree absent by default without hiding a duplicate tree', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
+    const compatibility = readSource(
+      'src/renderer/shell/LegacyCompatibilityActivity.tsx',
+    );
     const styles = readSource('src/renderer/styles.css');
 
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
     expect(shell).toMatch(
       /sessionRegion === 'start-screen'[\s\S]*?<StartScreen[\s\S]*?: projectSnapshot \?/u,
     );
-    expect(shell.indexOf('<LegacyWorkspace')).toBeGreaterThan(
-      shell.indexOf(': projectSnapshot ?'),
-    );
+    expect(shell).toContain('<CanvasWorkspace');
+    expect(shell).not.toContain('<LegacyWorkspace');
+    expect(compatibility).toContain('{active ? <LegacyWorkspace');
     expect(styles).not.toMatch(
       /\.legacy-workspace\s*\{[\s\S]*?display:\s*none/u,
     );
   });
 
-  it('keeps CanvasStage and HistoryControls at the Stage 2-A single-instance editor baseline', () => {
+  it('keeps CanvasStage and HistoryControls unique in the central editor path', () => {
     const legacy = readSource('src/renderer/shell/LegacyWorkspace.tsx');
+    const canvasWorkspace = readSource(
+      'src/renderer/shell/CanvasWorkspace.tsx',
+    );
     const panel = readSource(
       'src/renderer/features/recovery/ProjectRecoveryPanel.tsx',
     );
@@ -141,9 +165,10 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
       'src/renderer/features/canvas/CanvasStage.tsx',
     );
 
-    expect(count(legacy, /<CanvasStage/gu)).toBe(1);
+    expect(count(legacy, /<CanvasStage/gu)).toBe(0);
+    expect(count(canvasWorkspace, /<CanvasStage/gu)).toBe(1);
     expect(count(panel, /<CanvasStage/gu)).toBe(0);
-    expect(count(legacy + panel, /<CanvasStage/gu)).toBe(1);
+    expect(count(canvasWorkspace + legacy + panel, /<CanvasStage/gu)).toBe(1);
     expect(legacy).not.toContain('<HistoryControls');
     expect(panel).not.toContain('<HistoryControls');
     expect(count(canvas, /<HistoryControls/gu)).toBe(1);
@@ -166,17 +191,19 @@ describe('EditorShell Stage 1A-5 composition contract', () => {
     expect(flags).not.toContain('revision');
     expect(shell).toContain('data-testid="gate-preview-overlay"');
     expect(shell).toContain('data-testid="debug-probes"');
-    expect(count(shell, /<LegacyWorkspace/gu)).toBe(1);
+    expect(count(shell, /<CanvasWorkspace/gu)).toBe(1);
+    expect(count(shell, /<LegacyWorkspace/gu)).toBe(0);
   });
 
-  it('does not implement later-stage workspace migrations', () => {
+  it('implements only the Stage 2-B central canvas migration', () => {
     const sources = [
       readSource('src/renderer/shell/EditorShell.tsx'),
+      readSource('src/renderer/shell/CanvasWorkspace.tsx'),
       readSource('src/renderer/shell/LegacyWorkspace.tsx'),
     ].join('\n');
 
     expect(sources).toContain('LeftWorkspace');
-    expect(sources).not.toContain('CanvasWorkspace');
+    expect(sources).toContain('CanvasWorkspace');
     expect(sources).not.toContain('RightInspector');
     expect(sources).not.toContain('BottomHistory');
     expect(readSource('src/renderer/shell/LegacyWorkspace.tsx')).not.toContain(

@@ -18,7 +18,7 @@
  * Guardrail rules honoured:
  *   - The original Phase 0A selector assertions remain unchanged.
  *   - Stage 1A assertions are added only as their owning slice is implemented.
- *   - Locks the final Stage 1A Shell/Grid/LegacyWorkspace selectors without
+ *   - Locks the final Stage 2-B Shell/Grid/CanvasWorkspace selectors without
  *     changing the older Day 13–24 business selector assertions.
  *   - Runtime DOM counts remain the responsibility of Electron validation.
  */
@@ -51,7 +51,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(shell).toContain("sessionRegion === 'start-screen'");
     expect(shell).toContain('<StartScreen');
     expect(shell).toContain('<EditorTopBar');
-    expect(shell).toContain('<LegacyWorkspace');
+    expect(shell).toContain('<CanvasWorkspace');
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
     expect(leftWorkspace).toContain('<ProjectRecoveryPanel');
     expect(startScreen).toContain('className="recovery-panel"');
@@ -184,6 +184,12 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const leftWorkspace = readSource(
       'renderer/shell/LeftWorkspace.tsx',
     );
+    const canvasWorkspace = readSource(
+      'renderer/shell/CanvasWorkspace.tsx',
+    );
+    const legacyCompatibility = readSource(
+      'renderer/shell/LegacyCompatibilityActivity.tsx',
+    );
     const legacyWorkspace = readSource(
       'renderer/shell/LegacyWorkspace.tsx',
     );
@@ -205,13 +211,27 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(shell).toContain(
       'data-testid="bottom-workspace-placeholder"',
     );
-    expect(shell.match(/<LegacyWorkspace/gu)).toHaveLength(1);
+    expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
+    expect(shell.match(/<LegacyWorkspace/gu)).toBeNull();
+    expect(legacyCompatibility).toContain(
+      'data-testid="legacy-compatibility-toggle"',
+    );
+    expect(legacyCompatibility.match(/<LegacyWorkspace/gu)).toHaveLength(1);
+    expect(canvasWorkspace).toContain(
+      'data-testid="canvas-workspace-scroll"',
+    );
+    expect(canvasWorkspace.match(/<CanvasStage/gu)).toHaveLength(1);
     expect(legacyWorkspace).toContain('className="legacy-workspace"');
     expect(legacyWorkspace).toContain(
       'data-testid="legacy-workspace-scroll"',
     );
+    expect(legacyWorkspace.match(/<CanvasStage/gu)).toBeNull();
+    expect(legacyWorkspace).toContain('<ActionPresetPanel');
     expect(styles).toMatch(
       /\.legacy-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.canvas-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
     expect(styles).toMatch(
       /html,[\s\S]*?#root\s*\{[\s\S]*?overflow:\s*hidden;/u,
