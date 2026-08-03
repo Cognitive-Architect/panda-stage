@@ -52,7 +52,7 @@ export function getRightInspectorSelection(
     return {
       state: 'background',
       layer,
-      message: '背景层不可执行普通图层操作。',
+      message: '已选择背景层；普通图层操作已禁用。',
     };
   }
 
@@ -116,8 +116,12 @@ export function RightInspector(): React.JSX.Element {
           {selection.message}
         </span>
       </section>
-      <LayerTransformPanel />
-      <LayerOrderControls />
+      <LayerTransformPanel
+        backgroundLayerSelected={selection.state === 'background'}
+      />
+      <LayerOrderControls
+        backgroundLayerSelected={selection.state === 'background'}
+      />
     </aside>
   );
 }

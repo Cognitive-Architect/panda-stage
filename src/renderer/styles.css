@@ -182,6 +182,13 @@ button:disabled {
   padding: 10px;
 }
 
+.right-inspector
+  .layer-transform-panel[data-background-protected='true'],
+.right-inspector
+  .layer-order-controls[data-background-protected='true'] {
+  border-color: rgb(255 209 102 / 38%);
+}
+
 .right-inspector .layer-transform-panel form {
   grid-template-columns: minmax(0, 1fr);
 }

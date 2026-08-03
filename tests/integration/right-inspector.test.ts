@@ -1,4 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import exampleProject from '../../demo-project/project-v1.example.json';
+import {
+  LayerService,
+  ProjectSchema,
+} from '../../src/domain';
+import { shouldDeleteSelectedLayer } from '../../src/renderer/features/properties/LayerOrderControls';
+import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { LayerStore } from '../../src/renderer/stores/layerStore';
 import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
 import {
   getRightInspectorSelection,
@@ -43,7 +51,7 @@ describe('Stage 3-A RightInspector selection contract', () => {
       getRightInspectorSelection(snapshot, 'shot-a', 'background'),
     ).toMatchObject({
       state: 'background',
-      message: '背景层不可执行普通图层操作。',
+      message: '已选择背景层；普通图层操作已禁用。',
     });
     expect(
       getRightInspectorSelection(snapshot, 'shot-a', 'hero'),
@@ -57,6 +65,142 @@ describe('Stage 3-A RightInspector selection contract', () => {
       state: 'locked',
       message: '图层已锁定，请先解锁后再变换、排序或删除。',
     });
+  });
+
+  it('blocks every background mutation surface without consuming Delete/Backspace', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const [inspector, transform, order] = await Promise.all([
+      readFile('src/renderer/shell/RightInspector.tsx', 'utf8'),
+      readFile(
+        'src/renderer/features/properties/LayerTransformPanel.tsx',
+        'utf8',
+      ),
+      readFile(
+        'src/renderer/features/properties/LayerOrderControls.tsx',
+        'utf8',
+      ),
+    ]);
+    const inspectorSource = inspector.toString();
+    const transformSource = transform.toString();
+    const orderSource = order.toString();
+
+    expect(
+      inspectorSource.match(
+        /backgroundLayerSelected=\{selection\.state === 'background'\}/gu,
+      ),
+    ).toHaveLength(2);
+    expect(transformSource).toContain(
+      'Boolean(backgroundLayerSelected) ||',
+    );
+    expect(transformSource).toContain(
+      'data-background-protected={String(isBackgroundLayer)}',
+    );
+    expect(
+      transformSource.match(
+        /disabled=\{layer\.locked \|\| isBackgroundLayer\}/gu,
+      ),
+    ).toHaveLength(3);
+    expect(transformSource).toContain(
+      'disabled={isBackgroundLayer}',
+    );
+    expect(orderSource).toContain(
+      'Boolean(backgroundLayerSelected) ||',
+    );
+    expect(orderSource).toContain(
+      'data-background-protected={String(isBackgroundLayer)}',
+    );
+    expect(
+      orderSource.match(/disabled=\{disabled \|\| orderIndex/gu),
+    ).toHaveLength(4);
+    expect(orderSource).toContain('disabled={disabled}');
+
+    const event = {
+      key: 'Delete',
+      target: null,
+      defaultPrevented: false,
+    } as const;
+    expect(shouldDeleteSelectedLayer(event, 'background', true)).toBe(
+      false,
+    );
+    expect(
+      shouldDeleteSelectedLayer(
+        { ...event, key: 'Backspace' },
+        'background',
+        true,
+      ),
+    ).toBe(false);
+    expect(shouldDeleteSelectedLayer(event, 'hero', false)).toBe(true);
+  });
+
+  it('keeps editor state unchanged for background writes and restores ordinary writes', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const shot = project.shots[0]!;
+    const background = shot.layers.find(
+      (layer) => layer.id === shot.backgroundLayerId,
+    )!;
+    const ordinary = shot.layers.find(
+      (layer) => layer.id !== shot.backgroundLayerId,
+    )!;
+    const editor = new EditorProjectStore();
+    editor.open('D:\\Projects\\background-guard.pandastage', project);
+    const layers = new LayerStore(
+      editor,
+      { getCurrentShotId: () => shot.id },
+      new LayerService(),
+    );
+    const backgroundTransform = {
+      x: background.x,
+      y: background.y,
+      scale: background.scaleX,
+      rotationDeg: background.rotationDeg,
+      opacity: background.opacity,
+      flipX: background.flipX,
+    };
+    const before = editor.getSnapshot()!;
+    const beforeProjectJson = JSON.stringify(before.project);
+
+    for (const operation of [
+      () => layers.updatePosition(background.id, { x: 1, y: 1 }),
+      () =>
+        layers.updateTransform(
+          background.id,
+          backgroundTransform,
+        ),
+      () => layers.toggleFlipX(background.id),
+      () => layers.reorder(background.id, 'front'),
+      () => layers.deleteLayer(background.id),
+      () => layers.setLocked(background.id, true),
+    ]) {
+      expect(operation).toThrow(
+        expect.objectContaining({ code: 'BACKGROUND_LAYER_PROTECTED' }),
+      );
+    }
+
+    expect(editor.getSnapshot()).toMatchObject({
+      dirty: false,
+      revision: 0,
+    });
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+    expect(JSON.stringify(editor.getSnapshot()!.project)).toBe(
+      beforeProjectJson,
+    );
+
+    layers.updateTransform(ordinary.id, {
+      x: ordinary.x + 1,
+      y: ordinary.y,
+      scale: ordinary.scaleX,
+      rotationDeg: ordinary.rotationDeg,
+      opacity: ordinary.opacity,
+      flipX: ordinary.flipX,
+    });
+    expect(editor.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 1,
+    });
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
   });
 
   it('keeps the single owner and unchanged product state sources', async () => {

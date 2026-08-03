@@ -21,16 +21,25 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
 export function shouldDeleteSelectedLayer(
   event: Pick<KeyboardEvent, 'key' | 'target' | 'defaultPrevented'>,
   selectedLayerId: string | null,
+  backgroundLayerSelected = false,
 ): boolean {
   return (
     Boolean(selectedLayerId) &&
+    !backgroundLayerSelected &&
     !event.defaultPrevented &&
     (event.key === 'Delete' || event.key === 'Backspace') &&
     !isEditableKeyboardTarget(event.target)
   );
 }
 
-export function LayerOrderControls(): React.JSX.Element {
+export interface LayerOrderControlsProps {
+  /** The RightInspector owns this identity when the panel is mounted there. */
+  backgroundLayerSelected?: boolean;
+}
+
+export function LayerOrderControls({
+  backgroundLayerSelected,
+}: LayerOrderControlsProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -49,9 +58,9 @@ export function LayerOrderControls(): React.JSX.Element {
   const layer =
     shot?.layers.find((candidate) => candidate.id === selectedLayerId) ??
     null;
-  const isBackgroundLayer = Boolean(
-    shot && layer && shot.backgroundLayerId === layer.id,
-  );
+  const isBackgroundLayer =
+    Boolean(backgroundLayerSelected) ||
+    Boolean(shot && layer && shot.backgroundLayerId === layer.id);
   const [status, setStatus] = useState(
     '层级操作只影响当前镜头中的普通图层。',
   );
@@ -66,7 +75,7 @@ export function LayerOrderControls(): React.JSX.Element {
   const deleteLayer = (): void => {
     if (!layer) return;
     if (isBackgroundLayer) {
-      setStatus('背景层不可排序或删除。');
+      setStatus('背景层不能通过普通图层层级工具排序或删除。');
       return;
     }
     try {
@@ -82,7 +91,15 @@ export function LayerOrderControls(): React.JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!shouldDeleteSelectedLayer(event, selectedLayerId)) return;
+      if (
+        !shouldDeleteSelectedLayer(
+          event,
+          selectedLayerId,
+          isBackgroundLayer,
+        )
+      ) {
+        return;
+      }
       event.preventDefault();
       deleteLayer();
     };
@@ -93,7 +110,7 @@ export function LayerOrderControls(): React.JSX.Element {
   const reorder = (action: LayerOrderAction): void => {
     if (!layer) return;
     if (isBackgroundLayer) {
-      setStatus('背景层不可排序或删除。');
+      setStatus('背景层不能通过普通图层层级工具排序或删除。');
       return;
     }
     try {
@@ -110,6 +127,7 @@ export function LayerOrderControls(): React.JSX.Element {
   return (
     <section
       className="layer-order-controls"
+      data-background-protected={String(isBackgroundLayer)}
       data-testid="layer-order-controls"
     >
       <div>
@@ -156,7 +174,7 @@ export function LayerOrderControls(): React.JSX.Element {
       </div>
       <p data-testid="layer-order-guidance">
         {isBackgroundLayer
-          ? '背景层不可执行普通图层层级操作。'
+          ? '背景层不能通过普通图层层级工具排序或删除。'
           : layer?.locked
             ? '图层已锁定，请先解锁后再调整层级或删除。'
           : layer
