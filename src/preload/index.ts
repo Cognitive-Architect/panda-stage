@@ -25,6 +25,11 @@ import {
   type AssetThumbnailReadRequest,
 } from '../shared/asset-thumbnail-api';
 import {
+  AssetCanvasImageReadRequestSchema,
+  AssetCanvasImageReadResponseSchema,
+  type AssetCanvasImageReadRequest,
+} from '../shared/asset-canvas-image-api';
+import {
   AppPingRequestSchema,
   AppPingResponseSchema,
 } from '../shared/ipc/contracts';
@@ -216,6 +221,17 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AssetThumbnailReadResponseSchema.parse(response);
+    },
+    readCanvasImage: async (
+      rawRequest: AssetCanvasImageReadRequest,
+    ) => {
+      const request =
+        AssetCanvasImageReadRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
+        request,
+      );
+      return AssetCanvasImageReadResponseSchema.parse(response);
     },
   }),
   recentProjects: Object.freeze({

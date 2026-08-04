@@ -12,17 +12,23 @@ import {
   AssetThumbnailReadRequestSchema,
   AssetThumbnailReadResponseSchema,
 } from '../../shared/asset-thumbnail-api';
+import {
+  AssetCanvasImageReadRequestSchema,
+  AssetCanvasImageReadResponseSchema,
+} from '../../shared/asset-canvas-image-api';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import {
   AssetDeleteService,
   AssetDeleteServiceError,
 } from '../services/AssetDeleteService';
 import { AssetThumbnailService } from '../services/AssetThumbnailService';
+import { AssetCanvasImageService } from '../services/AssetCanvasImageService';
 
 export interface AssetLibraryIpcHandlerDependencies {
   getMainWindow: () => BrowserWindow | null;
   assetDeleteService: AssetDeleteService;
   assetThumbnailService: AssetThumbnailService;
+  assetCanvasImageService: AssetCanvasImageService;
 }
 
 function assertTrustedSender(
@@ -148,8 +154,36 @@ export function registerAssetLibraryIpcHandlers(
     },
   );
 
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
+      );
+      let request;
+      try {
+        request = AssetCanvasImageReadRequestSchema.parse(rawRequest);
+      } catch {
+        return AssetCanvasImageReadResponseSchema.parse({
+          ok: false,
+          error: {
+            code: 'ASSET_CANVAS_IMAGE_INVALID_REQUEST',
+            message: 'Canvas image request is invalid.',
+            assetId: '(invalid)',
+          },
+        });
+      }
+      return AssetCanvasImageReadResponseSchema.parse(
+        await dependencies.assetCanvasImageService.read(request),
+      );
+    },
+  );
+
   return () => {
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_DELETE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_THUMBNAIL_READ);
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ);
   };
 }

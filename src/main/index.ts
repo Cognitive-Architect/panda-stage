@@ -37,6 +37,7 @@ import { registerAssetMetadataIpcHandlers } from './ipc/register-asset-metadata-
 import { registerAssetLibraryIpcHandlers } from './ipc/register-asset-library-ipc-handlers';
 import { AssetDeleteService } from './services/AssetDeleteService';
 import { AssetThumbnailService } from './services/AssetThumbnailService';
+import { AssetCanvasImageService } from './services/AssetCanvasImageService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
 
 let mainWindow: BrowserWindow | null = null;
@@ -298,6 +299,10 @@ async function initialize(): Promise<void> {
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
       cache: thumbnailCache,
       thumbnailService,
+    }),
+    assetCanvasImageService: new AssetCanvasImageService({
+      getCurrentProjectSnapshot: (projectRoot) =>
+        autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     }),
   });
   unsavedCloseController = new UnsavedCloseController({

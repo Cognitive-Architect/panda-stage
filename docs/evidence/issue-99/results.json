@@ -1,0 +1,1359 @@
+{
+  "issue": 99,
+  "status": "PASS",
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "projectRoots": {
+    "a": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+    "b": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-b.pandastage",
+    "acceptancePathsTouched": false,
+    "temporaryParent": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl"
+  },
+  "source": {
+    "width": 1536,
+    "height": 864,
+    "pngPath": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage\\assets\\issue99-detail.png",
+    "jpgPath": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage\\assets\\issue99-detail.jpg",
+    "pngBytes": 659744,
+    "canvasApi": {
+      "ok": true,
+      "status": "ready",
+      "mimeType": "image/png",
+      "width": 1536,
+      "height": 864,
+      "byteLength": 659744,
+      "isTypedArray": true
+    },
+    "sourceAndCanvasDimensionsMatch": true,
+    "thumbnailMaxEdge": 256
+  },
+  "canvas": {
+    "initialA": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "fit",
+      "backgroundLayerId": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "",
+      "projectRevision": 0,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": null,
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": null,
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "actualSizeA": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "",
+      "projectRevision": 0,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "afterLibraryA": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "fit",
+      "backgroundLayerId": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "",
+      "projectRevision": 0,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "created": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+          "name": "issue99-detail",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1199.6666564941406,
+          "y": 599.6041564941406,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 2,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+      "projectRevision": 1,
+      "dirty": true,
+      "undoCount": 1,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "transformed": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+          "name": "issue99-detail",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 800,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 90,
+          "opacity": 0.6,
+          "visible": true,
+          "zIndex": 2,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+      "projectRevision": 2,
+      "dirty": true,
+      "undoCount": 2,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "flipped": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+          "name": "issue99-detail",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 800,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 90,
+          "opacity": 0.6,
+          "visible": true,
+          "zIndex": 2,
+          "locked": false,
+          "flipX": true
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+      "projectRevision": 3,
+      "dirty": true,
+      "undoCount": 3,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "undone": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+          "name": "issue99-detail",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 800,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 90,
+          "opacity": 0.6,
+          "visible": true,
+          "zIndex": 2,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+      "projectRevision": 4,
+      "dirty": true,
+      "undoCount": 2,
+      "redoCount": 1,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "redone": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+          "name": "issue99-detail",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 800,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 90,
+          "opacity": 0.6,
+          "visible": true,
+          "zIndex": 2,
+          "locked": false,
+          "flipX": true
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+      "projectRevision": 5,
+      "dirty": true,
+      "undoCount": 3,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "formalBackground": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+          "name": "issue99-detail",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 800,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 90,
+          "opacity": 0.6,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": true
+        },
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 2,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "",
+      "projectRevision": 6,
+      "dirty": true,
+      "undoCount": 4,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": "data:image/png;base64,",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "reopenedA": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+      "layers": [
+        {
+          "id": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+          "name": "issue99-detail",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 800,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 90,
+          "opacity": 0.6,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": true
+        },
+        {
+          "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 2,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "b5050ac1-1dea-440d-818f-4d560194a7ad",
+        "b567f82c-29b9-4a35-81cb-07658cf20438"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "",
+      "projectRevision": 0,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "b567f82c-29b9-4a35-81cb-07658cf20438": {
+          "srcPrefix": null,
+          "placeholder": null
+        },
+        "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+          "srcPrefix": null,
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "switchedB": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-b.pandastage",
+      "layers": [
+        {
+          "id": "5d1b784c-6dd9-494e-a265-3aa3300d848f",
+          "name": "High resolution JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "36764e63-b6dc-4995-8d60-ba3564213716"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "44b1328e-3bf3-4e4d-a247-bd012a0257e5",
+          "name": "High resolution PNG content",
+          "source": {
+            "kind": "asset",
+            "assetId": "62153c65-b888-499a-b85f-4d185784b26e"
+          },
+          "anchor": "center",
+          "x": 1200,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "62153c65-b888-499a-b85f-4d185784b26e",
+        "36764e63-b6dc-4995-8d60-ba3564213716"
+      ],
+      "intrinsicSizes": [
+        {
+          "assetId": "62153c65-b888-499a-b85f-4d185784b26e",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "36764e63-b6dc-4995-8d60-ba3564213716",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "renderSource": "project-assets-original",
+      "transformMode": "actual",
+      "backgroundLayerId": "5d1b784c-6dd9-494e-a265-3aa3300d848f",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "",
+      "projectRevision": 0,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0,
+      "devicePixelRatio": 1.5,
+      "canvasBackingSize": {
+        "width": 2880,
+        "height": 1620
+      },
+      "cards": {
+        "36764e63-b6dc-4995-8d60-ba3564213716": {
+          "srcPrefix": null,
+          "placeholder": null
+        },
+        "62153c65-b888-499a-b85f-4d185784b26e": {
+          "srcPrefix": null,
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    }
+  },
+  "thumbnails": {
+    "cacheBeforeOpen": {
+      "a": {
+        "background": false,
+        "content": false
+      },
+      "b": {
+        "background": false,
+        "content": false
+      }
+    },
+    "cacheAfterAssetLibraryA": {
+      "background": {
+        "exists": true,
+        "validPng": true,
+        "bytes": 63127,
+        "width": 256,
+        "height": 144
+      },
+      "content": {
+        "exists": true,
+        "validPng": true,
+        "bytes": 62828,
+        "width": 256,
+        "height": 144
+      }
+    },
+    "cardsRemain256Bounded": true
+  },
+  "lifecycle": {
+    "loadPolicy": "active-shot-only, deduplicated in-flight reads",
+    "cleanupPolicy": "renderer revokes object URLs and clears Image.src on shot/project/component cleanup",
+    "memorySamples": [
+      23477668,
+      36283265,
+      43756565,
+      37792307
+    ],
+    "memoryGrowth": 14314639,
+    "repeatedProjectSwitches": 3
+  },
+  "errors": {
+    "corruptSource": {
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "ASSET_CANVAS_IMAGE_READ_FAILED",
+          "message": "Unable to read the original canvas image: The contents of issue99-detail.png are not a valid PNG file.",
+          "assetId": "62153c65-b888-499a-b85f-4d185784b26e"
+        }
+      },
+      "snapshot": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-b.pandastage",
+        "layers": [
+          {
+            "id": "5d1b784c-6dd9-494e-a265-3aa3300d848f",
+            "name": "High resolution JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "36764e63-b6dc-4995-8d60-ba3564213716"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": false
+          },
+          {
+            "id": "44b1328e-3bf3-4e4d-a247-bd012a0257e5",
+            "name": "High resolution PNG content",
+            "source": {
+              "kind": "asset",
+              "assetId": "62153c65-b888-499a-b85f-4d185784b26e"
+            },
+            "anchor": "center",
+            "x": 1200,
+            "y": 600,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "36764e63-b6dc-4995-8d60-ba3564213716"
+        ],
+        "intrinsicSizes": [
+          {
+            "assetId": "36764e63-b6dc-4995-8d60-ba3564213716",
+            "width": 1536,
+            "height": 864
+          }
+        ],
+        "renderSource": "project-assets-original",
+        "transformMode": "actual",
+        "backgroundLayerId": "5d1b784c-6dd9-494e-a265-3aa3300d848f",
+        "backgroundReady": true,
+        "backgroundWarning": false,
+        "selectedLayerId": "",
+        "projectRevision": 0,
+        "dirty": false,
+        "undoCount": 0,
+        "redoCount": 0,
+        "devicePixelRatio": 1.5,
+        "canvasBackingSize": {
+          "width": 2880,
+          "height": 1620
+        },
+        "cards": {
+          "36764e63-b6dc-4995-8d60-ba3564213716": {
+            "srcPrefix": null,
+            "placeholder": null
+          },
+          "62153c65-b888-499a-b85f-4d185784b26e": {
+            "srcPrefix": null,
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      }
+    },
+    "missingFormalBackground": {
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "ASSET_CANVAS_IMAGE_READ_FAILED",
+          "message": "Unable to read the original canvas image: ENOENT: no such file or directory, stat 'C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage\\assets\\issue99-detail.png'",
+          "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+        }
+      },
+      "snapshot": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue99-JPIwxl\\issue99-a.pandastage",
+        "layers": [
+          {
+            "id": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+            "name": "issue99-detail",
+            "source": {
+              "kind": "asset",
+              "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+            },
+            "anchor": "center",
+            "x": 800,
+            "y": 450,
+            "scaleX": 1.25,
+            "scaleY": 1.25,
+            "rotationDeg": 90,
+            "opacity": 0.6,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": true
+          },
+          {
+            "id": "696d3a76-9452-4102-a5cf-7b01e41abc17",
+            "name": "High resolution JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": false
+          },
+          {
+            "id": "e28e393d-8c47-45e7-8fef-67c5484aac71",
+            "name": "High resolution PNG content",
+            "source": {
+              "kind": "asset",
+              "assetId": "b5050ac1-1dea-440d-818f-4d560194a7ad"
+            },
+            "anchor": "center",
+            "x": 1200,
+            "y": 600,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 2,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "b567f82c-29b9-4a35-81cb-07658cf20438"
+        ],
+        "intrinsicSizes": [
+          {
+            "assetId": "b567f82c-29b9-4a35-81cb-07658cf20438",
+            "width": 1536,
+            "height": 864
+          }
+        ],
+        "renderSource": "project-assets-original",
+        "transformMode": "actual",
+        "backgroundLayerId": "a85c25b4-5abf-4caa-887f-4c5976bdc14e",
+        "backgroundReady": false,
+        "backgroundWarning": true,
+        "selectedLayerId": "",
+        "projectRevision": 0,
+        "dirty": false,
+        "undoCount": 0,
+        "redoCount": 0,
+        "devicePixelRatio": 1.5,
+        "canvasBackingSize": {
+          "width": 2880,
+          "height": 1620
+        },
+        "cards": {
+          "b567f82c-29b9-4a35-81cb-07658cf20438": {
+            "srcPrefix": null,
+            "placeholder": null
+          },
+          "b5050ac1-1dea-440d-818f-4d560194a7ad": {
+            "srcPrefix": null,
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      }
+    }
+  },
+  "diagnosis": {
+    "firstFailureBeforeFix": "CanvasStage called readThumbnail; ThumbnailService generated v1-max256 PNG data for the formal canvas, so a 1536x864 source was decoded from a 256px-or-smaller resource before Konva scaling.",
+    "ordinaryAndFormalBackgroundSharedThumbnailBeforeFix": true,
+    "originMainHadSameBehavior": true,
+    "pixelRatioImpact": "Konva.pixelRatio=1 was a secondary Windows high-DPI backing-store limitation; editor now clamps devicePixelRatio to 1..2 while hidden export keeps its fixed 1x contract.",
+    "minimalFixBoundary": [
+      "src/shared/asset-canvas-image-api.ts",
+      "src/main/services/AssetCanvasImageService.ts",
+      "src/main/ipc/register-asset-library-ipc-handlers.ts",
+      "src/main/index.ts",
+      "src/preload/index.ts",
+      "src/renderer/global.d.ts",
+      "src/renderer/features/canvas/CanvasStage.tsx"
+    ],
+    "evidence": [
+      "docs/evidence/issue-99/canvas-a.png",
+      "docs/evidence/issue-99/canvas-missing-background.png"
+    ]
+  }
+}

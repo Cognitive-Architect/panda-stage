@@ -40,7 +40,14 @@ import {
 import { SelectableLayer } from './SelectableLayer';
 import type { CanvasDropPreview } from './useCanvasDrop';
 
-Konva.pixelRatio = 1;
+// Keep the editor backing store sharp on Windows 125%/150% scaling without
+// allowing an unbounded DPR to multiply canvas memory.
+const editorDevicePixelRatio =
+  typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+Konva.pixelRatio = Math.min(
+  Math.max(editorDevicePixelRatio, 1),
+  2,
+);
 
 interface CanvasImageState {
   images: ReadonlyMap<string, HTMLImageElement>;
@@ -61,6 +68,7 @@ function useCanvasImages(
   const sourceKey = assets
     .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
     .join('|');
+  const projectRoot = snapshot?.projectRoot ?? null;
   const [state, setState] = useState<CanvasImageState>({
     images: new Map(),
     missing: new Set(),
@@ -68,21 +76,25 @@ function useCanvasImages(
 
   useEffect(() => {
     let active = true;
+    const loadedImages = new Set<HTMLImageElement>();
+    const objectUrls = new Set<string>();
     setState({
       images: new Map(),
       missing: new Set(
         assets.filter((asset) => !asset.sha256).map((asset) => asset.id),
       ),
     });
-    if (!snapshot) return () => {
-      active = false;
-    };
+    if (!projectRoot) {
+      return () => {
+        active = false;
+      };
+    }
 
     for (const asset of assets) {
       if (!asset.sha256) continue;
       void window.pandaStage.assets
-        .readThumbnail({
-          projectRoot: snapshot.projectRoot,
+        .readCanvasImage({
+          projectRoot,
           assetId: asset.id,
           sha256: asset.sha256,
         })
@@ -93,10 +105,23 @@ function useCanvasImages(
                 resolve(null);
                 return;
               }
+              const objectUrl = URL.createObjectURL(
+                new Blob([response.bytes], {
+                  type: response.mimeType,
+                }),
+              );
+              objectUrls.add(objectUrl);
               const image = new window.Image();
-              image.onload = () => resolve(image);
-              image.onerror = () => resolve(null);
-              image.src = response.dataUrl;
+              image.onload = () => {
+                loadedImages.add(image);
+                resolve(image);
+              };
+              image.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                objectUrls.delete(objectUrl);
+                resolve(null);
+              };
+              image.src = objectUrl;
             }),
         )
         .then((image) => {
@@ -123,8 +148,18 @@ function useCanvasImages(
     }
     return () => {
       active = false;
+      for (const image of loadedImages) {
+        image.onload = null;
+        image.onerror = null;
+        image.src = '';
+      }
+      for (const objectUrl of objectUrls) {
+        URL.revokeObjectURL(objectUrl);
+      }
+      loadedImages.clear();
+      objectUrls.clear();
     };
-  }, [assets, snapshot, sourceKey]);
+  }, [projectRoot, sourceKey]);
 
   return state;
 }
@@ -263,6 +298,16 @@ export function CanvasStage(): React.JSX.Element {
               data-interaction-status={interactionStatus}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
               data-project-revision={snapshot?.revision ?? -1}
+              data-render-source="project-assets-original"
+              data-rendered-asset-intrinsic-sizes={JSON.stringify(
+                [...imageState.images.entries()].map(
+                  ([assetId, image]) => ({
+                    assetId,
+                    width: image.naturalWidth,
+                    height: image.naturalHeight,
+                  }),
+                ),
+              )}
               data-rendered-asset-ids={JSON.stringify([
                 ...imageState.images.keys(),
               ])}
