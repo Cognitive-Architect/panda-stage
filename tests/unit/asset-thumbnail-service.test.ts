@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectSchema } from '../../src/domain';
 import { AssetThumbnailService } from '../../src/main/services/AssetThumbnailService';
 import { CacheService } from '../../src/main/services/CacheService';
@@ -171,6 +171,77 @@ describe('AssetThumbnailService', () => {
       status: 'missing',
       assetId: project.assets[0]!.id,
     });
+  });
+
+  it('lazily rebuilds a missing cache from the project asset path', async () => {
+    const projectRoot = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-thumbnail-lazy-'),
+    );
+    temporaryDirectories.push(projectRoot);
+    const sha256 = 'c'.repeat(64);
+    const project = ProjectSchema.parse({
+      ...exampleProject,
+      assets: [
+        { ...exampleProject.assets[0], sha256 },
+        ...exampleProject.assets.slice(1),
+      ],
+    });
+    const sourcePath = path.join(
+      projectRoot,
+      project.assets[0]!.relativePath,
+    );
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, createRgbaPng(2, 2));
+
+    const cache = new CacheService();
+    const ensureThumbnail = vi.fn().mockImplementation(
+      async (input: {
+        projectRoot: string;
+        sourcePath: string;
+        sha256: string;
+        width: number;
+        height: number;
+      }) => {
+        const cachePath = cache.thumbnailPath(
+          input.projectRoot,
+          cache.thumbnailKey(input.sha256),
+        );
+        await mkdir(path.dirname(cachePath), { recursive: true });
+        await writeFile(cachePath, createRgbaPng(2, 2));
+        return {
+          relativePath: cache.thumbnailRelativePath(
+            cache.thumbnailKey(input.sha256),
+          ),
+          width: 2,
+          height: 2,
+          cacheHit: false,
+        };
+      },
+    );
+    const service = new AssetThumbnailService({
+      cache,
+      getCurrentProjectSnapshot: () => ({ project }),
+      thumbnailService: { ensureThumbnail },
+    });
+
+    await expect(
+      service.read({
+        projectRoot,
+        assetId: project.assets[0]!.id,
+        sha256,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      status: 'ready',
+      dataUrl: expect.stringMatching(/^data:image\/png;base64,/u),
+    });
+    expect(ensureThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot,
+        sourcePath: path.resolve(sourcePath),
+        sha256,
+      }),
+    );
   });
 
   it('treats a valid PNG signature with a truncated body as missing', async () => {
