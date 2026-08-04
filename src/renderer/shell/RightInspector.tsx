@@ -53,7 +53,9 @@ export function getRightInspectorSelection(
     return {
       state: 'background',
       layer,
-      message: '已选择背景层；普通图层操作已禁用。',
+      message: layer.locked
+        ? '已选择当前镜头背景；背景已锁定，点击解锁后可编辑。'
+        : '已选择当前镜头背景；完成编辑后请重新锁定。',
     };
   }
 
@@ -95,6 +97,11 @@ export function RightInspector(): React.JSX.Element {
     <aside
       aria-labelledby="right-inspector-heading"
       className="right-inspector"
+      data-background-layer-id={
+        snapshot?.project.shots
+          .find((candidate) => candidate.id === currentShotId)
+          ?.backgroundLayerId ?? ''
+      }
       data-selected-layer-id={selectedLayerId ?? ''}
       data-selection-state={selection.state}
       data-testid="right-inspector"

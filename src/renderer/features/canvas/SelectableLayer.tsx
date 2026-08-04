@@ -49,7 +49,7 @@ export function SelectableLayer({
   onCommitTransform,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
-  if (render.isBackground) {
+  if (render.isBackground && !selected) {
     return (
       <KonvaImage
         height={render.height}
@@ -82,7 +82,7 @@ export function SelectableLayer({
     <Group
       draggable={!layer.locked}
       id={`canvas-layer-${layer.id}`}
-      listening
+      listening={render.isBackground ? selected && !layer.locked : true}
       name="selectable-canvas-layer"
       onClick={(event) =>
         stopAndSelect(event, layer.id, onSelect)
@@ -142,7 +142,7 @@ export function SelectableLayer({
         <KonvaImage
         height={render.height}
         image={image}
-        listening
+        listening={render.isBackground ? selected && !layer.locked : true}
         offsetX={render.offsetX}
         offsetY={render.offsetY}
         width={render.width}

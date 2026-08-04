@@ -62,6 +62,15 @@ export class LayerStore {
     return next;
   }
 
+  clearBackground(): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.clearBackground(project, shotId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Clear shot background');
+    }
+    return next;
+  }
+
   updatePosition(layerId: string, position: Point): Project {
     const { project, shotId } = this.context();
     const next = this.service.updatePosition(

@@ -2110,6 +2110,11 @@ h1 {
   padding: 8px 11px;
 }
 
+.layer-background-actions {
+  display: grid;
+  gap: 8px;
+}
+
 .layer-background-control[data-background-control-state='background'] {
   border-color: rgb(131 211 154 / 42%);
 }

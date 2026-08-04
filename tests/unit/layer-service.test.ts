@@ -123,12 +123,58 @@ describe('LayerService', () => {
     );
   });
 
-  it('treats binding the current background as a no-op', () => {
+  it('reasserts the default lock when binding the current background', () => {
     const project = fixture();
     const shot = project.shots[0]!;
-    expect(
-      service().setBackground(project, shot.id, shot.backgroundLayerId!),
-    ).toBe(project);
+    const result = service().setBackground(
+      project,
+      shot.id,
+      shot.backgroundLayerId!,
+    );
+    expect(result).not.toBe(project);
+    expect(result.shots[0]!.layers[0]!.locked).toBe(true);
+  });
+
+  it('locks and normalizes a replacement background, then can clear its identity', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const created = service().createFromAsset(project, shot.id, {
+      version: 2,
+      assetId: project.assets[0]!.id,
+      type: 'asset-image',
+      position: { x: 320, y: 240 },
+    });
+    const ordinary = created.layer;
+    const bound = service().setBackground(
+      created.project,
+      shot.id,
+      ordinary.id,
+    );
+    const boundShot = bound.shots[0]!;
+    const boundLayer = boundShot.layers.find(
+      (layer) => layer.id === ordinary.id,
+    )!;
+
+    expect(boundShot.backgroundLayerId).toBe(ordinary.id);
+    expect(boundLayer).toMatchObject({
+      x: 960,
+      y: 540,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      flipX: false,
+      locked: true,
+      zIndex: 0,
+    });
+
+    const cleared = service().clearBackground(bound, shot.id);
+    const clearedShot = cleared.shots[0]!;
+    const clearedLayer = clearedShot.layers.find(
+      (layer) => layer.id === ordinary.id,
+    )!;
+    expect(clearedShot.backgroundLayerId).toBeNull();
+    expect(clearedLayer).toMatchObject({ locked: false });
+    expect(clearedShot.layers.map((layer) => layer.zIndex)).toEqual([0, 1, 2]);
   });
 
   it('keeps explicit identity when characters and expressions share one asset', () => {
@@ -596,17 +642,60 @@ describe('LayerService', () => {
       flipX: layer.flipX,
     };
 
+    const lockedBackground = service().setLocked(
+      project,
+      shot.id,
+      background.id,
+      true,
+    );
     for (const operation of [
-      () => service().updateTransform(project, shot.id, background.id, transform),
-      () => service().toggleFlipX(project, shot.id, background.id),
-      () => service().reorder(project, shot.id, background.id, 'front'),
-      () => service().deleteLayer(project, shot.id, background.id),
-      () => service().setLocked(project, shot.id, background.id, true),
+      () => service().updateTransform(lockedBackground, shot.id, background.id, transform),
+      () => service().toggleFlipX(lockedBackground, shot.id, background.id),
+    ]) {
+      expect(operation).toThrow(
+        expect.objectContaining({ code: 'LAYER_LOCKED' }),
+      );
+    }
+    for (const operation of [
+      () => service().reorder(lockedBackground, shot.id, background.id, 'front'),
+      () => service().deleteLayer(lockedBackground, shot.id, background.id),
     ]) {
       expect(operation).toThrow(
         expect.objectContaining({ code: 'BACKGROUND_LAYER_PROTECTED' }),
       );
     }
+
+    const unlockedBackground = service().setLocked(
+      lockedBackground,
+      shot.id,
+      background.id,
+      false,
+    );
+    const editedBackground = service().updateTransform(
+      unlockedBackground,
+      shot.id,
+      background.id,
+      {
+        x: 820,
+        y: 440,
+        scale: 1.2,
+        rotationDeg: 12,
+        opacity: 0.7,
+        flipX: true,
+      },
+    );
+    expect(editedBackground.shots[0]!.layers[0]).toMatchObject({
+      x: 820,
+      y: 440,
+      scaleX: 1.2,
+      rotationDeg: 12,
+      opacity: 0.7,
+      flipX: true,
+      locked: false,
+    });
+    expect(() =>
+      service().setLocked(editedBackground, shot.id, background.id, true),
+    ).not.toThrow();
 
     const locked = service().setLocked(project, shot.id, layer.id, true);
     for (const operation of [

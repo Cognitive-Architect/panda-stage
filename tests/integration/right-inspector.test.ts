@@ -75,7 +75,7 @@ describe('Stage 3-A RightInspector selection contract', () => {
       getRightInspectorSelection(snapshot, 'shot-a', 'background'),
     ).toMatchObject({
       state: 'background',
-      message: '已选择背景层；普通图层操作已禁用。',
+      message: '已选择当前镜头背景；完成编辑后请重新锁定。',
     });
     expect(
       getRightInspectorSelection(snapshot, 'shot-a', 'hero'),
@@ -95,10 +95,21 @@ describe('Stage 3-A RightInspector selection contract', () => {
     const snapshot = snapshotWithLayers();
     expect(
       getLayerBackgroundControlModel(snapshot, 'shot-a', null),
-    ).toMatchObject({ state: 'empty', canSet: false });
+    ).toMatchObject({
+      state: 'empty',
+      canSet: false,
+      canSelect: true,
+      canClear: true,
+      backgroundLayer: { id: 'background' },
+    });
     expect(
       getLayerBackgroundControlModel(snapshot, 'shot-a', 'background'),
-    ).toMatchObject({ state: 'background', canSet: false });
+    ).toMatchObject({
+      state: 'background',
+      canSet: false,
+      canSelect: true,
+      canClear: true,
+    });
     expect(
       getLayerBackgroundControlModel(snapshot, 'shot-a', 'hero'),
     ).toMatchObject({ state: 'unsupported', canSet: false });
@@ -173,7 +184,7 @@ describe('Stage 3-A RightInspector selection contract', () => {
     selection.dispose();
   });
 
-  it('blocks every background mutation surface without consuming Delete/Backspace', async () => {
+  it('keeps background edits controlled while blocking layer-order deletion', async () => {
     const { readFile } = await import('node:fs/promises');
     const [inspector, transform, order] = await Promise.all([
       readFile('src/renderer/shell/RightInspector.tsx', 'utf8'),
@@ -201,13 +212,9 @@ describe('Stage 3-A RightInspector selection contract', () => {
     expect(transformSource).toContain(
       'data-background-protected={String(isBackgroundLayer)}',
     );
-    expect(
-      transformSource.match(
-        /disabled=\{layer\.locked \|\| isBackgroundLayer\}/gu,
-      ),
-    ).toHaveLength(3);
-    expect(transformSource).toContain(
-      'disabled={isBackgroundLayer}',
+    expect(transformSource.match(/disabled=\{layer\.locked\}/gu)).toHaveLength(3);
+    expect(transformSource).not.toContain(
+      '背景层不支持普通图层变换',
     );
     expect(orderSource).toContain(
       'Boolean(backgroundLayerSelected) ||',
@@ -238,7 +245,7 @@ describe('Stage 3-A RightInspector selection contract', () => {
     expect(shouldDeleteSelectedLayer(event, 'hero', false)).toBe(true);
   });
 
-  it('keeps editor state unchanged for background writes and restores ordinary writes', () => {
+  it('allows unlocked background transforms while preserving background order protection', () => {
     const project = ProjectSchema.parse(exampleProject);
     const shot = project.shots[0]!;
     const background = shot.layers.find(
@@ -262,36 +269,36 @@ describe('Stage 3-A RightInspector selection contract', () => {
       opacity: background.opacity,
       flipX: background.flipX,
     };
-    const before = editor.getSnapshot()!;
-    const beforeProjectJson = JSON.stringify(before.project);
+    layers.updatePosition(background.id, { x: 1, y: 1 });
+    layers.updateTransform(background.id, {
+      ...backgroundTransform,
+      x: 820,
+      y: 440,
+      scale: 1.2,
+      rotationDeg: 12,
+      opacity: 0.7,
+      flipX: true,
+    });
+    layers.toggleFlipX(background.id);
+    layers.setLocked(background.id, true);
 
+    expect(editor.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 4,
+    });
+    expect(
+      editor.getSnapshot()!.project.shots[0]!.layers[0],
+    ).toMatchObject({ locked: true, x: 820, y: 440, scaleX: 1.2 });
     for (const operation of [
-      () => layers.updatePosition(background.id, { x: 1, y: 1 }),
-      () =>
-        layers.updateTransform(
-          background.id,
-          backgroundTransform,
-        ),
-      () => layers.toggleFlipX(background.id),
       () => layers.reorder(background.id, 'front'),
       () => layers.deleteLayer(background.id),
-      () => layers.setLocked(background.id, true),
     ]) {
       expect(operation).toThrow(
         expect.objectContaining({ code: 'BACKGROUND_LAYER_PROTECTED' }),
       );
     }
-
-    expect(editor.getSnapshot()).toMatchObject({
-      dirty: false,
-      revision: 0,
-    });
-    expect(editor.history.getSnapshot()).toMatchObject({
-      undoCount: 0,
-      redoCount: 0,
-    });
-    expect(JSON.stringify(editor.getSnapshot()!.project)).toBe(
-      beforeProjectJson,
+    expect(() => layers.updatePosition(background.id, { x: 1, y: 1 })).toThrow(
+      expect.objectContaining({ code: 'LAYER_LOCKED' }),
     );
 
     layers.updateTransform(ordinary.id, {
@@ -304,9 +311,74 @@ describe('Stage 3-A RightInspector selection contract', () => {
     });
     expect(editor.getSnapshot()).toMatchObject({
       dirty: true,
-      revision: 1,
+      revision: 5,
     });
-    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    expect(editor.history.getSnapshot().undoCount).toBe(5);
+  });
+
+  it('keeps explicit background selection coherent across bind, undo/redo, clear, and restore', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const shot = project.shots[0]!;
+    const editor = new EditorProjectStore();
+    editor.open('D:\\Projects\\background-history.pandastage', project);
+    const selection = new LayerSelectionStore(editor, {
+      getCurrentShotId: () => shot.id,
+      subscribe: () => () => undefined,
+    });
+    const layers = new LayerStore(
+      editor,
+      { getCurrentShotId: () => shot.id },
+      new LayerService(),
+      selection,
+    );
+    const created = layers.createFromAsset({
+      version: 2,
+      assetId: project.assets[0]!.id,
+      type: 'asset-image',
+      position: { x: 700, y: 400 },
+    });
+
+    layers.setBackground(created.id);
+    selection.selectBackground();
+    expect(selection.getSelectedLayerId()).toBe(created.id);
+    expect(getRightInspectorSelection(editor.getSnapshot(), shot.id, created.id)).toMatchObject({
+      state: 'background',
+      layer: { locked: true },
+    });
+
+    expect(editor.undo()).toBe(true);
+    expect(selection.getSelectedLayerId()).toBe(created.id);
+    expect(getRightInspectorSelection(editor.getSnapshot(), shot.id, created.id).state).toBe('selected');
+    expect(editor.redo()).toBe(true);
+    expect(getRightInspectorSelection(editor.getSnapshot(), shot.id, created.id).state).toBe('background');
+
+    layers.clearBackground();
+    expect(editor.getSnapshot()!.project.shots[0]!.backgroundLayerId).toBeNull();
+    expect(selection.getSelectedLayerId()).toBe(created.id);
+    expect(getRightInspectorSelection(editor.getSnapshot(), shot.id, created.id).state).toBe('selected');
+    expect(editor.undo()).toBe(true);
+    expect(getRightInspectorSelection(editor.getSnapshot(), shot.id, created.id).state).toBe('background');
+
+    const current = editor.getSnapshot()!.project;
+    editor.restore({
+      ...current,
+      shots: current.shots.map((candidate) =>
+        candidate.id === shot.id
+          ? {
+              ...candidate,
+              layers: candidate.layers.filter(
+                (layer) => layer.id !== created.id,
+              ),
+              backgroundLayerId:
+                candidate.backgroundLayerId === created.id
+                  ? null
+                  : candidate.backgroundLayerId,
+            }
+          : candidate,
+      ),
+    });
+    expect(selection.getSelectedLayerId()).toBeNull();
+    selection.dispose();
   });
 
   it('keeps the single owner and unchanged product state sources', async () => {

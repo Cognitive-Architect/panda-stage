@@ -109,10 +109,14 @@ describe('shared stage layer render contract', () => {
     expect(contracts.editor).toEqual(contracts.renderer);
     expect(contracts.editor[0]).toMatchObject({
       isBackground: true,
-      x: 0,
-      y: -420,
+      x: 960,
+      y: 540,
       width: 1920,
       height: 1920,
+      offsetX: 960,
+      offsetY: 960,
+      scaleX: -1,
+      scaleY: 1,
       coverScale: 1.92,
     });
   });

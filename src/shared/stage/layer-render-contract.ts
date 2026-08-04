@@ -94,15 +94,19 @@ export function buildStageLayerRenderInstruction(
       assetId: layer.assetId,
       isBackground: true,
       listening: false,
-      x: cover.x,
-      y: cover.y,
+      // Backgrounds use the cover geometry as their base image, while the
+      // authored layer transform remains available to the explicit
+      // background-management mode. The default set-background transform is
+      // centered at 1x, so this preserves the existing cover appearance.
+      x: layer.x,
+      y: layer.y,
       width: cover.width,
       height: cover.height,
-      offsetX: 0,
-      offsetY: 0,
-      scaleX: 1,
-      scaleY: 1,
-      rotationDeg: 0,
+      offsetX: cover.width / 2,
+      offsetY: cover.height / 2,
+      scaleX: layer.flipX ? -layer.scaleX : layer.scaleX,
+      scaleY: layer.scaleY,
+      rotationDeg: layer.rotationDeg,
       opacity: layer.opacity,
       visible: layer.visible,
       zIndex: layer.zIndex,

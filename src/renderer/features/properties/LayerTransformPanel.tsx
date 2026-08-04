@@ -141,7 +141,9 @@ export function LayerTransformPanel({
       preserveCommitErrorRef.current = false;
       setStatus(
         isBackgroundLayer
-          ? '背景层不支持普通图层变换，请在素材或背景专用流程中处理。'
+          ? layer.locked
+            ? '当前正式背景已锁定；点击解锁后可编辑 X/Y、缩放、旋转、翻转与不透明度。'
+            : '当前正式背景已进入编辑模式；完成后请重新锁定。'
           : layer.locked
             ? '图层已锁定；请先解锁再修改。'
           : 'X/Y 始终表示视觉中心；缩放保持等比。',
@@ -163,10 +165,6 @@ export function LayerTransformPanel({
     reason: 'action' | 'blur' | 'submit',
   ): CommitTransformDraftResult => {
     if (!layer) return 'invalid';
-    if (isBackgroundLayer) {
-      setStatus('背景层不支持普通图层变换，未提交任何修改。');
-      return 'invalid';
-    }
     if (layer.locked) {
       setStatus('图层已锁定；属性草稿未提交。');
       return 'locked';
@@ -285,7 +283,7 @@ export function LayerTransformPanel({
             <label key={key}>
               {label}
               <input
-                disabled={layer.locked || isBackgroundLayer}
+                disabled={layer.locked}
                 inputMode="decimal"
                 onChange={(event) =>
                   updateDraft(key, event.target.value)
@@ -295,7 +293,7 @@ export function LayerTransformPanel({
             </label>
           ))}
           <button
-            disabled={layer.locked || isBackgroundLayer}
+            disabled={layer.locked}
             onClick={() => {
               if (
                 !canRunTransformAction(
@@ -322,7 +320,6 @@ export function LayerTransformPanel({
           <label className="layer-lock-control">
             <input
               checked={layer.locked}
-              disabled={isBackgroundLayer}
               onChange={(event) => {
                 const shouldLock = event.target.checked;
                 if (
@@ -348,7 +345,7 @@ export function LayerTransformPanel({
             锁定图层
           </label>
           <button
-            disabled={layer.locked || isBackgroundLayer}
+            disabled={layer.locked}
             type="submit"
           >
             应用变换
@@ -359,7 +356,9 @@ export function LayerTransformPanel({
       )}
       <p data-testid="layer-transform-guidance">
         {isBackgroundLayer
-          ? '背景层不支持普通图层变换，请在素材或背景专用流程中处理。'
+          ? layer?.locked
+            ? '当前正式背景已锁定；请先解锁后再编辑。'
+            : '当前正式背景可编辑；完成后请重新锁定。'
           : layer?.locked
             ? '图层已锁定，请先解锁后再修改变换。'
           : layer

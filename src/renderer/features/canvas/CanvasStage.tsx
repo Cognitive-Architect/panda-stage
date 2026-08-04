@@ -238,6 +238,10 @@ export function CanvasStage(): React.JSX.Element {
       ? imageState.images.has(selectedStageLayer.asset.id)
       : false,
   });
+  const backgroundSelected =
+    Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
+  const backgroundListening =
+    backgroundSelected && backgroundLayer?.layer.locked === false;
 
   return (
     <section className="project-canvas" aria-labelledby="canvas-heading">
@@ -279,7 +283,11 @@ export function CanvasStage(): React.JSX.Element {
         {(transform) => (
           <>
             <div
-              data-background-listening="false"
+              data-background-listening={String(backgroundListening)}
+              data-background-editing={String(backgroundSelected)}
+              data-background-locked={String(
+                backgroundLayer?.layer.locked ?? false,
+              )}
               data-background-layer-id={
                 backgroundLayer?.render.id ?? ''
               }
@@ -362,7 +370,11 @@ export function CanvasStage(): React.JSX.Element {
                             }}
                             onError={setInteractionStatus}
                             onSelect={(layerId) => {
-                              selectionStore.select(layerId);
+                              if (render.isBackground) {
+                                selectionStore.selectExplicit(layerId);
+                              } else {
+                                selectionStore.select(layerId);
+                              }
                               setInteractionStatus('已选择图层。');
                             }}
                             render={render}

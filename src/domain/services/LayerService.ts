@@ -253,13 +253,36 @@ export class LayerService {
         '只有直接引用图片素材的图层才能设为镜头背景。',
       );
     }
-    if (shot.backgroundLayerId === layer.id) return project;
+    if (shot.backgroundLayerId === layer.id) {
+      if (layer.locked) return project;
+      const layers = [...shot.layers];
+      layers[layerIndex] = { ...layer, locked: true, zIndex: 0 };
+      return this.replaceShot(project, {
+        ...shot,
+        layers: this.normalizeLayerOrder(
+          { ...shot, layers },
+          layers
+            .filter((candidate) => candidate.id !== layer.id)
+            .sort((left, right) => left.zIndex - right.zIndex),
+        ),
+      });
+    }
 
     const orderedContent = shot.layers
       .filter((candidate) => candidate.id !== layer.id)
       .sort((left, right) => left.zIndex - right.zIndex);
     const layers = [
-      { ...layer, zIndex: 0 },
+      {
+        ...layer,
+        x: PROJECT_WIDTH / 2,
+        y: PROJECT_HEIGHT / 2,
+        scaleX: 1,
+        scaleY: 1,
+        rotationDeg: 0,
+        flipX: false,
+        locked: true,
+        zIndex: 0,
+      },
       ...orderedContent.map((candidate, index) => ({
         ...candidate,
         zIndex: index + 1,
@@ -273,6 +296,36 @@ export class LayerService {
     });
   }
 
+  clearBackground(project: Project, shotId: string): Project {
+    const shot = this.shot(project, shotId);
+    if (!shot.backgroundLayerId) return project;
+    const background = shot.layers.find(
+      (candidate) => candidate.id === shot.backgroundLayerId,
+    );
+    if (!background) {
+      throw new LayerServiceError(
+        'LAYER_NOT_FOUND',
+        `鎵句笉鍒板浘灞傦細${shot.backgroundLayerId}`,
+      );
+    }
+    const layers = shot.layers
+      .map((candidate) =>
+        candidate.id === background.id
+          ? { ...candidate, locked: false }
+          : candidate,
+      )
+      .sort((left, right) => left.zIndex - right.zIndex)
+      .map((candidate, index) => ({
+        ...candidate,
+        zIndex: index,
+      }));
+    return this.replaceShot(project, {
+      ...shot,
+      backgroundLayerId: null,
+      layers,
+    });
+  }
+
   updatePosition(
     project: Project,
     shotId: string,
@@ -282,12 +335,6 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
-    if (shot.backgroundLayerId === layer.id) {
-      throw new LayerServiceError(
-        'BACKGROUND_LAYER_PROTECTED',
-        '背景图层不能移动、变换、排序或删除。',
-      );
-    }
     if (layer.locked) {
       throw new LayerServiceError(
         'LAYER_LOCKED',
@@ -365,6 +412,7 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
+    this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
     const ordered = shot.layers
       .filter((candidate) => candidate.id !== shot.backgroundLayerId)
@@ -397,6 +445,7 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
+    this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
     const remaining = shot.layers.filter(
       (candidate) => candidate.id !== layer.id,
@@ -427,12 +476,6 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
-    if (shot.backgroundLayerId === layer.id) {
-      throw new LayerServiceError(
-        'BACKGROUND_LAYER_PROTECTED',
-        '背景图层不能通过普通图层控件修改。',
-      );
-    }
     if (layer.locked === locked) return project;
     const layers = [...shot.layers];
     layers[layerIndex] = { ...layer, locked };
@@ -461,17 +504,20 @@ export class LayerService {
     return index;
   }
 
-  private assertEditable(shot: Shot, layer: Layer): void {
-    if (shot.backgroundLayerId === layer.id) {
-      throw new LayerServiceError(
-        'BACKGROUND_LAYER_PROTECTED',
-        '背景图层不能移动、变换、排序或删除。',
-      );
-    }
+  private assertEditable(_shot: Shot, layer: Layer): void {
     if (layer.locked) {
       throw new LayerServiceError(
         'LAYER_LOCKED',
         `图层“${layer.name}”已锁定，请先解锁。`,
+      );
+    }
+  }
+
+  private assertContentLayer(shot: Shot, layer: Layer): void {
+    if (shot.backgroundLayerId === layer.id) {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_PROTECTED',
+        '背景图层不能通过普通图层层级工具排序或删除。',
       );
     }
   }

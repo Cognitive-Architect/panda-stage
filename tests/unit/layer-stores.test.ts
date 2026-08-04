@@ -56,11 +56,19 @@ describe('Day 22 layer stores', () => {
 
     input.selection.select(background.id);
     expect(input.selection.getSelectedLayerId()).toBeNull();
+    input.selection.selectBackground();
+    expect(input.selection.getSelectedLayerId()).toBe(background.id);
+    input.selection.clear();
+    expect(input.selection.getSelectedLayerId()).toBeNull();
     input.selection.select(ordinary.id);
     input.selection.clear();
     expect(input.selection.getSelectedLayerId()).toBeNull();
     input.selection.select(ordinary.id);
     input.shots.select('d2210000-0000-4000-8000-000000000099');
+    expect(input.selection.getSelectedLayerId()).toBeNull();
+    input.shots.select(shot.id);
+    input.selection.selectBackground();
+    input.editor.open('D:\\other-project.pandastage', input.project);
     expect(input.selection.getSelectedLayerId()).toBeNull();
     input.selection.dispose();
   });
