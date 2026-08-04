@@ -4,6 +4,7 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { editorProjectStore } from '../stores/EditorProjectStore';
 import { selectionStore } from '../stores/selectionStore';
 import { shotStore } from '../stores/shotStore';
+import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 
@@ -116,6 +117,7 @@ export function RightInspector(): React.JSX.Element {
           {selection.message}
         </span>
       </section>
+      <LayerBackgroundControl />
       <LayerTransformPanel
         backgroundLayerSelected={selection.state === 'background'}
       />

@@ -2081,13 +2081,42 @@ h1 {
 }
 
 .layer-transform-panel,
-.layer-order-controls {
+.layer-order-controls,
+.layer-background-control {
   display: grid;
   padding: 12px;
   border: 1px solid rgb(255 255 255 / 9%);
   border-radius: 12px;
   background: rgb(7 12 9 / 58%);
   gap: 10px;
+}
+
+.layer-background-control {
+  border-color: rgb(131 211 154 / 24%);
+}
+
+.layer-background-control h3,
+.layer-background-control p {
+  margin: 0;
+}
+
+.layer-background-control > p {
+  color: #91a299;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.layer-background-control button {
+  padding: 8px 11px;
+}
+
+.layer-background-control[data-background-control-state='background'] {
+  border-color: rgb(131 211 154 / 42%);
+}
+
+.layer-background-control[data-background-control-state='unsupported'],
+.layer-background-control[data-background-control-state='locked'] {
+  border-color: rgb(255 209 102 / 38%);
 }
 
 .history-controls {

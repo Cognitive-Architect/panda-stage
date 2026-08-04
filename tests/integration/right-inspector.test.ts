@@ -5,8 +5,12 @@ import {
   ProjectSchema,
 } from '../../src/domain';
 import { shouldDeleteSelectedLayer } from '../../src/renderer/features/properties/LayerOrderControls';
+import {
+  getLayerBackgroundControlModel,
+} from '../../src/renderer/features/properties/LayerBackgroundControl';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
+import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
 import {
   getRightInspectorSelection,
@@ -16,13 +20,33 @@ function snapshotWithLayers(): EditorProjectSnapshot {
   return {
     projectRoot: 'C:\\Projects\\Inspector.pandastage',
     project: {
+      assets: [
+        {
+          id: 'asset-background',
+          kind: 'image',
+        },
+        {
+          id: 'asset-hero',
+          kind: 'image',
+        },
+      ],
       shots: [
         {
           id: 'shot-a',
           backgroundLayerId: 'background',
           layers: [
-            { id: 'background', name: 'Background', locked: false },
-            { id: 'hero', name: 'Hero', locked: false },
+            {
+              id: 'background',
+              name: 'Background',
+              locked: false,
+              source: { kind: 'asset', assetId: 'asset-background' },
+            },
+            {
+              id: 'hero',
+              name: 'Hero',
+              locked: false,
+              source: { kind: 'character' },
+            },
             { id: 'locked', name: 'Locked', locked: true },
           ],
         },
@@ -65,6 +89,88 @@ describe('Stage 3-A RightInspector selection contract', () => {
       state: 'locked',
       message: '图层已锁定，请先解锁后再变换、排序或删除。',
     });
+  });
+
+  it('exposes an explicit background action only for direct image layers', () => {
+    const snapshot = snapshotWithLayers();
+    expect(
+      getLayerBackgroundControlModel(snapshot, 'shot-a', null),
+    ).toMatchObject({ state: 'empty', canSet: false });
+    expect(
+      getLayerBackgroundControlModel(snapshot, 'shot-a', 'background'),
+    ).toMatchObject({ state: 'background', canSet: false });
+    expect(
+      getLayerBackgroundControlModel(snapshot, 'shot-a', 'hero'),
+    ).toMatchObject({ state: 'unsupported', canSet: false });
+  });
+
+  it('restores the redone layer selection and inspector actions in the same shot', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const shot = project.shots[0]!;
+    let currentShotId = shot.id;
+    const listeners = new Set<() => void>();
+    const shotSelection = {
+      getCurrentShotId: () => currentShotId,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    const editor = new EditorProjectStore();
+    editor.open('D:\\Projects\\redo-selection.pandastage', project);
+    const selection = new LayerSelectionStore(editor, shotSelection);
+    const layers = new LayerStore(
+      editor,
+      shotSelection,
+      new LayerService(),
+      selection,
+    );
+    const asset = project.assets.find(
+      (candidate) => candidate.kind === 'image',
+    )!;
+    const created = layers.createFromAsset({
+      version: 2,
+      assetId: asset.id,
+      type: 'asset-image',
+      position: { x: 640, y: 360 },
+    });
+
+    expect(selection.getSelectedLayerId()).toBe(created.id);
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    expect(editor.undo()).toBe(true);
+    expect(selection.getSelectedLayerId()).toBeNull();
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 1,
+    });
+
+    expect(editor.redo()).toBe(true);
+    const snapshot = editor.getSnapshot()!;
+    expect(selection.getSelectedLayerId()).toBe(created.id);
+    expect(
+      getRightInspectorSelection(snapshot, shot.id, created.id),
+    ).toMatchObject({ state: 'selected', layer: { id: created.id } });
+    expect(
+      getLayerBackgroundControlModel(snapshot, shot.id, created.id),
+    ).toMatchObject({ state: 'available', canSet: true });
+    expect(snapshot.project.shots[0]!.layers.filter(
+      (layer) => layer.id === created.id,
+    )).toHaveLength(1);
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+
+    currentShotId = 'another-shot';
+    for (const listener of listeners) listener();
+    expect(selection.getSelectedLayerId()).toBeNull();
+    expect(editor.undo()).toBe(true);
+    expect(editor.redo()).toBe(true);
+    expect(selection.getSelectedLayerId()).toBeNull();
+    selection.dispose();
   });
 
   it('blocks every background mutation surface without consuming Delete/Backspace', async () => {

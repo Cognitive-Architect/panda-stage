@@ -75,6 +75,62 @@ describe('LayerService', () => {
     });
   });
 
+  it('binds an ordinary direct-asset layer as the explicit shot background', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const created = service().createFromAsset(project, shot.id, {
+      version: 2,
+      assetId: project.assets[0]!.id,
+      type: 'asset-image',
+      position: { x: 960, y: 540 },
+    });
+    const ordinary = created.layer;
+
+    const result = service().setBackground(
+      created.project,
+      shot.id,
+      ordinary.id,
+    );
+    const nextShot = result.shots[0]!;
+
+    expect(nextShot.backgroundLayerId).toBe(ordinary.id);
+    expect(nextShot.layers.map((layer) => layer.id)).toEqual([
+      ordinary.id,
+      shot.layers[0]!.id,
+      shot.layers[1]!.id,
+    ]);
+    expect(nextShot.layers.map((layer) => layer.zIndex)).toEqual([0, 1, 2]);
+    expect(nextShot.layers[1]).toMatchObject({
+      id: shot.layers[0]!.id,
+      zIndex: 1,
+    });
+    expect(result.updatedAt).toBe(NOW.toISOString());
+    expect(project.shots[0]!.backgroundLayerId).not.toBe(ordinary.id);
+  });
+
+  it('rejects character layers as formal backgrounds without mutating the project', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const characterLayer = shot.layers[1]!;
+
+    expect(() =>
+      service().setBackground(project, shot.id, characterLayer.id),
+    ).toThrow(
+      expect.objectContaining({ code: 'BACKGROUND_LAYER_INVALID' }),
+    );
+    expect(project.shots[0]!.backgroundLayerId).toBe(
+      shot.backgroundLayerId,
+    );
+  });
+
+  it('treats binding the current background as a no-op', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    expect(
+      service().setBackground(project, shot.id, shot.backgroundLayerId!),
+    ).toBe(project);
+  });
+
   it('keeps explicit identity when characters and expressions share one asset', () => {
     const project = fixture();
     const characterA = project.characters[0]!;

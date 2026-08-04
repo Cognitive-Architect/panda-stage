@@ -31,12 +31,13 @@ function harness() {
       `d2210000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
     now: () => new Date('2026-07-26T01:30:00.000Z'),
   });
+  const selection = new LayerSelectionStore(editor, shots);
   return {
     project,
     editor,
     shots,
-    layers: new LayerStore(editor, shots, service),
-    selection: new LayerSelectionStore(editor, shots),
+    layers: new LayerStore(editor, shots, service, selection),
+    selection,
   };
 }
 
@@ -92,6 +93,61 @@ describe('Day 22 layer stores', () => {
 
     input.layers.updatePosition(layer.id, { x: 300, y: 400 });
     expect(notifications).toBe(2);
+  });
+
+  it('restores Create layer selection on redo without duplicating the layer', () => {
+    const input = harness();
+    const shot = input.project.shots[0]!;
+    const asset = input.project.assets.find(
+      (candidate) => candidate.kind === 'image',
+    )!;
+    const layer = input.layers.createFromAsset({
+      version: 2,
+      assetId: asset.id,
+      type: 'asset-image',
+      position: { x: 100, y: 200 },
+    });
+
+    expect(input.selection.getSelectedLayerId()).toBe(layer.id);
+    expect(
+      input.editor.getSnapshot()!.project.shots[0]!.layers.filter(
+        (candidate) => candidate.id === layer.id,
+      ),
+    ).toHaveLength(1);
+    expect(input.editor.getSnapshot()).toMatchObject({ revision: 1 });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+
+    expect(input.editor.undo()).toBe(true);
+    expect(
+      input.editor.getSnapshot()!.project.shots[0]!.layers.some(
+        (candidate) => candidate.id === layer.id,
+      ),
+    ).toBe(false);
+    expect(input.selection.getSelectedLayerId()).toBeNull();
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 1,
+    });
+
+    const revisionAfterUndo = input.editor.getSnapshot()!.revision;
+    expect(input.editor.redo()).toBe(true);
+    const redoneShot = input.editor.getSnapshot()!.project.shots.find(
+      (candidate) => candidate.id === shot.id,
+    )!;
+    expect(
+      redoneShot.layers.filter((candidate) => candidate.id === layer.id),
+    ).toHaveLength(1);
+    expect(input.selection.getSelectedLayerId()).toBe(layer.id);
+    expect(input.editor.getSnapshot()).toMatchObject({
+      revision: revisionAfterUndo + 1,
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
   });
 
   it.each([

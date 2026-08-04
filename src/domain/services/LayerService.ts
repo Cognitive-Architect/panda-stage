@@ -18,6 +18,7 @@ export type LayerServiceErrorCode =
   | 'LAYER_NOT_FOUND'
   | 'ASSET_NOT_FOUND'
   | 'ASSET_TYPE_MISMATCH'
+  | 'BACKGROUND_LAYER_INVALID'
   | 'CHARACTER_IDENTITY_MISMATCH'
   | 'INVALID_POSITION'
   | 'INVALID_TRANSFORM'
@@ -230,6 +231,46 @@ export class LayerService {
       project: this.replaceShot(project, nextShot),
       layer,
     };
+  }
+
+  setBackground(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    const assetId =
+      layer.source.kind === 'asset' ? layer.source.assetId : undefined;
+    const asset = assetId
+      ? project.assets.find((candidate) => candidate.id === assetId)
+      : undefined;
+
+    if (!asset || asset.kind !== 'image') {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_INVALID',
+        '只有直接引用图片素材的图层才能设为镜头背景。',
+      );
+    }
+    if (shot.backgroundLayerId === layer.id) return project;
+
+    const orderedContent = shot.layers
+      .filter((candidate) => candidate.id !== layer.id)
+      .sort((left, right) => left.zIndex - right.zIndex);
+    const layers = [
+      { ...layer, zIndex: 0 },
+      ...orderedContent.map((candidate, index) => ({
+        ...candidate,
+        zIndex: index + 1,
+      })),
+    ];
+
+    return this.replaceShot(project, {
+      ...shot,
+      backgroundLayerId: layer.id,
+      layers,
+    });
   }
 
   updatePosition(

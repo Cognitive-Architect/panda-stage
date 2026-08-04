@@ -11,24 +11,55 @@ import {
   EditorProjectStore,
   editorProjectStore,
 } from './EditorProjectStore';
+import { selectionStore } from './selectionStore';
 import { shotStore } from './shotStore';
 
 export interface CurrentShotSelection {
   getCurrentShotId: () => string | null;
 }
 
+export interface LayerSelection {
+  select: (layerId: string) => void;
+}
+
+const noopLayerSelection: LayerSelection = {
+  select: () => undefined,
+};
+
 export class LayerStore {
   constructor(
     private readonly editorStore: EditorProjectStore,
     private readonly shotSelection: CurrentShotSelection,
     private readonly service: LayerService,
+    private readonly layerSelection: LayerSelection = noopLayerSelection,
   ) {}
 
   createFromAsset(input: CreateLayerInput): Layer {
     const { project, shotId } = this.context();
     const result = this.service.createFromAsset(project, shotId, input);
-    this.editorStore.updateProject(result.project, 'Create layer');
+    this.editorStore.updateProject(
+      result.project,
+      'Create layer',
+      {},
+      {
+        afterRedo: () =>
+          this.restoreCreatedLayerSelection(
+            project.id,
+            shotId,
+            result.layer.id,
+          ),
+      },
+    );
     return result.layer;
+  }
+
+  setBackground(layerId: string): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setBackground(project, shotId, layerId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Set shot background');
+    }
+    return next;
   }
 
   updatePosition(layerId: string, position: Point): Project {
@@ -119,10 +150,37 @@ export class LayerStore {
     }
     return { project: snapshot.project, shotId };
   }
+
+  private restoreCreatedLayerSelection(
+    projectId: string,
+    shotId: string,
+    layerId: string,
+  ): void {
+    const snapshot = this.editorStore.getSnapshot();
+    if (
+      !snapshot ||
+      snapshot.project.id !== projectId ||
+      this.shotSelection.getCurrentShotId() !== shotId
+    ) {
+      return;
+    }
+    const shot = snapshot.project.shots.find(
+      (candidate) => candidate.id === shotId,
+    );
+    if (
+      !shot ||
+      shot.backgroundLayerId === layerId ||
+      !shot.layers.some((layer) => layer.id === layerId)
+    ) {
+      return;
+    }
+    this.layerSelection.select(layerId);
+  }
 }
 
 export const layerStore = new LayerStore(
   editorProjectStore,
   shotStore,
   new LayerService(),
+  selectionStore,
 );
