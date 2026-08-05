@@ -91,6 +91,14 @@ export function EditorTopBar({
       <div className="recovery-status-row">
         <output>{status}</output>
         <button
+          className="editor-save-button"
+          disabled={busy || !projectSnapshot.dirty}
+          onClick={() => void onSaveProject()}
+          type="button"
+        >
+          保存整个项目
+        </button>
+        <button
           className="project-center-button"
           data-testid="open-project-center"
           disabled={busy || closeConfirmOpen}
@@ -98,14 +106,6 @@ export function EditorTopBar({
           type="button"
         >
           项目中心
-        </button>
-        <button
-          className="editor-save-button"
-          disabled={busy || !projectSnapshot.dirty}
-          onClick={() => void onSaveProject()}
-          type="button"
-        >
-          保存整个项目
         </button>
         <button
           className="product-preview-button"
