@@ -43,6 +43,7 @@
     "verify:issue76": "pnpm build && electron scripts/verify-issue76.cjs",
     "verify:issue102-task1": "pnpm build && electron scripts/verify-issue102-task1.cjs",
     "verify:issue102-task2": "pnpm build && electron scripts/verify-issue102-task2.cjs",
+    "verify:issue102-task3": "pnpm build && electron scripts/verify-issue102-task3.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",
     "dist": "pnpm build && node scripts/build-distribution.cjs",

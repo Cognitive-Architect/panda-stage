@@ -10,6 +10,7 @@ import {
 type Listener = () => void;
 
 export class LayerSelectionStore {
+  private currentProjectRoot: string | null = null;
   private selectedLayerId: string | null = null;
   private readonly listeners = new Set<Listener>();
   private readonly unsubscribeEditor: () => void;
@@ -68,6 +69,13 @@ export class LayerSelectionStore {
   }
 
   private reconcileSelection(): void {
+    const editorSnapshot = this.editorStore.getSnapshot();
+    const projectRoot = editorSnapshot?.projectRoot ?? null;
+    if (projectRoot !== this.currentProjectRoot) {
+      this.currentProjectRoot = projectRoot;
+      this.setSelectedLayerId(null);
+      return;
+    }
     if (!this.selectedLayerId) return;
     const shot = this.currentShotValue();
     if (

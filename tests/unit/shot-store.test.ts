@@ -114,4 +114,28 @@ describe('ShotStore', () => {
     );
     store.dispose();
   });
+
+  it('resets the current shot when the project root changes even if shot IDs are reused', () => {
+    const { editor, store } = setup();
+    const firstProject = editor.getSnapshot()!.project;
+    const secondShot = {
+      ...structuredClone(firstProject.shots[0]),
+      id: 'd2020000-0000-4000-8000-000000000099',
+      name: 'Second shot',
+    };
+    const secondProject = ProjectSchema.parse({
+      ...firstProject,
+      shots: [firstProject.shots[0], secondShot],
+    });
+    editor.open('D:\\two-shots.pandastage', secondProject);
+    const secondShotId = secondProject.shots[1]!.id;
+
+    store.select(secondShotId);
+    expect(store.getCurrentShotId()).toBe(secondShotId);
+
+    editor.open('D:\\reused-shot-ids.pandastage', secondProject);
+
+    expect(store.getCurrentShotId()).toBe(secondProject.shots[0]!.id);
+    store.dispose();
+  });
 });

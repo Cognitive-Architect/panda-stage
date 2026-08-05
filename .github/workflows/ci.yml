@@ -93,3 +93,6 @@ jobs:
 
       - name: Issue 102 Task 2 compact project bar gate
         run: pnpm verify:issue102-task2
+
+      - name: Issue 102 Task 3 project safety contract gate
+        run: pnpm verify:issue102-task3

@@ -1,0 +1,750 @@
+{
+  "issue": 102,
+  "task": 3,
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "passed": true,
+  "checks": [
+    "Project Center roundtrip preserves project, shot, layer selection, revision, and History",
+    "Dirty Project A switch cancel keeps the current project and dirty state",
+    "Dirty switch discard opens Project B with isolated editor selection",
+    "Dirty switch save path saves the current revision before opening the next project",
+    "Failed Project B open leaves Project A complete and editable",
+    "Dirty close cancel keeps Project A open and dirty",
+    "Failed close save keeps the project dirty and never presents 已保存",
+    "Successful close returns to Project Center with editor state safely cleared"
+  ],
+  "snapshots": {
+    "roundtrip": {
+      "before": {
+        "page": "editor",
+        "shellState": "editor",
+        "activeRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+        "currentRoot": null,
+        "currentName": null,
+        "currentDirty": false,
+        "shotId": "50000000-0000-4000-8000-000000000001",
+        "selectedLayerId": "60000000-0000-4000-8000-000000000002",
+        "revision": 1,
+        "undoCount": 1,
+        "redoCount": 0,
+        "dirty": true,
+        "saveStateCode": "dirty",
+        "saveState": "有未保存更改",
+        "closeDialogOpen": false,
+        "closeDialogStatus": "",
+        "hasEditorLayout": true
+      },
+      "center": {
+        "page": "project-center",
+        "shellState": "editor",
+        "activeRoot": null,
+        "currentRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+        "currentName": "Issue 102 Safety Project A",
+        "currentDirty": true,
+        "shotId": null,
+        "selectedLayerId": null,
+        "revision": null,
+        "undoCount": null,
+        "redoCount": null,
+        "dirty": true,
+        "saveStateCode": null,
+        "saveState": null,
+        "closeDialogOpen": false,
+        "closeDialogStatus": "",
+        "hasEditorLayout": false
+      },
+      "after": {
+        "page": "editor",
+        "shellState": "editor",
+        "activeRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+        "currentRoot": null,
+        "currentName": null,
+        "currentDirty": false,
+        "shotId": "50000000-0000-4000-8000-000000000001",
+        "selectedLayerId": "60000000-0000-4000-8000-000000000002",
+        "revision": 1,
+        "undoCount": 1,
+        "redoCount": 0,
+        "dirty": true,
+        "saveStateCode": "dirty",
+        "saveState": "有未保存更改",
+        "closeDialogOpen": false,
+        "closeDialogStatus": "",
+        "hasEditorLayout": true
+      }
+    },
+    "switchCancelled": {
+      "page": "project-center",
+      "shellState": "editor",
+      "activeRoot": null,
+      "currentRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+      "currentName": "Issue 102 Safety Project A",
+      "currentDirty": true,
+      "shotId": null,
+      "selectedLayerId": null,
+      "revision": null,
+      "undoCount": null,
+      "redoCount": null,
+      "dirty": true,
+      "saveStateCode": null,
+      "saveState": null,
+      "closeDialogOpen": false,
+      "closeDialogStatus": "",
+      "hasEditorLayout": false
+    },
+    "switchDiscarded": {
+      "page": "editor",
+      "shellState": "editor",
+      "activeRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-b.pandastage",
+      "currentRoot": null,
+      "currentName": null,
+      "currentDirty": false,
+      "shotId": "50000000-0000-4000-8000-000000000001",
+      "selectedLayerId": "",
+      "revision": 0,
+      "undoCount": 0,
+      "redoCount": 0,
+      "dirty": false,
+      "saveStateCode": "saved",
+      "saveState": "已保存",
+      "closeDialogOpen": false,
+      "closeDialogStatus": "",
+      "hasEditorLayout": true
+    },
+    "switchSaved": {
+      "page": "editor",
+      "shellState": "editor",
+      "activeRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+      "currentRoot": null,
+      "currentName": null,
+      "currentDirty": false,
+      "shotId": "50000000-0000-4000-8000-000000000001",
+      "selectedLayerId": "",
+      "revision": 0,
+      "undoCount": 0,
+      "redoCount": 0,
+      "dirty": false,
+      "saveStateCode": "saved",
+      "saveState": "已保存",
+      "closeDialogOpen": false,
+      "closeDialogStatus": "",
+      "hasEditorLayout": true
+    },
+    "failedOpen": {
+      "page": "project-center",
+      "shellState": "editor",
+      "activeRoot": null,
+      "currentRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+      "currentName": "Issue 102 Safety Project A",
+      "currentDirty": true,
+      "shotId": null,
+      "selectedLayerId": null,
+      "revision": null,
+      "undoCount": null,
+      "redoCount": null,
+      "dirty": true,
+      "saveStateCode": null,
+      "saveState": null,
+      "closeDialogOpen": false,
+      "closeDialogStatus": "",
+      "hasEditorLayout": false
+    },
+    "closeCancelled": {
+      "page": "editor",
+      "shellState": "editor",
+      "activeRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+      "currentRoot": null,
+      "currentName": null,
+      "currentDirty": false,
+      "shotId": "50000000-0000-4000-8000-000000000001",
+      "selectedLayerId": "",
+      "revision": 1,
+      "undoCount": 1,
+      "redoCount": 0,
+      "dirty": true,
+      "saveStateCode": "dirty",
+      "saveState": "有未保存更改",
+      "closeDialogOpen": false,
+      "closeDialogStatus": "",
+      "hasEditorLayout": true
+    },
+    "closeSaveFailed": {
+      "page": "editor",
+      "shellState": "editor",
+      "activeRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+      "currentRoot": null,
+      "currentName": null,
+      "currentDirty": false,
+      "shotId": "50000000-0000-4000-8000-000000000001",
+      "selectedLayerId": "",
+      "revision": 1,
+      "undoCount": 1,
+      "redoCount": 0,
+      "dirty": true,
+      "saveStateCode": "failed",
+      "saveState": "保存失败",
+      "closeDialogOpen": true,
+      "closeDialogStatus": "保存失败，项目未关闭：Injected Task 3 save failure.",
+      "hasEditorLayout": true
+    },
+    "closeSucceeded": {
+      "page": "project-center",
+      "shellState": "no-project",
+      "activeRoot": null,
+      "currentRoot": null,
+      "currentName": null,
+      "currentDirty": false,
+      "shotId": null,
+      "selectedLayerId": null,
+      "revision": null,
+      "undoCount": null,
+      "redoCount": null,
+      "dirty": false,
+      "saveStateCode": null,
+      "saveState": null,
+      "closeDialogOpen": false,
+      "closeDialogStatus": "",
+      "hasEditorLayout": false
+    }
+  },
+  "error": null,
+  "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task3",
+  "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\project-center-v1\\docs\\evidence\\issue-102\\task3",
+  "window": {
+    "width": 1280,
+    "height": 720
+  },
+  "guardOutcomes": [
+    "cancelled",
+    "discarded",
+    "saved"
+  ],
+  "requests": {
+    "open": [
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-b.pandastage",
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-b.pandastage",
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-b.pandastage"
+    ],
+    "save": [
+      {
+        "projectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+        "project": {
+          "schemaVersion": 5,
+          "id": "a0200000-0000-4000-8000-000000000001",
+          "name": "Issue 102 Safety Project A",
+          "width": 1920,
+          "height": 1080,
+          "fps": 24,
+          "assets": [
+            {
+              "id": "10000000-0000-4000-8000-000000000002",
+              "name": "Bamboo background",
+              "relativePath": "assets/bamboo-background.png",
+              "mimeType": "image/png",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": "image",
+              "width": 1920,
+              "height": 1080
+            },
+            {
+              "id": "10000000-0000-4000-8000-000000000003",
+              "name": "Panda neutral",
+              "relativePath": "assets/panda-neutral.png",
+              "mimeType": "image/png",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": "image",
+              "width": 640,
+              "height": 640
+            },
+            {
+              "id": "10000000-0000-4000-8000-000000000004",
+              "name": "Panda happy",
+              "relativePath": "assets/panda-happy.png",
+              "mimeType": "image/png",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": "image",
+              "width": 640,
+              "height": 640
+            },
+            {
+              "id": "10000000-0000-4000-8000-000000000005",
+              "name": "Opening dialogue",
+              "relativePath": "assets/opening-dialogue.wav",
+              "mimeType": "audio/wav",
+              "kind": "audio",
+              "durationMs": 3000
+            }
+          ],
+          "characters": [
+            {
+              "id": "20000000-0000-4000-8000-000000000001",
+              "name": "Panda",
+              "baseAssetId": "10000000-0000-4000-8000-000000000003",
+              "defaultVoiceProfileId": "30000000-0000-4000-8000-000000000001",
+              "expressions": [
+                {
+                  "id": "20000000-0000-4000-8000-000000000002",
+                  "name": "Neutral",
+                  "assetId": "10000000-0000-4000-8000-000000000003"
+                },
+                {
+                  "id": "20000000-0000-4000-8000-000000000003",
+                  "name": "Happy",
+                  "assetId": "10000000-0000-4000-8000-000000000004"
+                }
+              ],
+              "defaultExpressionId": "20000000-0000-4000-8000-000000000002",
+              "defaultScale": 1,
+              "defaultFlipX": false
+            }
+          ],
+          "voiceProfiles": [
+            {
+              "id": "30000000-0000-4000-8000-000000000001",
+              "name": "Panda Mandarin",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "locale": "zh-CN",
+              "rate": 1,
+              "pitch": 0
+            }
+          ],
+          "subtitleStyles": [
+            {
+              "id": "40000000-0000-4000-8000-000000000001",
+              "name": "Default bottom subtitle",
+              "fontFamily": "Microsoft YaHei",
+              "fontSize": 44,
+              "textColor": "#fffdf6",
+              "backgroundColor": "#0a1411c7",
+              "position": "bottom",
+              "align": "center",
+              "maxWidth": 1600
+            }
+          ],
+          "shots": [
+            {
+              "id": "50000000-0000-4000-8000-000000000001",
+              "name": "Task 3 failed-open recovery",
+              "durationMs": 3000,
+              "defaultSubtitleStyleId": "40000000-0000-4000-8000-000000000001",
+              "dialogues": [
+                {
+                  "id": "80000000-0000-4000-8000-000000000001",
+                  "characterId": "20000000-0000-4000-8000-000000000001",
+                  "voiceProfileId": "30000000-0000-4000-8000-000000000001",
+                  "audioClipId": "70000000-0000-4000-8000-000000000001",
+                  "subtitleStyleId": "40000000-0000-4000-8000-000000000001",
+                  "startMs": 400,
+                  "endMs": 2600,
+                  "text": "每一个故事，都从勇敢迈出第一步开始。"
+                }
+              ],
+              "audioClips": [
+                {
+                  "id": "70000000-0000-4000-8000-000000000001",
+                  "name": "Opening dialogue clip",
+                  "assetId": "10000000-0000-4000-8000-000000000005",
+                  "startMs": 400,
+                  "endMs": 3000,
+                  "offsetMs": 0,
+                  "volume": 1
+                }
+              ],
+              "timelineEvents": [
+                {
+                  "id": "90000000-0000-4000-8000-000000000001",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 0,
+                  "endMs": 3000,
+                  "type": "move",
+                  "from": {
+                    "x": 430,
+                    "y": 690
+                  },
+                  "to": {
+                    "x": 1490,
+                    "y": 690
+                  },
+                  "easing": "ease-in-out"
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000002",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 500,
+                  "endMs": 1200,
+                  "type": "scale",
+                  "from": {
+                    "x": 0.72,
+                    "y": 0.72
+                  },
+                  "to": {
+                    "x": 0.8,
+                    "y": 0.8
+                  },
+                  "easing": "ease-in-out"
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000003",
+                  "layerId": "60000000-0000-4000-8000-000000000001",
+                  "startMs": 0,
+                  "endMs": 400,
+                  "type": "opacity",
+                  "from": 0,
+                  "to": 1,
+                  "easing": "linear"
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000004",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 1300,
+                  "endMs": 1800,
+                  "type": "shake",
+                  "amplitudeX": 8,
+                  "amplitudeY": 5,
+                  "frequencyHz": 12
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000005",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 1400,
+                  "endMs": 1400,
+                  "type": "expression",
+                  "expressionId": "20000000-0000-4000-8000-000000000003"
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000006",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 2000,
+                  "endMs": 2000,
+                  "type": "flip",
+                  "axis": "horizontal",
+                  "flipped": true
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000007",
+                  "layerId": "60000000-0000-4000-8000-000000000001",
+                  "startMs": 2800,
+                  "endMs": 2900,
+                  "type": "visibility",
+                  "visible": false
+                }
+              ],
+              "layers": [
+                {
+                  "id": "60000000-0000-4000-8000-000000000001",
+                  "name": "Background",
+                  "source": {
+                    "kind": "asset",
+                    "assetId": "10000000-0000-4000-8000-000000000002"
+                  },
+                  "anchor": "center",
+                  "x": 960,
+                  "y": 540,
+                  "scaleX": 1,
+                  "scaleY": 1,
+                  "rotationDeg": 0,
+                  "opacity": 1,
+                  "visible": true,
+                  "zIndex": 0,
+                  "locked": false,
+                  "flipX": false
+                },
+                {
+                  "id": "60000000-0000-4000-8000-000000000002",
+                  "name": "Panda",
+                  "source": {
+                    "kind": "character",
+                    "characterId": "20000000-0000-4000-8000-000000000001",
+                    "expressionId": "20000000-0000-4000-8000-000000000002"
+                  },
+                  "anchor": "center",
+                  "x": 430,
+                  "y": 690,
+                  "scaleX": 0.72,
+                  "scaleY": 0.72,
+                  "rotationDeg": 0,
+                  "opacity": 1,
+                  "visible": true,
+                  "zIndex": 1,
+                  "locked": false,
+                  "flipX": false
+                }
+              ],
+              "backgroundLayerId": "60000000-0000-4000-8000-000000000001"
+            }
+          ],
+          "createdAt": "2026-07-23T00:00:00.000Z",
+          "updatedAt": "2026-08-05T13:19:03.199Z"
+        },
+        "revision": 1
+      },
+      {
+        "projectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+        "project": {
+          "schemaVersion": 5,
+          "id": "a0200000-0000-4000-8000-000000000001",
+          "name": "Issue 102 Safety Project A",
+          "width": 1920,
+          "height": 1080,
+          "fps": 24,
+          "assets": [
+            {
+              "id": "10000000-0000-4000-8000-000000000002",
+              "name": "Bamboo background",
+              "relativePath": "assets/bamboo-background.png",
+              "mimeType": "image/png",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": "image",
+              "width": 1920,
+              "height": 1080
+            },
+            {
+              "id": "10000000-0000-4000-8000-000000000003",
+              "name": "Panda neutral",
+              "relativePath": "assets/panda-neutral.png",
+              "mimeType": "image/png",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": "image",
+              "width": 640,
+              "height": 640
+            },
+            {
+              "id": "10000000-0000-4000-8000-000000000004",
+              "name": "Panda happy",
+              "relativePath": "assets/panda-happy.png",
+              "mimeType": "image/png",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "kind": "image",
+              "width": 640,
+              "height": 640
+            },
+            {
+              "id": "10000000-0000-4000-8000-000000000005",
+              "name": "Opening dialogue",
+              "relativePath": "assets/opening-dialogue.wav",
+              "mimeType": "audio/wav",
+              "kind": "audio",
+              "durationMs": 3000
+            }
+          ],
+          "characters": [
+            {
+              "id": "20000000-0000-4000-8000-000000000001",
+              "name": "Panda",
+              "baseAssetId": "10000000-0000-4000-8000-000000000003",
+              "defaultVoiceProfileId": "30000000-0000-4000-8000-000000000001",
+              "expressions": [
+                {
+                  "id": "20000000-0000-4000-8000-000000000002",
+                  "name": "Neutral",
+                  "assetId": "10000000-0000-4000-8000-000000000003"
+                },
+                {
+                  "id": "20000000-0000-4000-8000-000000000003",
+                  "name": "Happy",
+                  "assetId": "10000000-0000-4000-8000-000000000004"
+                }
+              ],
+              "defaultExpressionId": "20000000-0000-4000-8000-000000000002",
+              "defaultScale": 1,
+              "defaultFlipX": false
+            }
+          ],
+          "voiceProfiles": [
+            {
+              "id": "30000000-0000-4000-8000-000000000001",
+              "name": "Panda Mandarin",
+              "characterId": "20000000-0000-4000-8000-000000000001",
+              "locale": "zh-CN",
+              "rate": 1,
+              "pitch": 0
+            }
+          ],
+          "subtitleStyles": [
+            {
+              "id": "40000000-0000-4000-8000-000000000001",
+              "name": "Default bottom subtitle",
+              "fontFamily": "Microsoft YaHei",
+              "fontSize": 44,
+              "textColor": "#fffdf6",
+              "backgroundColor": "#0a1411c7",
+              "position": "bottom",
+              "align": "center",
+              "maxWidth": 1600
+            }
+          ],
+          "shots": [
+            {
+              "id": "50000000-0000-4000-8000-000000000001",
+              "name": "Task 3 failed-open recovery",
+              "durationMs": 3000,
+              "defaultSubtitleStyleId": "40000000-0000-4000-8000-000000000001",
+              "dialogues": [
+                {
+                  "id": "80000000-0000-4000-8000-000000000001",
+                  "characterId": "20000000-0000-4000-8000-000000000001",
+                  "voiceProfileId": "30000000-0000-4000-8000-000000000001",
+                  "audioClipId": "70000000-0000-4000-8000-000000000001",
+                  "subtitleStyleId": "40000000-0000-4000-8000-000000000001",
+                  "startMs": 400,
+                  "endMs": 2600,
+                  "text": "每一个故事，都从勇敢迈出第一步开始。"
+                }
+              ],
+              "audioClips": [
+                {
+                  "id": "70000000-0000-4000-8000-000000000001",
+                  "name": "Opening dialogue clip",
+                  "assetId": "10000000-0000-4000-8000-000000000005",
+                  "startMs": 400,
+                  "endMs": 3000,
+                  "offsetMs": 0,
+                  "volume": 1
+                }
+              ],
+              "timelineEvents": [
+                {
+                  "id": "90000000-0000-4000-8000-000000000001",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 0,
+                  "endMs": 3000,
+                  "type": "move",
+                  "from": {
+                    "x": 430,
+                    "y": 690
+                  },
+                  "to": {
+                    "x": 1490,
+                    "y": 690
+                  },
+                  "easing": "ease-in-out"
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000002",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 500,
+                  "endMs": 1200,
+                  "type": "scale",
+                  "from": {
+                    "x": 0.72,
+                    "y": 0.72
+                  },
+                  "to": {
+                    "x": 0.8,
+                    "y": 0.8
+                  },
+                  "easing": "ease-in-out"
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000003",
+                  "layerId": "60000000-0000-4000-8000-000000000001",
+                  "startMs": 0,
+                  "endMs": 400,
+                  "type": "opacity",
+                  "from": 0,
+                  "to": 1,
+                  "easing": "linear"
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000004",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 1300,
+                  "endMs": 1800,
+                  "type": "shake",
+                  "amplitudeX": 8,
+                  "amplitudeY": 5,
+                  "frequencyHz": 12
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000005",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 1400,
+                  "endMs": 1400,
+                  "type": "expression",
+                  "expressionId": "20000000-0000-4000-8000-000000000003"
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000006",
+                  "layerId": "60000000-0000-4000-8000-000000000002",
+                  "startMs": 2000,
+                  "endMs": 2000,
+                  "type": "flip",
+                  "axis": "horizontal",
+                  "flipped": true
+                },
+                {
+                  "id": "90000000-0000-4000-8000-000000000007",
+                  "layerId": "60000000-0000-4000-8000-000000000001",
+                  "startMs": 2800,
+                  "endMs": 2900,
+                  "type": "visibility",
+                  "visible": false
+                }
+              ],
+              "layers": [
+                {
+                  "id": "60000000-0000-4000-8000-000000000001",
+                  "name": "Background",
+                  "source": {
+                    "kind": "asset",
+                    "assetId": "10000000-0000-4000-8000-000000000002"
+                  },
+                  "anchor": "center",
+                  "x": 960,
+                  "y": 540,
+                  "scaleX": 1,
+                  "scaleY": 1,
+                  "rotationDeg": 0,
+                  "opacity": 1,
+                  "visible": true,
+                  "zIndex": 0,
+                  "locked": false,
+                  "flipX": false
+                },
+                {
+                  "id": "60000000-0000-4000-8000-000000000002",
+                  "name": "Panda",
+                  "source": {
+                    "kind": "character",
+                    "characterId": "20000000-0000-4000-8000-000000000001",
+                    "expressionId": "20000000-0000-4000-8000-000000000002"
+                  },
+                  "anchor": "center",
+                  "x": 430,
+                  "y": 690,
+                  "scaleX": 0.72,
+                  "scaleY": 0.72,
+                  "rotationDeg": 0,
+                  "opacity": 1,
+                  "visible": true,
+                  "zIndex": 1,
+                  "locked": false,
+                  "flipX": false
+                }
+              ],
+              "backgroundLayerId": "60000000-0000-4000-8000-000000000001"
+            }
+          ],
+          "createdAt": "2026-07-23T00:00:00.000Z",
+          "updatedAt": "2026-08-05T13:19:03.199Z"
+        },
+        "revision": 1
+      }
+    ],
+    "stop": [
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-b.pandastage",
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage",
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-b.pandastage",
+      "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task3\\issue102-safety-a.pandastage"
+    ]
+  },
+  "screenshots": {
+    "roundtrip": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task3\\task3-roundtrip-center.png",
+    "switchCancel": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task3\\task3-switch-cancel.png",
+    "saveFailure": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task3\\task3-save-failure.png",
+    "closed": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task3\\task3-closed-project-center.png"
+  }
+}
