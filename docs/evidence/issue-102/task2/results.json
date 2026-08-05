@@ -1,0 +1,397 @@
+{
+  "issue": 102,
+  "task": 2,
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "passed": true,
+  "checks": [
+    "Source contract declares 已保存 / 有未保存更改 / 保存中 / 保存失败",
+    "Compact bar is <=56px, name/save state stay visible, and old editor input is gone",
+    "Editor body gains 195.40px at the same 1280x720 window size",
+    "Dirty project shows 有未保存更改 and enables 保存",
+    "Save action returns the compact bar to 已保存 and disables 保存",
+    "更多 menu exposes Project Center / folder / close actions without covering bar controls",
+    "打开项目中心 returns to editor with the same project identity"
+  ],
+  "baseline": {
+    "issue": 102,
+    "task": 2,
+    "capturedFromCommit": "3ee0c14",
+    "capturedAtWindow": {
+      "width": 1280,
+      "height": 720
+    },
+    "selector": "[data-testid=\"editor-top-bar\"]",
+    "oldProjectArea": {
+      "height": 251.39584350585938,
+      "bottom": 263.3958435058594
+    },
+    "oldEditorBody": {
+      "height": 372.60418701171875,
+      "bottom": 646.0000305175781
+    },
+    "screenshot": "D:\\PandaStage-Acceptance\\project-center-v1-task2-baseline\\evidence\\old-editor-layout.png"
+  },
+  "snapshots": {
+    "clean": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "page": "editor",
+      "shellState": "editor",
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectPath": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+      "saveState": "已保存",
+      "saveStateCode": "saved",
+      "saveDisabled": true,
+      "pathInputs": 0,
+      "nameEllipsis": {
+        "clientWidth": 755,
+        "scrollWidth": 1424,
+        "overflow": "hidden",
+        "textOverflow": "ellipsis",
+        "whiteSpace": "nowrap"
+      },
+      "compactBar": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "topRegion": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "editorBody": {
+        "x": 12,
+        "y": 78,
+        "width": 1256,
+        "height": 568,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646
+      },
+      "editorLayout": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 720,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720
+      },
+      "controls": {
+        "x": 883.21875,
+        "y": 21,
+        "width": 374.1145935058594,
+        "height": 38,
+        "top": 21,
+        "right": 1257.3333435058594,
+        "bottom": 59
+      },
+      "save": {
+        "x": 1122.21875,
+        "y": 21,
+        "width": 53.333335876464844,
+        "height": 38,
+        "top": 21,
+        "right": 1175.5520858764648,
+        "bottom": 59
+      },
+      "menu": null,
+      "menuItems": [],
+      "verticalGainComparedWithOld": 195.39581298828125
+    },
+    "dirty": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "page": "editor",
+      "shellState": "editor",
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectPath": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+      "saveState": "有未保存更改",
+      "saveStateCode": "dirty",
+      "saveDisabled": false,
+      "pathInputs": 0,
+      "nameEllipsis": {
+        "clientWidth": 722,
+        "scrollWidth": 1424,
+        "overflow": "hidden",
+        "textOverflow": "ellipsis",
+        "whiteSpace": "nowrap"
+      },
+      "compactBar": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "topRegion": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "editorBody": {
+        "x": 12,
+        "y": 78,
+        "width": 1256,
+        "height": 568,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646
+      },
+      "editorLayout": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 720,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720
+      },
+      "controls": {
+        "x": 850.21875,
+        "y": 21,
+        "width": 407.1145935058594,
+        "height": 38,
+        "top": 21,
+        "right": 1257.3333435058594,
+        "bottom": 59
+      },
+      "save": {
+        "x": 1122.21875,
+        "y": 21,
+        "width": 53.333335876464844,
+        "height": 38,
+        "top": 21,
+        "right": 1175.5520858764648,
+        "bottom": 59
+      },
+      "menu": null,
+      "menuItems": []
+    },
+    "saved": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "page": "editor",
+      "shellState": "editor",
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectPath": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+      "saveState": "已保存",
+      "saveStateCode": "saved",
+      "saveDisabled": true,
+      "pathInputs": 0,
+      "nameEllipsis": {
+        "clientWidth": 851,
+        "scrollWidth": 1424,
+        "overflow": "hidden",
+        "textOverflow": "ellipsis",
+        "whiteSpace": "nowrap"
+      },
+      "compactBar": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "topRegion": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "editorBody": {
+        "x": 12,
+        "y": 78,
+        "width": 1256,
+        "height": 568,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646
+      },
+      "editorLayout": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 720,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720
+      },
+      "controls": {
+        "x": 979.21875,
+        "y": 21,
+        "width": 278.1145935058594,
+        "height": 38,
+        "top": 21,
+        "right": 1257.3333435058594,
+        "bottom": 59
+      },
+      "save": {
+        "x": 1122.21875,
+        "y": 21,
+        "width": 53.333335876464844,
+        "height": 38,
+        "top": 21,
+        "right": 1175.5520858764648,
+        "bottom": 59
+      },
+      "menu": null,
+      "menuItems": []
+    },
+    "menu": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "page": "editor",
+      "shellState": "editor",
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectPath": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+      "saveState": "已保存",
+      "saveStateCode": "saved",
+      "saveDisabled": true,
+      "pathInputs": 0,
+      "nameEllipsis": {
+        "clientWidth": 851,
+        "scrollWidth": 1424,
+        "overflow": "hidden",
+        "textOverflow": "ellipsis",
+        "whiteSpace": "nowrap"
+      },
+      "compactBar": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "topRegion": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "editorBody": {
+        "x": 12,
+        "y": 78,
+        "width": 1256,
+        "height": 568,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646
+      },
+      "editorLayout": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 720,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720
+      },
+      "controls": {
+        "x": 979.21875,
+        "y": 21,
+        "width": 278.1145935058594,
+        "height": 38,
+        "top": 21,
+        "right": 1257.3333435058594,
+        "bottom": 59
+      },
+      "save": {
+        "x": 1122.21875,
+        "y": 21,
+        "width": 53.333335876464844,
+        "height": 38,
+        "top": 21,
+        "right": 1175.5520858764648,
+        "bottom": 59
+      },
+      "menu": {
+        "x": 1067.3333740234375,
+        "y": 65,
+        "width": 190,
+        "height": 177.33334350585938,
+        "top": 65,
+        "right": 1257.3333740234375,
+        "bottom": 242.33334350585938
+      },
+      "menuItems": [
+        {
+          "testId": "menu-open-project-center",
+          "text": "打开项目中心",
+          "disabled": false
+        },
+        {
+          "testId": "menu-open-project-folder",
+          "text": "打开项目文件夹",
+          "disabled": false
+        },
+        {
+          "testId": "menu-open-product-preview",
+          "text": "产品预览",
+          "disabled": false
+        },
+        {
+          "testId": "menu-close-project",
+          "text": "关闭当前项目",
+          "disabled": false
+        }
+      ]
+    },
+    "projectCenter": {
+      "page": "project-center",
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage"
+    }
+  },
+  "screenshots": {
+    "old": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task2\\old-editor-layout.png",
+    "oldBaselineCapture": "D:\\PandaStage-Acceptance\\project-center-v1-task2-baseline\\evidence\\old-editor-layout.png",
+    "new": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task2\\new-editor-layout.png",
+    "newMenu": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task2\\new-editor-menu.png"
+  },
+  "disk": {
+    "acceptanceRoot": "D:\\PandaStage-Acceptance\\project-center-v1",
+    "projectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+    "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task2",
+    "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\project-center-v1\\docs\\evidence\\issue-102\\task2"
+  },
+  "error": null,
+  "window": {
+    "width": 1280,
+    "height": 720
+  }
+}

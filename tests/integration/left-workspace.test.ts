@@ -219,9 +219,13 @@ async function click(window, selector) {
 async function snapshot(window) {
   const script =
     '(() => ({' +
-    'root: document.querySelector(' +
+    'root: (document.querySelector(' +
     JSON.stringify('[data-testid="active-project-path"] code') +
-    ')?.textContent ?? null,' +
+    ') ?? document.querySelector(' +
+    JSON.stringify(
+      '[data-testid="project-center-current-project"] .project-center-current-path',
+    ) +
+    '))?.textContent ?? null,' +
     'activity: document.querySelector(' +
     JSON.stringify('[data-testid="resource-activity-panel"]') +
     ')?.getAttribute("data-active-activity") ?? null,' +
@@ -286,37 +290,81 @@ async function waitForActivity(window, activity) {
 }
 
 async function openProject(window, projectRoot) {
+  await window.webContents.executeJavaScript(
+    '(() => {' +
+      'if (document.querySelector(' +
+        JSON.stringify('[data-editor-page="editor"]') +
+        ')) {' +
+        'document.querySelector(' +
+        JSON.stringify('[data-testid="open-project-center"]') +
+        ').click();' +
+      '}' +
+    '})()',
+  );
+  await waitFor(
+    window,
+    'document.querySelector(' +
+      JSON.stringify('[data-editor-page="project-center"]') +
+      ')',
+    'Project Center did not open for a project switch.',
+  );
   await setInput(
     window,
-    '.recovery-open-row input',
+    '[data-testid="project-center-screen"] .recovery-open-row input',
     projectRoot,
   );
   await waitFor(
     window,
-    'document.querySelector(".recovery-open-row button")?.disabled === false',
+    'document.querySelector(' +
+      JSON.stringify(
+        '[data-testid="project-center-screen"] .recovery-open-row button',
+      ) +
+      ')?.disabled === false',
     'Project open button did not become enabled.',
   );
   await click(
     window,
-    '.recovery-open-row button',
+    '[data-testid="project-center-screen"] .recovery-open-row button',
   );
   await waitForRoot(window, projectRoot);
 }
 
 async function requestProjectSwitch(window, projectRoot) {
+  await window.webContents.executeJavaScript(
+    '(() => {' +
+      'if (document.querySelector(' +
+        JSON.stringify('[data-editor-page="editor"]') +
+        ')) {' +
+        'document.querySelector(' +
+        JSON.stringify('[data-testid="open-project-center"]') +
+        ').click();' +
+      '}' +
+    '})()',
+  );
+  await waitFor(
+    window,
+    'document.querySelector(' +
+      JSON.stringify('[data-editor-page="project-center"]') +
+      ')',
+    'Project Center did not open for a project switch.',
+  );
   await setInput(
     window,
-    '.recovery-open-row input',
+    '[data-testid="project-center-screen"] .recovery-open-row input',
     projectRoot,
   );
   await waitFor(
     window,
-    'document.querySelector(".recovery-open-row button")?.disabled === false',
+    'document.querySelector(' +
+      JSON.stringify(
+        '[data-testid="project-center-screen"] .recovery-open-row button',
+      ) +
+      ')?.disabled === false',
     'Project switch button did not become enabled.',
   );
   await click(
     window,
-    '.recovery-open-row button',
+    '[data-testid="project-center-screen"] .recovery-open-row button',
   );
 }
 
@@ -520,10 +568,16 @@ async function verifyIssue81() {
     await waitFor(
       window,
       'document.querySelector(' +
-        JSON.stringify('[data-testid="active-project-path"] code') +
+        JSON.stringify(
+          '[data-testid="project-center-current-project"] .project-center-current-path',
+        ) +
         ')?.textContent === ' +
         JSON.stringify(projectARoot) +
-        ' && Boolean(document.querySelector(".dirty-state"))',
+        ' && Boolean(document.querySelector(' +
+        JSON.stringify(
+          '[data-testid="project-center-current-project"] .dirty-state',
+        ) +
+        '))',
       'Dirty Guard cancel branch did not keep A open.',
     );
     const cancelledSwitch = await snapshot(window);

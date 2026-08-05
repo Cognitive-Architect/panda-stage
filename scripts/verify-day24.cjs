@@ -108,9 +108,24 @@ async function clickElement(window, selector) {
 }
 
 async function openProject(window, projectRoot) {
-  await setInput(window, '.recovery-open-row input', projectRoot);
+  await window.webContents.executeJavaScript(`(() => {
+    if (document.querySelector('[data-editor-page="editor"]')) {
+      document.querySelector('[data-testid="open-project-center"]').click();
+    }
+  })()`);
   await window.webContents.executeJavaScript(
-    `document.querySelector('.recovery-open-row button').click()`,
+    waitFor(
+      `document.querySelector('[data-editor-page="project-center"]')`,
+      'Project Center did not open for a project switch.',
+    ),
+  );
+  await setInput(
+    window,
+    '[data-testid="project-center-screen"] .recovery-open-row input',
+    projectRoot,
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click()`,
   );
   await window.webContents.executeJavaScript(
     waitFor(
@@ -133,17 +148,16 @@ async function snapshot(window) {
       '[data-testid="active-project-path"] code'
     );
     const projectName = document.querySelector(
-      '[data-testid="editor-top-bar"] .eyebrow'
-    );
-    const openCandidate = document.querySelector(
-      '[data-testid="editor-top-bar"] .recovery-open-row input'
+      '[data-testid="compact-project-bar"] .compact-project-name'
     );
     return {
       layers: JSON.parse(stage.dataset.layerJson),
       projectRevision: Number(stage.dataset.projectRevision),
       activeProjectRoot: activeProjectPath?.textContent,
       projectName: projectName?.textContent,
-      openCandidatePath: openCandidate?.value,
+      // Task 2 deliberately removes the always-present editor path input;
+      // the compact bar's visible active root is the retained identity.
+      openCandidatePath: activeProjectPath?.textContent,
       selectedLayerId: stage.dataset.selectedLayerId,
       undoCount: Number(history.dataset.undoCount),
       redoCount: Number(history.dataset.redoCount),

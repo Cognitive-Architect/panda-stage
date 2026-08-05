@@ -81,6 +81,21 @@ async function click(window, selector) {
   })()`);
 }
 
+async function openProjectMenu(window) {
+  await click(window, '[data-testid="compact-project-more"]');
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="compact-project-menu"]')`,
+      'Compact project menu did not open.',
+    ),
+  );
+}
+
+async function clickProjectMenuAction(window, selector) {
+  await openProjectMenu(window);
+  await click(window, selector);
+}
+
 async function readText(window, selector) {
   return window.webContents.executeJavaScript(
     `document.querySelector(${JSON.stringify(selector)})` +
@@ -314,7 +329,10 @@ async function verifyIssue76() {
     const stopsAfterCreate = stopRequests.length;
 
     // ---- 4. Secure creation: duplicate name ------------------------------
-    await click(window, '[data-testid="close-project-open"]');
+    await clickProjectMenuAction(
+      window,
+      '[data-testid="menu-close-project"]',
+    );
     await click(window, '[data-testid="close-confirm-discard"]');
     await window.webContents.executeJavaScript(
       waitFor(
@@ -365,18 +383,21 @@ async function verifyIssue76() {
     // ---- 5. Product preview is read-only ---------------------------------
     await applyShotName(window, 'Issue 76 预览前草稿');
     const beforePreview = await snapshot(window);
-    await click(window, '[data-testid="product-preview-open"]');
+    await openProjectMenu(window);
+    await click(window, '[data-testid="menu-open-product-preview"]');
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="product-preview-overlay"]')`,
         'Product preview overlay did not mount.',
       ),
     );
+    await openProjectMenu(window);
     const previewEntryDisabled =
       await window.webContents.executeJavaScript(
-        `document.querySelector('[data-testid="product-preview-open"]')` +
+        `document.querySelector('[data-testid="menu-open-product-preview"]')` +
           `?.disabled === true`,
       );
+    await click(window, '[data-testid="compact-project-more"]');
     await click(window, '[data-testid="product-preview-play"]');
     await new Promise((resolve) => setTimeout(resolve, 300));
     await click(window, '[data-testid="product-preview-pause"]');
@@ -396,7 +417,10 @@ async function verifyIssue76() {
     const stopsBeforeClose = stopRequests.length;
 
     // ---- 6. In-app close: cancel branch ----------------------------------
-    await click(window, '[data-testid="close-project-open"]');
+    await clickProjectMenuAction(
+      window,
+      '[data-testid="menu-close-project"]',
+    );
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="close-confirm-dialog"]')`,
@@ -419,7 +443,10 @@ async function verifyIssue76() {
 
     // ---- 7. In-app close: save failure keeps the project open ------------
     nextSaveFails = true;
-    await click(window, '[data-testid="close-project-open"]');
+    await clickProjectMenuAction(
+      window,
+      '[data-testid="menu-close-project"]',
+    );
     await click(window, '[data-testid="close-confirm-save"]');
     await window.webContents.executeJavaScript(
       waitFor(
@@ -464,7 +491,10 @@ async function verifyIssue76() {
       ),
     );
     await applyShotName(window, 'Issue 76 不保存关闭草稿');
-    await click(window, '[data-testid="close-project-open"]');
+    await clickProjectMenuAction(
+      window,
+      '[data-testid="menu-close-project"]',
+    );
     await click(window, '[data-testid="close-confirm-discard"]');
     await window.webContents.executeJavaScript(
       waitFor(

@@ -36,7 +36,7 @@ const dialogSource = readSource(
   'src/renderer/shell/CloseConfirmDialog.tsx',
 );
 const shellSource = readSource('src/renderer/shell/EditorShell.tsx');
-const topBarSource = readSource('src/renderer/shell/EditorTopBar.tsx');
+const topBarSource = readSource('src/renderer/shell/CompactProjectBar.tsx');
 const controllerSource = readSource(
   'src/renderer/features/recovery/ProjectSessionController.ts',
 );
@@ -194,9 +194,9 @@ describe('in-app close project contract locks', () => {
       shellSource.match(/<CloseConfirmDialog/gu),
     ).toHaveLength(1);
     expect(shellSource).toContain('{closeConfirmOpen ? (');
-    expect(topBarSource).toContain('data-testid="close-project-open"');
+    expect(topBarSource).toContain('data-testid="menu-close-project"');
     expect(topBarSource).toContain('关闭当前项目');
-    expect(topBarSource).toContain('disabled={busy || closeConfirmOpen}');
+    expect(topBarSource).toContain('disabled={closeConfirmOpen}');
     expect(topBarSource).not.toContain('CloseConfirmDialog');
   });
 

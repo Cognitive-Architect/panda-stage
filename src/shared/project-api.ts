@@ -37,6 +37,22 @@ export const ProjectChooseDirectoryResponseSchema = z.union([
     .strict(),
 ]);
 
+export const ProjectOpenFolderRequestSchema = z
+  .object({
+    projectRoot: FileSystemPathSchema,
+  })
+  .strict();
+
+export const ProjectOpenFolderResponseSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }).strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      error: z.string().trim().min(1),
+    })
+    .strict(),
+]);
+
 export const ProjectSwitchGuardRequestSchema = z
   .object({
     projectRoot: FileSystemPathSchema,
@@ -218,6 +234,9 @@ export const ProjectOperationResponseSchema = z.discriminatedUnion('ok', [
 export type ProjectErrorCode = z.infer<typeof ProjectErrorCodeSchema>;
 export type ProjectChooseDirectoryResponse = z.infer<
   typeof ProjectChooseDirectoryResponseSchema
+>;
+export type ProjectOpenFolderResponse = z.infer<
+  typeof ProjectOpenFolderResponseSchema
 >;
 export type ProjectSwitchGuardRequest = z.infer<
   typeof ProjectSwitchGuardRequestSchema

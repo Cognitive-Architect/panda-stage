@@ -1,4 +1,4 @@
-import { app, dialog, Menu, type BrowserWindow } from 'electron';
+import { app, dialog, Menu, shell, type BrowserWindow } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
@@ -215,6 +215,7 @@ async function initialize(): Promise<void> {
     projectService,
     selectProjectDirectory: (window) =>
       selectProjectDirectory(window, '选择 Panda Stage 项目文件夹'),
+    openProjectFolder: (projectRoot) => shell.openPath(projectRoot),
     confirmProjectSwitch: async (request) => {
       if (!unsavedCloseController || !autosaveService) {
         throw new Error('Unsaved changes guard is unavailable.');

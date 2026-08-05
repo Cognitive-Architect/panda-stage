@@ -49,6 +49,7 @@ import type {
   ProjectCreateAtRequest,
   ProjectCreateRequest,
   ProjectOpenRequest,
+  ProjectOpenFolderResponse,
   ProjectOperationResponse,
   ProjectSaveRequest,
   ProjectSwitchGuardRequest,
@@ -69,6 +70,9 @@ declare global {
       };
       project: {
         chooseDirectory: () => Promise<ProjectChooseDirectoryResponse>;
+        openFolder: (
+          projectRoot: string,
+        ) => Promise<ProjectOpenFolderResponse>;
         confirmSwitch: (
           request: ProjectSwitchGuardRequest,
         ) => Promise<ProjectSwitchGuardResponse>;

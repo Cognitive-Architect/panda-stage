@@ -95,9 +95,24 @@ async function captureSection(window, selector) {
 }
 
 async function openProject(window, root = projectRoot) {
-  await setInput(window, '.recovery-open-row input', root);
+  await window.webContents.executeJavaScript(`(() => {
+    if (document.querySelector('[data-editor-page="editor"]')) {
+      document.querySelector('[data-testid="open-project-center"]').click();
+    }
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-editor-page="project-center"]')`,
+      'Project Center did not open for a project switch.',
+    ),
+  );
+  await setInput(
+    window,
+    '[data-testid="project-center-screen"] .recovery-open-row input',
+    root,
+  );
   await window.webContents.executeJavaScript(`
-    document.querySelector('.recovery-open-row button').click()
+    document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click()
   `);
   await window.webContents.executeJavaScript(
     waitFor(
@@ -721,7 +736,7 @@ async function verifyDay20() {
           ).dataset.projectDurationMs
         ),
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === '暂无未保存更改'
+          ?.textContent?.trim() === '已保存'
       }))()`);
     const reopenedScreenshot =
       await captureSection(window, '.shot-manager');

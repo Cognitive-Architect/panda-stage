@@ -4,6 +4,8 @@ import {
   ProjectChooseDirectoryResponseSchema,
   ProjectCreateAtRequestSchema,
   ProjectCreateRequestSchema,
+  ProjectOpenFolderRequestSchema,
+  ProjectOpenFolderResponseSchema,
   ProjectOpenRequestSchema,
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
@@ -23,6 +25,7 @@ interface ProjectIpcHandlerDependencies {
   selectProjectDirectory?: (
     window: BrowserWindow,
   ) => Promise<string | null>;
+  openProjectFolder?: (projectRoot: string) => Promise<string>;
   confirmProjectSwitch?: (
     request: ProjectSwitchGuardRequest,
   ) => Promise<ProjectSwitchGuardOutcome>;
@@ -107,6 +110,40 @@ export function registerProjectIpcHandlers(
           ? { ok: true, status: 'selected', projectRoot }
           : { ok: true, status: 'cancelled' },
       );
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_OPEN_FOLDER,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.PROJECT_OPEN_FOLDER,
+      );
+      const request = ProjectOpenFolderRequestSchema.parse(rawRequest);
+      if (!dependencies.openProjectFolder) {
+        return ProjectOpenFolderResponseSchema.parse({
+          ok: false,
+          error: '打开项目文件夹功能不可用。',
+        });
+      }
+      try {
+        const error = await dependencies.openProjectFolder(
+          request.projectRoot,
+        );
+        return ProjectOpenFolderResponseSchema.parse(
+          error ? { ok: false, error } : { ok: true },
+        );
+      } catch (error) {
+        return ProjectOpenFolderResponseSchema.parse({
+          ok: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : '打开项目文件夹失败。',
+        });
+      }
     },
   );
 
@@ -219,6 +256,7 @@ export function registerProjectIpcHandlers(
 
   return () => {
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY);
+    ipcMain.removeHandler(IPC_CHANNELS.PROJECT_OPEN_FOLDER);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CREATE);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CREATE_AT);

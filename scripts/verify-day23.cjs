@@ -93,9 +93,24 @@ async function setInput(window, selector, value) {
 }
 
 async function openProject(window) {
-  await setInput(window, '.recovery-open-row input', projectRoot);
+  await window.webContents.executeJavaScript(`(() => {
+    if (document.querySelector('[data-editor-page="editor"]')) {
+      document.querySelector('[data-testid="open-project-center"]').click();
+    }
+  })()`);
   await window.webContents.executeJavaScript(
-    `document.querySelector('.recovery-open-row button').click()`,
+    waitFor(
+      `document.querySelector('[data-editor-page="project-center"]')`,
+      'Project Center did not open for a project switch.',
+    ),
+  );
+  await setInput(
+    window,
+    '[data-testid="project-center-screen"] .recovery-open-row input',
+    projectRoot,
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click()`,
   );
   await window.webContents.executeJavaScript(
     waitFor(

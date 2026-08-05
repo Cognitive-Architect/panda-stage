@@ -193,19 +193,30 @@ async function setInput(window, selector, value, eventName = 'input') {
 }
 
 async function openProject(window) {
+  await window.webContents.executeJavaScript(`(() => {
+    if (document.querySelector('[data-editor-page="editor"]')) {
+      document.querySelector('[data-testid="open-project-center"]').click();
+    }
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-editor-page="project-center"]')`,
+      'Project Center did not open for a project switch.',
+    ),
+  );
   await setInput(
     window,
-    '.recovery-open-row input',
+    '[data-testid="project-center-screen"] .recovery-open-row input',
     projectRoot,
   );
   await window.webContents.executeJavaScript(
     waitFor(
-      "document.querySelector('.recovery-open-row button')",
+      "document.querySelector('[data-testid=\"project-center-screen\"] .recovery-open-row button')",
       'Project open button did not render.',
     ),
   );
   await window.webContents.executeJavaScript(`
-    document.querySelector('.recovery-open-row button').click()
+    document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click()
   `);
   await window.webContents.executeJavaScript(
     waitFor(

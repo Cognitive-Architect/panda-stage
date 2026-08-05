@@ -90,3 +90,6 @@ jobs:
 
       - name: Issue 102 Task 1 project center gate
         run: pnpm verify:issue102-task1
+
+      - name: Issue 102 Task 2 compact project bar gate
+        run: pnpm verify:issue102-task2

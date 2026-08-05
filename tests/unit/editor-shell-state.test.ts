@@ -177,7 +177,7 @@ describe('EditorShell state boundary', () => {
     expect(projectCenter).toContain('data-testid="project-center-screen"');
   });
 
-  it('selects EditorTopBar for every editor candidate state and never for no-project', () => {
+  it('selects CompactProjectBar for every editor candidate state and never for no-project', () => {
     expect(getEditorShellSessionRegion('no-project')).toBe(
       'start-screen',
     );
@@ -190,14 +190,13 @@ describe('EditorShell state boundary', () => {
       'utf8',
     );
     expect(shell.indexOf('<ProjectCenterScreen')).toBeGreaterThan(-1);
-    expect(shell.indexOf('<EditorTopBar')).toBeGreaterThan(-1);
+    expect(shell.indexOf('<CompactProjectBar')).toBeGreaterThan(-1);
     expect(shell.indexOf('<CanvasWorkspace')).toBeGreaterThan(-1);
     expect(shell).toContain(
       "page === 'project-center'",
     );
-    expect(shell).toMatch(
-      /<EditorTopBar[\s\S]*?recoveryBanner=\{[\s\S]*?recoveryCandidate/u,
-    );
+    expect(shell).toContain('data-testid="editor-top-region"');
+    expect(shell).not.toContain('<EditorTopBar');
   });
 
   it('selects only ProjectCenterScreen for no-project and one fixed layout for editor', () => {
@@ -217,13 +216,12 @@ describe('EditorShell state boundary', () => {
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
   });
 
-  it('keeps project state, controller, preview, and create behavior out of EditorTopBar', () => {
+  it('keeps project state, controller, preview, and create behavior out of CompactProjectBar', () => {
     const topBar = readFileSync(
-      'src/renderer/shell/EditorTopBar.tsx',
+      'src/renderer/shell/CompactProjectBar.tsx',
       'utf8',
     );
 
-    expect(topBar).not.toContain('useState');
     expect(topBar).not.toContain('editorProjectStore');
     expect(topBar).not.toContain('ProjectSessionController');
     expect(topBar).not.toContain('window.pandaStage');
@@ -235,8 +233,11 @@ describe('EditorShell state boundary', () => {
     expect(topBar).not.toContain('evaluateShotAtTime');
     expect(topBar).toContain('产品预览');
     expect(topBar).not.toContain('产品预览（后续阶段启用）');
+    expect(topBar).toContain('打开项目中心');
+    expect(topBar).toContain('打开项目文件夹');
+    expect(topBar).toContain('关闭当前项目');
     expect(topBar).toMatch(
-      /data-testid="product-preview-open"[\s\S]*?onClick=\{onOpenProductPreview\}/u,
+      /data-testid="menu-open-product-preview"[\s\S]*?onOpenProductPreview/u,
     );
   });
 
@@ -275,7 +276,7 @@ describe('EditorShell state boundary', () => {
       'utf8',
     );
     const topBar = readFileSync(
-      'src/renderer/shell/EditorTopBar.tsx',
+      'src/renderer/shell/CompactProjectBar.tsx',
       'utf8',
     );
     const dialog = readFileSync(
@@ -283,11 +284,10 @@ describe('EditorShell state boundary', () => {
       'utf8',
     );
 
-    // The top bar stays presentational: it reports intent, nothing else.
+    // The compact bar stays presentational: it reports intent, nothing else.
     expect(topBar).toContain('onRequestCloseProject(): void;');
-    expect(topBar).toContain('onClick={onRequestCloseProject}');
+    expect(topBar).toContain('onRequestCloseProject();');
     expect(topBar).not.toContain('closeProject(');
-    expect(topBar).not.toContain('useState');
     expect(topBar).not.toContain('editorProjectStore');
     // The dialog is a pure choice reporter with no lifecycle authority.
     expect(dialog).not.toContain('useState');

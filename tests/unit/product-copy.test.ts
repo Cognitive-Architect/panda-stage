@@ -5,7 +5,7 @@ const PRODUCT_SURFACE_FILES = [
   'src/renderer/shell/StartScreen.tsx',
   'src/renderer/shell/NewProjectEntry.tsx',
   'src/renderer/shell/NewProjectDialog.tsx',
-  'src/renderer/shell/EditorTopBar.tsx',
+  'src/renderer/shell/CompactProjectBar.tsx',
   'src/renderer/shell/ProductPreviewOverlay.tsx',
   'src/renderer/shell/CloseConfirmDialog.tsx',
   'src/renderer/shell/closeProjectFlow.ts',

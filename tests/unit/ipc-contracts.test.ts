@@ -32,6 +32,7 @@ describe('IPC channel registry', () => {
       'project:create',
       'project:create-at',
       'project:choose-directory',
+      'project:open-folder',
       'project:confirm-switch',
       'project:open',
       'project:save',

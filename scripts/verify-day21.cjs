@@ -64,9 +64,24 @@ async function setInput(window, selector, value) {
 }
 
 async function openProject(window, root, expectedName) {
-  await setInput(window, '.recovery-open-row input', root);
+  await window.webContents.executeJavaScript(`(() => {
+    if (document.querySelector('[data-editor-page="editor"]')) {
+      document.querySelector('[data-testid="open-project-center"]').click();
+    }
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-editor-page="project-center"]')`,
+      'Project Center did not open for a project switch.',
+    ),
+  );
+  await setInput(
+    window,
+    '[data-testid="project-center-screen"] .recovery-open-row input',
+    root,
+  );
   await window.webContents.executeJavaScript(`
-    document.querySelector('.recovery-open-row button').click()
+    document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click()
   `);
   await window.webContents.executeJavaScript(
     waitFor(
@@ -410,7 +425,7 @@ async function verifyDay21() {
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim(),
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === '暂无未保存更改',
+          ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
         )?.textContent?.includes('修订 0')
@@ -440,7 +455,7 @@ async function verifyDay21() {
         ),
         layerJson: stage.dataset.layerJson,
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === '暂无未保存更改',
+          ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
         )?.textContent?.includes('修订 0')
@@ -512,7 +527,7 @@ async function verifyDay21() {
         ).textContent.trim(),
         layerJson: stage.dataset.layerJson,
         clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === '暂无未保存更改',
+          ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
         )?.textContent?.includes('修订 0'),
@@ -566,7 +581,7 @@ async function verifyDay21() {
         '[data-testid="project-canvas-viewport"]'
       ).dataset.logicalHeight),
       clean: document.querySelector('.clean-state')
-        ?.textContent?.trim() === '暂无未保存更改'
+        ?.textContent?.trim() === '已保存'
     }))()`);
 
     await openProject(window, missingRoot, 'Missing background');
@@ -712,7 +727,7 @@ async function verifyDay21() {
             '[data-testid="project-canvas-stage"]'
           ).dataset.layerJson,
           clean: document.querySelector('.clean-state')
-            ?.textContent?.trim() === '暂无未保存更改',
+            ?.textContent?.trim() === '已保存',
           revisionZero: document.querySelector(
             '.shot-manager-heading span'
           )?.textContent?.includes('修订 0')

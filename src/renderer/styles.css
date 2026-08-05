@@ -158,6 +158,172 @@ button:disabled {
   gap: 10px;
 }
 
+.editor-layout > .editor-top-region {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.compact-project-bar {
+  display: flex;
+  width: 100%;
+  height: 56px;
+  min-width: 0;
+  max-height: 56px;
+  padding: 6px 10px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 12px;
+  background: rgb(18 31 23 / 94%);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compact-project-identity,
+.compact-project-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.compact-project-identity {
+  flex: 1 1 auto;
+}
+
+.compact-project-details {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  align-content: center;
+  gap: 1px;
+}
+
+.compact-project-details .eyebrow {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.compact-project-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #eef8f1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-project-path {
+  display: block;
+  min-width: 0;
+  max-width: min(32vw, 360px);
+  overflow: hidden;
+  color: #8fa89a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-project-path code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+}
+
+.compact-project-center-button,
+.compact-project-controls button {
+  min-height: 38px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.compact-project-center-button {
+  flex: 0 0 auto;
+  border-color: rgb(127 199 148 / 42%);
+  background: rgb(31 66 43 / 82%);
+}
+
+.compact-project-controls {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.compact-project-save-state {
+  flex: 0 1 auto;
+  max-width: 150px;
+  padding: 5px 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-project-save-state-saved {
+  color: #c2d1c7;
+  background: rgb(104 137 114 / 18%);
+}
+
+.compact-project-save-state-dirty,
+.compact-project-save-state-saving {
+  color: #ffe6ad;
+  background: rgb(155 104 18 / 28%);
+}
+
+.compact-project-save-state-failed {
+  color: #ffd4d0;
+  background: rgb(124 46 37 / 44%);
+}
+
+.compact-project-feedback {
+  min-width: 0;
+  max-width: min(24vw, 260px);
+  overflow: hidden;
+  color: #aebfb4;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-project-menu-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.compact-project-more-button {
+  border-color: rgb(154 216 172 / 35%);
+  background: rgb(255 255 255 / 5%);
+}
+
+.compact-project-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  width: max-content;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid rgb(127 199 148 / 35%);
+  border-radius: 10px;
+  background: #142019;
+  box-shadow: 0 16px 34px rgb(0 0 0 / 42%);
+  gap: 4px;
+}
+
+.compact-project-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+}
+
+.compact-project-menu button:hover:not(:disabled) {
+  background: #28663f;
+}
+
 .editor-layout > .recovery-panel {
   width: 100%;
   max-width: none;
@@ -1617,6 +1783,10 @@ button:disabled {
   justify-content: space-between;
 }
 
+.compact-project-controls.recovery-status-row {
+  justify-content: flex-end;
+}
+
 .recovery-heading-row h2 {
   margin: 0;
   font-size: 17px;
@@ -2218,6 +2388,29 @@ h1 {
 }
 
 @media (max-width: 720px) {
+  .compact-project-bar {
+    gap: 6px;
+  }
+
+  .compact-project-center-button,
+  .compact-project-controls button {
+    min-height: 44px;
+    padding: 6px 8px;
+  }
+
+  .compact-project-path,
+  .compact-project-feedback {
+    display: none;
+  }
+
+  .compact-project-name {
+    max-width: 28vw;
+  }
+
+  .compact-project-save-state {
+    max-width: 112px;
+  }
+
   .app-header,
   .transport-bar {
     align-items: flex-start;
