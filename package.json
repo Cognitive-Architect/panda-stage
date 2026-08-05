@@ -44,6 +44,7 @@
     "verify:issue95": "pnpm build && electron scripts/verify-issue95.cjs",
     "verify:issue99": "pnpm build && electron scripts/verify-issue99.cjs",
     "verify:issue100": "pnpm build && electron scripts/verify-issue100.cjs",
+    "verify:issue101": "pnpm build && electron scripts/verify-issue101.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",
     "dist": "pnpm build && node scripts/build-distribution.cjs",

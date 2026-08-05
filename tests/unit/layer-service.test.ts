@@ -177,6 +177,134 @@ describe('LayerService', () => {
     expect(clearedShot.layers.map((layer) => layer.zIndex)).toEqual([0, 1, 2]);
   });
 
+  it.each([
+    { label: 'landscape', width: 1600, height: 900, scale: 1.2 },
+    { label: 'wide crop', width: 2400, height: 900, scale: 1.2 },
+    { label: 'portrait', width: 900, height: 1600, scale: 2.1333333333333333 },
+    { label: 'square', width: 1000, height: 1000, scale: 1.92 },
+  ])(
+    'initializes a $label formal background with persistent Cover geometry',
+    ({ width, height, scale }) => {
+      const source = fixture();
+      const backgroundSource = source.shots[0]!.layers[0]!.source;
+      if (backgroundSource.kind !== 'asset') {
+        throw new Error('fixture background is not asset-backed');
+      }
+      const project = ProjectSchema.parse({
+        ...source,
+        assets: source.assets.map((asset) =>
+          asset.id === backgroundSource.assetId &&
+          asset.kind === 'image'
+            ? { ...asset, width, height }
+            : asset,
+        ),
+        shots: source.shots.map((shot) => ({
+          ...shot,
+          backgroundLayerId: null,
+          layers: shot.layers.map((layer) => ({
+            ...layer,
+            locked: false,
+            flipX: false,
+          })),
+        })),
+      });
+      const shot = project.shots[0]!;
+      const layer = shot.layers[0]!;
+      const result = service().setBackground(project, shot.id, layer.id);
+      const background = result.shots[0]!.layers[0]!;
+
+      expect(background).toMatchObject({
+        x: 960,
+        y: 540,
+        scaleX: scale,
+        scaleY: scale,
+        rotationDeg: 0,
+        flipX: false,
+        locked: true,
+        zIndex: 0,
+      });
+    },
+  );
+
+  it('fills an existing background with Cover geometry without changing opacity or lock', () => {
+    const source = fixture();
+    const backgroundSource = source.shots[0]!.layers[0]!.source;
+    if (backgroundSource.kind !== 'asset') {
+      throw new Error('fixture background is not asset-backed');
+    }
+    const project = ProjectSchema.parse({
+      ...source,
+      assets: source.assets.map((asset) =>
+        asset.id === backgroundSource.assetId &&
+        asset.kind === 'image'
+          ? { ...asset, width: 1000, height: 1000 }
+          : asset,
+      ),
+      shots: source.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) =>
+          layer.id === shot.backgroundLayerId
+            ? {
+                ...layer,
+                x: 320,
+                y: 240,
+                scaleX: 0.6,
+                scaleY: 0.6,
+                rotationDeg: 17,
+                opacity: 0.65,
+                flipX: true,
+                locked: false,
+              }
+            : layer,
+        ),
+      })),
+    });
+    const shot = project.shots[0]!;
+    const filled = service().fillBackground(project, shot.id);
+    const background = filled.shots[0]!.layers[0]!;
+
+    expect(background).toMatchObject({
+      x: 960,
+      y: 540,
+      scaleX: 1.92,
+      scaleY: 1.92,
+      rotationDeg: 0,
+      flipX: false,
+      opacity: 0.65,
+      locked: false,
+      zIndex: 0,
+    });
+    expect(service().fillBackground(filled, shot.id)).toBe(filled);
+  });
+
+  it('rejects invalid source dimensions without writing non-finite background geometry', () => {
+    const source = fixture();
+    const project = structuredClone(source) as typeof source;
+    const backgroundAssetId = project.shots[0]!.layers[0]!.source;
+    if (backgroundAssetId.kind !== 'asset') {
+      throw new Error('fixture background is not asset-backed');
+    }
+    const asset = project.assets.find(
+      (candidate) => candidate.id === backgroundAssetId.assetId,
+    );
+    if (!asset || asset.kind !== 'image') {
+      throw new Error('fixture background asset is missing');
+    }
+    (asset as { width: number; height: number }).width = 0;
+    project.shots[0]!.backgroundLayerId = null;
+    project.shots[0]!.layers[0]!.locked = false;
+    expect(() =>
+      service().setBackground(
+        project,
+        project.shots[0]!.id,
+        project.shots[0]!.layers[0]!.id,
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: 'BACKGROUND_COVER_INVALID' }),
+    );
+    expect(project.shots[0]!.backgroundLayerId).toBeNull();
+  });
+
   it('keeps explicit identity when characters and expressions share one asset', () => {
     const project = fixture();
     const characterA = project.characters[0]!;

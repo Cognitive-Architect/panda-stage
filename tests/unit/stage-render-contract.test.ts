@@ -99,7 +99,14 @@ describe('shared stage layer render contract', () => {
         ...shot,
         layers: shot.layers.map((layer) =>
           layer.id === shot.backgroundLayerId
-            ? { ...layer, flipX: true }
+            ? {
+                ...layer,
+                x: 960,
+                y: 540,
+                scaleX: 1.92,
+                scaleY: 1.92,
+                flipX: true,
+              }
             : layer,
         ),
       })),
@@ -111,12 +118,12 @@ describe('shared stage layer render contract', () => {
       isBackground: true,
       x: 960,
       y: 540,
-      width: 1920,
-      height: 1920,
-      offsetX: 960,
-      offsetY: 960,
-      scaleX: -1,
-      scaleY: 1,
+      width: 1000,
+      height: 1000,
+      offsetX: 500,
+      offsetY: 500,
+      scaleX: -1.92,
+      scaleY: 1.92,
       coverScale: 1.92,
     });
   });

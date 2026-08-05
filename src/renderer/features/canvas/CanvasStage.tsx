@@ -302,6 +302,26 @@ export function CanvasStage(): React.JSX.Element {
               data-background-scale-y={
                 backgroundLayer?.render.coverScale ?? ''
               }
+              data-background-render-x={backgroundLayer?.render.x ?? ''}
+              data-background-render-y={backgroundLayer?.render.y ?? ''}
+              data-background-render-width={
+                backgroundLayer?.render.width ?? ''
+              }
+              data-background-render-height={
+                backgroundLayer?.render.height ?? ''
+              }
+              data-background-render-offset-x={
+                backgroundLayer?.render.offsetX ?? ''
+              }
+              data-background-render-offset-y={
+                backgroundLayer?.render.offsetY ?? ''
+              }
+              data-background-render-effective-scale-x={
+                backgroundLayer?.render.scaleX ?? ''
+              }
+              data-background-render-effective-scale-y={
+                backgroundLayer?.render.scaleY ?? ''
+              }
               data-center-guides="vertical,horizontal"
               data-interaction-status={interactionStatus}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}

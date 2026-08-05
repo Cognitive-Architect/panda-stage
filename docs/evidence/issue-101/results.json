@@ -1,0 +1,615 @@
+{
+  "issue": 101,
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "passed": true,
+  "checks": [
+    "T1 16:9 initial background covers 1920x1080",
+    "T5 original-resolution canvas source retained",
+    "T10 selection preserves Cover render geometry",
+    "T6 set-background Undo/Redo restores ordinary and Cover geometry",
+    "T7 replacement background reinitializes Cover geometry",
+    "T8 manual background geometry survives save/reopen",
+    "T2 wide Cover geometry covers the canvas",
+    "T3 portrait Cover geometry covers the canvas",
+    "T4 square Cover geometry covers the canvas",
+    "T9 Fill canvas repairs legacy background and supports Undo/Redo",
+    "T11 shot and project switching keeps background geometry isolated",
+    "T12 missing source stays structured without NaN/Infinity or renderer crash"
+  ],
+  "snapshots": {
+    "sixteenNine": {
+      "layers": [
+        {
+          "id": "7ec9908a-422d-416e-b10e-c85d3070f362",
+          "name": "16:9 background candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        },
+        {
+          "id": "a60ffdee-2278-4aab-ba99-55ae53711dc1",
+          "name": "Wide replacement candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+          },
+          "anchor": "center",
+          "x": 1500,
+          "y": 700,
+          "scaleX": 0.48,
+          "scaleY": 0.48,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "7ec9908a-422d-416e-b10e-c85d3070f362",
+      "backgroundLocked": true,
+      "selectedLayerId": "7ec9908a-422d-416e-b10e-c85d3070f362",
+      "activeShotId": "91c23cfc-ceb8-4ee8-bb08-04a0824b440a",
+      "inspectorState": "background",
+      "backgroundControlState": "background",
+      "backgroundControlLayerId": "7ec9908a-422d-416e-b10e-c85d3070f362",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 960,
+        "y": 540,
+        "width": 1920,
+        "height": 1080,
+        "offsetX": 960,
+        "offsetY": 540,
+        "scaleX": 1,
+        "scaleY": 1
+      },
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d",
+          "width": 1920,
+          "height": 1080
+        },
+        {
+          "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da",
+          "width": 1600,
+          "height": 1000
+        }
+      ],
+      "renderedAssetIds": [
+        "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d",
+        "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+      ],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": true,
+      "undoCount": 1,
+      "redoCount": 0
+    },
+    "replaced": {
+      "layers": [
+        {
+          "id": "a60ffdee-2278-4aab-ba99-55ae53711dc1",
+          "name": "Wide replacement candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1.2,
+          "scaleY": 1.2,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        },
+        {
+          "id": "7ec9908a-422d-416e-b10e-c85d3070f362",
+          "name": "16:9 background candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": true,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "a60ffdee-2278-4aab-ba99-55ae53711dc1",
+      "backgroundLocked": true,
+      "selectedLayerId": "a60ffdee-2278-4aab-ba99-55ae53711dc1",
+      "activeShotId": "91c23cfc-ceb8-4ee8-bb08-04a0824b440a",
+      "inspectorState": "background",
+      "backgroundControlState": "background",
+      "backgroundControlLayerId": "a60ffdee-2278-4aab-ba99-55ae53711dc1",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 960,
+        "y": 540,
+        "width": 1600,
+        "height": 1000,
+        "offsetX": 800,
+        "offsetY": 500,
+        "scaleX": 1.2,
+        "scaleY": 1.2
+      },
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d",
+          "width": 1920,
+          "height": 1080
+        },
+        {
+          "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da",
+          "width": 1600,
+          "height": 1000
+        }
+      ],
+      "renderedAssetIds": [
+        "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d",
+        "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+      ],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": true,
+      "undoCount": 2,
+      "redoCount": 0
+    },
+    "reopenedManual": {
+      "layers": [
+        {
+          "id": "a60ffdee-2278-4aab-ba99-55ae53711dc1",
+          "name": "Wide replacement candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+          },
+          "anchor": "center",
+          "x": 810,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 27,
+          "opacity": 0.65,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "7ec9908a-422d-416e-b10e-c85d3070f362",
+          "name": "16:9 background candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": true,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "a60ffdee-2278-4aab-ba99-55ae53711dc1",
+      "backgroundLocked": false,
+      "selectedLayerId": "",
+      "activeShotId": "91c23cfc-ceb8-4ee8-bb08-04a0824b440a",
+      "inspectorState": "empty",
+      "backgroundControlState": "empty",
+      "backgroundControlLayerId": "a60ffdee-2278-4aab-ba99-55ae53711dc1",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 810,
+        "y": 450,
+        "width": 1600,
+        "height": 1000,
+        "offsetX": 800,
+        "offsetY": 500,
+        "scaleX": 1.25,
+        "scaleY": 1.25
+      },
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da",
+          "width": 1600,
+          "height": 1000
+        },
+        {
+          "assetId": "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d",
+          "width": 1920,
+          "height": 1080
+        }
+      ],
+      "renderedAssetIds": [
+        "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da",
+        "58aa3465-5dc2-4f3c-b303-efa0e6cfbb5d"
+      ],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0
+    },
+    "wide": {
+      "layers": [
+        {
+          "id": "f4669431-03a8-4985-887d-130cc9877939",
+          "name": "Wide standalone candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1.2,
+          "scaleY": 1.2,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "f4669431-03a8-4985-887d-130cc9877939",
+      "backgroundLocked": true,
+      "selectedLayerId": "f4669431-03a8-4985-887d-130cc9877939",
+      "activeShotId": "23203fbf-feff-4fd7-9bbe-793c1969e5ed",
+      "inspectorState": "background",
+      "backgroundControlState": "background",
+      "backgroundControlLayerId": "f4669431-03a8-4985-887d-130cc9877939",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 960,
+        "y": 540,
+        "width": 1600,
+        "height": 1000,
+        "offsetX": 800,
+        "offsetY": 500,
+        "scaleX": 1.2,
+        "scaleY": 1.2
+      },
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da",
+          "width": 1600,
+          "height": 1000
+        }
+      ],
+      "renderedAssetIds": [
+        "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+      ],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": true,
+      "undoCount": 1,
+      "redoCount": 0
+    },
+    "portrait": {
+      "layers": [
+        {
+          "id": "bc1e6efd-5d21-4406-afbe-baa4335f3a24",
+          "name": "Portrait candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "26bfc9af-33a0-4bb8-92cb-c4362a0e98cc"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 2.4,
+          "scaleY": 2.4,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "bc1e6efd-5d21-4406-afbe-baa4335f3a24",
+      "backgroundLocked": true,
+      "selectedLayerId": "bc1e6efd-5d21-4406-afbe-baa4335f3a24",
+      "activeShotId": "9d049bc1-6e83-4f83-b94d-3f0df0bf8335",
+      "inspectorState": "background",
+      "backgroundControlState": "background",
+      "backgroundControlLayerId": "bc1e6efd-5d21-4406-afbe-baa4335f3a24",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 960,
+        "y": 540,
+        "width": 800,
+        "height": 1200,
+        "offsetX": 400,
+        "offsetY": 600,
+        "scaleX": 2.4,
+        "scaleY": 2.4
+      },
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "26bfc9af-33a0-4bb8-92cb-c4362a0e98cc",
+          "width": 800,
+          "height": 1200
+        }
+      ],
+      "renderedAssetIds": [
+        "26bfc9af-33a0-4bb8-92cb-c4362a0e98cc"
+      ],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": true,
+      "undoCount": 1,
+      "redoCount": 0
+    },
+    "square": {
+      "layers": [
+        {
+          "id": "f2360a87-4949-4a7e-8977-5296ac71a150",
+          "name": "Square candidate",
+          "source": {
+            "kind": "asset",
+            "assetId": "f458b927-8ce7-489c-bc17-accf714a4d99"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1.92,
+          "scaleY": 1.92,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "f2360a87-4949-4a7e-8977-5296ac71a150",
+      "backgroundLocked": true,
+      "selectedLayerId": "f2360a87-4949-4a7e-8977-5296ac71a150",
+      "activeShotId": "93030c1a-b9b3-4b48-a09e-21c30f8a802c",
+      "inspectorState": "background",
+      "backgroundControlState": "background",
+      "backgroundControlLayerId": "f2360a87-4949-4a7e-8977-5296ac71a150",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 960,
+        "y": 540,
+        "width": 1000,
+        "height": 1000,
+        "offsetX": 500,
+        "offsetY": 500,
+        "scaleX": 1.92,
+        "scaleY": 1.92
+      },
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "f458b927-8ce7-489c-bc17-accf714a4d99",
+          "width": 1000,
+          "height": 1000
+        }
+      ],
+      "renderedAssetIds": [
+        "f458b927-8ce7-489c-bc17-accf714a4d99"
+      ],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": true,
+      "undoCount": 1,
+      "redoCount": 0
+    },
+    "legacyBefore": {
+      "layers": [
+        {
+          "id": "0a86916b-70c1-4715-a616-d2546bb05d72",
+          "name": "Legacy background geometry",
+          "source": {
+            "kind": "asset",
+            "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+          },
+          "anchor": "center",
+          "x": 260,
+          "y": 180,
+          "scaleX": 0.42,
+          "scaleY": 0.42,
+          "rotationDeg": 19,
+          "opacity": 0.8,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "0a86916b-70c1-4715-a616-d2546bb05d72",
+      "backgroundLocked": true,
+      "selectedLayerId": "",
+      "activeShotId": "5c056e7e-7dc7-45ea-8bac-1cec0030cdf9",
+      "inspectorState": "empty",
+      "backgroundControlState": "empty",
+      "backgroundControlLayerId": "0a86916b-70c1-4715-a616-d2546bb05d72",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 260,
+        "y": 180,
+        "width": 1600,
+        "height": 1000,
+        "offsetX": 800,
+        "offsetY": 500,
+        "scaleX": 0.42,
+        "scaleY": 0.42
+      },
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da",
+          "width": 1600,
+          "height": 1000
+        }
+      ],
+      "renderedAssetIds": [
+        "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+      ],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 1
+    },
+    "legacyFilled": {
+      "layers": [
+        {
+          "id": "0a86916b-70c1-4715-a616-d2546bb05d72",
+          "name": "Legacy background geometry",
+          "source": {
+            "kind": "asset",
+            "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1.2,
+          "scaleY": 1.2,
+          "rotationDeg": 0,
+          "opacity": 0.8,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "0a86916b-70c1-4715-a616-d2546bb05d72",
+      "backgroundLocked": true,
+      "selectedLayerId": "",
+      "activeShotId": "5c056e7e-7dc7-45ea-8bac-1cec0030cdf9",
+      "inspectorState": "empty",
+      "backgroundControlState": "empty",
+      "backgroundControlLayerId": "0a86916b-70c1-4715-a616-d2546bb05d72",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 960,
+        "y": 540,
+        "width": 1600,
+        "height": 1000,
+        "offsetX": 800,
+        "offsetY": 500,
+        "scaleX": 1.2,
+        "scaleY": 1.2
+      },
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da",
+          "width": 1600,
+          "height": 1000
+        }
+      ],
+      "renderedAssetIds": [
+        "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+      ],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": true,
+      "undoCount": 1,
+      "redoCount": 0
+    },
+    "finalMissingSource": {
+      "layers": [
+        {
+          "id": "0a86916b-70c1-4715-a616-d2546bb05d72",
+          "name": "Legacy background geometry",
+          "source": {
+            "kind": "asset",
+            "assetId": "4020ccf2-c9aa-48ea-b6e3-23f5a619e5da"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1.2,
+          "scaleY": 1.2,
+          "rotationDeg": 0,
+          "opacity": 0.8,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "0a86916b-70c1-4715-a616-d2546bb05d72",
+      "backgroundLocked": true,
+      "selectedLayerId": "",
+      "activeShotId": "5c056e7e-7dc7-45ea-8bac-1cec0030cdf9",
+      "inspectorState": "empty",
+      "backgroundControlState": "empty",
+      "backgroundControlLayerId": "0a86916b-70c1-4715-a616-d2546bb05d72",
+      "backgroundReady": false,
+      "backgroundWarning": true,
+      "stageError": null,
+      "backgroundRender": {
+        "x": 960,
+        "y": 540,
+        "width": 1600,
+        "height": 1000,
+        "offsetX": 800,
+        "offsetY": 500,
+        "scaleX": 1.2,
+        "scaleY": 1.2
+      },
+      "renderedAssetIntrinsicSizes": [],
+      "renderedAssetIds": [],
+      "transformInputsDisabled": true,
+      "fillButtonDisabled": false,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0
+    }
+  },
+  "disk": {
+    "acceptanceRoot": "D:\\PandaStage-Acceptance\\formal-background-cover"
+  },
+  "error": null
+}

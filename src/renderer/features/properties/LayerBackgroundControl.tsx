@@ -19,6 +19,7 @@ export interface LayerBackgroundControlModel {
   canSet: boolean;
   canSelect: boolean;
   canClear: boolean;
+  canFill: boolean;
   backgroundLayer: Layer | null;
   message: string;
 }
@@ -38,6 +39,7 @@ export function getLayerBackgroundControlModel(
   const management = {
     canSelect: Boolean(backgroundLayer),
     canClear: Boolean(backgroundLayer),
+    canFill: Boolean(backgroundLayer),
     backgroundLayer,
   };
 
@@ -164,6 +166,18 @@ export function LayerBackgroundControl(): React.JSX.Element {
     }
   };
 
+  const fillBackground = (): void => {
+    if (!model.canFill) return;
+    try {
+      layerStore.fillBackground();
+      setStatus('已按 Cover 规则填满当前逻辑画布；该操作可撤销或重做。');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '填满画布失败。',
+      );
+    }
+  };
+
   return (
     <section
       className="layer-background-control"
@@ -208,6 +222,15 @@ export function LayerBackgroundControl(): React.JSX.Element {
           type="button"
         >
           取消背景身份
+        </button>
+        <button
+          aria-label="填满当前镜头背景画布"
+          data-testid="fill-current-shot-background"
+          disabled={!model.canFill}
+          onClick={fillBackground}
+          type="button"
+        >
+          填满画布
         </button>
       </div>
       <p data-testid="layer-background-guidance">

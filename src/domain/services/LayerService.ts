@@ -4,7 +4,10 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
 } from '../constants';
-import type { Point } from '../geometry';
+import {
+  calculateCoverTransform,
+  type Point,
+} from '../geometry';
 import {
   ProjectSchema,
   type Layer,
@@ -22,6 +25,7 @@ export type LayerServiceErrorCode =
   | 'CHARACTER_IDENTITY_MISMATCH'
   | 'INVALID_POSITION'
   | 'INVALID_TRANSFORM'
+  | 'BACKGROUND_COVER_INVALID'
   | 'BACKGROUND_LAYER_PROTECTED'
   | 'LAYER_LOCKED'
   | 'ID_GENERATION_FAILED';
@@ -272,17 +276,7 @@ export class LayerService {
       .filter((candidate) => candidate.id !== layer.id)
       .sort((left, right) => left.zIndex - right.zIndex);
     const layers = [
-      {
-        ...layer,
-        x: PROJECT_WIDTH / 2,
-        y: PROJECT_HEIGHT / 2,
-        scaleX: 1,
-        scaleY: 1,
-        rotationDeg: 0,
-        flipX: false,
-        locked: true,
-        zIndex: 0,
-      },
+      this.coverLayer(layer, asset.width, asset.height, true),
       ...orderedContent.map((candidate, index) => ({
         ...candidate,
         zIndex: index + 1,
@@ -292,6 +286,67 @@ export class LayerService {
     return this.replaceShot(project, {
       ...shot,
       backgroundLayerId: layer.id,
+      layers,
+    });
+  }
+
+  fillBackground(project: Project, shotId: string): Project {
+    const shot = this.shot(project, shotId);
+    if (!shot.backgroundLayerId) return project;
+
+    const backgroundIndex = this.layerIndex(
+      shot,
+      shot.backgroundLayerId,
+    );
+    const background = shot.layers[backgroundIndex]!;
+    const assetId =
+      background.source.kind === 'asset'
+        ? background.source.assetId
+        : undefined;
+    const asset = assetId
+      ? project.assets.find((candidate) => candidate.id === assetId)
+      : undefined;
+    if (!asset || asset.kind !== 'image') {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_INVALID',
+        '当前正式背景没有可用的直接图片源，无法填满画布。',
+      );
+    }
+
+    const filledBackground = this.coverLayer(
+      background,
+      asset.width,
+      asset.height,
+      background.locked,
+    );
+    const orderedContent = shot.layers
+      .filter((candidate) => candidate.id !== background.id)
+      .sort((left, right) => left.zIndex - right.zIndex);
+    const layers = [
+      filledBackground,
+      ...orderedContent.map((candidate, index) => ({
+        ...candidate,
+        zIndex: index + 1,
+      })),
+    ];
+    const changed =
+      backgroundIndex !== 0 ||
+      background.x !== filledBackground.x ||
+      background.y !== filledBackground.y ||
+      background.scaleX !== filledBackground.scaleX ||
+      background.scaleY !== filledBackground.scaleY ||
+      background.rotationDeg !== filledBackground.rotationDeg ||
+      background.flipX !== filledBackground.flipX ||
+      background.zIndex !== filledBackground.zIndex ||
+      shot.layers.some(
+        (candidate, index) =>
+          candidate.id !== layers[index]!.id ||
+          candidate.zIndex !== layers[index]!.zIndex,
+      );
+    if (!changed) return project;
+
+    return this.replaceShot(project, {
+      ...shot,
       layers,
     });
   }
@@ -539,6 +594,35 @@ export class LayerService {
         zIndex: start + index,
       })),
     ];
+  }
+
+  private coverLayer(
+    layer: Layer,
+    assetWidth: number,
+    assetHeight: number,
+    locked: boolean,
+  ): Layer {
+    const cover = calculateCoverTransform(
+      { width: assetWidth, height: assetHeight },
+      { width: PROJECT_WIDTH, height: PROJECT_HEIGHT },
+    );
+    if (!cover || !Number.isFinite(cover.scale)) {
+      throw new LayerServiceError(
+        'BACKGROUND_COVER_INVALID',
+        '正式背景源尺寸无效，无法计算填满画布的几何。',
+      );
+    }
+    return {
+      ...layer,
+      x: PROJECT_WIDTH / 2,
+      y: PROJECT_HEIGHT / 2,
+      scaleX: cover.scale,
+      scaleY: cover.scale,
+      rotationDeg: 0,
+      flipX: false,
+      locked,
+      zIndex: 0,
+    };
   }
 
   private replaceShot(project: Project, shot: Shot): Project {

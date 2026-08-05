@@ -87,3 +87,6 @@ jobs:
 
       - name: Issue 76 Stage 1B create / preview / close gate
         run: pnpm verify:issue76
+
+      - name: Issue 101 formal background Cover gate
+        run: pnpm verify:issue101
