@@ -217,7 +217,9 @@ async function selectContentLayer(window) {
         assetRequests: window.__issue102Task3AssetRequests ?? null,
       };
     })()`);
-    throw new Error(`${error.message} ${JSON.stringify(debug)}`);
+    throw new Error(`${error.message} ${JSON.stringify(debug)}`, {
+      cause: error,
+    });
   }
   let target = null;
   for (let attempt = 0; attempt < 4; attempt += 1) {
