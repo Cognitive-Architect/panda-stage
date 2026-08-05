@@ -4,7 +4,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { deflateSync } = require('node:zlib');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, nativeImage } = require('electron');
 
 app.commandLine.appendSwitch('enable-precise-memory-info');
 
@@ -285,6 +285,76 @@ async function snapshot(window) {
   })()`);
 }
 
+async function captureLogicalStage(window) {
+  const rect = await window.webContents.executeJavaScript(`(() => {
+    const stage = document.querySelector('[data-testid="canvas-logical-stage"]');
+    if (!stage) throw new Error('Logical canvas stage did not render.');
+    const bounds = stage.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.floor(bounds.left)),
+      y: Math.max(0, Math.floor(bounds.top)),
+      width: Math.max(1, Math.ceil(bounds.width)),
+      height: Math.max(1, Math.ceil(bounds.height)),
+    };
+  })()`);
+  return {
+    rect,
+    png: (await window.webContents.capturePage(rect)).toPNG(),
+  };
+}
+
+function compareStageCaptures(before, after) {
+  const beforeImage = nativeImage.createFromBuffer(before.png);
+  const afterImage = nativeImage.createFromBuffer(after.png);
+  const beforeSize = beforeImage.getSize();
+  const afterSize = afterImage.getSize();
+  if (
+    beforeSize.width !== afterSize.width ||
+    beforeSize.height !== afterSize.height
+  ) {
+    return {
+      sameSize: false,
+      comparedPixels: 0,
+      differentPixels: null,
+      differenceRatio: 1,
+      beforeSize,
+      afterSize,
+    };
+  }
+
+  const beforeBitmap = beforeImage.toBitmap();
+  const afterBitmap = afterImage.toBitmap();
+  const border = Math.min(
+    24,
+    Math.floor(beforeSize.width / 8),
+    Math.floor(beforeSize.height / 8),
+  );
+  let comparedPixels = 0;
+  let differentPixels = 0;
+  for (let y = border; y < beforeSize.height - border; y += 1) {
+    for (let x = border; x < beforeSize.width - border; x += 1) {
+      const offset = (y * beforeSize.width + x) * 4;
+      comparedPixels += 1;
+      if (
+        beforeBitmap[offset] !== afterBitmap[offset] ||
+        beforeBitmap[offset + 1] !== afterBitmap[offset + 1] ||
+        beforeBitmap[offset + 2] !== afterBitmap[offset + 2] ||
+        beforeBitmap[offset + 3] !== afterBitmap[offset + 3]
+      ) {
+        differentPixels += 1;
+      }
+    }
+  }
+  return {
+    sameSize: true,
+    comparedPixels,
+    differentPixels,
+    differenceRatio: comparedPixels ? differentPixels / comparedPixels : 1,
+    beforeSize,
+    afterSize,
+  };
+}
+
 async function waitForAssets(window, ids) {
   await waitForDom(
     window,
@@ -503,11 +573,36 @@ async function run(window) {
   assert(!protectedHit.backgroundListening && protectedHit.selectedLayerId === fixtureA.layerB.id, 'Locked background remained an ordinary canvas hit target.');
   result.checks.push('T2 default background hit protection');
 
+  await clickLogicalPoint(window, { x: 1_800, y: 1_000 });
+  const unselectedBackground = await snapshot(window);
+  assert(unselectedBackground.selectedLayerId === '', 'Could not clear the ordinary layer selection before the background geometry check.');
+  const beforeBackgroundSelection = await captureLogicalStage(window);
   await clickElement(window, '[data-testid="select-current-shot-background"]');
   const managedLocked = await snapshot(window);
   assert(managedLocked.selectedLayerId === fixtureA.layerA.id && managedLocked.inspectorState === 'background', 'Explicit background management entry did not select the formal background.');
   assert(managedLocked.transformInputsDisabled && managedLocked.transformLockChecked, 'Background management entry did not expose the locked state.');
+  const afterBackgroundSelection = await captureLogicalStage(window);
+  const backgroundSelectionPixels = compareStageCaptures(
+    beforeBackgroundSelection,
+    afterBackgroundSelection,
+  );
+  assert(
+    backgroundSelectionPixels.sameSize &&
+      backgroundSelectionPixels.differentPixels === 0,
+    `Selecting the formal background changed its canvas pixels: ${JSON.stringify(backgroundSelectionPixels)}`,
+  );
+  await mkdir(evidenceDirectory, { recursive: true });
+  await writeFile(
+    path.join(evidenceDirectory, 'background-before-selection.png'),
+    beforeBackgroundSelection.png,
+  );
+  await writeFile(
+    path.join(evidenceDirectory, 'background-after-selection.png'),
+    afterBackgroundSelection.png,
+  );
+  result.snapshots.backgroundSelectionPixels = backgroundSelectionPixels;
   result.checks.push('T3/T4 explicit background management entry');
+  result.checks.push('T2/T5-T8 selection preserves background pixels and geometry');
 
   const lockedBeforeDrag = managedLocked.layers.find((layer) => layer.id === fixtureA.layerA.id);
   await dragLogicalPoint(window, { x: 960, y: 540 }, { x: 1_100, y: 700 });

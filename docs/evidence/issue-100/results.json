@@ -8,6 +8,7 @@
     "T1/T5/T11 bind, lock, and background order semantics",
     "T2 default background hit protection",
     "T3/T4 explicit background management entry",
+    "T2/T5-T8 selection preserves background pixels and geometry",
     "T6 locked drag protection",
     "T7 unlocked X/Y scale rotation flip opacity editing",
     "T8 re-lock protection",
@@ -22,15 +23,15 @@
   ],
   "snapshots": {
     "boundA": {
-      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-UgsKyo\\issue100-a.pandastage",
-      "activeShotId": "e8b013ba-80a7-4a00-a1ea-7d97c677fa00",
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-YPxKnh\\issue100-a.pandastage",
+      "activeShotId": "6b9d4ba8-c898-4625-8cf0-a00b8a7ab02c",
       "layers": [
         {
-          "id": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+          "id": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
           "name": "Layer A a",
           "source": {
             "kind": "asset",
-            "assetId": "2beaebc2-8966-4856-b4a6-6d5c290e3359"
+            "assetId": "953d96a3-7981-4aff-b6a6-eedb2d309334"
           },
           "anchor": "center",
           "x": 960,
@@ -45,11 +46,11 @@
           "flipX": false
         },
         {
-          "id": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+          "id": "77314192-d83d-4eb4-8b20-347a4ef896ae",
           "name": "Layer B a",
           "source": {
             "kind": "asset",
-            "assetId": "11ab89d3-5f8a-471b-abbc-4a323d49ba5f"
+            "assetId": "02790b73-eaad-4be9-b15d-fb2f27d1e4f1"
           },
           "anchor": "center",
           "x": 1300,
@@ -64,16 +65,16 @@
           "flipX": false
         }
       ],
-      "backgroundLayerId": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+      "backgroundLayerId": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
       "backgroundReady": true,
       "backgroundWarning": false,
       "backgroundListening": false,
       "backgroundEditing": true,
       "backgroundLocked": true,
-      "selectedLayerId": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+      "selectedLayerId": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
       "inspectorState": "background",
       "backgroundControlState": "background",
-      "backgroundControlLayerId": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+      "backgroundControlLayerId": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
       "backgroundControlLocked": true,
       "transformInputsDisabled": true,
       "transformLockChecked": true,
@@ -82,12 +83,12 @@
       "orderBackgroundProtected": true,
       "renderedAssetIntrinsicSizes": [
         {
-          "assetId": "2beaebc2-8966-4856-b4a6-6d5c290e3359",
+          "assetId": "953d96a3-7981-4aff-b6a6-eedb2d309334",
           "width": 1536,
           "height": 864
         },
         {
-          "assetId": "11ab89d3-5f8a-471b-abbc-4a323d49ba5f",
+          "assetId": "02790b73-eaad-4be9-b15d-fb2f27d1e4f1",
           "width": 1536,
           "height": 864
         }
@@ -98,16 +99,30 @@
       "redoCount": 0,
       "stageError": null
     },
+    "backgroundSelectionPixels": {
+      "sameSize": true,
+      "comparedPixels": 987105,
+      "differentPixels": 0,
+      "differenceRatio": 0,
+      "beforeSize": {
+        "width": 1391,
+        "height": 783
+      },
+      "afterSize": {
+        "width": 1391,
+        "height": 783
+      }
+    },
     "editedBackground": {
-      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-UgsKyo\\issue100-a.pandastage",
-      "activeShotId": "e8b013ba-80a7-4a00-a1ea-7d97c677fa00",
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-YPxKnh\\issue100-a.pandastage",
+      "activeShotId": "6b9d4ba8-c898-4625-8cf0-a00b8a7ab02c",
       "layers": [
         {
-          "id": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+          "id": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
           "name": "Layer A a",
           "source": {
             "kind": "asset",
-            "assetId": "2beaebc2-8966-4856-b4a6-6d5c290e3359"
+            "assetId": "953d96a3-7981-4aff-b6a6-eedb2d309334"
           },
           "anchor": "center",
           "x": 810,
@@ -122,11 +137,11 @@
           "flipX": true
         },
         {
-          "id": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+          "id": "77314192-d83d-4eb4-8b20-347a4ef896ae",
           "name": "Layer B a",
           "source": {
             "kind": "asset",
-            "assetId": "11ab89d3-5f8a-471b-abbc-4a323d49ba5f"
+            "assetId": "02790b73-eaad-4be9-b15d-fb2f27d1e4f1"
           },
           "anchor": "center",
           "x": 1438.7702265372168,
@@ -141,16 +156,16 @@
           "flipX": false
         }
       ],
-      "backgroundLayerId": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+      "backgroundLayerId": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
       "backgroundReady": true,
       "backgroundWarning": false,
       "backgroundListening": true,
       "backgroundEditing": true,
       "backgroundLocked": false,
-      "selectedLayerId": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+      "selectedLayerId": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
       "inspectorState": "background",
       "backgroundControlState": "background",
-      "backgroundControlLayerId": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+      "backgroundControlLayerId": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
       "backgroundControlLocked": false,
       "transformInputsDisabled": false,
       "transformLockChecked": false,
@@ -159,12 +174,12 @@
       "orderBackgroundProtected": true,
       "renderedAssetIntrinsicSizes": [
         {
-          "assetId": "2beaebc2-8966-4856-b4a6-6d5c290e3359",
+          "assetId": "953d96a3-7981-4aff-b6a6-eedb2d309334",
           "width": 1536,
           "height": 864
         },
         {
-          "assetId": "11ab89d3-5f8a-471b-abbc-4a323d49ba5f",
+          "assetId": "02790b73-eaad-4be9-b15d-fb2f27d1e4f1",
           "width": 1536,
           "height": 864
         }
@@ -176,15 +191,15 @@
       "stageError": null
     },
     "replaced": {
-      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-UgsKyo\\issue100-a.pandastage",
-      "activeShotId": "e8b013ba-80a7-4a00-a1ea-7d97c677fa00",
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-YPxKnh\\issue100-a.pandastage",
+      "activeShotId": "6b9d4ba8-c898-4625-8cf0-a00b8a7ab02c",
       "layers": [
         {
-          "id": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+          "id": "77314192-d83d-4eb4-8b20-347a4ef896ae",
           "name": "Layer B a",
           "source": {
             "kind": "asset",
-            "assetId": "11ab89d3-5f8a-471b-abbc-4a323d49ba5f"
+            "assetId": "02790b73-eaad-4be9-b15d-fb2f27d1e4f1"
           },
           "anchor": "center",
           "x": 960,
@@ -199,11 +214,11 @@
           "flipX": false
         },
         {
-          "id": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+          "id": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
           "name": "Layer A a",
           "source": {
             "kind": "asset",
-            "assetId": "2beaebc2-8966-4856-b4a6-6d5c290e3359"
+            "assetId": "953d96a3-7981-4aff-b6a6-eedb2d309334"
           },
           "anchor": "center",
           "x": 810,
@@ -218,16 +233,16 @@
           "flipX": true
         }
       ],
-      "backgroundLayerId": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+      "backgroundLayerId": "77314192-d83d-4eb4-8b20-347a4ef896ae",
       "backgroundReady": true,
       "backgroundWarning": false,
       "backgroundListening": false,
       "backgroundEditing": true,
       "backgroundLocked": true,
-      "selectedLayerId": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+      "selectedLayerId": "77314192-d83d-4eb4-8b20-347a4ef896ae",
       "inspectorState": "background",
       "backgroundControlState": "background",
-      "backgroundControlLayerId": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+      "backgroundControlLayerId": "77314192-d83d-4eb4-8b20-347a4ef896ae",
       "backgroundControlLocked": true,
       "transformInputsDisabled": true,
       "transformLockChecked": true,
@@ -236,12 +251,12 @@
       "orderBackgroundProtected": true,
       "renderedAssetIntrinsicSizes": [
         {
-          "assetId": "11ab89d3-5f8a-471b-abbc-4a323d49ba5f",
+          "assetId": "02790b73-eaad-4be9-b15d-fb2f27d1e4f1",
           "width": 1536,
           "height": 864
         },
         {
-          "assetId": "2beaebc2-8966-4856-b4a6-6d5c290e3359",
+          "assetId": "953d96a3-7981-4aff-b6a6-eedb2d309334",
           "width": 1536,
           "height": 864
         }
@@ -253,15 +268,15 @@
       "stageError": null
     },
     "final": {
-      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-UgsKyo\\issue100-a.pandastage",
-      "activeShotId": "e8b013ba-80a7-4a00-a1ea-7d97c677fa00",
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-YPxKnh\\issue100-a.pandastage",
+      "activeShotId": "6b9d4ba8-c898-4625-8cf0-a00b8a7ab02c",
       "layers": [
         {
-          "id": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+          "id": "77314192-d83d-4eb4-8b20-347a4ef896ae",
           "name": "Layer B a",
           "source": {
             "kind": "asset",
-            "assetId": "11ab89d3-5f8a-471b-abbc-4a323d49ba5f"
+            "assetId": "02790b73-eaad-4be9-b15d-fb2f27d1e4f1"
           },
           "anchor": "center",
           "x": 960,
@@ -276,11 +291,11 @@
           "flipX": false
         },
         {
-          "id": "458dc446-e1b0-43d7-9a7f-48eb07bc5b80",
+          "id": "3f3659c7-1bdd-4967-86a5-63eda4ce27c8",
           "name": "Layer A a",
           "source": {
             "kind": "asset",
-            "assetId": "2beaebc2-8966-4856-b4a6-6d5c290e3359"
+            "assetId": "953d96a3-7981-4aff-b6a6-eedb2d309334"
           },
           "anchor": "center",
           "x": 810,
@@ -295,7 +310,7 @@
           "flipX": true
         }
       ],
-      "backgroundLayerId": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+      "backgroundLayerId": "77314192-d83d-4eb4-8b20-347a4ef896ae",
       "backgroundReady": false,
       "backgroundWarning": true,
       "backgroundListening": false,
@@ -304,7 +319,7 @@
       "selectedLayerId": "",
       "inspectorState": "empty",
       "backgroundControlState": "empty",
-      "backgroundControlLayerId": "e984e1b7-2b28-4621-995b-3e3a6745001a",
+      "backgroundControlLayerId": "77314192-d83d-4eb4-8b20-347a4ef896ae",
       "backgroundControlLocked": true,
       "transformInputsDisabled": true,
       "transformLockChecked": null,
@@ -313,7 +328,7 @@
       "orderBackgroundProtected": false,
       "renderedAssetIntrinsicSizes": [
         {
-          "assetId": "2beaebc2-8966-4856-b4a6-6d5c290e3359",
+          "assetId": "953d96a3-7981-4aff-b6a6-eedb2d309334",
           "width": 1536,
           "height": 864
         }

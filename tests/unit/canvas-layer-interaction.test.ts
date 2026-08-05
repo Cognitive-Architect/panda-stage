@@ -237,6 +237,64 @@ describe('SelectableLayer interaction adapter', () => {
     ).toBe(false);
   });
 
+  it('keeps background geometry identical when explicit selection changes', () => {
+    const background = model.layers.find(
+      ({ render }) => render.isBackground,
+    )!;
+    const props = (element: ReturnType<typeof SelectableLayer>) =>
+      element.props as {
+        x: number;
+        y: number;
+        scaleX: number;
+        scaleY: number;
+        rotation: number;
+        opacity: number;
+        children:
+          | { props: Record<string, unknown> }
+          | Array<{ props: Record<string, unknown> }>;
+      };
+    const renderBackground = (selected: boolean) =>
+      SelectableLayer({
+        image: {} as HTMLImageElement,
+        layer: background.layer,
+        nodeRef,
+        render: background.render,
+        selected,
+        onSelect: vi.fn(),
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+      });
+
+    const unselected = props(renderBackground(false));
+    const selected = props(renderBackground(true));
+    const unselectedImage = Array.isArray(unselected.children)
+      ? unselected.children[0]!
+      : unselected.children;
+    const selectedImage = Array.isArray(selected.children)
+      ? selected.children[0]!
+      : selected.children;
+
+    expect(unselected.x).toBe(selected.x);
+    expect(unselected.y).toBe(selected.y);
+    expect(unselected.scaleX).toBe(selected.scaleX);
+    expect(unselected.scaleY).toBe(selected.scaleY);
+    expect(unselected.rotation).toBe(selected.rotation);
+    expect(unselected.opacity).toBe(selected.opacity);
+    expect(unselectedImage.props).toMatchObject({
+      height: background.render.height,
+      width: background.render.width,
+      offsetX: background.render.offsetX,
+      offsetY: background.render.offsetY,
+    });
+    expect(selectedImage.props).toMatchObject({
+      height: unselectedImage.props.height,
+      width: unselectedImage.props.width,
+      offsetX: unselectedImage.props.offsetX,
+      offsetY: unselectedImage.props.offsetY,
+    });
+  });
+
   it('renders content without an interleaved Transformer sibling', () => {
     const element = SelectableLayer({
       image: {} as HTMLImageElement,
