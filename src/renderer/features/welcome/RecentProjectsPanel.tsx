@@ -108,6 +108,9 @@ export function RecentProjectsPanel({
         </div>
         <span>{entries.length}/12</span>
       </div>
+      <p className="recent-projects-safety-note">
+        移除记录只会清理最近项目列表，不会删除磁盘项目。
+      </p>
       {entries.length === 0 ? (
         <p className="recent-projects-empty">新建或打开项目后会显示在这里。</p>
       ) : (
@@ -116,16 +119,21 @@ export function RecentProjectsPanel({
           data-testid="recent-projects-list"
         >
           {entries.map((entry) => (
-            <li key={`${entry.projectId}:${entry.projectRoot}`}>
+            <li
+              className="recent-project-card"
+              data-project-status={entry.status}
+              key={`${entry.projectId}:${entry.projectRoot}`}
+            >
               <div>
                 <strong>{entry.projectName}</strong>
                 <span
                   className="recent-projects-path recent-project-path"
                   data-testid="recent-projects-path"
+                  title={entry.projectRoot}
                 >
                   {entry.projectRoot}
                 </span>
-                <span>
+                <span className="recent-project-meta">
                   {entry.status === 'available'
                     ? '可用'
                     : entry.status === 'missing'
@@ -162,6 +170,7 @@ export function RecentProjectsPanel({
                 <button
                   disabled={busyRoot !== null}
                   onClick={() => void removeProject(entry)}
+                  title="只移除最近项目记录，不删除磁盘项目"
                   type="button"
                 >
                   移除记录

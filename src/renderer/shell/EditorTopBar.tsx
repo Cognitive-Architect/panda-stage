@@ -13,6 +13,7 @@ export interface EditorTopBarProps {
   onOpenCandidatePathChange(value: string): void;
   onChooseProjectDirectory(): Promise<void>;
   onOpenProject(): Promise<void>;
+  onOpenProjectCenter?(): void;
   onSaveProject(): Promise<void>;
   onOpenProductPreview(): void;
   onRequestCloseProject(): void;
@@ -28,6 +29,7 @@ export function EditorTopBar({
   recoveryBanner,
   onOpenCandidatePathChange,
   onChooseProjectDirectory,
+  onOpenProjectCenter = () => undefined,
   onOpenProject,
   onSaveProject,
   onOpenProductPreview,
@@ -88,6 +90,15 @@ export function EditorTopBar({
       {recoveryBanner}
       <div className="recovery-status-row">
         <output>{status}</output>
+        <button
+          className="project-center-button"
+          data-testid="open-project-center"
+          disabled={busy || closeConfirmOpen}
+          onClick={onOpenProjectCenter}
+          type="button"
+        >
+          项目中心
+        </button>
         <button
           className="editor-save-button"
           disabled={busy || !projectSnapshot.dirty}

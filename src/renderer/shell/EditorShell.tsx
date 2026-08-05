@@ -33,8 +33,8 @@ import { EditorTopBar } from './EditorTopBar';
 import { LeftWorkspace } from './LeftWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
+import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
-import { StartScreen } from './StartScreen';
 import { useDebugFlag } from './useDebugFlag';
 import {
   CLOSE_PROJECT_CLEAN_PROMPT,
@@ -58,6 +58,7 @@ export type EditorShellState = 'no-project' | 'editor';
 export type EditorShellSessionRegion =
   | 'start-screen'
   | 'editor-layout';
+export type EditorShellPage = 'project-center' | 'editor';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
@@ -69,6 +70,15 @@ export function getEditorShellSessionRegion(
   state: EditorShellState,
 ): EditorShellSessionRegion {
   return state === 'no-project' ? 'start-screen' : 'editor-layout';
+}
+
+export function getEditorShellPage(
+  requestedPage: EditorShellPage,
+  snapshot: EditorProjectSnapshot | null,
+): EditorShellPage {
+  return requestedPage === 'editor' && snapshot
+    ? 'editor'
+    : 'project-center';
 }
 
 export function getEditorShellRecoveryCandidate(
@@ -363,8 +373,11 @@ export function EditorShell({
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closeConfirmStatus, setCloseConfirmStatus] = useState('');
+  const [requestedPage, setRequestedPage] =
+    useState<EditorShellPage>('project-center');
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
+  const page = getEditorShellPage(requestedPage, projectSnapshot);
   const recoveryCandidate = getEditorShellRecoveryCandidate(
     shellState,
     sessionSnapshot,
@@ -415,6 +428,7 @@ export function EditorShell({
     // The preview belongs to the project that was open when it was requested.
     setProductPreviewOpen(false);
     updateSession(nextSession, cleanStatus);
+    setRequestedPage('editor');
   };
 
   const switchToRecentProject = async (
@@ -430,9 +444,26 @@ export function EditorShell({
         nextSession,
         '已从最近项目打开，暂无未保存更改。',
       );
+      setRequestedPage('editor');
     } catch (error) {
       throw new Error(projectOpenErrorMessage(error), { cause: error });
     }
+  };
+
+  const openProjectCenter = (): void => {
+    setProductPreviewOpen(false);
+    setRequestedPage('project-center');
+    setStatus(
+      projectSnapshot
+        ? '项目中心已打开，当前项目与编辑状态保持不变。'
+        : '请选择一个 .pandastage 项目文件夹。',
+    );
+  };
+
+  const returnToEditor = (): void => {
+    if (!projectSnapshot) return;
+    setRequestedPage('editor');
+    setStatus('已返回编辑器，当前镜头与编辑状态保持不变。');
   };
 
   const openProject = async (): Promise<void> => {
@@ -596,6 +627,7 @@ export function EditorShell({
     setCloseConfirmStatus('');
     setOpenCandidatePath('');
     setRecentRefreshToken((current) => current + 1);
+    setRequestedPage('project-center');
     setStatus(closeProjectStatusMessage(choice, dirtyBeforeClose));
   };
 
@@ -694,42 +726,42 @@ export function EditorShell({
       className="app-shell editor-shell"
       data-debug={debug ? 'enabled' : 'disabled'}
       data-editor-shell-state={shellState}
+      data-editor-shell-region={sessionRegion}
+      data-editor-page={page}
       data-gate-a={gateA ? 'enabled' : 'disabled'}
     >
-      {sessionRegion === 'start-screen' ? (
-        <div className="start-screen" data-testid="start-screen">
-          <StartScreen
-            busy={busy}
-            newProjectDialogOpen={newProjectDialogOpen}
-            onChooseProjectDirectory={chooseProjectDirectory}
-            onOpenProject={openProject}
-            onOpenRecentProject={switchToRecentProject}
-            onOpenCandidatePathChange={setOpenCandidatePath}
-            onRequestNewProject={requestNewProject}
-            openCandidatePath={openCandidatePath}
-            recentRefreshToken={recentRefreshToken}
-            status={status}
-          />
-          {newProjectDialogOpen ? (
-            <NewProjectDialog
-              busy={busy}
-              onCancel={cancelNewProject}
-              onChooseParentDirectory={chooseNewProjectParentDirectory}
-              onCreateProject={createProject}
-              onParentDirectoryChange={setNewProjectParentDirectory}
-              onProjectNameChange={setNewProjectName}
-              parentDirectory={newProjectParentDirectory}
-              projectName={newProjectName}
-              status={newProjectStatus}
-            />
-          ) : null}
-        </div>
+      {page === 'project-center' ? (
+        <ProjectCenterScreen
+          busy={busy}
+          currentProject={projectSnapshot}
+          newProjectDialogOpen={newProjectDialogOpen}
+          onChooseProjectDirectory={chooseProjectDirectory}
+          onOpenProject={openProject}
+          onOpenRecentProject={switchToRecentProject}
+          onOpenCandidatePathChange={setOpenCandidatePath}
+          onRequestNewProject={requestNewProject}
+          onReturnToEditor={returnToEditor}
+          openCandidatePath={openCandidatePath}
+          recentRefreshToken={recentRefreshToken}
+          recoveryBanner={
+            recoveryCandidate && projectSnapshot ? (
+              <RecoveryCandidateBanner
+                busy={busy}
+                candidate={recoveryCandidate}
+                onIgnore={ignoreRecovery}
+                onRestore={restoreRecovery}
+              />
+            ) : null
+          }
+          status={status}
+        />
       ) : projectSnapshot ? (
         <div className="editor-layout" data-testid="editor-layout">
           <EditorTopBar
             busy={busy}
             closeConfirmOpen={closeConfirmOpen}
             onChooseProjectDirectory={chooseProjectDirectory}
+            onOpenProjectCenter={openProjectCenter}
             onOpenProductPreview={openProductPreview}
             onOpenProject={openProject}
             onOpenCandidatePathChange={setOpenCandidatePath}
@@ -790,6 +822,19 @@ export function EditorShell({
             />
           ) : null}
         </div>
+      ) : null}
+      {page === 'project-center' && newProjectDialogOpen ? (
+        <NewProjectDialog
+          busy={busy}
+          onCancel={cancelNewProject}
+          onChooseParentDirectory={chooseNewProjectParentDirectory}
+          onCreateProject={createProject}
+          onParentDirectoryChange={setNewProjectParentDirectory}
+          onProjectNameChange={setNewProjectName}
+          parentDirectory={newProjectParentDirectory}
+          projectName={newProjectName}
+          status={newProjectStatus}
+        />
       ) : null}
       {gateA ? (
         <div

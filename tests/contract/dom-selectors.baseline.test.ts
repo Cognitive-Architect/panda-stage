@@ -48,8 +48,8 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       'renderer/features/welcome/RecentProjectsPanel.tsx',
     );
 
-    expect(shell).toContain("sessionRegion === 'start-screen'");
-    expect(shell).toContain('<StartScreen');
+    expect(shell).toContain("page === 'project-center'");
+    expect(shell).toContain('<ProjectCenterScreen');
     expect(shell).toContain('<EditorTopBar');
     expect(shell).toContain('<CanvasWorkspace');
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');

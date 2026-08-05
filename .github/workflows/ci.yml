@@ -87,3 +87,6 @@ jobs:
 
       - name: Issue 76 Stage 1B create / preview / close gate
         run: pnpm verify:issue76
+
+      - name: Issue 102 Task 1 project center gate
+        run: pnpm verify:issue102-task1

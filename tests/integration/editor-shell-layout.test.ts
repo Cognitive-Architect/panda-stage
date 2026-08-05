@@ -143,7 +143,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
 
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
     expect(shell).toMatch(
-      /sessionRegion === 'start-screen'[\s\S]*?<StartScreen[\s\S]*?: projectSnapshot \?/u,
+      /page === 'project-center'[\s\S]*?<ProjectCenterScreen[\s\S]*?: projectSnapshot \?/u,
     );
     expect(shell).toContain('<CanvasWorkspace');
     expect(shell).not.toContain('<LegacyWorkspace');

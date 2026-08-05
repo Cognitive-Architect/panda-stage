@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ProjectSchema } from '../../src/domain';
 import {
   getEditorShellRecoveryCandidate,
+  getEditorShellPage,
   getEditorShellState,
   getEditorShellSessionRegion,
 } from '../../src/renderer/shell/EditorShell';
@@ -31,6 +32,22 @@ describe('EditorShell state boundary', () => {
     expect(getEditorShellSessionRegion(state)).toBe(
       'editor-layout',
     );
+  });
+
+  it('starts in the project center and only permits editor with an open project', () => {
+    expect(getEditorShellPage('project-center', null)).toBe('project-center');
+    expect(getEditorShellPage('editor', null)).toBe('project-center');
+
+    const store = new EditorProjectStore();
+    store.open(
+      'D:\\projects\\shell.pandastage',
+      ProjectSchema.parse(exampleProject),
+    );
+
+    expect(getEditorShellPage('project-center', store.getSnapshot())).toBe(
+      'project-center',
+    );
+    expect(getEditorShellPage('editor', store.getSnapshot())).toBe('editor');
   });
 
   it('keeps debug and gateA orthogonal to the no-project/editor state', () => {
@@ -147,6 +164,19 @@ describe('EditorShell state boundary', () => {
     expect(banner).not.toContain('recovery-status-row');
   });
 
+  it('keeps Project Center presentational and reuses the shell-owned lifecycle callbacks', () => {
+    const projectCenter = readFileSync(
+      'src/renderer/shell/ProjectCenterScreen.tsx',
+      'utf8',
+    );
+
+    expect(projectCenter).toContain('<StartScreen');
+    expect(projectCenter).not.toContain('editorProjectStore');
+    expect(projectCenter).not.toContain('ProjectSessionController');
+    expect(projectCenter).not.toContain('window.pandaStage');
+    expect(projectCenter).toContain('data-testid="project-center-screen"');
+  });
+
   it('selects EditorTopBar for every editor candidate state and never for no-project', () => {
     expect(getEditorShellSessionRegion('no-project')).toBe(
       'start-screen',
@@ -159,25 +189,29 @@ describe('EditorShell state boundary', () => {
       'src/renderer/shell/EditorShell.tsx',
       'utf8',
     );
-    expect(shell.indexOf('<StartScreen')).toBeGreaterThan(-1);
+    expect(shell.indexOf('<ProjectCenterScreen')).toBeGreaterThan(-1);
     expect(shell.indexOf('<EditorTopBar')).toBeGreaterThan(-1);
     expect(shell.indexOf('<CanvasWorkspace')).toBeGreaterThan(-1);
     expect(shell).toContain(
-      "sessionRegion === 'start-screen'",
+      "page === 'project-center'",
     );
     expect(shell).toMatch(
       /<EditorTopBar[\s\S]*?recoveryBanner=\{[\s\S]*?recoveryCandidate/u,
     );
   });
 
-  it('selects only StartScreen for no-project and one fixed layout for editor', () => {
+  it('selects only ProjectCenterScreen for no-project and one fixed layout for editor', () => {
     const shell = readFileSync(
       'src/renderer/shell/EditorShell.tsx',
       'utf8',
     );
+    const projectCenter = readFileSync(
+      'src/renderer/shell/ProjectCenterScreen.tsx',
+      'utf8',
+    );
 
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
-    expect(shell).toContain('data-testid="start-screen"');
+    expect(projectCenter).toContain('data-testid="project-center-screen"');
     expect(shell).toContain('data-testid="editor-layout"');
     expect(shell).toContain('data-testid="editor-body"');
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);

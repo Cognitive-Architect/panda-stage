@@ -1,0 +1,118 @@
+{
+  "issue": 102,
+  "task": 1,
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "passed": true,
+  "checks": [
+    "Startup opens Project Center with recent status cards",
+    "Recent available project opens through the existing session flow",
+    "Current project stays open while Project Center is visible",
+    "Invalid recent record is removable without deleting its disk project or clearing current state",
+    "Returning to editor keeps the same active project"
+  ],
+  "snapshots": {
+    "startup": {
+      "page": "project-center",
+      "shellState": "no-project",
+      "hasProjectCenter": true,
+      "hasEditorLayout": false,
+      "activeRoot": null,
+      "currentProjectRoot": null,
+      "currentProjectName": null,
+      "recentCards": [
+        {
+          "status": "missing",
+          "text": "Issue 102 Missing ProjectD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-missing-project.pandastage路径已失效 · 2026/8/5 14:48:04打开重新定位移除记录"
+        },
+        {
+          "status": "available",
+          "text": "Issue 102 Project AD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage可用 · 2026/8/5 14:48:04打开移除记录"
+        }
+      ],
+      "missingStatus": "Issue 102 Missing ProjectD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-missing-project.pandastage路径已失效 · 2026/8/5 14:48:04打开重新定位移除记录"
+    },
+    "opened": {
+      "page": "editor",
+      "shellState": "editor",
+      "hasProjectCenter": false,
+      "hasEditorLayout": true,
+      "activeRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage",
+      "currentProjectRoot": null,
+      "currentProjectName": null,
+      "recentCards": [
+        {
+          "status": "available",
+          "text": "Issue 102 Project AD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage可用 · 2026/8/5 14:48:05打开移除记录"
+        },
+        {
+          "status": "missing",
+          "text": "Issue 102 Missing ProjectD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-missing-project.pandastage路径已失效 · 2026/8/5 14:48:04打开重新定位移除记录"
+        }
+      ],
+      "missingStatus": "Issue 102 Missing ProjectD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-missing-project.pandastage路径已失效 · 2026/8/5 14:48:04打开重新定位移除记录"
+    },
+    "centerWithCurrent": {
+      "page": "project-center",
+      "shellState": "editor",
+      "hasProjectCenter": true,
+      "hasEditorLayout": false,
+      "activeRoot": null,
+      "currentProjectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage",
+      "currentProjectName": "Issue 102 Project A",
+      "recentCards": [
+        {
+          "status": "available",
+          "text": "Issue 102 Project AD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage可用 · 2026/8/5 14:48:05打开移除记录"
+        },
+        {
+          "status": "missing",
+          "text": "Issue 102 Missing ProjectD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-missing-project.pandastage路径已失效 · 2026/8/5 14:48:04打开重新定位移除记录"
+        }
+      ],
+      "missingStatus": "Issue 102 Missing ProjectD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-missing-project.pandastage路径已失效 · 2026/8/5 14:48:04打开重新定位移除记录"
+    },
+    "afterRemove": {
+      "page": "project-center",
+      "shellState": "editor",
+      "hasProjectCenter": true,
+      "hasEditorLayout": false,
+      "activeRoot": null,
+      "currentProjectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage",
+      "currentProjectName": "Issue 102 Project A",
+      "recentCards": [
+        {
+          "status": "available",
+          "text": "Issue 102 Project AD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage可用 · 2026/8/5 14:48:05打开移除记录"
+        }
+      ],
+      "missingStatus": ""
+    },
+    "returned": {
+      "page": "editor",
+      "shellState": "editor",
+      "hasProjectCenter": false,
+      "hasEditorLayout": true,
+      "activeRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage",
+      "currentProjectRoot": null,
+      "currentProjectName": null,
+      "recentCards": [
+        {
+          "status": "available",
+          "text": "Issue 102 Project AD:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-project-a.pandastage可用 · 2026/8/5 14:48:05打开移除记录"
+        }
+      ],
+      "missingStatus": ""
+    }
+  },
+  "disk": {
+    "acceptanceRoot": "D:\\PandaStage-Acceptance\\project-center-v1",
+    "projectsRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects",
+    "electronUserDataRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\electron-user-data",
+    "tempRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\temp",
+    "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence",
+    "missingProjectSentinel": "D:\\PandaStage-Acceptance\\project-center-v1\\projects\\issue102-missing-project.pandastage\\keep-me.txt",
+    "sentinelAfterRemove": "must-survive-remove-record\n"
+  },
+  "error": null
+}

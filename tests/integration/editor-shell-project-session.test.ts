@@ -17,6 +17,7 @@ import {
 } from '../../src/renderer/shell/EditorShell';
 import { EditorTopBar } from '../../src/renderer/shell/EditorTopBar';
 import { NewProjectDialog } from '../../src/renderer/shell/NewProjectDialog';
+import { ProjectCenterScreen } from '../../src/renderer/shell/ProjectCenterScreen';
 import { RecoveryCandidateBanner } from '../../src/renderer/shell/RecoveryCandidateBanner';
 import {
   StartScreen,
@@ -201,6 +202,38 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
 }
 
 describe('EditorShell project session integration', () => {
+  it('renders the formal project center with an open project without reopening it', () => {
+    const markup = renderToStaticMarkup(
+      ProjectCenterScreen({
+        busy: false,
+        currentProject: {
+          projectRoot: PROJECT_ROOT,
+          project: PROJECT,
+          dirty: true,
+        },
+        newProjectDialogOpen: false,
+        onChooseProjectDirectory: vi.fn(),
+        onOpenCandidatePathChange: vi.fn(),
+        onOpenProject: vi.fn(),
+        onOpenRecentProject: vi.fn(),
+        onRequestNewProject: vi.fn(),
+        onReturnToEditor: vi.fn(),
+        openCandidatePath: '',
+        recentRefreshToken: 0,
+        status: '项目中心已打开',
+      }),
+    );
+
+    expect(markup).toContain('data-testid="project-center-screen"');
+    expect(markup).toContain('data-project-open="true"');
+    expect(markup).toContain('data-testid="project-center-current-project"');
+    expect(markup).toContain(PROJECT.name);
+    expect(markup).toContain(PROJECT_ROOT);
+    expect(markup).toContain('有未保存更改');
+    expect(markup).toContain('data-testid="return-to-editor"');
+    expect(markup).toContain('返回编辑器');
+  });
+
   it('renders one no-project entry, recent projects, and an enabled create entry', () => {
     const markup = renderToStaticMarkup(
       StartScreen({
