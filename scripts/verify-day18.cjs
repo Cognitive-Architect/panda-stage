@@ -212,9 +212,14 @@ async function verifyDay18() {
     `);
     const gridScreenshot = await window.webContents.capturePage();
 
-    await window.webContents.executeJavaScript(
-      "document.querySelector('[data-asset-id=\"18000000-0000-4000-8000-000000000002\"]').click()",
-    );
+    await window.webContents.executeJavaScript(`(() => {
+      const card = document.querySelector(
+        '[data-asset-id="18000000-0000-4000-8000-000000000002"]'
+      );
+      if (!card) throw new Error('Decode fallback card did not render.');
+      card.click();
+      return true;
+    })()`);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"asset-details-view\"]')",
