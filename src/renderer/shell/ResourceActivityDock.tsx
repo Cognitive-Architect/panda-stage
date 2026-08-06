@@ -138,7 +138,7 @@ export function ResourceActivityDock({
         onClick={() => setDrawerOpen((open) => !open)}
         type="button"
       >
-        <span aria-hidden="true">{drawerOpen ? '‹' : '›'}</span>
+        <span>{drawerOpen ? '‹' : '›'}</span>
         <strong>资源</strong>
       </button>
       <div
