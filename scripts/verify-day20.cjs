@@ -259,7 +259,63 @@ async function assertStage2CComposition(window) {
   );
 }
 
+async function ensureShotsActivity(window) {
+  await window.webContents.executeJavaScript(`(() => {
+    const panel = document.querySelector(
+      '[data-testid="resource-activity-panel"]'
+    );
+    if (panel?.dataset.activeActivity !== 'shots') {
+      document.querySelector(
+        '[data-testid="resource-activity-tabs"] [data-activity="shots"]'
+      )?.click();
+    }
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      "document.querySelector('[data-testid=\"resource-activity-panel\"]')" +
+        "?.dataset.activeActivity === 'shots'",
+      'Shots activity did not activate.',
+    ),
+  );
+}
+
+async function enterShotCreateView(window) {
+  await ensureShotsActivity(window);
+  await window.webContents.executeJavaScript(`(() => {
+    if (!document.querySelector('[data-testid="shot-create-view"]')) {
+      const action = document.querySelector(
+        '[data-testid="resource-primary-action"]'
+      );
+      if (!action) throw new Error('Shot create action was not found.');
+      action.click();
+    }
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      "document.querySelector('[data-testid=\"shot-create-view\"]') && " +
+        "document.querySelector('.shot-create-form')",
+      'Shot create subview did not render.',
+    ),
+  );
+}
+
+async function waitForShotList(window, expectedCount, selectedName) {
+  await window.webContents.executeJavaScript(
+    waitFor(
+      "document.querySelector('[data-testid=\"resource-activity-panel\"]')" +
+        "?.dataset.activeActivity === 'shots' && " +
+        "document.querySelector('[data-testid=\"shot-list-view\"]') && " +
+        "!document.querySelector('[data-testid=\"shot-create-view\"]') && " +
+        `document.querySelectorAll('.shot-list-item').length === ${expectedCount} && ` +
+        "document.querySelector('.shot-editor-heading h3')" +
+        `?.textContent?.trim() === ${JSON.stringify(selectedName)}`,
+      `Shot list did not return after creating ${selectedName}.`,
+    ),
+  );
+}
+
 async function createShot(window, name, durationMs, expectedCount) {
+  await enterShotCreateView(window);
   await setInput(
     window,
     '.shot-create-form label:nth-of-type(1) input',
@@ -273,13 +329,7 @@ async function createShot(window, name, durationMs, expectedCount) {
   await window.webContents.executeJavaScript(`
     document.querySelector('.shot-create-form button').click()
   `);
-  await window.webContents.executeJavaScript(
-    waitFor(
-      `document.querySelectorAll('.shot-list-item').length === ${expectedCount} && ` +
-        `document.querySelector('.shot-editor-heading h3')?.textContent?.trim() === ${JSON.stringify(name)}`,
-      `Could not create ${name}.`,
-    ),
-  );
+  await waitForShotList(window, expectedCount, name);
 }
 
 async function selectShot(window, name) {
@@ -502,6 +552,7 @@ async function verifyDay20() {
       await window.webContents.executeJavaScript(
         "document.querySelectorAll('.shot-list-item').length",
       );
+    await enterShotCreateView(window);
     await setInput(
       window,
       '.shot-create-form label:nth-of-type(1) input',
@@ -522,11 +573,8 @@ async function verifyDay20() {
         'Failed shot creation did not show a clear error.',
       ),
     );
-    const failedCreate =
+    const failedCreateDraft =
       await window.webContents.executeJavaScript(`(() => ({
-        shotCountBefore: ${failedCreateCountBefore},
-        shotCountAfter:
-          document.querySelectorAll('.shot-list-item').length,
         name: document.querySelector(
           '.shot-create-form label:nth-of-type(1) input'
         ).value,
@@ -537,6 +585,17 @@ async function verifyDay20() {
           '.shot-manager-status'
         ).textContent.trim()
       }))()`);
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="shot-create-back"]').click()
+    `);
+    await waitForShotList(window, failedCreateCountBefore, 'Opening');
+    const failedCreate = {
+      shotCountBefore: failedCreateCountBefore,
+      shotCountAfter: await window.webContents.executeJavaScript(
+        "document.querySelectorAll('.shot-list-item').length",
+      ),
+      ...failedCreateDraft,
+    };
 
     await window.webContents.executeJavaScript(`
       document.querySelector('.shot-editor-actions button').click()
@@ -587,6 +646,14 @@ async function verifyDay20() {
     );
 
     await createShot(window, 'Scene 3', 1_000, 3);
+    const successfulList =
+      await window.webContents.executeJavaScript(`(() => ({
+        shotCount: document.querySelectorAll('.shot-list-item').length,
+        selectedName: document.querySelector(
+          '.shot-editor-heading h3'
+        ).textContent.trim()
+      }))()`);
+    await enterShotCreateView(window);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector(" +
@@ -595,16 +662,18 @@ async function verifyDay20() {
         'Successful create did not advance to an available default name.',
       ),
     );
-    const successfulCreate =
-      await window.webContents.executeJavaScript(`(() => ({
-        shotCount: document.querySelectorAll('.shot-list-item').length,
-        selectedName: document.querySelector(
-          '.shot-editor-heading h3'
-        ).textContent.trim(),
-        nextDefaultName: document.querySelector(
-          '.shot-create-form label:nth-of-type(1) input'
-        ).value
-      }))()`);
+    const successfulCreate = {
+      ...successfulList,
+      nextDefaultName: await window.webContents.executeJavaScript(
+        "document.querySelector(" +
+          "'.shot-create-form label:nth-of-type(1) input'" +
+          ").value",
+      ),
+    };
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="shot-create-back"]').click()
+    `);
+    await waitForShotList(window, successfulList.shotCount, successfulList.selectedName);
     await createShot(window, 'Scene 4', 1_500, 4);
     await createShot(window, 'Scene 5', 2_000, 5);
 
@@ -741,12 +810,14 @@ async function verifyDay20() {
     const reopenedScreenshot =
       await captureSection(window, '.shot-manager');
 
+    await enterShotCreateView(window);
     await setInput(
       window,
       '.shot-create-form label:nth-of-type(1) input',
       '旧项目手工草稿',
     );
     await openProject(window, alternateProjectRoot);
+    await enterShotCreateView(window);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelectorAll('.shot-list-item').length === 0 && " +
