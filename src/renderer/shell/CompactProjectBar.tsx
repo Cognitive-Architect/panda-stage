@@ -125,7 +125,7 @@ export function CompactProjectBar({
         </output>
         <button
           aria-label="保存整个项目"
-          className="editor-save-button task4-hit-target"
+          className="editor-save-button"
           data-task4-core="save-project"
           data-testid="compact-project-save"
           disabled={saveDisabled}
