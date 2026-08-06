@@ -669,8 +669,9 @@ async function verifyIssue81() {
     const failures = [];
     if (
       aAssetBrowser.assetCategory !== 2 ||
+      aAssetBrowser.assetResultCount !== 1 ||
       aAsset.activity !== 'assets' ||
-      aAsset.assetResultCount !== 1 ||
+      aAsset.assetResultCount !== 0 ||
       aAsset.assetSelectedCount !== 1 ||
       !aAsset.assetDetailsView ||
       aAsset.dirty ||
