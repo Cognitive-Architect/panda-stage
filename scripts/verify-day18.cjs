@@ -307,11 +307,13 @@ async function verifyDay18() {
       await window.webContents.executeJavaScript(`(async () => {
         const grid = document.querySelector('.asset-grid');
         const cards = [...grid.querySelectorAll('.asset-card')];
+        const scrollSurface =
+          document.querySelector('.resource-activity-body') || grid;
         const startedAt = performance.now();
-        grid.scrollTop = grid.scrollHeight;
-        const scrollTop = grid.scrollTop;
-        const scrollHeight = grid.scrollHeight;
-        const clientHeight = grid.clientHeight;
+        scrollSurface.scrollTop = scrollSurface.scrollHeight;
+        const scrollTop = scrollSurface.scrollTop;
+        const scrollHeight = scrollSurface.scrollHeight;
+        const clientHeight = scrollSurface.clientHeight;
         cards.at(-1).click();
         await new Promise((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(resolve))
