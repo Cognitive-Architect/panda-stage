@@ -212,21 +212,16 @@ async function verifyDay18() {
     `);
     const gridScreenshot = await window.webContents.capturePage();
 
-    const decodeFallbackBefore =
+    const selectionBefore =
       await window.webContents.executeJavaScript(`(() => {
         const card = document.querySelector(
           '[data-asset-id="${decodeErrorAssetId}"]'
         );
-        const image = card?.querySelector('img');
-        if (!card || !image) {
-          throw new Error('Decode fallback card did not render.');
-        }
-        const imageCount = document.querySelectorAll(
-          '.asset-grid img'
-        ).length;
-        image.dispatchEvent(new Event('error'));
+        if (!card) throw new Error('Decode fallback card did not render.');
         card.click();
-        return { imageCount };
+        return {
+          imageCount: document.querySelectorAll('.asset-grid img').length,
+        };
       })()`);
     await window.webContents.executeJavaScript(
       waitFor(
@@ -242,6 +237,20 @@ async function verifyDay18() {
       back.click();
       return true;
     })()`);
+    const decodeFallbackBefore =
+      await window.webContents.executeJavaScript(`(() => {
+        const card = document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"]'
+        );
+        const image = card?.querySelector('img');
+        if (!card || !image) {
+          throw new Error('Returning from asset details did not restore the image.');
+        }
+        image.dispatchEvent(new Event('error'));
+        return {
+          imageCount: ${JSON.stringify(selectionBefore.imageCount)},
+        };
+      })()`);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-asset-id=\"" +
