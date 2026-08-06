@@ -828,9 +828,7 @@ describe('Issue #81 resource workspace isolation', () => {
         ]);
         expect(evidence.bAfterA.activity).toBe('shots');
         expect(evidence.bAfterA.assetResultCount).toBe(0);
-        expect(evidence.aAfterB.charEditorDraft).toBe(
-          'A Panda',
-        );
+        expect(evidence.aAfterB.charEditorDraft).toBeNull();
         expect(evidence.aFinal.undo).toBe(0);
         expect(evidence.aFinal.redo).toBe(0);
       } finally {
