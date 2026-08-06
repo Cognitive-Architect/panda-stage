@@ -175,21 +175,11 @@ function waitFor(window, expression, message) {
     '};' +
     'poll();' +
     '})';
-  return executeScript(window, script, 'waitFor: ' + message);
-}
-
-function executeScript(window, script, label) {
-  return window.webContents.executeJavaScript(script).catch((error) => {
-    console.error(
-      'ISSUE_81_SCRIPT_FAILURE ' + label + ' ' + (error?.stack || error),
-    );
-    throw error;
-  });
+  return window.webContents.executeJavaScript(script);
 }
 
 async function setInput(window, selector, value) {
-  await executeScript(
-    window,
+  await window.webContents.executeJavaScript(
     '(() => {' +
       'const input = document.querySelector(' +
         JSON.stringify(selector) +
@@ -207,13 +197,11 @@ async function setInput(window, selector, value) {
       'input.dispatchEvent(new Event("input", { bubbles: true }));' +
       'input.dispatchEvent(new Event("change", { bubbles: true }));' +
     '})()',
-    'setInput: ' + selector,
   );
 }
 
 async function click(window, selector) {
-  await executeScript(
-    window,
+  await window.webContents.executeJavaScript(
     '(() => {' +
       'const element = document.querySelector(' +
         JSON.stringify(selector) +
@@ -225,7 +213,6 @@ async function click(window, selector) {
       '}' +
       'element.click();' +
     '})()',
-    'click: ' + selector,
   );
 }
 
@@ -277,7 +264,7 @@ async function snapshot(window) {
     JSON.stringify('.resource-activity-panel > section') +
     ').length' +
     '}))()';
-  return executeScript(window, script, 'snapshot');
+  return window.webContents.executeJavaScript(script);
 }
 
 async function waitForRoot(window, projectRoot) {
@@ -303,8 +290,7 @@ async function waitForActivity(window, activity) {
 }
 
 async function openProject(window, projectRoot) {
-  await executeScript(
-    window,
+  await window.webContents.executeJavaScript(
     '(() => {' +
       'if (document.querySelector(' +
         JSON.stringify('[data-editor-page="editor"]') +
@@ -314,7 +300,6 @@ async function openProject(window, projectRoot) {
         ').click();' +
       '}' +
     '})()',
-    'openProject: ' + projectRoot,
   );
   await waitFor(
     window,
@@ -345,8 +330,7 @@ async function openProject(window, projectRoot) {
 }
 
 async function requestProjectSwitch(window, projectRoot) {
-  await executeScript(
-    window,
+  await window.webContents.executeJavaScript(
     '(() => {' +
       'if (document.querySelector(' +
         JSON.stringify('[data-editor-page="editor"]') +
@@ -356,7 +340,6 @@ async function requestProjectSwitch(window, projectRoot) {
         ').click();' +
       '}' +
     '})()',
-    'requestProjectSwitch: ' + projectRoot,
   );
   await waitFor(
     window,
@@ -491,20 +474,6 @@ async function verifyIssue81() {
   }));
 
   const window = await createMainWindow({ show: false });
-  window.webContents.on(
-    'console-message',
-    (_event, level, message, line, sourceId) => {
-      console.error(
-        'ISSUE_81_RENDERER_CONSOLE ' +
-          JSON.stringify({ level, message, line, sourceId }),
-      );
-    },
-  );
-  window.webContents.on('render-process-gone', (_event, details) => {
-    console.error(
-      'ISSUE_81_RENDERER_GONE ' + JSON.stringify(details),
-    );
-  });
   try {
     await waitFor(
       window,
@@ -547,7 +516,9 @@ async function verifyIssue81() {
     await click(window, '[data-testid="resource-primary-action"]');
     await waitFor(
       window,
-      'document.querySelector("[data-testid=\\"character-create-view\\"]")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-create-view"]') +
+      ')',
       'Character create subview did not open.',
     );
     await setInput(
@@ -575,7 +546,9 @@ async function verifyIssue81() {
     await click(window, '[data-testid="resource-primary-action"]');
     await waitFor(
       window,
-      'document.querySelector("[data-testid=\\"character-create-view\\"]")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-create-view"]') +
+      ')',
       'A character create subview did not open.',
     );
     await setInput(
@@ -602,7 +575,9 @@ async function verifyIssue81() {
     await click(window, '[data-testid="resource-primary-action"]');
     await waitFor(
       window,
-      'document.querySelector("[data-testid=\\"character-create-view\\"]")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-create-view"]') +
+      ')',
       'B second character create subview did not open.',
     );
     await setInput(
