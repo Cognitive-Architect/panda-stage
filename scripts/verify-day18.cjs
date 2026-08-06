@@ -309,6 +309,9 @@ async function verifyDay18() {
         const cards = [...grid.querySelectorAll('.asset-card')];
         const startedAt = performance.now();
         grid.scrollTop = grid.scrollHeight;
+        const scrollTop = grid.scrollTop;
+        const scrollHeight = grid.scrollHeight;
+        const clientHeight = grid.clientHeight;
         cards.at(-1).click();
         await new Promise((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(resolve))
@@ -318,9 +321,9 @@ async function verifyDay18() {
           itemCount: cards.length,
           selectedName: document.querySelector('.asset-details h3')
             ?.textContent?.trim(),
-          scrollTop: grid.scrollTop,
-          scrollHeight: grid.scrollHeight,
-          clientHeight: grid.clientHeight
+          scrollTop,
+          scrollHeight,
+          clientHeight
         };
       })()`);
 
