@@ -212,18 +212,44 @@ async function verifyDay18() {
     `);
     const gridScreenshot = await window.webContents.capturePage();
 
+    const selectionBefore =
+      await window.webContents.executeJavaScript(`(() => {
+        const card = document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"]'
+        );
+        if (!card) throw new Error('Decode fallback card did not render.');
+        card.click();
+        return {
+          imageCount: document.querySelectorAll('.asset-grid img').length,
+        };
+      })()`);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-testid=\"asset-details-view\"]')",
+        'Selecting an asset did not open its details view.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`(() => {
+      const back = document.querySelector(
+        '[data-testid="asset-details-back"]'
+      );
+      if (!back) throw new Error('Asset details back button did not render.');
+      back.click();
+      return true;
+    })()`);
     const decodeFallbackBefore =
       await window.webContents.executeJavaScript(`(() => {
         const card = document.querySelector(
           '[data-asset-id="${decodeErrorAssetId}"]'
         );
-        card.click();
-        const image = card.querySelector('img');
-        const imageCount = document.querySelectorAll(
-          '.asset-grid img'
-        ).length;
+        const image = card?.querySelector('img');
+        if (!card || !image) {
+          throw new Error('Returning from asset details did not restore the image.');
+        }
         image.dispatchEvent(new Event('error'));
-        return { imageCount };
+        return {
+          imageCount: ${JSON.stringify(selectionBefore.imageCount)},
+        };
       })()`);
     await window.webContents.executeJavaScript(
       waitFor(
@@ -281,8 +307,13 @@ async function verifyDay18() {
       await window.webContents.executeJavaScript(`(async () => {
         const grid = document.querySelector('.asset-grid');
         const cards = [...grid.querySelectorAll('.asset-card')];
+        const scrollSurface =
+          document.querySelector('.resource-activity-body') || grid;
         const startedAt = performance.now();
-        grid.scrollTop = grid.scrollHeight;
+        scrollSurface.scrollTop = scrollSurface.scrollHeight;
+        const scrollTop = scrollSurface.scrollTop;
+        const scrollHeight = scrollSurface.scrollHeight;
+        const clientHeight = scrollSurface.clientHeight;
         cards.at(-1).click();
         await new Promise((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(resolve))
@@ -292,12 +323,25 @@ async function verifyDay18() {
           itemCount: cards.length,
           selectedName: document.querySelector('.asset-details h3')
             ?.textContent?.trim(),
-          scrollTop: grid.scrollTop,
-          scrollHeight: grid.scrollHeight,
-          clientHeight: grid.clientHeight
+          scrollTop,
+          scrollHeight,
+          clientHeight
         };
       })()`);
 
+    await window.webContents.executeJavaScript(`(() => {
+      const back = document.querySelector(
+        '[data-testid="asset-details-back"]'
+      );
+      if (back) back.click();
+      return true;
+    })()`);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-grid')",
+        'Returning from the performance selection did not restore the asset browser.',
+      ),
+    );
     const dragEvidence = await window.webContents.executeJavaScript(`
       (() => {
         const card = document.querySelector(
@@ -374,11 +418,28 @@ async function verifyDay18() {
         ?.textContent?.trim(),
       warning: document.querySelector('.asset-reference-warning')
         ?.textContent?.replace(/\\s+/g, ' ').trim(),
-      cardStillPresent: Boolean(document.querySelector(
-        '[data-asset-id="${referencedAssetId}"]'
-      ))
+      cardStillPresent: Boolean(
+        document.querySelector('[data-asset-id="${referencedAssetId}"]') ||
+          document.querySelector(
+            '[data-testid="asset-details-view"] .asset-details:not(.asset-details-empty)',
+          )
+      )
     }))()`);
     const referenceScreenshot = await window.webContents.capturePage();
+
+    await window.webContents.executeJavaScript(`
+      (() => {
+        const back = document.querySelector('[data-testid="asset-details-back"]');
+        if (back) back.click();
+        return true;
+      })()`
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-grid')",
+        'Returning from the reference details did not restore the asset browser.',
+      ),
+    );
 
     await window.webContents.executeJavaScript(`
       (() => {
@@ -406,6 +467,19 @@ async function verifyDay18() {
           "\"]') && document.querySelector('.asset-library-status')" +
           "?.textContent?.includes('同步删除')",
         'Unreferenced asset did not disappear after successful deletion.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`
+      (() => {
+        const back = document.querySelector('[data-testid="asset-details-back"]');
+        if (back) back.click();
+        return true;
+      })()`
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-grid')",
+        'Returning from the deleted asset details did not restore the asset browser.',
       ),
     );
     const deletionUi = await window.webContents.executeJavaScript(`(() => ({

@@ -31,6 +31,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare Electron runtime
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            $env:force_no_cache = 'true'
+            pnpm exec electron --version
+          }
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            throw 'Electron runtime binary was not installed.'
+          }
+          pnpm exec electron --version
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -87,3 +99,18 @@ jobs:
 
       - name: Issue 76 Stage 1B create / preview / close gate
         run: pnpm verify:issue76
+
+      - name: Issue 102 Task 1 project center gate
+        run: pnpm verify:issue102-task1
+
+      - name: Issue 102 Task 2 compact project bar gate
+        run: pnpm verify:issue102-task2
+
+      - name: Issue 102 Task 3 project safety contract gate
+        run: pnpm verify:issue102-task3
+
+      - name: Issue 102 Task 4 narrow-window and total regression gate
+        run: pnpm verify:issue102-task4
+
+      - name: Issue 109 adaptive resource workspace gate
+        run: pnpm verify:issue109-resource-workspace

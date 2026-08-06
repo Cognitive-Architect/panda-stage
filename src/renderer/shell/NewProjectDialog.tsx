@@ -54,6 +54,8 @@ export function NewProjectDialog({
               value={parentDirectory}
             />
             <button
+              className="task4-hit-target"
+              data-task4-core="new-project-choose-directory"
               data-testid="new-project-choose-directory"
               disabled={busy}
               onClick={() => void onChooseParentDirectory()}
@@ -82,6 +84,8 @@ export function NewProjectDialog({
         <output className="new-project-status">{status}</output>
         <div className="new-project-actions">
           <button
+            className="task4-hit-target"
+            data-task4-core="new-project-confirm"
             data-testid="new-project-confirm"
             disabled={busy || !validation.valid}
             onClick={() => void onCreateProject()}
@@ -90,6 +94,8 @@ export function NewProjectDialog({
             创建项目
           </button>
           <button
+            className="task4-hit-target"
+            data-task4-core="new-project-cancel"
             data-testid="new-project-cancel"
             disabled={busy}
             onClick={onCancel}

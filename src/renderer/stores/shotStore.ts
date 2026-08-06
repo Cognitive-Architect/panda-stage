@@ -11,6 +11,7 @@ import {
 type Listener = () => void;
 
 export class ShotStore {
+  private currentProjectRoot: string | null = null;
   private currentShotId: string | null = null;
   private readonly listeners = new Set<Listener>();
   private readonly unsubscribeEditor: () => void;
@@ -121,8 +122,13 @@ export class ShotStore {
   }
 
   private reconcileSelection(): void {
-    const project = this.editorStore.getSnapshot()?.project;
+    const editorSnapshot = this.editorStore.getSnapshot();
+    const project = editorSnapshot?.project;
+    const projectRoot = editorSnapshot?.projectRoot ?? null;
+    const projectChanged = projectRoot !== this.currentProjectRoot;
+    this.currentProjectRoot = projectRoot;
     const nextId =
+      !projectChanged &&
       project?.shots.some((shot) => shot.id === this.currentShotId)
         ? this.currentShotId
         : project?.shots[0]?.id ?? null;

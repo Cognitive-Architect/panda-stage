@@ -48,9 +48,9 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       'renderer/features/welcome/RecentProjectsPanel.tsx',
     );
 
-    expect(shell).toContain("sessionRegion === 'start-screen'");
-    expect(shell).toContain('<StartScreen');
-    expect(shell).toContain('<EditorTopBar');
+    expect(shell).toContain("page === 'project-center'");
+    expect(shell).toContain('<ProjectCenterScreen');
+    expect(shell).toContain('<CompactProjectBar');
     expect(shell).toContain('<CanvasWorkspace');
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
     expect(leftWorkspace).toContain('<ProjectRecoveryPanel');
@@ -104,7 +104,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
   it('locks the Stage 1B product preview selectors into one owner', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const overlay = readSource('renderer/shell/ProductPreviewOverlay.tsx');
-    const topBar = readSource('renderer/shell/EditorTopBar.tsx');
+    const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
     const styles = readSource('renderer/styles.css');
 
     for (const selector of [
@@ -122,7 +122,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(overlay).toContain('role="dialog"');
     expect(overlay).toContain('aria-modal="true"');
     expect(shell.match(/<ProductPreviewOverlay/gu)).toHaveLength(1);
-    // The overlay owns the surface; the top bar only owns the entry button.
+    // The overlay owns the surface; the compact bar only owns the entry.
     expect(
       (shell + topBar).match(/data-testid="product-preview-overlay"/gu),
     ).toBeNull();
@@ -135,7 +135,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
   it('locks the Stage 1B close confirmation selectors into one owner', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const dialog = readSource('renderer/shell/CloseConfirmDialog.tsx');
-    const topBar = readSource('renderer/shell/EditorTopBar.tsx');
+    const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
     const styles = readSource('renderer/styles.css');
 
     for (const selector of [
@@ -153,14 +153,12 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(dialog).toContain('role="dialog"');
     expect(dialog).toContain('aria-modal="true"');
     expect(shell.match(/<CloseConfirmDialog/gu)).toHaveLength(1);
-    // The dialog owns the confirmation surface; the top bar owns the entry.
+    // The dialog owns the confirmation surface; the compact bar owns the menu entry.
     expect(
       (shell + topBar).match(/data-testid="close-confirm-dialog"/gu),
     ).toBeNull();
-    expect(dialog).not.toContain('data-testid="close-project-open"');
-    expect(
-      topBar.match(/data-testid="close-project-open"/gu),
-    ).toHaveLength(1);
+    expect(dialog).not.toContain('data-testid="menu-close-project"');
+    expect(topBar).toContain('data-testid="menu-close-project"');
     expect(styles).toMatch(
       /\.close-confirm-overlay\s*\{[\s\S]*?inset:\s*0;/u,
     );
@@ -238,28 +236,36 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     );
   });
 
-  it('locks editor recovery selectors into EditorTopBar only', () => {
-    const topBar = readSource('renderer/shell/EditorTopBar.tsx');
+  it('locks the compact project bar selectors and removes the old editor panel', () => {
+    const shell = readSource('renderer/shell/EditorShell.tsx');
+    const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
     const panel = readSource(
       'renderer/features/recovery/ProjectRecoveryPanel.tsx',
     );
-    expect(topBar).toContain('data-testid="editor-top-bar"');
-    expect(topBar).toContain('className="recovery-panel"');
-    expect(topBar).toContain('className="recovery-heading-row"');
-    expect(topBar).toContain('id="recovery-heading"');
-    expect(topBar).toContain('className="recovery-open-row"');
-    expect(topBar).toContain('className="recovery-status-row"');
+    expect(shell).toContain('<CompactProjectBar');
+    expect(shell).not.toContain('<EditorTopBar');
+    expect(topBar).toContain('data-testid="compact-project-bar"');
+    expect(topBar).toContain('className="compact-project-bar"');
+    expect(topBar).not.toContain('className="recovery-panel"');
+    expect(topBar).not.toContain('className="recovery-open-row"');
     expect(topBar).toContain('className="editor-save-button"');
-    expect(topBar).toContain("'clean-state'");
-    expect(topBar).toContain("'dirty-state'");
-    expect(topBar).toContain('data-testid="product-preview-open"');
+    expect(topBar).toContain('data-testid="project-save-state"');
+    expect(topBar).toContain('data-testid="compact-project-more"');
+    expect(topBar).toContain('data-testid="menu-open-project-center"');
+    expect(topBar).toContain('data-testid="menu-open-project-folder"');
+    expect(topBar).toContain('data-testid="menu-close-project"');
+    expect(topBar).toContain('已保存');
+    expect(topBar).toContain('有未保存更改');
+    expect(topBar).toContain('保存中');
+    expect(topBar).toContain('保存失败');
+    expect(topBar).not.toContain('data-testid="product-preview-open"');
     expect(topBar).toMatch(
-      /data-testid="product-preview-open"[\s\S]*?disabled=\{busy \|\| productPreviewOpen\}/u,
+      /data-testid="menu-open-product-preview"[\s\S]*?disabled=\{productPreviewOpen\}/u,
     );
     expect(topBar).not.toContain('product-preview-placeholder');
-    expect(topBar).toContain('data-testid="close-project-open"');
+    expect(topBar).toContain('data-testid="menu-close-project"');
     expect(topBar).toMatch(
-      /data-testid="close-project-open"[\s\S]*?disabled=\{busy \|\| closeConfirmOpen\}/u,
+      /data-testid="menu-close-project"[\s\S]*?disabled=\{closeConfirmOpen\}/u,
     );
     expect(panel).not.toContain('id="recovery-heading"');
     expect(panel).not.toContain('className="recovery-open-row"');
@@ -278,7 +284,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const panel = readSource(
       'renderer/features/recovery/ProjectRecoveryPanel.tsx',
     );
-    const topBar = readSource('renderer/shell/EditorTopBar.tsx');
+    const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
 
     expect(banner).toContain('className="recovery-prompt"');
     expect(banner).toContain(

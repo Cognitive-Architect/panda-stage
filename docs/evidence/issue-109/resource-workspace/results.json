@@ -1,0 +1,1219 @@
+{
+  "issue": 109,
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "passed": true,
+  "checks": [
+    "1280x720 uses a 320–360px dock with no page overflow and visible canvas/inspector/bottom regions",
+    "1024x720 keeps a 48–56px resource handle while canvas, inspector, and bottom workspace remain available",
+    "1024px shot create is a dedicated single-column subview without list/form overlap",
+    "1024px asset browser/details states fit the drawer, use a two-column category/grid layout, and keep import in the sticky header",
+    "Drawer close button, Escape, and active-tab toggle close the narrow drawer without changing project state"
+  ],
+  "snapshots": {
+    "wide1280": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "wide",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 23.33,
+        "top": 89.33,
+        "right": 360.67,
+        "bottom": 634.67,
+        "width": 337.33,
+        "height": 545.33
+      },
+      "handle": {
+        "left": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "left": {
+        "left": 12,
+        "top": 78,
+        "right": 372,
+        "bottom": 646,
+        "width": 360,
+        "height": 568
+      },
+      "body": {
+        "left": 12,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646,
+        "width": 1256,
+        "height": 568
+      },
+      "canvas": {
+        "left": 382,
+        "top": 78,
+        "right": 1078,
+        "bottom": 646,
+        "width": 696,
+        "height": 568
+      },
+      "inspector": {
+        "left": 1088,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646,
+        "width": 180,
+        "height": 568
+      },
+      "bottom": {
+        "left": 12,
+        "top": 656,
+        "right": 1268,
+        "bottom": 708,
+        "width": 1256,
+        "height": 52
+      },
+      "activeActivity": "shots",
+      "activeSubview": "list",
+      "listView": true,
+      "shotCreateView": false,
+      "assetBrowserView": false,
+      "assetDetailsView": false,
+      "characterListView": false,
+      "characterCreateView": false,
+      "characterDetailView": false,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 322,
+        "scrollWidth": 322,
+        "clientHeight": 726,
+        "scrollHeight": 726
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 322,
+        "scrollWidth": 322,
+        "clientHeight": 416,
+        "scrollHeight": 1169
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1280,
+        "body": 1280,
+        "root": 1280
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "01画布预览将在后续版本提供Opening3000ms⋮⋮",
+          "width": 275.67,
+          "height": 83,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "复制镜头",
+          "width": 87.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "移除镜头",
+          "width": 87.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "应用名称修改",
+          "width": 83.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "应用时长修改",
+          "width": 83.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "narrowClosed": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "false",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "shots",
+      "activeSubview": "list",
+      "listView": true,
+      "shotCreateView": false,
+      "assetBrowserView": false,
+      "assetDetailsView": false,
+      "characterListView": false,
+      "characterCreateView": false,
+      "characterDetailView": false,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 711,
+        "scrollHeight": 711
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 1138
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "01画布预览将在后续版本提供Opening3000ms⋮⋮",
+          "width": 297,
+          "height": 83,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "复制镜头",
+          "width": 87.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "移除镜头",
+          "width": 87.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "应用名称修改",
+          "width": 83.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "应用时长修改",
+          "width": 83.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "shotCreate1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "shots",
+      "activeSubview": "create",
+      "listView": false,
+      "shotCreateView": true,
+      "assetBrowserView": false,
+      "assetDetailsView": false,
+      "characterListView": false,
+      "characterCreateView": false,
+      "characterDetailView": false,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 314,
+        "scrollHeight": 314
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 741
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "返回镜头列表",
+          "width": 117.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "创建镜头",
+          "width": 303.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "shotList1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "shots",
+      "activeSubview": "list",
+      "listView": true,
+      "shotCreateView": false,
+      "assetBrowserView": false,
+      "assetDetailsView": false,
+      "characterListView": false,
+      "characterCreateView": false,
+      "characterDetailView": false,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 711,
+        "scrollHeight": 711
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 1138
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "01画布预览将在后续版本提供Opening3000ms⋮⋮",
+          "width": 297,
+          "height": 83,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "复制镜头",
+          "width": 87.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "移除镜头",
+          "width": 87.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "应用名称修改",
+          "width": 83.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "应用时长修改",
+          "width": 83.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "assetBrowser1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "assets",
+      "activeSubview": "browser",
+      "listView": false,
+      "shotCreateView": false,
+      "assetBrowserView": true,
+      "assetDetailsView": false,
+      "characterListView": false,
+      "characterCreateView": false,
+      "characterDetailView": false,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 500,
+        "scrollHeight": 500
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 926
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "角色图片2",
+          "width": 158.67,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "背景图片1",
+          "width": 158.67,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "音频1",
+          "width": 158.67,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "assetDetails1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "assets",
+      "activeSubview": "details",
+      "listView": false,
+      "shotCreateView": false,
+      "assetBrowserView": false,
+      "assetDetailsView": true,
+      "characterListView": false,
+      "characterCreateView": false,
+      "characterDetailView": false,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 443,
+        "scrollHeight": 443
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 869
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "返回素材库",
+          "width": 101.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "删除未引用素材",
+          "width": 278,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "characterList1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "characters",
+      "activeSubview": "list",
+      "listView": false,
+      "shotCreateView": false,
+      "assetBrowserView": false,
+      "assetDetailsView": false,
+      "characterListView": true,
+      "characterCreateView": false,
+      "characterDetailView": false,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 180,
+        "scrollHeight": 180
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 607
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "Panda2 个表情",
+          "width": 302,
+          "height": 57,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "characterCreate1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "characters",
+      "activeSubview": "create",
+      "listView": false,
+      "shotCreateView": false,
+      "assetBrowserView": false,
+      "assetDetailsView": false,
+      "characterListView": false,
+      "characterCreateView": true,
+      "characterDetailView": false,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 432,
+        "scrollHeight": 432
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 858
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "返回角色列表",
+          "width": 117.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "创建角色",
+          "width": 302,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "characterDetail1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "characters",
+      "activeSubview": "detail",
+      "listView": false,
+      "shotCreateView": false,
+      "assetBrowserView": false,
+      "assetDetailsView": false,
+      "characterListView": false,
+      "characterCreateView": false,
+      "characterDetailView": true,
+      "characterExpressionView": false,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 582,
+        "scrollHeight": 582
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 1009
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "删除角色",
+          "width": 87.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "应用名称修改",
+          "width": 83.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "应用默认变换",
+          "width": 278,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "编辑表情映射",
+          "width": 117.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    },
+    "characterExpression1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "page": "editor",
+      "mode": "narrow",
+      "drawerOpen": "true",
+      "drawerVisible": true,
+      "drawer": {
+        "left": 8,
+        "top": 72,
+        "right": 368,
+        "bottom": 652,
+        "width": 360,
+        "height": 580
+      },
+      "handle": {
+        "left": 8,
+        "top": 72,
+        "right": 60,
+        "bottom": 652,
+        "width": 52,
+        "height": 580
+      },
+      "left": {
+        "left": 8,
+        "top": 72,
+        "right": 64,
+        "bottom": 652,
+        "width": 56,
+        "height": 580
+      },
+      "body": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 776,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "activeActivity": "characters",
+      "activeSubview": "expression",
+      "listView": false,
+      "shotCreateView": false,
+      "assetBrowserView": false,
+      "assetDetailsView": false,
+      "characterListView": false,
+      "characterCreateView": false,
+      "characterDetailView": false,
+      "characterExpressionView": true,
+      "activePanelScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 730,
+        "scrollHeight": 730
+      },
+      "drawerBodyScroll": {
+        "clientWidth": 343,
+        "scrollWidth": 343,
+        "clientHeight": 463,
+        "scrollHeight": 1157
+      },
+      "horizontalOverflow": [],
+      "pageScroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "dirty": false,
+      "revision": 0,
+      "buttons": [
+        {
+          "text": "返回角色详情",
+          "width": 117.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "删除角色",
+          "width": 87.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "删除",
+          "width": 138.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "设为默认",
+          "width": 138.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "删除",
+          "width": 138.33,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        },
+        {
+          "text": "添加表情",
+          "width": 280.67,
+          "height": 44,
+          "writingMode": "horizontal-tb"
+        }
+      ]
+    }
+  },
+  "screenshots": {
+    "wide1280": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-wide-dock-1280.png",
+    "shotCreate1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-shot-create-1024.png",
+    "shotList1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-shot-list-1024.png",
+    "assetBrowser1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-asset-browser-1024.png",
+    "assetDetails1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-asset-details-1024.png",
+    "characterList1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-character-list-1024.png",
+    "characterCreate1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-character-create-1024.png",
+    "characterDetail1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-character-detail-1024.png",
+    "characterExpression1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-character-expression-1024.png"
+  },
+  "evidenceRoot": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence",
+  "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\project-center-v1\\docs\\evidence\\issue-109\\resource-workspace",
+  "error": null
+}

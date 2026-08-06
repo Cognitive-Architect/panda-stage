@@ -1,3 +1,4 @@
+import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectSchema, type Project } from '../../src/domain';
@@ -15,8 +16,9 @@ import {
   getEditorShellSessionRegion,
   getEditorShellState,
 } from '../../src/renderer/shell/EditorShell';
-import { EditorTopBar } from '../../src/renderer/shell/EditorTopBar';
+import { CompactProjectBar } from '../../src/renderer/shell/CompactProjectBar';
 import { NewProjectDialog } from '../../src/renderer/shell/NewProjectDialog';
+import { ProjectCenterScreen } from '../../src/renderer/shell/ProjectCenterScreen';
 import { RecoveryCandidateBanner } from '../../src/renderer/shell/RecoveryCandidateBanner';
 import {
   StartScreen,
@@ -49,32 +51,23 @@ function candidate(project: Project): RecoveryCandidate {
   };
 }
 
-function renderEditorTopBar(
+function renderCompactProjectBar(
   projectSnapshot: EditorProjectSnapshot,
-  recoveryCandidate: RecoveryCandidate | null,
+  _recoveryCandidate: RecoveryCandidate | null,
   status = 'Ready',
   productPreviewOpen = false,
   closeConfirmOpen = false,
 ): string {
   return renderToStaticMarkup(
-    EditorTopBar({
+    createElement(CompactProjectBar, {
       projectSnapshot,
-      openCandidatePath: projectSnapshot.projectRoot,
+      saveState: projectSnapshot.dirty ? 'dirty' : 'saved',
       status,
       busy: false,
       productPreviewOpen,
       closeConfirmOpen,
-      recoveryBanner: recoveryCandidate
-        ? RecoveryCandidateBanner({
-            candidate: recoveryCandidate,
-            busy: false,
-            onRestore: vi.fn(),
-            onIgnore: vi.fn(),
-          })
-        : null,
-      onOpenCandidatePathChange: vi.fn(),
-      onChooseProjectDirectory: vi.fn(),
-      onOpenProject: vi.fn(),
+      onOpenProjectCenter: vi.fn(),
+      onOpenProjectFolder: vi.fn(async () => undefined),
       onSaveProject: vi.fn(),
       onOpenProductPreview: vi.fn(),
       onRequestCloseProject: vi.fn(),
@@ -201,6 +194,38 @@ function createSession(recoveryCandidate: RecoveryCandidate | null) {
 }
 
 describe('EditorShell project session integration', () => {
+  it('renders the formal project center with an open project without reopening it', () => {
+    const markup = renderToStaticMarkup(
+      ProjectCenterScreen({
+        busy: false,
+        currentProject: {
+          projectRoot: PROJECT_ROOT,
+          project: PROJECT,
+          dirty: true,
+        },
+        newProjectDialogOpen: false,
+        onChooseProjectDirectory: vi.fn(),
+        onOpenCandidatePathChange: vi.fn(),
+        onOpenProject: vi.fn(),
+        onOpenRecentProject: vi.fn(),
+        onRequestNewProject: vi.fn(),
+        onReturnToEditor: vi.fn(),
+        openCandidatePath: '',
+        recentRefreshToken: 0,
+        status: '项目中心已打开',
+      }),
+    );
+
+    expect(markup).toContain('data-testid="project-center-screen"');
+    expect(markup).toContain('data-project-open="true"');
+    expect(markup).toContain('data-testid="project-center-current-project"');
+    expect(markup).toContain(PROJECT.name);
+    expect(markup).toContain(PROJECT_ROOT);
+    expect(markup).toContain('有未保存更改');
+    expect(markup).toContain('data-testid="return-to-editor"');
+    expect(markup).toContain('返回编辑器');
+  });
+
   it('renders one no-project entry, recent projects, and an enabled create entry', () => {
     const markup = renderToStaticMarkup(
       StartScreen({
@@ -367,12 +392,12 @@ describe('EditorShell project session integration', () => {
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
-  it('renders one editor candidate banner without changing open or save cardinality', async () => {
+  it('renders one compact project bar without owning the recovery banner', async () => {
     const recoveryCandidate = candidate(PROJECT);
     const harness = createSession(recoveryCandidate);
     const sessionSnapshot =
       await harness.session.switchProject(PROJECT_ROOT);
-    const markup = renderEditorTopBar(
+    const markup = renderCompactProjectBar(
       harness.store.getSnapshot()!,
       sessionSnapshot.recoveryCandidate,
       'Recovery available',
@@ -384,35 +409,39 @@ describe('EditorShell project session integration', () => {
       'detect',
       'store.open',
     ]);
-    expect(
-      markup.match(/data-testid="recovery-candidate-banner"/gu),
-    ).toHaveLength(1);
-    expect(markup.match(/data-testid="editor-top-bar"/gu)).toHaveLength(1);
-    expect(markup.match(/class="recovery-prompt"/gu)).toHaveLength(1);
-    expect(markup.match(/class="recovery-open-row"/gu)).toHaveLength(1);
-    expect(markup.match(/class="recovery-status-row"/gu)).toHaveLength(1);
+    const bannerMarkup = renderToStaticMarkup(
+      RecoveryCandidateBanner({
+        candidate: recoveryCandidate,
+        busy: false,
+        onRestore: vi.fn(),
+        onIgnore: vi.fn(),
+      }),
+    );
+    expect(markup.match(/data-testid="compact-project-bar"/gu)).toHaveLength(1);
+    expect(markup).not.toContain('class="recovery-prompt"');
+    expect(markup).not.toContain('class="recovery-open-row"');
     expect(markup.match(/class="editor-save-button"/gu)).toHaveLength(1);
-    expect(markup).toContain('role="alert"');
+    expect(bannerMarkup).toContain('role="alert"');
     expect(markup).toContain(PROJECT.name);
     expect(markup).toContain('data-testid="active-project-path"');
     expect(markup).toContain(PROJECT_ROOT);
-    expect(markup).toContain(recoveryCandidate.recoveryFilePath);
-    expect(markup).toContain('恢复');
-    expect(markup).toContain('忽略');
+    expect(bannerMarkup).toContain(recoveryCandidate.recoveryFilePath);
+    expect(bannerMarkup).toContain('恢复');
+    expect(bannerMarkup).toContain('忽略');
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
   it('keeps one top bar while switching a second project through the same controller', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
-    const before = renderEditorTopBar(
+    const before = renderCompactProjectBar(
       harness.store.getSnapshot()!,
       harness.session.getSnapshot().recoveryCandidate,
     );
 
     const secondSnapshot =
       await harness.session.switchProject(SECOND_PROJECT_ROOT);
-    const after = renderEditorTopBar(
+    const after = renderCompactProjectBar(
       harness.store.getSnapshot()!,
       secondSnapshot.recoveryCandidate,
     );
@@ -421,10 +450,10 @@ describe('EditorShell project session integration', () => {
     expect(harness.store.getSnapshot()?.projectRoot).toBe(
       SECOND_PROJECT_ROOT,
     );
-    expect(before.match(/data-testid="editor-top-bar"/gu)).toHaveLength(1);
-    expect(after.match(/data-testid="editor-top-bar"/gu)).toHaveLength(1);
-    expect(before.match(/class="recovery-open-row"/gu)).toHaveLength(1);
-    expect(after.match(/class="recovery-open-row"/gu)).toHaveLength(1);
+    expect(before.match(/data-testid="compact-project-bar"/gu)).toHaveLength(1);
+    expect(after.match(/data-testid="compact-project-bar"/gu)).toHaveLength(1);
+    expect(before).not.toContain('class="recovery-open-row"');
+    expect(after).not.toContain('class="recovery-open-row"');
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
@@ -595,16 +624,15 @@ describe('EditorShell project session integration', () => {
       dirty: false,
     });
     const markup = renderToStaticMarkup(
-      EditorTopBar({
+      createElement(CompactProjectBar, {
         projectSnapshot: current,
-        openCandidatePath: SECOND_PROJECT_ROOT,
+        saveState: 'saved',
         status: 'Ready',
         busy: false,
         productPreviewOpen: false,
         closeConfirmOpen: false,
-        onOpenCandidatePathChange: vi.fn(),
-        onChooseProjectDirectory: vi.fn(),
-        onOpenProject: vi.fn(),
+        onOpenProjectCenter: vi.fn(),
+        onOpenProjectFolder: vi.fn(async () => undefined),
         onSaveProject: vi.fn(),
         onOpenProductPreview: vi.fn(),
         onRequestCloseProject: vi.fn(),
@@ -635,7 +663,7 @@ describe('EditorShell project session integration', () => {
       project: { name: 'Recovered project' },
       dirty: true,
     });
-    const restoredMarkup = renderEditorTopBar(
+    const restoredMarkup = renderCompactProjectBar(
       restoreHarness.store.getSnapshot()!,
       restoreHarness.session.getSnapshot().recoveryCandidate,
       'Recovered',
@@ -647,7 +675,7 @@ describe('EditorShell project session integration', () => {
       ok: true,
       acknowledgement: 'current',
     });
-    const savedMarkup = renderEditorTopBar(
+    const savedMarkup = renderCompactProjectBar(
       restoreHarness.store.getSnapshot()!,
       restoreHarness.session.getSnapshot().recoveryCandidate,
       '项目已保存。',
@@ -667,81 +695,66 @@ describe('EditorShell project session integration', () => {
     });
     expect(ignoreHarness.ignore).toHaveBeenCalledTimes(1);
     expect(ignoreHarness.session.getSnapshot().recoveryCandidate).toBeNull();
-    const ignoredMarkup = renderEditorTopBar(
+    const ignoredMarkup = renderCompactProjectBar(
       ignoreHarness.store.getSnapshot()!,
       ignoreHarness.session.getSnapshot().recoveryCandidate,
       'Ignored; evidence retained',
     );
     expect(ignoredMarkup).not.toContain('class="recovery-prompt"');
-    expect(ignoredMarkup.match(/class="recovery-open-row"/gu)).toHaveLength(1);
+    expect(ignoredMarkup).toContain('data-save-state="saved"');
   });
 
   it('renders the editor controls and an enabled product preview entry', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
-    const markup = renderEditorTopBar(
+    const markup = renderCompactProjectBar(
       harness.store.getSnapshot()!,
       null,
     );
 
-    expect(markup).toContain('data-testid="editor-top-bar"');
-    expect(markup).toContain('class="recovery-panel"');
-    expect(markup).toContain('class="recovery-open-row"');
-    expect(markup).toContain('class="recovery-status-row"');
+    expect(markup).toContain('data-testid="compact-project-bar"');
+    expect(markup).not.toContain('class="recovery-panel"');
+    expect(markup).not.toContain('class="recovery-open-row"');
+    expect(markup).toContain('recovery-status-row');
     expect(markup).toContain('class="editor-save-button"');
     expect(markup).toContain(PROJECT.name);
-    expect(markup).toContain('data-testid="product-preview-open"');
-    expect(markup).toContain('产品预览');
+    expect(markup).toContain('data-testid="compact-project-more"');
     expect(markup).not.toContain('产品预览（后续阶段启用）');
-    expect(markup).not.toMatch(
-      /data-testid="product-preview-open"[^>]*disabled/u,
-    );
-    // The overlay itself is never rendered by the top bar.
+    // The menu and overlay are both transient surfaces.
+    expect(markup).not.toContain('data-testid="compact-project-menu"');
     expect(markup).not.toContain('data-testid="product-preview-overlay"');
     expect(markup).not.toContain('class="recovery-prompt"');
     expect(markup).not.toContain('Crash recovery');
     expect(markup).not.toContain('recovered');
     expect(markup).not.toContain('Recovered');
-    expect(markup).toContain('暂无未保存更改');
-    expect(markup).toContain('保存整个项目');
-    expect(markup).toContain('浏览…');
-    expect(markup).toContain('该项目当前已经打开');
-    expect(markup).toMatch(
-      /class="recovery-open-row"[\s\S]*?<button disabled=""[^>]*>打开项目<\/button>/u,
-    );
+    expect(markup).toContain('data-testid="project-save-state"');
+    expect(markup).toContain('已保存');
+    expect(markup).toContain('aria-label="保存整个项目"');
   });
 
   it('disables the preview entry while the overlay is already open', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
-    const markup = renderEditorTopBar(
+    const markup = renderCompactProjectBar(
       harness.store.getSnapshot()!,
       null,
       'Ready',
       true,
     );
 
-    expect(markup).toMatch(
-      /<button[^>]*data-testid="product-preview-open"[^>]*disabled/u,
-    );
+    expect(markup).toContain('data-testid="compact-project-more"');
     // Opening the preview must not change the saved/dirty presentation.
-    expect(markup).toContain('暂无未保存更改');
+    expect(markup).toContain('已保存');
     expect(markup).toMatch(/class="editor-save-button"[^>]*disabled/u);
   });
 
   it('renders exactly one in-app close entry next to the save control', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
-    const markup = renderEditorTopBar(harness.store.getSnapshot()!, null);
+    const markup = renderCompactProjectBar(harness.store.getSnapshot()!, null);
 
-    expect(
-      markup.match(/data-testid="close-project-open"/gu),
-    ).toHaveLength(1);
-    expect(markup).toContain('关闭当前项目');
-    expect(markup).not.toMatch(
-      /<button[^>]*data-testid="close-project-open"[^>]*disabled/u,
-    );
-    // The top bar only opens the dialog; it never renders it.
+    expect(markup).toContain('data-testid="compact-project-more"');
+    // The menu only opens the dialog; it never renders it while closed.
     expect(markup).not.toContain('data-testid="close-confirm-dialog"');
     expect(markup).not.toContain('不保存关闭');
     expect(markup.match(/class="editor-save-button"/gu)).toHaveLength(1);
@@ -750,7 +763,7 @@ describe('EditorShell project session integration', () => {
   it('disables the close entry while the confirmation is already open', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
-    const markup = renderEditorTopBar(
+    const markup = renderCompactProjectBar(
       harness.store.getSnapshot()!,
       null,
       'Ready',
@@ -759,10 +772,10 @@ describe('EditorShell project session integration', () => {
     );
 
     expect(markup).toMatch(
-      /<button[^>]*data-testid="close-project-open"[^>]*disabled/u,
+      /data-testid="open-project-center"[^>]*disabled=""/u,
     );
     // Confirming a close must not pre-emptively change project state.
-    expect(markup).toContain('暂无未保存更改');
+    expect(markup).toContain('已保存');
     expect(markup).toContain(PROJECT_ROOT);
   });
 

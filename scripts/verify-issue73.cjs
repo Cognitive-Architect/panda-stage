@@ -85,15 +85,30 @@ async function clickRecent(window, projectRoot) {
   })()`);
 }
 
+async function ensureProjectCenter(window) {
+  await window.webContents.executeJavaScript(`(() => {
+    if (document.querySelector('[data-editor-page="editor"]')) {
+      document.querySelector('[data-testid="open-project-center"]').click();
+    }
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-editor-page="project-center"]')`,
+      'Project Center did not open for a path-based project switch.',
+    ),
+  );
+}
+
 async function openFromPath(window, projectRoot) {
+  await ensureProjectCenter(window);
   await setInput(
     window,
-    '[data-testid="editor-top-bar"] .recovery-open-row input',
+    '[data-testid="project-center-screen"] .recovery-open-row input',
     projectRoot,
   );
   await click(
     window,
-    '[data-testid="editor-top-bar"] .recovery-open-row button',
+    '[data-testid="project-center-screen"] .recovery-open-row button',
   );
   await window.webContents.executeJavaScript(
     waitFor(
@@ -123,7 +138,7 @@ async function snapshot(window) {
       '.recent-projects-status'
     )?.textContent?.trim() ?? '',
     openCandidate: document.querySelector(
-      '.recovery-open-row input'
+      '[data-testid="project-center-screen"] .recovery-open-row input'
     )?.value ?? '',
     recoverySummary: document.querySelector(
       '.recovery-prompt-summary strong'
@@ -329,20 +344,31 @@ async function verifyIssue73() {
 
     await applyShotName(window, 'A 保存失败保留');
     nextGuardOutcome = 'save-failed';
+    await ensureProjectCenter(window);
     await setInput(
       window,
-      '[data-testid="editor-top-bar"] .recovery-open-row input',
+      '[data-testid="project-center-screen"] .recovery-open-row input',
       projectBRoot,
     );
     await click(
       window,
-      '[data-testid="editor-top-bar"] .recovery-open-row button',
+      '[data-testid="project-center-screen"] .recovery-open-row button',
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('.recovery-status-row output')` +
+        `document.querySelector('.recovery-status-row output, ` +
+          `[data-testid="project-center-screen"] .recovery-panel output')` +
           `?.textContent?.includes('保存当前项目失败')`,
         'Save-failed switch outcome was not reported.',
+      ),
+    );
+    await click(window, '[data-testid="return-to-editor"]');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-editor-page="editor"]') && ` +
+          `document.querySelector('[data-testid="active-project-path"] code')` +
+          `?.textContent === ${JSON.stringify(projectARoot)}`,
+        'Returning to the editor after a save-failed switch did not retain A.',
       ),
     );
     const failedSwitch = await snapshot(window);

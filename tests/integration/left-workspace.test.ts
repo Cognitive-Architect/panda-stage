@@ -27,6 +27,7 @@ interface Issue81Evidence {
   aAsset: {
     activity: string | null;
     assetCategory: number;
+    assetDetailsView: boolean;
     assetResultCount: number;
     assetSelectedCount: number;
     dirty: boolean;
@@ -219,9 +220,13 @@ async function click(window, selector) {
 async function snapshot(window) {
   const script =
     '(() => ({' +
-    'root: document.querySelector(' +
+    'root: (document.querySelector(' +
     JSON.stringify('[data-testid="active-project-path"] code') +
-    ')?.textContent ?? null,' +
+    ') ?? document.querySelector(' +
+    JSON.stringify(
+      '[data-testid="project-center-current-project"] .project-center-current-path',
+    ) +
+    '))?.textContent ?? null,' +
     'activity: document.querySelector(' +
     JSON.stringify('[data-testid="resource-activity-panel"]') +
     ')?.getAttribute("data-active-activity") ?? null,' +
@@ -233,7 +238,14 @@ async function snapshot(window) {
     ').length,' +
     'assetSelectedCount: document.querySelectorAll(' +
     JSON.stringify('.asset-card-selected') +
+    ').length + document.querySelectorAll(' +
+    JSON.stringify(
+      '[data-testid="asset-details-view"] .asset-details:not(.asset-details-empty)',
+    ) +
     ').length,' +
+    'assetDetailsView: Boolean(document.querySelector(' +
+    JSON.stringify('[data-testid="asset-details-view"]') +
+    ')),' +
     'charCreateDraft: document.querySelector(' +
     JSON.stringify('.character-create-form input') +
     ')?.value ?? null,' +
@@ -286,37 +298,81 @@ async function waitForActivity(window, activity) {
 }
 
 async function openProject(window, projectRoot) {
+  await window.webContents.executeJavaScript(
+    '(() => {' +
+      'if (document.querySelector(' +
+        JSON.stringify('[data-editor-page="editor"]') +
+        ')) {' +
+        'document.querySelector(' +
+        JSON.stringify('[data-testid="open-project-center"]') +
+        ').click();' +
+      '}' +
+    '})()',
+  );
+  await waitFor(
+    window,
+    'document.querySelector(' +
+      JSON.stringify('[data-editor-page="project-center"]') +
+      ')',
+    'Project Center did not open for a project switch.',
+  );
   await setInput(
     window,
-    '.recovery-open-row input',
+    '[data-testid="project-center-screen"] .recovery-open-row input',
     projectRoot,
   );
   await waitFor(
     window,
-    'document.querySelector(".recovery-open-row button")?.disabled === false',
+    'document.querySelector(' +
+      JSON.stringify(
+        '[data-testid="project-center-screen"] .recovery-open-row button',
+      ) +
+      ')?.disabled === false',
     'Project open button did not become enabled.',
   );
   await click(
     window,
-    '.recovery-open-row button',
+    '[data-testid="project-center-screen"] .recovery-open-row button',
   );
   await waitForRoot(window, projectRoot);
 }
 
 async function requestProjectSwitch(window, projectRoot) {
+  await window.webContents.executeJavaScript(
+    '(() => {' +
+      'if (document.querySelector(' +
+        JSON.stringify('[data-editor-page="editor"]') +
+        ')) {' +
+        'document.querySelector(' +
+        JSON.stringify('[data-testid="open-project-center"]') +
+        ').click();' +
+      '}' +
+    '})()',
+  );
+  await waitFor(
+    window,
+    'document.querySelector(' +
+      JSON.stringify('[data-editor-page="project-center"]') +
+      ')',
+    'Project Center did not open for a project switch.',
+  );
   await setInput(
     window,
-    '.recovery-open-row input',
+    '[data-testid="project-center-screen"] .recovery-open-row input',
     projectRoot,
   );
   await waitFor(
     window,
-    'document.querySelector(".recovery-open-row button")?.disabled === false',
+    'document.querySelector(' +
+      JSON.stringify(
+        '[data-testid="project-center-screen"] .recovery-open-row button',
+      ) +
+      ')?.disabled === false',
     'Project switch button did not become enabled.',
   );
   await click(
     window,
-    '.recovery-open-row button',
+    '[data-testid="project-center-screen"] .recovery-open-row button',
   );
 }
 
@@ -445,13 +501,14 @@ async function verifyIssue81() {
       'document.querySelectorAll(".asset-category-tabs button")[2]?.getAttribute("aria-pressed") === "true"',
       'A audio category did not activate.',
     );
-    await click(window, '.asset-card');
-    await click(window, '.asset-import-panel button');
+    await click(window, '[data-testid="resource-primary-action"]');
     await waitFor(
       window,
       'document.querySelectorAll(".asset-import-results li").length === 1',
       'A import result did not render.',
     );
+    const aAssetBrowser = await snapshot(window);
+    await click(window, '.asset-card');
     const aAsset = await snapshot(window);
     await openProject(window, projectBRoot);
     await waitForActivity(window, 'shots');
@@ -465,10 +522,25 @@ async function verifyIssue81() {
     // T2/T3: exercise both character forms with the same character id across
     // distinct projects, so a stale child key cannot hide the bug.
     await switchActivity(window, 'characters');
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-create-view"]') +
+      ')',
+      'Character create subview did not open.',
+    );
     await setInput(
       window,
       '.character-create-form input',
       'B create draft must not return',
+    );
+    await click(window, '[data-testid="character-create-back"]');
+    await click(window, '.character-list-items button');
+    await waitFor(
+      window,
+      'document.querySelector(".character-settings input")',
+      'Character detail subview did not open.',
     );
     await setInput(
       window,
@@ -480,10 +552,25 @@ async function verifyIssue81() {
     await switchActivity(window, 'characters');
     const aAfterB = await snapshot(window);
 
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-create-view"]') +
+      ')',
+      'A character create subview did not open.',
+    );
     await setInput(
       window,
       '.character-create-form input',
       'A create draft must not enter B',
+    );
+    await click(window, '[data-testid="character-create-back"]');
+    await click(window, '.character-list-items button');
+    await waitFor(
+      window,
+      'document.querySelector(".character-settings input")',
+      'A character detail subview did not open.',
     );
     await setInput(
       window,
@@ -494,10 +581,25 @@ async function verifyIssue81() {
     await waitForActivity(window, 'shots');
     await switchActivity(window, 'characters');
     const bAfterACharacters = await snapshot(window);
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-create-view"]') +
+      ')',
+      'B second character create subview did not open.',
+    );
     await setInput(
       window,
       '.character-create-form input',
       'B second draft must not enter A',
+    );
+    await click(window, '[data-testid="character-create-back"]');
+    await click(window, '.character-list-items button');
+    await waitFor(
+      window,
+      'document.querySelector(".character-settings input")',
+      'B second character detail subview did not open.',
     );
     await setInput(
       window,
@@ -520,10 +622,16 @@ async function verifyIssue81() {
     await waitFor(
       window,
       'document.querySelector(' +
-        JSON.stringify('[data-testid="active-project-path"] code') +
+        JSON.stringify(
+          '[data-testid="project-center-current-project"] .project-center-current-path',
+        ) +
         ')?.textContent === ' +
         JSON.stringify(projectARoot) +
-        ' && Boolean(document.querySelector(".dirty-state"))',
+        ' && Boolean(document.querySelector(' +
+        JSON.stringify(
+          '[data-testid="project-center-current-project"] .dirty-state',
+        ) +
+        '))',
       'Dirty Guard cancel branch did not keep A open.',
     );
     const cancelledSwitch = await snapshot(window);
@@ -560,10 +668,12 @@ async function verifyIssue81() {
 
     const failures = [];
     if (
+      aAssetBrowser.assetCategory !== 2 ||
+      aAssetBrowser.assetResultCount !== 1 ||
       aAsset.activity !== 'assets' ||
-      aAsset.assetCategory !== 2 ||
-      aAsset.assetResultCount !== 1 ||
+      aAsset.assetResultCount !== 0 ||
       aAsset.assetSelectedCount !== 1 ||
+      !aAsset.assetDetailsView ||
       aAsset.dirty ||
       aAsset.revision !== 0
     ) {
@@ -591,7 +701,7 @@ async function verifyIssue81() {
     if (
       aAfterB.activity !== 'characters' ||
       aAfterB.charCreateDraft === 'B create draft must not return' ||
-      aAfterB.charEditorDraft !== projectA.characters[0].name ||
+      aAfterB.charEditorDraft !== null ||
       aAfterB.dirty ||
       aAfterB.revision !== 0
     ) {
@@ -600,13 +710,13 @@ async function verifyIssue81() {
     if (
       bAfterACharacters.activity !== 'characters' ||
       bAfterACharacters.charCreateDraft === 'A create draft must not enter B' ||
-      bAfterACharacters.charEditorDraft !== projectB.characters[0].name
+      bAfterACharacters.charEditorDraft !== null
     ) {
       failures.push('A character state leaked into B.');
     }
     if (
       aFinal.charCreateDraft === 'B second draft must not enter A' ||
-      aFinal.charEditorDraft !== projectA.characters[0].name
+      aFinal.charEditorDraft !== null
     ) {
       failures.push('B character state leaked back into A.');
     }
@@ -718,9 +828,7 @@ describe('Issue #81 resource workspace isolation', () => {
         ]);
         expect(evidence.bAfterA.activity).toBe('shots');
         expect(evidence.bAfterA.assetResultCount).toBe(0);
-        expect(evidence.aAfterB.charEditorDraft).toBe(
-          'A Panda',
-        );
+        expect(evidence.aAfterB.charEditorDraft).toBeNull();
         expect(evidence.aFinal.undo).toBe(0);
         expect(evidence.aFinal.redo).toBe(0);
       } finally {

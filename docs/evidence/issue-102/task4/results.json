@@ -1,0 +1,925 @@
+{
+  "issue": 102,
+  "task": 4,
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "passed": true,
+  "checks": [
+    "1280x720 Project Center has contained recent cards, no page overflow, and 44px core targets",
+    "1280x720 editor keeps the compact bar, canvas, inspector, and bottom workspace visible",
+    "1280x720 more menu stays fully inside the window",
+    "1024px narrow editor remains contained and keeps all three work regions visible",
+    "1024px narrow more menu is not clipped at the window edge",
+    "1024px Project Center keeps recent cards in a stable single/two-column layout"
+  ],
+  "snapshots": {
+    "projectCenter1280": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "scroll": {
+        "document": 1280,
+        "body": 1280,
+        "root": 1280
+      },
+      "page": "project-center",
+      "topBar": null,
+      "editorBody": null,
+      "canvas": null,
+      "inspector": null,
+      "bottom": null,
+      "menu": null,
+      "projectCenter": {
+        "left": 0,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720,
+        "width": 1280,
+        "height": 720
+      },
+      "recentList": {
+        "left": 90.67,
+        "top": 431.03,
+        "right": 1189.33,
+        "bottom": 612.36,
+        "width": 1098.67,
+        "height": 181.33
+      },
+      "cards": [
+        {
+          "left": 90.67,
+          "right": 1189.33,
+          "top": 431.03,
+          "width": 1098.67,
+          "height": 86.67
+        },
+        {
+          "left": 90.67,
+          "right": 1189.33,
+          "top": 525.7,
+          "width": 1098.67,
+          "height": 86.67
+        }
+      ],
+      "coreButtons": [
+        {
+          "id": "open-project",
+          "width": 89.33,
+          "height": 44,
+          "left": 1018.07,
+          "right": 1107.41,
+          "bottom": 193,
+          "disabled": true
+        },
+        {
+          "id": "choose-project-directory",
+          "width": 71.93,
+          "height": 44,
+          "left": 1117.41,
+          "right": 1189.33,
+          "bottom": 193,
+          "disabled": false
+        },
+        {
+          "id": "new-project",
+          "width": 89.33,
+          "height": 44,
+          "left": 90.67,
+          "right": 180,
+          "bottom": 263.36,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 1044,
+          "right": 1089.33,
+          "bottom": 496.36,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 1099.33,
+          "right": 1176.67,
+          "bottom": 496.36,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 1044,
+          "right": 1089.33,
+          "bottom": 591.03,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 1099.33,
+          "right": 1176.67,
+          "bottom": 591.03,
+          "disabled": false
+        }
+      ]
+    },
+    "editor1280": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "scroll": {
+        "document": 1280,
+        "body": 1280,
+        "root": 1280
+      },
+      "page": "editor",
+      "topBar": {
+        "left": 12,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68,
+        "width": 1256,
+        "height": 56
+      },
+      "editorBody": {
+        "left": 12,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646,
+        "width": 1256,
+        "height": 568
+      },
+      "canvas": {
+        "left": 302,
+        "top": 78,
+        "right": 1078,
+        "bottom": 646,
+        "width": 776,
+        "height": 568
+      },
+      "inspector": {
+        "left": 1088,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646,
+        "width": 180,
+        "height": 568
+      },
+      "bottom": {
+        "left": 12,
+        "top": 656,
+        "right": 1268,
+        "bottom": 708,
+        "width": 1256,
+        "height": 52
+      },
+      "menu": null,
+      "projectCenter": null,
+      "recentList": {
+        "left": 39.33,
+        "top": 204.33,
+        "right": 249.33,
+        "bottom": 536.33,
+        "width": 210,
+        "height": 332
+      },
+      "cards": [
+        {
+          "left": 39.33,
+          "right": 249.33,
+          "top": 204.33,
+          "width": 210,
+          "height": 162
+        },
+        {
+          "left": 39.33,
+          "right": 249.33,
+          "top": 374.33,
+          "width": 210,
+          "height": 162
+        }
+      ],
+      "coreButtons": [
+        {
+          "id": "project-center",
+          "width": 85.33,
+          "height": 44,
+          "left": 22.67,
+          "right": 108,
+          "bottom": 62,
+          "disabled": false
+        },
+        {
+          "id": "save-project",
+          "width": 53.33,
+          "height": 44,
+          "left": 1122.22,
+          "right": 1175.55,
+          "bottom": 62,
+          "disabled": true
+        },
+        {
+          "id": "more-menu",
+          "width": 71.78,
+          "height": 44,
+          "left": 1185.55,
+          "right": 1257.33,
+          "bottom": 62,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 52,
+          "right": 97.33,
+          "bottom": 353.67,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 107.33,
+          "right": 184.67,
+          "bottom": 353.67,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 52,
+          "right": 97.33,
+          "bottom": 523.67,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 107.33,
+          "right": 184.67,
+          "bottom": 523.67,
+          "disabled": false
+        }
+      ]
+    },
+    "menu1280": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "scroll": {
+        "document": 1280,
+        "body": 1280,
+        "root": 1280
+      },
+      "page": "editor",
+      "topBar": {
+        "left": 12,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68,
+        "width": 1256,
+        "height": 56
+      },
+      "editorBody": {
+        "left": 12,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646,
+        "width": 1256,
+        "height": 568
+      },
+      "canvas": {
+        "left": 302,
+        "top": 78,
+        "right": 1078,
+        "bottom": 646,
+        "width": 776,
+        "height": 568
+      },
+      "inspector": {
+        "left": 1088,
+        "top": 78,
+        "right": 1268,
+        "bottom": 646,
+        "width": 180,
+        "height": 568
+      },
+      "bottom": {
+        "left": 12,
+        "top": 656,
+        "right": 1268,
+        "bottom": 708,
+        "width": 1256,
+        "height": 52
+      },
+      "menu": {
+        "left": 1067.33,
+        "top": 68,
+        "right": 1257.33,
+        "bottom": 269.33,
+        "width": 190,
+        "height": 201.33
+      },
+      "projectCenter": null,
+      "recentList": {
+        "left": 39.33,
+        "top": 204.33,
+        "right": 249.33,
+        "bottom": 536.33,
+        "width": 210,
+        "height": 332
+      },
+      "cards": [
+        {
+          "left": 39.33,
+          "right": 249.33,
+          "top": 204.33,
+          "width": 210,
+          "height": 162
+        },
+        {
+          "left": 39.33,
+          "right": 249.33,
+          "top": 374.33,
+          "width": 210,
+          "height": 162
+        }
+      ],
+      "coreButtons": [
+        {
+          "id": "project-center",
+          "width": 85.33,
+          "height": 44,
+          "left": 22.67,
+          "right": 108,
+          "bottom": 62,
+          "disabled": false
+        },
+        {
+          "id": "save-project",
+          "width": 53.33,
+          "height": 44,
+          "left": 1122.22,
+          "right": 1175.55,
+          "bottom": 62,
+          "disabled": true
+        },
+        {
+          "id": "more-menu",
+          "width": 71.78,
+          "height": 44,
+          "left": 1185.55,
+          "right": 1257.33,
+          "bottom": 62,
+          "disabled": false
+        },
+        {
+          "id": "menu-project-center",
+          "width": 176.67,
+          "height": 44,
+          "left": 1074,
+          "right": 1250.67,
+          "bottom": 118.67,
+          "disabled": false
+        },
+        {
+          "id": "menu-open-folder",
+          "width": 176.67,
+          "height": 44,
+          "left": 1074,
+          "right": 1250.67,
+          "bottom": 166.67,
+          "disabled": false
+        },
+        {
+          "id": "product-preview",
+          "width": 176.67,
+          "height": 44,
+          "left": 1074,
+          "right": 1250.67,
+          "bottom": 214.67,
+          "disabled": false
+        },
+        {
+          "id": "close-project",
+          "width": 176.67,
+          "height": 44,
+          "left": 1074,
+          "right": 1250.67,
+          "bottom": 262.67,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 52,
+          "right": 97.33,
+          "bottom": 353.67,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 107.33,
+          "right": 184.67,
+          "bottom": 353.67,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 52,
+          "right": 97.33,
+          "bottom": 523.67,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 107.33,
+          "right": 184.67,
+          "bottom": 523.67,
+          "disabled": false
+        }
+      ]
+    },
+    "editor1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "scroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "page": "editor",
+      "topBar": {
+        "left": 8,
+        "top": 8,
+        "right": 1016,
+        "bottom": 64,
+        "width": 1008,
+        "height": 56
+      },
+      "editorBody": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 256,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 592,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "menu": null,
+      "projectCenter": null,
+      "recentList": {
+        "left": 35.33,
+        "top": 198.33,
+        "right": 205.33,
+        "bottom": 573,
+        "width": 170,
+        "height": 374.67
+      },
+      "cards": [
+        {
+          "left": 35.33,
+          "right": 205.33,
+          "top": 198.33,
+          "width": 170,
+          "height": 183.33
+        },
+        {
+          "left": 35.33,
+          "right": 205.33,
+          "top": 389.67,
+          "width": 170,
+          "height": 183.33
+        }
+      ],
+      "coreButtons": [
+        {
+          "id": "project-center",
+          "width": 85.33,
+          "height": 44,
+          "left": 18.67,
+          "right": 104,
+          "bottom": 58,
+          "disabled": false
+        },
+        {
+          "id": "save-project",
+          "width": 53.33,
+          "height": 44,
+          "left": 870.22,
+          "right": 923.55,
+          "bottom": 58,
+          "disabled": true
+        },
+        {
+          "id": "more-menu",
+          "width": 71.78,
+          "height": 44,
+          "left": 933.55,
+          "right": 1005.33,
+          "bottom": 58,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 60,
+          "right": 105.33,
+          "bottom": 369,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 115.33,
+          "right": 192.67,
+          "bottom": 369,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 60,
+          "right": 105.33,
+          "bottom": 560.33,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 115.33,
+          "right": 192.67,
+          "bottom": 560.33,
+          "disabled": false
+        }
+      ]
+    },
+    "menu1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "scroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "page": "editor",
+      "topBar": {
+        "left": 8,
+        "top": 8,
+        "right": 1016,
+        "bottom": 64,
+        "width": 1008,
+        "height": 56
+      },
+      "editorBody": {
+        "left": 8,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 1008,
+        "height": 580
+      },
+      "canvas": {
+        "left": 256,
+        "top": 72,
+        "right": 848,
+        "bottom": 652,
+        "width": 592,
+        "height": 580
+      },
+      "inspector": {
+        "left": 856,
+        "top": 72,
+        "right": 1016,
+        "bottom": 652,
+        "width": 160,
+        "height": 580
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 1016,
+        "bottom": 712,
+        "width": 1008,
+        "height": 52
+      },
+      "menu": {
+        "left": 815.33,
+        "top": 64,
+        "right": 1005.33,
+        "bottom": 265.33,
+        "width": 190,
+        "height": 201.33
+      },
+      "projectCenter": null,
+      "recentList": {
+        "left": 35.33,
+        "top": 198.33,
+        "right": 205.33,
+        "bottom": 573,
+        "width": 170,
+        "height": 374.67
+      },
+      "cards": [
+        {
+          "left": 35.33,
+          "right": 205.33,
+          "top": 198.33,
+          "width": 170,
+          "height": 183.33
+        },
+        {
+          "left": 35.33,
+          "right": 205.33,
+          "top": 389.67,
+          "width": 170,
+          "height": 183.33
+        }
+      ],
+      "coreButtons": [
+        {
+          "id": "project-center",
+          "width": 85.33,
+          "height": 44,
+          "left": 18.67,
+          "right": 104,
+          "bottom": 58,
+          "disabled": false
+        },
+        {
+          "id": "save-project",
+          "width": 53.33,
+          "height": 44,
+          "left": 870.22,
+          "right": 923.55,
+          "bottom": 58,
+          "disabled": true
+        },
+        {
+          "id": "more-menu",
+          "width": 71.78,
+          "height": 44,
+          "left": 933.55,
+          "right": 1005.33,
+          "bottom": 58,
+          "disabled": false
+        },
+        {
+          "id": "menu-project-center",
+          "width": 176.67,
+          "height": 44,
+          "left": 822,
+          "right": 998.67,
+          "bottom": 114.67,
+          "disabled": false
+        },
+        {
+          "id": "menu-open-folder",
+          "width": 176.67,
+          "height": 44,
+          "left": 822,
+          "right": 998.67,
+          "bottom": 162.67,
+          "disabled": false
+        },
+        {
+          "id": "product-preview",
+          "width": 176.67,
+          "height": 44,
+          "left": 822,
+          "right": 998.67,
+          "bottom": 210.67,
+          "disabled": false
+        },
+        {
+          "id": "close-project",
+          "width": 176.67,
+          "height": 44,
+          "left": 822,
+          "right": 998.67,
+          "bottom": 258.67,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 60,
+          "right": 105.33,
+          "bottom": 369,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 115.33,
+          "right": 192.67,
+          "bottom": 369,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 60,
+          "right": 105.33,
+          "bottom": 560.33,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 115.33,
+          "right": 192.67,
+          "bottom": 560.33,
+          "disabled": false
+        }
+      ]
+    },
+    "projectCenter1024": {
+      "viewport": {
+        "width": 1024,
+        "height": 720
+      },
+      "scroll": {
+        "document": 1024,
+        "body": 1024,
+        "root": 1024
+      },
+      "page": "project-center",
+      "topBar": null,
+      "editorBody": null,
+      "canvas": null,
+      "inspector": null,
+      "bottom": null,
+      "menu": null,
+      "projectCenter": {
+        "left": 0,
+        "top": 0,
+        "right": 1024,
+        "bottom": 720,
+        "width": 1024,
+        "height": 720
+      },
+      "recentList": {
+        "left": 32.67,
+        "top": 513.73,
+        "right": 976,
+        "bottom": 695.06,
+        "width": 943.33,
+        "height": 181.33
+      },
+      "cards": [
+        {
+          "left": 32.67,
+          "right": 976,
+          "top": 513.73,
+          "width": 943.33,
+          "height": 86.67
+        },
+        {
+          "left": 32.67,
+          "right": 976,
+          "top": 608.4,
+          "width": 943.33,
+          "height": 86.67
+        }
+      ],
+      "coreButtons": [
+        {
+          "id": "return-to-editor",
+          "width": 105.33,
+          "height": 44,
+          "left": 858,
+          "right": 963.33,
+          "bottom": 168.5,
+          "disabled": false
+        },
+        {
+          "id": "open-project",
+          "width": 89.33,
+          "height": 44,
+          "left": 804.74,
+          "right": 894.07,
+          "bottom": 275.7,
+          "disabled": false
+        },
+        {
+          "id": "choose-project-directory",
+          "width": 71.93,
+          "height": 44,
+          "left": 904.07,
+          "right": 976,
+          "bottom": 275.7,
+          "disabled": false
+        },
+        {
+          "id": "new-project",
+          "width": 89.33,
+          "height": 44,
+          "left": 32.67,
+          "right": 122,
+          "bottom": 346.06,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 830.67,
+          "right": 876,
+          "bottom": 570.4,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 886,
+          "right": 963.33,
+          "bottom": 570.4,
+          "disabled": false
+        },
+        {
+          "id": "recent-open",
+          "width": 45.33,
+          "height": 44,
+          "left": 830.67,
+          "right": 876,
+          "bottom": 665.06,
+          "disabled": false
+        },
+        {
+          "id": "recent-remove",
+          "width": 77.33,
+          "height": 44,
+          "left": 886,
+          "right": 963.33,
+          "bottom": 665.06,
+          "disabled": false
+        }
+      ]
+    }
+  },
+  "screenshots": {
+    "projectCenter1280": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-project-center-1280.png",
+    "editor1280": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-editor-1280.png",
+    "menu1280": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-menu-1280.png",
+    "editor1024": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-editor-1024.png",
+    "menu1024": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-menu-1024.png",
+    "projectCenter1024": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-project-center-1024.png"
+  },
+  "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4",
+  "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\project-center-v1\\docs\\evidence\\issue-102\\task4",
+  "error": null
+}

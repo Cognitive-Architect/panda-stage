@@ -42,6 +42,8 @@ import {
   ProjectChooseDirectoryResponseSchema,
   ProjectCreateAtRequestSchema,
   ProjectCreateRequestSchema,
+  ProjectOpenFolderRequestSchema,
+  ProjectOpenFolderResponseSchema,
   ProjectOpenRequestSchema,
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
@@ -103,6 +105,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return ProjectChooseDirectoryResponseSchema.parse(response);
+    },
+    openFolder: async (projectRoot: string) => {
+      const request = ProjectOpenFolderRequestSchema.parse({ projectRoot });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_OPEN_FOLDER,
+        request,
+      );
+      return ProjectOpenFolderResponseSchema.parse(response);
     },
     confirmSwitch: async (rawRequest: ProjectSwitchGuardRequest) => {
       const request = ProjectSwitchGuardRequestSchema.parse(rawRequest);

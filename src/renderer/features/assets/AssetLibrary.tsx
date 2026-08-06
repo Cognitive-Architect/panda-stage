@@ -22,12 +22,20 @@ import { AssetGrid } from './AssetGrid';
 import type { ThumbnailState } from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
 
+export type AssetWorkspaceView = 'browser' | 'details';
+
 export interface AssetLibraryProps {
   snapshot: EditorProjectSnapshot | null;
+  view?: AssetWorkspaceView;
+  onViewChange?: (view: AssetWorkspaceView) => void;
+  importRequestToken?: number;
 }
 
 export function AssetLibrary({
   snapshot,
+  view = 'browser',
+  onViewChange = () => undefined,
+  importRequestToken,
 }: AssetLibraryProps): React.JSX.Element {
   const [category, setCategory] =
     useState<AssetLibraryCategory>('background');
@@ -146,6 +154,7 @@ export function AssetLibrary({
   const selectAsset = (assetId: string): void => {
     setSelectedAssetId(assetId);
     setAuthoritativeReferences([]);
+    onViewChange('details');
   };
 
   const rebuildThumbnail = async (assetId: string): Promise<void> => {
@@ -266,70 +275,100 @@ export function AssetLibrary({
             : '尚未打开项目'}
         </output>
       </div>
-      <AssetImportPanel snapshot={snapshot} />
-      <div className="asset-library-browser">
-        <nav aria-label="素材分类" className="asset-category-tabs">
-          {ASSET_LIBRARY_CATEGORIES.map((item) => (
+      {view === 'browser' ? (
+        <>
+          <AssetImportPanel
+            importRequestToken={importRequestToken}
+            snapshot={snapshot}
+          />
+          <div
+            className="asset-library-browser"
+            data-testid="asset-browser-view"
+          >
+            <nav aria-label="素材分类" className="asset-category-tabs">
+              {ASSET_LIBRARY_CATEGORIES.map((item) => (
+                <button
+                  aria-pressed={category === item.id}
+                  className={
+                    category === item.id
+                      ? 'asset-category-active'
+                      : ''
+                  }
+                  key={item.id}
+                  onClick={() => {
+                    setCategory(item.id);
+                    setSelectedAssetId(null);
+                    setAuthoritativeReferences([]);
+                  }}
+                  type="button"
+                >
+                  <span>{item.label}</span>
+                  <strong>{counts[item.id]}</strong>
+                </button>
+              ))}
+            </nav>
+            <div className="asset-library-content">
+              <AssetGrid
+                draggingAssetId={draggingAssetId}
+                entries={entries}
+                onDragEnd={() => {
+                  setDraggingAssetId(null);
+                  setDragOver(false);
+                  setStatus('素材拖动已结束。');
+                }}
+                onDragStart={(assetId) => {
+                  setDraggingAssetId(assetId);
+                  setStatus(
+                    '正在拖动素材；载荷仅包含受控身份 ID 和枚举类型。',
+                  );
+                }}
+                onRebuildThumbnail={(assetId) =>
+                  void rebuildThumbnail(assetId)
+                }
+                onSelect={selectAsset}
+                onThumbnailError={(assetId) => {
+                  setThumbnails((current) =>
+                    current[assetId]?.status === 'missing'
+                      ? current
+                      : {
+                          ...current,
+                          [assetId]: { status: 'missing' },
+                        },
+                  );
+                }}
+                selectedAssetId={selectedAssetId}
+                thumbnails={thumbnails}
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <section
+          aria-labelledby="asset-details-view-heading"
+          className="asset-details-view"
+          data-testid="asset-details-view"
+        >
+          <div className="asset-details-view-heading">
+            <div>
+              <p className="eyebrow">素材浏览</p>
+              <h3 id="asset-details-view-heading">素材详情</h3>
+            </div>
             <button
-              aria-pressed={category === item.id}
-              className={
-                category === item.id
-                  ? 'asset-category-active'
-                  : ''
-              }
-              key={item.id}
-              onClick={() => {
-                setCategory(item.id);
-                setSelectedAssetId(null);
-                setAuthoritativeReferences([]);
-              }}
+              data-testid="asset-details-back"
+              onClick={() => onViewChange('browser')}
               type="button"
             >
-              <span>{item.label}</span>
-              <strong>{counts[item.id]}</strong>
+              返回素材库
             </button>
-          ))}
-        </nav>
-        <div className="asset-library-content">
-          <AssetGrid
-            draggingAssetId={draggingAssetId}
-            entries={entries}
-            onDragEnd={() => {
-              setDraggingAssetId(null);
-              setDragOver(false);
-              setStatus('素材拖动已结束。');
-            }}
-            onDragStart={(assetId) => {
-              setDraggingAssetId(assetId);
-              setStatus(
-                '正在拖动素材；载荷仅包含受控身份 ID 和枚举类型。',
-              );
-            }}
-            onRebuildThumbnail={(assetId) =>
-              void rebuildThumbnail(assetId)
-            }
-            onSelect={selectAsset}
-            onThumbnailError={(assetId) => {
-              setThumbnails((current) =>
-                current[assetId]?.status === 'missing'
-                  ? current
-                  : {
-                      ...current,
-                      [assetId]: { status: 'missing' },
-                    },
-              );
-            }}
-            selectedAssetId={selectedAssetId}
-            thumbnails={thumbnails}
-          />
+          </div>
           <AssetDetails
             asset={selectedAsset}
             busy={busy}
             onDelete={() => void deleteSelected()}
             references={references}
           />
-        </div>
-      </div>
+        </section>
+      )}
       <output className="asset-library-status">{status}</output>
     </section>
   );

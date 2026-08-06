@@ -1,0 +1,19 @@
+{
+  "issue": 102,
+  "task": 2,
+  "capturedFromCommit": "3ee0c14",
+  "capturedAtWindow": {
+    "width": 1280,
+    "height": 720
+  },
+  "selector": "[data-testid=\"editor-top-bar\"]",
+  "oldProjectArea": {
+    "height": 251.39584350585938,
+    "bottom": 263.3958435058594
+  },
+  "oldEditorBody": {
+    "height": 372.60418701171875,
+    "bottom": 646.0000305175781
+  },
+  "screenshot": "D:\\PandaStage-Acceptance\\project-center-v1-task2-baseline\\evidence\\old-editor-layout.png"
+}

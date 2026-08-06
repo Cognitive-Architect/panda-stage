@@ -36,9 +36,11 @@ describe('EditorShell Stage 2-B composition contract', () => {
     ]) {
       expect(shell).toContain(selector);
     }
-    expect(shell.indexOf('<EditorTopBar')).toBeLessThan(
+    expect(shell.indexOf('<CompactProjectBar')).toBeLessThan(
       shell.indexOf('<LeftWorkspace'),
     );
+    expect(shell).toContain('data-testid="editor-top-region"');
+    expect(shell).not.toContain('<EditorTopBar');
     expect(left).toContain('data-testid="left-workspace-scroll"');
     expect(styles).toMatch(
       /\.editor-layout\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u,
@@ -143,13 +145,13 @@ describe('EditorShell Stage 2-B composition contract', () => {
 
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
     expect(shell).toMatch(
-      /sessionRegion === 'start-screen'[\s\S]*?<StartScreen[\s\S]*?: projectSnapshot \?/u,
+      /page === 'project-center'[\s\S]*?<ProjectCenterScreen[\s\S]*?: projectSnapshot \?/u,
     );
     expect(shell).toContain('<CanvasWorkspace');
     expect(shell).not.toContain('<LegacyWorkspace');
     expect(compatibility).toContain('{active ? <LegacyWorkspace');
     expect(styles).not.toMatch(
-      /\.legacy-workspace\s*\{[\s\S]*?display:\s*none/u,
+      /\.legacy-workspace\s*\{[^}]*display:\s*none/u,
     );
   });
 

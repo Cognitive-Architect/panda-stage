@@ -56,7 +56,7 @@ describe('project IPC handlers', () => {
     electronMocks.removeHandler.mockClear();
   });
 
-  it('registers only the six allowlisted project operations', () => {
+  it('registers only the seven allowlisted project operations', () => {
     const remove = registerProjectIpcHandlers({
       getMainWindow: () => mainWindow(),
       projectService: projectService(),
@@ -64,6 +64,7 @@ describe('project IPC handlers', () => {
 
     expect([...electronMocks.handlers.keys()]).toEqual([
       IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY,
+      IPC_CHANNELS.PROJECT_OPEN_FOLDER,
       IPC_CHANNELS.PROJECT_CONFIRM_SWITCH,
       IPC_CHANNELS.PROJECT_CREATE,
       IPC_CHANNELS.PROJECT_CREATE_AT,
@@ -73,6 +74,34 @@ describe('project IPC handlers', () => {
 
     remove();
     expect(electronMocks.handlers.size).toBe(0);
+  });
+
+  it('opens only the validated current project folder through the main process', async () => {
+    const service = projectService();
+    const openProjectFolder = vi.fn().mockResolvedValue('');
+    registerProjectIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      projectService: service,
+      openProjectFolder,
+    });
+    const handler = electronMocks.handlers.get(
+      IPC_CHANNELS.PROJECT_OPEN_FOLDER,
+    )!;
+
+    await expect(
+      handler(event(), { projectRoot: 'D:\\projects\\folder.pandastage' }),
+    ).resolves.toEqual({ ok: true });
+    expect(openProjectFolder).toHaveBeenCalledWith(
+      'D:\\projects\\folder.pandastage',
+    );
+
+    openProjectFolder.mockResolvedValueOnce('The folder could not be opened.');
+    await expect(
+      handler(event(), { projectRoot: 'D:\\projects\\folder.pandastage' }),
+    ).resolves.toEqual({
+      ok: false,
+      error: 'The folder could not be opened.',
+    });
   });
 
   it('forwards only the parent directory, name, and metadata to createAt', async () => {

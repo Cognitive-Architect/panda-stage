@@ -30,7 +30,7 @@ import {
 const OVERLAY_PATH = 'src/renderer/shell/ProductPreviewOverlay.tsx';
 const MODEL_PATH = 'src/renderer/shell/productPreviewModel.ts';
 const SHELL_PATH = 'src/renderer/shell/EditorShell.tsx';
-const TOP_BAR_PATH = 'src/renderer/shell/EditorTopBar.tsx';
+const TOP_BAR_PATH = 'src/renderer/shell/CompactProjectBar.tsx';
 
 function readSource(path: string): string {
   return readFileSync(path, 'utf8');
@@ -389,13 +389,13 @@ describe('product preview overlay contract', () => {
     expect(shell).not.toContain("display: 'none'");
   });
 
-  it('replaces the disabled placeholder with a real top-bar entry', () => {
+  it('keeps a real preview entry in the compact project menu', () => {
     const topBar = readSource(TOP_BAR_PATH);
 
     expect(topBar).not.toContain('product-preview-placeholder');
     expect(topBar).not.toContain('产品预览（后续阶段启用）');
-    expect(topBar).toContain('data-testid="product-preview-open"');
-    expect(topBar).toContain('disabled={busy || productPreviewOpen}');
-    expect(topBar).toContain('onClick={onOpenProductPreview}');
+    expect(topBar).toContain('data-testid="menu-open-product-preview"');
+    expect(topBar).toContain('disabled={productPreviewOpen}');
+    expect(topBar).toContain('onOpenProductPreview');
   });
 });

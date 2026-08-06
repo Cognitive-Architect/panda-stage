@@ -23,18 +23,22 @@ export function LeftWorkspace({
       className="left-workspace"
       data-testid="left-workspace-scroll"
     >
-      <ProjectRecoveryPanel
-        onOpenRecentProject={onOpenRecentProject}
-        projectSnapshot={projectSnapshot}
-        recentRefreshToken={recentRefreshToken}
-      />
       <ResourceActivityDock
+        auxiliaryContent={
+          <>
+            <ProjectRecoveryPanel
+              onOpenRecentProject={onOpenRecentProject}
+              projectSnapshot={projectSnapshot}
+              recentRefreshToken={recentRefreshToken}
+            />
+            <LegacyCompatibilityActivity
+              key={`compatibility:${projectSnapshot.projectRoot}`}
+              projectRoot={projectSnapshot.projectRoot}
+            />
+          </>
+        }
         key={`resource:${projectSnapshot.projectRoot}`}
         snapshot={projectSnapshot}
-      />
-      <LegacyCompatibilityActivity
-        key={`compatibility:${projectSnapshot.projectRoot}`}
-        projectRoot={projectSnapshot.projectRoot}
       />
     </aside>
   );

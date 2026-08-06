@@ -44,14 +44,30 @@ async function scrollTargetIntoActiveViewport(
       throw new Error('Scroll target was not found: ${selector}');
     }
     const scrollViewport = target.closest(
-      '[data-testid="left-workspace-scroll"], ' +
+      '.resource-activity-body, ' +
+        '[data-testid="left-workspace-scroll"], ' +
         '[data-testid="legacy-workspace-scroll"]'
     );
+    const beforeTargetTop = target.getBoundingClientRect().top;
+    let beforeScrollTop = 0;
+    const beforeScrollY = window.scrollY;
     if (scrollViewport instanceof HTMLElement) {
       const beforeTarget = target.getBoundingClientRect();
       const beforeViewport = scrollViewport.getBoundingClientRect();
-      scrollViewport.scrollTop +=
-        beforeTarget.top - beforeViewport.top - ${topOffset};
+      beforeScrollTop = scrollViewport.scrollTop;
+      const desiredScrollTop =
+        beforeScrollTop +
+        beforeTarget.top -
+        beforeViewport.top -
+        ${topOffset};
+      const maxScrollTop = Math.max(
+        0,
+        scrollViewport.scrollHeight - scrollViewport.clientHeight,
+      );
+      scrollViewport.scrollTop = Math.min(
+        maxScrollTop,
+        Math.max(0, desiredScrollTop),
+      );
     } else {
       window.scrollTo(
         0,
@@ -82,10 +98,13 @@ async function scrollTargetIntoActiveViewport(
         'Scroll target did not enter the active viewport: ${selector}'
       );
     }
-    const expectedTop = viewportBounds.top + ${topOffset};
+    const expectedTop = scrollViewport instanceof HTMLElement
+      ? beforeTargetTop - (scrollViewport.scrollTop - beforeScrollTop)
+      : beforeTargetTop - (window.scrollY - beforeScrollY);
     if (Math.abs(targetBounds.top - expectedTop) > 4) {
       throw new Error(
-        'Scroll target did not reach the requested viewport position: ${selector}'
+        'Scroll target did not reach the requested viewport position: ${selector} ' +
+          'expectedTop=' + expectedTop + ' actualTop=' + targetBounds.top
       );
     }
     return {
@@ -193,19 +212,30 @@ async function setInput(window, selector, value, eventName = 'input') {
 }
 
 async function openProject(window) {
+  await window.webContents.executeJavaScript(`(() => {
+    if (document.querySelector('[data-editor-page="editor"]')) {
+      document.querySelector('[data-testid="open-project-center"]').click();
+    }
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-editor-page="project-center"]')`,
+      'Project Center did not open for a project switch.',
+    ),
+  );
   await setInput(
     window,
-    '.recovery-open-row input',
+    '[data-testid="project-center-screen"] .recovery-open-row input',
     projectRoot,
   );
   await window.webContents.executeJavaScript(
     waitFor(
-      "document.querySelector('.recovery-open-row button')",
+      "document.querySelector('[data-testid=\"project-center-screen\"] .recovery-open-row button')",
       'Project open button did not render.',
     ),
   );
   await window.webContents.executeJavaScript(`
-    document.querySelector('.recovery-open-row button').click()
+    document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click()
   `);
   await window.webContents.executeJavaScript(
     waitFor(
@@ -401,12 +431,12 @@ async function verifyDay19() {
     await selectResourceActivity(window, 'assets');
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.asset-import-heading button')",
+        "document.querySelector('[data-testid=\"resource-primary-action\"]')",
         'Asset activity did not render.',
       ),
     );
     await window.webContents.executeJavaScript(`
-      document.querySelector('.asset-import-heading button').click()
+      document.querySelector('[data-testid="resource-primary-action"]').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
@@ -415,6 +445,9 @@ async function verifyDay19() {
       ),
     );
     await selectResourceActivity(window, 'characters');
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="resource-primary-action"]').click()
+    `);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelectorAll(" +
@@ -455,19 +488,47 @@ async function verifyDay19() {
       assetIds.mouth,
       'change',
     );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.character-create-form button')" +
+          "?.disabled === false && " +
+          "document.querySelector(" +
+          "'.character-create-form label:nth-of-type(2) select')" +
+          `?.value === ${JSON.stringify(assetIds.normal)} && ` +
+          "document.querySelector(" +
+          "'.character-create-form label:nth-of-type(3) select')" +
+          `?.value === ${JSON.stringify(assetIds.angry)} && ` +
+          "document.querySelector(" +
+          "'.character-create-form label:nth-of-type(4) select')" +
+          `?.value === ${JSON.stringify(assetIds.mouth)}`,
+        'Character create form did not settle with the selected assets.',
+      ),
+    );
     await window.webContents.executeJavaScript(`
       document.querySelector('.character-create-form button').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelectorAll('.expression-list li').length === 2 && " +
+        "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
           "document.querySelector('.character-editor-heading h3')" +
           "?.textContent?.trim() === 'Panda' && " +
-          "document.querySelector('.character-size-warning')",
-        'Character with warnings did not render.',
+          "document.querySelectorAll(" +
+            "'.character-expression-summary-list li'" +
+          ").length === 2",
+        'Character detail did not render.',
       ),
     );
-
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="character-expression-open"]').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
+          "document.querySelectorAll('.expression-list li').length === 2 && " +
+          "document.querySelector('.character-size-warning')",
+        'Character expression view with warnings did not render.',
+      ),
+    );
     const defaultProtection =
       await window.webContents.executeJavaScript(`(() => {
         const defaultRow = document.querySelector('.expression-default');
@@ -542,6 +603,17 @@ async function verifyDay19() {
         ).dataset.expressionId
       `);
 
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="character-expression-back"]').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
+          "document.querySelector('.character-settings select')",
+        'Character detail did not reopen after expression editing.',
+      ),
+    );
+
     await setInput(
       window,
       '.character-settings input[type="number"]',
@@ -566,27 +638,11 @@ async function verifyDay19() {
       ),
     );
 
-    await scrollTargetIntoActiveViewport(
-      window,
-      '.character-manager',
-      16,
-    );
-    const configuredScreenshot =
-      await captureSection(window, '.character-manager');
-    const configuredUi =
+    const configuredSettingsUi =
       await window.webContents.executeJavaScript(`(() => ({
         characterName: document.querySelector(
           '.character-editor-heading h3'
         )?.textContent?.trim(),
-        expressionNames: [...document.querySelectorAll(
-          '.expression-fields input'
-        )].map((input) => input.value),
-        expressionAssetIds: [...document.querySelectorAll(
-          '.expression-fields select'
-        )].map((select) => select.value),
-        thumbnailCount: document.querySelectorAll(
-          '.expression-thumbnail img'
-        ).length,
         mouthValue: document.querySelector(
           '.character-settings select'
         ).value,
@@ -596,8 +652,6 @@ async function verifyDay19() {
         flipChecked: document.querySelector(
           '.character-settings input[type="checkbox"]'
         ).checked,
-        warning: document.querySelector('.character-size-warning')
-          ?.textContent?.replace(/\\s+/g, ' ').trim(),
         rendererHasNodeRequire: typeof window.require !== 'undefined',
         hasTtsControl: Boolean(document.querySelector(
           '[data-tts], button[aria-label*="TTS"]'
@@ -609,6 +663,42 @@ async function verifyDay19() {
           '.character-manager'
         )?.closest('[data-testid="legacy-workspace-scroll"]'))
       }))()`);
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="character-expression-open"]').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
+          "document.querySelectorAll('.expression-list li').length === 2 && " +
+          "document.querySelector('.character-size-warning')",
+        'Configured character expression view did not render.',
+      ),
+    );
+    await scrollTargetIntoActiveViewport(
+      window,
+      '.character-manager',
+      16,
+    );
+    const configuredScreenshot =
+      await captureSection(window, '.character-manager');
+    const configuredExpressionUi =
+      await window.webContents.executeJavaScript(`(() => ({
+        expressionNames: [...document.querySelectorAll(
+          '.expression-fields input'
+        )].map((input) => input.value),
+        expressionAssetIds: [...document.querySelectorAll(
+          '.expression-fields select'
+        )].map((select) => select.value),
+        thumbnailCount: document.querySelectorAll(
+          '.expression-thumbnail img'
+        ).length,
+        warning: document.querySelector('.character-size-warning')
+          ?.textContent?.replace(/\\s+/g, ' ').trim()
+      }))()`);
+    const configuredUi = {
+      ...configuredSettingsUi,
+      ...configuredExpressionUi,
+    };
 
     await window.webContents.executeJavaScript(`
       document.querySelector('.editor-save-button').click()
@@ -632,22 +722,56 @@ async function verifyDay19() {
     await selectResourceActivity(window, 'characters');
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-create-form') && " +
+        "document.querySelector('.character-list-items button') && " +
           "document.querySelector('.character-manager-heading span')" +
           "?.textContent?.includes('修订 0')",
-        'Character activity did not render after reopen.',
+        'Character list did not render after reopen.',
       ),
     );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('.character-list-items button').click()
+    `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelectorAll('.expression-list li').length === 2 && " +
+        "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
+          "document.querySelectorAll(" +
+            "'.character-expression-summary-list li'" +
+          ").length === 2 && " +
           "document.querySelector('.character-settings select')" +
           `?.value === ${JSON.stringify(assetIds.mouth)} && ` +
+          "document.querySelector('.character-editor-heading h3')" +
+          "?.textContent?.trim() === 'Panda'",
+        'Saved character detail did not reopen completely.',
+      ),
+    );
+    const reopenedSettingsUi =
+      await window.webContents.executeJavaScript(`(() => ({
+        characterName: document.querySelector(
+          '.character-editor-heading h3'
+        )?.textContent?.trim(),
+        mouthValue: document.querySelector(
+          '.character-settings select'
+        )?.value,
+        scaleValue: document.querySelector(
+          '.character-settings input[type="number"]'
+        )?.value,
+        flipChecked: document.querySelector(
+          '.character-settings input[type="checkbox"]'
+        ).checked
+      }))()`);
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="character-expression-open"]').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
+          "document.querySelectorAll('.expression-list li').length === 2 && " +
+          "document.querySelector('.character-size-warning') && " +
           "document.querySelector(" +
           "'.expression-list li:not(.expression-default) " +
           ".expression-fields select')?.value === " +
           JSON.stringify(assetIds.replacement),
-        'Saved character did not reopen completely.',
+        'Saved character expression view did not reopen completely.',
       ),
     );
     await scrollTargetIntoActiveViewport(
@@ -657,11 +781,8 @@ async function verifyDay19() {
     );
     const reopenedScreenshot =
       await captureSection(window, '.character-manager');
-    const reopenedUi =
+    const reopenedExpressionUi =
       await window.webContents.executeJavaScript(`(() => ({
-        characterName: document.querySelector(
-          '.character-editor-heading h3'
-        )?.textContent?.trim(),
         expressionNames: [...document.querySelectorAll(
           '.expression-fields input'
         )].map((input) => input.value),
@@ -671,19 +792,14 @@ async function verifyDay19() {
         defaultName: document.querySelector(
           '.expression-default input'
         )?.value,
-        mouthValue: document.querySelector(
-          '.character-settings select'
-        )?.value,
-        scaleValue: document.querySelector(
-          '.character-settings input[type="number"]'
-        )?.value,
-        flipChecked: document.querySelector(
-          '.character-settings input[type="checkbox"]'
-        ).checked,
         warningVisible: Boolean(document.querySelector(
           '.character-size-warning'
         ))
       }))()`);
+    const reopenedUi = {
+      ...reopenedSettingsUi,
+      ...reopenedExpressionUi,
+    };
 
     const persistedCharacter = savedProject?.characters[0];
     const evidence = {

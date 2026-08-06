@@ -13,6 +13,7 @@ export const IPC_CHANNELS = Object.freeze({
   PROJECT_CREATE: 'project:create',
   PROJECT_CREATE_AT: 'project:create-at',
   PROJECT_CHOOSE_DIRECTORY: 'project:choose-directory',
+  PROJECT_OPEN_FOLDER: 'project:open-folder',
   PROJECT_CONFIRM_SWITCH: 'project:confirm-switch',
   PROJECT_OPEN: 'project:open',
   PROJECT_SAVE: 'project:save',

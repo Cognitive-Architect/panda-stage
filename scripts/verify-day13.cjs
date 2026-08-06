@@ -103,31 +103,31 @@ async function verifyDay13Ui() {
       });
     })()`);
     const result = await window.webContents.executeJavaScript(`(() => {
-      const heading = document.querySelector('#recovery-heading');
-      const panel = document.querySelector('.recovery-panel');
-      const input = panel?.querySelector('input');
-      const buttons = [...(panel?.querySelectorAll('button') ?? [])]
+      const bar = document.querySelector('[data-testid="compact-project-bar"]');
+      const banner = document.querySelector('.recovery-prompt');
+      const buttons = [...(bar?.querySelectorAll('button') ?? [])]
         .map((button) => button.textContent?.trim());
       return {
-        heading: heading?.textContent?.trim(),
-        defaultState: panel?.querySelector('.clean-state')?.textContent?.trim(),
-        inputPlaceholder: input?.getAttribute('placeholder'),
+        heading: bar?.getAttribute('aria-label'),
+        projectName: bar?.querySelector('.compact-project-name')?.textContent?.trim(),
+        defaultState: bar?.querySelector('.clean-state')?.textContent?.trim(),
+        hasEditorPathInput: Boolean(bar?.querySelector('input')),
         actions: buttons,
-        candidateSummary: panel?.querySelector(
+        candidateSummary: banner?.querySelector(
           '.recovery-prompt-summary strong'
         )
           ?.textContent?.trim(),
-        candidateTime: panel?.querySelector(
+        candidateTime: banner?.querySelector(
           '.recovery-prompt-summary span'
         )
           ?.textContent?.trim(),
-        candidateProject: panel?.querySelector(
+        candidateProject: banner?.querySelector(
           '.recovery-details span'
         )?.textContent?.trim(),
-        candidateDetails: panel?.querySelector(
+        candidateDetails: banner?.querySelector(
           '.recovery-details summary'
         )?.textContent?.trim(),
-        candidateActions: [...(panel?.querySelectorAll(
+        candidateActions: [...(banner?.querySelectorAll(
           '.recovery-prompt button'
         ) ?? [])].map((button) => button.textContent?.trim()),
         autosaveApi: Object.keys(window.pandaStage.autosave).sort(),
@@ -145,11 +145,13 @@ async function verifyDay13Ui() {
     `);
 
     if (
-      result.heading !== '项目编辑' ||
-      result.defaultState !== '暂无未保存更改' ||
-      !result.actions.includes('打开项目') ||
-      !result.actions.includes('浏览…') ||
-      !result.actions.includes('保存整个项目') ||
+      result.heading !== '当前项目状态' ||
+      result.projectName !== exampleProject.name ||
+      result.defaultState !== '已保存' ||
+      result.hasEditorPathInput ||
+      !result.actions.includes('项目中心') ||
+      !result.actions.includes('保存') ||
+      !result.actions.some((action) => action?.includes('更多')) ||
       !result.invalidCandidate.disabled ||
       result.invalidCandidate.hint !==
         '项目文件夹路径包含 Windows 不允许的字符。' ||

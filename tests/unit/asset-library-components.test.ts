@@ -41,7 +41,20 @@ describe('asset library components', () => {
     expect(markup).toContain('背景图片');
     expect(markup).toContain('音频');
     expect(markup).toContain('导入项目素材');
-    expect(markup).toContain('素材详情');
+    expect(markup).toContain('data-testid="asset-browser-view"');
+    const detailsMarkup = renderToStaticMarkup(
+      createElement(AssetLibrary, {
+        snapshot: {
+          projectRoot: 'D:\\project.pandastage',
+          project,
+          dirty: false,
+          revision: 3,
+        },
+        view: 'details',
+      }),
+    );
+    expect(detailsMarkup).toContain('data-testid="asset-details-view"');
+    expect(detailsMarkup).toContain('素材详情');
     expect(markup).toContain('加载缩略图');
     expect(markup).not.toContain('src="assets/');
 

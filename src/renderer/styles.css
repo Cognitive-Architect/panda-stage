@@ -48,6 +48,12 @@ button:disabled {
   opacity: 0.72;
 }
 
+/* Task 4: keep primary cloud-PC actions easy to hit with a finger or mouse. */
+.task4-hit-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .app-shell {
   width: 100%;
   height: 100%;
@@ -64,6 +70,66 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.project-center-screen {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.project-center-screen > .start-screen {
+  width: min(100%, 1180px);
+  height: auto;
+  min-height: 100%;
+  padding: 24px;
+  margin: 0 auto;
+  align-content: center;
+}
+
+.project-center-screen[data-project-open='true'] > .start-screen {
+  align-content: start;
+}
+
+.project-center-current-project {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 12px;
+  background: rgb(17 35 24 / 72%);
+  gap: 14px;
+}
+
+.project-center-current-project > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.project-center-current-project h3 {
+  margin: 0;
+  color: #eef8f1;
+  font-size: 16px;
+}
+
+.project-center-current-path {
+  max-width: min(100%, 720px);
+  overflow: hidden;
+  color: #aebfb4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+}
+
+.project-center-current-project button {
+  flex: 0 0 auto;
+  min-height: 44px;
 }
 
 .start-screen {
@@ -98,6 +164,180 @@ button:disabled {
   gap: 10px;
 }
 
+.editor-layout > .editor-top-region {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.compact-project-bar {
+  display: flex;
+  width: 100%;
+  height: 56px;
+  min-width: 0;
+  max-height: 56px;
+  padding: 6px 10px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 12px;
+  background: rgb(18 31 23 / 94%);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compact-project-identity,
+.compact-project-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.compact-project-identity {
+  flex: 1 1 auto;
+}
+
+.compact-project-details {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  align-content: center;
+  gap: 1px;
+}
+
+.compact-project-details .eyebrow {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.compact-project-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #eef8f1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-project-path {
+  display: block;
+  min-width: 0;
+  max-width: min(32vw, 360px);
+  overflow: hidden;
+  color: #8fa89a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-project-path code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+}
+
+.compact-project-center-button,
+.compact-project-controls button {
+  min-height: 38px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.compact-project-center-button {
+  flex: 0 0 auto;
+  border-color: rgb(127 199 148 / 42%);
+  background: rgb(31 66 43 / 82%);
+}
+
+.compact-project-center-button.task4-hit-target,
+.compact-project-controls button.task4-hit-target,
+.compact-project-controls button[data-task4-core] {
+  min-height: 44px;
+}
+
+.compact-project-controls {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.compact-project-save-state {
+  flex: 0 1 auto;
+  max-width: 150px;
+  padding: 5px 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-project-save-state-saved {
+  color: #c2d1c7;
+  background: rgb(104 137 114 / 18%);
+}
+
+.compact-project-save-state-dirty,
+.compact-project-save-state-saving {
+  color: #ffe6ad;
+  background: rgb(155 104 18 / 28%);
+}
+
+.compact-project-save-state-failed {
+  color: #ffd4d0;
+  background: rgb(124 46 37 / 44%);
+}
+
+.compact-project-feedback {
+  min-width: 0;
+  max-width: min(24vw, 260px);
+  overflow: hidden;
+  color: #aebfb4;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-project-menu-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.compact-project-more-button {
+  border-color: rgb(154 216 172 / 35%);
+  background: rgb(255 255 255 / 5%);
+}
+
+.compact-project-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  width: max-content;
+  min-width: 190px;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 6px;
+  border: 1px solid rgb(127 199 148 / 35%);
+  border-radius: 10px;
+  background: #142019;
+  box-shadow: 0 16px 34px rgb(0 0 0 / 42%);
+  gap: 4px;
+}
+
+.compact-project-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.compact-project-menu button:hover:not(:disabled) {
+  background: #28663f;
+}
+
 .editor-layout > .recovery-panel {
   width: 100%;
   max-width: none;
@@ -112,13 +352,14 @@ button:disabled {
   min-height: 0;
   overflow: hidden;
   grid-template-columns:
-    minmax(240px, 280px)
+    minmax(320px, 360px)
     minmax(0, 1fr)
     minmax(160px, 180px);
   gap: 10px;
 }
 
 .left-workspace {
+  position: relative;
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -153,9 +394,11 @@ button:disabled {
 }
 
 .resource-activity-dock {
+  position: relative;
   display: grid;
   min-width: 0;
-  padding: 10px;
+  min-height: 0;
+  padding: 0;
   border: 1px solid rgb(127 199 148 / 20%);
   border-radius: 12px;
   background: rgb(18 31 23 / 74%);
@@ -168,6 +411,46 @@ button:disabled {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
+}
+
+.resource-activity-header {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  background: rgb(18 31 23 / 98%);
+  gap: 8px;
+}
+
+.resource-activity-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.resource-activity-primary-action,
+.resource-activity-close {
+  min-height: 44px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.resource-activity-primary-action {
+  border-color: rgb(131 211 154 / 48%);
+  background: #235739;
+  color: #e6f7ea;
+}
+
+.resource-activity-close {
+  display: none;
+}
+
+.resource-workspace-handle {
+  display: none;
 }
 
 .resource-activity-heading h2 {
@@ -190,10 +473,12 @@ button:disabled {
 
 .resource-activity-tabs button {
   min-width: 0;
+  min-height: 44px;
   padding: 8px 4px;
   color: #a9c5b0;
   background: rgb(18 44 28 / 80%);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .resource-activity-tabs button.resource-activity-tab-active {
@@ -203,6 +488,66 @@ button:disabled {
 
 .resource-activity-panel {
   min-width: 0;
+}
+
+.resource-activity-surface,
+.resource-activity-body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.resource-activity-surface {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.resource-activity-body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-color: #3f6d4e #0a100c;
+}
+
+.resource-activity-auxiliary {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  gap: 10px;
+}
+
+.resource-activity-auxiliary > * {
+  max-width: none;
+  margin: 0;
+}
+
+.resource-activity-panel > .shot-manager,
+.resource-activity-panel > .asset-library,
+.resource-activity-panel > .character-manager {
+  max-width: none;
+  padding: 10px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.resource-activity-panel > .shot-manager > .shot-manager-heading,
+.resource-activity-panel > .asset-library > .asset-library-heading,
+.resource-activity-panel > .character-manager > .character-manager-heading {
+  display: none;
+}
+
+.resource-activity-panel button {
+  min-height: 44px;
+  writing-mode: horizontal-tb;
+}
+
+.resource-activity-panel .asset-import-panel {
+  max-width: none;
+  padding: 10px;
+  margin: 0 0 10px;
+  border-radius: 10px;
 }
 
 .left-workspace .shot-workspace,
@@ -235,6 +580,79 @@ button:disabled {
 
 .left-workspace .asset-grid {
   max-height: 280px;
+}
+
+.resource-activity-panel .asset-library-browser {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.resource-activity-panel .asset-library-content {
+  display: block;
+  min-height: 0;
+}
+
+.resource-activity-panel .asset-category-tabs {
+  display: grid;
+  width: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  overflow: visible;
+}
+
+.resource-activity-panel .asset-category-tabs button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px;
+  white-space: normal;
+}
+
+.resource-activity-panel .asset-grid {
+  max-height: none;
+  padding: 4px 0 8px;
+  overflow: visible;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.resource-activity-panel .asset-details {
+  width: auto;
+  padding: 12px;
+}
+
+.asset-details-view {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  gap: 10px;
+}
+
+.asset-details-view-heading,
+.shot-create-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.asset-details-view-heading h3,
+.shot-create-heading h3 {
+  margin: 0;
+}
+
+.asset-details-view-heading button,
+.shot-create-heading button,
+.character-list-heading button,
+.character-expression-summary button,
+.character-back-button {
+  min-height: 44px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.resource-activity-panel .asset-details-view .asset-details {
+  border: 1px solid rgb(255 255 255 / 9%);
 }
 
 .legacy-compatibility-activity {
@@ -551,6 +969,13 @@ button:disabled {
 
 .asset-import-heading button {
   padding: 8px 12px;
+}
+
+.asset-import-header-note {
+  max-width: 16ch;
+  color: #91a299;
+  font-size: 10px;
+  text-align: right;
 }
 
 .asset-import-drop,
@@ -1467,6 +1892,133 @@ button:disabled {
   font-weight: 800;
 }
 
+.resource-activity-panel .shot-workspace,
+.resource-activity-panel .character-workspace {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.resource-activity-panel .shot-list,
+.resource-activity-panel .shot-editor,
+.resource-activity-panel .character-list,
+.resource-activity-panel .character-editor {
+  padding: 10px;
+}
+
+.resource-activity-panel .shot-list ol {
+  max-height: none;
+  overflow: visible;
+}
+
+.resource-activity-panel .shot-list-item > button,
+.resource-activity-panel .character-list-items button {
+  min-height: 44px;
+}
+
+.resource-activity-panel .shot-editor-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shot-create-view {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  gap: 12px;
+}
+
+.shot-create-view .shot-create-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shot-create-hint {
+  margin: 0;
+  color: #8b9b92;
+  font-size: 10px;
+}
+
+.resource-activity-panel .character-workspace {
+  display: block;
+}
+
+.resource-activity-panel .character-list,
+.resource-activity-panel .character-editor {
+  min-height: 0;
+}
+
+.resource-activity-panel .character-create-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.resource-activity-panel .character-settings {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.character-name-edit-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+}
+
+.character-expression-summary {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.character-expression-summary-list {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 7px;
+  list-style: none;
+}
+
+.character-expression-summary-list li {
+  display: grid;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.character-expression-summary-list span {
+  min-width: 0;
+  overflow: hidden;
+  color: #8fa096;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-expression-summary-list em {
+  color: #b9efc8;
+  font-size: 10px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.resource-activity-panel .expression-list li {
+  grid-template-columns: 48px minmax(0, 1fr);
+}
+
+.resource-activity-panel .expression-actions {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.resource-activity-panel .expression-add-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .recent-projects-heading,
 .recent-projects-list li,
 .recent-projects-actions {
@@ -1488,9 +2040,14 @@ button:disabled {
 .recent-projects-heading > span,
 .recent-projects-list li > div > span,
 .recent-projects-status,
-.recent-projects-empty {
+.recent-projects-empty,
+.recent-projects-safety-note {
   color: #9aaca0;
   font-size: 12px;
+}
+
+.recent-projects-safety-note {
+  margin: 0;
 }
 
 .recent-projects-list {
@@ -1508,6 +2065,10 @@ button:disabled {
   background: rgb(255 255 255 / 3%);
 }
 
+.recent-project-card {
+  align-items: flex-start;
+}
+
 .recent-projects-list li > div:first-child {
   display: grid;
   min-width: 0;
@@ -1515,11 +2076,23 @@ button:disabled {
 }
 
 .recent-project-path {
-  overflow-wrap: anywhere;
+  max-width: min(100%, 720px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-project-meta {
+  font-variant-numeric: tabular-nums;
 }
 
 .recent-projects-actions {
   flex: 0 0 auto;
+}
+
+.project-center-button {
+  border-color: rgb(127 199 148 / 34%);
+  background: rgb(31 66 43 / 72%);
 }
 
 .recovery-heading-row,
@@ -1534,6 +2107,10 @@ button:disabled {
 .recovery-heading-row,
 .recovery-status-row {
   justify-content: space-between;
+}
+
+.compact-project-controls.recovery-status-row {
+  justify-content: flex-end;
 }
 
 .recovery-heading-row h2 {
@@ -2136,7 +2713,180 @@ h1 {
   border-radius: 0;
 }
 
+/*
+ * 1024px is the narrow cloud-PC target. Keep the editor's three owned regions
+ * visible, but release the fixed desktop widths and let action groups wrap.
+ */
+@media (max-width: 1100px) {
+  .project-center-screen > .start-screen,
+  .start-screen {
+    padding: 16px;
+  }
+
+  .editor-layout {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .editor-body {
+    overflow: visible;
+    grid-template-columns:
+      minmax(52px, 56px)
+      minmax(0, 1fr)
+      minmax(140px, 160px);
+    gap: 8px;
+  }
+
+  .left-workspace {
+    z-index: 20;
+    width: 56px;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .resource-activity-dock {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 56px;
+    height: auto;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .resource-workspace-handle {
+    position: absolute;
+    z-index: 32;
+    top: 0;
+    left: 0;
+    display: grid;
+    width: 52px;
+    height: 100%;
+    min-height: 52px;
+    padding: 8px 3px;
+    border: 1px solid rgb(127 199 148 / 34%);
+    border-radius: 12px;
+    color: #d8f2df;
+    background: #142019;
+    place-items: center;
+    gap: 4px;
+  }
+
+  .resource-workspace-handle span {
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .resource-workspace-handle strong {
+    font-size: 10px;
+    writing-mode: vertical-rl;
+  }
+
+  .resource-activity-surface {
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    left: 0;
+    width: min(360px, calc(100vw - 24px));
+    height: 100%;
+    overflow: hidden;
+    border: 1px solid rgb(127 199 148 / 38%);
+    border-radius: 14px;
+    background: #122018;
+    box-shadow: 18px 0 34px rgb(0 0 0 / 32%);
+    transition:
+      opacity 120ms ease,
+      transform 120ms ease,
+      visibility 120ms ease;
+  }
+
+  .resource-activity-dock:not(.resource-activity-dock-open)
+    .resource-activity-surface {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-8px);
+  }
+
+  .resource-activity-dock-open .resource-workspace-handle {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .resource-activity-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .resource-activity-heading {
+    align-items: flex-start;
+  }
+
+  .resource-activity-heading > div:first-child {
+    min-width: 0;
+  }
+
+  .resource-activity-heading h2 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .compact-project-path {
+    max-width: min(25vw, 280px);
+  }
+
+  .compact-project-feedback {
+    max-width: min(18vw, 180px);
+  }
+
+  .recent-projects-list li {
+    align-items: flex-start;
+  }
+
+  .recent-projects-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .new-project-dialog,
+  .product-preview-overlay,
+  .close-confirm-overlay {
+    padding: 16px;
+  }
+}
+
 @media (max-width: 720px) {
+  .compact-project-bar {
+    gap: 6px;
+  }
+
+  .compact-project-center-button,
+  .compact-project-controls button {
+    min-height: 44px;
+    padding: 6px 8px;
+  }
+
+  .compact-project-path,
+  .compact-project-feedback {
+    display: none;
+  }
+
+  .compact-project-name {
+    max-width: 28vw;
+  }
+
+  .compact-project-save-state {
+    max-width: 112px;
+  }
+
   .app-header,
   .transport-bar {
     align-items: flex-start;
@@ -2193,6 +2943,30 @@ h1 {
   .expression-actions {
     grid-column: 1 / -1;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .project-center-current-project,
+  .recent-projects-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-center-current-project button,
+  .recent-projects-actions button {
+    min-height: 44px;
+  }
+
+  .recent-projects-actions {
+    flex-wrap: wrap;
+  }
+
+  .new-project-field-row,
+  .new-project-actions {
+    flex-direction: column;
+  }
+
+  .new-project-actions button {
+    width: 100%;
   }
 }
 

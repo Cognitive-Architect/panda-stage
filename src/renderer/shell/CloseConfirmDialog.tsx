@@ -72,7 +72,8 @@ export function CloseConfirmDialog({
         </output>
         <div className="close-confirm-actions">
           <button
-            className="close-confirm-save"
+            className="close-confirm-save task4-hit-target"
+            data-task4-core="close-save"
             data-testid="close-confirm-save"
             disabled={busy || !presentation.saveEnabled}
             onClick={() => onChoose('save-and-close')}
@@ -81,7 +82,8 @@ export function CloseConfirmDialog({
             保存后关闭
           </button>
           <button
-            className="close-confirm-discard"
+            className="close-confirm-discard task4-hit-target"
+            data-task4-core="close-discard"
             data-testid="close-confirm-discard"
             disabled={busy}
             onClick={() => onChoose('close-without-saving')}
@@ -90,7 +92,8 @@ export function CloseConfirmDialog({
             不保存关闭
           </button>
           <button
-            className="close-confirm-cancel"
+            className="close-confirm-cancel task4-hit-target"
+            data-task4-core="close-cancel"
             data-testid="close-confirm-cancel"
             disabled={busy}
             onClick={() => onChoose('cancel')}

@@ -29,12 +29,15 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { CanvasWorkspace } from './CanvasWorkspace';
-import { EditorTopBar } from './EditorTopBar';
+import {
+  CompactProjectBar,
+  type CompactProjectSaveState,
+} from './CompactProjectBar';
 import { LeftWorkspace } from './LeftWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
+import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
-import { StartScreen } from './StartScreen';
 import { useDebugFlag } from './useDebugFlag';
 import {
   CLOSE_PROJECT_CLEAN_PROMPT,
@@ -58,6 +61,7 @@ export type EditorShellState = 'no-project' | 'editor';
 export type EditorShellSessionRegion =
   | 'start-screen'
   | 'editor-layout';
+export type EditorShellPage = 'project-center' | 'editor';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
@@ -69,6 +73,15 @@ export function getEditorShellSessionRegion(
   state: EditorShellState,
 ): EditorShellSessionRegion {
   return state === 'no-project' ? 'start-screen' : 'editor-layout';
+}
+
+export function getEditorShellPage(
+  requestedPage: EditorShellPage,
+  snapshot: EditorProjectSnapshot | null,
+): EditorShellPage {
+  return requestedPage === 'editor' && snapshot
+    ? 'editor'
+    : 'project-center';
 }
 
 export function getEditorShellRecoveryCandidate(
@@ -363,12 +376,29 @@ export function EditorShell({
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closeConfirmStatus, setCloseConfirmStatus] = useState('');
+  const [saveActivity, setSaveActivity] = useState<{
+    phase: 'idle' | 'saving' | 'failed';
+    revision: number | null;
+  }>({ phase: 'idle', revision: null });
+  const [requestedPage, setRequestedPage] =
+    useState<EditorShellPage>('project-center');
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
+  const page = getEditorShellPage(requestedPage, projectSnapshot);
   const recoveryCandidate = getEditorShellRecoveryCandidate(
     shellState,
     sessionSnapshot,
   );
+  const saveState: CompactProjectSaveState =
+    saveActivity.phase === 'saving'
+      ? 'saving'
+      : saveActivity.phase === 'failed' &&
+          projectSnapshot &&
+          saveActivity.revision === projectSnapshot.revision
+        ? 'failed'
+        : projectSnapshot?.dirty
+          ? 'dirty'
+          : 'saved';
   const { debug, gateA } = useDebugFlag();
 
   useEffect(() => {
@@ -414,7 +444,9 @@ export function EditorShell({
     const nextSession = await session.switchProject(projectRoot);
     // The preview belongs to the project that was open when it was requested.
     setProductPreviewOpen(false);
+    setSaveActivity({ phase: 'idle', revision: null });
     updateSession(nextSession, cleanStatus);
+    setRequestedPage('editor');
   };
 
   const switchToRecentProject = async (
@@ -430,9 +462,27 @@ export function EditorShell({
         nextSession,
         '已从最近项目打开，暂无未保存更改。',
       );
+      setSaveActivity({ phase: 'idle', revision: null });
+      setRequestedPage('editor');
     } catch (error) {
       throw new Error(projectOpenErrorMessage(error), { cause: error });
     }
+  };
+
+  const openProjectCenter = (): void => {
+    setProductPreviewOpen(false);
+    setRequestedPage('project-center');
+    setStatus(
+      projectSnapshot
+        ? '项目中心已打开，当前项目与编辑状态保持不变。'
+        : '请选择一个 .pandastage 项目文件夹。',
+    );
+  };
+
+  const returnToEditor = (): void => {
+    if (!projectSnapshot) return;
+    setRequestedPage('editor');
+    setStatus('已返回编辑器，当前镜头与编辑状态保持不变。');
   };
 
   const openProject = async (): Promise<void> => {
@@ -558,6 +608,29 @@ export function EditorShell({
     setProductPreviewOpen(true);
   };
 
+  const openProjectFolder = async (): Promise<void> => {
+    if (!projectSnapshot) return;
+    setBusy(true);
+    try {
+      const response = await window.pandaStage.project.openFolder(
+        projectSnapshot.projectRoot,
+      );
+      setStatus(
+        response.ok
+          ? '已打开项目文件夹。'
+          : `无法打开项目文件夹：${response.error}`,
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? `无法打开项目文件夹：${error.message}`
+          : '无法打开项目文件夹，请稍后重试。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const closeProductPreview = (): void => {
     setProductPreviewOpen(false);
   };
@@ -595,7 +668,9 @@ export function EditorShell({
     setCloseConfirmOpen(false);
     setCloseConfirmStatus('');
     setOpenCandidatePath('');
+    setSaveActivity({ phase: 'idle', revision: null });
     setRecentRefreshToken((current) => current + 1);
+    setRequestedPage('project-center');
     setStatus(closeProjectStatusMessage(choice, dirtyBeforeClose));
   };
 
@@ -613,15 +688,21 @@ export function EditorShell({
       if (choice === 'save-and-close' && dirtyBeforeClose) {
         const result = await session.saveCurrentProject();
         if (!result.ok) {
+          setSaveActivity({
+            phase: 'failed',
+            revision: result.savedRevision,
+          });
           setCloseConfirmStatus(
             closeProjectSaveFailureMessage(result.error.message),
           );
           return;
         }
         if (result.acknowledgement === 'stale') {
+          setSaveActivity({ phase: 'idle', revision: null });
           setCloseConfirmStatus(CLOSE_PROJECT_STALE_SAVE_MESSAGE);
           return;
         }
+        setSaveActivity({ phase: 'idle', revision: null });
       }
       await finishCloseProject(choice, dirtyBeforeClose);
     } catch (error) {
@@ -668,21 +749,30 @@ export function EditorShell({
 
   const saveProject = async (): Promise<void> => {
     if (!projectSnapshot?.dirty) return;
+    const saveRevision = projectSnapshot.revision;
+    setSaveActivity({ phase: 'saving', revision: saveRevision });
     setBusy(true);
     try {
       const result = await session.saveCurrentProject();
       if (!result.ok) {
+        setSaveActivity({
+          phase: 'failed',
+          revision: result.savedRevision,
+        });
         setStatus(result.error.message);
       } else if (result.acknowledgement === 'stale') {
+        setSaveActivity({ phase: 'idle', revision: null });
         setStatus(
           `已保存修订 ${result.savedRevision}，但编辑器中仍有更新的未保存更改。`,
         );
       } else {
+        setSaveActivity({ phase: 'idle', revision: null });
         setStatus(
           '项目已保存。',
         );
       }
     } catch (error) {
+      setSaveActivity({ phase: 'failed', revision: saveRevision });
       setStatus(error instanceof Error ? error.message : '保存项目失败。');
     } finally {
       setBusy(false);
@@ -694,62 +784,60 @@ export function EditorShell({
       className="app-shell editor-shell"
       data-debug={debug ? 'enabled' : 'disabled'}
       data-editor-shell-state={shellState}
+      data-editor-shell-region={sessionRegion}
+      data-editor-page={page}
       data-gate-a={gateA ? 'enabled' : 'disabled'}
     >
-      {sessionRegion === 'start-screen' ? (
-        <div className="start-screen" data-testid="start-screen">
-          <StartScreen
-            busy={busy}
-            newProjectDialogOpen={newProjectDialogOpen}
-            onChooseProjectDirectory={chooseProjectDirectory}
-            onOpenProject={openProject}
-            onOpenRecentProject={switchToRecentProject}
-            onOpenCandidatePathChange={setOpenCandidatePath}
-            onRequestNewProject={requestNewProject}
-            openCandidatePath={openCandidatePath}
-            recentRefreshToken={recentRefreshToken}
-            status={status}
-          />
-          {newProjectDialogOpen ? (
-            <NewProjectDialog
-              busy={busy}
-              onCancel={cancelNewProject}
-              onChooseParentDirectory={chooseNewProjectParentDirectory}
-              onCreateProject={createProject}
-              onParentDirectoryChange={setNewProjectParentDirectory}
-              onProjectNameChange={setNewProjectName}
-              parentDirectory={newProjectParentDirectory}
-              projectName={newProjectName}
-              status={newProjectStatus}
-            />
-          ) : null}
-        </div>
+      {page === 'project-center' ? (
+        <ProjectCenterScreen
+          busy={busy}
+          currentProject={projectSnapshot}
+          newProjectDialogOpen={newProjectDialogOpen}
+          onChooseProjectDirectory={chooseProjectDirectory}
+          onOpenProject={openProject}
+          onOpenRecentProject={switchToRecentProject}
+          onOpenCandidatePathChange={setOpenCandidatePath}
+          onRequestNewProject={requestNewProject}
+          onReturnToEditor={returnToEditor}
+          openCandidatePath={openCandidatePath}
+          recentRefreshToken={recentRefreshToken}
+          recoveryBanner={
+            recoveryCandidate && projectSnapshot ? (
+              <RecoveryCandidateBanner
+                busy={busy}
+                candidate={recoveryCandidate}
+                onIgnore={ignoreRecovery}
+                onRestore={restoreRecovery}
+              />
+            ) : null
+          }
+          status={status}
+        />
       ) : projectSnapshot ? (
         <div className="editor-layout" data-testid="editor-layout">
-          <EditorTopBar
-            busy={busy}
-            closeConfirmOpen={closeConfirmOpen}
-            onChooseProjectDirectory={chooseProjectDirectory}
-            onOpenProductPreview={openProductPreview}
-            onOpenProject={openProject}
-            onOpenCandidatePathChange={setOpenCandidatePath}
-            onRequestCloseProject={requestCloseProject}
-            onSaveProject={saveProject}
-            openCandidatePath={openCandidatePath}
-            productPreviewOpen={productPreviewOpen}
-            projectSnapshot={projectSnapshot}
-            recoveryBanner={
-              recoveryCandidate ? (
-                <RecoveryCandidateBanner
-                  busy={busy}
-                  candidate={recoveryCandidate}
-                  onIgnore={ignoreRecovery}
-                  onRestore={restoreRecovery}
-                />
-              ) : null
-            }
-            status={status}
-          />
+          <div className="editor-top-region" data-testid="editor-top-region">
+            <CompactProjectBar
+              busy={busy}
+              closeConfirmOpen={closeConfirmOpen}
+              onOpenProductPreview={openProductPreview}
+              onOpenProjectCenter={openProjectCenter}
+              onOpenProjectFolder={openProjectFolder}
+              onRequestCloseProject={requestCloseProject}
+              onSaveProject={saveProject}
+              productPreviewOpen={productPreviewOpen}
+              projectSnapshot={projectSnapshot}
+              saveState={saveState}
+              status={status}
+            />
+            {recoveryCandidate ? (
+              <RecoveryCandidateBanner
+                busy={busy}
+                candidate={recoveryCandidate}
+                onIgnore={ignoreRecovery}
+                onRestore={restoreRecovery}
+              />
+            ) : null}
+          </div>
           <div className="editor-body" data-testid="editor-body">
             <LeftWorkspace
               onOpenRecentProject={switchToRecentProject}
@@ -790,6 +878,19 @@ export function EditorShell({
             />
           ) : null}
         </div>
+      ) : null}
+      {page === 'project-center' && newProjectDialogOpen ? (
+        <NewProjectDialog
+          busy={busy}
+          onCancel={cancelNewProject}
+          onChooseParentDirectory={chooseNewProjectParentDirectory}
+          onCreateProject={createProject}
+          onParentDirectoryChange={setNewProjectParentDirectory}
+          onProjectNameChange={setNewProjectName}
+          parentDirectory={newProjectParentDirectory}
+          projectName={newProjectName}
+          status={newProjectStatus}
+        />
       ) : null}
       {gateA ? (
         <div
