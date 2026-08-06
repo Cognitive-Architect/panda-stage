@@ -144,7 +144,7 @@ async function verifyDay16() {
               activityTab.click();
             }
             const button = document.querySelector(
-              '.asset-import-heading button'
+              '[data-testid="resource-primary-action"]'
             );
             const panel = document.querySelector(
               '[data-testid="resource-activity-panel"]'
@@ -167,7 +167,7 @@ async function verifyDay16() {
     `);
     await window.webContents.executeJavaScript(`
       (() => {
-        document.querySelector('.asset-import-heading button').click();
+        document.querySelector('[data-testid="resource-primary-action"]').click();
         return new Promise((resolve, reject) => {
           const deadline = Date.now() + 10000;
           const poll = () => {
@@ -185,7 +185,7 @@ async function verifyDay16() {
     const ui = await window.webContents.executeJavaScript(`(() => ({
       heading: document.querySelector('.asset-import-heading h2')
         ?.textContent?.trim(),
-      button: document.querySelector('.asset-import-heading button')
+      button: document.querySelector('[data-testid="resource-primary-action"]')
         ?.textContent?.trim(),
       dropText: document.querySelector('.asset-import-drop')
         ?.textContent?.trim(),
@@ -211,7 +211,7 @@ async function verifyDay16() {
     const successScreenshot = await window.webContents.capturePage();
     await window.webContents.executeJavaScript(`
       (() => {
-        document.querySelector('.asset-import-heading button').click();
+        document.querySelector('[data-testid="resource-primary-action"]').click();
         return new Promise((resolve, reject) => {
           const deadline = Date.now() + 10000;
           const poll = () => {
@@ -309,7 +309,7 @@ async function verifyDay16() {
 
     if (
       ui.heading !== '导入项目素材' ||
-      ui.button !== '选择 PNG / JPG / MP3 / WAV' ||
+      ui.button !== '导入素材' ||
       !ui.dropText?.includes('SHA-256') ||
       ui.resultStatus !== 'imported' ||
       !ui.resultMessage?.includes('已导入') ||
