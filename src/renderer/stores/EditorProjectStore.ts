@@ -4,7 +4,10 @@ import {
   type Asset,
   type Project,
 } from '../../domain';
-import type { ExecuteHistoryOptions } from '../../history/HistoryCommand';
+import type {
+  ExecuteHistoryOptions,
+  HistoryReplayEffects,
+} from '../../history/HistoryCommand';
 import { HistoryStore } from '../../history/HistoryStore';
 import { ProjectCommand } from '../../history/commands/ProjectCommand';
 
@@ -50,6 +53,7 @@ export class EditorProjectStore {
     rawProject: Project,
     label = 'Edit project',
     options: ExecuteHistoryOptions = {},
+    replayEffects: HistoryReplayEffects = {},
   ): void {
     const current = this.requireSnapshot();
     const project = ProjectSchema.parse(rawProject);
@@ -61,6 +65,7 @@ export class EditorProjectStore {
         current.project,
         project,
         (next) => this.applyHistoryProject(next),
+        replayEffects,
       ),
       options,
     );

@@ -2,6 +2,7 @@ import {
   EditorProjectStore,
   editorProjectStore,
 } from './EditorProjectStore';
+import type { Shot } from '../../domain';
 import {
   shotStore,
   type ShotStore,
@@ -9,9 +10,15 @@ import {
 
 type Listener = () => void;
 
+interface SelectionContext {
+  projectId: string;
+  projectRoot: string;
+  shotId: string;
+}
+
 export class LayerSelectionStore {
-  private currentProjectRoot: string | null = null;
   private selectedLayerId: string | null = null;
+  private selectedContext: SelectionContext | null = null;
   private readonly listeners = new Set<Listener>();
   private readonly unsubscribeEditor: () => void;
   private readonly unsubscribeShot: () => void;
@@ -46,14 +53,39 @@ export class LayerSelectionStore {
       throw new Error(`找不到当前镜头中的图层：${layerId}`);
     }
     if (shot.backgroundLayerId === layer.id) {
-      this.setSelectedLayerId(null);
+      this.clear();
       return;
     }
-    this.setSelectedLayerId(layer.id);
+    this.selectExplicit(layer.id);
+  }
+
+  /**
+   * Backgrounds are intentionally not hit-testable in the ordinary canvas
+   * path. The inspector calls this explicit entry point to enter background
+   * management mode without weakening the default anti-misclick contract.
+   */
+  selectBackground(): void {
+    const shot = this.currentShotValue();
+    const layerId = shot?.backgroundLayerId;
+    if (!shot || !layerId) {
+      throw new Error('当前镜头没有可管理的正式背景。');
+    }
+    this.selectExplicit(layerId);
+  }
+
+  selectExplicit(layerId: string): void {
+    const context = this.currentContext();
+    const layer = context?.shot.layers.find(
+      (candidate) => candidate.id === layerId,
+    );
+    if (!context || !layer) {
+      throw new Error(`找不到当前镜头中的图层：${layerId}`);
+    }
+    this.setSelectedLayerId(layer.id, context);
   }
 
   clear(): void {
-    this.setSelectedLayerId(null);
+    this.setSelectedLayerId(null, null);
   }
 
   dispose(): void {
@@ -62,34 +94,48 @@ export class LayerSelectionStore {
     this.listeners.clear();
   }
 
-  private currentShotValue() {
-    const project = this.editorStore.getSnapshot()?.project;
+  private currentShotValue(): Shot | null {
+    return this.currentContext()?.shot ?? null;
+  }
+
+  private currentContext(): (SelectionContext & { shot: Shot }) | null {
+    const snapshot = this.editorStore.getSnapshot();
     const shotId = this.currentShot.getCurrentShotId();
-    return project?.shots.find((shot) => shot.id === shotId) ?? null;
+    const shot = snapshot?.project.shots.find(
+      (candidate) => candidate.id === shotId,
+    );
+    if (!snapshot || !shot) return null;
+    return {
+      projectId: snapshot.project.id,
+      projectRoot: snapshot.projectRoot,
+      shotId: shot.id,
+      shot,
+    };
   }
 
   private reconcileSelection(): void {
-    const editorSnapshot = this.editorStore.getSnapshot();
-    const projectRoot = editorSnapshot?.projectRoot ?? null;
-    if (projectRoot !== this.currentProjectRoot) {
-      this.currentProjectRoot = projectRoot;
-      this.setSelectedLayerId(null);
-      return;
-    }
-    if (!this.selectedLayerId) return;
-    const shot = this.currentShotValue();
+    if (!this.selectedLayerId || !this.selectedContext) return;
+    const context = this.currentContext();
     if (
-      !shot ||
-      shot.backgroundLayerId === this.selectedLayerId ||
-      !shot.layers.some((layer) => layer.id === this.selectedLayerId)
+      !context ||
+      context.projectId !== this.selectedContext.projectId ||
+      context.projectRoot !== this.selectedContext.projectRoot ||
+      context.shotId !== this.selectedContext.shotId ||
+      !context.shot.layers.some(
+        (layer) => layer.id === this.selectedLayerId,
+      )
     ) {
-      this.setSelectedLayerId(null);
+      this.setSelectedLayerId(null, null);
     }
   }
 
-  private setSelectedLayerId(layerId: string | null): void {
+  private setSelectedLayerId(
+    layerId: string | null,
+    context: SelectionContext | null,
+  ): void {
     if (layerId === this.selectedLayerId) return;
     this.selectedLayerId = layerId;
+    this.selectedContext = context;
     for (const listener of this.listeners) listener();
   }
 }
