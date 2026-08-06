@@ -412,12 +412,12 @@ async function verifyDay19() {
     await selectResourceActivity(window, 'assets');
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.asset-import-heading button')",
+        "document.querySelector('[data-testid=\"resource-primary-action\"]')",
         'Asset activity did not render.',
       ),
     );
     await window.webContents.executeJavaScript(`
-      document.querySelector('.asset-import-heading button').click()
+      document.querySelector('[data-testid="resource-primary-action"]').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
