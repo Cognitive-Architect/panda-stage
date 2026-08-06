@@ -16,12 +16,23 @@ import type { ThumbnailState } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
 import { CharacterList } from './CharacterList';
 
+export type CharacterWorkspaceView =
+  | 'legacy'
+  | 'list'
+  | 'create'
+  | 'detail'
+  | 'expression';
+
 export interface CharacterManagerProps {
   snapshot: EditorProjectSnapshot | null;
+  view?: CharacterWorkspaceView;
+  onViewChange?: (view: CharacterWorkspaceView) => void;
 }
 
 export function CharacterManager({
   snapshot,
+  view = 'legacy',
+  onViewChange = () => undefined,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] =
@@ -138,6 +149,7 @@ export function CharacterManager({
     );
     if (next) {
       setSelectedCharacterId(next.characters.at(-1)!.id);
+      onViewChange('detail');
     }
   };
 
@@ -161,15 +173,43 @@ export function CharacterManager({
         </div>
       </div>
       <div className="character-workspace">
-        <CharacterList
-          characters={project?.characters ?? []}
-          disabled={!snapshot}
-          imageAssets={imageAssets}
-          onCreate={createCharacter}
-          onSelect={setSelectedCharacterId}
-          selectedCharacterId={selectedCharacterId}
-        />
-        <CharacterEditor
+        {view === 'legacy' ? (
+          <CharacterList
+            characters={project?.characters ?? []}
+            disabled={!snapshot}
+            imageAssets={imageAssets}
+            mode="legacy"
+            onCreate={createCharacter}
+            onSelect={setSelectedCharacterId}
+            selectedCharacterId={selectedCharacterId}
+          />
+        ) : view === 'list' ? (
+          <CharacterList
+            characters={project?.characters ?? []}
+            disabled={!snapshot}
+            imageAssets={imageAssets}
+            mode="list"
+            onCreate={createCharacter}
+            onSelect={(characterId) => {
+              setSelectedCharacterId(characterId);
+              onViewChange('detail');
+            }}
+            selectedCharacterId={selectedCharacterId}
+          />
+        ) : view === 'create' ? (
+          <CharacterList
+            characters={project?.characters ?? []}
+            disabled={!snapshot}
+            imageAssets={imageAssets}
+            mode="create"
+            onBack={() => onViewChange('list')}
+            onCreate={createCharacter}
+            onSelect={setSelectedCharacterId}
+            selectedCharacterId={selectedCharacterId}
+          />
+        ) : null}
+        {view === 'legacy' || view === 'detail' || view === 'expression' ? (
+          <CharacterEditor
           character={selectedCharacter}
           disabled={!snapshot}
           imageAssets={imageAssets}
@@ -200,6 +240,7 @@ export function CharacterManager({
             );
             if (next) {
               setSelectedCharacterId(next.characters[0]?.id ?? null);
+              onViewChange('list');
             }
           }}
           onRemoveExpression={(expressionId) => {
@@ -289,8 +330,18 @@ export function CharacterManager({
             }));
           }}
           thumbnails={thumbnails}
+          view={
+            view === 'legacy'
+              ? 'full'
+              : view === 'expression'
+                ? 'expression'
+                : 'detail'
+          }
           warnings={warnings}
-        />
+          onBackToDetail={() => onViewChange('detail')}
+          onOpenExpressions={() => onViewChange('expression')}
+          />
+        ) : null}
       </div>
       <output className="character-manager-status">{status}</output>
     </section>

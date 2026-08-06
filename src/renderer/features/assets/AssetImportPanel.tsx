@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   AssetImportResult,
 } from '../../../shared/asset-import-api';
@@ -9,6 +9,7 @@ import { useAssetDrop } from './useAssetDrop';
 
 export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
+  importRequestToken?: number;
 }
 
 function resultClass(result: AssetImportResult): string {
@@ -17,6 +18,7 @@ function resultClass(result: AssetImportResult): string {
 
 export function AssetImportPanel({
   snapshot,
+  importRequestToken,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
@@ -38,7 +40,7 @@ export function AssetImportPanel({
     [],
   );
 
-  const chooseFiles = async (): Promise<void> => {
+  const chooseFiles = useCallback(async (): Promise<void> => {
     const current = editorProjectStore.getSnapshot();
     if (!current) return;
     setBusy(true);
@@ -55,7 +57,19 @@ export function AssetImportPanel({
     } finally {
       setBusy(false);
     }
-  };
+  }, [applyResponse]);
+
+  const lastImportRequest = useRef(importRequestToken ?? 0);
+  useEffect(() => {
+    if (
+      importRequestToken === undefined ||
+      importRequestToken === lastImportRequest.current
+    ) {
+      return;
+    }
+    lastImportRequest.current = importRequestToken;
+    void chooseFiles();
+  }, [chooseFiles, importRequestToken]);
 
   const importDroppedFiles = useCallback(
     async (files: readonly File[]): Promise<void> => {
@@ -97,13 +111,7 @@ export function AssetImportPanel({
           <p className="eyebrow">安全素材导入</p>
           <h2 id="asset-import-heading">导入项目素材</h2>
         </div>
-        <button
-          disabled={busy || snapshot === null}
-          onClick={() => void chooseFiles()}
-          type="button"
-        >
-          选择 PNG / JPG / MP3 / WAV
-        </button>
+        <span className="asset-import-header-note">使用工作区顶部“导入素材”</span>
       </div>
       <p className="asset-import-drop">
         {snapshot

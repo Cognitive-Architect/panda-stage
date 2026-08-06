@@ -493,13 +493,13 @@ async function verifyIssue81() {
       'document.querySelectorAll(".asset-category-tabs button")[2]?.getAttribute("aria-pressed") === "true"',
       'A audio category did not activate.',
     );
-    await click(window, '.asset-card');
-    await click(window, '.asset-import-panel button');
+    await click(window, '[data-testid="resource-primary-action"]');
     await waitFor(
       window,
       'document.querySelectorAll(".asset-import-results li").length === 1',
       'A import result did not render.',
     );
+    await click(window, '.asset-card');
     const aAsset = await snapshot(window);
     await openProject(window, projectBRoot);
     await waitForActivity(window, 'shots');
@@ -513,10 +513,23 @@ async function verifyIssue81() {
     // T2/T3: exercise both character forms with the same character id across
     // distinct projects, so a stale child key cannot hide the bug.
     await switchActivity(window, 'characters');
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitFor(
+      window,
+      'document.querySelector("[data-testid=\\"character-create-view\\"]")',
+      'Character create subview did not open.',
+    );
     await setInput(
       window,
       '.character-create-form input',
       'B create draft must not return',
+    );
+    await click(window, '[data-testid="character-create-back"]');
+    await click(window, '.character-list-items button');
+    await waitFor(
+      window,
+      'document.querySelector(".character-settings input")',
+      'Character detail subview did not open.',
     );
     await setInput(
       window,
@@ -528,10 +541,23 @@ async function verifyIssue81() {
     await switchActivity(window, 'characters');
     const aAfterB = await snapshot(window);
 
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitFor(
+      window,
+      'document.querySelector("[data-testid=\\"character-create-view\\"]")',
+      'A character create subview did not open.',
+    );
     await setInput(
       window,
       '.character-create-form input',
       'A create draft must not enter B',
+    );
+    await click(window, '[data-testid="character-create-back"]');
+    await click(window, '.character-list-items button');
+    await waitFor(
+      window,
+      'document.querySelector(".character-settings input")',
+      'A character detail subview did not open.',
     );
     await setInput(
       window,
@@ -542,10 +568,23 @@ async function verifyIssue81() {
     await waitForActivity(window, 'shots');
     await switchActivity(window, 'characters');
     const bAfterACharacters = await snapshot(window);
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitFor(
+      window,
+      'document.querySelector("[data-testid=\\"character-create-view\\"]")',
+      'B second character create subview did not open.',
+    );
     await setInput(
       window,
       '.character-create-form input',
       'B second draft must not enter A',
+    );
+    await click(window, '[data-testid="character-create-back"]');
+    await click(window, '.character-list-items button');
+    await waitFor(
+      window,
+      'document.querySelector(".character-settings input")',
+      'B second character detail subview did not open.',
     );
     await setInput(
       window,
@@ -645,7 +684,7 @@ async function verifyIssue81() {
     if (
       aAfterB.activity !== 'characters' ||
       aAfterB.charCreateDraft === 'B create draft must not return' ||
-      aAfterB.charEditorDraft !== projectA.characters[0].name ||
+      aAfterB.charEditorDraft !== null ||
       aAfterB.dirty ||
       aAfterB.revision !== 0
     ) {
@@ -654,13 +693,13 @@ async function verifyIssue81() {
     if (
       bAfterACharacters.activity !== 'characters' ||
       bAfterACharacters.charCreateDraft === 'A create draft must not enter B' ||
-      bAfterACharacters.charEditorDraft !== projectB.characters[0].name
+      bAfterACharacters.charEditorDraft !== null
     ) {
       failures.push('A character state leaked into B.');
     }
     if (
       aFinal.charCreateDraft === 'B second draft must not enter A' ||
-      aFinal.charEditorDraft !== projectA.characters[0].name
+      aFinal.charEditorDraft !== null
     ) {
       failures.push('B character state leaked back into A.');
     }

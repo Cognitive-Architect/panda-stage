@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { SHOT_MIN_DURATION_MS, type Shot } from '../../../domain';
+import type { Shot } from '../../../domain';
+import { ShotCreateForm } from './ShotCreateForm';
 import { ShotListItem } from './ShotListItem';
 
 export function nextAvailableShotName(
@@ -20,6 +20,8 @@ export interface ShotListProps {
   onCreate: (name: string, durationMs: number) => boolean;
   onMove: (shotId: string, targetIndex: number) => void;
   onSelect: (shotId: string) => void;
+  onBack?: () => void;
+  showCreateForm?: boolean;
 }
 
 export function ShotList({
@@ -29,18 +31,13 @@ export function ShotList({
   onCreate,
   onMove,
   onSelect,
+  onBack = () => undefined,
+  showCreateForm = true,
 }: ShotListProps): React.JSX.Element {
   const suggestedName = nextAvailableShotName(shots);
-  const [name, setName] = useState(() => suggestedName);
-  const [nameEdited, setNameEdited] = useState(false);
-  const [durationMs, setDurationMs] = useState(3_000);
-
-  useEffect(() => {
-    if (!nameEdited) setName(suggestedName);
-  }, [nameEdited, suggestedName]);
 
   return (
-    <aside className="shot-list">
+    <aside className="shot-list" data-testid="shot-list-view">
       <div className="shot-list-heading">
         <h3>镜头列表</h3>
         <span>{shots.length} 个镜头</span>
@@ -65,45 +62,14 @@ export function ShotList({
           ))}
         </ol>
       )}
-      <form
-        className="shot-create-form"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (onCreate(name, durationMs)) setNameEdited(false);
-        }}
-      >
-        <strong>新增镜头</strong>
-        <label>
-          名称
-          <input
-            disabled={disabled}
-            maxLength={200}
-            onChange={(event) => {
-              setName(event.target.value);
-              setNameEdited(true);
-            }}
-            value={name}
-          />
-        </label>
-        <label>
-          时长（毫秒）
-          <input
-            disabled={disabled}
-            min={SHOT_MIN_DURATION_MS}
-            onChange={(event) => setDurationMs(event.target.valueAsNumber)}
-            step="1"
-            type="number"
-            value={Number.isNaN(durationMs) ? '' : durationMs}
-          />
-        </label>
-        <button
-          disabled={disabled || !name.trim() || !Number.isInteger(durationMs)}
-          type="submit"
-        >
-          创建镜头
-        </button>
-      </form>
+      {showCreateForm ? (
+        <ShotCreateForm
+          disabled={disabled}
+          onBack={onBack}
+          onCreate={onCreate}
+          suggestedName={suggestedName}
+        />
+      ) : null}
     </aside>
   );
 }

@@ -99,3 +99,6 @@ jobs:
 
       - name: Issue 102 Task 4 narrow-window and total regression gate
         run: pnpm verify:issue102-task4
+
+      - name: Issue 109 adaptive resource workspace gate
+        run: pnpm verify:issue109-resource-workspace

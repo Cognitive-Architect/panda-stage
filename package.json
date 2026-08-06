@@ -45,6 +45,7 @@
     "verify:issue102-task2": "pnpm build && electron scripts/verify-issue102-task2.cjs",
     "verify:issue102-task3": "pnpm build && electron scripts/verify-issue102-task3.cjs",
     "verify:issue102-task4": "pnpm build && electron scripts/verify-issue102-task4.cjs",
+    "verify:issue109-resource-workspace": "pnpm build && electron scripts/verify-issue109-resource-workspace.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",
     "dist": "pnpm build && node scripts/build-distribution.cjs",
