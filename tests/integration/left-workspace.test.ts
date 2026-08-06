@@ -27,6 +27,7 @@ interface Issue81Evidence {
   aAsset: {
     activity: string | null;
     assetCategory: number;
+    assetDetailsView: boolean;
     assetResultCount: number;
     assetSelectedCount: number;
     dirty: boolean;
@@ -237,7 +238,14 @@ async function snapshot(window) {
     ').length,' +
     'assetSelectedCount: document.querySelectorAll(' +
     JSON.stringify('.asset-card-selected') +
+    ').length + document.querySelectorAll(' +
+    JSON.stringify(
+      '[data-testid="asset-details-view"] .asset-details:not(.asset-details-empty)',
+    ) +
     ').length,' +
+    'assetDetailsView: Boolean(document.querySelector(' +
+    JSON.stringify('[data-testid="asset-details-view"]') +
+    ')),' +
     'charCreateDraft: document.querySelector(' +
     JSON.stringify('.character-create-form input') +
     ')?.value ?? null,' +
@@ -499,6 +507,7 @@ async function verifyIssue81() {
       'document.querySelectorAll(".asset-import-results li").length === 1',
       'A import result did not render.',
     );
+    const aAssetBrowser = await snapshot(window);
     await click(window, '.asset-card');
     const aAsset = await snapshot(window);
     await openProject(window, projectBRoot);
@@ -659,10 +668,11 @@ async function verifyIssue81() {
 
     const failures = [];
     if (
+      aAssetBrowser.assetCategory !== 2 ||
       aAsset.activity !== 'assets' ||
-      aAsset.assetCategory !== 2 ||
       aAsset.assetResultCount !== 1 ||
       aAsset.assetSelectedCount !== 1 ||
+      !aAsset.assetDetailsView ||
       aAsset.dirty ||
       aAsset.revision !== 0
     ) {
