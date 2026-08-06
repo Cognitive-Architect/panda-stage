@@ -159,18 +159,6 @@ async function verifyDay18() {
   });
 
   const window = await createMainWindow({ show: false });
-  window.webContents.on(
-    'console-message',
-    (_event, level, message, line, sourceId) => {
-      console.log(
-        `DAY18_RENDERER_CONSOLE level=${level} line=${line} ` +
-          `source=${sourceId} message=${message}`,
-      );
-    },
-  );
-  window.webContents.on('render-process-gone', (_event, details) => {
-    console.log(`DAY18_RENDER_PROCESS_GONE ${JSON.stringify(details)}`);
-  });
   try {
     window.setSize(1440, 1000);
     await window.webContents.executeJavaScript(
@@ -224,7 +212,6 @@ async function verifyDay18() {
     `);
     const gridScreenshot = await window.webContents.capturePage();
 
-    console.log('DAY18_STAGE selection:start');
     const selectionBefore =
       await window.webContents.executeJavaScript(`(() => {
         const card = document.querySelector(
@@ -236,7 +223,6 @@ async function verifyDay18() {
           imageCount: document.querySelectorAll('.asset-grid img').length,
         };
       })()`);
-    console.log(`DAY18_STAGE selection:done ${JSON.stringify(selectionBefore)}`);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"asset-details-view\"]')",
@@ -338,6 +324,19 @@ async function verifyDay18() {
         };
       })()`);
 
+    await window.webContents.executeJavaScript(`(() => {
+      const back = document.querySelector(
+        '[data-testid="asset-details-back"]'
+      );
+      if (back) back.click();
+      return true;
+    })()`);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-grid')",
+        'Returning from the performance selection did not restore the asset browser.',
+      ),
+    );
     const dragEvidence = await window.webContents.executeJavaScript(`
       (() => {
         const card = document.querySelector(
