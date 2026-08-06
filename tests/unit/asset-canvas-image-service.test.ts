@@ -258,6 +258,27 @@ describe('AssetCanvasImageService', () => {
       error: { code: 'ASSET_CANVAS_IMAGE_READ_FAILED' },
     });
 
+    const absolute = {
+      ...base,
+      assets: base.assets.map((asset) =>
+        asset.id === IDS.assetBg
+          ? { ...asset, relativePath: 'C:\\outside.png' }
+          : asset,
+      ),
+    } as unknown as Project;
+    await expect(
+      new AssetCanvasImageService({
+        getCurrentProjectSnapshot: () => ({ project: absolute }),
+      }).read({
+        projectRoot: 'D:\\demo.pandastage',
+        assetId: IDS.assetBg,
+        sha256: 'a'.repeat(64),
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_CANVAS_IMAGE_READ_FAILED' },
+    });
+
     const audioProject = ProjectSchema.parse({
       ...base,
       assets: [
