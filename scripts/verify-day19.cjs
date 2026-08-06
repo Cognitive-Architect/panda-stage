@@ -426,6 +426,9 @@ async function verifyDay19() {
       ),
     );
     await selectResourceActivity(window, 'characters');
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="resource-primary-action"]').click()
+    `);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelectorAll(" +
@@ -643,15 +646,19 @@ async function verifyDay19() {
     await selectResourceActivity(window, 'characters');
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-create-form') && " +
+        "document.querySelector('.character-list-items button') && " +
           "document.querySelector('.character-manager-heading span')" +
           "?.textContent?.includes('修订 0')",
-        'Character activity did not render after reopen.',
+        'Character list did not render after reopen.',
       ),
     );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('.character-list-items button').click()
+    `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelectorAll('.expression-list li').length === 2 && " +
+        "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
+          "document.querySelectorAll('.expression-list li').length === 2 && " +
           "document.querySelector('.character-settings select')" +
           `?.value === ${JSON.stringify(assetIds.mouth)} && ` +
           "document.querySelector(" +
