@@ -4,7 +4,10 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
 } from '../constants';
-import type { Point } from '../geometry';
+import {
+  calculateCoverTransform,
+  type Point,
+} from '../geometry';
 import {
   ProjectSchema,
   type Layer,
@@ -18,9 +21,11 @@ export type LayerServiceErrorCode =
   | 'LAYER_NOT_FOUND'
   | 'ASSET_NOT_FOUND'
   | 'ASSET_TYPE_MISMATCH'
+  | 'BACKGROUND_LAYER_INVALID'
   | 'CHARACTER_IDENTITY_MISMATCH'
   | 'INVALID_POSITION'
   | 'INVALID_TRANSFORM'
+  | 'BACKGROUND_COVER_INVALID'
   | 'BACKGROUND_LAYER_PROTECTED'
   | 'LAYER_LOCKED'
   | 'ID_GENERATION_FAILED';
@@ -232,6 +237,150 @@ export class LayerService {
     };
   }
 
+  setBackground(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    const assetId =
+      layer.source.kind === 'asset' ? layer.source.assetId : undefined;
+    const asset = assetId
+      ? project.assets.find((candidate) => candidate.id === assetId)
+      : undefined;
+
+    if (!asset || asset.kind !== 'image') {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_INVALID',
+        '只有直接引用图片素材的图层才能设为镜头背景。',
+      );
+    }
+    if (shot.backgroundLayerId === layer.id) {
+      if (layer.locked) return project;
+      const layers = [...shot.layers];
+      layers[layerIndex] = { ...layer, locked: true, zIndex: 0 };
+      return this.replaceShot(project, {
+        ...shot,
+        layers: this.normalizeLayerOrder(
+          { ...shot, layers },
+          layers
+            .filter((candidate) => candidate.id !== layer.id)
+            .sort((left, right) => left.zIndex - right.zIndex),
+        ),
+      });
+    }
+
+    const orderedContent = shot.layers
+      .filter((candidate) => candidate.id !== layer.id)
+      .sort((left, right) => left.zIndex - right.zIndex);
+    const layers = [
+      this.coverLayer(layer, asset.width, asset.height, true),
+      ...orderedContent.map((candidate, index) => ({
+        ...candidate,
+        zIndex: index + 1,
+      })),
+    ];
+
+    return this.replaceShot(project, {
+      ...shot,
+      backgroundLayerId: layer.id,
+      layers,
+    });
+  }
+
+  fillBackground(project: Project, shotId: string): Project {
+    const shot = this.shot(project, shotId);
+    if (!shot.backgroundLayerId) return project;
+
+    const backgroundIndex = this.layerIndex(
+      shot,
+      shot.backgroundLayerId,
+    );
+    const background = shot.layers[backgroundIndex]!;
+    const assetId =
+      background.source.kind === 'asset'
+        ? background.source.assetId
+        : undefined;
+    const asset = assetId
+      ? project.assets.find((candidate) => candidate.id === assetId)
+      : undefined;
+    if (!asset || asset.kind !== 'image') {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_INVALID',
+        '当前正式背景没有可用的直接图片源，无法填满画布。',
+      );
+    }
+
+    const filledBackground = this.coverLayer(
+      background,
+      asset.width,
+      asset.height,
+      background.locked,
+    );
+    const orderedContent = shot.layers
+      .filter((candidate) => candidate.id !== background.id)
+      .sort((left, right) => left.zIndex - right.zIndex);
+    const layers = [
+      filledBackground,
+      ...orderedContent.map((candidate, index) => ({
+        ...candidate,
+        zIndex: index + 1,
+      })),
+    ];
+    const changed =
+      backgroundIndex !== 0 ||
+      background.x !== filledBackground.x ||
+      background.y !== filledBackground.y ||
+      background.scaleX !== filledBackground.scaleX ||
+      background.scaleY !== filledBackground.scaleY ||
+      background.rotationDeg !== filledBackground.rotationDeg ||
+      background.flipX !== filledBackground.flipX ||
+      background.zIndex !== filledBackground.zIndex ||
+      shot.layers.some(
+        (candidate, index) =>
+          candidate.id !== layers[index]!.id ||
+          candidate.zIndex !== layers[index]!.zIndex,
+      );
+    if (!changed) return project;
+
+    return this.replaceShot(project, {
+      ...shot,
+      layers,
+    });
+  }
+
+  clearBackground(project: Project, shotId: string): Project {
+    const shot = this.shot(project, shotId);
+    if (!shot.backgroundLayerId) return project;
+    const background = shot.layers.find(
+      (candidate) => candidate.id === shot.backgroundLayerId,
+    );
+    if (!background) {
+      throw new LayerServiceError(
+        'LAYER_NOT_FOUND',
+        `找不到图层：${shot.backgroundLayerId}`,
+      );
+    }
+    const layers = shot.layers
+      .map((candidate) =>
+        candidate.id === background.id
+          ? { ...candidate, locked: false }
+          : candidate,
+      )
+      .sort((left, right) => left.zIndex - right.zIndex)
+      .map((candidate, index) => ({
+        ...candidate,
+        zIndex: index,
+      }));
+    return this.replaceShot(project, {
+      ...shot,
+      backgroundLayerId: null,
+      layers,
+    });
+  }
+
   updatePosition(
     project: Project,
     shotId: string,
@@ -241,12 +390,6 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
-    if (shot.backgroundLayerId === layer.id) {
-      throw new LayerServiceError(
-        'BACKGROUND_LAYER_PROTECTED',
-        '背景图层不能移动、变换、排序或删除。',
-      );
-    }
     if (layer.locked) {
       throw new LayerServiceError(
         'LAYER_LOCKED',
@@ -324,6 +467,7 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
+    this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
     const ordered = shot.layers
       .filter((candidate) => candidate.id !== shot.backgroundLayerId)
@@ -356,6 +500,7 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
+    this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
     const remaining = shot.layers.filter(
       (candidate) => candidate.id !== layer.id,
@@ -386,12 +531,6 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
-    if (shot.backgroundLayerId === layer.id) {
-      throw new LayerServiceError(
-        'BACKGROUND_LAYER_PROTECTED',
-        '背景图层不能通过普通图层控件修改。',
-      );
-    }
     if (layer.locked === locked) return project;
     const layers = [...shot.layers];
     layers[layerIndex] = { ...layer, locked };
@@ -420,17 +559,20 @@ export class LayerService {
     return index;
   }
 
-  private assertEditable(shot: Shot, layer: Layer): void {
-    if (shot.backgroundLayerId === layer.id) {
-      throw new LayerServiceError(
-        'BACKGROUND_LAYER_PROTECTED',
-        '背景图层不能移动、变换、排序或删除。',
-      );
-    }
+  private assertEditable(_shot: Shot, layer: Layer): void {
     if (layer.locked) {
       throw new LayerServiceError(
         'LAYER_LOCKED',
         `图层“${layer.name}”已锁定，请先解锁。`,
+      );
+    }
+  }
+
+  private assertContentLayer(shot: Shot, layer: Layer): void {
+    if (shot.backgroundLayerId === layer.id) {
+      throw new LayerServiceError(
+        'BACKGROUND_LAYER_PROTECTED',
+        '背景图层不能通过普通图层层级工具排序或删除。',
       );
     }
   }
@@ -452,6 +594,35 @@ export class LayerService {
         zIndex: start + index,
       })),
     ];
+  }
+
+  private coverLayer(
+    layer: Layer,
+    assetWidth: number,
+    assetHeight: number,
+    locked: boolean,
+  ): Layer {
+    const cover = calculateCoverTransform(
+      { width: assetWidth, height: assetHeight },
+      { width: PROJECT_WIDTH, height: PROJECT_HEIGHT },
+    );
+    if (!cover || !Number.isFinite(cover.scale)) {
+      throw new LayerServiceError(
+        'BACKGROUND_COVER_INVALID',
+        '正式背景源尺寸无效，无法计算填满画布的几何。',
+      );
+    }
+    return {
+      ...layer,
+      x: PROJECT_WIDTH / 2,
+      y: PROJECT_HEIGHT / 2,
+      scaleX: cover.scale,
+      scaleY: cover.scale,
+      rotationDeg: 0,
+      flipX: false,
+      locked,
+      zIndex: 0,
+    };
   }
 
   private replaceShot(project: Project, shot: Shot): Project {
