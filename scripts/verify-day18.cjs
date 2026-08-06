@@ -413,11 +413,28 @@ async function verifyDay18() {
         ?.textContent?.trim(),
       warning: document.querySelector('.asset-reference-warning')
         ?.textContent?.replace(/\\s+/g, ' ').trim(),
-      cardStillPresent: Boolean(document.querySelector(
-        '[data-asset-id="${referencedAssetId}"]'
-      ))
+      cardStillPresent: Boolean(
+        document.querySelector('[data-asset-id="${referencedAssetId}"]') ||
+          document.querySelector(
+            '[data-testid="asset-details-view"] .asset-details:not(.asset-details-empty)',
+          )
+      )
     }))()`);
     const referenceScreenshot = await window.webContents.capturePage();
+
+    await window.webContents.executeJavaScript(`
+      (() => {
+        const back = document.querySelector('[data-testid="asset-details-back"]');
+        if (back) back.click();
+        return true;
+      })()`
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-grid')",
+        'Returning from the reference details did not restore the asset browser.',
+      ),
+    );
 
     await window.webContents.executeJavaScript(`
       (() => {
@@ -445,6 +462,19 @@ async function verifyDay18() {
           "\"]') && document.querySelector('.asset-library-status')" +
           "?.textContent?.includes('同步删除')",
         'Unreferenced asset did not disappear after successful deletion.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`
+      (() => {
+        const back = document.querySelector('[data-testid="asset-details-back"]');
+        if (back) back.click();
+        return true;
+      })()`
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-grid')",
+        'Returning from the deleted asset details did not restore the asset browser.',
       ),
     );
     const deletionUi = await window.webContents.executeJavaScript(`(() => ({
