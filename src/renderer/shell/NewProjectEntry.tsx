@@ -35,6 +35,9 @@ export function NewProjectEntry({
           <small className="open-path-hint">{validation.message}</small>
         </label>
         <button
+          className="task4-hit-target"
+          data-task4-core="open-project"
+          data-testid="open-project"
           disabled={busy || !validation.valid}
           onClick={() => void onOpenProject()}
           type="button"
@@ -42,7 +45,8 @@ export function NewProjectEntry({
           打开项目
         </button>
         <button
-          className="choose-project-directory-button"
+          className="choose-project-directory-button task4-hit-target"
+          data-task4-core="choose-project-directory"
           data-testid="choose-project-directory"
           disabled={busy}
           onClick={() => void onChooseProjectDirectory()}
@@ -52,7 +56,8 @@ export function NewProjectEntry({
         </button>
       </div>
       <button
-        className="new-project-button"
+        className="new-project-button task4-hit-target"
+        data-task4-core="new-project"
         data-testid="new-project-button"
         disabled={busy || newProjectDialogOpen}
         onClick={onRequestNewProject}

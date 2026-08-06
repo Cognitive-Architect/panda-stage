@@ -25,6 +25,8 @@ export function RecoveryCandidateBanner({
       </div>
       <div>
         <button
+          className="task4-hit-target"
+          data-task4-core="recovery-restore"
           disabled={busy}
           onClick={() => void onRestore()}
           type="button"
@@ -32,6 +34,8 @@ export function RecoveryCandidateBanner({
           恢复
         </button>
         <button
+          className="task4-hit-target"
+          data-task4-core="recovery-ignore"
           disabled={busy}
           onClick={() => void onIgnore()}
           type="button"

@@ -150,6 +150,8 @@ export function RecentProjectsPanel({
                 data-testid="recent-projects-actions"
               >
                 <button
+                  className="task4-hit-target"
+                  data-task4-core="recent-open"
                   disabled={
                     busyRoot !== null || entry.status !== 'available'
                   }
@@ -160,6 +162,8 @@ export function RecentProjectsPanel({
                 </button>
                 {entry.status !== 'available' ? (
                   <button
+                    className="task4-hit-target"
+                    data-task4-core="recent-relocate"
                     disabled={busyRoot !== null}
                     onClick={() => void relocateProject(entry)}
                     type="button"
@@ -168,6 +172,8 @@ export function RecentProjectsPanel({
                   </button>
                 ) : null}
                 <button
+                  className="task4-hit-target"
+                  data-task4-core="recent-remove"
                   disabled={busyRoot !== null}
                   onClick={() => void removeProject(entry)}
                   title="只移除最近项目记录，不删除磁盘项目"

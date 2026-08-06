@@ -82,6 +82,8 @@ export function StartScreen({
               </span>
             </div>
             <button
+              className="task4-hit-target"
+              data-task4-core="return-to-editor"
               data-testid="return-to-editor"
               disabled={!onReturnToEditor}
               onClick={onReturnToEditor}

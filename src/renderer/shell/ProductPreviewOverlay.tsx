@@ -225,7 +225,8 @@ export function ProductPreviewOverlay({
             <h2>{shot ? shot.name : project.name}</h2>
           </div>
           <button
-            className="product-preview-close"
+            className="product-preview-close task4-hit-target"
+            data-task4-core="preview-close"
             data-testid="product-preview-close"
             onClick={onClose}
             type="button"
@@ -279,6 +280,8 @@ export function ProductPreviewOverlay({
                 className="product-preview-controls"
               >
                 <button
+                  className="task4-hit-target"
+                  data-task4-core="preview-play"
                   data-testid="product-preview-play"
                   disabled={playing || atEnd || durationMs <= 0}
                   onClick={() => setPlaying(true)}
@@ -287,6 +290,8 @@ export function ProductPreviewOverlay({
                   播放
                 </button>
                 <button
+                  className="task4-hit-target"
+                  data-task4-core="preview-pause"
                   data-testid="product-preview-pause"
                   disabled={!playing}
                   onClick={() => setPlaying(false)}
@@ -295,6 +300,8 @@ export function ProductPreviewOverlay({
                   暂停
                 </button>
                 <button
+                  className="task4-hit-target"
+                  data-task4-core="preview-stop"
                   data-testid="product-preview-stop"
                   disabled={!playing && timeMs === 0}
                   onClick={stopPlayback}

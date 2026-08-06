@@ -96,3 +96,6 @@ jobs:
 
       - name: Issue 102 Task 3 project safety contract gate
         run: pnpm verify:issue102-task3
+
+      - name: Issue 102 Task 4 narrow-window and total regression gate
+        run: pnpm verify:issue102-task4

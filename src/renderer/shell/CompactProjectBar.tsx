@@ -79,7 +79,8 @@ export function CompactProjectBar({
     >
       <div className="compact-project-identity">
         <button
-          className="compact-project-center-button"
+          className="compact-project-center-button task4-hit-target"
+          data-task4-core="project-center"
           data-testid="open-project-center"
           disabled={busy || closeConfirmOpen}
           onClick={onOpenProjectCenter}
@@ -124,7 +125,8 @@ export function CompactProjectBar({
         </output>
         <button
           aria-label="保存整个项目"
-          className="editor-save-button"
+          className="editor-save-button task4-hit-target"
+          data-task4-core="save-project"
           data-testid="compact-project-save"
           disabled={saveDisabled}
           onClick={() => void onSaveProject()}
@@ -136,7 +138,8 @@ export function CompactProjectBar({
           <button
             aria-expanded={menuOpen}
             aria-haspopup="menu"
-            className="compact-project-more-button"
+            className="compact-project-more-button task4-hit-target"
+            data-task4-core="more-menu"
             data-testid="compact-project-more"
             disabled={busy}
             onClick={() => setMenuOpen((open) => !open)}
@@ -152,6 +155,8 @@ export function CompactProjectBar({
               role="menu"
             >
               <button
+                className="task4-hit-target"
+                data-task4-core="menu-project-center"
                 data-testid="menu-open-project-center"
                 onClick={() => {
                   closeMenu();
@@ -163,6 +168,8 @@ export function CompactProjectBar({
                 打开项目中心
               </button>
               <button
+                className="task4-hit-target"
+                data-task4-core="menu-open-folder"
                 data-testid="menu-open-project-folder"
                 onClick={() => {
                   closeMenu();
@@ -174,6 +181,8 @@ export function CompactProjectBar({
                 打开项目文件夹
               </button>
               <button
+                className="task4-hit-target"
+                data-task4-core="product-preview"
                 data-testid="menu-open-product-preview"
                 disabled={productPreviewOpen}
                 onClick={() => {
@@ -186,6 +195,8 @@ export function CompactProjectBar({
                 产品预览
               </button>
               <button
+                className="task4-hit-target"
+                data-task4-core="close-project"
                 data-testid="menu-close-project"
                 disabled={closeConfirmOpen}
                 onClick={() => {
