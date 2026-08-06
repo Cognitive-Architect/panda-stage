@@ -37,6 +37,7 @@ import { registerAssetMetadataIpcHandlers } from './ipc/register-asset-metadata-
 import { registerAssetLibraryIpcHandlers } from './ipc/register-asset-library-ipc-handlers';
 import { AssetDeleteService } from './services/AssetDeleteService';
 import { AssetThumbnailService } from './services/AssetThumbnailService';
+import { AssetCanvasImageService } from './services/AssetCanvasImageService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
 
 let mainWindow: BrowserWindow | null = null;
@@ -271,14 +272,16 @@ async function initialize(): Promise<void> {
       });
     },
   });
+  const thumbnailCache = new CacheService();
+  const thumbnailService = new ThumbnailService(
+    thumbnailCache,
+    new FFmpegThumbnailGenerator(mediaTools.ffmpegPath),
+  );
   const assetMetadataService = new AssetMetadataService({
     projectService,
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
-    thumbnailService: new ThumbnailService(
-      new CacheService(),
-      new FFmpegThumbnailGenerator(mediaTools.ffmpegPath),
-    ),
+    thumbnailService,
     audioProbe: ffmpegAdapter,
   });
   removeAssetMetadataIpcHandlers = registerAssetMetadataIpcHandlers({
@@ -293,6 +296,12 @@ async function initialize(): Promise<void> {
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     }),
     assetThumbnailService: new AssetThumbnailService({
+      getCurrentProjectSnapshot: (projectRoot) =>
+        autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+      cache: thumbnailCache,
+      thumbnailService,
+    }),
+    assetCanvasImageService: new AssetCanvasImageService({
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     }),

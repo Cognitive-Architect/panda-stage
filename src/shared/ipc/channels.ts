@@ -23,6 +23,7 @@ export const IPC_CHANNELS = Object.freeze({
   ASSET_METADATA_CANCEL: 'asset-metadata:cancel',
   ASSET_DELETE: 'asset:delete',
   ASSET_THUMBNAIL_READ: 'asset-thumbnail:read',
+  ASSET_CANVAS_IMAGE_READ: 'asset-canvas-image:read',
   RECENT_PROJECTS_LIST: 'recent-projects:list',
   RECENT_PROJECTS_OPEN: 'recent-projects:open',
   RECENT_PROJECTS_REMOVE: 'recent-projects:remove',

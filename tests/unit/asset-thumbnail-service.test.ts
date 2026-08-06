@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectSchema } from '../../src/domain';
 import { AssetThumbnailService } from '../../src/main/services/AssetThumbnailService';
 import { CacheService } from '../../src/main/services/CacheService';
@@ -94,6 +94,84 @@ async function serviceWithCachedBytes(
   };
 }
 
+async function serviceWithRepair(options?: {
+  relativePath?: string;
+  sourceExists?: boolean;
+  cachedBytes?: Buffer;
+}) {
+  const projectRoot = await mkdtemp(
+    path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-thumbnail-repair-'),
+  );
+  temporaryDirectories.push(projectRoot);
+  const sourceBytes = createRgbaPng(2, 2);
+  const relativePath = options?.relativePath ?? 'assets/source.png';
+  const sourcePath = path.join(projectRoot, relativePath);
+  if (options?.sourceExists !== false) {
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, sourceBytes);
+  }
+  const sha256 = createHash('sha256').update(sourceBytes).digest('hex');
+  const project = ProjectSchema.parse({
+    ...exampleProject,
+    assets: [
+      {
+        ...exampleProject.assets[0],
+        relativePath,
+        width: 2,
+        height: 2,
+        sha256,
+      },
+      ...exampleProject.assets.slice(1),
+    ],
+  });
+  const cache = new CacheService();
+  if (options?.cachedBytes) {
+    const thumbnailPath = cache.thumbnailPath(
+      projectRoot,
+      cache.thumbnailKey(sha256),
+    );
+    await mkdir(path.dirname(thumbnailPath), { recursive: true });
+    await writeFile(thumbnailPath, options.cachedBytes);
+  }
+  const ensureThumbnail = vi.fn().mockImplementation(async (input: {
+    projectRoot: string;
+    sha256: string;
+  }) => {
+    const thumbnailPath = cache.thumbnailPath(
+      input.projectRoot,
+      cache.thumbnailKey(input.sha256),
+    );
+    await mkdir(path.dirname(thumbnailPath), { recursive: true });
+    await writeFile(thumbnailPath, createRgbaPng(2, 2));
+    return {
+      relativePath: cache.thumbnailRelativePath(
+        cache.thumbnailKey(input.sha256),
+      ),
+      width: 2,
+      height: 2,
+      cacheHit: false,
+    };
+  });
+  const service = new AssetThumbnailService({
+    cache,
+    getCurrentProjectSnapshot: () => ({ project }),
+    thumbnailService: { ensureThumbnail },
+  });
+  return {
+    service,
+    projectRoot,
+    sourcePath,
+    project,
+    cache,
+    ensureThumbnail,
+    request: {
+      projectRoot,
+      assetId: project.assets[0]!.id,
+      sha256,
+    },
+  };
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
@@ -170,6 +248,66 @@ describe('AssetThumbnailService', () => {
       ok: true,
       status: 'missing',
       assetId: project.assets[0]!.id,
+    });
+  });
+
+  it('regenerates a missing or corrupt cache from the authoritative asset path', async () => {
+    const input = await serviceWithRepair({
+      cachedBytes: Buffer.alloc(6_000_001),
+    });
+    const before = structuredClone(input.project);
+
+    await expect(input.service.read(input.request)).resolves.toMatchObject({
+      ok: true,
+      status: 'ready',
+      dataUrl: expect.stringMatching(/^data:image\/png;base64,/u),
+    });
+    expect(input.ensureThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRoot: input.projectRoot,
+        sourcePath: path.resolve(input.sourcePath),
+        sha256: input.request.sha256,
+        width: 2,
+        height: 2,
+      }),
+    );
+    expect(input.project).toEqual(before);
+  });
+
+  it('does not repair a valid cache and rejects missing or confined source paths', async () => {
+    const valid = await serviceWithRepair({
+      cachedBytes: createRgbaPng(2, 2),
+    });
+    await expect(valid.service.read(valid.request)).resolves.toMatchObject({
+      ok: true,
+      status: 'ready',
+    });
+    expect(valid.ensureThumbnail).not.toHaveBeenCalled();
+
+    const missing = await serviceWithRepair({ sourceExists: false });
+    await expect(missing.service.read(missing.request)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_THUMBNAIL_READ_FAILED' },
+    });
+    expect(missing.ensureThumbnail).not.toHaveBeenCalled();
+
+    const sibling = await serviceWithRepair({
+      relativePath: 'assets2/source.png',
+    });
+    await expect(sibling.service.read(sibling.request)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_THUMBNAIL_READ_FAILED' },
+    });
+    expect(sibling.ensureThumbnail).not.toHaveBeenCalled();
+  });
+
+  it('returns the structured thumbnail error when regeneration fails', async () => {
+    const input = await serviceWithRepair();
+    input.ensureThumbnail.mockRejectedValue(new Error('generator failed'));
+
+    await expect(input.service.read(input.request)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_THUMBNAIL_READ_FAILED' },
     });
   });
 
