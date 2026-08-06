@@ -35,10 +35,10 @@ export function NewProjectEntry({
           <small className="open-path-hint">{validation.message}</small>
         </label>
         <button
+          disabled={busy || !validation.valid}
           className="task4-hit-target"
           data-task4-core="open-project"
           data-testid="open-project"
-          disabled={busy || !validation.valid}
           onClick={() => void onOpenProject()}
           type="button"
         >
