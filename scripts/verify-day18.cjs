@@ -212,41 +212,36 @@ async function verifyDay18() {
     `);
     const gridScreenshot = await window.webContents.capturePage();
 
-    await window.webContents.executeJavaScript(`(() => {
-      const card = document.querySelector(
-        '[data-asset-id="18000000-0000-4000-8000-000000000002"]'
-      );
-      if (!card) throw new Error('Decode fallback card did not render.');
-      card.click();
-      return true;
-    })()`);
+    const decodeFallbackBefore =
+      await window.webContents.executeJavaScript(`(() => {
+        const card = document.querySelector(
+          '[data-asset-id="${decodeErrorAssetId}"]'
+        );
+        const image = card?.querySelector('img');
+        if (!card || !image) {
+          throw new Error('Decode fallback card did not render.');
+        }
+        const imageCount = document.querySelectorAll(
+          '.asset-grid img'
+        ).length;
+        image.dispatchEvent(new Event('error'));
+        card.click();
+        return { imageCount };
+      })()`);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"asset-details-view\"]')",
         'Selecting an asset did not open its details view.',
       ),
     );
-    await window.webContents.executeJavaScript(
-      "document.querySelector('[data-testid=\"asset-details-back\"]').click()",
-    );
-    await window.webContents.executeJavaScript(
-      waitFor(
-        "document.querySelector('[data-asset-id=\"18000000-0000-4000-8000-000000000002\"] img')",
-        'Returning from asset details did not restore the browser card.',
-      ),
-    );
-    const decodeFallbackBefore =
-      await window.webContents.executeJavaScript(`(() => {
-        const card = document.querySelector(
-          '[data-asset-id="18000000-0000-4000-8000-000000000002"]'
-        );
-        const image = card.querySelector('img');
-        const imageCount = document.querySelectorAll(
-          '.asset-grid img'
-        ).length;
-        image.dispatchEvent(new Event('error'));
-        return { imageCount };
-      })()`);
+    await window.webContents.executeJavaScript(`(() => {
+      const back = document.querySelector(
+        '[data-testid="asset-details-back"]'
+      );
+      if (!back) throw new Error('Asset details back button did not render.');
+      back.click();
+      return true;
+    })()`);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-asset-id=\"" +
