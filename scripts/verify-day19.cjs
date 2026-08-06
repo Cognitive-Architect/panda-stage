@@ -469,6 +469,22 @@ async function verifyDay19() {
       assetIds.mouth,
       'change',
     );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.character-create-form button')" +
+          "?.disabled === false && " +
+          "document.querySelector(" +
+          "'.character-create-form label:nth-of-type(2) select')" +
+          `?.value === ${JSON.stringify(assetIds.normal)} && ` +
+          "document.querySelector(" +
+          "'.character-create-form label:nth-of-type(3) select')" +
+          `?.value === ${JSON.stringify(assetIds.angry)} && ` +
+          "document.querySelector(" +
+          "'.character-create-form label:nth-of-type(4) select')" +
+          `?.value === ${JSON.stringify(assetIds.mouth)}`,
+        'Character create form did not settle with the selected assets.',
+      ),
+    );
     await window.webContents.executeJavaScript(`
       document.querySelector('.character-create-form button').click()
     `);
