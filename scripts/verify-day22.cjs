@@ -15,6 +15,8 @@ const evidenceDirectory = path.join(
   'docs/evidence/day-22',
 );
 const projectRoot = 'D:\\Projects\\Day 22 placement.pandastage';
+const emptyCanvasRoot =
+  'D:\\Projects\\Day 22 true empty canvas.pandastage';
 const stickerAssetId = 'd2200000-0000-4000-8000-000000000010';
 const assetDragMime = 'application/x-panda-stage-asset';
 
@@ -71,7 +73,11 @@ async function setInput(window, selector, value) {
   })()`);
 }
 
-async function openProject(window) {
+async function openProject(
+  window,
+  targetRoot = projectRoot,
+  expectedShotName = 'Opening',
+) {
   await window.webContents.executeJavaScript(`(() => {
     if (document.querySelector('[data-editor-page="editor"]')) {
       document.querySelector('[data-testid="open-project-center"]').click();
@@ -86,7 +92,7 @@ async function openProject(window) {
   await setInput(
     window,
     '[data-testid="project-center-screen"] .recovery-open-row input',
-    projectRoot,
+    targetRoot,
   );
   await window.webContents.executeJavaScript(`
     document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click()
@@ -94,7 +100,7 @@ async function openProject(window) {
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('.project-canvas-heading > span')` +
-        `?.textContent?.trim() === 'Opening'`,
+        `?.textContent?.trim() === ${JSON.stringify(expectedShotName)}`,
       'Day 22 project did not open.',
     ),
   );
@@ -279,6 +285,9 @@ async function stageSnapshot(window) {
     const stage = document.querySelector(
       '[data-testid="project-canvas-stage"]'
     );
+    const history = document.querySelector(
+      '[data-testid="history-controls"]'
+    );
     return {
       layers: JSON.parse(stage.dataset.layerJson),
       renderedAssetIds: JSON.parse(stage.dataset.renderedAssetIds),
@@ -287,7 +296,9 @@ async function stageSnapshot(window) {
         '[data-testid="canvas-interaction-status"]'
       ).textContent.trim(),
       revision: Number(stage.dataset.projectRevision),
-      dirty: document.querySelector('.dirty-state') !== null
+      dirty: document.querySelector('.dirty-state') !== null,
+      undoCount: Number(history?.dataset.undoCount ?? 0),
+      redoCount: Number(history?.dataset.redoCount ?? 0)
     };
   })()`);
 }
@@ -317,6 +328,41 @@ async function logicalClientPoint(window, point, setScroll) {
       scrollTop: viewport.scrollTop
     };
   })()`);
+}
+
+async function clickLogicalPoint(window, point, setScroll = true) {
+  const client = await logicalClientPoint(window, point, setScroll);
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: client.x,
+    y: client.y,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    button: 'left',
+    clickCount: 1,
+    x: client.x,
+    y: client.y,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    button: 'left',
+    clickCount: 1,
+    x: client.x,
+    y: client.y,
+  });
+  await window.webContents.executeJavaScript(
+    'new Promise((resolve) => setTimeout(resolve, 120))',
+  );
+}
+
+async function selectLayerAtLogicalPoint(window, layerId, point) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await clickLogicalPoint(window, point, true);
+    const state = await stageSnapshot(window);
+    if (state.selectedLayerId === layerId) return state;
+  }
+  throw new Error(`Canvas click did not select layer: ${layerId}`);
 }
 
 async function verifyDay22() {
@@ -355,6 +401,20 @@ async function verifyDay22() {
       })),
     })),
   };
+  const emptyCanvasProject = {
+    ...project,
+    id: 'd2200000-0000-4000-8000-000000000020',
+    name: 'Day 22 true empty canvas fixture',
+    shots: project.shots.map((shot, index) => ({
+      ...shot,
+      id: `d2200000-0000-4000-8000-${String(index + 21).padStart(12, '0')}`,
+      name: 'True empty canvas',
+      layers: shot.layers.map((layer) => ({
+        ...layer,
+        visible: false,
+      })),
+    })),
+  };
   let savedProject = null;
   let saveRequest = null;
   const autosaveUpdates = [];
@@ -372,7 +432,10 @@ async function verifyDay22() {
     value: {
       projectRoot: request.projectRoot,
       projectFilePath: `${request.projectRoot}\\project.json`,
-      project: savedProject ?? project,
+      project:
+        request.projectRoot === emptyCanvasRoot
+          ? emptyCanvasProject
+          : savedProject ?? project,
       migrated: false,
       sourceVersion: 5,
     },
@@ -697,115 +760,24 @@ async function verifyDay22() {
     );
     const lockedAfter = await stageSnapshot(window);
 
-    const backgroundHit = await logicalClientPoint(
+    const backgroundLayerId = project.shots[0].backgroundLayerId;
+    const backgroundSelectionBefore = await stageSnapshot(window);
+    // The fixture image has transparent pixels at (50, 50). This point is a
+    // deterministic opaque background pixel outside every ordinary layer.
+    const backgroundPoint = { x: 50, y: 540 };
+    const backgroundSelectedOnce = await selectLayerAtLogicalPoint(
       window,
-      // The fixture image has transparent pixels at (50, 50); use a
-      // deterministic opaque background pixel that is outside other layers.
-      { x: 50, y: 540 },
-      true,
+      backgroundLayerId,
+      backgroundPoint,
     );
-    window.webContents.sendInputEvent({
-      type: 'mouseMove',
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
-    window.webContents.sendInputEvent({
-      type: 'mouseDown',
-      button: 'left',
-      clickCount: 1,
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
-    window.webContents.sendInputEvent({
-      type: 'mouseUp',
-      button: 'left',
-      clickCount: 1,
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
-    // The synthetic input stream can consume the first post-drag hit while
-    // Konva settles its pointer state; repeat the same idempotent background
-    // hit so the assertion observes the actual selection result.
-    await window.webContents.executeJavaScript(
-      'new Promise((resolve) => setTimeout(resolve, 100))',
-    );
-    window.webContents.sendInputEvent({
-      type: 'mouseMove',
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
-    window.webContents.sendInputEvent({
-      type: 'mouseDown',
-      button: 'left',
-      clickCount: 1,
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
-    window.webContents.sendInputEvent({
-      type: 'mouseUp',
-      button: 'left',
-      clickCount: 1,
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
-    // The synthetic post-drag stream leaves one stale empty-canvas hit;
-    // consume it without asserting the fixture's old blank-point behavior,
-    // then repeat the idempotent background hit for the actual assertion.
-    await window.webContents.executeJavaScript(
-      'new Promise((resolve) => setTimeout(resolve, 100))',
-    );
-    const emptyCanvasHit = await logicalClientPoint(
-      window,
-      { x: 50, y: 50 },
-      true,
-    );
-    window.webContents.sendInputEvent({
-      type: 'mouseMove',
-      x: emptyCanvasHit.x,
-      y: emptyCanvasHit.y,
-    });
-    window.webContents.sendInputEvent({
-      type: 'mouseDown',
-      button: 'left',
-      clickCount: 1,
-      x: emptyCanvasHit.x,
-      y: emptyCanvasHit.y,
-    });
-    window.webContents.sendInputEvent({
-      type: 'mouseUp',
-      button: 'left',
-      clickCount: 1,
-      x: emptyCanvasHit.x,
-      y: emptyCanvasHit.y,
-    });
-    await window.webContents.executeJavaScript(
-      'new Promise((resolve) => setTimeout(resolve, 100))',
-    );
-    window.webContents.sendInputEvent({
-      type: 'mouseMove',
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
-    window.webContents.sendInputEvent({
-      type: 'mouseDown',
-      button: 'left',
-      clickCount: 1,
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
-    window.webContents.sendInputEvent({
-      type: 'mouseUp',
-      button: 'left',
-      clickCount: 1,
-      x: backgroundHit.x,
-      y: backgroundHit.y,
-    });
+    // Repeating the same real hit must be idempotent, not clear selection.
+    await clickLogicalPoint(window, backgroundPoint, true);
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector(` +
           `'[data-testid="project-canvas-stage"]'` +
           `).dataset.selectedLayerId === ${JSON.stringify(
-            project.shots[0].backgroundLayerId,
+            backgroundLayerId,
           )}`,
         'Formal background click did not preserve background selection.',
       ),
@@ -871,6 +843,47 @@ async function verifyDay22() {
       (layer) => layer.id === actualLayer.id,
     );
 
+    // A Cover background has no arbitrary empty coordinate. Use a dedicated
+    // fixture-local project whose layers are all hidden, select its formal
+    // background through the inspector, then send a real pointer click to the
+    // now-provably empty stage.
+    await openProject(
+      window,
+      emptyCanvasRoot,
+      'True empty canvas',
+    );
+    await scrollCanvasIntoView(window);
+    const blankBefore = await stageSnapshot(window);
+    await window.webContents.executeJavaScript(
+      `document.querySelector(` +
+        `'[data-testid="select-current-shot-background"]'` +
+        `).click()`,
+    );
+    const emptyBackgroundLayerId =
+      emptyCanvasProject.shots[0].backgroundLayerId;
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector(` +
+          `'[data-testid="project-canvas-stage"]'` +
+          `).dataset.selectedLayerId === ${JSON.stringify(
+            emptyBackgroundLayerId,
+          )}`,
+        'Hidden fixture background was not selected before blank click.',
+      ),
+    );
+    const blankSelected = await stageSnapshot(window);
+    const trueEmptyPoint = { x: 960, y: 540 };
+    await clickLogicalPoint(window, trueEmptyPoint, true);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector(` +
+          `'[data-testid="project-canvas-stage"]'` +
+          `).dataset.selectedLayerId === ''`,
+        'True empty canvas click did not clear selection.',
+      ),
+    );
+    const blankAfter = await stageSnapshot(window);
+
     const evidence = {
       day: 22,
       workOrder: 'B-22/45',
@@ -912,8 +925,39 @@ async function verifyDay22() {
           actualDrop.selectedLayerId === actualLayer.id,
         backgroundSelected:
           backgroundAfter.selectedLayerId ===
-          project.shots[0].backgroundLayerId,
-        backgroundId: project.shots[0].backgroundLayerId,
+          backgroundLayerId,
+        backgroundSelectedOnce:
+          backgroundSelectedOnce.selectedLayerId === backgroundLayerId,
+        backgroundId: backgroundLayerId,
+        backgroundIdempotent:
+          backgroundSelectedOnce.selectedLayerId ===
+            backgroundAfter.selectedLayerId,
+        backgroundSelectionRevisionClean:
+          backgroundAfter.revision ===
+            backgroundSelectionBefore.revision,
+        backgroundSelectionDirtyUnchanged:
+          backgroundAfter.dirty === backgroundSelectionBefore.dirty,
+        backgroundSelectionHistoryFree:
+          backgroundAfter.undoCount ===
+            backgroundSelectionBefore.undoCount &&
+          backgroundAfter.redoCount ===
+            backgroundSelectionBefore.redoCount,
+        trueEmptyNoVisibleLayers:
+          blankBefore.layers.every((layer) => !layer.visible),
+        blankStartedFromBackground:
+          blankSelected.selectedLayerId === emptyBackgroundLayerId,
+        blankCleared: blankAfter.selectedLayerId === '',
+        blankSelectionRevisionClean:
+          blankBefore.revision === blankSelected.revision &&
+          blankSelected.revision === blankAfter.revision,
+        blankSelectionClean:
+          !blankBefore.dirty && !blankSelected.dirty && !blankAfter.dirty,
+        blankSelectionHistoryFree:
+          blankBefore.undoCount === blankSelected.undoCount &&
+          blankSelected.undoCount === blankAfter.undoCount &&
+          blankBefore.redoCount === blankSelected.redoCount &&
+          blankSelected.redoCount === blankAfter.redoCount,
+        trueEmptyPoint,
       },
       drag: {
         beforeRevision: actualDrop.revision,
@@ -1001,6 +1045,17 @@ async function verifyDay22() {
       !evidence.locked.unchanged ||
       lockedAfter.revision !== lockedBefore.revision ||
       !evidence.selection.backgroundSelected ||
+      !evidence.selection.backgroundSelectedOnce ||
+      !evidence.selection.backgroundIdempotent ||
+      !evidence.selection.backgroundSelectionRevisionClean ||
+      !evidence.selection.backgroundSelectionDirtyUnchanged ||
+      !evidence.selection.backgroundSelectionHistoryFree ||
+      !evidence.selection.trueEmptyNoVisibleLayers ||
+      !evidence.selection.blankStartedFromBackground ||
+      !evidence.selection.blankCleared ||
+      !evidence.selection.blankSelectionRevisionClean ||
+      !evidence.selection.blankSelectionClean ||
+      !evidence.selection.blankSelectionHistoryFree ||
       !evidence.invalidAsset.rejected ||
       !evidence.invalidAsset.layerCountUnchanged ||
       !evidence.invalidAsset.revisionUnchanged ||

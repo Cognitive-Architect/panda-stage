@@ -272,14 +272,64 @@ async function selectLayerAtPoint(window, layerId, point) {
   throw new Error(`Moved layer could not be selected: ${layerId}`);
 }
 
-async function blurToCanvas(window, point) {
+async function blurWithoutChangingSelection(window, expectedLayerId) {
+  const before = await snapshot(window);
+  if (before.selectedLayerId !== expectedLayerId) {
+    throw new Error(
+      `Neutral blur started from the wrong selection: ${JSON.stringify({
+        expectedLayerId,
+        selectedLayerId: before.selectedLayerId,
+      })}`,
+    );
+  }
+  const point = await window.webContents.executeJavaScript(`(() => {
+    const target = document.querySelector('.project-canvas-heading h2');
+    const form = document.querySelector(
+      '[data-testid="layer-transform-panel"] form'
+    );
+    if (!(target instanceof HTMLElement) || !(form instanceof HTMLElement)) {
+      throw new Error('Neutral blur target or transform form was missing.');
+    }
+    if (form.contains(target)) {
+      throw new Error('Neutral blur target unexpectedly belongs to the form.');
+    }
+    target.tabIndex = -1;
+    target.scrollIntoView({ block: 'nearest' });
+    const rect = target.getBoundingClientRect();
+    return {
+      x: Math.round(rect.left + rect.width / 2),
+      y: Math.round(rect.top + rect.height / 2)
+    };
+  })()`);
+  for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) {
+    window.webContents.sendInputEvent({
+      type,
+      ...(type === 'mouseMove'
+        ? {}
+        : { button: 'left', clickCount: 1 }),
+      x: point.x,
+      y: point.y,
+    });
+  }
   await window.webContents.executeJavaScript(
-    `document.querySelector('.project-canvas').scrollIntoView({
-      block: 'start'
-    })`,
+    `document.querySelector('.project-canvas-heading h2')` +
+      `.focus({ preventScroll: true })`,
   );
-  await new Promise((resolve) => setTimeout(resolve, 120));
-  await clickLogicalPoint(window, point);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const after = await snapshot(window);
+  if (after.selectedLayerId !== expectedLayerId) {
+    throw new Error(
+      `Neutral blur changed layer selection: ${JSON.stringify({
+        expectedLayerId,
+        before: before.selectedLayerId,
+        after: after.selectedLayerId,
+      })}`,
+    );
+  }
+  return {
+    before: before.selectedLayerId,
+    after: after.selectedLayerId,
+  };
 }
 
 async function focusCanvasStage(window) {
@@ -539,7 +589,10 @@ async function verifyDay24() {
       (await snapshot(window)).undoCount;
     await setInput(window, transformInputs[1], '740');
     const historyAfterBlurTyping = (await snapshot(window)).undoCount;
-    await blurToCanvas(window, { x: 1_700, y: 100 });
+    const blurCommitSelection = await blurWithoutChangingSelection(
+      window,
+      target.id,
+    );
     await new Promise((resolve) => setTimeout(resolve, 250));
     const blurCommitted = await snapshot(window);
     if (blurCommitted.undoCount !== 2) {
@@ -581,14 +634,16 @@ async function verifyDay24() {
         'Property form did not commit exactly one history entry.',
       ),
     );
-    await blurToCanvas(window, { x: 1_700, y: 100 });
+    const submitThenBlurSelection =
+      await blurWithoutChangingSelection(window, target.id);
     await new Promise((resolve) => setTimeout(resolve, 200));
     const submitThenBlur = await snapshot(window);
 
     await selectLayerAtPoint(window, target.id, { x: 620, y: 750 });
     const historyBeforeNoChange = (await snapshot(window)).undoCount;
     await focusInput(window, transformInputs[0]);
-    await blurToCanvas(window, { x: 1_700, y: 100 });
+    const noChangeBlurSelection =
+      await blurWithoutChangingSelection(window, target.id);
     await new Promise((resolve) => setTimeout(resolve, 150));
     const noChangeBlur = await snapshot(window);
 
@@ -596,9 +651,23 @@ async function verifyDay24() {
     await focusInput(window, transformInputs[2]);
     await setInput(window, transformInputs[2], '0');
     const invalidBefore = await snapshot(window);
-    await blurToCanvas(window, { x: 1_700, y: 100 });
+    const invalidBlurSelection =
+      await blurWithoutChangingSelection(window, target.id);
     await new Promise((resolve) => setTimeout(resolve, 150));
     const invalidAfter = await snapshot(window);
+
+    // The old canvas-click blur cleared selection and a later re-selection
+    // incidentally reset this invalid draft. Selection now stays on the
+    // ordinary layer, so restore the verifier draft explicitly from the
+    // unchanged model before starting the independent action tests.
+    await setInput(
+      window,
+      transformInputs[2],
+      String(
+        invalidAfter.layers.find((layer) => layer.id === target.id)
+          .scaleX,
+      ),
+    );
 
     await selectLayerAtPoint(window, target.id, { x: 620, y: 750 });
     await focusInput(window, transformInputs[0]);
@@ -894,6 +963,25 @@ async function verifyDay24() {
         afterUndoRedoEnabled: !undone.redoDisabled,
       },
       propertyForm: {
+        neutralBlur: {
+          expectedLayerId: target.id,
+          transitions: [
+            blurCommitSelection,
+            submitThenBlurSelection,
+            noChangeBlurSelection,
+            invalidBlurSelection,
+          ],
+          selectionPreserved: [
+            blurCommitSelection,
+            submitThenBlurSelection,
+            noChangeBlurSelection,
+            invalidBlurSelection,
+          ].every(
+            (transition) =>
+              transition.before === target.id &&
+              transition.after === target.id,
+          ),
+        },
         blur: {
           historyBefore: historyBeforeBlur,
           historyAfterInternalFocusMove,
@@ -1060,6 +1148,7 @@ async function verifyDay24() {
       !evidence.deletion.redoDeleted ||
       !evidence.buttons.initialUndoEnabled ||
       !evidence.buttons.afterUndoRedoEnabled ||
+      !evidence.propertyForm.neutralBlur.selectionPreserved ||
       evidence.propertyForm.blur.historyAfterTyping !==
         evidence.propertyForm.blur.historyBefore ||
       evidence.propertyForm.blur.historyAfterInternalFocusMove !==
