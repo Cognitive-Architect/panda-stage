@@ -41,10 +41,10 @@ import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
 import { useDebugFlag } from './useDebugFlag';
 import {
-  CLOSE_PROJECT_CLEAN_PROMPT,
   CLOSE_PROJECT_DIRTY_PROMPT,
   CLOSE_PROJECT_STALE_SAVE_MESSAGE,
   closeProjectErrorMessage,
+  closeProjectRequestAction,
   closeProjectSaveFailureMessage,
   closeProjectStatusMessage,
   type CloseProjectChoice,
@@ -638,12 +638,15 @@ export function EditorShell({
 
   const requestCloseProject = (): void => {
     if (!projectSnapshot) return;
-    setCloseConfirmStatus(
-      projectSnapshot.dirty
-        ? CLOSE_PROJECT_DIRTY_PROMPT
-        : CLOSE_PROJECT_CLEAN_PROMPT,
-    );
-    setCloseConfirmOpen(true);
+    if (
+      closeProjectRequestAction(projectSnapshot.dirty) ===
+      'show-dirty-confirmation'
+    ) {
+      setCloseConfirmStatus(CLOSE_PROJECT_DIRTY_PROMPT);
+      setCloseConfirmOpen(true);
+      return;
+    }
+    void closeProject('close-without-saving');
   };
 
   const cancelCloseProject = (): void => {
@@ -707,7 +710,12 @@ export function EditorShell({
       }
       await finishCloseProject(choice, dirtyBeforeClose);
     } catch (error) {
-      setCloseConfirmStatus(closeProjectErrorMessage(error));
+      const message = closeProjectErrorMessage(error);
+      if (dirtyBeforeClose) {
+        setCloseConfirmStatus(message);
+      } else {
+        setStatus(message);
+      }
     } finally {
       setBusy(false);
     }

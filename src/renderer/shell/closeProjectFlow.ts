@@ -17,6 +17,21 @@ export type CloseProjectChoice =
   | 'close-without-saving'
   | 'cancel';
 
+export type CloseProjectRequestAction =
+  | 'close-clean-project'
+  | 'show-dirty-confirmation';
+
+/**
+ * Routes the in-app close entry before any confirmation UI is mounted.
+ * Clean projects have no destructive choice to confirm, while dirty projects
+ * keep the existing three-branch guard.
+ */
+export function closeProjectRequestAction(
+  dirty: boolean,
+): CloseProjectRequestAction {
+  return dirty ? 'show-dirty-confirmation' : 'close-clean-project';
+}
+
 /**
  * Ruling ④: the in-app "close without saving" branch never asks the Main
  * Process to discard, so the autosave recovery file is retained. The UI must
