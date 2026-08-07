@@ -44,6 +44,7 @@ async function setInput(window, selector, value) {
     ).set.call(input, ${JSON.stringify(value)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
+  await new Promise((resolve) => setTimeout(resolve, 60));
 }
 
 async function focusInput(window, selector) {
