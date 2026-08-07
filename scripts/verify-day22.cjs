@@ -760,30 +760,6 @@ async function verifyDay22() {
     );
     const lockedAfter = await stageSnapshot(window);
 
-    const backgroundLayerId = project.shots[0].backgroundLayerId;
-    const backgroundSelectionBefore = await stageSnapshot(window);
-    // The fixture image has transparent pixels at (50, 50). This point is a
-    // deterministic opaque background pixel outside every ordinary layer.
-    const backgroundPoint = { x: 50, y: 540 };
-    const backgroundSelectedOnce = await selectLayerAtLogicalPoint(
-      window,
-      backgroundLayerId,
-      backgroundPoint,
-    );
-    // Repeating the same real hit must be idempotent, not clear selection.
-    await clickLogicalPoint(window, backgroundPoint, true);
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector(` +
-          `'[data-testid="project-canvas-stage"]'` +
-          `).dataset.selectedLayerId === ${JSON.stringify(
-            backgroundLayerId,
-          )}`,
-        'Formal background click did not preserve background selection.',
-      ),
-    );
-    const backgroundAfter = await stageSnapshot(window);
-
     const beforeInvalid = await stageSnapshot(window);
     await window.webContents.executeJavaScript(`(() => {
       const viewport = document.querySelector(
@@ -842,6 +818,40 @@ async function verifyDay22() {
     const reopenedLayer = reopened.layers.find(
       (layer) => layer.id === actualLayer.id,
     );
+
+    // Run direct-selection checks in the clean reopened session instead of
+    // inheriting synthetic pointer state from the earlier locked drag.
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `JSON.parse(document.querySelector(` +
+          `'[data-testid="project-canvas-stage"]'` +
+          `).dataset.renderedAssetIds).length >= 2`,
+        'Reopened canvas images did not render for selection checks.',
+      ),
+    );
+    const backgroundLayerId = project.shots[0].backgroundLayerId;
+    const backgroundSelectionBefore = await stageSnapshot(window);
+    // The fixture image has transparent pixels at (50, 50). This point is a
+    // deterministic opaque background pixel outside every ordinary layer.
+    const backgroundPoint = { x: 50, y: 540 };
+    const backgroundSelectedOnce = await selectLayerAtLogicalPoint(
+      window,
+      backgroundLayerId,
+      backgroundPoint,
+    );
+    // Repeating the same real hit must be idempotent, not clear selection.
+    await clickLogicalPoint(window, backgroundPoint, true);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector(` +
+          `'[data-testid="project-canvas-stage"]'` +
+          `).dataset.selectedLayerId === ${JSON.stringify(
+            backgroundLayerId,
+          )}`,
+        'Formal background click did not preserve background selection.',
+      ),
+    );
+    const backgroundAfter = await stageSnapshot(window);
 
     // A Cover background has no arbitrary empty coordinate. Use a dedicated
     // fixture-local project whose layers are all hidden, select its formal
