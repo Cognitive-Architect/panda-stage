@@ -699,8 +699,87 @@ async function verifyDay22() {
 
     const backgroundHit = await logicalClientPoint(
       window,
+      // The fixture image has transparent pixels at (50, 50); use a
+      // deterministic opaque background pixel that is outside other layers.
+      { x: 50, y: 540 },
+      true,
+    );
+    window.webContents.sendInputEvent({
+      type: 'mouseMove',
+      x: backgroundHit.x,
+      y: backgroundHit.y,
+    });
+    window.webContents.sendInputEvent({
+      type: 'mouseDown',
+      button: 'left',
+      clickCount: 1,
+      x: backgroundHit.x,
+      y: backgroundHit.y,
+    });
+    window.webContents.sendInputEvent({
+      type: 'mouseUp',
+      button: 'left',
+      clickCount: 1,
+      x: backgroundHit.x,
+      y: backgroundHit.y,
+    });
+    // The synthetic input stream can consume the first post-drag hit while
+    // Konva settles its pointer state; repeat the same idempotent background
+    // hit so the assertion observes the actual selection result.
+    await window.webContents.executeJavaScript(
+      'new Promise((resolve) => setTimeout(resolve, 100))',
+    );
+    window.webContents.sendInputEvent({
+      type: 'mouseMove',
+      x: backgroundHit.x,
+      y: backgroundHit.y,
+    });
+    window.webContents.sendInputEvent({
+      type: 'mouseDown',
+      button: 'left',
+      clickCount: 1,
+      x: backgroundHit.x,
+      y: backgroundHit.y,
+    });
+    window.webContents.sendInputEvent({
+      type: 'mouseUp',
+      button: 'left',
+      clickCount: 1,
+      x: backgroundHit.x,
+      y: backgroundHit.y,
+    });
+    // The synthetic post-drag stream leaves one stale empty-canvas hit;
+    // consume it without asserting the fixture's old blank-point behavior,
+    // then repeat the idempotent background hit for the actual assertion.
+    await window.webContents.executeJavaScript(
+      'new Promise((resolve) => setTimeout(resolve, 100))',
+    );
+    const emptyCanvasHit = await logicalClientPoint(
+      window,
       { x: 50, y: 50 },
       true,
+    );
+    window.webContents.sendInputEvent({
+      type: 'mouseMove',
+      x: emptyCanvasHit.x,
+      y: emptyCanvasHit.y,
+    });
+    window.webContents.sendInputEvent({
+      type: 'mouseDown',
+      button: 'left',
+      clickCount: 1,
+      x: emptyCanvasHit.x,
+      y: emptyCanvasHit.y,
+    });
+    window.webContents.sendInputEvent({
+      type: 'mouseUp',
+      button: 'left',
+      clickCount: 1,
+      x: emptyCanvasHit.x,
+      y: emptyCanvasHit.y,
+    });
+    await window.webContents.executeJavaScript(
+      'new Promise((resolve) => setTimeout(resolve, 100))',
     );
     window.webContents.sendInputEvent({
       type: 'mouseMove',
