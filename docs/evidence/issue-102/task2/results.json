@@ -91,21 +91,21 @@
       },
       "controls": {
         "x": 883.21875,
-        "y": 21,
+        "y": 18,
         "width": 374.1145935058594,
-        "height": 38,
-        "top": 21,
+        "height": 44,
+        "top": 18,
         "right": 1257.3333435058594,
-        "bottom": 59
+        "bottom": 62
       },
       "save": {
         "x": 1122.21875,
-        "y": 21,
+        "y": 18,
         "width": 53.333335876464844,
-        "height": 38,
-        "top": 21,
+        "height": 44,
+        "top": 18,
         "right": 1175.5520858764648,
-        "bottom": 59
+        "bottom": 62
       },
       "menu": null,
       "menuItems": [],
@@ -169,21 +169,21 @@
       },
       "controls": {
         "x": 850.21875,
-        "y": 21,
+        "y": 18,
         "width": 407.1145935058594,
-        "height": 38,
-        "top": 21,
+        "height": 44,
+        "top": 18,
         "right": 1257.3333435058594,
-        "bottom": 59
+        "bottom": 62
       },
       "save": {
         "x": 1122.21875,
-        "y": 21,
+        "y": 18,
         "width": 53.333335876464844,
-        "height": 38,
-        "top": 21,
+        "height": 44,
+        "top": 18,
         "right": 1175.5520858764648,
-        "bottom": 59
+        "bottom": 62
       },
       "menu": null,
       "menuItems": []
@@ -246,21 +246,21 @@
       },
       "controls": {
         "x": 979.21875,
-        "y": 21,
+        "y": 18,
         "width": 278.1145935058594,
-        "height": 38,
-        "top": 21,
+        "height": 44,
+        "top": 18,
         "right": 1257.3333435058594,
-        "bottom": 59
+        "bottom": 62
       },
       "save": {
         "x": 1122.21875,
-        "y": 21,
+        "y": 18,
         "width": 53.333335876464844,
-        "height": 38,
-        "top": 21,
+        "height": 44,
+        "top": 18,
         "right": 1175.5520858764648,
-        "bottom": 59
+        "bottom": 62
       },
       "menu": null,
       "menuItems": []
@@ -323,30 +323,30 @@
       },
       "controls": {
         "x": 979.21875,
-        "y": 21,
+        "y": 18,
         "width": 278.1145935058594,
-        "height": 38,
-        "top": 21,
+        "height": 44,
+        "top": 18,
         "right": 1257.3333435058594,
-        "bottom": 59
+        "bottom": 62
       },
       "save": {
         "x": 1122.21875,
-        "y": 21,
+        "y": 18,
         "width": 53.333335876464844,
-        "height": 38,
-        "top": 21,
+        "height": 44,
+        "top": 18,
         "right": 1175.5520858764648,
-        "bottom": 59
+        "bottom": 62
       },
       "menu": {
         "x": 1067.3333740234375,
-        "y": 65,
+        "y": 68,
         "width": 190,
-        "height": 177.33334350585938,
-        "top": 65,
+        "height": 201.33334350585938,
+        "top": 68,
         "right": 1257.3333740234375,
-        "bottom": 242.33334350585938
+        "bottom": 269.3333435058594
       },
       "menuItems": [
         {
@@ -387,7 +387,7 @@
     "acceptanceRoot": "D:\\PandaStage-Acceptance\\project-center-v1",
     "projectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
     "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task2",
-    "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\project-center-v1\\docs\\evidence\\issue-102\\task2"
+    "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\m3-stage3a-integration\\docs\\evidence\\issue-102\\task2"
   },
   "error": null,
   "window": {

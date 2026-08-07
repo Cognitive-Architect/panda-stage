@@ -3,7 +3,7 @@
   "workOrder": "B-22/45",
   "result": "PASS",
   "branch": "feat/day-22-layer-placement",
-  "executedAt": "2026-08-02T02:56:20.623Z",
+  "executedAt": "2026-08-07T10:31:05.813Z",
   "baselineSha": "27ba25a3287c421aa1c26041d5bc41ec86daca65",
   "contract": {
     "dropPayload": "v2 controlled IDs; character-expression includes characterId + expressionId",
@@ -15,16 +15,16 @@
   },
   "drops": {
     "fit": {
-      "scale": 0.441146,
+      "scale": 0.347396,
       "requested": {
         "x": 1200,
         "y": 300
       },
       "actual": {
-        "x": 1198.3943098804605,
-        "y": 297.827603859209
+        "x": 1199.400270567841,
+        "y": 297.24135002811096
       },
-      "ghost": "放置图层x 1198.4 · y 297.8",
+      "ghost": "放置图层x 1199.4 · y 297.2",
       "highlighted": true
     },
     "half": {
@@ -51,14 +51,29 @@
       },
       "actual": {
         "x": 1399.6666564941406,
-        "y": 699.1666564941406
+        "y": 699.6666564941406
       }
     }
   },
   "selection": {
     "createdLayerSelected": true,
+    "backgroundSelected": true,
+    "backgroundSelectedOnce": true,
+    "backgroundId": "60000000-0000-4000-8000-000000000001",
+    "backgroundIdempotent": true,
+    "backgroundSelectionRevisionClean": true,
+    "backgroundSelectionDirtyUnchanged": true,
+    "backgroundSelectionHistoryFree": true,
+    "trueEmptyNoVisibleLayers": true,
+    "blankStartedFromBackground": true,
     "blankCleared": true,
-    "backgroundId": "60000000-0000-4000-8000-000000000001"
+    "blankSelectionRevisionClean": true,
+    "blankSelectionClean": true,
+    "blankSelectionHistoryFree": true,
+    "trueEmptyPoint": {
+      "x": 960,
+      "y": 540
+    }
   },
   "drag": {
     "beforeRevision": 3,
@@ -66,7 +81,7 @@
     "afterRevision": 4,
     "before": {
       "x": 1399.6666564941406,
-      "y": 699.1666564941406
+      "y": 699.6666564941406
     },
     "requested": {
       "x": 1100,
@@ -74,7 +89,7 @@
     },
     "actual": {
       "x": 1099.6666564941406,
-      "y": 620.1666564941406
+      "y": 619.6666564941406
     },
     "autosaveUpdateDelta": 1
   },
@@ -98,7 +113,7 @@
     "saveRevision": 6,
     "savedLayerCount": 5,
     "reopenedLayer": {
-      "id": "3355381e-92bf-42c6-869b-c5e170b0f01d",
+      "id": "7f1752fe-0b00-444b-8466-216e0be53198",
       "name": "Placement sticker",
       "source": {
         "kind": "asset",
