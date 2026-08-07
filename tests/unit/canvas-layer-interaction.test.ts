@@ -203,7 +203,7 @@ describe('SelectableLayer interaction adapter', () => {
     expect(scaleY).toBe(1.4);
   });
 
-  it('makes a locked layer non-draggable and a background non-listening', () => {
+  it('keeps selection listening separate from the locked edit gate', () => {
     const locked = SelectableLayer({
       image: {} as HTMLImageElement,
       layer: { ...ordinary.layer, locked: true },
@@ -218,24 +218,39 @@ describe('SelectableLayer interaction adapter', () => {
     expect(
       (locked.props as { draggable: boolean }).draggable,
     ).toBe(false);
+    expect(
+      (locked.props as { listening: boolean }).listening,
+    ).toBe(true);
 
     const background = model.layers.find(
       ({ render }) => render.isBackground,
     )!;
+    const onSelect = vi.fn();
     const backgroundElement = SelectableLayer({
       image: {} as HTMLImageElement,
-      layer: background.layer,
+      layer: { ...background.layer, locked: true },
       nodeRef,
       render: background.render,
       selected: false,
-      onSelect: vi.fn(),
+      onSelect,
       onCommitPosition: vi.fn(),
       onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
-    expect(
-      (backgroundElement.props as { listening: boolean }).listening,
-    ).toBe(false);
+    const backgroundProps = backgroundElement.props as {
+      draggable: boolean;
+      listening: boolean;
+      onClick: (event: { cancelBubble: boolean }) => void;
+      children: [{ props: { listening: boolean } }];
+    };
+    expect(backgroundProps.draggable).toBe(false);
+    expect(backgroundProps.listening).toBe(true);
+    expect(backgroundProps.children[0].props.listening).toBe(true);
+
+    const event = { cancelBubble: false };
+    backgroundProps.onClick(event);
+    expect(event.cancelBubble).toBe(true);
+    expect(onSelect).toHaveBeenCalledWith(background.layer.id);
   });
 
   it('renders content without an interleaved Transformer sibling', () => {

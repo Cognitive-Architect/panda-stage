@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { LayerService, ProjectSchema } from '../../src/domain';
 import {
@@ -176,6 +176,34 @@ describe('Issue 121 RightInspector selection and ownership', () => {
     expect(
       getRightInspectorSelection(editor.getSnapshot(), shot.id, created.id),
     ).toMatchObject({ state: 'selected' });
+    selection.dispose();
+  });
+
+  it('keeps repeated background selection idempotent and history-clean', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const shot = project.shots[0]!;
+    const background = shot.layers.find(
+      (layer) => layer.id === shot.backgroundLayerId,
+    )!;
+    const editor = new EditorProjectStore();
+    editor.open('D:\\Projects\\background-selection.pandastage', project);
+    const selection = new LayerSelectionStore(editor, {
+      getCurrentShotId: () => shot.id,
+      subscribe: () => () => undefined,
+    });
+    const listener = vi.fn();
+    selection.subscribe(listener);
+
+    selection.selectExplicit(background.id);
+    selection.selectExplicit(background.id);
+
+    expect(selection.getSelectedLayerId()).toBe(background.id);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(editor.getSnapshot()!.dirty).toBe(false);
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
     selection.dispose();
   });
 
