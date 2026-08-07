@@ -207,6 +207,43 @@ describe('Issue 121 RightInspector selection and ownership', () => {
     selection.dispose();
   });
 
+  it('clears viewport-chrome selection without project or history changes', () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const shot = project.shots[0]!;
+    const background = shot.layers.find(
+      (layer) => layer.id === shot.backgroundLayerId,
+    )!;
+    const ordinary = shot.layers.find(
+      (layer) => layer.id !== shot.backgroundLayerId,
+    )!;
+    const editor = new EditorProjectStore();
+    editor.open('D:\\Projects\\viewport-selection.pandastage', project);
+    const selection = new LayerSelectionStore(editor, {
+      getCurrentShotId: () => shot.id,
+      subscribe: () => () => undefined,
+    });
+
+    for (const layer of [background, ordinary]) {
+      selection.selectExplicit(layer.id);
+      const before = editor.getSnapshot()!;
+      const beforeProject = JSON.stringify(before.project);
+      const beforeHistory = editor.history.getSnapshot();
+
+      selection.clear();
+
+      const after = editor.getSnapshot()!;
+      expect(selection.getSelectedLayerId()).toBeNull();
+      expect(
+        getRightInspectorSelection(after, shot.id, null),
+      ).toMatchObject({ state: 'empty', layer: null });
+      expect(after.revision).toBe(before.revision);
+      expect(after.dirty).toBe(before.dirty);
+      expect(JSON.stringify(after.project)).toBe(beforeProject);
+      expect(editor.history.getSnapshot()).toEqual(beforeHistory);
+    }
+    selection.dispose();
+  });
+
   it('keeps one owner for the inspector, panels, canvas, and history', () => {
     const shell = readFileSync('src/renderer/shell/EditorShell.tsx', 'utf8');
     const inspector = readFileSync('src/renderer/shell/RightInspector.tsx', 'utf8');

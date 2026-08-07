@@ -8,6 +8,7 @@ import {
   stageToScreen,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
+import { isViewportChromePointerTarget } from '../../src/renderer/features/canvas/CanvasViewport';
 import { mapClientPointToLayerPosition } from '../../src/renderer/features/canvas/useCanvasDrop';
 import { parseLayerPositionDraft } from '../../src/renderer/features/properties/LayerPositionPanel';
 
@@ -82,6 +83,60 @@ describe('canvas drop coordinate mapping', () => {
         transform,
       }),
     ).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('CanvasViewport chrome pointer routing', () => {
+  const logicalStage = { id: 'logical-stage' };
+  const layerCanvas = { id: 'layer-canvas' };
+  const viewportChrome = { id: 'viewport-chrome' };
+  const isInsideLogicalStage = (target: { id: string }): boolean =>
+    target === logicalStage || target === layerCanvas;
+
+  it('leaves logical Stage and layer targets with their existing owners', () => {
+    expect(
+      isViewportChromePointerTarget(
+        logicalStage,
+        isInsideLogicalStage,
+      ),
+    ).toBe(false);
+    expect(
+      isViewportChromePointerTarget(
+        layerCanvas,
+        isInsideLogicalStage,
+      ),
+    ).toBe(false);
+  });
+
+  it('identifies viewport chrome without coordinate guessing', () => {
+    expect(
+      isViewportChromePointerTarget(
+        viewportChrome,
+        isInsideLogicalStage,
+      ),
+    ).toBe(true);
+    expect(
+      isViewportChromePointerTarget(null, isInsideLogicalStage),
+    ).toBe(false);
+  });
+
+  it('wires only viewport chrome to the existing selection owner', () => {
+    const viewport = readFileSync(
+      'src/renderer/features/canvas/CanvasViewport.tsx',
+      'utf8',
+    );
+    const stage = readFileSync(
+      'src/renderer/features/canvas/CanvasStage.tsx',
+      'utf8',
+    );
+
+    expect(viewport).toContain("querySelector(\n      '.canvas-logical-stage'");
+    expect(viewport).toContain('logicalStage.contains(candidate)');
+    expect(viewport).toContain('onPointerDown={handlePointerDown}');
+    expect(viewport).not.toContain('document.addEventListener');
+    expect(stage).toMatch(
+      /onViewportChromePointerDown=\{\(\) => selectionStore\.clear\(\)\}/u,
+    );
   });
 });
 

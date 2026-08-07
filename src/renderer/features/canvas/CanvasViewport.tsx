@@ -29,6 +29,14 @@ export interface CanvasViewportProps {
   onDropPreview?: (preview: CanvasDropPreview | null) => void;
   onStagePoint: (point: Point | null) => void;
   onTransform?: (transform: ViewportTransform) => void;
+  onViewportChromePointerDown?: () => void;
+}
+
+export function isViewportChromePointerTarget<T>(
+  target: T | null,
+  isInsideLogicalStage: (target: T) => boolean,
+): boolean {
+  return target !== null && !isInsideLogicalStage(target);
 }
 
 export function CanvasViewport({
@@ -40,6 +48,7 @@ export function CanvasViewport({
   onDropPreview = () => undefined,
   onStagePoint,
   onTransform,
+  onViewportChromePointerDown = () => undefined,
 }: CanvasViewportProps): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [container, setContainer] = useState({
@@ -92,6 +101,23 @@ export function CanvasViewport({
     onStagePoint(isStagePointInside(point, transform) ? point : null);
   };
 
+  const handlePointerDown = (
+    event: PointerEvent<HTMLDivElement>,
+  ): void => {
+    const logicalStage = event.currentTarget.querySelector(
+      '.canvas-logical-stage',
+    );
+    const target = event.target;
+    if (!logicalStage || !(target instanceof Node)) return;
+    if (
+      isViewportChromePointerTarget(target, (candidate) =>
+        logicalStage.contains(candidate),
+      )
+    ) {
+      onViewportChromePointerDown();
+    }
+  };
+
   return (
     <div
       className={[
@@ -109,6 +135,7 @@ export function CanvasViewport({
       onDragLeave={dropHandlers.onDragLeave}
       onDragOver={dropHandlers.onDragOver}
       onDrop={dropHandlers.onDrop}
+      onPointerDown={handlePointerDown}
       onPointerLeave={() => onStagePoint(null)}
       onPointerMove={mapPointer}
       ref={viewportRef}
