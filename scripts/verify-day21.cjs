@@ -337,6 +337,34 @@ async function verifyDay21() {
       dataUrl: thumbnailDataUrl,
     }),
   );
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
+    (_event, request) => {
+      const asset = project.assets.find(
+        (candidate) => candidate.id === request.assetId,
+      );
+      if (!asset || asset.kind !== 'image') {
+        return {
+          ok: false,
+          error: {
+            code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+            message: 'Day 21 fixture image asset was not found.',
+            assetId: request.assetId,
+          },
+        };
+      }
+      return {
+        ok: true,
+        status: 'ready',
+        assetId: request.assetId,
+        mimeType: 'image/png',
+        width: asset.width,
+        height: asset.height,
+        byteLength: thumbnailBytes.byteLength,
+        bytes: new Uint8Array(thumbnailBytes),
+      };
+    },
+  );
 
   const window = await createMainWindow({ show: false });
   try {
@@ -908,6 +936,7 @@ async function verifyDay21() {
       IPC_CHANNELS.RECOVERY_DETECT,
       IPC_CHANNELS.RECENT_PROJECTS_LIST,
       IPC_CHANNELS.ASSET_THUMBNAIL_READ,
+      IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
     ]) {
       ipcMain.removeHandler(channel);
     }

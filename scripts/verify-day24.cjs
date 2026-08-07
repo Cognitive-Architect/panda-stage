@@ -408,6 +408,38 @@ async function verifyDay24() {
       }`,
     }),
   );
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
+    (_event, request) => {
+      const asset = firstProject.assets.find(
+        (candidate) => candidate.id === request.assetId,
+      );
+      if (!asset || asset.kind !== 'image') {
+        return {
+          ok: false,
+          error: {
+            code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+            message: 'Day 24 fixture image asset was not found.',
+            assetId: request.assetId,
+          },
+        };
+      }
+      const bytes =
+        request.assetId === exampleProject.assets[0].id
+          ? backgroundBytes
+          : characterBytes;
+      return {
+        ok: true,
+        status: 'ready',
+        assetId: request.assetId,
+        mimeType: 'image/png',
+        width: asset.width,
+        height: asset.height,
+        byteLength: bytes.byteLength,
+        bytes: new Uint8Array(bytes),
+      };
+    },
+  );
 
   const window = await createMainWindow({ show: false });
   try {
@@ -1203,6 +1235,7 @@ async function verifyDay24() {
       IPC_CHANNELS.RECOVERY_DETECT,
       IPC_CHANNELS.RECENT_PROJECTS_LIST,
       IPC_CHANNELS.ASSET_THUMBNAIL_READ,
+      IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
     ]) {
       ipcMain.removeHandler(channel);
     }
