@@ -130,7 +130,9 @@ describe('CanvasViewport chrome pointer routing', () => {
       'utf8',
     );
 
-    expect(viewport).toContain("querySelector(\n      '.canvas-logical-stage'");
+    expect(viewport).toMatch(
+      /querySelector\(\s*['"]\.canvas-logical-stage['"]\s*,?\s*\)/u,
+    );
     expect(viewport).toContain('logicalStage.contains(candidate)');
     expect(viewport).toContain('onPointerDown={handlePointerDown}');
     expect(viewport).not.toContain('document.addEventListener');
