@@ -697,39 +697,41 @@ async function verifyDay22() {
     );
     const lockedAfter = await stageSnapshot(window);
 
-    const blank = await logicalClientPoint(
+    const backgroundHit = await logicalClientPoint(
       window,
       { x: 50, y: 50 },
       true,
     );
     window.webContents.sendInputEvent({
       type: 'mouseMove',
-      x: blank.x,
-      y: blank.y,
+      x: backgroundHit.x,
+      y: backgroundHit.y,
     });
     window.webContents.sendInputEvent({
       type: 'mouseDown',
       button: 'left',
       clickCount: 1,
-      x: blank.x,
-      y: blank.y,
+      x: backgroundHit.x,
+      y: backgroundHit.y,
     });
     window.webContents.sendInputEvent({
       type: 'mouseUp',
       button: 'left',
       clickCount: 1,
-      x: blank.x,
-      y: blank.y,
+      x: backgroundHit.x,
+      y: backgroundHit.y,
     });
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector(` +
           `'[data-testid="project-canvas-stage"]'` +
-          `).dataset.selectedLayerId === ''`,
-        'Blank click did not clear selection.',
+          `).dataset.selectedLayerId === ${JSON.stringify(
+            project.shots[0].backgroundLayerId,
+          )}`,
+        'Formal background click did not preserve background selection.',
       ),
     );
-    const blankAfter = await stageSnapshot(window);
+    const backgroundAfter = await stageSnapshot(window);
 
     const beforeInvalid = await stageSnapshot(window);
     await window.webContents.executeJavaScript(`(() => {
@@ -829,7 +831,9 @@ async function verifyDay22() {
       selection: {
         createdLayerSelected:
           actualDrop.selectedLayerId === actualLayer.id,
-        blankCleared: blankAfter.selectedLayerId === '',
+        backgroundSelected:
+          backgroundAfter.selectedLayerId ===
+          project.shots[0].backgroundLayerId,
         backgroundId: project.shots[0].backgroundLayerId,
       },
       drag: {
@@ -917,7 +921,7 @@ async function verifyDay22() {
       evidence.properties.y !== 500 ||
       !evidence.locked.unchanged ||
       lockedAfter.revision !== lockedBefore.revision ||
-      !evidence.selection.blankCleared ||
+      !evidence.selection.backgroundSelected ||
       !evidence.invalidAsset.rejected ||
       !evidence.invalidAsset.layerCountUnchanged ||
       !evidence.invalidAsset.revisionUnchanged ||
