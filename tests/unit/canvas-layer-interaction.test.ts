@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -254,5 +255,24 @@ describe('SelectableLayer interaction adapter', () => {
     expect(
       (element.props as { name: string }).name,
     ).toBe('selectable-canvas-layer');
+  });
+
+  it('uses the original canvas-image API and owns object URL lifecycle in CanvasStage', () => {
+    const source = readFileSync(
+      'src/renderer/features/canvas/CanvasStage.tsx',
+      'utf8',
+    );
+
+    expect(source).toContain('readCanvasImage');
+    expect(source).not.toContain('readThumbnail');
+    expect(source).toContain('new Blob([response.bytes]');
+    expect(source).toContain('URL.createObjectURL');
+    expect(source).toContain('URL.revokeObjectURL');
+    expect(source).toContain('projectRoot');
+    expect(source).toContain('assetId: asset.id');
+    expect(source).toContain('sha256: asset.sha256');
+    expect(source).toContain('shotId');
+    expect(source).toContain('disposeCanvasImageResource');
+    expect(source.match(/if \(!active/gu)?.length ?? 0).toBeGreaterThanOrEqual(3);
   });
 });

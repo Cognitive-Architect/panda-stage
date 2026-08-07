@@ -30,8 +30,6 @@ import {
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
-import { LayerOrderControls } from '../properties/LayerOrderControls';
-import { LayerTransformPanel } from '../properties/LayerTransformPanel';
 import { HistoryControls } from '../editor/HistoryControls';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
@@ -42,11 +40,31 @@ import {
 import { SelectableLayer } from './SelectableLayer';
 import type { CanvasDropPreview } from './useCanvasDrop';
 
-Konva.pixelRatio = 1;
+// Keep the editor backing store sharp on Windows 125%/150% scaling without
+// allowing an unbounded DPR to multiply canvas memory.
+const editorDevicePixelRatio =
+  typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+Konva.pixelRatio = Math.min(Math.max(editorDevicePixelRatio, 1), 2);
 
 interface CanvasImageState {
   images: ReadonlyMap<string, HTMLImageElement>;
+  sourceKeys: ReadonlyMap<string, string>;
   missing: ReadonlySet<string>;
+}
+
+interface CanvasImageResource {
+  image: HTMLImageElement;
+  objectUrl: string;
+  disposed: boolean;
+}
+
+function disposeCanvasImageResource(resource: CanvasImageResource): void {
+  if (resource.disposed) return;
+  resource.disposed = true;
+  resource.image.onload = null;
+  resource.image.onerror = null;
+  resource.image.src = '';
+  URL.revokeObjectURL(resource.objectUrl);
 }
 
 function useCanvasImages(
@@ -63,70 +81,113 @@ function useCanvasImages(
   const sourceKey = assets
     .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
     .join('|');
+  const projectId = snapshot?.project.id ?? null;
+  const projectRoot = snapshot?.projectRoot ?? null;
+  const shotId = shot?.id ?? null;
   const [state, setState] = useState<CanvasImageState>({
     images: new Map(),
+    sourceKeys: new Map(),
     missing: new Set(),
   });
 
   useEffect(() => {
     let active = true;
+    const resources = new Map<string, CanvasImageResource>();
     setState({
       images: new Map(),
+      sourceKeys: new Map(),
       missing: new Set(
-        assets.filter((asset) => !asset.sha256).map((asset) => asset.id),
+        assets
+          .filter((asset) => !asset.sha256 || !projectRoot)
+          .map((asset) => asset.id),
       ),
     });
-    if (!snapshot) return () => {
+
+    const cleanup = (): void => {
       active = false;
+      for (const resource of resources.values()) {
+        disposeCanvasImageResource(resource);
+      }
+      resources.clear();
+    };
+    if (!projectId || !projectRoot || !shotId) return cleanup;
+
+    const markMissing = (assetId: string): void => {
+      if (!active) return;
+      setState((current) => ({
+        images: current.images,
+        sourceKeys: current.sourceKeys,
+        missing: new Set(current.missing).add(assetId),
+      }));
     };
 
     for (const asset of assets) {
       if (!asset.sha256) continue;
-      void window.pandaStage.assets
-        .readThumbnail({
-          projectRoot: snapshot.projectRoot,
-          assetId: asset.id,
-          sha256: asset.sha256,
-        })
-        .then(
-          (response) =>
-            new Promise<HTMLImageElement | null>((resolve) => {
-              if (!response.ok || response.status !== 'ready') {
+      void Promise.resolve()
+        .then(() =>
+          window.pandaStage.assets.readCanvasImage({
+            projectRoot,
+            assetId: asset.id,
+            sha256: asset.sha256!,
+          }),
+        )
+        .then((response) => {
+          if (!active || !response.ok || response.status !== 'ready') {
+            return null;
+          }
+          const objectUrl = URL.createObjectURL(
+            new Blob([response.bytes], { type: response.mimeType }),
+          );
+          if (!active) {
+            URL.revokeObjectURL(objectUrl);
+            return null;
+          }
+          const image = new window.Image();
+          const resource: CanvasImageResource = {
+            image,
+            objectUrl,
+            disposed: false,
+          };
+          resources.set(asset.id, resource);
+          return new Promise<HTMLImageElement | null>((resolve) => {
+            image.onload = () => {
+              if (!active) {
+                resources.delete(asset.id);
+                disposeCanvasImageResource(resource);
                 resolve(null);
                 return;
               }
-              const image = new window.Image();
-              image.onload = () => resolve(image);
-              image.onerror = () => resolve(null);
-              image.src = response.dataUrl;
-            }),
-        )
+              resolve(image);
+            };
+            image.onerror = () => {
+              resources.delete(asset.id);
+              disposeCanvasImageResource(resource);
+              resolve(null);
+            };
+            image.src = objectUrl;
+          });
+        })
         .then((image) => {
-          if (!active) return;
+          if (!active || !image) {
+            if (active) markMissing(asset.id);
+            return;
+          }
           setState((current) => {
             const images = new Map(current.images);
+            const sourceKeys = new Map(current.sourceKeys);
             const missing = new Set(current.missing);
-            if (image) {
-              images.set(asset.id, image);
-              missing.delete(asset.id);
-            } else {
-              missing.add(asset.id);
-            }
-            return { images, missing };
+            images.set(asset.id, image);
+            sourceKeys.set(asset.id, asset.sha256!);
+            missing.delete(asset.id);
+            return { images, sourceKeys, missing };
           });
         })
         .catch(() => {
-          if (!active) return;
-          setState((current) => ({
-            images: current.images,
-            missing: new Set(current.missing).add(asset.id),
-          }));
+          markMissing(asset.id);
         });
     }
-    return () => {
-      active = false;
-    };
-  }, [assets, snapshot, sourceKey]);
+    return cleanup;
+  }, [assets, projectId, projectRoot, shotId, sourceKey]);
 
   return state;
 }
@@ -181,11 +242,18 @@ export function CanvasStage(): React.JSX.Element {
     [shot, snapshot],
   );
   const imageState = useCanvasImages(snapshot, shot);
+  const imageForAsset = (asset: {
+    id: string;
+    sha256?: string;
+  }): HTMLImageElement | undefined =>
+    asset.sha256 && imageState.sourceKeys.get(asset.id) === asset.sha256
+      ? imageState.images.get(asset.id)
+      : undefined;
   const backgroundLayer =
     stageModel?.layers.find((layer) => layer.render.isBackground) ?? null;
   const backgroundAsset = backgroundLayer?.asset ?? null;
   const backgroundImage = backgroundAsset
-    ? imageState.images.get(backgroundAsset.id)
+    ? imageForAsset(backgroundAsset)
     : undefined;
   const empty = !stageModel || stageModel.layers.length === 0;
   const missingBackground =
@@ -202,9 +270,13 @@ export function CanvasStage(): React.JSX.Element {
     isBackground: selectedStageLayer?.render.isBackground ?? false,
     locked: selectedStageLayer?.layer.locked ?? false,
     imageReady: selectedStageLayer
-      ? imageState.images.has(selectedStageLayer.asset.id)
+      ? Boolean(imageForAsset(selectedStageLayer.asset))
       : false,
   });
+  const backgroundSelected =
+    Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
+  const backgroundListening =
+    backgroundSelected && backgroundLayer?.layer.locked === false;
 
   return (
     <section className="project-canvas" aria-labelledby="canvas-heading">
@@ -246,7 +318,11 @@ export function CanvasStage(): React.JSX.Element {
         {(transform) => (
           <>
             <div
-              data-background-listening="false"
+              data-background-listening={String(backgroundListening)}
+              data-background-editing={String(backgroundSelected)}
+              data-background-locked={String(
+                backgroundLayer?.layer.locked ?? false,
+              )}
               data-background-layer-id={
                 backgroundLayer?.render.id ?? ''
               }
@@ -265,6 +341,14 @@ export function CanvasStage(): React.JSX.Element {
               data-interaction-status={interactionStatus}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
               data-project-revision={snapshot?.revision ?? -1}
+              data-render-source="project-assets-original"
+              data-rendered-asset-intrinsic-sizes={JSON.stringify(
+                [...imageState.images.entries()].map(([assetId, image]) => ({
+                  assetId,
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                })),
+              )}
               data-rendered-asset-ids={JSON.stringify([
                 ...imageState.images.keys(),
               ])}
@@ -297,7 +381,7 @@ export function CanvasStage(): React.JSX.Element {
                   />
                   {stageModel
                     ? stageModel.layers.map(({ layer, asset, render }) => {
-                        const image = imageState.images.get(asset.id);
+                        const image = imageForAsset(asset);
                         if (!image) return null;
                         return (
                           <SelectableLayer
@@ -319,7 +403,11 @@ export function CanvasStage(): React.JSX.Element {
                             }}
                             onError={setInteractionStatus}
                             onSelect={(layerId) => {
-                              selectionStore.select(layerId);
+                              if (render.isBackground) {
+                                selectionStore.selectExplicit(layerId);
+                              } else {
+                                selectionStore.select(layerId);
+                              }
                               setInteractionStatus('已选择图层。');
                             }}
                             render={render}
@@ -414,8 +502,6 @@ export function CanvasStage(): React.JSX.Element {
       >
         {interactionStatus}
       </output>
-      <LayerTransformPanel />
-      <LayerOrderControls />
       <HistoryControls />
     </section>
   );
