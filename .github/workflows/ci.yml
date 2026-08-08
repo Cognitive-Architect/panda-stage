@@ -95,6 +95,8 @@ jobs:
 
                   if [[ "$path" =~ ^(\.github/|package\.json$|pnpm-lock\.yaml$|npm-shrinkwrap\.json$|yarn\.lock$|tsconfig.*\.json$|.*\.config\.(js|cjs|mjs|ts)$|src/(main|preload|domain|history|shared)/|src/renderer/(stores|shell|stage)/|src/renderer/features/(canvas|project|recovery)/|scripts/) ]]; then
                     has_critical=true
+                  elif [[ "$path" =~ ^((README|AGENTS)\.md|docs(/[^/]*)*/[^/]+\.md)$ ]]; then
+                    :
                   elif [[ ! "$path" =~ ^(src/renderer/|tests/|public/|.*\.(css|scss)$) ]]; then
                     has_unknown=true
                   fi
