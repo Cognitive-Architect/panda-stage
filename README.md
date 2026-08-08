@@ -1,23 +1,13 @@
-# Panda Stage（熊猫片场）
+# Panda Stage锛堢唺鐚墖鍦猴級
 
-Panda Stage 是一款面向个人创作者的 Windows Electron 桌面编辑器，用于把角色图片、背景、对白、音频和简单动作组织成短篇 2D 纸片人动画。仓库当前的主产品面是项目管理、资源工作区、镜头编辑、Konva 画布、图层检查器、撤销/重做、保存与恢复。
-
-## 当前能力与开发状态
-
-当前 `main` 已包含一套连续的 Editor Shell：
-
-- 项目中心支持新建、打开、最近项目、项目切换、项目文件夹入口和应用内关闭确认；
-- 编辑器支持镜头、素材和角色资源工作区，正式画布支持背景、图层选择、位置/变换、锁定、排序和删除；
-- 右侧检查器承载背景管理、图层变换与排序控制；编辑历史支持撤销、重做和连续拖拽合并；
-- 项目保存使用版本与修订号保护，Main Process 提供 autosave、恢复候选和恢复文件管理；
-- 动作预设的领域逻辑、校验、历史和持久化桥接已经存在，当前 UI 仍从左侧“兼容编辑工具”入口进入；它后续迁移到正式检查器的工作尚未成为 `main` 的交付内容；
-- Main Process 仍保留隐藏 Renderer、帧写盘和 FFmpeg/ffprobe 的导出验证链，但这条链不等同于编辑器首页已经交付正式导出 UI 或安装包 sidecar。
-
-M3 的正式背景、图层和选择合同已经进入当前 `main`；后续 Stage 3-B/3-C/4 仍按各自的授权、Draft 状态和人工验收推进。本文不把 M3、Stage 3-B、Stage 3-C 或 Stage 4 宣布为完成，也不把早期 Day 计划当作当前产品阶段。
-
-项目文件固定使用 1920×1080、24 FPS 和当前正式 schema v5。保存的素材路径必须相对于项目目录，时间字段使用整数毫秒。
-
-## 技术栈
+Panda Stage 鏄竴娆鹃潰鍚戜釜浜哄垱浣滆€呯殑 Windows Electron 妗岄潰缂栬緫鍣紝鐢ㄤ簬鎶婅鑹插浘鐗囥€佽儗鏅€佸鐧姐€侀煶棰戝拰绠€鍗曞姩浣滅粍缁囨垚鐭瘒 2D 绾哥墖浜哄姩鐢汇€備粨搴撳綋鍓嶇殑涓讳骇鍝侀潰鏄」鐩鐞嗐€佽祫婧愬伐浣滃尯銆侀暅澶寸紪杈戙€並onva 鐢诲竷銆佸浘灞傛鏌ュ櫒銆佹挙閿€/閲嶅仛銆佷繚瀛樹笌鎭㈠銆?
+## 褰撳墠鑳藉姏涓庡紑鍙戠姸鎬?
+褰撳墠 `main` 宸插寘鍚竴濂楄繛缁殑 Editor Shell锛?
+- 椤圭洰涓績鏀寔鏂板缓銆佹墦寮€銆佹渶杩戦」鐩€侀」鐩垏鎹€侀」鐩枃浠跺す鍏ュ彛鍜屽簲鐢ㄥ唴鍏抽棴纭锛?- 缂栬緫鍣ㄦ敮鎸侀暅澶淬€佺礌鏉愬拰瑙掕壊璧勬簮宸ヤ綔鍖猴紝姝ｅ紡鐢诲竷鏀寔鑳屾櫙銆佸浘灞傞€夋嫨銆佷綅缃?鍙樻崲銆侀攣瀹氥€佹帓搴忓拰鍒犻櫎锛?- 鍙充晶妫€鏌ュ櫒鎵胯浇鑳屾櫙绠＄悊銆佸浘灞傚彉鎹笌鎺掑簭鎺у埗锛涚紪杈戝巻鍙叉敮鎸佹挙閿€銆侀噸鍋氬拰杩炵画鎷栨嫿鍚堝苟锛?- 椤圭洰淇濆瓨浣跨敤鐗堟湰涓庝慨璁㈠彿淇濇姢锛孧ain Process 鎻愪緵 autosave銆佹仮澶嶅€欓€夊拰鎭㈠鏂囦欢绠＄悊锛?- 鍔ㄤ綔棰勮鐨勯鍩熼€昏緫銆佹牎楠屻€佸巻鍙插拰鎸佷箙鍖栨ˉ鎺ュ凡缁忓瓨鍦紝褰撳墠 UI 浠嶄粠宸︿晶鈥滃吋瀹圭紪杈戝伐鍏封€濆叆鍙ｈ繘鍏ワ紱瀹冨悗缁縼绉诲埌姝ｅ紡妫€鏌ュ櫒鐨勫伐浣滃皻鏈垚涓?`main` 鐨勪氦浠樺唴瀹癸紱
+- Main Process 浠嶄繚鐣欓殣钘?Renderer銆佸抚鍐欑洏鍜?FFmpeg/ffprobe 鐨勫鍑洪獙璇侀摼锛屼絾杩欐潯閾句笉绛夊悓浜庣紪杈戝櫒棣栭〉宸茬粡浜や粯姝ｅ紡瀵煎嚭 UI 鎴栧畨瑁呭寘 sidecar銆?
+M3 鐨勬寮忚儗鏅€佸浘灞傚拰閫夋嫨鍚堝悓宸茬粡杩涘叆褰撳墠 `main`锛涘悗缁?Stage 3-B/3-C/4 浠嶆寜鍚勮嚜鐨勬巿鏉冦€丏raft 鐘舵€佸拰浜哄伐楠屾敹鎺ㄨ繘銆傛湰鏂囦笉鎶?M3銆丼tage 3-B銆丼tage 3-C 鎴?Stage 4 瀹ｅ竷涓哄畬鎴愶紝涔熶笉鎶婃棭鏈?Day 璁″垝褰撲綔褰撳墠浜у搧闃舵銆?
+椤圭洰鏂囦欢鍥哄畾浣跨敤 1920脳1080銆?4 FPS 鍜屽綋鍓嶆寮?schema v5銆備繚瀛樼殑绱犳潗璺緞蹇呴』鐩稿浜庨」鐩洰褰曪紝鏃堕棿瀛楁浣跨敤鏁存暟姣銆?
+## 鎶€鏈爤
 
 - Electron
 - React 19
@@ -29,98 +19,69 @@ M3 的正式背景、图层和选择合同已经进入当前 `main`；后续 Sta
 - ESLint
 - pnpm
 
-## 当前架构总览
+## 褰撳墠鏋舵瀯鎬昏
 
 ```text
 App
-└─ EditorShell                                  唯一项目会话与生命周期入口
-   ├─ ProjectCenterScreen / StartScreen          无项目或项目中心页
-   └─ Editor layout
-      ├─ CompactProjectBar                       项目状态、保存、切换、预览、关闭
-      ├─ LeftWorkspace
-      │  └─ ResourceActivityDock                 镜头 / 素材 / 角色工作区
-      │     ├─ ProjectRecoveryPanel              最近项目与恢复相关入口
-      │     └─ LegacyCompatibilityActivity       暂留的动作预设兼容入口
-      ├─ CanvasWorkspace
-      │  └─ features/canvas/CanvasStage           正式 Konva 编辑画布
-      │     └─ HistoryControls                    撤销 / 重做
-      └─ RightInspector                           背景、变换、排序检查器
+鈹斺攢 EditorShell                                  鍞竴椤圭洰浼氳瘽涓庣敓鍛藉懆鏈熷叆鍙?   鈹溾攢 ProjectCenterScreen / StartScreen          鏃犻」鐩垨椤圭洰涓績椤?   鈹斺攢 Editor layout
+      鈹溾攢 CompactProjectBar                       椤圭洰鐘舵€併€佷繚瀛樸€佸垏鎹€侀瑙堛€佸叧闂?      鈹溾攢 LeftWorkspace
+      鈹? 鈹斺攢 ResourceActivityDock                 闀滃ご / 绱犳潗 / 瑙掕壊宸ヤ綔鍖?      鈹?    鈹溾攢 ProjectRecoveryPanel              鏈€杩戦」鐩笌鎭㈠鐩稿叧鍏ュ彛
+      鈹?    鈹斺攢 LegacyCompatibilityActivity       鏆傜暀鐨勫姩浣滈璁惧吋瀹瑰叆鍙?      鈹溾攢 CanvasWorkspace
+      鈹? 鈹斺攢 features/canvas/CanvasStage           姝ｅ紡 Konva 缂栬緫鐢诲竷
+      鈹?    鈹斺攢 HistoryControls                    鎾ら攢 / 閲嶅仛
+      鈹斺攢 RightInspector                           鑳屾櫙銆佸彉鎹€佹帓搴忔鏌ュ櫒
 ```
 
-### 项目、领域与渲染
+### 椤圭洰銆侀鍩熶笌娓叉煋
 
-- `src/domain/` 是当前正式领域入口，包含 Project/Asset/Character/Shot/Layer/TimelineEvent 模型、schema、迁移、selector、service、validator、几何规则和动作预设。
-- `src/renderer/stores/EditorProjectStore.ts` 是 Renderer 中 Project、`dirty` 和 `revision` 的唯一 owner；`src/history/` 提供它所持有的内存命令历史。
-- `shotStore` 只保存当前镜头选择，`selectionStore` 只保存当前图层选择；这些会话状态不写入 `project.json`，并在项目或镜头改变时重新校验。
-- `CanvasStage` 从正式 `src/domain` 构建编辑渲染模型，使用项目素材的受控读取 API 和 1920×1080 逻辑坐标；画布只负责显示与交互提交，持久化变更经 domain service 和 Project store 完成。
-- `src/shared/domain/` 是早期渲染探针/兼容模型，仍被历史测试或脚本使用，但不是当前正式编辑器模型的推荐入口。
-
-### Main、Preload、IPC 与项目生命周期
-
+- `src/domain/` 鏄綋鍓嶆寮忛鍩熷叆鍙ｏ紝鍖呭惈 Project/Asset/Character/Shot/Layer/TimelineEvent 妯″瀷銆乻chema銆佽縼绉汇€乻elector銆乻ervice銆乿alidator銆佸嚑浣曡鍒欏拰鍔ㄤ綔棰勮銆?- `src/renderer/stores/EditorProjectStore.ts` 鏄?Renderer 涓?Project銆乣dirty` 鍜?`revision` 鐨勫敮涓€ owner锛沗src/history/` 鎻愪緵瀹冩墍鎸佹湁鐨勫唴瀛樺懡浠ゅ巻鍙层€?- `shotStore` 鍙繚瀛樺綋鍓嶉暅澶撮€夋嫨锛宍selectionStore` 鍙繚瀛樺綋鍓嶅浘灞傞€夋嫨锛涜繖浜涗細璇濈姸鎬佷笉鍐欏叆 `project.json`锛屽苟鍦ㄩ」鐩垨闀滃ご鏀瑰彉鏃堕噸鏂版牎楠屻€?- `CanvasStage` 浠庢寮?`src/domain` 鏋勫缓缂栬緫娓叉煋妯″瀷锛屼娇鐢ㄩ」鐩礌鏉愮殑鍙楁帶璇诲彇 API 鍜?1920脳1080 閫昏緫鍧愭爣锛涚敾甯冨彧璐熻矗鏄剧ず涓庝氦浜掓彁浜わ紝鎸佷箙鍖栧彉鏇寸粡 domain service 鍜?Project store 瀹屾垚銆?- `src/shared/domain/` 鏄棭鏈熸覆鏌撴帰閽?鍏煎妯″瀷锛屼粛琚巻鍙叉祴璇曟垨鑴氭湰浣跨敤锛屼絾涓嶆槸褰撳墠姝ｅ紡缂栬緫鍣ㄦā鍨嬬殑鎺ㄨ崘鍏ュ彛銆?
+### Main銆丳reload銆両PC 涓庨」鐩敓鍛藉懆鏈?
 ```text
 Renderer stores / UI
-        │
-        ▼
-Preload allowlist + runtime Zod validation
-        │
-        ▼
-Trusted-window IPC handlers
-        │
-        ▼
-Main services
-  ProjectService       project.json 的创建、打开、迁移、校验、原子保存
-  AutosaveService      每个项目一个恢复调度会话
-  RecoveryService      恢复文件的检测、读取、保留与清理
-  Asset services       导入、元数据、缩略图和画布图片读取
-  ExportService        隐藏 Renderer、帧写盘与 FFmpeg/ffprobe
+        鈹?        鈻?Preload allowlist + runtime Zod validation
+        鈹?        鈻?Trusted-window IPC handlers
+        鈹?        鈻?Main services
+  ProjectService       project.json 鐨勫垱寤恒€佹墦寮€銆佽縼绉汇€佹牎楠屻€佸師瀛愪繚瀛?  AutosaveService      姣忎釜椤圭洰涓€涓仮澶嶈皟搴︿細璇?  RecoveryService      鎭㈠鏂囦欢鐨勬娴嬨€佽鍙栥€佷繚鐣欎笌娓呯悊
+  Asset services       瀵煎叆銆佸厓鏁版嵁銆佺缉鐣ュ浘鍜岀敾甯冨浘鐗囪鍙?  ExportService        闅愯棌 Renderer銆佸抚鍐欑洏涓?FFmpeg/ffprobe
 ```
 
-`EditorShell` 只构造一个 `ProjectSessionController`，负责打开、切换、关闭、autosave 生命周期和 recovery candidate。正式保存由 Renderer 的 `saveCurrentProject()` 与 Main 的 `ProjectService` 共同完成；项目保存、恢复写入和清理按项目根目录共享协调器，不使用第二套项目 session。
-
-## 目录结构
+`EditorShell` 鍙瀯閫犱竴涓?`ProjectSessionController`锛岃礋璐ｆ墦寮€銆佸垏鎹€佸叧闂€乤utosave 鐢熷懡鍛ㄦ湡鍜?recovery candidate銆傛寮忎繚瀛樼敱 Renderer 鐨?`saveCurrentProject()` 涓?Main 鐨?`ProjectService` 鍏卞悓瀹屾垚锛涢」鐩繚瀛樸€佹仮澶嶅啓鍏ュ拰娓呯悊鎸夐」鐩牴鐩綍鍏变韩鍗忚皟鍣紝涓嶄娇鐢ㄧ浜屽椤圭洰 session銆?
+## 鐩綍缁撴瀯
 
 ```text
 src/
-├── main/                  Electron Main、IPC handler、窗口和文件服务
-├── preload/               主窗口和隐藏窗口的白名单桥
-├── export-renderer/        隐藏导出 Renderer 入口
-├── renderer/
-│   ├── shell/             Project Center、EditorShell 和三栏编辑布局
-│   ├── features/          canvas、assets、characters、shots、properties 等功能
-│   ├── stores/            Project、Shot、Layer selection 等 Renderer store
-│   └── stage/             预览/验证用舞台入口
-├── domain/                当前正式 schema、迁移、服务、校验和动作领域
-├── history/               命令历史与 ProjectCommand
-└── shared/                IPC/API 合同、渲染合同和历史 probe 合同
-tests/                     unit、integration、contract 和 Electron verifier 测试
-scripts/                   Gate、Day/Issue verifier、fixture 和构建辅助脚本
-docs/                      架构、开发约束、设计、handoff、证据和历史回执
+鈹溾攢鈹€ main/                  Electron Main銆両PC handler銆佺獥鍙ｅ拰鏂囦欢鏈嶅姟
+鈹溾攢鈹€ preload/               涓荤獥鍙ｅ拰闅愯棌绐楀彛鐨勭櫧鍚嶅崟妗?鈹溾攢鈹€ export-renderer/        闅愯棌瀵煎嚭 Renderer 鍏ュ彛
+鈹溾攢鈹€ renderer/
+鈹?  鈹溾攢鈹€ shell/             Project Center銆丒ditorShell 鍜屼笁鏍忕紪杈戝竷灞€
+鈹?  鈹溾攢鈹€ features/          canvas銆乤ssets銆乧haracters銆乻hots銆乸roperties 绛夊姛鑳?鈹?  鈹溾攢鈹€ stores/            Project銆丼hot銆丩ayer selection 绛?Renderer store
+鈹?  鈹斺攢鈹€ stage/             棰勮/楠岃瘉鐢ㄨ垶鍙板叆鍙?鈹溾攢鈹€ domain/                褰撳墠姝ｅ紡 schema銆佽縼绉汇€佹湇鍔°€佹牎楠屽拰鍔ㄤ綔棰嗗煙
+鈹溾攢鈹€ history/               鍛戒护鍘嗗彶涓?ProjectCommand
+鈹斺攢鈹€ shared/                IPC/API 鍚堝悓銆佹覆鏌撳悎鍚屽拰鍘嗗彶 probe 鍚堝悓
+tests/                     unit銆乮ntegration銆乧ontract 鍜?Electron verifier 娴嬭瘯
+scripts/                   Gate銆丏ay/Issue verifier銆乫ixture 鍜屾瀯寤鸿緟鍔╄剼鏈?docs/                      鏋舵瀯銆佸紑鍙戠害鏉熴€佽璁°€乭andoff銆佽瘉鎹拰鍘嗗彶鍥炴墽
 ```
 
-## 本地开发
-
-环境要求：Windows 10/11、Node.js `>=22.12.0 <25`、pnpm 10（版本由 `packageManager` 字段约束）。如果本机尚未启用 pnpm：
-
+## 鏈湴寮€鍙?
+鐜瑕佹眰锛歐indows 10/11銆丯ode.js `>=22.12.0 <25`銆乸npm 10锛堢増鏈敱 `packageManager` 瀛楁绾︽潫锛夈€傚鏋滄湰鏈哄皻鏈惎鐢?pnpm锛?
 ```powershell
 corepack enable
 corepack install
 ```
 
-安装依赖并启动开发环境：
+瀹夎渚濊禆骞跺惎鍔ㄥ紑鍙戠幆澧冿細
 
 ```powershell
 pnpm install
 pnpm dev
 ```
 
-`pnpm dev` 会启动 Vite Renderer 和 Electron。Windows 路径、中文、空格和 Unicode 是正常支持场景；大体积验收数据优先放在 `D:\PandaStage-Acceptance\` 等专用目录。
+`pnpm dev` 浼氬惎鍔?Vite Renderer 鍜?Electron銆俉indows 璺緞銆佷腑鏂囥€佺┖鏍煎拰 Unicode 鏄甯告敮鎸佸満鏅紱澶т綋绉獙鏀舵暟鎹紭鍏堟斁鍦?`D:\PandaStage-Acceptance\` 绛変笓鐢ㄧ洰褰曘€?
+## 璐ㄩ噺妫€鏌ヤ笌楠岃瘉
 
-## 质量检查与验证
+### 鏍稿績鍛戒护
 
-### 核心命令
-
-以下命令均来自当前 `package.json`：
-
+浠ヤ笅鍛戒护鍧囨潵鑷綋鍓?`package.json`锛?
 ```powershell
 pnpm typecheck
 pnpm lint
@@ -129,7 +90,7 @@ pnpm test:integration
 pnpm build
 ```
 
-Electron 或专项门禁按改动范围选择当前脚本中的 verifier，例如：
+Electron 鎴栦笓椤归棬绂佹寜鏀瑰姩鑼冨洿閫夋嫨褰撳墠鑴氭湰涓殑 verifier锛屼緥濡傦細
 
 ```powershell
 pnpm verify:gate-a
@@ -148,41 +109,18 @@ pnpm verify:issue109-resource-workspace
 pnpm verify:issue125
 ```
 
-验证选择原则：
+楠岃瘉閫夋嫨鍘熷垯锛?
+- Markdown-only 鏀瑰姩鑷冲皯鎵ц `git diff --check`锛屾牳瀵逛粨搴撳唴鐩稿閾炬帴銆佸懡浠ゅ悕銆佽繃鏈熺姸鎬佹弿杩板拰鎺堟潈鏂囦欢鑼冨洿锛涗笉鍥犱负鏂囨。鏀瑰姩铏氭瀯瀹屾暣 Electron 浜哄伐楠屾敹锛?- Renderer/domain 鏀瑰姩鎵ц `typecheck`銆乣lint`銆乣test:unit`銆乣build`锛屾秹鍙婅法灞傛垨鎸佷箙鍖栨椂鍔?`test:integration`锛?- Main/Preload/IPC/autosave/recovery 鏀瑰姩鎵ц鏍稿績妫€鏌ャ€侀泦鎴愭祴璇曘€佹瀯寤哄拰鏈€鐩稿叧鐨?Electron verifier锛涢渶瑕佺湡浜洪獙鏀舵椂锛岃嚜鍔ㄥ寲缁撴灉涓嶈兘鏇夸唬 Windows Electron 杩愯锛?- 瀹屾暣浜や粯鎴?PR gate 浠ュ綋鍓?`package.json` 涓浉鍏?`verify:*` 鑴氭湰鍜?CI 涓哄噯锛屼笉闄嶄綆瀹夊叏妫€鏌ユ垨娴嬭瘯闂ㄦ鎹㈠彇閫氳繃銆?
+## Electron銆両PC 涓庢暟鎹畨鍏ㄥ師鍒?
+- Main window 鍜岄殣钘?Renderer 浣跨敤 `contextIsolation: true`銆乣nodeIntegration: false`銆乣sandbox: true`銆?- Renderer 涓嶇洿鎺ヨ闂?Node.js銆乣fs`銆乣path` 鎴栧瓙杩涚▼锛涙枃浠剁郴缁熷拰 FFmpeg 鑳藉姏鍙湪 Main Process銆?- Preload 鍙€氳繃鍐荤粨鐨勭櫧鍚嶅崟 API 鏆撮湶鑳藉姏锛汭PC 閫氶亾鍚嶉泦涓湪 `src/shared/ipc/channels.ts`銆?- IPC 璇锋眰鍜屽搷搴斿湪 Preload 涓?Main 涓や晶浣跨敤涓ユ牸 Zod schema 鏍￠獙锛孧ain handler 杩樹細鏍稿鍙戦€佺獥鍙ｇ殑 `webContents.id`銆?- 椤圭洰淇濆瓨浣跨敤椤圭洰 ID銆乻chema銆乺evision 鍜屽師瀛愬啓鍏ヤ繚鎶わ紱鎭㈠鏂囦欢鏄?autosave 鐨勬仮澶嶈瘉鎹紝涓嶆槸瀵?`project.json` 鐨勯潤榛樻浛浠ｃ€?- 椤圭洰鍐呯礌鏉愯矾寰勫繀椤讳繚鎸佺浉瀵硅矾寰勶紝涓嶅厑璁搁€氳繃璺緞閬嶅巻绂诲紑椤圭洰鏍圭洰褰曘€?
+## 鏂囨。瀵艰埅
 
-- Markdown-only 改动至少执行 `git diff --check`，核对仓库内相对链接、命令名、过期状态描述和授权文件范围；不因为文档改动虚构完整 Electron 人工验收；
-- Renderer/domain 改动执行 `typecheck`、`lint`、`test:unit`、`build`，涉及跨层或持久化时加 `test:integration`；
-- Main/Preload/IPC/autosave/recovery 改动执行核心检查、集成测试、构建和最相关的 Electron verifier；需要真人验收时，自动化结果不能替代 Windows Electron 运行；
-- 完整交付或 PR gate 以当前 `package.json` 中相关 `verify:*` 脚本和 CI 为准，不降低安全检查或测试门槛换取通过。
+- [AGENTS.md](./AGENTS.md)锛歝oding agent 鐨勭ǔ瀹氬伐浣滆鍒欏拰楠岃瘉鐭╅樀銆?- [docs/architecture.md](./docs/architecture.md)锛氳繘绋嬭竟鐣屻€佹暟鎹ā鍨嬨€佹覆鏌撲笌鐢熷懡鍛ㄦ湡鐨勬灦鏋勮鏄庯紱閬囧埌鐗堟湰鍖栧巻鍙茬珷鑺傛椂浠ュ綋鍓嶄唬鐮佷负鍑嗐€?- [docs/development.md](./docs/development.md)锛氶」鐩敓鍛藉懆鏈熴€乤utosave/recovery銆佺礌鏉愬拰寮€鍙戦獙璇佺害鏉熴€?- [docs/ipc.md](./docs/ipc.md)锛欼PC 閫氶亾銆乸ayload銆佸彲淇?sender 鍜屽鍑鸿竟鐣屻€?- [package.json](./package.json)锛氬綋鍓嶅彲鐢ㄧ殑寮€鍙戙€佹祴璇曘€佹瀯寤哄拰 verifier scripts銆?- [ROADMAP.md](./ROADMAP.md)锛氫骇鍝佽寖鍥淬€佹灦鏋勫師鍒欏拰閲岀▼纰戣鍒掞紝涓嶈嚜鍔ㄨ瘉鏄庢煇闃舵宸蹭氦浠樸€?- [DAILY_PLAN.md](./DAILY_PLAN.md)锛氶€愭棩璁″垝锛岄€傚悎鏌ュ巻鍙蹭换鍔¤儗鏅紝涓嶆槸褰撳墠瀹炵幇鍏ュ彛銆?- [agent task/README.md](./agent%20task/README.md)锛氶€愭棩 Agent 宸ュ崟锛涙墽琛屽墠浠嶉渶浠ュ綋鍓?Issue/PR 鍜屼唬鐮佷负鍑嗐€?- [M3 Editor Shell design](./docs/design/m3-editor-shell-design.md)锛歁3 璁捐涓庤縼绉诲悎鍚岋紝灞炰簬璁捐/浜ゆ帴鏉愭枡锛屼笉鑳芥浛浠ｅ綋鍓嶄唬鐮佸璁°€?- [FFmpeg 鏂囨。](./docs/ffmpeg.md)锛氬獟浣撳伐鍏风殑閰嶇疆銆佹潵婧愬拰璁稿彲璇佽鏄庛€?
+Issue/PR 鏄綋鍓嶄换鍔¤寖鍥村拰浜や粯鐘舵€佺殑浜嬪疄鏉ユ簮锛涙棫 handoff銆佽璁＄銆丏ay 璁″垝鍜屾祴璇曞洖鎵ф槸鏈変环鍊肩殑涓婁笅鏂囨垨璇佹嵁锛屼絾涓庡綋鍓嶄唬鐮佸啿绐佹椂涓嶈嚜鍔ㄤ紭鍏堛€?
+## 鍘嗗彶楠岃瘉涓?test receipts
 
-## Electron、IPC 与数据安全原则
+Day 03鈥?9 鐨?IPC銆佸叡浜垶鍙般€丄udioContext 棰勮銆侀殣钘忕獥鍙ｆ崟鑾枫€丠.264/AAC 鎺㈤拡鍥炴墽锛屼互鍙婂悗缁?Day 11鈥?4銆丮1銆丮2銆丮3 鍜?Gate A 璁板綍閮戒繚鐣欏湪 [`docs/test-receipts/`](./docs/test-receipts/) 涓€傚畠浠敤浜庤拷婧綋鏃剁殑楠岃瘉鑼冨洿銆佺幆澧冮檺鍒跺拰鍥炲綊璇佹嵁锛屼笉浠ｈ〃褰撳墠椤圭洰浠嶅浜庡搴旂殑 Day 闃舵銆?
+灏ゅ叾涓嶈鎶?Day 08 鎴?Day 09 鐨勫獟浣撴帰閽堝洖鎵у綋鎴愬綋鍓嶄骇鍝佺姸鎬侊紱褰撳墠鐘舵€佸簲浠ユ湰 README 鐨勮兘鍔涙瑙堛€佸綋鍓嶆簮鐮併€乣package.json` 鍜屾椿鍔?Issue/PR 涓哄噯銆?
+GitHub锛?https://github.com/Cognitive-Architect/panda-stage>
 
-- Main window 和隐藏 Renderer 使用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。
-- Renderer 不直接访问 Node.js、`fs`、`path` 或子进程；文件系统和 FFmpeg 能力只在 Main Process。
-- Preload 只通过冻结的白名单 API 暴露能力；IPC 通道名集中在 `src/shared/ipc/channels.ts`。
-- IPC 请求和响应在 Preload 与 Main 两侧使用严格 Zod schema 校验，Main handler 还会核对发送窗口的 `webContents.id`。
-- 项目保存使用项目 ID、schema、revision 和原子写入保护；恢复文件是 autosave 的恢复证据，不是对 `project.json` 的静默替代。
-- 项目内素材路径必须保持相对路径，不允许通过路径遍历离开项目根目录。
-
-## 文档导航
-
-- [AGENTS.md](./AGENTS.md)：coding agent 的稳定工作规则和验证矩阵。
-- [docs/architecture.md](./docs/architecture.md)：进程边界、数据模型、渲染与生命周期的架构说明；遇到版本化历史章节时以当前代码为准。
-- [docs/development.md](./docs/development.md)：项目生命周期、autosave/recovery、素材和开发验证约束。
-- [docs/ipc.md](./docs/ipc.md)：IPC 通道、payload、可信 sender 和导出边界。
-- [package.json](./package.json)：当前可用的开发、测试、构建和 verifier scripts。
-- [ROADMAP.md](./ROADMAP.md)：产品范围、架构原则和里程碑规划，不自动证明某阶段已交付。
-- [DAILY_PLAN.md](./DAILY_PLAN.md)：逐日计划，适合查历史任务背景，不是当前实现入口。
-- [agent task/README.md](./agent%20task/README.md)：逐日 Agent 工单；执行前仍需以当前 Issue/PR 和代码为准。
-- [M3 Editor Shell design](./docs/design/m3-editor-shell-design.md)：M3 设计与迁移合同，属于设计/交接材料，不能替代当前代码审计。
-- [FFmpeg 文档](./docs/ffmpeg.md)：媒体工具的配置、来源和许可证说明。
-
-Issue/PR 是当前任务范围和交付状态的事实来源；旧 handoff、设计稿、Day 计划和测试回执是有价值的上下文或证据，但与当前代码冲突时不自动优先。
-
-## 历史验证与 test receipts
-
-Day 03–09 的 IPC、共享舞台、AudioContext 预览、隐藏窗口捕获、H.264/AAC 探针回执，以及后续 Day 11–24、M1、M2、M3 和 Gate A 记录都保留在 [`docs/test-receipts/`](./docs/test-receipts/) 中。它们用于追溯当时的验证范围、环境限制和回归证据，不代表当前项目仍处于对应的 Day 阶段。
-
-尤其不要把 Day 08 或 Day 09 的媒体探针回执当成当前产品状态；当前状态应以本 README 的能力概览、当前源码、`package.json` 和活动 Issue/PR 为准。
-
-GitHub：<https://github.com/Cognitive-Architect/panda-stage>
+<!-- temporary CI docs-only validation v2 -->
