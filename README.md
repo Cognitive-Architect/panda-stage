@@ -186,3 +186,5 @@ Day 03–09 的 IPC、共享舞台、AudioContext 预览、隐藏窗口捕获、
 尤其不要把 Day 08 或 Day 09 的媒体探针回执当成当前产品状态；当前状态应以本 README 的能力概览、当前源码、`package.json` 和活动 Issue/PR 为准。
 
 GitHub：<https://github.com/Cognitive-Architect/panda-stage>
+
+<!-- temporary CI docs-only validation v3 -->
