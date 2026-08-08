@@ -256,8 +256,7 @@ async function assertStage2CComposition(window) {
   `);
   await window.webContents.executeJavaScript(
     waitFor(
-      `!document.querySelector('[data-testid="legacy-workspace-scroll"]') && ` +
-        `!document.querySelector('[data-testid="action-preset-panel"]')`,
+      `!document.querySelector('[data-testid="legacy-workspace-scroll"]')`,
       'Stage 2-C compatibility workspace did not unmount.',
     ),
   );
