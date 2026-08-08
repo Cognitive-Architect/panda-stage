@@ -229,3 +229,5 @@ export function App(): React.JSX.Element {
     />
   );
 }
+
+// temporary CI normal-renderer validation
