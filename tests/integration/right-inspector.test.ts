@@ -258,10 +258,16 @@ describe('Issue 121 RightInspector selection and ownership', () => {
     expect(inspector.match(/<LayerTransformPanel/gu)).toHaveLength(1);
     expect(inspector.match(/<LayerOrderControls/gu)).toHaveLength(1);
     expect(inspector.match(/<LayerBackgroundControl/gu)).toHaveLength(1);
+    expect(inspector.match(/<ActionPresetPanel/gu)).toHaveLength(1);
+    expect(inspector).toContain(
+      'data-testid="right-inspector-action-presets"',
+    );
     expect(canvas).not.toContain('<LayerTransformPanel');
     expect(canvas).not.toContain('<LayerOrderControls');
     expect(canvas.match(/<HistoryControls/gu)).toHaveLength(1);
     expect(legacy).not.toContain('<CanvasStage');
+    expect(legacy).not.toContain('<ActionPresetPanel');
+    expect(legacy).toContain('data-testid="legacy-workspace-empty"');
   });
 
   it('protects background keyboard deletion while retaining ordinary deletion', () => {

@@ -1,5 +1,3 @@
-import { ActionPresetPanel } from '../features/actions/ActionPresetPanel';
-
 export function LegacyWorkspace(): React.JSX.Element {
   return (
     <div
@@ -8,12 +6,12 @@ export function LegacyWorkspace(): React.JSX.Element {
       data-testid="legacy-workspace-scroll"
       id="legacy-workspace"
     >
-      <section
-        aria-label="Action presets"
-        className="day25-action-shell"
+      <p
+        className="legacy-workspace-empty"
+        data-testid="legacy-workspace-empty"
       >
-        <ActionPresetPanel />
-      </section>
+        动作预设已迁入右侧检查器。兼容工作区不再挂载重复动作面板。
+      </p>
     </div>
   );
 }

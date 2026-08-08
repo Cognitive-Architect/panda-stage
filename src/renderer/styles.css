@@ -460,6 +460,91 @@ button:disabled {
   white-space: normal;
 }
 
+.right-inspector-action-presets {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgb(127 199 148 / 20%);
+  border-radius: 12px;
+  background: rgb(18 31 23 / 74%);
+  gap: 8px;
+}
+
+.right-inspector-action-presets > .action-preset-panel {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.right-inspector-action-presets .action-preset-panel > div:first-child {
+  min-width: 0;
+}
+
+.right-inspector-action-presets .action-preset-panel h3,
+.right-inspector-action-presets .action-preset-panel p,
+.right-inspector-action-presets .action-preset-panel output {
+  margin: 0;
+}
+
+.right-inspector-action-presets .action-preset-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.right-inspector-action-presets .action-preset-grid button {
+  min-width: 0;
+  padding: 8px 6px;
+  overflow-wrap: anywhere;
+}
+
+.right-inspector-action-presets .preset-parameter-form {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.right-inspector-action-presets .preset-parameter-form label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: #a9b8ae;
+  font-size: 11px;
+}
+
+.right-inspector-action-presets .preset-parameter-form input,
+.right-inspector-action-presets .preset-parameter-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgb(154 216 172 / 25%);
+  border-radius: 8px;
+  color: #eef6f0;
+  background: #0b100e;
+  font: inherit;
+}
+
+.right-inspector-action-presets .preset-parameter-actions {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.right-inspector-action-presets .preset-parameter-actions button {
+  min-width: 0;
+  padding: 8px 6px;
+}
+
+.right-inspector-action-presets .action-preset-status,
+.right-inspector-action-presets output {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #91a299;
+  font-size: 11px;
+}
+
 .left-workspace {
   position: relative;
   display: grid;
@@ -822,6 +907,13 @@ button:disabled {
 
 .legacy-workspace > :last-child {
   margin-bottom: 0;
+}
+
+.legacy-workspace-empty {
+  margin: 0;
+  color: #91a299;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .workspace-placeholder {

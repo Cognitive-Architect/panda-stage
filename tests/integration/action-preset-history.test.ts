@@ -43,6 +43,12 @@ describe('T07 preset application through history', () => {
     const json = JSON.stringify(editorProjectStore.getSnapshot()!.project);
     const reparsed = JSON.parse(json);
     expect(reparsed.shots[0].timelineEvents.length).toBe(1);
+
+    // A reopened project restores the persisted action event as clean state.
+    editorProjectStore.open('reopened.pandastage', reparsed);
+    expect(timelineEventCount()).toBe(1);
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(0);
+    expect(editorProjectStore.getSnapshot()!.dirty).toBe(false);
   });
 
   it('bridge apply routes through history (undo restores prior state)', () => {

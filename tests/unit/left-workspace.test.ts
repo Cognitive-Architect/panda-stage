@@ -33,7 +33,7 @@ describe('Stage 2-B left workspace composition contract', () => {
     expect(recovery).not.toContain('<CanvasStage');
   });
 
-  it('keeps the central canvas separate and gates legacy actions in the left workspace', () => {
+  it('keeps the central canvas separate and preserves the legacy workspace shell', () => {
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const legacy = readSource('src/renderer/shell/LegacyWorkspace.tsx');
@@ -51,7 +51,8 @@ describe('Stage 2-B left workspace composition contract', () => {
       'key={`compatibility:${projectSnapshot.projectRoot}`}',
     );
     expect(legacy.match(/<CanvasStage/gu) ?? []).toHaveLength(0);
-    expect(legacy.match(/<ActionPresetPanel/gu)).toHaveLength(1);
+    expect(legacy).not.toContain('<ActionPresetPanel');
+    expect(legacy).toContain('data-testid="legacy-workspace-empty"');
     expect(legacy).not.toContain('<ProjectRecoveryPanel');
     expect(canvas.match(/<CanvasStage/gu)).toHaveLength(1);
     expect(compatibility).toContain('data-testid="legacy-compatibility-toggle"');

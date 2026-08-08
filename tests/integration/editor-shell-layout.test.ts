@@ -90,7 +90,8 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(legacy).toContain('data-testid="legacy-workspace-scroll"');
     expect(count(legacy, /data-testid="legacy-workspace-scroll"/gu)).toBe(1);
     expect(legacy).not.toContain('<ProjectRecoveryPanel');
-    expect(legacy).toContain('<ActionPresetPanel');
+    expect(legacy).not.toContain('<ActionPresetPanel');
+    expect(legacy).toContain('data-testid="legacy-workspace-empty"');
     expect(count(legacy, /<CanvasStage/gu)).toBe(0);
     expect(panel).toContain('<RecentProjectsPanel');
     expect(panel).not.toContain('<AssetLibrary');
@@ -112,6 +113,33 @@ describe('EditorShell Stage 2-B composition contract', () => {
     );
     expect(styles).toMatch(
       /\.canvas-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+  });
+
+  it('mounts ActionPresetPanel exactly once in RightInspector', () => {
+    const inspector = readSource('src/renderer/shell/RightInspector.tsx');
+    const legacy = readSource('src/renderer/shell/LegacyWorkspace.tsx');
+    const compatibility = readSource(
+      'src/renderer/shell/LegacyCompatibilityActivity.tsx',
+    );
+    const styles = readSource('src/renderer/styles.css');
+
+    expect(inspector.match(/<ActionPresetPanel/gu)).toHaveLength(1);
+    expect(inspector).toContain(
+      'data-testid="right-inspector-action-presets"',
+    );
+    expect(inspector).toContain('key={snapshot?.projectRoot ?? \'no-project\'}');
+    expect(legacy).not.toContain('<ActionPresetPanel');
+    expect(legacy).toContain('data-testid="legacy-workspace-empty"');
+    expect(compatibility).toContain('{active ? <LegacyWorkspace');
+    expect(styles).toMatch(
+      /\.right-inspector\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.right-inspector-action-presets\s*\{[\s\S]*?min-width:\s*0;/u,
+    );
+    expect(styles).toMatch(
+      /\.right-inspector-action-presets\s+\.action-preset-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u,
     );
   });
 
