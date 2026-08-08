@@ -432,3 +432,5 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
+// temporary CI critical-main validation
