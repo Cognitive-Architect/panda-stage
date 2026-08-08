@@ -23,7 +23,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(app).toContain('gatePreview=');
   });
 
-  it('builds one fixed top/body/bottom Grid with visible placeholders', () => {
+  it('builds one fixed top/body/bottom Grid with one real inspector', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
     const styles = readSource('src/renderer/styles.css');
@@ -31,7 +31,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     for (const selector of [
       'data-testid="editor-layout"',
       'data-testid="editor-body"',
-      'data-testid="right-inspector-placeholder"',
+      '<RightInspector',
       'data-testid="bottom-workspace-placeholder"',
     ]) {
       expect(shell).toContain(selector);
@@ -41,6 +41,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     );
     expect(shell).toContain('data-testid="editor-top-region"');
     expect(shell).not.toContain('<EditorTopBar');
+    expect(shell).not.toContain('right-inspector-placeholder');
     expect(left).toContain('data-testid="left-workspace-scroll"');
     expect(styles).toMatch(
       /\.editor-layout\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u,
@@ -206,7 +207,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
 
     expect(sources).toContain('LeftWorkspace');
     expect(sources).toContain('CanvasWorkspace');
-    expect(sources).not.toContain('RightInspector');
+    expect(sources).toContain('RightInspector');
     expect(sources).not.toContain('BottomHistory');
     expect(readSource('src/renderer/shell/LegacyWorkspace.tsx')).not.toContain(
       'CloseConfirmDialog',

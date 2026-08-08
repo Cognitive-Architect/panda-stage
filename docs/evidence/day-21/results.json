@@ -3,7 +3,7 @@
   "workOrder": "B-21/45",
   "result": "PASS",
   "branch": "feat/day-21-canvas-stage",
-  "executedAt": "2026-08-02T03:11:48.628Z",
+  "executedAt": "2026-08-07T10:30:39.964Z",
   "contract": {
     "projectSchemaVersion": 5,
     "logicalCanvas": {
@@ -25,13 +25,13 @@
   "fit": {
     "logicalWidth": 1920,
     "logicalHeight": 1080,
-    "scale": 0.441146,
-    "expectedScale": 0.44114583333333335,
+    "scale": 0.347396,
+    "expectedScale": 0.34739583333333335,
     "offsetX": 0,
-    "offsetY": 51.781,
+    "offsetY": 102.406,
     "centeredX": true,
     "centeredY": true,
-    "pointer": "x 960.4 · y 540.4",
+    "pointer": "x 960.5 · y 540.0",
     "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",
     "backgroundPolicy": "cover-centered-no-stretch",
     "backgroundListening": "false",
@@ -41,13 +41,13 @@
     "backgroundOpacity": 1,
     "renderContract": "shared-stage-layer-v1",
     "centerGuides": "vertical,horizontal",
-    "modeFeedback": "适应窗口 · 44.1%",
+    "modeFeedback": "适应窗口 · 34.7%",
     "clean": true,
     "revisionZero": true
   },
   "resize": {
-    "scale": 0.211979,
-    "expectedScale": 0.21197916666666666,
+    "scale": 0.303646,
+    "expectedScale": 0.30364583333333334,
     "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",
     "clean": true,
     "revisionZero": true,
@@ -62,7 +62,7 @@
     "scrollHeight": 1080,
     "contentWidth": 1920,
     "contentHeight": 1080,
-    "pointer": "x 721.0 · y 487.5",
+    "pointer": "x 721.0 · y 487.3",
     "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",
     "clean": true,
     "revisionZero": true,
@@ -77,11 +77,11 @@
     "devicePixelRatio": 1.5,
     "fit": {
       "devicePixelRatio": 1.5,
-      "pointer": "x 960.5 · y 539.1",
+      "pointer": "x 960.6 · y 541.8",
       "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]"
     },
     "actual": {
-      "pointer": "x 461.0 · y 333.5",
+      "pointer": "x 461.0 · y 333.3",
       "scrollLeft": 211.3333282470703,
       "scrollTop": 133.3333282470703,
       "layerJson": "[{\"id\":\"60000000-0000-4000-8000-000000000001\",\"name\":\"Background\",\"source\":{\"kind\":\"asset\",\"assetId\":\"10000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":960,\"y\":540,\"scaleX\":1,\"scaleY\":1,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":0,\"locked\":false,\"flipX\":false},{\"id\":\"60000000-0000-4000-8000-000000000002\",\"name\":\"Panda\",\"source\":{\"kind\":\"character\",\"characterId\":\"20000000-0000-4000-8000-000000000001\",\"expressionId\":\"20000000-0000-4000-8000-000000000002\"},\"anchor\":\"center\",\"x\":430,\"y\":690,\"scaleX\":0.72,\"scaleY\":0.72,\"rotationDeg\":0,\"opacity\":1,\"visible\":true,\"zIndex\":1,\"locked\":false,\"flipX\":false}]",

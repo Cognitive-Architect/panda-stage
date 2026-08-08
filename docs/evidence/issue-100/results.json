@@ -1,0 +1,344 @@
+{
+  "issue": 100,
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "passed": true,
+  "checks": [
+    "T1/T17 initial original sources",
+    "T1/T5/T11 bind, lock, and background order semantics",
+    "T2 default background hit protection",
+    "T3/T4 explicit background management entry",
+    "T2/T5-T8 selection preserves background pixels and geometry",
+    "T6 locked drag protection",
+    "T7 unlocked X/Y scale rotation flip opacity editing",
+    "T8 re-lock protection",
+    "T9 replacement",
+    "T10 cancel identity keeps ordinary layer",
+    "T12 undo/redo identity and selection consistency",
+    "T13 save/reopen",
+    "T14 shot/project switching",
+    "T15 missing source is structured and non-crashing",
+    "T16 existing ordinary selection history contract covered by integration suite",
+    "T18 existing Stage 3-A gates covered by full verification suite"
+  ],
+  "snapshots": {
+    "boundA": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-AgynqM\\issue100-a.pandastage",
+      "activeShotId": "42d5f743-89be-40c3-b956-768b4dce3259",
+      "layers": [
+        {
+          "id": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+          "name": "Layer A a",
+          "source": {
+            "kind": "asset",
+            "assetId": "38610c44-e044-4242-ad61-c1bf7799d4db"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        },
+        {
+          "id": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+          "name": "Layer B a",
+          "source": {
+            "kind": "asset",
+            "assetId": "033a7e0f-16e6-406d-821c-49222410b7bf"
+          },
+          "anchor": "center",
+          "x": 1300,
+          "y": 650,
+          "scaleX": 0.48,
+          "scaleY": 0.48,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "backgroundListening": false,
+      "backgroundEditing": true,
+      "backgroundLocked": true,
+      "selectedLayerId": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+      "inspectorState": "background",
+      "backgroundControlState": "background",
+      "backgroundControlLayerId": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+      "backgroundControlLocked": true,
+      "transformInputsDisabled": true,
+      "transformLockChecked": true,
+      "transformBackgroundProtected": true,
+      "orderButtonsDisabled": true,
+      "orderBackgroundProtected": true,
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "38610c44-e044-4242-ad61-c1bf7799d4db",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "033a7e0f-16e6-406d-821c-49222410b7bf",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "projectRevision": 1,
+      "dirty": true,
+      "undoCount": 1,
+      "redoCount": 0,
+      "stageError": null
+    },
+    "backgroundSelectionPixels": {
+      "sameSize": true,
+      "comparedPixels": 776643,
+      "differentPixels": 1504,
+      "differenceRatio": 0.0019365396971324019,
+      "beforeSize": {
+        "width": 1241,
+        "height": 699
+      },
+      "afterSize": {
+        "width": 1241,
+        "height": 699
+      }
+    },
+    "editedBackground": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-AgynqM\\issue100-a.pandastage",
+      "activeShotId": "42d5f743-89be-40c3-b956-768b4dce3259",
+      "layers": [
+        {
+          "id": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+          "name": "Layer A a",
+          "source": {
+            "kind": "asset",
+            "assetId": "38610c44-e044-4242-ad61-c1bf7799d4db"
+          },
+          "anchor": "center",
+          "x": 810,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 27,
+          "opacity": 0.65,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": true
+        },
+        {
+          "id": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+          "name": "Layer B a",
+          "source": {
+            "kind": "asset",
+            "assetId": "033a7e0f-16e6-406d-821c-49222410b7bf"
+          },
+          "anchor": "center",
+          "x": 1439.2986698911727,
+          "y": 810.1934703748489,
+          "scaleX": 0.48,
+          "scaleY": 0.48,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "backgroundLayerId": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "backgroundListening": true,
+      "backgroundEditing": true,
+      "backgroundLocked": false,
+      "selectedLayerId": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+      "inspectorState": "background",
+      "backgroundControlState": "background",
+      "backgroundControlLayerId": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+      "backgroundControlLocked": false,
+      "transformInputsDisabled": false,
+      "transformLockChecked": false,
+      "transformBackgroundProtected": true,
+      "orderButtonsDisabled": true,
+      "orderBackgroundProtected": true,
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "38610c44-e044-4242-ad61-c1bf7799d4db",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "033a7e0f-16e6-406d-821c-49222410b7bf",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "projectRevision": 5,
+      "dirty": true,
+      "undoCount": 5,
+      "redoCount": 0,
+      "stageError": null
+    },
+    "replaced": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-AgynqM\\issue100-a.pandastage",
+      "activeShotId": "42d5f743-89be-40c3-b956-768b4dce3259",
+      "layers": [
+        {
+          "id": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+          "name": "Layer B a",
+          "source": {
+            "kind": "asset",
+            "assetId": "033a7e0f-16e6-406d-821c-49222410b7bf"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        },
+        {
+          "id": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+          "name": "Layer A a",
+          "source": {
+            "kind": "asset",
+            "assetId": "38610c44-e044-4242-ad61-c1bf7799d4db"
+          },
+          "anchor": "center",
+          "x": 810,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 27,
+          "opacity": 0.65,
+          "visible": true,
+          "zIndex": 1,
+          "locked": true,
+          "flipX": true
+        }
+      ],
+      "backgroundLayerId": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "backgroundListening": false,
+      "backgroundEditing": true,
+      "backgroundLocked": true,
+      "selectedLayerId": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+      "inspectorState": "background",
+      "backgroundControlState": "background",
+      "backgroundControlLayerId": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+      "backgroundControlLocked": true,
+      "transformInputsDisabled": true,
+      "transformLockChecked": true,
+      "transformBackgroundProtected": true,
+      "orderButtonsDisabled": true,
+      "orderBackgroundProtected": true,
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "033a7e0f-16e6-406d-821c-49222410b7bf",
+          "width": 1536,
+          "height": 864
+        },
+        {
+          "assetId": "38610c44-e044-4242-ad61-c1bf7799d4db",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "projectRevision": 7,
+      "dirty": true,
+      "undoCount": 7,
+      "redoCount": 0,
+      "stageError": null
+    },
+    "final": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue100-AgynqM\\issue100-a.pandastage",
+      "activeShotId": "42d5f743-89be-40c3-b956-768b4dce3259",
+      "layers": [
+        {
+          "id": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+          "name": "Layer B a",
+          "source": {
+            "kind": "asset",
+            "assetId": "033a7e0f-16e6-406d-821c-49222410b7bf"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        },
+        {
+          "id": "7386902e-ee90-4f8c-b7a1-bcea756d154e",
+          "name": "Layer A a",
+          "source": {
+            "kind": "asset",
+            "assetId": "38610c44-e044-4242-ad61-c1bf7799d4db"
+          },
+          "anchor": "center",
+          "x": 810,
+          "y": 450,
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "rotationDeg": 27,
+          "opacity": 0.65,
+          "visible": true,
+          "zIndex": 1,
+          "locked": true,
+          "flipX": true
+        }
+      ],
+      "backgroundLayerId": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+      "backgroundReady": false,
+      "backgroundWarning": true,
+      "backgroundListening": false,
+      "backgroundEditing": false,
+      "backgroundLocked": true,
+      "selectedLayerId": "",
+      "inspectorState": "empty",
+      "backgroundControlState": "empty",
+      "backgroundControlLayerId": "7a3a7b04-9d7f-4009-9b81-c5cca3ec0c30",
+      "backgroundControlLocked": true,
+      "transformInputsDisabled": true,
+      "transformLockChecked": null,
+      "transformBackgroundProtected": false,
+      "orderButtonsDisabled": true,
+      "orderBackgroundProtected": false,
+      "renderedAssetIntrinsicSizes": [
+        {
+          "assetId": "38610c44-e044-4242-ad61-c1bf7799d4db",
+          "width": 1536,
+          "height": 864
+        }
+      ],
+      "projectRevision": 0,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0,
+      "stageError": null
+    }
+  },
+  "error": null
+}

@@ -185,6 +185,9 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const canvasWorkspace = readSource(
       'renderer/shell/CanvasWorkspace.tsx',
     );
+    const rightInspector = readSource(
+      'renderer/shell/RightInspector.tsx',
+    );
     const legacyCompatibility = readSource(
       'renderer/shell/LegacyCompatibilityActivity.tsx',
     );
@@ -203,9 +206,11 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(leftWorkspace).toContain(
       'data-testid="left-workspace-scroll"',
     );
-    expect(shell).toContain(
-      'data-testid="right-inspector-placeholder"',
-    );
+    expect(shell.match(/<RightInspector/gu)).toHaveLength(1);
+    expect(shell).not.toContain('right-inspector-placeholder');
+    expect(rightInspector).toContain('data-testid="right-inspector"');
+    expect(rightInspector.match(/<LayerTransformPanel/gu)).toHaveLength(1);
+    expect(rightInspector.match(/<LayerOrderControls/gu)).toHaveLength(1);
     expect(shell).toContain(
       'data-testid="bottom-workspace-placeholder"',
     );
@@ -219,6 +224,12 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       'data-testid="canvas-workspace-scroll"',
     );
     expect(canvasWorkspace.match(/<CanvasStage/gu)).toHaveLength(1);
+    expect(readSource('renderer/features/canvas/CanvasStage.tsx')).not.toContain(
+      '<LayerTransformPanel',
+    );
+    expect(readSource('renderer/features/canvas/CanvasStage.tsx')).not.toContain(
+      '<LayerOrderControls',
+    );
     expect(legacyWorkspace).toContain('className="legacy-workspace"');
     expect(legacyWorkspace).toContain(
       'data-testid="legacy-workspace-scroll"',

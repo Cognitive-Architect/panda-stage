@@ -16,6 +16,10 @@ import type {
   AssetThumbnailReadResponse,
 } from '../shared/asset-thumbnail-api';
 import type {
+  AssetCanvasImageReadRequest,
+  AssetCanvasImageReadResponse,
+} from '../shared/asset-canvas-image-api';
+import type {
   AppPingResponse,
   HiddenReadyResponse,
 } from '../shared/ipc/contracts';
@@ -109,6 +113,9 @@ declare global {
         readThumbnail: (
           request: AssetThumbnailReadRequest,
         ) => Promise<AssetThumbnailReadResponse>;
+        readCanvasImage: (
+          request: AssetCanvasImageReadRequest,
+        ) => Promise<AssetCanvasImageReadResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;

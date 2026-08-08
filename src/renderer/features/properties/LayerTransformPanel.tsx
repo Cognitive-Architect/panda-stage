@@ -29,6 +29,11 @@ export type CommitTransformDraftResult =
   | 'invalid'
   | 'locked';
 
+export interface LayerTransformPanelProps {
+  /** The RightInspector owns this identity when the panel is mounted there. */
+  backgroundLayerSelected?: boolean;
+}
+
 export function canRunTransformAction(
   result: CommitTransformDraftResult,
 ): boolean {
@@ -85,7 +90,9 @@ const EMPTY_DRAFT: LayerTransformDraft = {
   opacity: '',
 };
 
-export function LayerTransformPanel(): React.JSX.Element {
+export function LayerTransformPanel({
+  backgroundLayerSelected,
+}: LayerTransformPanelProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -98,11 +105,14 @@ export function LayerTransformPanel(): React.JSX.Element {
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
-  const layer =
-    snapshot?.project.shots
-      .find((shot) => shot.id === shotId)
-      ?.layers.find((candidate) => candidate.id === selectedLayerId) ??
+  const shot =
+    snapshot?.project.shots.find((candidate) => candidate.id === shotId) ??
     null;
+  const layer =
+    shot?.layers.find((candidate) => candidate.id === selectedLayerId) ?? null;
+  const isBackgroundLayer =
+    Boolean(backgroundLayerSelected) ||
+    Boolean(shot && layer && shot.backgroundLayerId === layer.id);
   const [draft, setDraft] = useState<LayerTransformDraft>(EMPTY_DRAFT);
   const [status, setStatus] = useState(
     '选择普通图层后可编辑中心位置与静态变换。',
@@ -134,10 +144,17 @@ export function LayerTransformPanel(): React.JSX.Element {
           ? '图层已锁定；请先解锁再修改。'
           : 'X/Y 始终表示视觉中心；缩放保持等比。',
       );
+      if (isBackgroundLayer) {
+        setStatus(
+          layer.locked
+            ? 'Formal background is locked; unlock it before editing.'
+            : 'Formal background is editable; lock it again when finished.',
+        );
+      }
     } else if (!preserveCommitErrorRef.current) {
       setStatus('选择普通图层后可编辑中心位置与静态变换。');
     }
-  }, [layer]);
+  }, [isBackgroundLayer, layer]);
 
   const updateDraft = (
     key: keyof LayerTransformDraft,
@@ -246,6 +263,7 @@ export function LayerTransformPanel(): React.JSX.Element {
   return (
     <section
       className="layer-transform-panel"
+      data-background-protected={String(isBackgroundLayer)}
       data-selected-layer-id={selectedLayerId ?? ''}
       data-testid="layer-transform-panel"
     >
@@ -336,6 +354,17 @@ export function LayerTransformPanel(): React.JSX.Element {
       ) : (
         <p>未选择普通图层。</p>
       )}
+      <p data-testid="layer-transform-guidance">
+        {isBackgroundLayer
+          ? layer?.locked
+            ? '正式背景已锁定，请先解锁后再编辑。'
+            : '正式背景可编辑，完成后请重新锁定。'
+          : layer?.locked
+            ? '请先解锁图层，再修改变换。'
+            : layer
+              ? 'X/Y 表示视觉中心，缩放保持等比。'
+              : '请在画布中选择图层以编辑变换。'}
+      </p>
       <output data-testid="layer-transform-status">{status}</output>
     </section>
   );

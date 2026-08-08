@@ -75,6 +75,239 @@ describe('LayerService', () => {
     });
   });
 
+  it('binds an ordinary direct-asset layer as the explicit shot background', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const created = service().createFromAsset(project, shot.id, {
+      version: 2,
+      assetId: project.assets[0]!.id,
+      type: 'asset-image',
+      position: { x: 960, y: 540 },
+    });
+    const ordinary = created.layer;
+
+    const result = service().setBackground(
+      created.project,
+      shot.id,
+      ordinary.id,
+    );
+    const nextShot = result.shots[0]!;
+
+    expect(nextShot.backgroundLayerId).toBe(ordinary.id);
+    expect(nextShot.layers.map((layer) => layer.id)).toEqual([
+      ordinary.id,
+      shot.layers[0]!.id,
+      shot.layers[1]!.id,
+    ]);
+    expect(nextShot.layers.map((layer) => layer.zIndex)).toEqual([0, 1, 2]);
+    expect(nextShot.layers[1]).toMatchObject({
+      id: shot.layers[0]!.id,
+      zIndex: 1,
+    });
+    expect(result.updatedAt).toBe(NOW.toISOString());
+    expect(project.shots[0]!.backgroundLayerId).not.toBe(ordinary.id);
+  });
+
+  it('rejects character layers as formal backgrounds without mutating the project', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const characterLayer = shot.layers[1]!;
+
+    expect(() =>
+      service().setBackground(project, shot.id, characterLayer.id),
+    ).toThrow(
+      expect.objectContaining({ code: 'BACKGROUND_LAYER_INVALID' }),
+    );
+    expect(project.shots[0]!.backgroundLayerId).toBe(
+      shot.backgroundLayerId,
+    );
+  });
+
+  it('reasserts the default lock when binding the current background', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const result = service().setBackground(
+      project,
+      shot.id,
+      shot.backgroundLayerId!,
+    );
+    expect(result).not.toBe(project);
+    expect(result.shots[0]!.layers[0]!.locked).toBe(true);
+  });
+
+  it('locks and normalizes a replacement background, then can clear its identity', () => {
+    const project = fixture();
+    const shot = project.shots[0]!;
+    const created = service().createFromAsset(project, shot.id, {
+      version: 2,
+      assetId: project.assets[0]!.id,
+      type: 'asset-image',
+      position: { x: 320, y: 240 },
+    });
+    const ordinary = created.layer;
+    const bound = service().setBackground(
+      created.project,
+      shot.id,
+      ordinary.id,
+    );
+    const boundShot = bound.shots[0]!;
+    const boundLayer = boundShot.layers.find(
+      (layer) => layer.id === ordinary.id,
+    )!;
+
+    expect(boundShot.backgroundLayerId).toBe(ordinary.id);
+    expect(boundLayer).toMatchObject({
+      x: 960,
+      y: 540,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      flipX: false,
+      locked: true,
+      zIndex: 0,
+    });
+
+    const cleared = service().clearBackground(bound, shot.id);
+    const clearedShot = cleared.shots[0]!;
+    const clearedLayer = clearedShot.layers.find(
+      (layer) => layer.id === ordinary.id,
+    )!;
+    expect(clearedShot.backgroundLayerId).toBeNull();
+    expect(clearedLayer).toMatchObject({ locked: false });
+    expect(clearedShot.layers.map((layer) => layer.zIndex)).toEqual([0, 1, 2]);
+  });
+
+  it.each([
+    { label: 'landscape', width: 1600, height: 900, scale: 1.2 },
+    { label: 'wide crop', width: 2400, height: 900, scale: 1.2 },
+    { label: 'portrait', width: 900, height: 1600, scale: 2.1333333333333333 },
+    { label: 'square', width: 1000, height: 1000, scale: 1.92 },
+  ])(
+    'initializes a $label formal background with persistent Cover geometry',
+    ({ width, height, scale }) => {
+      const source = fixture();
+      const backgroundSource = source.shots[0]!.layers[0]!.source;
+      if (backgroundSource.kind !== 'asset') {
+        throw new Error('fixture background is not asset-backed');
+      }
+      const project = ProjectSchema.parse({
+        ...source,
+        assets: source.assets.map((asset) =>
+          asset.id === backgroundSource.assetId &&
+          asset.kind === 'image'
+            ? { ...asset, width, height }
+            : asset,
+        ),
+        shots: source.shots.map((shot) => ({
+          ...shot,
+          backgroundLayerId: null,
+          layers: shot.layers.map((layer) => ({
+            ...layer,
+            locked: false,
+            flipX: false,
+          })),
+        })),
+      });
+      const shot = project.shots[0]!;
+      const layer = shot.layers[0]!;
+      const result = service().setBackground(project, shot.id, layer.id);
+      const background = result.shots[0]!.layers[0]!;
+
+      expect(background).toMatchObject({
+        x: 960,
+        y: 540,
+        scaleX: scale,
+        scaleY: scale,
+        rotationDeg: 0,
+        flipX: false,
+        locked: true,
+        zIndex: 0,
+      });
+    },
+  );
+
+  it('fills an existing background with Cover geometry without changing opacity or lock', () => {
+    const source = fixture();
+    const backgroundSource = source.shots[0]!.layers[0]!.source;
+    if (backgroundSource.kind !== 'asset') {
+      throw new Error('fixture background is not asset-backed');
+    }
+    const project = ProjectSchema.parse({
+      ...source,
+      assets: source.assets.map((asset) =>
+        asset.id === backgroundSource.assetId &&
+        asset.kind === 'image'
+          ? { ...asset, width: 1000, height: 1000 }
+          : asset,
+      ),
+      shots: source.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) =>
+          layer.id === shot.backgroundLayerId
+            ? {
+                ...layer,
+                x: 320,
+                y: 240,
+                scaleX: 0.6,
+                scaleY: 0.6,
+                rotationDeg: 17,
+                opacity: 0.65,
+                flipX: true,
+                locked: false,
+              }
+            : layer,
+        ),
+      })),
+    });
+    const shot = project.shots[0]!;
+    const filled = service().fillBackground(project, shot.id);
+    const background = filled.shots[0]!.layers[0]!;
+
+    expect(background).toMatchObject({
+      x: 960,
+      y: 540,
+      scaleX: 1.92,
+      scaleY: 1.92,
+      rotationDeg: 0,
+      flipX: false,
+      opacity: 0.65,
+      locked: false,
+      zIndex: 0,
+    });
+    expect(service().fillBackground(filled, shot.id)).toBe(filled);
+  });
+
+  it.each([0, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects invalid source dimension %s without writing non-finite background geometry',
+    (width) => {
+      const source = fixture();
+      const project = structuredClone(source) as typeof source;
+      const backgroundSource = project.shots[0]!.layers[0]!.source;
+      if (backgroundSource.kind !== 'asset') {
+        throw new Error('fixture background is not asset-backed');
+      }
+      const asset = project.assets.find(
+        (candidate) => candidate.id === backgroundSource.assetId,
+      );
+      if (!asset || asset.kind !== 'image') {
+        throw new Error('fixture background asset is missing');
+      }
+      (asset as { width: number; height: number }).width = width;
+      project.shots[0]!.backgroundLayerId = null;
+      project.shots[0]!.layers[0]!.locked = false;
+      expect(() =>
+        service().setBackground(
+          project,
+          project.shots[0]!.id,
+          project.shots[0]!.layers[0]!.id,
+        ),
+      ).toThrow(
+        expect.objectContaining({ code: 'BACKGROUND_COVER_INVALID' }),
+      );
+      expect(project.shots[0]!.backgroundLayerId).toBeNull();
+    },
+  );
+
   it('keeps explicit identity when characters and expressions share one asset', () => {
     const project = fixture();
     const characterA = project.characters[0]!;
@@ -540,17 +773,60 @@ describe('LayerService', () => {
       flipX: layer.flipX,
     };
 
+    const lockedBackground = service().setLocked(
+      project,
+      shot.id,
+      background.id,
+      true,
+    );
     for (const operation of [
-      () => service().updateTransform(project, shot.id, background.id, transform),
-      () => service().toggleFlipX(project, shot.id, background.id),
-      () => service().reorder(project, shot.id, background.id, 'front'),
-      () => service().deleteLayer(project, shot.id, background.id),
-      () => service().setLocked(project, shot.id, background.id, true),
+      () => service().updateTransform(lockedBackground, shot.id, background.id, transform),
+      () => service().toggleFlipX(lockedBackground, shot.id, background.id),
+    ]) {
+      expect(operation).toThrow(
+        expect.objectContaining({ code: 'LAYER_LOCKED' }),
+      );
+    }
+    for (const operation of [
+      () => service().reorder(lockedBackground, shot.id, background.id, 'front'),
+      () => service().deleteLayer(lockedBackground, shot.id, background.id),
     ]) {
       expect(operation).toThrow(
         expect.objectContaining({ code: 'BACKGROUND_LAYER_PROTECTED' }),
       );
     }
+
+    const unlockedBackground = service().setLocked(
+      lockedBackground,
+      shot.id,
+      background.id,
+      false,
+    );
+    const editedBackground = service().updateTransform(
+      unlockedBackground,
+      shot.id,
+      background.id,
+      {
+        x: 820,
+        y: 440,
+        scale: 1.2,
+        rotationDeg: 12,
+        opacity: 0.7,
+        flipX: true,
+      },
+    );
+    expect(editedBackground.shots[0]!.layers[0]).toMatchObject({
+      x: 820,
+      y: 440,
+      scaleX: 1.2,
+      rotationDeg: 12,
+      opacity: 0.7,
+      flipX: true,
+      locked: false,
+    });
+    expect(() =>
+      service().setLocked(editedBackground, shot.id, background.id, true),
+    ).not.toThrow();
 
     const locked = service().setLocked(project, shot.id, layer.id, true);
     for (const operation of [

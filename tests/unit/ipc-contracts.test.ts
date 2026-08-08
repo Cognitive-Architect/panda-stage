@@ -11,6 +11,11 @@ import {
   ExportJobUpdateSchema,
   FullProbeExportRequestSchema,
 } from '../../src/shared/export-types';
+import {
+  AssetCanvasImageReadRequestSchema,
+  AssetCanvasImageReadResponseSchema,
+  CANVAS_IMAGE_MAX_BYTES,
+} from '../../src/shared/asset-canvas-image-api';
 
 describe('IPC channel registry', () => {
   it('keeps every channel unique and namespaced', () => {
@@ -42,6 +47,7 @@ describe('IPC channel registry', () => {
       'asset-metadata:cancel',
       'asset:delete',
       'asset-thumbnail:read',
+      'asset-canvas-image:read',
       'recent-projects:list',
       'recent-projects:open',
       'recent-projects:remove',
@@ -58,6 +64,34 @@ describe('IPC channel registry', () => {
 });
 
 describe('IPC contracts', () => {
+  it('validates the strict canvas-image request and response boundary', () => {
+    const request = {
+      projectRoot: 'C:\\demo.pandastage',
+      assetId: '10000000-0000-4000-8000-000000000002',
+      sha256: 'a'.repeat(64),
+    };
+    expect(AssetCanvasImageReadRequestSchema.parse(request)).toEqual(request);
+    expect(
+      AssetCanvasImageReadRequestSchema.safeParse({
+        ...request,
+        sourcePath: 'C:\\outside.png',
+      }).success,
+    ).toBe(false);
+    expect(
+      AssetCanvasImageReadResponseSchema.safeParse({
+        ok: true,
+        status: 'ready',
+        assetId: request.assetId,
+        mimeType: 'image/png',
+        width: 2,
+        height: 2,
+        byteLength: 2,
+        bytes: new Uint8Array([1]),
+      }).success,
+    ).toBe(false);
+    expect(CANVAS_IMAGE_MAX_BYTES).toBe(64 * 1024 * 1024);
+  });
+
   it('accepts only the empty app ping request', () => {
     expect(AppPingRequestSchema.parse({})).toEqual({});
     expect(AppPingRequestSchema.safeParse({ command: 'fs.read' }).success).toBe(

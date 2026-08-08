@@ -38,12 +38,13 @@ import { NewProjectDialog } from './NewProjectDialog';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
+import { RightInspector } from './RightInspector';
 import { useDebugFlag } from './useDebugFlag';
 import {
-  CLOSE_PROJECT_CLEAN_PROMPT,
   CLOSE_PROJECT_DIRTY_PROMPT,
   CLOSE_PROJECT_STALE_SAVE_MESSAGE,
   closeProjectErrorMessage,
+  closeProjectRequestAction,
   closeProjectSaveFailureMessage,
   closeProjectStatusMessage,
   type CloseProjectChoice,
@@ -637,12 +638,15 @@ export function EditorShell({
 
   const requestCloseProject = (): void => {
     if (!projectSnapshot) return;
-    setCloseConfirmStatus(
-      projectSnapshot.dirty
-        ? CLOSE_PROJECT_DIRTY_PROMPT
-        : CLOSE_PROJECT_CLEAN_PROMPT,
-    );
-    setCloseConfirmOpen(true);
+    if (
+      closeProjectRequestAction(projectSnapshot.dirty) ===
+      'show-dirty-confirmation'
+    ) {
+      setCloseConfirmStatus(CLOSE_PROJECT_DIRTY_PROMPT);
+      setCloseConfirmOpen(true);
+      return;
+    }
+    void closeProject('close-without-saving');
   };
 
   const cancelCloseProject = (): void => {
@@ -706,7 +710,12 @@ export function EditorShell({
       }
       await finishCloseProject(choice, dirtyBeforeClose);
     } catch (error) {
-      setCloseConfirmStatus(closeProjectErrorMessage(error));
+      const message = closeProjectErrorMessage(error);
+      if (dirtyBeforeClose) {
+        setCloseConfirmStatus(message);
+      } else {
+        setStatus(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -845,13 +854,8 @@ export function EditorShell({
               recentRefreshToken={recentRefreshToken}
             />
             <CanvasWorkspace />
-            <aside
-              className="workspace-placeholder right-inspector-placeholder"
-              data-testid="right-inspector-placeholder"
-            >
-              <strong>右侧检查器</strong>
-              <span>图层属性与动作预设将在后续阶段迁入</span>
-            </aside>
+            <RightInspector />
+            {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
           </div>
           <footer
             className="workspace-placeholder bottom-workspace-placeholder"

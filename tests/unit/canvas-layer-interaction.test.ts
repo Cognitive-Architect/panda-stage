@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -7,6 +8,7 @@ import {
   stageToScreen,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
+import { isViewportChromePointerTarget } from '../../src/renderer/features/canvas/CanvasViewport';
 import { mapClientPointToLayerPosition } from '../../src/renderer/features/canvas/useCanvasDrop';
 import { parseLayerPositionDraft } from '../../src/renderer/features/properties/LayerPositionPanel';
 
@@ -81,6 +83,62 @@ describe('canvas drop coordinate mapping', () => {
         transform,
       }),
     ).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('CanvasViewport chrome pointer routing', () => {
+  const logicalStage = { id: 'logical-stage' };
+  const layerCanvas = { id: 'layer-canvas' };
+  const viewportChrome = { id: 'viewport-chrome' };
+  const isInsideLogicalStage = (target: { id: string }): boolean =>
+    target === logicalStage || target === layerCanvas;
+
+  it('leaves logical Stage and layer targets with their existing owners', () => {
+    expect(
+      isViewportChromePointerTarget(
+        logicalStage,
+        isInsideLogicalStage,
+      ),
+    ).toBe(false);
+    expect(
+      isViewportChromePointerTarget(
+        layerCanvas,
+        isInsideLogicalStage,
+      ),
+    ).toBe(false);
+  });
+
+  it('identifies viewport chrome without coordinate guessing', () => {
+    expect(
+      isViewportChromePointerTarget(
+        viewportChrome,
+        isInsideLogicalStage,
+      ),
+    ).toBe(true);
+    expect(
+      isViewportChromePointerTarget(null, isInsideLogicalStage),
+    ).toBe(false);
+  });
+
+  it('wires only viewport chrome to the existing selection owner', () => {
+    const viewport = readFileSync(
+      'src/renderer/features/canvas/CanvasViewport.tsx',
+      'utf8',
+    );
+    const stage = readFileSync(
+      'src/renderer/features/canvas/CanvasStage.tsx',
+      'utf8',
+    );
+
+    expect(viewport).toMatch(
+      /querySelector\(\s*['"]\.canvas-logical-stage['"]\s*,?\s*\)/u,
+    );
+    expect(viewport).toContain('logicalStage.contains(candidate)');
+    expect(viewport).toContain('onPointerDown={handlePointerDown}');
+    expect(viewport).not.toContain('document.addEventListener');
+    expect(stage).toMatch(
+      /onViewportChromePointerDown=\{\(\) => selectionStore\.clear\(\)\}/u,
+    );
   });
 });
 
@@ -202,7 +260,7 @@ describe('SelectableLayer interaction adapter', () => {
     expect(scaleY).toBe(1.4);
   });
 
-  it('makes a locked layer non-draggable and a background non-listening', () => {
+  it('keeps selection listening separate from the locked edit gate', () => {
     const locked = SelectableLayer({
       image: {} as HTMLImageElement,
       layer: { ...ordinary.layer, locked: true },
@@ -217,24 +275,39 @@ describe('SelectableLayer interaction adapter', () => {
     expect(
       (locked.props as { draggable: boolean }).draggable,
     ).toBe(false);
+    expect(
+      (locked.props as { listening: boolean }).listening,
+    ).toBe(true);
 
     const background = model.layers.find(
       ({ render }) => render.isBackground,
     )!;
+    const onSelect = vi.fn();
     const backgroundElement = SelectableLayer({
       image: {} as HTMLImageElement,
-      layer: background.layer,
+      layer: { ...background.layer, locked: true },
       nodeRef,
       render: background.render,
       selected: false,
-      onSelect: vi.fn(),
+      onSelect,
       onCommitPosition: vi.fn(),
       onCommitTransform: vi.fn(),
       onError: vi.fn(),
     });
-    expect(
-      (backgroundElement.props as { listening: boolean }).listening,
-    ).toBe(false);
+    const backgroundProps = backgroundElement.props as {
+      draggable: boolean;
+      listening: boolean;
+      onClick: (event: { cancelBubble: boolean }) => void;
+      children: [{ props: { listening: boolean } }];
+    };
+    expect(backgroundProps.draggable).toBe(false);
+    expect(backgroundProps.listening).toBe(true);
+    expect(backgroundProps.children[0].props.listening).toBe(true);
+
+    const event = { cancelBubble: false };
+    backgroundProps.onClick(event);
+    expect(event.cancelBubble).toBe(true);
+    expect(onSelect).toHaveBeenCalledWith(background.layer.id);
   });
 
   it('renders content without an interleaved Transformer sibling', () => {
@@ -254,5 +327,24 @@ describe('SelectableLayer interaction adapter', () => {
     expect(
       (element.props as { name: string }).name,
     ).toBe('selectable-canvas-layer');
+  });
+
+  it('uses the original canvas-image API and owns object URL lifecycle in CanvasStage', () => {
+    const source = readFileSync(
+      'src/renderer/features/canvas/CanvasStage.tsx',
+      'utf8',
+    );
+
+    expect(source).toContain('readCanvasImage');
+    expect(source).not.toContain('readThumbnail');
+    expect(source).toContain('new Blob([response.bytes]');
+    expect(source).toContain('URL.createObjectURL');
+    expect(source).toContain('URL.revokeObjectURL');
+    expect(source).toContain('projectRoot');
+    expect(source).toContain('assetId: asset.id');
+    expect(source).toContain('sha256: asset.sha256');
+    expect(source).toContain('shotId');
+    expect(source).toContain('disposeCanvasImageResource');
+    expect(source.match(/if \(!active/gu)?.length ?? 0).toBeGreaterThanOrEqual(3);
   });
 });

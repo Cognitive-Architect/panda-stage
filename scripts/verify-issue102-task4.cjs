@@ -349,6 +349,32 @@ async function run() {
     assetId: request.assetId,
     dataUrl: `data:image/png;base64,${probePng}`,
   }));
+  register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, (_event, request) => {
+    const asset = [...projects.values()]
+      .flatMap((project) => project.assets)
+      .find((candidate) => candidate.id === request.assetId);
+    if (!asset || asset.kind !== 'image') {
+      return {
+        ok: false,
+        error: {
+          code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+          message: 'Task 4 fixture image asset was not found.',
+          assetId: request.assetId,
+        },
+      };
+    }
+    const bytes = Buffer.from(probePng, 'base64');
+    return {
+      ok: true,
+      status: 'ready',
+      assetId: request.assetId,
+      mimeType: 'image/png',
+      width: asset.width,
+      height: asset.height,
+      byteLength: bytes.byteLength,
+      bytes: new Uint8Array(bytes),
+    };
+  });
 
   const window = await waitForMainWindow();
   const result = {

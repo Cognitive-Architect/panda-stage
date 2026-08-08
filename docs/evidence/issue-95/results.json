@@ -1,0 +1,834 @@
+{
+  "issue": 95,
+  "status": "PASS",
+  "electron": "43.1.1",
+  "node": "24.18.0",
+  "mediaTools": {
+    "ffmpegPath": "D:\\panda-stage\\.worktrees\\m3-stage3a-integration\\node_modules\\@ffmpeg-installer\\win32-x64\\ffmpeg.exe",
+    "ffprobePath": "D:\\panda-stage\\.worktrees\\m3-stage3a-integration\\node_modules\\@ffprobe-installer\\win32-x64\\ffprobe.exe"
+  },
+  "projectRoots": {
+    "a": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+    "b": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-b.pandastage",
+    "acceptancePathsTouched": false,
+    "temporaryParent": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM"
+  },
+  "import": {
+    "a": [
+      {
+        "sourceName": "issue95-background.jpg",
+        "status": "imported",
+        "sha256": "6d058147b8815dc23180e49b8cbfdadd511abed44b4ffccdee5cd3f5524b55ff",
+        "asset": {
+          "id": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2",
+          "name": "issue95-background",
+          "relativePath": "assets/issue95-background.jpg",
+          "mimeType": "image/jpeg",
+          "sha256": "6d058147b8815dc23180e49b8cbfdadd511abed44b4ffccdee5cd3f5524b55ff",
+          "kind": "image",
+          "width": 18,
+          "height": 14
+        },
+        "duplicateOfAssetId": null,
+        "code": null,
+        "message": "已导入“issue95-background.jpg”。"
+      },
+      {
+        "sourceName": "issue95-content.png",
+        "status": "imported",
+        "sha256": "9b51457f871345aacf8a6d1b1bb7bcdbbcc0e8e7b9552a5c8ed811906a824d8c",
+        "asset": {
+          "id": "21e1c2ec-f987-4de1-9645-a5079267f01b",
+          "name": "issue95-content",
+          "relativePath": "assets/issue95-content.png",
+          "mimeType": "image/png",
+          "sha256": "9b51457f871345aacf8a6d1b1bb7bcdbbcc0e8e7b9552a5c8ed811906a824d8c",
+          "kind": "image",
+          "width": 20,
+          "height": 10
+        },
+        "duplicateOfAssetId": null,
+        "code": null,
+        "message": "已导入“issue95-content.png”。"
+      }
+    ],
+    "b": [
+      {
+        "sourceName": "issue95-background.jpg",
+        "status": "imported",
+        "sha256": "6d058147b8815dc23180e49b8cbfdadd511abed44b4ffccdee5cd3f5524b55ff",
+        "asset": {
+          "id": "2482a500-ef6b-4d7b-abc1-01cff57104af",
+          "name": "issue95-background",
+          "relativePath": "assets/issue95-background.jpg",
+          "mimeType": "image/jpeg",
+          "sha256": "6d058147b8815dc23180e49b8cbfdadd511abed44b4ffccdee5cd3f5524b55ff",
+          "kind": "image",
+          "width": 18,
+          "height": 14
+        },
+        "duplicateOfAssetId": null,
+        "code": null,
+        "message": "已导入“issue95-background.jpg”。"
+      },
+      {
+        "sourceName": "issue95-content.png",
+        "status": "imported",
+        "sha256": "9b51457f871345aacf8a6d1b1bb7bcdbbcc0e8e7b9552a5c8ed811906a824d8c",
+        "asset": {
+          "id": "b6772216-5fbb-4849-8397-037c1e55896a",
+          "name": "issue95-content",
+          "relativePath": "assets/issue95-content.png",
+          "mimeType": "image/png",
+          "sha256": "9b51457f871345aacf8a6d1b1bb7bcdbbcc0e8e7b9552a5c8ed811906a824d8c",
+          "kind": "image",
+          "width": 20,
+          "height": 10
+        },
+        "duplicateOfAssetId": null,
+        "code": null,
+        "message": "已导入“issue95-content.png”。"
+      }
+    ],
+    "pngAndJpgAssetsExist": true,
+    "cacheBeforeOpen": {
+      "a": {
+        "background": false,
+        "content": false
+      },
+      "b": {
+        "background": false,
+        "content": false
+      }
+    },
+    "cacheAfterAssetLibrary": {
+      "background": {
+        "exists": true,
+        "validPng": true,
+        "bytes": 104
+      },
+      "content": {
+        "exists": true,
+        "validPng": true,
+        "bytes": 101
+      }
+    }
+  },
+  "resources": {
+    "ordinaryImageLayer": {
+      "createdLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+      "assetLibrary": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+        "layers": [
+          {
+            "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+            "name": "Imported JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+        ],
+        "backgroundLayerId": "804c9413-cfd5-419d-a967-1867fd391a42",
+        "backgroundReady": true,
+        "backgroundWarning": false,
+        "selectedLayerId": "",
+        "projectRevision": 0,
+        "dirty": false,
+        "undoCount": 0,
+        "redoCount": 0,
+        "cardInfo": {
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+            "placeholder": null
+          },
+          "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAYAAAC0VX7mAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAF0lEQVR4nGNYHBv8n5qYYdTAUQOHo4EA74XQIA4VkXgAAAAASUVORK5CYII=",
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      },
+      "created": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+        "layers": [
+          {
+            "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+            "name": "Imported JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": false
+          },
+          {
+            "id": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+            "name": "issue95-content",
+            "source": {
+              "kind": "asset",
+              "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+            },
+            "anchor": "center",
+            "x": 1199.6666564941406,
+            "y": 600,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2",
+          "21e1c2ec-f987-4de1-9645-a5079267f01b"
+        ],
+        "backgroundLayerId": "804c9413-cfd5-419d-a967-1867fd391a42",
+        "backgroundReady": true,
+        "backgroundWarning": false,
+        "selectedLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+        "projectRevision": 1,
+        "dirty": true,
+        "undoCount": 1,
+        "redoCount": 0,
+        "cardInfo": {
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+            "placeholder": null
+          },
+          "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAYAAAC0VX7mAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAF0lEQVR4nGNYHBv8n5qYYdTAUQOHo4EA74XQIA4VkXgAAAAASUVORK5CYII=",
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      },
+      "transformed": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+        "layers": [
+          {
+            "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+            "name": "Imported JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": false
+          },
+          {
+            "id": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+            "name": "issue95-content",
+            "source": {
+              "kind": "asset",
+              "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+            },
+            "anchor": "center",
+            "x": 800,
+            "y": 450,
+            "scaleX": 1.25,
+            "scaleY": 1.25,
+            "rotationDeg": 90,
+            "opacity": 0.6,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2",
+          "21e1c2ec-f987-4de1-9645-a5079267f01b"
+        ],
+        "backgroundLayerId": "804c9413-cfd5-419d-a967-1867fd391a42",
+        "backgroundReady": true,
+        "backgroundWarning": false,
+        "selectedLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+        "projectRevision": 2,
+        "dirty": true,
+        "undoCount": 2,
+        "redoCount": 0,
+        "cardInfo": {
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+            "placeholder": null
+          },
+          "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAYAAAC0VX7mAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAF0lEQVR4nGNYHBv8n5qYYdTAUQOHo4EA74XQIA4VkXgAAAAASUVORK5CYII=",
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      },
+      "undone": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+        "layers": [
+          {
+            "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+            "name": "Imported JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": false
+          },
+          {
+            "id": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+            "name": "issue95-content",
+            "source": {
+              "kind": "asset",
+              "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+            },
+            "anchor": "center",
+            "x": 1199.6666564941406,
+            "y": 600,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2",
+          "21e1c2ec-f987-4de1-9645-a5079267f01b"
+        ],
+        "backgroundLayerId": "804c9413-cfd5-419d-a967-1867fd391a42",
+        "backgroundReady": true,
+        "backgroundWarning": false,
+        "selectedLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+        "projectRevision": 3,
+        "dirty": true,
+        "undoCount": 1,
+        "redoCount": 1,
+        "cardInfo": {
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+            "placeholder": null
+          },
+          "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAYAAAC0VX7mAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAF0lEQVR4nGNYHBv8n5qYYdTAUQOHo4EA74XQIA4VkXgAAAAASUVORK5CYII=",
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      },
+      "redone": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+        "layers": [
+          {
+            "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+            "name": "Imported JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": false
+          },
+          {
+            "id": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+            "name": "issue95-content",
+            "source": {
+              "kind": "asset",
+              "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+            },
+            "anchor": "center",
+            "x": 800,
+            "y": 450,
+            "scaleX": 1.25,
+            "scaleY": 1.25,
+            "rotationDeg": 90,
+            "opacity": 0.6,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2",
+          "21e1c2ec-f987-4de1-9645-a5079267f01b"
+        ],
+        "backgroundLayerId": "804c9413-cfd5-419d-a967-1867fd391a42",
+        "backgroundReady": true,
+        "backgroundWarning": false,
+        "selectedLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+        "projectRevision": 4,
+        "dirty": true,
+        "undoCount": 2,
+        "redoCount": 0,
+        "cardInfo": {
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+            "placeholder": null
+          },
+          "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAYAAAC0VX7mAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAF0lEQVR4nGNYHBv8n5qYYdTAUQOHo4EA74XQIA4VkXgAAAAASUVORK5CYII=",
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      },
+      "flipped": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+        "layers": [
+          {
+            "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+            "name": "Imported JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": false
+          },
+          {
+            "id": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+            "name": "issue95-content",
+            "source": {
+              "kind": "asset",
+              "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+            },
+            "anchor": "center",
+            "x": 800,
+            "y": 450,
+            "scaleX": 1.25,
+            "scaleY": 1.25,
+            "rotationDeg": 90,
+            "opacity": 0.6,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": true
+          }
+        ],
+        "renderedAssetIds": [
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2",
+          "21e1c2ec-f987-4de1-9645-a5079267f01b"
+        ],
+        "backgroundLayerId": "804c9413-cfd5-419d-a967-1867fd391a42",
+        "backgroundReady": true,
+        "backgroundWarning": false,
+        "selectedLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+        "projectRevision": 5,
+        "dirty": true,
+        "undoCount": 3,
+        "redoCount": 0,
+        "cardInfo": {
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+            "placeholder": null
+          },
+          "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAYAAAC0VX7mAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAF0lEQVR4nGNYHBv8n5qYYdTAUQOHo4EA74XQIA4VkXgAAAAASUVORK5CYII=",
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      }
+    },
+    "formalBackground": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+      "layers": [
+        {
+          "id": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+          "name": "issue95-content",
+          "source": {
+            "kind": "asset",
+            "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 108,
+          "scaleY": 108,
+          "rotationDeg": 0,
+          "opacity": 0.6,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        },
+        {
+          "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+          "name": "Imported JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "21e1c2ec-f987-4de1-9645-a5079267f01b",
+        "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+      ],
+      "backgroundLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+      "projectRevision": 6,
+      "dirty": true,
+      "undoCount": 4,
+      "redoCount": 0,
+      "cardInfo": {
+        "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+          "placeholder": null
+        },
+        "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAYAAAC0VX7mAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAF0lEQVR4nGNYHBv8n5qYYdTAUQOHo4EA74XQIA4VkXgAAAAASUVORK5CYII=",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "reopenedA": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+      "layers": [
+        {
+          "id": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+          "name": "issue95-content",
+          "source": {
+            "kind": "asset",
+            "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 108,
+          "scaleY": 108,
+          "rotationDeg": 0,
+          "opacity": 0.6,
+          "visible": true,
+          "zIndex": 0,
+          "locked": true,
+          "flipX": false
+        },
+        {
+          "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+          "name": "Imported JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "21e1c2ec-f987-4de1-9645-a5079267f01b",
+        "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+      ],
+      "backgroundLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "",
+      "projectRevision": 0,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0,
+      "cardInfo": {
+        "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+          "src": null,
+          "placeholder": null
+        },
+        "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+          "src": null,
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "switchedB": {
+      "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-b.pandastage",
+      "layers": [
+        {
+          "id": "d52b766f-57a0-4f9b-a2e2-817408d75c75",
+          "name": "Imported JPG background",
+          "source": {
+            "kind": "asset",
+            "assetId": "2482a500-ef6b-4d7b-abc1-01cff57104af"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        }
+      ],
+      "renderedAssetIds": [
+        "2482a500-ef6b-4d7b-abc1-01cff57104af"
+      ],
+      "backgroundLayerId": "d52b766f-57a0-4f9b-a2e2-817408d75c75",
+      "backgroundReady": true,
+      "backgroundWarning": false,
+      "selectedLayerId": "",
+      "projectRevision": 0,
+      "dirty": false,
+      "undoCount": 0,
+      "redoCount": 0,
+      "cardInfo": {
+        "2482a500-ef6b-4d7b-abc1-01cff57104af": {
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+          "placeholder": null
+        },
+        "b6772216-5fbb-4849-8397-037c1e55896a": {
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAYAAAC0VX7mAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAF0lEQVR4nGNYHBv8n5qYYdTAUQOHo4EA74XQIA4VkXgAAAAASUVORK5CYII=",
+          "placeholder": null
+        }
+      },
+      "stageError": null
+    },
+    "thumbnailApi": {
+      "projectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+      "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b",
+      "response": {
+        "ok": true,
+        "status": "ready",
+        "dataUrlPrefix": "data:image/png;base64,"
+      },
+      "sourcePath": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage\\assets\\issue95-content.png",
+      "cachePath": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage\\cache\\asset-thumbnails\\v1-max256-9b51457f871345aacf8a6d1b1bb7bcdbbcc0e8e7b9552a5c8ed811906a824d8c.png",
+      "sourceInsideProjectAssets": true,
+      "cacheInsideProject": true,
+      "rendererAndThumbnailUseSameProjectRoot": true
+    },
+    "corruptSource": {
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "ASSET_THUMBNAIL_READ_FAILED",
+          "message": "无法读取缩略图：无法解码图片“issue95-content.png”并生成缩略图。",
+          "assetId": "b6772216-5fbb-4849-8397-037c1e55896a"
+        }
+      },
+      "snapshot": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-b.pandastage",
+        "layers": [
+          {
+            "id": "d52b766f-57a0-4f9b-a2e2-817408d75c75",
+            "name": "Imported JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "2482a500-ef6b-4d7b-abc1-01cff57104af"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "2482a500-ef6b-4d7b-abc1-01cff57104af"
+        ],
+        "backgroundLayerId": "d52b766f-57a0-4f9b-a2e2-817408d75c75",
+        "backgroundReady": true,
+        "backgroundWarning": false,
+        "selectedLayerId": "",
+        "projectRevision": 0,
+        "dirty": false,
+        "undoCount": 0,
+        "redoCount": 0,
+        "cardInfo": {
+          "2482a500-ef6b-4d7b-abc1-01cff57104af": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAOCAYAAAAi2ky3AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAGklEQVR4nGMwjZv/nxqYYdSgUYNGDRpaBgEASgMoW7+u7yEAAAAASUVORK5CYII=",
+            "placeholder": null
+          },
+          "b6772216-5fbb-4849-8397-037c1e55896a": {
+            "src": null,
+            "placeholder": "missing"
+          }
+        },
+        "stageError": null
+      }
+    },
+    "missingFormalBackground": {
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "ASSET_THUMBNAIL_READ_FAILED",
+          "message": "Asset source is missing or outside the project assets directory: assets/issue95-content.png",
+          "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+        }
+      },
+      "snapshot": {
+        "activeProjectRoot": "C:\\Users\\admin\\AppData\\Local\\Temp\\1\\panda-stage-issue95-iZ95VM\\issue95-a.pandastage",
+        "layers": [
+          {
+            "id": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+            "name": "issue95-content",
+            "source": {
+              "kind": "asset",
+              "assetId": "21e1c2ec-f987-4de1-9645-a5079267f01b"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 108,
+            "scaleY": 108,
+            "rotationDeg": 0,
+            "opacity": 0.6,
+            "visible": true,
+            "zIndex": 0,
+            "locked": true,
+            "flipX": false
+          },
+          {
+            "id": "804c9413-cfd5-419d-a967-1867fd391a42",
+            "name": "Imported JPG background",
+            "source": {
+              "kind": "asset",
+              "assetId": "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+            },
+            "anchor": "center",
+            "x": 960,
+            "y": 540,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 1,
+            "locked": false,
+            "flipX": false
+          }
+        ],
+        "renderedAssetIds": [
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2"
+        ],
+        "backgroundLayerId": "7f139e11-f3fc-4e39-bee2-7c16d46f77c1",
+        "backgroundReady": false,
+        "backgroundWarning": true,
+        "selectedLayerId": "",
+        "projectRevision": 0,
+        "dirty": false,
+        "undoCount": 0,
+        "redoCount": 0,
+        "cardInfo": {
+          "335e8fa7-4f4a-4be4-b4d9-656b3a2ff7f2": {
+            "src": null,
+            "placeholder": null
+          },
+          "21e1c2ec-f987-4de1-9645-a5079267f01b": {
+            "src": null,
+            "placeholder": null
+          }
+        },
+        "stageError": null
+      }
+    }
+  },
+  "diagnosis": {
+    "firstFailureBeforeFix": "AssetThumbnailService.read returned status=missing when cache/asset-thumbnails/v1-max256-<sha256>.png was absent; AssetLibrary and CanvasStage then had no data URL to load.",
+    "ordinaryAndFormalBackgroundShareReadThumbnail": true,
+    "originMainHadSameAssetPathBeforeFix": true,
+    "minimalFixBoundary": [
+      "src/main/services/AssetThumbnailService.ts",
+      "src/main/index.ts"
+    ],
+    "evidence": [
+      "docs/evidence/issue-95/canvas-a.png",
+      "docs/evidence/issue-95/canvas-missing-background.png"
+    ]
+  }
+}

@@ -10,6 +10,7 @@ import {
   CLOSE_PROJECT_SAVED_STATUS,
   CLOSE_PROJECT_STALE_SAVE_MESSAGE,
   closeProjectErrorMessage,
+  closeProjectRequestAction,
   closeProjectSaveFailureMessage,
   closeProjectStatusMessage,
   describeCloseConfirm,
@@ -48,7 +49,14 @@ const controllerCode = readCode(
 );
 
 describe('in-app close project flow', () => {
-  it('offers exactly three branches with save gated on unsaved changes', () => {
+  it('routes clean projects directly and dirty projects to confirmation', () => {
+    expect(closeProjectRequestAction(false)).toBe('close-clean-project');
+    expect(closeProjectRequestAction(true)).toBe(
+      'show-dirty-confirmation',
+    );
+  });
+
+  it('offers exactly three branches when dirty, with save gated by state', () => {
     const dirty = describeCloseConfirm(true);
     const clean = describeCloseConfirm(false);
 
@@ -56,8 +64,8 @@ describe('in-app close project flow', () => {
     expect(dirty.prompt).toBe(CLOSE_PROJECT_DIRTY_PROMPT);
     expect(clean.saveEnabled).toBe(false);
     expect(clean.prompt).toBe(CLOSE_PROJECT_CLEAN_PROMPT);
-    // The retention warning is unconditional: it is a property of the
-    // "close without saving" branch, which is always offered.
+    // The retention warning belongs to the dirty confirmation branch. The
+    // clean route never mounts this presentation.
     expect(dirty.recoveryNotice).toBe(CLOSE_PROJECT_RECOVERY_NOTICE);
     expect(clean.recoveryNotice).toBe(CLOSE_PROJECT_RECOVERY_NOTICE);
   });
@@ -198,6 +206,24 @@ describe('in-app close project contract locks', () => {
     expect(topBarSource).toContain('关闭当前项目');
     expect(topBarSource).toContain('disabled={closeConfirmOpen}');
     expect(topBarSource).not.toContain('CloseConfirmDialog');
+  });
+
+  it('bypasses every dirty-guard surface when the project is clean', () => {
+    const requestBody = shellCode.slice(
+      shellCode.indexOf('const requestCloseProject'),
+      shellCode.indexOf('const cancelCloseProject'),
+    );
+    expect(requestBody).toContain('closeProjectRequestAction(projectSnapshot.dirty)');
+    expect(requestBody).toContain("'show-dirty-confirmation'");
+    expect(requestBody).toContain('setCloseConfirmOpen(true)');
+    expect(requestBody).toContain("void closeProject('close-without-saving')");
+    const openIndex = requestBody.indexOf('setCloseConfirmOpen(true)');
+    const dirtyReturnIndex = requestBody.indexOf('return;', openIndex);
+    expect(openIndex).toBeLessThan(dirtyReturnIndex);
+    expect(dirtyReturnIndex).toBeLessThan(
+      requestBody.indexOf("void closeProject('close-without-saving')"),
+    );
+    expect(requestBody).not.toContain('CLOSE_PROJECT_CLEAN_PROMPT');
   });
 
   it('cancels without any session or store side effect', () => {

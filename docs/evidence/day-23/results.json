@@ -3,7 +3,7 @@
   "workOrder": "B-23/45",
   "result": "PASS",
   "branch": "feat/day-23-layer-transform",
-  "executedAt": "2026-08-02T02:56:34.672Z",
+  "executedAt": "2026-08-07T10:31:29.998Z",
   "baselineSha": "4a5266c",
   "contract": {
     "schemaVersion": 5,
@@ -26,11 +26,11 @@
     "scaleRevisionAfter": 3,
     "rotationRevisionAfter": 4,
     "scaleBefore": 1,
-    "scaleAfter": 1.1552795031055905,
-    "rotationAfter": 23.99403082633978
+    "scaleAfter": 1.15527950310559,
+    "rotationAfter": 23.994030826339895
   },
   "properties": {
-    "id": "fc8c6e62-7d20-46fd-91c8-a76015aeddbc",
+    "id": "b92bfd3a-bbcb-42dd-9c63-46307fcfdef9",
     "name": "Panda neutral",
     "source": {
       "kind": "character",
@@ -78,7 +78,7 @@
       "zIndex": 3
     },
     {
-      "id": "fc8c6e62-7d20-46fd-91c8-a76015aeddbc",
+      "id": "b92bfd3a-bbcb-42dd-9c63-46307fcfdef9",
       "zIndex": 4
     }
   ],
@@ -92,7 +92,7 @@
     "saveRevision": 9,
     "schemaVersion": 5,
     "reopenedLayer": {
-      "id": "fc8c6e62-7d20-46fd-91c8-a76015aeddbc",
+      "id": "b92bfd3a-bbcb-42dd-9c63-46307fcfdef9",
       "name": "Panda neutral",
       "source": {
         "kind": "character",
@@ -122,7 +122,7 @@
     "keyboardLayerRemoved": true,
     "emptyDeleteRevisionUnchanged": true
   },
-  "autosaveUpdates": 14,
+  "autosaveUpdates": 12,
   "screenshots": [
     "docs/evidence/day-23/transformer-overlay.png",
     "docs/evidence/day-23/locked.png",

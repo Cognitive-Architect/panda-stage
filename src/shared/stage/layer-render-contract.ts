@@ -94,15 +94,19 @@ export function buildStageLayerRenderInstruction(
       assetId: layer.assetId,
       isBackground: true,
       listening: false,
-      x: cover.x,
-      y: cover.y,
-      width: cover.width,
-      height: cover.height,
-      offsetX: 0,
-      offsetY: 0,
-      scaleX: 1,
-      scaleY: 1,
-      rotationDeg: 0,
+      // Background geometry is persisted on the layer. The cover value is
+      // retained as diagnostic metadata, while the actual render uses the
+      // authored layer dimensions and transform so old projects are not
+      // silently rewritten on load and manual edits survive reopen.
+      x: layer.x,
+      y: layer.y,
+      width: layer.assetWidth,
+      height: layer.assetHeight,
+      offsetX: layer.assetWidth / 2,
+      offsetY: layer.assetHeight / 2,
+      scaleX: layer.flipX ? -layer.scaleX : layer.scaleX,
+      scaleY: layer.scaleY,
+      rotationDeg: layer.rotationDeg,
       opacity: layer.opacity,
       visible: layer.visible,
       zIndex: layer.zIndex,
