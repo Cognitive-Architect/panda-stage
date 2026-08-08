@@ -123,6 +123,17 @@ async function snapshot(window) {
     closeDialogOpen: Boolean(
       document.querySelector('[data-testid="close-confirm-dialog"]')
     ),
+    revision: Number(
+      document.querySelector('[data-testid="project-canvas-stage"]')
+        ?.getAttribute('data-project-revision') ?? 0
+    ),
+    undoCount: Number(
+      document.querySelector('[data-testid="history-controls"]')
+        ?.getAttribute('data-undo-count') ?? 0
+    ),
+    selectedLayerId: document.querySelector(
+      '[data-testid="project-canvas-stage"]'
+    )?.getAttribute('data-selected-layer-id') || null,
     nameDraft: document.querySelector(
       '.shot-fields label:nth-of-type(1) input'
     )?.value ?? null
@@ -153,6 +164,9 @@ function documentFor(projectRoot, project) {
 async function verifyIssue76() {
   // The Main Process is the only side that joins the final project root.
   const createRequests = [];
+  const saveRequests = [];
+  const autosaveUpdates = [];
+  const recoveryDetectRequests = [];
   const stopRequests = [];
   const discardRequests = [];
   const chooserResponses = [];
@@ -196,6 +210,7 @@ async function verifyIssue76() {
     ),
   }));
   ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
+    saveRequests.push(request);
     if (nextSaveFails) {
       return {
         ok: false,
@@ -219,7 +234,15 @@ async function verifyIssue76() {
   }));
   ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({
     ok: true,
-    entries: [],
+    entries: [
+      {
+        projectId: baseProject.id,
+        projectName: baseProject.name,
+        projectRoot: createdRoot,
+        lastOpenedAt: '2026-08-07T00:00:00.000Z',
+        status: 'available',
+      },
+    ],
   }));
   ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => ({
     ok: true,
@@ -229,17 +252,20 @@ async function verifyIssue76() {
     ),
   }));
   ipcMain.handle(IPC_CHANNELS.AUTOSAVE_TRACK, () => ({ ok: true }));
-  ipcMain.handle(IPC_CHANNELS.AUTOSAVE_UPDATE, () => ({ ok: true }));
+  ipcMain.handle(IPC_CHANNELS.AUTOSAVE_UPDATE, (_event, request) => {
+    autosaveUpdates.push(request);
+    return { ok: true };
+  });
   ipcMain.handle(IPC_CHANNELS.AUTOSAVE_STOP, (_event, request) => {
     stopRequests.push(
       typeof request === 'string' ? request : request?.projectRoot ?? null,
     );
     return { ok: true };
   });
-  ipcMain.handle(IPC_CHANNELS.RECOVERY_DETECT, () => ({
-    ok: true,
-    candidate: null,
-  }));
+  ipcMain.handle(IPC_CHANNELS.RECOVERY_DETECT, (_event, request) => {
+    recoveryDetectRequests.push(request);
+    return { ok: true, candidate: null };
+  });
   ipcMain.handle(IPC_CHANNELS.RECOVERY_IGNORE, (_event, request) => {
     // Ruling 4: the in-app close must not touch the recovery record at all,
     // so this handler is expected to stay unused for the whole gate.
@@ -327,19 +353,44 @@ async function verifyIssue76() {
     );
     const created = await snapshot(window);
     const stopsAfterCreate = stopRequests.length;
+    const updatesBeforeCleanClose = autosaveUpdates.length;
+    const detectsBeforeCleanClose = recoveryDetectRequests.length;
 
     // ---- 4. Secure creation: duplicate name ------------------------------
+    await window.webContents.executeJavaScript(`(() => {
+      window.__issue125CleanDialogSeen = false;
+      window.__issue125CleanDialogObserver = new MutationObserver(() => {
+        if (document.querySelector('[data-testid="close-confirm-dialog"]')) {
+          window.__issue125CleanDialogSeen = true;
+        }
+      });
+      window.__issue125CleanDialogObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    })()`);
     await clickProjectMenuAction(
       window,
       '[data-testid="menu-close-project"]',
     );
-    await click(window, '[data-testid="close-confirm-discard"]');
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="start-screen"]')`,
-        'Close did not return the shell to the start screen.',
+        'Clean close did not return the shell to the start screen.',
       ),
     );
+    const cleanCloseDialogSeen = await window.webContents.executeJavaScript(
+      `(() => {
+        window.__issue125CleanDialogObserver?.disconnect();
+        return window.__issue125CleanDialogSeen === true;
+      })()`,
+    );
+    const cleanClosed = await snapshot(window);
+    const savesAfterCleanClose = saveRequests.length;
+    const dirtyUpdatesDuringCleanClose = autosaveUpdates
+      .slice(updatesBeforeCleanClose)
+      .filter((request) => request?.dirty === true).length;
+    const detectsAfterCleanClose = recoveryDetectRequests.length;
     await click(window, '[data-testid="new-project-button"]');
     chooserResponses.push({
       ok: true,
@@ -362,15 +413,10 @@ async function verifyIssue76() {
     );
     await click(window, '[data-testid="new-project-cancel"]');
 
-    // Reopen the created project for the preview and close checks.
-    await setInput(
-      window,
-      '[data-testid="start-screen"] .recovery-open-row input',
-      createdRoot,
-    );
+    // Reopen the cleanly closed project through the real recent-project path.
     await click(
       window,
-      '[data-testid="start-screen"] .recovery-open-row button',
+      '[data-testid="recent-projects-list"] [data-task4-core="recent-open"]',
     );
     await window.webContents.executeJavaScript(
       waitFor(
@@ -379,6 +425,7 @@ async function verifyIssue76() {
         'Created project could not be reopened.',
       ),
     );
+    const cleanRecentReopen = await snapshot(window);
 
     // ---- 5. Product preview is read-only ---------------------------------
     await applyShotName(window, 'Issue 76 预览前草稿');
@@ -512,6 +559,13 @@ async function verifyIssue76() {
       illegalConfirmDisabled,
       duplicateStatus,
       created,
+      cleanCloseDialogSeen,
+      cleanClosed,
+      savesAfterCleanClose,
+      dirtyUpdatesDuringCleanClose,
+      detectsBeforeCleanClose,
+      detectsAfterCleanClose,
+      cleanRecentReopen,
       beforePreview,
       duringPreview,
       afterPreview,
@@ -571,6 +625,39 @@ async function verifyIssue76() {
     }
     if (created.activeRoot !== createdRoot || created.dirty) {
       failures.push('The created project did not open clean.');
+    }
+    if (created.revision !== 0 || created.undoCount !== 0) {
+      failures.push('The clean project did not start at revision/history zero.');
+    }
+    if (cleanCloseDialogSeen) {
+      failures.push('A clean project mounted the dirty close confirmation.');
+    }
+    if (savesAfterCleanClose !== 0) {
+      failures.push('Clean close wrote the project before closing.');
+    }
+    if (dirtyUpdatesDuringCleanClose !== 0) {
+      failures.push('Clean close emitted a new dirty autosave update.');
+    }
+    if (detectsAfterCleanClose !== detectsBeforeCleanClose) {
+      failures.push('Clean close ran recovery detection instead of only stopping tracking.');
+    }
+    if (
+      cleanClosed.shellState !== 'no-project' ||
+      cleanClosed.closeDialogOpen ||
+      cleanClosed.startStatus.includes('不保存') ||
+      cleanClosed.startStatus.includes('恢复记录')
+    ) {
+      failures.push('Clean close did not return directly to a neutral project center.');
+    }
+    if (
+      cleanRecentReopen.shellState !== 'editor' ||
+      cleanRecentReopen.activeRoot !== createdRoot ||
+      cleanRecentReopen.dirty ||
+      cleanRecentReopen.revision !== 0 ||
+      cleanRecentReopen.undoCount !== 0 ||
+      cleanRecentReopen.selectedLayerId !== null
+    ) {
+      failures.push('Recent-project reopen after clean close leaked project session state.');
     }
     if (stopsAfterCreate !== 0) {
       failures.push('Creating a project stopped autosave tracking.');
