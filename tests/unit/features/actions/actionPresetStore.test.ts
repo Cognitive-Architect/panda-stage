@@ -73,21 +73,62 @@ describe('T08 actionPresetStore (bridge)', () => {
 
   it('UX-002: applies a fade-in, records history, and reports success', () => {
     selectionStore.select(IDS.layerChar);
+    const beforeSnapshot = editorProjectStore.getSnapshot()!;
     const before =
-      editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents.length;
+      beforeSnapshot.project.shots[0]!.timelineEvents.length;
     const result = actionPresetStore.apply('fade-in');
     expect(result.ok).toBe(true);
     const after =
       editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents.length;
     expect(after).toBe(before + 1);
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(1);
+    expect(editorProjectStore.getSnapshot()!.dirty).toBe(true);
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
   });
 
-  it('invalid duration does not crash the bridge (returns errors)', () => {
+  it('rejects invalid parameters without changing project, revision, dirty, or history', () => {
     selectionStore.select(IDS.layerChar);
-    const result = actionPresetStore.apply('fade-in', { durationMs: -5 });
-    // createPresetEvents still produces an event; validation/apply may reject
-    // only on out-of-bounds end time. We assert the bridge never throws.
-    expect(typeof result.ok).toBe('boolean');
+    const before = editorProjectStore.getSnapshot()!;
+    const beforeHistory = editorProjectStore.history.getSnapshot();
+    const result = actionPresetStore.apply('expression-switch', {
+      expressionId: IDS.unknownExpression,
+    });
+    const after = editorProjectStore.getSnapshot()!;
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(after.project)).toBe(JSON.stringify(before.project));
+    expect(after.revision).toBe(before.revision);
+    expect(after.dirty).toBe(before.dirty);
+    expect(editorProjectStore.history.getSnapshot()).toEqual(beforeHistory);
+  });
+
+  it('rejects an explicit background target without mutating the project', () => {
+    selectionStore.selectBackground();
+    const before = editorProjectStore.getSnapshot()!;
+    const result = actionPresetStore.apply('fade-in');
+    const after = editorProjectStore.getSnapshot()!;
+    expect(result.ok).toBe(false);
+    expect(result.errors?.some((message) => message.includes('背景'))).toBe(true);
+    expect(JSON.stringify(after.project)).toBe(JSON.stringify(before.project));
+    expect(after.revision).toBe(before.revision);
+    expect(after.dirty).toBe(before.dirty);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+  });
+
+  it('does not carry selection or action history across project A -> B -> A boundaries', () => {
+    selectionStore.select(IDS.layerChar);
+    expect(actionPresetStore.apply('fade-in').ok).toBe(true);
+
+    editorProjectStore.open('project-b.pandastage', buildProject());
+    shotStore.select(IDS.shot);
+    expect(selectionStore.getSelectedLayerId()).toBeNull();
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(0);
+    expect(editorProjectStore.getSnapshot()!.dirty).toBe(false);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+
+    editorProjectStore.open('project-a-reopened.pandastage', buildProject());
+    shotStore.select(IDS.shot);
+    expect(selectionStore.getSelectedLayerId()).toBeNull();
+    expect(actionPresetStore.apply('fade-in').ok).toBe(false);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
   });
 });

@@ -4,6 +4,7 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { editorProjectStore } from '../stores/EditorProjectStore';
 import { selectionStore } from '../stores/selectionStore';
 import { shotStore } from '../stores/shotStore';
+import { ActionPresetPanel } from '../features/actions/ActionPresetPanel';
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
@@ -140,6 +141,13 @@ export function RightInspector(): React.JSX.Element {
       <LayerOrderControls
         backgroundLayerSelected={selection.state === 'background'}
       />
+      <section
+        aria-label="动作预设"
+        className="right-inspector-action-presets"
+        data-testid="right-inspector-action-presets"
+      >
+        <ActionPresetPanel key={snapshot?.projectRoot ?? 'no-project'} />
+      </section>
     </aside>
   );
 }

@@ -26,7 +26,7 @@ export function LegacyCompatibilityActivity({
           <p className="eyebrow">兼容功能</p>
           <h2 id="legacy-compatibility-heading">兼容编辑工具</h2>
         </div>
-        <span>动作预设暂留入口</span>
+        <span>兼容工作区保留入口</span>
       </div>
       <button
         aria-controls="legacy-workspace"

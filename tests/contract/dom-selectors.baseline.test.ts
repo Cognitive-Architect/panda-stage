@@ -211,6 +211,10 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(rightInspector).toContain('data-testid="right-inspector"');
     expect(rightInspector.match(/<LayerTransformPanel/gu)).toHaveLength(1);
     expect(rightInspector.match(/<LayerOrderControls/gu)).toHaveLength(1);
+    expect(rightInspector.match(/<ActionPresetPanel/gu)).toHaveLength(1);
+    expect(rightInspector).toContain(
+      'data-testid="right-inspector-action-presets"',
+    );
     expect(shell).toContain(
       'data-testid="bottom-workspace-placeholder"',
     );
@@ -235,7 +239,8 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       'data-testid="legacy-workspace-scroll"',
     );
     expect(legacyWorkspace.match(/<CanvasStage/gu)).toBeNull();
-    expect(legacyWorkspace).toContain('<ActionPresetPanel');
+    expect(legacyWorkspace).not.toContain('<ActionPresetPanel');
+    expect(legacyWorkspace).toContain('data-testid="legacy-workspace-empty"');
     expect(styles).toMatch(
       /\.legacy-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
@@ -360,7 +365,8 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(left.match(/<ResourceActivityDock/gu)).toHaveLength(1);
     expect(left.match(/<LegacyCompatibilityActivity/gu)).toHaveLength(1);
     expect(canvasWorkspace.match(/<CanvasStage/gu)).toHaveLength(1);
-    expect(legacy.match(/<ActionPresetPanel/gu)).toHaveLength(1);
+    expect(legacy.match(/<ActionPresetPanel/gu) ?? []).toHaveLength(0);
+    expect(legacy).toContain('data-testid="legacy-workspace-empty"');
     expect(legacy.match(/<CanvasStage/gu) ?? []).toHaveLength(0);
     expect(compatibility).toContain('{active ? <LegacyWorkspace');
 
