@@ -195,7 +195,7 @@ async function assertStage2CComposition(window) {
     assetLibrary: 0,
     characterManager: 0,
     legacyWorkspace: 0,
-    actionPresetPanel: 0
+    actionPresetPanel: 1
   };
   if (JSON.stringify(defaultComposition) !== JSON.stringify(expectedDefault)) {
     throw new Error(
@@ -212,8 +212,8 @@ async function assertStage2CComposition(window) {
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-testid="legacy-workspace-scroll"]') && ` +
-        `document.querySelector('[data-testid="action-preset-panel"]')`,
-      'Stage 2-C compatibility workspace did not mount.',
+        `document.querySelector('[data-testid="legacy-workspace-empty"]')`,
+      'Stage 2-C compatibility workspace did not mount its empty state.',
     ),
   );
   const compatibilityComposition =
@@ -227,6 +227,9 @@ async function assertStage2CComposition(window) {
       legacyWorkspace: document.querySelectorAll(
         '[data-testid="legacy-workspace-scroll"]'
       ).length,
+      legacyActionPresetPanel: document.querySelector(
+        '[data-testid="legacy-workspace-scroll"]'
+      )?.querySelectorAll('[data-testid="action-preset-panel"]').length ?? 0,
       actionPresetPanel: document.querySelectorAll(
         '[data-testid="action-preset-panel"]'
       ).length
@@ -237,6 +240,7 @@ async function assertStage2CComposition(window) {
       canvasStage: 1,
       historyControls: 1,
       legacyWorkspace: 1,
+      legacyActionPresetPanel: 0,
       actionPresetPanel: 1
     })
   ) {
