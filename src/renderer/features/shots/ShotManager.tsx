@@ -79,10 +79,12 @@ export function ShotManager({
           <h2 id="shot-manager-heading">镜头管理</h2>
         </div>
         <div>
-          <span data-project-duration-ms={project ? projectDurationMs(project) : 0}>
+          <span
+            data-project-duration-ms={project ? projectDurationMs(project) : 0}
+            data-project-revision={snapshot?.revision ?? 0}
+          >
             {project?.shots.length ?? 0} 个镜头 · 总时长{' '}
-            {project ? projectDurationMs(project) : 0}ms · 修订{' '}
-            {snapshot?.revision ?? 0}
+            {project ? projectDurationMs(project) : 0}ms
           </span>
         </div>
       </div>

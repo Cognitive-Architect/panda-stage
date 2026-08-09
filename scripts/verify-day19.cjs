@@ -458,9 +458,9 @@ async function verifyDay19() {
     );
     await window.webContents.executeJavaScript(
       waitFor(
-          "document.querySelector('.character-create-form') && " +
+        "document.querySelector('.character-create-form') && " +
             "document.querySelector('.character-manager-heading span')" +
-          "?.textContent?.includes('修订 1')",
+          "?.dataset?.projectRevision === '1'",
         'Character activity did not render.',
       ),
     );
@@ -724,7 +724,7 @@ async function verifyDay19() {
       waitFor(
         "document.querySelector('.character-list-items button') && " +
           "document.querySelector('.character-manager-heading span')" +
-          "?.textContent?.includes('修订 0')",
+          "?.dataset?.projectRevision === '0'",
         'Character list did not render after reopen.',
       ),
     );
