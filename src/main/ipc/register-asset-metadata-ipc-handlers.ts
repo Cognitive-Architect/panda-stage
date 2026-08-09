@@ -58,6 +58,9 @@ function failure(
       message: normalized.message,
       projectRoot: normalized.projectRoot,
       assetId: normalized.assetId,
+      ...(normalized.relativePath
+        ? { relativePath: normalized.relativePath }
+        : {}),
       ...(normalized.currentProject
         ? { currentProject: normalized.currentProject }
         : {}),

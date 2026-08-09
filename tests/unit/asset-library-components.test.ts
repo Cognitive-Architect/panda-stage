@@ -78,6 +78,35 @@ describe('asset library components', () => {
     );
     expect(missingMarkup).toContain('缩略图缺失');
     expect(missingMarkup).toContain('重建');
+
+    const sourceMissingMarkup = renderToStaticMarkup(
+      createElement(AssetCard, {
+        asset: project.assets.find((asset) => asset.kind === 'image')!,
+        category: 'background',
+        contextLabel: '图片',
+        dropPayload: directPayload(
+          project.assets.find((asset) => asset.kind === 'image')!.id,
+        ),
+        selected: false,
+        dragging: false,
+        thumbnail: {
+          status: 'missing',
+          reason: 'source',
+          relativePath: 'assets/panda-happy.png',
+        },
+        onSelect: noop,
+        onDragStart: noop,
+        onDragEnd: noop,
+        onRebuildThumbnail: noop,
+        onThumbnailError: noop,
+      }),
+    );
+    expect(sourceMissingMarkup).toContain('源文件缺失');
+    expect(sourceMissingMarkup).toContain('assets/panda-happy.png');
+    expect(sourceMissingMarkup).not.toContain('<button');
+    expect(sourceMissingMarkup).toContain(
+      'data-thumbnail-source-status="missing"',
+    );
   });
 
   it('renders a clear empty state for a category with no assets', () => {

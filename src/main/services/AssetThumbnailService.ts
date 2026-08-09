@@ -15,6 +15,12 @@ import type { ThumbnailService } from './ThumbnailService';
 
 const MAX_THUMBNAIL_BYTES = 6_000_000;
 
+type AssetPathResolution =
+  | { status: 'ready'; path: string }
+  | { status: 'missing' }
+  | { status: 'outside' }
+  | { status: 'error' };
+
 export interface AssetThumbnailServiceOptions {
   getCurrentProjectSnapshot: (
     projectRoot: string,
@@ -103,29 +109,45 @@ export class AssetThumbnailService {
       return { ok: true, status: 'missing', assetId: request.assetId };
     }
 
-    const cacheKey = this.cache.thumbnailKey(request.sha256);
     try {
-      let dataUrl = await this.readCachedThumbnail(
+      const source = await this.resolveAssetPath(
         request.projectRoot,
-        cacheKey,
+        asset.relativePath,
       );
-      if (!dataUrl && this.thumbnailService) {
-        const sourcePath = await this.resolveAssetPath(
-          request.projectRoot,
+      if (source.status === 'missing') {
+        return this.failure(
+          'ASSET_THUMBNAIL_SOURCE_MISSING',
+          request.assetId,
+          `源文件缺失，无法重建缩略图：${asset.relativePath}`,
           asset.relativePath,
         );
-        if (!sourcePath) {
-          return this.failure(
-            'ASSET_THUMBNAIL_READ_FAILED',
-            request.assetId,
-            `Asset source is missing or outside the project assets directory: ${asset.relativePath}`,
-          );
-        }
+      }
+      if (source.status !== 'ready') {
+        return this.failure(
+          'ASSET_THUMBNAIL_READ_FAILED',
+          request.assetId,
+          source.status === 'outside'
+            ? `Asset source is outside the project assets directory: ${asset.relativePath}`
+            : `Unable to resolve asset source: ${asset.relativePath}`,
+          asset.relativePath,
+        );
+      }
+
+      const cacheKey = asset.sha256
+        ? this.cache.thumbnailKey(asset.sha256)
+        : null;
+      let dataUrl = cacheKey
+        ? await this.readCachedThumbnail(
+            request.projectRoot,
+            cacheKey,
+          )
+        : null;
+      if (!dataUrl && this.thumbnailService && asset.sha256 && cacheKey) {
         await this.cache.removeThumbnail(request.projectRoot, cacheKey);
         await this.thumbnailService.ensureThumbnail({
           projectRoot: request.projectRoot,
-          sourcePath,
-          sha256: request.sha256,
+          sourcePath: source.path,
+          sha256: asset.sha256,
           width: asset.width,
           height: asset.height,
         });
@@ -147,6 +169,7 @@ export class AssetThumbnailService {
         'ASSET_THUMBNAIL_READ_FAILED',
         request.assetId,
         `无法读取缩略图：${this.errorText(error)}`,
+        asset.relativePath,
       );
     }
   }
@@ -173,20 +196,29 @@ export class AssetThumbnailService {
   private async resolveAssetPath(
     projectRoot: string,
     relativePath: string,
-  ): Promise<string | null> {
+  ): Promise<AssetPathResolution> {
     const assetsRoot = path.resolve(projectRoot, 'assets');
     const assetPath = path.resolve(projectRoot, relativePath);
-    if (!this.isInsideDirectory(assetsRoot, assetPath)) return null;
+    if (!this.isInsideDirectory(assetsRoot, assetPath)) {
+      return { status: 'outside' };
+    }
+    let realAssetsRoot: string;
     try {
-      const [realAssetsRoot, realAssetPath] = await Promise.all([
-        realpath(assetsRoot),
-        realpath(assetPath),
-      ]);
+      realAssetsRoot = await realpath(assetsRoot);
+    } catch (error) {
+      return isMissingPathError(error)
+        ? { status: 'missing' }
+        : { status: 'error' };
+    }
+    try {
+      const realAssetPath = await realpath(assetPath);
       return this.isInsideDirectory(realAssetsRoot, realAssetPath)
-        ? realAssetPath
-        : null;
-    } catch {
-      return null;
+        ? { status: 'ready', path: realAssetPath }
+        : { status: 'outside' };
+    } catch (error) {
+      return isMissingPathError(error)
+        ? { status: 'missing' }
+        : { status: 'error' };
     }
   }
 
@@ -236,9 +268,11 @@ export class AssetThumbnailService {
       | 'ASSET_THUMBNAIL_PROJECT_NOT_TRACKED'
       | 'ASSET_THUMBNAIL_ASSET_NOT_FOUND'
       | 'ASSET_THUMBNAIL_HASH_MISMATCH'
+      | 'ASSET_THUMBNAIL_SOURCE_MISSING'
       | 'ASSET_THUMBNAIL_READ_FAILED',
     assetId: string,
     message: string,
+    relativePath?: string,
   ): AssetThumbnailReadResponse {
     return {
       ok: false,
@@ -246,7 +280,18 @@ export class AssetThumbnailService {
         code,
         message: this.errorText(message).slice(0, 1_000),
         assetId: this.errorText(assetId).slice(0, 200),
+        ...(relativePath
+          ? { relativePath: this.errorText(relativePath).slice(0, 32_767) }
+          : {}),
       },
     };
   }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }

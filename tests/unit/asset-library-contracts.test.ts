@@ -69,5 +69,25 @@ describe('asset library IPC contracts', () => {
         dataUrl: 'file:///D:/project/assets/original.png',
       }),
     ).toThrow();
+    expect(
+      AssetThumbnailReadRequestSchema.parse({
+        projectRoot: 'D:\\project.pandastage',
+        assetId: exampleProject.assets[0]!.id,
+      }),
+    ).not.toHaveProperty('sha256');
+    expect(
+      AssetThumbnailReadResponseSchema.parse({
+        ok: false,
+        error: {
+          code: 'ASSET_THUMBNAIL_SOURCE_MISSING',
+          message: '源文件缺失，无法重建缩略图：assets/panda-happy.png',
+          assetId: exampleProject.assets[0]!.id,
+          relativePath: 'assets/panda-happy.png',
+        },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_THUMBNAIL_SOURCE_MISSING' },
+    });
   });
 });

@@ -258,6 +258,55 @@ describe('asset metadata revision and operation safety', () => {
     ).toMatchObject({ revision: 3, dirty: true });
   });
 
+  it('reports a missing source without changing project, revision, recovery, or renderer state', async () => {
+    const input = await createHarness('image');
+    const before = await stateHashes(input.projectRoot);
+    const beforeSnapshot = input.autosaveService.getProjectSnapshot(
+      input.projectRoot,
+    );
+    await rm(path.join(input.projectRoot, input.asset.relativePath));
+    let inspectionCalls = 0;
+    const metadata = service(input, {
+      inspectionService: {
+        inspect: async () => {
+          inspectionCalls += 1;
+          throw new Error('missing source must fail before inspection');
+        },
+      },
+    });
+
+    await expect(
+      metadata.refresh(request(input, input.revision3, 3)),
+    ).rejects.toMatchObject({
+      code: 'ASSET_METADATA_SOURCE_MISSING',
+      relativePath: input.asset.relativePath,
+    });
+
+    expect(inspectionCalls).toBe(0);
+    expect(await stateHashes(input.projectRoot)).toEqual(before);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toEqual(beforeSnapshot);
+
+    const editor = new EditorProjectStore();
+    editor.open(input.projectRoot, input.revision3);
+    const editorBefore = editor.getSnapshot()!;
+    const response = AssetMetadataResponseSchema.parse({
+      ok: false,
+      error: {
+        code: 'ASSET_METADATA_SOURCE_MISSING',
+        message: '源文件缺失，无法重建缩略图：assets/sample.png',
+        projectRoot: input.projectRoot,
+        assetId: input.asset.id,
+        relativePath: input.asset.relativePath,
+      },
+    });
+    expect(applyAssetMetadataResponse(response, editor)).toMatchObject({
+      applied: false,
+    });
+    expect(editor.getSnapshot()).toEqual(editorBefore);
+  });
+
   it('revalidates after unlocked media work and cannot overwrite revision 4', async () => {
     const input = await createHarness();
     let release!: () => void;
