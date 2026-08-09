@@ -19,6 +19,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "assets:probe-audio": "node scripts/generate-probe-audio.cjs",
     "assets:generate-day16-fixtures": "node scripts/generate-day16-fixtures.cjs",
+    "assets:generate-demo-project-fixtures": "node scripts/generate-demo-project-fixtures.cjs",
     "evidence:screenshot": "electron scripts/capture-bootstrap.cjs",
     "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",
     "verify:day04": "pnpm build && electron scripts/verify-day04.cjs",
