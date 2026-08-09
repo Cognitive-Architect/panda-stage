@@ -27,12 +27,13 @@ describe('EditorShell Stage 2-B composition contract', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
     const styles = readSource('src/renderer/styles.css');
+    const bottom = readSource('src/renderer/shell/BottomWorkspace.tsx');
 
     for (const selector of [
       'data-testid="editor-layout"',
       'data-testid="editor-body"',
       '<RightInspector',
-      'data-testid="bottom-workspace-placeholder"',
+      '<BottomWorkspace',
     ]) {
       expect(shell).toContain(selector);
     }
@@ -49,9 +50,50 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(styles).toMatch(
       /\.editor-body\s*\{[\s\S]*?grid-template-columns:/u,
     );
+    expect(bottom).toContain('data-testid="bottom-workspace"');
+    expect(bottom).toContain('<HistoryControls');
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*52px;[\s\S]*?max-height:\s*76px;[\s\S]*?overflow:\s*hidden;/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) minmax\(0, 1\.3fr\);/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*>\s*\.history-controls\s*\.history-actions\s*\{[\s\S]*?flex-wrap:\s*nowrap;/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/u,
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?grid-template-areas:[\s\S]*?"heading actions"[\s\S]*?"status status";/u,
+    );
+    expect(styles).not.toMatch(
+      /\.bottom-workspace\s*\{[^}]*overflow-y:\s*auto;/u,
+    );
     expect(left).toContain('左侧工作区');
     expect(shell).toContain('右侧检查器');
-    expect(shell).toContain('底部工作区');
+    expect(bottom).toContain('aria-label="Bottom workspace"');
+  });
+
+  it('keeps Electron regression receipts attached to the live compact bottom owner', () => {
+    const issue102Receipt = readSource('scripts/verify-issue102-task4.cjs');
+    const issue109Receipt = readSource(
+      'scripts/verify-issue109-resource-workspace.cjs',
+    );
+    const day24Receipt = readSource('scripts/verify-day24.cjs');
+
+    expect(issue102Receipt).toContain('editorMinimumHeight');
+    for (const receipt of [issue102Receipt, issue109Receipt]) {
+      expect(receipt).toContain(
+        "bottom: box('[data-testid=\"bottom-workspace\"]')",
+      );
+      expect(receipt).toContain('assertCompactBottom');
+      expect(receipt).toContain('scrollWidth <= sample.historyMetrics.clientWidth + 1');
+      expect(receipt).toContain('app.exit(exitCode)');
+      expect(receipt).not.toContain('bottom-workspace-placeholder');
+    }
+    expect(day24Receipt).toContain('.then(() => app.exit(0))');
+    expect(day24Receipt).not.toContain('.then(() => app.quit())');
   });
 
   it('keeps CanvasWorkspace central and gates LegacyWorkspace behind a left compatibility entry', () => {
@@ -167,6 +209,10 @@ describe('EditorShell Stage 2-B composition contract', () => {
     const canvas = readSource(
       'src/renderer/features/canvas/CanvasStage.tsx',
     );
+    const bottom = readSource('src/renderer/shell/BottomWorkspace.tsx');
+    const shortcuts = readSource(
+      'src/renderer/features/editor/useHistoryShortcuts.ts',
+    );
 
     expect(count(legacy, /<CanvasStage/gu)).toBe(0);
     expect(count(canvasWorkspace, /<CanvasStage/gu)).toBe(1);
@@ -174,7 +220,10 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(count(canvasWorkspace + legacy + panel, /<CanvasStage/gu)).toBe(1);
     expect(legacy).not.toContain('<HistoryControls');
     expect(panel).not.toContain('<HistoryControls');
-    expect(count(canvas, /<HistoryControls/gu)).toBe(1);
+    expect(canvas).not.toContain('<HistoryControls');
+    expect(count(bottom, /<HistoryControls/gu)).toBe(1);
+    expect(count(shortcuts, /window\.addEventListener\(['"]keydown/gu)).toBe(1);
+    expect(bottom).not.toMatch(/timeline|playhead|track/iu);
   });
 
   it('locks root scrolling and keeps debug and gateA as orthogonal overlays', () => {
@@ -202,11 +251,13 @@ describe('EditorShell Stage 2-B composition contract', () => {
     const sources = [
       readSource('src/renderer/shell/EditorShell.tsx'),
       readSource('src/renderer/shell/CanvasWorkspace.tsx'),
+      readSource('src/renderer/shell/BottomWorkspace.tsx'),
       readSource('src/renderer/shell/LegacyWorkspace.tsx'),
     ].join('\n');
 
     expect(sources).toContain('LeftWorkspace');
     expect(sources).toContain('CanvasWorkspace');
+    expect(sources).toContain('BottomWorkspace');
     expect(sources).toContain('RightInspector');
     expect(sources).not.toContain('BottomHistory');
     expect(readSource('src/renderer/shell/LegacyWorkspace.tsx')).not.toContain(

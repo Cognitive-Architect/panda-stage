@@ -76,6 +76,24 @@
         "width": 1256,
         "height": 52
       },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1255,
+        "scrollWidth": 1255,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 1239,
+        "scrollWidth": 1239,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
       "activeActivity": "shots",
       "activeSubview": "list",
       "listView": true,
@@ -203,6 +221,24 @@
         "bottom": 712,
         "width": 1008,
         "height": 52
+      },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
       },
       "activeActivity": "shots",
       "activeSubview": "list",
@@ -332,6 +368,24 @@
         "width": 1008,
         "height": 52
       },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
       "activeActivity": "shots",
       "activeSubview": "create",
       "listView": false,
@@ -441,6 +495,24 @@
         "bottom": 712,
         "width": 1008,
         "height": 52
+      },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
       },
       "activeActivity": "shots",
       "activeSubview": "list",
@@ -570,6 +642,24 @@
         "width": 1008,
         "height": 52
       },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
       "activeActivity": "assets",
       "activeSubview": "browser",
       "listView": false,
@@ -686,6 +776,24 @@
         "width": 1008,
         "height": 52
       },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
       "activeActivity": "assets",
       "activeSubview": "details",
       "listView": false,
@@ -796,6 +904,24 @@
         "width": 1008,
         "height": 52
       },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
       "activeActivity": "characters",
       "activeSubview": "list",
       "listView": false,
@@ -899,6 +1025,24 @@
         "bottom": 712,
         "width": 1008,
         "height": 52
+      },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
       },
       "activeActivity": "characters",
       "activeSubview": "create",
@@ -1009,6 +1153,24 @@
         "bottom": 712,
         "width": 1008,
         "height": 52
+      },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
       },
       "activeActivity": "characters",
       "activeSubview": "detail",
@@ -1132,6 +1294,24 @@
         "width": 1008,
         "height": 52
       },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
       "activeActivity": "characters",
       "activeSubview": "expression",
       "listView": false,
@@ -1214,6 +1394,6 @@
     "characterExpression1024": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence\\issue109-character-expression-1024.png"
   },
   "evidenceRoot": "D:\\PandaStage-Acceptance\\issue-109-resource-workspace\\evidence",
-  "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\m3-stage3a-integration\\docs\\evidence\\issue-109\\resource-workspace",
+  "repositoryEvidenceRoot": "D:\\panda-stage-main\\docs\\evidence\\issue-109\\resource-workspace",
   "error": null
 }

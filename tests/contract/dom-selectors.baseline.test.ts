@@ -185,6 +185,9 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const canvasWorkspace = readSource(
       'renderer/shell/CanvasWorkspace.tsx',
     );
+    const bottomWorkspace = readSource(
+      'renderer/shell/BottomWorkspace.tsx',
+    );
     const rightInspector = readSource(
       'renderer/shell/RightInspector.tsx',
     );
@@ -211,9 +214,11 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(rightInspector).toContain('data-testid="right-inspector"');
     expect(rightInspector.match(/<LayerTransformPanel/gu)).toHaveLength(1);
     expect(rightInspector.match(/<LayerOrderControls/gu)).toHaveLength(1);
-    expect(shell).toContain(
-      'data-testid="bottom-workspace-placeholder"',
+    expect(shell).toContain('<BottomWorkspace');
+    expect(bottomWorkspace).toContain(
+      'data-testid="bottom-workspace"',
     );
+    expect(bottomWorkspace.match(/<HistoryControls/gu)).toHaveLength(1);
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
     expect(shell.match(/<LegacyWorkspace/gu)).toBeNull();
     expect(legacyCompatibility).toContain(
@@ -241,6 +246,21 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     );
     expect(styles).toMatch(
       /\.canvas-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*52px;[\s\S]*?max-height:\s*76px;[\s\S]*?overflow:\s*hidden;/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*>\s*\.history-controls\s*\.history-actions\s*\{[\s\S]*?flex-wrap:\s*nowrap;/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/u,
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?grid-template-areas:[\s\S]*?"heading actions"[\s\S]*?"status status";/u,
+    );
+    expect(styles).not.toMatch(
+      /\.bottom-workspace\s*\{[^}]*overflow-y:\s*auto;/u,
     );
     expect(styles).toMatch(
       /html,[\s\S]*?#root\s*\{[\s\S]*?overflow:\s*hidden;/u,

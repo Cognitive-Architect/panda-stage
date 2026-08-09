@@ -1335,7 +1335,7 @@ async function verifyDay24() {
 app
   .whenReady()
   .then(verifyDay24)
-  .then(() => app.quit())
+  .then(() => app.exit(0))
   .catch((error) => {
     console.error(error);
     app.exit(1);

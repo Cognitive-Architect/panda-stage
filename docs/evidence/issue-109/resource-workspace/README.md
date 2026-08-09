@@ -7,6 +7,7 @@ The gate runs the built application at 1280×720 and 1024×720 and checks:
 
 - the wide 320–360px dock and narrow 48–56px handle/drawer behavior;
 - viewport containment and horizontal-overflow invariants;
+- compact BottomWorkspace bounds, hidden overflow, and unclipped HistoryControls;
 - shot list/create, asset browser/details, and character list/create/detail/
   expression subviews;
 - sticky-header actions, drawer close affordances, and the no-dirty-state

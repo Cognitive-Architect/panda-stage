@@ -10,7 +10,9 @@
     "1280x720 more menu stays fully inside the window",
     "1024px narrow editor remains contained and keeps all three work regions visible",
     "1024px narrow more menu is not clipped at the window edge",
-    "1024px Project Center keeps recent cards in a stable single/two-column layout"
+    "1024px Project Center keeps recent cards in a stable single/two-column layout",
+    "Minimum-width editor keeps the compact bottom history within the viewport",
+    "Minimum-height editor keeps the compact bottom history and canvas regions contained"
   ],
   "snapshots": {
     "projectCenter1280": {
@@ -29,6 +31,8 @@
       "canvas": null,
       "inspector": null,
       "bottom": null,
+      "bottomMetrics": null,
+      "historyMetrics": null,
       "menu": null,
       "projectCenter": {
         "left": 0,
@@ -179,6 +183,24 @@
         "width": 1256,
         "height": 52
       },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1255,
+        "scrollWidth": 1255,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 1239,
+        "scrollWidth": 1239,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
       "menu": null,
       "projectCenter": null,
       "recentList": {
@@ -321,6 +343,24 @@
         "bottom": 708,
         "width": 1256,
         "height": 52
+      },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1255,
+        "scrollWidth": 1255,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 1239,
+        "scrollWidth": 1239,
+        "clientHeight": 41,
+        "scrollHeight": 41
       },
       "menu": {
         "left": 1067.33,
@@ -508,6 +548,24 @@
         "width": 1008,
         "height": 52
       },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
       "menu": null,
       "projectCenter": null,
       "recentList": {
@@ -614,6 +672,24 @@
         "bottom": 712,
         "width": 1008,
         "height": 52
+      },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 991,
+        "scrollWidth": 991,
+        "clientHeight": 41,
+        "scrollHeight": 41
       },
       "menu": {
         "left": 815.33,
@@ -730,6 +806,8 @@
       "canvas": null,
       "inspector": null,
       "bottom": null,
+      "bottomMetrics": null,
+      "historyMetrics": null,
       "menu": null,
       "projectCenter": {
         "left": 0,
@@ -837,6 +915,256 @@
           "disabled": false
         }
       ]
+    },
+    "editorMinimum": {
+      "viewport": {
+        "width": 800,
+        "height": 720
+      },
+      "scroll": {
+        "document": 800,
+        "body": 800,
+        "root": 800
+      },
+      "page": "editor",
+      "topBar": {
+        "left": 8,
+        "top": 8,
+        "right": 792,
+        "bottom": 64,
+        "width": 784,
+        "height": 56
+      },
+      "editorBody": {
+        "left": 8,
+        "top": 72,
+        "right": 792,
+        "bottom": 652,
+        "width": 784,
+        "height": 580
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 544,
+        "bottom": 652,
+        "width": 472,
+        "height": 580
+      },
+      "inspector": {
+        "left": 552.67,
+        "top": 72.67,
+        "right": 776,
+        "bottom": 651.33,
+        "width": 223.33,
+        "height": 578.67
+      },
+      "bottom": {
+        "left": 8,
+        "top": 660,
+        "right": 792,
+        "bottom": 712,
+        "width": 784,
+        "height": 52
+      },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 783,
+        "scrollWidth": 783,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 767,
+        "scrollWidth": 767,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
+      "menu": null,
+      "projectCenter": null,
+      "recentList": {
+        "left": 27.33,
+        "top": 1010.33,
+        "right": 317.33,
+        "bottom": 1299.67,
+        "width": 290,
+        "height": 289.33
+      },
+      "cards": [
+        {
+          "left": 27.33,
+          "right": 317.33,
+          "top": 1010.33,
+          "width": 290,
+          "height": 140.67
+        },
+        {
+          "left": 27.33,
+          "right": 317.33,
+          "top": 1159,
+          "width": 290,
+          "height": 140.67
+        }
+      ],
+      "coreButtons": [
+        {
+          "id": "project-center",
+          "width": 85.33,
+          "height": 44,
+          "left": 18.67,
+          "right": 104,
+          "bottom": 58,
+          "disabled": false
+        },
+        {
+          "id": "save-project",
+          "width": 53.33,
+          "height": 44,
+          "left": 646.22,
+          "right": 699.55,
+          "bottom": 58,
+          "disabled": true
+        },
+        {
+          "id": "more-menu",
+          "width": 71.78,
+          "height": 44,
+          "left": 709.55,
+          "right": 781.33,
+          "bottom": 58,
+          "disabled": false
+        }
+      ]
+    },
+    "editorMinimumHeight": {
+      "viewport": {
+        "width": 800,
+        "height": 560
+      },
+      "scroll": {
+        "document": 800,
+        "body": 800,
+        "root": 800
+      },
+      "page": "editor",
+      "topBar": {
+        "left": 8,
+        "top": 8,
+        "right": 792,
+        "bottom": 64,
+        "width": 784,
+        "height": 56
+      },
+      "editorBody": {
+        "left": 8,
+        "top": 72,
+        "right": 792,
+        "bottom": 492,
+        "width": 784,
+        "height": 420
+      },
+      "canvas": {
+        "left": 72,
+        "top": 72,
+        "right": 544,
+        "bottom": 492,
+        "width": 472,
+        "height": 420
+      },
+      "inspector": {
+        "left": 552.67,
+        "top": 72.67,
+        "right": 776,
+        "bottom": 491.33,
+        "width": 223.33,
+        "height": 418.67
+      },
+      "bottom": {
+        "left": 8,
+        "top": 500,
+        "right": 792,
+        "bottom": 552,
+        "width": 784,
+        "height": 52
+      },
+      "bottomMetrics": {
+        "overflow": "hidden",
+        "overflowX": "hidden",
+        "overflowY": "hidden",
+        "clientWidth": 783,
+        "scrollWidth": 783,
+        "clientHeight": 51,
+        "scrollHeight": 51
+      },
+      "historyMetrics": {
+        "overflow": "visible",
+        "overflowX": "visible",
+        "overflowY": "visible",
+        "clientWidth": 767,
+        "scrollWidth": 767,
+        "clientHeight": 41,
+        "scrollHeight": 41
+      },
+      "menu": null,
+      "projectCenter": null,
+      "recentList": {
+        "left": 27.33,
+        "top": 1010.33,
+        "right": 317.33,
+        "bottom": 1299.67,
+        "width": 290,
+        "height": 289.33
+      },
+      "cards": [
+        {
+          "left": 27.33,
+          "right": 317.33,
+          "top": 1010.33,
+          "width": 290,
+          "height": 140.67
+        },
+        {
+          "left": 27.33,
+          "right": 317.33,
+          "top": 1159,
+          "width": 290,
+          "height": 140.67
+        }
+      ],
+      "coreButtons": [
+        {
+          "id": "project-center",
+          "width": 85.33,
+          "height": 44,
+          "left": 18.67,
+          "right": 104,
+          "bottom": 58,
+          "disabled": false
+        },
+        {
+          "id": "save-project",
+          "width": 53.33,
+          "height": 44,
+          "left": 646.22,
+          "right": 699.55,
+          "bottom": 58,
+          "disabled": true
+        },
+        {
+          "id": "more-menu",
+          "width": 71.78,
+          "height": 44,
+          "left": 709.55,
+          "right": 781.33,
+          "bottom": 58,
+          "disabled": false
+        }
+      ]
     }
   },
   "screenshots": {
@@ -845,9 +1173,11 @@
     "menu1280": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-menu-1280.png",
     "editor1024": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-editor-1024.png",
     "menu1024": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-menu-1024.png",
-    "projectCenter1024": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-project-center-1024.png"
+    "projectCenter1024": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-project-center-1024.png",
+    "editorMinimum": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-editor-minimum-width.png",
+    "editorMinimumHeight": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-editor-minimum-height.png"
   },
   "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4",
-  "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\m3-stage3a-integration\\docs\\evidence\\issue-102\\task4",
+  "repositoryEvidenceRoot": "D:\\panda-stage-main\\docs\\evidence\\issue-102\\task4",
   "error": null
 }
