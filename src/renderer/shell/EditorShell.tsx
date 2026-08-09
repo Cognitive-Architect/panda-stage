@@ -28,6 +28,7 @@ import {
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import { BottomWorkspace } from './BottomWorkspace';
 import { CanvasWorkspace } from './CanvasWorkspace';
 import {
   CompactProjectBar,
@@ -857,13 +858,7 @@ export function EditorShell({
             <RightInspector />
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
           </div>
-          <footer
-            className="workspace-placeholder bottom-workspace-placeholder"
-            data-testid="bottom-workspace-placeholder"
-          >
-            <strong>底部工作区</strong>
-            <span>编辑历史正式迁移与时间轴将在后续阶段进行</span>
-          </footer>
+          <BottomWorkspace />
           {productPreviewOpen ? (
             <ProductPreviewOverlay
               onClose={closeProductPreview}

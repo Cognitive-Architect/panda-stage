@@ -30,7 +30,6 @@ import {
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
-import { HistoryControls } from '../editor/HistoryControls';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
 import {
@@ -503,7 +502,6 @@ export function CanvasStage(): React.JSX.Element {
       >
         {interactionStatus}
       </output>
-      <HistoryControls />
     </section>
   );
 }

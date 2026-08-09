@@ -3,9 +3,9 @@ import { CanvasStage } from '../features/canvas/CanvasStage';
 /**
  * The editor's permanent central owner for the production canvas.
  *
- * The CanvasStage itself remains the single owner of the canvas viewport,
- * transform controls, layer controls, and HistoryControls. This shell keeps
- * that owner out of the temporary compatibility surface on the left.
+ * The CanvasStage remains the single owner of the canvas viewport, transform
+ * controls, and layer controls. HistoryControls belongs to BottomWorkspace,
+ * outside this canvas region.
  */
 export function CanvasWorkspace(): React.JSX.Element {
   return (

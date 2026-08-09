@@ -251,6 +251,10 @@ describe('Issue 121 RightInspector selection and ownership', () => {
       'src/renderer/features/canvas/CanvasStage.tsx',
       'utf8',
     );
+    const bottom = readFileSync(
+      'src/renderer/shell/BottomWorkspace.tsx',
+      'utf8',
+    );
     const legacy = readFileSync('src/renderer/shell/LegacyWorkspace.tsx', 'utf8');
 
     expect(shell.match(/<RightInspector/gu)).toHaveLength(1);
@@ -260,7 +264,8 @@ describe('Issue 121 RightInspector selection and ownership', () => {
     expect(inspector.match(/<LayerBackgroundControl/gu)).toHaveLength(1);
     expect(canvas).not.toContain('<LayerTransformPanel');
     expect(canvas).not.toContain('<LayerOrderControls');
-    expect(canvas.match(/<HistoryControls/gu)).toHaveLength(1);
+    expect(canvas).not.toContain('<HistoryControls');
+    expect(bottom.match(/<HistoryControls/gu)).toHaveLength(1);
     expect(legacy).not.toContain('<CanvasStage');
   });
 
