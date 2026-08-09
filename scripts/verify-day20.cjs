@@ -118,7 +118,7 @@ async function openProject(window, root = projectRoot) {
     waitFor(
       "document.querySelector('.shot-manager') && " +
         "document.querySelector('.shot-manager-heading span')" +
-        "?.textContent?.includes('修订 0')",
+        "?.dataset.projectRevision === '0'",
       'Day 20 project did not open.',
     ),
   );
@@ -508,9 +508,9 @@ async function verifyDay20() {
       await window.webContents.executeJavaScript(`(() => ({
         names: [...document.querySelectorAll('.shot-list-item strong')]
           .map((node) => node.textContent.trim()),
-        revisionText: document.querySelector(
+        projectRevision: Number(document.querySelector(
           '.shot-manager-heading span'
-        ).textContent.trim(),
+        ).dataset.projectRevision),
         saveDisabled: document.querySelector(
           '.editor-save-button'
         ).disabled
@@ -531,9 +531,9 @@ async function verifyDay20() {
       await window.webContents.executeJavaScript(`(() => ({
         names: [...document.querySelectorAll('.shot-list-item strong')]
           .map((node) => node.textContent.trim()),
-        revisionText: document.querySelector(
+        projectRevision: Number(document.querySelector(
           '.shot-manager-heading span'
-        ).textContent.trim(),
+        ).dataset.projectRevision),
         saveDisabled: document.querySelector(
           '.editor-save-button'
         ).disabled,
@@ -745,9 +745,9 @@ async function verifyDay20() {
         placeholderCount: document.querySelectorAll(
           '.shot-thumbnail-placeholder'
         ).length,
-        revisionText: document.querySelector(
+        projectRevision: Number(document.querySelector(
           '.shot-manager-heading span'
-        ).textContent.replace(/\\s+/g, ' ').trim(),
+        ).dataset.projectRevision),
         rendererHasNodeRequire: typeof window.require !== 'undefined',
         hasCanvasEditor: Boolean(document.querySelector(
           '.canvas-editor, .timeline-editor, .transition-editor'
@@ -937,8 +937,8 @@ async function verifyDay20() {
       configuredUi.hasCanvasEditor ||
       noOpMove.before.names.join(',') !==
         noOpMove.after.names.join(',') ||
-      noOpMove.before.revisionText !==
-        noOpMove.after.revisionText ||
+      noOpMove.before.projectRevision !==
+        noOpMove.after.projectRevision ||
       !noOpMove.before.saveDisabled ||
       !noOpMove.after.saveDisabled ||
       noOpMove.autosaveUpdateDelta !== 0 ||
