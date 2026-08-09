@@ -53,7 +53,19 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(bottom).toContain('data-testid="bottom-workspace"');
     expect(bottom).toContain('<HistoryControls');
     expect(styles).toMatch(
-      /\.bottom-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+      /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*52px;[\s\S]*?max-height:\s*96px;[\s\S]*?overflow:\s*hidden;/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) minmax\(0, 1\.3fr\);/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*>\s*\.history-controls\s*\.history-actions\s*\{[\s\S]*?flex-wrap:\s*nowrap;/u,
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?grid-template-areas:[\s\S]*?"heading actions"[\s\S]*?"status status";/u,
+    );
+    expect(styles).not.toMatch(
+      /\.bottom-workspace\s*\{[^}]*overflow-y:\s*auto;/u,
     );
     expect(left).toContain('左侧工作区');
     expect(shell).toContain('右侧检查器');
