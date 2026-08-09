@@ -1,4 +1,12 @@
-import { app, dialog, Menu, shell, type BrowserWindow } from 'electron';
+import {
+  app,
+  dialog,
+  ipcMain,
+  Menu,
+  shell,
+  type BrowserWindow,
+  type IpcMainEvent,
+} from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
@@ -39,6 +47,7 @@ import { AssetDeleteService } from './services/AssetDeleteService';
 import { AssetThumbnailService } from './services/AssetThumbnailService';
 import { AssetCanvasImageService } from './services/AssetCanvasImageService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
+import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -54,6 +63,8 @@ let autosaveService: AutosaveService | null = null;
 let projectService: ProjectService | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
+let rendererCloseSynchronizer: RendererCloseSynchronizer | null = null;
+let removeNativeCloseSyncListener: (() => void) | null = null;
 
 async function selectProjectDirectory(
   window: BrowserWindow,
@@ -77,6 +88,19 @@ async function createApplicationWindows(): Promise<void> {
   if (unsavedCloseController) {
     const guard = new UnsavedCloseGuard({
       controller: unsavedCloseController,
+      synchronizeRenderer: () =>
+        rendererCloseSynchronizer?.synchronize() ??
+        Promise.resolve({
+          ok: false as const,
+          error: 'Renderer close synchronizer is unavailable.',
+        }),
+      reportRendererSyncFailure: (error) => {
+        console.error('Native close autosave synchronization failed.', error);
+        dialog.showErrorBox(
+          '无法安全关闭 Panda Stage',
+          `编辑器状态尚未同步，窗口将保持打开。请重试；若问题持续，请先使用“保存”。\n\n${error}`,
+        );
+      },
       closeWindow: () => {
         if (!window.isDestroyed()) window.close();
       },
@@ -361,6 +385,34 @@ async function initialize(): Promise<void> {
     },
   });
 
+  rendererCloseSynchronizer = new RendererCloseSynchronizer({
+    getWindow: () => mainWindow,
+    send: (window, request) => {
+      window.webContents.send(
+        IPC_CHANNELS.NATIVE_CLOSE_SYNC_REQUEST,
+        request,
+      );
+    },
+  });
+  const onNativeCloseSyncResponse = (
+    event: IpcMainEvent,
+    rawResponse: unknown,
+  ): void => {
+    rendererCloseSynchronizer?.handleResponse(
+      event.sender.id,
+      rawResponse,
+    );
+  };
+  ipcMain.on(
+    IPC_CHANNELS.NATIVE_CLOSE_SYNC_RESPONSE,
+    onNativeCloseSyncResponse,
+  );
+  removeNativeCloseSyncListener = () =>
+    ipcMain.removeListener(
+      IPC_CHANNELS.NATIVE_CLOSE_SYNC_RESPONSE,
+      onNativeCloseSyncResponse,
+    );
+
   await createApplicationWindows();
 }
 
@@ -418,6 +470,10 @@ app.on('will-quit', () => {
   removeAssetMetadataIpcHandlers = null;
   removeAssetLibraryIpcHandlers?.();
   removeAssetLibraryIpcHandlers = null;
+  removeNativeCloseSyncListener?.();
+  removeNativeCloseSyncListener = null;
+  rendererCloseSynchronizer?.dispose();
+  rendererCloseSynchronizer = null;
   void autosaveService?.stopAll();
   autosaveService = null;
   projectService = null;

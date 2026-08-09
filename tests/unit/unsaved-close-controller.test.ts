@@ -14,6 +14,7 @@ const dirtyProject: AutosaveTrackRequest = {
   dirty: true,
   revision: 4,
 };
+const synchronizeRenderer = async () => ({ ok: true as const });
 
 function controller(
   choice: 'save' | 'discard' | 'cancel',
@@ -126,6 +127,42 @@ describe('UnsavedCloseController', () => {
     expect(prompt).not.toHaveBeenCalled();
   });
 
+  it('keeps a clean Main mirror open when Renderer synchronization fails', async () => {
+    const prompt = vi.fn();
+    const value = new UnsavedCloseController({
+      getDirtyProject: () => null,
+      prompt,
+      save: vi.fn(),
+      discard: vi.fn(),
+      reportSaveFailure: vi.fn(),
+      reportDiscardFailure: vi.fn(),
+    });
+    const closeWindow = vi.fn();
+    const reportRendererSyncFailure = vi.fn();
+    const event = { preventDefault: vi.fn() };
+    const guard = new UnsavedCloseGuard({
+      controller: value,
+      synchronizeRenderer: vi.fn(async () => ({
+        ok: false as const,
+        error: 'Injected Renderer synchronization failure.',
+      })),
+      reportRendererSyncFailure,
+      closeWindow,
+      quitApplication: vi.fn(),
+    });
+
+    guard.handleWindowClose(event);
+    await guard.waitForIdle();
+
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(reportRendererSyncFailure).toHaveBeenCalledWith(
+      'Injected Renderer synchronization failure.',
+      'window',
+    );
+    expect(prompt).not.toHaveBeenCalled();
+    expect(closeWindow).not.toHaveBeenCalled();
+  });
+
   it('allows discard without saving', async () => {
     const harness = controller('discard');
 
@@ -142,6 +179,7 @@ describe('UnsavedCloseController', () => {
     const closeWindow = vi.fn();
     const guard = new UnsavedCloseGuard({
       controller: harness.value,
+      synchronizeRenderer,
       closeWindow,
       quitApplication: vi.fn(),
     });
@@ -163,6 +201,7 @@ describe('UnsavedCloseController', () => {
     const event = { preventDefault: vi.fn() };
     const guard = new UnsavedCloseGuard({
       controller: harness.value,
+      synchronizeRenderer,
       closeWindow,
       quitApplication: vi.fn(),
     });
@@ -181,6 +220,7 @@ describe('UnsavedCloseController', () => {
     const closeWindow = vi.fn();
     const guard = new UnsavedCloseGuard({
       controller: harness.value,
+      synchronizeRenderer,
       closeWindow,
       quitApplication: vi.fn(),
     });
@@ -205,6 +245,7 @@ describe('UnsavedCloseController', () => {
     const quitApplication = vi.fn();
     const guard = new UnsavedCloseGuard({
       controller: harness.value,
+      synchronizeRenderer,
       closeWindow: vi.fn(),
       quitApplication,
     });
@@ -213,6 +254,7 @@ describe('UnsavedCloseController', () => {
 
     guard.handleBeforeQuit(firstEvent);
     guard.handleBeforeQuit(repeatedEvent);
+    await Promise.resolve();
     expect(harness.prompt).toHaveBeenCalledOnce();
     expect(quitApplication).not.toHaveBeenCalled();
     releasePrompt();
@@ -241,6 +283,7 @@ describe('UnsavedCloseController', () => {
     const closeWindow = vi.fn();
     const guard = new UnsavedCloseGuard({
       controller: value,
+      synchronizeRenderer,
       closeWindow,
       quitApplication: vi.fn(),
     });

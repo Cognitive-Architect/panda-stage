@@ -5,6 +5,7 @@ import {
 } from '../../src/renderer/shell/EditorShell';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { ProjectSchema } from '../../src/domain';
+import type { RecoveryAcknowledgeResponse } from '../../src/shared/recovery-api';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 function createHarness() {
@@ -36,7 +37,9 @@ function createHarness() {
     dispose: vi.fn(async () => undefined),
   };
   const createController = vi.fn(() => controller);
-  const update = vi.fn(async () => ({ ok: true as const }));
+  const update = vi.fn(
+    async (): Promise<RecoveryAcknowledgeResponse> => ({ ok: true }),
+  );
   const unsubscribes: ReturnType<typeof vi.fn>[] = [];
   let activeSubscriptions = 0;
   let maximumActiveSubscriptions = 0;
@@ -175,6 +178,94 @@ describe('EditorShell ProjectSessionController ownership', () => {
     await expect(updatePromise).rejects.toThrow(failure);
     await expect(switchPromise).rejects.toThrow(failure);
     expect(harness.controller.switchProject).not.toHaveBeenCalled();
+  });
+
+  it('retries the same autosave snapshot until Main acknowledges it', async () => {
+    const harness = createHarness();
+    harness.store.open(
+      'D:\\projects\\shell.pandastage',
+      ProjectSchema.parse(exampleProject),
+    );
+    const snapshot = harness.store.getSnapshot();
+    harness.update
+      .mockRejectedValueOnce(new Error('Injected update rejection.'))
+      .mockResolvedValueOnce({ ok: true });
+
+    await expect(harness.session.syncAutosave(snapshot)).rejects.toThrow(
+      'Injected update rejection.',
+    );
+    await expect(harness.session.syncAutosave(snapshot)).resolves.toEqual({
+      ok: true,
+    });
+    await expect(harness.session.syncAutosave(snapshot)).resolves.toBeNull();
+
+    expect(harness.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not treat an explicit Main rejection as an autosave acknowledgement', async () => {
+    const harness = createHarness();
+    const projectRoot = 'D:\\projects\\shell.pandastage';
+    harness.store.open(projectRoot, ProjectSchema.parse(exampleProject));
+    const snapshot = harness.store.getSnapshot();
+    harness.update
+      .mockResolvedValueOnce({
+        ok: false,
+        error: {
+          code: 'RECOVERY_WRITE_FAILED',
+          message: 'Injected Main rejection.',
+          projectRoot,
+        },
+      })
+      .mockResolvedValueOnce({ ok: true });
+
+    await expect(harness.session.syncAutosave(snapshot)).resolves.toMatchObject({
+      ok: false,
+    });
+    await expect(
+      harness.session.prepareForNativeClose(harness.store.getSnapshot),
+    ).resolves.toBeUndefined();
+
+    expect(harness.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('acknowledges revisions created while native-close synchronization is in flight', async () => {
+    const harness = createHarness();
+    const project = ProjectSchema.parse(exampleProject);
+    harness.store.open('D:\\projects\\shell.pandastage', project);
+    let markFirstUpdateStarted!: () => void;
+    let releaseFirstUpdate!: () => void;
+    const firstUpdateStarted = new Promise<void>((resolve) => {
+      markFirstUpdateStarted = resolve;
+    });
+    const firstUpdateGate = new Promise<void>((resolve) => {
+      releaseFirstUpdate = resolve;
+    });
+    harness.update.mockImplementationOnce(async () => {
+      markFirstUpdateStarted();
+      await firstUpdateGate;
+      return { ok: true };
+    });
+
+    const prepare = harness.session.prepareForNativeClose(
+      harness.store.getSnapshot,
+    );
+    await firstUpdateStarted;
+    harness.store.updateProject({
+      ...project,
+      name: 'Edited during native-close synchronization',
+    });
+    releaseFirstUpdate();
+    await prepare;
+
+    expect(harness.update).toHaveBeenCalledTimes(2);
+    expect(harness.update).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ revision: 0, dirty: false }),
+    );
+    expect(harness.update).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ revision: 1, dirty: true }),
+    );
   });
 
   it('survives StrictMode setup -> cleanup -> setup -> final cleanup', async () => {

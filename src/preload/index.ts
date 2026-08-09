@@ -88,6 +88,12 @@ import {
   type RecentProjectsOpenRequest,
   type RecentProjectsRemoveRequest,
 } from '../shared/recent-projects-api';
+import {
+  NativeCloseSyncRequestSchema,
+  NativeCloseSyncResponseSchema,
+  type NativeCloseSyncRequest,
+  type NativeCloseSyncResponse,
+} from '../shared/native-close-sync';
 
 type Unsubscribe = () => void;
 
@@ -312,6 +318,26 @@ const pandaStageApi = Object.freeze({
       ipcRenderer.on(IPC_CHANNELS.AUTOSAVE_ERROR, listener);
       return () =>
         ipcRenderer.removeListener(IPC_CHANNELS.AUTOSAVE_ERROR, listener);
+    },
+  }),
+  nativeClose: Object.freeze({
+    onSyncRequest: (
+      callback: (request: NativeCloseSyncRequest) => void,
+    ): Unsubscribe => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        rawRequest: unknown,
+      ) => callback(NativeCloseSyncRequestSchema.parse(rawRequest));
+      ipcRenderer.on(IPC_CHANNELS.NATIVE_CLOSE_SYNC_REQUEST, listener);
+      return () =>
+        ipcRenderer.removeListener(
+          IPC_CHANNELS.NATIVE_CLOSE_SYNC_REQUEST,
+          listener,
+        );
+    },
+    respondSync: (rawResponse: NativeCloseSyncResponse): void => {
+      const response = NativeCloseSyncResponseSchema.parse(rawResponse);
+      ipcRenderer.send(IPC_CHANNELS.NATIVE_CLOSE_SYNC_RESPONSE, response);
     },
   }),
   recovery: Object.freeze({
