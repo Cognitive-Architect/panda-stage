@@ -9,18 +9,21 @@ pnpm verify:issue102-task4
 ```
 
 The gate builds the renderer, launches the packaged Electron renderer with a
-mocked main-process boundary, and checks both `1280x720` and `1024x720`:
+mocked main-process boundary, and checks `1280x720`, `1024x720`, and the
+minimum supported main-window width:
 
 - no page-level horizontal overflow;
 - 44px minimum hit targets for the tagged core actions;
 - stable recent-project cards;
 - visible editor canvas, right inspector, and bottom workspace;
+- compact BottomWorkspace bounds, hidden overflow, and unclipped HistoryControls;
 - the compact-bar more menu remains inside the viewport.
 
-`results.json` contains the measured rectangles and pass/fail assertions.
-The PNG files are the corresponding window captures. The existing Task 1,
-Task 2, Task 3, and Issue 76 Electron gates provide the complementary create,
-open, recent, recovery, preview, save, close, and regression coverage.
+`results.json` contains the measured rectangles, bottom-surface metrics, and
+pass/fail assertions. The PNG files are the corresponding window captures.
+The existing Task 1, Task 2, Task 3, and Issue 76 Electron gates provide the
+complementary create, open, recent, recovery, preview, save, close, and
+regression coverage.
 
 Human Windows Electron acceptance for the Task 4 primary path remains the
 final acceptance step; this evidence does not claim that human PASS.

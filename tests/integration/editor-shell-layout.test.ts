@@ -72,6 +72,22 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(bottom).toContain('aria-label="Bottom workspace"');
   });
 
+  it('keeps Electron regression receipts attached to the live compact bottom owner', () => {
+    const issue102Receipt = readSource('scripts/verify-issue102-task4.cjs');
+    const issue109Receipt = readSource(
+      'scripts/verify-issue109-resource-workspace.cjs',
+    );
+
+    for (const receipt of [issue102Receipt, issue109Receipt]) {
+      expect(receipt).toContain(
+        "bottom: box('[data-testid=\"bottom-workspace\"]')",
+      );
+      expect(receipt).toContain('assertCompactBottom');
+      expect(receipt).toContain('app.exit(exitCode)');
+      expect(receipt).not.toContain('bottom-workspace-placeholder');
+    }
+  });
+
   it('keeps CanvasWorkspace central and gates LegacyWorkspace behind a left compatibility entry', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');

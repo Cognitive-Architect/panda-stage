@@ -95,6 +95,18 @@ async function measure(window) {
         height: Math.round(rect.height * 100) / 100,
       };
     };
+    const metrics = (selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) return null;
+      const style = getComputedStyle(element);
+      return {
+        overflow: style.overflow,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+      };
+    };
     const visible = (element) => {
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
@@ -144,7 +156,9 @@ async function measure(window) {
       editorBody: box('[data-testid="editor-body"]'),
       canvas: box('[data-testid="canvas-workspace-scroll"]'),
       inspector: box('[data-testid="right-inspector-placeholder"]'),
-      bottom: box('[data-testid="bottom-workspace-placeholder"]'),
+      bottom: box('[data-testid="bottom-workspace"]'),
+      bottomMetrics: metrics('[data-testid="bottom-workspace"]'),
+      historyMetrics: metrics('[data-testid="history-controls"]'),
       menu: box('[data-testid="compact-project-menu"]'),
       projectCenter: box('[data-testid="project-center-screen"]'),
       recentList: box('[data-testid="recent-projects-list"]'),
@@ -197,6 +211,28 @@ function assertRecentCards(sample, label) {
   );
 }
 
+function assertCompactBottom(sample, label, maxHeight = 96) {
+  assert(
+    sample.bottom && sample.bottomMetrics && sample.historyMetrics,
+    `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
+  );
+  assert(
+    sample.bottom.height >= 52 && sample.bottom.height <= maxHeight,
+    `${label} bottom workspace is not compact: ${JSON.stringify(sample.bottom)}`,
+  );
+  assert(
+    sample.bottomMetrics.overflow === 'hidden' &&
+      sample.bottomMetrics.overflowX === 'hidden' &&
+      sample.bottomMetrics.overflowY === 'hidden',
+    `${label} bottom workspace uses an unexpected overflow mode: ${JSON.stringify(sample.bottomMetrics)}`,
+  );
+  assert(
+    sample.bottomMetrics.scrollHeight <= sample.bottomMetrics.clientHeight + 1 &&
+      sample.historyMetrics.scrollHeight <= sample.historyMetrics.clientHeight + 1,
+    `${label} bottom history content is clipped inside its compact surface: ${JSON.stringify({ bottom: sample.bottomMetrics, history: sample.historyMetrics })}`,
+  );
+}
+
 function assertEditorRegions(sample, label) {
   assert(sample.page === 'editor', `${label} is not on the editor page.`);
   assert(sample.topBar && sample.topBar.height <= 56.5, `${label} top bar exceeded 56px.`);
@@ -213,6 +249,7 @@ function assertEditorRegions(sample, label) {
       `${label} ${name} escaped the viewport: ${JSON.stringify(region)}`,
     );
   }
+  assertCompactBottom(sample, label);
 }
 
 function assertMenuContained(sample, label) {
@@ -499,6 +536,30 @@ async function run() {
     );
     await capture(window, 'task4-project-center-1024.png');
 
+    await click(
+      window,
+      '[data-project-status="available"] [data-task4-core="recent-open"]',
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-editor-page="editor"]') &&
+        document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(projectARoot)}`,
+      'The recent project did not reopen in the editor for the minimum-width check.',
+    );
+    window.setContentSize(800, 720);
+    await delay(260);
+    const editorMinimum = await measure(window);
+    assertNoHorizontalOverflow(editorMinimum, 'minimum-width editor');
+    assertCoreButtons(editorMinimum, 'minimum-width editor');
+    assertEditorRegions(editorMinimum, 'minimum-width editor');
+    result.snapshots.editorMinimum = editorMinimum;
+    result.checks.push('Minimum-width editor keeps the compact bottom history within the viewport');
+    result.screenshots.editorMinimum = path.join(
+      evidenceRoot,
+      'task4-editor-minimum-width.png',
+    );
+    await capture(window, 'task4-editor-minimum-width.png');
+
     result.passed = true;
     return result;
   } finally {
@@ -539,9 +600,8 @@ async function main() {
       `${JSON.stringify(output, null, 2)}\n`,
       'utf8',
     );
-    app.quit();
-    const exitCode = process.exitCode ?? (output.passed ? 0 : 1);
-    setTimeout(() => process.exit(exitCode), 1_000);
+    const exitCode = output.passed ? 0 : 1;
+    setTimeout(() => app.exit(exitCode), 1_000);
   }
 }
 

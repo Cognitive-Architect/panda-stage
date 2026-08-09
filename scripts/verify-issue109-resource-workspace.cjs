@@ -90,6 +90,18 @@ async function measure(window) {
         height: Math.round(rect.height * 100) / 100,
       };
     };
+    const metrics = (selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) return null;
+      const style = getComputedStyle(element);
+      return {
+        overflow: style.overflow,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+      };
+    };
     const visible = (element) => {
       if (!(element instanceof HTMLElement)) return false;
       const style = getComputedStyle(element);
@@ -146,7 +158,9 @@ async function measure(window) {
       body: box('[data-testid="editor-body"]'),
       canvas: box('[data-testid="canvas-workspace-scroll"]'),
       inspector: box('[data-testid="right-inspector-placeholder"]'),
-      bottom: box('[data-testid="bottom-workspace-placeholder"]'),
+      bottom: box('[data-testid="bottom-workspace"]'),
+      bottomMetrics: metrics('[data-testid="bottom-workspace"]'),
+      historyMetrics: metrics('[data-testid="history-controls"]'),
       activeActivity: document.querySelector('[data-testid="resource-activity-panel"]')?.getAttribute('data-active-activity') ?? null,
       activeSubview: document.querySelector('[data-testid="resource-activity-panel"]')?.getAttribute('data-active-subview') ?? null,
       listView: visible(document.querySelector('[data-testid="shot-list-view"]')),
@@ -181,6 +195,28 @@ function assertNoPageOverflow(sample, label) {
   );
 }
 
+function assertCompactBottom(sample, label) {
+  assert(
+    sample.bottom && sample.bottomMetrics && sample.historyMetrics,
+    `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
+  );
+  assert(
+    sample.bottom.height >= 52 && sample.bottom.height <= 96,
+    `${label} bottom workspace is not compact: ${JSON.stringify(sample.bottom)}`,
+  );
+  assert(
+    sample.bottomMetrics.overflow === 'hidden' &&
+      sample.bottomMetrics.overflowX === 'hidden' &&
+      sample.bottomMetrics.overflowY === 'hidden',
+    `${label} bottom workspace uses an unexpected overflow mode: ${JSON.stringify(sample.bottomMetrics)}`,
+  );
+  assert(
+    sample.bottomMetrics.scrollHeight <= sample.bottomMetrics.clientHeight + 1 &&
+      sample.historyMetrics.scrollHeight <= sample.historyMetrics.clientHeight + 1,
+    `${label} bottom history content is clipped inside its compact surface: ${JSON.stringify({ bottom: sample.bottomMetrics, history: sample.historyMetrics })}`,
+  );
+}
+
 function assertRegions(sample, label) {
   assert(sample.page === 'editor', `${label} is not on the editor page.`);
   for (const [name, region] of [
@@ -196,9 +232,11 @@ function assertRegions(sample, label) {
       `${label} ${name} escaped the viewport: ${JSON.stringify(region)}`,
     );
   }
+  assertCompactBottom(sample, label);
 }
 
 function assertDrawer(sample, label) {
+  assertCompactBottom(sample, label);
   assert(sample.drawerVisible && sample.drawer, `${label} drawer is not visible.`);
   assert(
     sample.drawer.left >= -1 &&
@@ -563,9 +601,8 @@ async function main() {
       `${JSON.stringify(output, null, 2)}\n`,
       'utf8',
     );
-    app.quit();
-    const exitCode = process.exitCode ?? (output.passed ? 0 : 1);
-    setTimeout(() => process.exit(exitCode), 1_000);
+    const exitCode = output.passed ? 0 : 1;
+    setTimeout(() => app.exit(exitCode), 1_000);
   }
 }
 
