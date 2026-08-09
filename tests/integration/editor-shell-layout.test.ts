@@ -77,6 +77,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     const issue109Receipt = readSource(
       'scripts/verify-issue109-resource-workspace.cjs',
     );
+    const day24Receipt = readSource('scripts/verify-day24.cjs');
 
     for (const receipt of [issue102Receipt, issue109Receipt]) {
       expect(receipt).toContain(
@@ -86,6 +87,8 @@ describe('EditorShell Stage 2-B composition contract', () => {
       expect(receipt).toContain('app.exit(exitCode)');
       expect(receipt).not.toContain('bottom-workspace-placeholder');
     }
+    expect(day24Receipt).toContain('.then(() => app.exit(0))');
+    expect(day24Receipt).not.toContain('.then(() => app.quit())');
   });
 
   it('keeps CanvasWorkspace central and gates LegacyWorkspace behind a left compatibility entry', () => {
