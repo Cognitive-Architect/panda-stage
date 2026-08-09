@@ -82,6 +82,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     );
     const day24Receipt = readSource('scripts/verify-day24.cjs');
 
+    expect(issue102Receipt).toContain('editorMinimumHeight');
     for (const receipt of [issue102Receipt, issue109Receipt]) {
       expect(receipt).toContain(
         "bottom: box('[data-testid=\"bottom-workspace\"]')",

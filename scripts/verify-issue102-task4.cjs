@@ -564,6 +564,22 @@ async function run() {
     );
     await capture(window, 'task4-editor-minimum-width.png');
 
+    window.setContentSize(800, 560);
+    await delay(260);
+    const editorMinimumHeight = await measure(window);
+    assertNoHorizontalOverflow(editorMinimumHeight, 'minimum-height editor');
+    assertCoreButtons(editorMinimumHeight, 'minimum-height editor');
+    assertEditorRegions(editorMinimumHeight, 'minimum-height editor');
+    result.snapshots.editorMinimumHeight = editorMinimumHeight;
+    result.checks.push(
+      'Minimum-height editor keeps the compact bottom history and canvas regions contained',
+    );
+    result.screenshots.editorMinimumHeight = path.join(
+      evidenceRoot,
+      'task4-editor-minimum-height.png',
+    );
+    await capture(window, 'task4-editor-minimum-height.png');
+
     result.passed = true;
     return result;
   } finally {

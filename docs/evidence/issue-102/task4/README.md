@@ -9,14 +9,16 @@ pnpm verify:issue102-task4
 ```
 
 The gate builds the renderer, launches the packaged Electron renderer with a
-mocked main-process boundary, and checks `1280x720`, `1024x720`, and the
-minimum supported main-window width:
+mocked main-process boundary, and checks `1280x720`, `1024x720`, the
+minimum supported width (`800x720`), and the minimum supported window size
+(`800x560`):
 
 - no page-level horizontal overflow;
 - 44px minimum hit targets for the tagged core actions;
 - stable recent-project cards;
 - visible editor canvas, right inspector, and bottom workspace;
 - compact BottomWorkspace bounds, hidden overflow, and unclipped HistoryControls;
+- the compact bottom history remains contained at the minimum supported height;
 - the compact-bar more menu remains inside the viewport.
 
 `results.json` contains the measured rectangles, bottom-surface metrics, and
