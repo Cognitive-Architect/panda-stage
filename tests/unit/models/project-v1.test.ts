@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../../demo-project/project-v1.example.json';
 import {
@@ -24,6 +26,35 @@ function issuePaths(input: unknown): string[] {
     : result.error.issues.map((issue) => issue.path.join('.'));
 }
 
+function wavDurationMs(bytes: Buffer): number {
+  if (
+    bytes.length < 12 ||
+    bytes.toString('ascii', 0, 4) !== 'RIFF' ||
+    bytes.toString('ascii', 8, 12) !== 'WAVE'
+  ) {
+    throw new Error('Expected a RIFF/WAVE fixture.');
+  }
+  let byteRate: number | null = null;
+  let dataLength: number | null = null;
+  for (let offset = 12; offset + 8 <= bytes.length; ) {
+    const type = bytes.toString('ascii', offset, offset + 4);
+    const length = bytes.readUInt32LE(offset + 4);
+    if (offset + 8 + length > bytes.length) {
+      throw new Error(`Truncated WAV ${type} chunk.`);
+    }
+    if (type === 'fmt ' && length >= 16) {
+      byteRate = bytes.readUInt32LE(offset + 16);
+    } else if (type === 'data') {
+      dataLength = length;
+    }
+    offset += 8 + length + (length % 2);
+  }
+  if (!byteRate || dataLength === null) {
+    throw new Error('WAV fixture lacks fmt or data chunks.');
+  }
+  return Math.round((dataLength / byteRate) * 1_000);
+}
+
 describe('ProjectSchema v5', () => {
   it('migrates the human-readable v1 example with every MVP entity', () => {
     const project = ProjectSchema.parse(exampleProject);
@@ -47,6 +78,25 @@ describe('ProjectSchema v5', () => {
     expect(shot.layers).toHaveLength(2);
     expect(shot.dialogues).toHaveLength(1);
     expect(shot.audioClips).toHaveLength(1);
+  });
+
+  it('backs every example asset record with a matching source file', async () => {
+    const project = ProjectSchema.parse(exampleProject);
+    const exampleRoot = resolve(process.cwd(), 'demo-project');
+    const pngSignature = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+
+    for (const asset of project.assets) {
+      const bytes = await readFile(resolve(exampleRoot, asset.relativePath));
+      if (asset.kind === 'image') {
+        expect(bytes.subarray(0, 8)).toEqual(pngSignature);
+        expect(bytes.readUInt32BE(16)).toBe(asset.width);
+        expect(bytes.readUInt32BE(20)).toBe(asset.height);
+      } else {
+        expect(wavDurationMs(bytes)).toBe(asset.durationMs);
+      }
+    }
   });
 
   it('exports executable schemas for every MVP entity', () => {

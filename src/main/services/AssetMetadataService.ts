@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import {
   ProjectSchema,
@@ -70,11 +71,13 @@ export interface AssetMetadataRefreshOptions {
 }
 
 interface AssetMetadataErrorDetails extends ErrorOptions {
+  relativePath?: string;
   currentProject?: Project;
   currentRevision?: number;
 }
 
 export class AssetMetadataServiceError extends Error {
+  readonly relativePath: string | undefined;
   readonly currentProject: Project | undefined;
   readonly currentRevision: number | undefined;
 
@@ -87,6 +90,7 @@ export class AssetMetadataServiceError extends Error {
   ) {
     super(message, { cause: details.cause });
     this.name = 'AssetMetadataServiceError';
+    this.relativePath = details.relativePath;
     this.currentProject = details.currentProject;
     this.currentRevision = details.currentRevision;
   }
@@ -183,7 +187,7 @@ export class AssetMetadataService {
           return {
             projectRoot: transaction.projectRoot,
             asset: structuredClone(asset),
-            assetPath: this.resolveAssetPath(
+            assetPath: await this.resolveAssetPath(
               transaction.projectRoot,
               asset,
             ),
@@ -593,7 +597,10 @@ export class AssetMetadataService {
         );
   }
 
-  private resolveAssetPath(projectRoot: string, asset: Asset): string {
+  private async resolveAssetPath(
+    projectRoot: string,
+    asset: Asset,
+  ): Promise<string> {
     const assetsRoot = path.resolve(projectRoot, 'assets');
     const assetPath = path.resolve(projectRoot, asset.relativePath);
     const relative = path.relative(assetsRoot, assetPath);
@@ -608,7 +615,70 @@ export class AssetMetadataService {
         `Asset "${asset.name}" does not point inside assets/.`,
       );
     }
-    return assetPath;
+    let realAssetsRoot: string;
+    try {
+      realAssetsRoot = await realpath(assetsRoot);
+    } catch (error) {
+      if (isMissingPathError(error)) {
+        throw this.sourceMissingError(projectRoot, asset, error);
+      }
+      throw new AssetMetadataServiceError(
+        'ASSET_METADATA_OPERATION_FAILED',
+        projectRoot,
+        asset.id,
+        `Cannot resolve the asset directory for ${asset.relativePath}.`,
+        { cause: error, relativePath: asset.relativePath },
+      );
+    }
+    let realAssetPath: string;
+    try {
+      realAssetPath = await realpath(assetPath);
+    } catch (error) {
+      if (isMissingPathError(error)) {
+        throw this.sourceMissingError(projectRoot, asset, error);
+      }
+      throw new AssetMetadataServiceError(
+        'ASSET_METADATA_OPERATION_FAILED',
+        projectRoot,
+        asset.id,
+        `Cannot resolve asset source ${asset.relativePath}.`,
+        { cause: error, relativePath: asset.relativePath },
+      );
+    }
+    if (!this.isInsideDirectory(realAssetsRoot, realAssetPath)) {
+      throw new AssetMetadataServiceError(
+        'ASSET_METADATA_OPERATION_FAILED',
+        projectRoot,
+        asset.id,
+        `Asset "${asset.name}" does not resolve inside assets/.`,
+        { relativePath: asset.relativePath },
+      );
+    }
+    return realAssetPath;
+  }
+
+  private sourceMissingError(
+    projectRoot: string,
+    asset: Asset,
+    cause: unknown,
+  ): AssetMetadataServiceError {
+    return new AssetMetadataServiceError(
+      'ASSET_METADATA_SOURCE_MISSING',
+      projectRoot,
+      asset.id,
+      `源文件缺失，无法重建缩略图：${asset.relativePath}`,
+      { cause, relativePath: asset.relativePath },
+    );
+  }
+
+  private isInsideDirectory(directory: string, candidate: string): boolean {
+    const relative = path.relative(directory, candidate);
+    return (
+      relative.length > 0 &&
+      relative !== '..' &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative)
+    );
   }
 
   private replaceAsset(
@@ -624,6 +694,14 @@ export class AssetMetadataService {
       updatedAt: this.now().toISOString(),
     });
   }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }
 
 function projectsEqual(left: Project, right: Project): boolean {

@@ -1,10 +1,12 @@
 import type { Asset } from '../../../domain';
+import type { ThumbnailState } from './AssetCard';
 
 export interface AssetDetailsProps {
   asset: Asset | null;
   references: readonly { label: string; path: string }[];
   busy: boolean;
   onDelete: () => void;
+  thumbnail?: ThumbnailState;
 }
 
 function dimensions(asset: Asset): string {
@@ -21,6 +23,7 @@ export function AssetDetails({
   references,
   busy,
   onDelete,
+  thumbnail,
 }: AssetDetailsProps): React.JSX.Element {
   if (!asset) {
     return (
@@ -30,6 +33,14 @@ export function AssetDetails({
       </aside>
     );
   }
+  const sourceStatus =
+    thumbnail?.status === 'missing' && thumbnail.reason === 'source'
+      ? 'missing'
+      : thumbnail?.status === 'ready' ||
+          (thumbnail?.status === 'missing' &&
+            thumbnail.reason === 'cache')
+        ? 'present'
+        : 'checking';
   return (
     <aside className="asset-details">
       <div>
@@ -51,7 +62,13 @@ export function AssetDetails({
         </div>
         <div>
           <dt>路径状态</dt>
-          <dd>项目内受控副本</dd>
+          <dd>
+            {sourceStatus === 'missing'
+              ? '源文件缺失，无法读取或重建缩略图'
+              : sourceStatus === 'present'
+                ? '源文件存在'
+                : '正在检查源文件'}
+          </dd>
         </div>
       </dl>
       {references.length > 0 ? (

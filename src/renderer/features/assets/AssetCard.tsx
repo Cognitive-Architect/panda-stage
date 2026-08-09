@@ -5,12 +5,42 @@ import type {
 import type {
   AssetLibraryCategory,
 } from '../../stores/assetLibrarySelectors';
+import type { AssetThumbnailReadResponse } from '../../../shared/asset-thumbnail-api';
 import { writeAssetDropPayload } from './AssetDropPayload';
+
+export type ThumbnailMissingReason = 'cache' | 'source' | 'error';
 
 export type ThumbnailState =
   | { status: 'loading' }
-  | { status: 'missing' }
+  | {
+      status: 'missing';
+      reason?: ThumbnailMissingReason;
+      message?: string;
+      relativePath?: string;
+    }
   | { status: 'ready'; dataUrl: string };
+
+export function thumbnailStateFromResponse(
+  response: AssetThumbnailReadResponse,
+): ThumbnailState {
+  if (response.ok && response.status === 'ready') {
+    return { status: 'ready', dataUrl: response.dataUrl };
+  }
+  if (response.ok) {
+    return { status: 'missing', reason: 'cache' };
+  }
+  return {
+    status: 'missing',
+    reason:
+      response.error.code === 'ASSET_THUMBNAIL_SOURCE_MISSING'
+        ? 'source'
+        : 'error',
+    message: response.error.message,
+    ...(response.error.relativePath
+      ? { relativePath: response.error.relativePath }
+      : {}),
+  };
+}
 
 export interface AssetCardProps {
   asset: Asset;
@@ -42,6 +72,14 @@ export function AssetCard({
   onThumbnailError,
 }: AssetCardProps): React.JSX.Element {
   const image = asset.kind === 'image';
+  const sourceMissing =
+    image && thumbnail.status === 'missing' && thumbnail.reason === 'source';
+  const sourceStatus = sourceMissing
+    ? 'missing'
+    : thumbnail.status === 'ready' ||
+        (thumbnail.status === 'missing' && thumbnail.reason === 'cache')
+      ? 'present'
+      : 'unknown';
   return (
     <article
       className={[
@@ -80,6 +118,7 @@ export function AssetCard({
           <div
             className="asset-thumbnail-placeholder"
             data-thumbnail-status={thumbnail.status}
+            data-thumbnail-source-status={sourceStatus}
           >
             <span aria-hidden="true">
               {image ? '▧' : '♫'}
@@ -88,10 +127,15 @@ export function AssetCard({
               {image
                 ? thumbnail.status === 'loading'
                   ? '加载缩略图'
-                  : '缩略图缺失'
+                  : sourceMissing
+                    ? '源文件缺失，无法重建缩略图'
+                    : '缩略图缺失'
                 : '音频素材'}
             </small>
-            {image && thumbnail.status === 'missing' ? (
+            {sourceMissing && thumbnail.relativePath ? (
+              <code>{thumbnail.relativePath}</code>
+            ) : null}
+            {image && thumbnail.status === 'missing' && !sourceMissing ? (
               <button
                 onClick={(event) => {
                   event.stopPropagation();
