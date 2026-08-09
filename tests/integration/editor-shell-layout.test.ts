@@ -84,6 +84,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
         "bottom: box('[data-testid=\"bottom-workspace\"]')",
       );
       expect(receipt).toContain('assertCompactBottom');
+      expect(receipt).toContain('scrollWidth <= sample.historyMetrics.clientWidth + 1');
       expect(receipt).toContain('app.exit(exitCode)');
       expect(receipt).not.toContain('bottom-workspace-placeholder');
     }

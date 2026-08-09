@@ -103,6 +103,8 @@ async function measure(window) {
         overflow: style.overflow,
         overflowX: style.overflowX,
         overflowY: style.overflowY,
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
         clientHeight: element.clientHeight,
         scrollHeight: element.scrollHeight,
       };
@@ -227,7 +229,9 @@ function assertCompactBottom(sample, label, maxHeight = 96) {
     `${label} bottom workspace uses an unexpected overflow mode: ${JSON.stringify(sample.bottomMetrics)}`,
   );
   assert(
-    sample.bottomMetrics.scrollHeight <= sample.bottomMetrics.clientHeight + 1 &&
+    sample.bottomMetrics.scrollWidth <= sample.bottomMetrics.clientWidth + 1 &&
+      sample.historyMetrics.scrollWidth <= sample.historyMetrics.clientWidth + 1 &&
+      sample.bottomMetrics.scrollHeight <= sample.bottomMetrics.clientHeight + 1 &&
       sample.historyMetrics.scrollHeight <= sample.historyMetrics.clientHeight + 1,
     `${label} bottom history content is clipped inside its compact surface: ${JSON.stringify({ bottom: sample.bottomMetrics, history: sample.historyMetrics })}`,
   );

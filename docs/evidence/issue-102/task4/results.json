@@ -186,6 +186,8 @@
         "overflow": "hidden",
         "overflowX": "hidden",
         "overflowY": "hidden",
+        "clientWidth": 1255,
+        "scrollWidth": 1255,
         "clientHeight": 51,
         "scrollHeight": 51
       },
@@ -193,6 +195,8 @@
         "overflow": "visible",
         "overflowX": "visible",
         "overflowY": "visible",
+        "clientWidth": 1237,
+        "scrollWidth": 1237,
         "clientHeight": 41,
         "scrollHeight": 41
       },
@@ -343,6 +347,8 @@
         "overflow": "hidden",
         "overflowX": "hidden",
         "overflowY": "hidden",
+        "clientWidth": 1255,
+        "scrollWidth": 1255,
         "clientHeight": 51,
         "scrollHeight": 51
       },
@@ -350,6 +356,8 @@
         "overflow": "visible",
         "overflowX": "visible",
         "overflowY": "visible",
+        "clientWidth": 1237,
+        "scrollWidth": 1237,
         "clientHeight": 41,
         "scrollHeight": 41
       },
@@ -543,6 +551,8 @@
         "overflow": "hidden",
         "overflowX": "hidden",
         "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
         "clientHeight": 51,
         "scrollHeight": 51
       },
@@ -550,6 +560,8 @@
         "overflow": "visible",
         "overflowX": "visible",
         "overflowY": "visible",
+        "clientWidth": 989,
+        "scrollWidth": 989,
         "clientHeight": 41,
         "scrollHeight": 41
       },
@@ -664,6 +676,8 @@
         "overflow": "hidden",
         "overflowX": "hidden",
         "overflowY": "hidden",
+        "clientWidth": 1007,
+        "scrollWidth": 1007,
         "clientHeight": 51,
         "scrollHeight": 51
       },
@@ -671,6 +685,8 @@
         "overflow": "visible",
         "overflowX": "visible",
         "overflowY": "visible",
+        "clientWidth": 989,
+        "scrollWidth": 989,
         "clientHeight": 41,
         "scrollHeight": 41
       },
@@ -954,6 +970,8 @@
         "overflow": "hidden",
         "overflowX": "hidden",
         "overflowY": "hidden",
+        "clientWidth": 783,
+        "scrollWidth": 783,
         "clientHeight": 51,
         "scrollHeight": 51
       },
@@ -961,6 +979,8 @@
         "overflow": "visible",
         "overflowX": "visible",
         "overflowY": "visible",
+        "clientWidth": 765,
+        "scrollWidth": 765,
         "clientHeight": 41,
         "scrollHeight": 41
       },
