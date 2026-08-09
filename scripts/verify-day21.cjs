@@ -456,7 +456,7 @@ async function verifyDay21() {
           ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('修订 0')
+        )?.dataset.projectRevision === '0'
       };
     })()`);
     const fitScreenshot = await captureCanvasSection(window);
@@ -486,7 +486,7 @@ async function verifyDay21() {
           ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('修订 0')
+        )?.dataset.projectRevision === '0'
       };
     })()`);
     const autosaveResizeDelta =
@@ -558,7 +558,7 @@ async function verifyDay21() {
           ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
-        )?.textContent?.includes('修订 0'),
+        )?.dataset.projectRevision === '0',
         modeFeedback: document.querySelector(
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim()
@@ -758,7 +758,7 @@ async function verifyDay21() {
             ?.textContent?.trim() === '已保存',
           revisionZero: document.querySelector(
             '.shot-manager-heading span'
-          )?.textContent?.includes('修订 0')
+          )?.dataset.projectRevision === '0'
         }))()`);
       const dpiFitPointer = /^x ([\d.]+) · y ([\d.]+)$/u.exec(
         dpiFit.pointer,

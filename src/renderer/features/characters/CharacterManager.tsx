@@ -162,9 +162,9 @@ export function CharacterManager({
           <h2 id="character-manager-heading">角色与表情</h2>
         </div>
         <div>
-          <span>
+          <span data-project-revision={snapshot?.revision ?? 0}>
             {snapshot
-              ? `${snapshot.project.characters.length} 个角色 · 修订 ${snapshot.revision}`
+              ? `${snapshot.project.characters.length} 个角色`
               : '尚未打开项目'}
           </span>
         </div>

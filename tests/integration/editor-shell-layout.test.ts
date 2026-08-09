@@ -247,6 +247,18 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(count(shell, /<LegacyWorkspace/gu)).toBe(0);
   });
 
+  it('keeps project revision diagnostic-only in resource manager headings', () => {
+    const shots = readSource('src/renderer/features/shots/ShotManager.tsx');
+    const characters = readSource(
+      'src/renderer/features/characters/CharacterManager.tsx',
+    );
+
+    for (const source of [shots, characters]) {
+      expect(source).toContain('data-project-revision={snapshot?.revision ?? 0}');
+      expect(source).not.toContain('修订');
+    }
+  });
+
   it('implements only the Stage 2-B central canvas migration', () => {
     const sources = [
       readSource('src/renderer/shell/EditorShell.tsx'),
