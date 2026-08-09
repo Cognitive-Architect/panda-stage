@@ -477,8 +477,9 @@ describe('asset metadata revision and operation safety', () => {
     ).resolves.toBeTruthy();
   });
 
-  it('times out or cancels audio probing with one terminal outcome and leaves later autosave usable', async () => {
-    for (const mode of ['timeout', 'cancel'] as const) {
+  it.each(['timeout', 'cancel'] as const)(
+    '%s audio probing has one terminal outcome and leaves later autosave usable',
+    async (mode) => {
       const input = await createHarness();
       let active = 0;
       let aborted = 0;
@@ -545,8 +546,8 @@ describe('asset metadata revision and operation safety', () => {
       });
       await input.autosaveService.tick(input.projectRoot);
       expect(await recoveryFiles(input.projectRoot)).toHaveLength(1);
-    }
-  });
+    },
+  );
 
   it('settles a stale-plus-timeout race once without committing or leaving media active', async () => {
     const input = await createHarness();
