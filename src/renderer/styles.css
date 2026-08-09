@@ -852,7 +852,7 @@ button:disabled {
   align-items: center;
   min-width: 0;
   min-height: 52px;
-  max-height: 96px;
+  max-height: 76px;
   padding: 4px 8px;
   overflow: hidden;
   border: 1px solid rgb(127 199 148 / 22%);
@@ -869,7 +869,9 @@ button:disabled {
   grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.3fr);
   align-items: center;
   gap: 4px 10px;
-  border-radius: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .bottom-workspace > .history-controls > div:first-child {

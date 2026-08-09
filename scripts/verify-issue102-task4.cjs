@@ -213,7 +213,7 @@ function assertRecentCards(sample, label) {
   );
 }
 
-function assertCompactBottom(sample, label, maxHeight = 96) {
+function assertCompactBottom(sample, label, maxHeight = 76) {
   assert(
     sample.bottom && sample.bottomMetrics && sample.historyMetrics,
     `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,

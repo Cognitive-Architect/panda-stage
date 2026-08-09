@@ -248,10 +248,13 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       /\.canvas-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
     expect(styles).toMatch(
-      /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*52px;[\s\S]*?max-height:\s*96px;[\s\S]*?overflow:\s*hidden;/u,
+      /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*52px;[\s\S]*?max-height:\s*76px;[\s\S]*?overflow:\s*hidden;/u,
     );
     expect(styles).toMatch(
       /\.bottom-workspace\s*>\s*\.history-controls\s*\.history-actions\s*\{[\s\S]*?flex-wrap:\s*nowrap;/u,
+    );
+    expect(styles).toMatch(
+      /\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/u,
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?grid-template-areas:[\s\S]*?"heading actions"[\s\S]*?"status status";/u,

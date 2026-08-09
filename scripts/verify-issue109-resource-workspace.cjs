@@ -203,7 +203,7 @@ function assertCompactBottom(sample, label) {
     `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
   );
   assert(
-    sample.bottom.height >= 52 && sample.bottom.height <= 96,
+    sample.bottom.height >= 52 && sample.bottom.height <= 76,
     `${label} bottom workspace is not compact: ${JSON.stringify(sample.bottom)}`,
   );
   assert(
