@@ -107,7 +107,10 @@ async function verifyDay18() {
     IPC_CHANNELS.ASSET_THUMBNAIL_READ,
     (_event, request) => {
       thumbnailRequestCount += 1;
-      if (request.assetId === missingThumbnailAssetId) {
+      if (
+        request.assetId === missingThumbnailAssetId ||
+        !request.sha256
+      ) {
         return {
           ok: true,
           status: 'missing',
