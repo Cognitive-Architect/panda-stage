@@ -86,6 +86,7 @@ export const AssetMetadataResultSchema = z.discriminatedUnion('status', [
 export const AssetMetadataOperationErrorCodeSchema = z.enum([
   'ASSET_METADATA_PROJECT_NOT_FOUND',
   'ASSET_METADATA_ASSET_NOT_FOUND',
+  'ASSET_METADATA_SOURCE_MISSING',
   'ASSET_METADATA_PROJECT_MISMATCH',
   'ASSET_METADATA_STALE_REVISION',
   'ASSET_METADATA_TIMEOUT',
@@ -113,6 +114,12 @@ export const AssetMetadataResponseSchema = z.discriminatedUnion('ok', [
           message: z.string().trim().min(1).max(1_000),
           projectRoot: FileSystemPathSchema,
           assetId: z.string().trim().min(1).max(200),
+          relativePath: z
+            .string()
+            .trim()
+            .min(1)
+            .max(32_767)
+            .optional(),
           currentProject: ProjectSchema.optional(),
           currentRevision: RevisionSchema.optional(),
         })

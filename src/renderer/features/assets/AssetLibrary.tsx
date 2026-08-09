@@ -19,7 +19,10 @@ import { applyAssetMetadataResponse } from './applyAssetMetadataResponse';
 import { ASSET_DRAG_MIME } from './AssetDropPayload';
 import { AssetDetails } from './AssetDetails';
 import { AssetGrid } from './AssetGrid';
-import type { ThumbnailState } from './AssetCard';
+import {
+  thumbnailStateFromResponse,
+  type ThumbnailState,
+} from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
 
 export type AssetWorkspaceView = 'browser' | 'details';
@@ -108,9 +111,7 @@ export function AssetLibrary({
       Object.fromEntries(
         imageEntries.map(({ asset }) => [
           asset.id,
-          asset.sha256
-            ? { status: 'loading' as const }
-            : { status: 'missing' as const },
+          { status: 'loading' as const },
         ]),
       ),
     );
@@ -118,7 +119,6 @@ export function AssetLibrary({
       active = false;
     };
     for (const { asset } of imageEntries) {
-      if (!asset.sha256) continue;
       void window.pandaStage.assets
         .readThumbnail({
           projectRoot: snapshot.projectRoot,
@@ -129,20 +129,17 @@ export function AssetLibrary({
           if (!active) return;
           setThumbnails((current) => ({
             ...current,
-            [asset.id]:
-              response.ok && response.status === 'ready'
-                ? {
-                    status: 'ready',
-                    dataUrl: response.dataUrl,
-                  }
-                : { status: 'missing' },
+            [asset.id]: thumbnailStateFromResponse(response),
           }));
         })
         .catch(() => {
           if (!active) return;
           setThumbnails((current) => ({
             ...current,
-            [asset.id]: { status: 'missing' },
+            [asset.id]: {
+              status: 'missing',
+              reason: 'error',
+            },
           }));
         });
     }
@@ -160,6 +157,9 @@ export function AssetLibrary({
   const rebuildThumbnail = async (assetId: string): Promise<void> => {
     const current = editorProjectStore.getSnapshot();
     if (!current) return;
+    const asset = current.project.assets.find(
+      (candidate) => candidate.id === assetId,
+    );
     setBusy(true);
     setStatus('正在重新读取素材并生成缩略图…');
     try {
@@ -171,6 +171,25 @@ export function AssetLibrary({
           assetId,
           requestId: crypto.randomUUID(),
         });
+      if (!response.ok) {
+        setThumbnails((existing) => ({
+          ...existing,
+          [assetId]: {
+            status: 'missing',
+            reason:
+              response.error.code === 'ASSET_METADATA_SOURCE_MISSING'
+                ? 'source'
+                : 'error',
+            message: response.error.message,
+            ...(response.error.relativePath ?? asset?.relativePath
+              ? {
+                  relativePath:
+                    response.error.relativePath ?? asset?.relativePath,
+                }
+              : {}),
+          },
+        }));
+      }
       const outcome = applyAssetMetadataResponse(
         response,
         editorProjectStore,
@@ -332,7 +351,10 @@ export function AssetLibrary({
                       ? current
                       : {
                           ...current,
-                          [assetId]: { status: 'missing' },
+                          [assetId]: {
+                            status: 'missing',
+                            reason: 'error',
+                          },
                         },
                   );
                 }}
@@ -366,6 +388,7 @@ export function AssetLibrary({
             busy={busy}
             onDelete={() => void deleteSelected()}
             references={references}
+            thumbnail={selectedAsset ? thumbnails[selectedAsset.id] : undefined}
           />
         </section>
       )}

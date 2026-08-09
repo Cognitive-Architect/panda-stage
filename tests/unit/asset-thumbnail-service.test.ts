@@ -74,6 +74,12 @@ async function serviceWithCachedBytes(
       index === assetIndex ? { ...asset, sha256 } : asset,
     ),
   });
+  const sourcePath = path.join(
+    projectRoot,
+    project.assets[assetIndex]!.relativePath,
+  );
+  await mkdir(path.dirname(sourcePath), { recursive: true });
+  await writeFile(sourcePath, createRgbaPng(2, 2));
   const cache = new CacheService();
   const thumbnailPath = cache.thumbnailPath(
     projectRoot,
@@ -198,6 +204,12 @@ describe('AssetThumbnailService', () => {
         ...exampleProject.assets.slice(1),
       ],
     });
+    const sourcePath = path.join(
+      projectRoot,
+      project.assets[0]!.relativePath,
+    );
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, createRgbaPng(2, 2));
     const cache = new CacheService();
     const cacheKey = cache.thumbnailKey(sha256);
     const thumbnailPath = cache.thumbnailPath(projectRoot, cacheKey);
@@ -234,6 +246,12 @@ describe('AssetThumbnailService', () => {
         ...exampleProject.assets.slice(1),
       ],
     });
+    const sourcePath = path.join(
+      projectRoot,
+      project.assets[0]!.relativePath,
+    );
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, createRgbaPng(2, 2));
     const service = new AssetThumbnailService({
       getCurrentProjectSnapshot: () => ({ project }),
     });
@@ -287,7 +305,10 @@ describe('AssetThumbnailService', () => {
     const missing = await serviceWithRepair({ sourceExists: false });
     await expect(missing.service.read(missing.request)).resolves.toMatchObject({
       ok: false,
-      error: { code: 'ASSET_THUMBNAIL_READ_FAILED' },
+      error: {
+        code: 'ASSET_THUMBNAIL_SOURCE_MISSING',
+        relativePath: 'assets/source.png',
+      },
     });
     expect(missing.ensureThumbnail).not.toHaveBeenCalled();
 
@@ -299,6 +320,46 @@ describe('AssetThumbnailService', () => {
       error: { code: 'ASSET_THUMBNAIL_READ_FAILED' },
     });
     expect(sibling.ensureThumbnail).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing source even when a stale cached thumbnail remains', async () => {
+    const input = await serviceWithRepair({
+      cachedBytes: createRgbaPng(2, 2),
+    });
+    await rm(input.sourcePath);
+
+    await expect(input.service.read(input.request)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'ASSET_THUMBNAIL_SOURCE_MISSING',
+        relativePath: 'assets/source.png',
+      },
+    });
+    expect(input.ensureThumbnail).not.toHaveBeenCalled();
+  });
+
+  it('checks source existence for historical image records without a hash', async () => {
+    const projectRoot = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-thumbnail-no-hash-'),
+    );
+    temporaryDirectories.push(projectRoot);
+    const project = ProjectSchema.parse(exampleProject);
+    const service = new AssetThumbnailService({
+      getCurrentProjectSnapshot: () => ({ project }),
+    });
+
+    await expect(
+      service.read({
+        projectRoot,
+        assetId: project.assets[0]!.id,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'ASSET_THUMBNAIL_SOURCE_MISSING',
+        relativePath: project.assets[0]!.relativePath,
+      },
+    });
   });
 
   it('returns the structured thumbnail error when regeneration fails', async () => {

@@ -12,7 +12,10 @@ import {
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { characterStore } from '../../stores/characterStore';
-import type { ThumbnailState } from '../assets/AssetCard';
+import {
+  thumbnailStateFromResponse,
+  type ThumbnailState,
+} from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
 import { CharacterList } from './CharacterList';
 
@@ -80,13 +83,10 @@ export function CharacterManager({
     let cancelled = false;
     const next: Record<string, ThumbnailState> = {};
     for (const asset of imageAssets) {
-      next[asset.id] = asset.sha256
-        ? { status: 'loading' }
-        : { status: 'missing' };
+      next[asset.id] = { status: 'loading' };
     }
     setThumbnails(next);
     for (const asset of imageAssets) {
-      if (!asset.sha256) continue;
       void window.pandaStage.assets
         .readThumbnail({
           projectRoot: snapshot.projectRoot,
@@ -97,17 +97,14 @@ export function CharacterManager({
           if (cancelled) return;
           setThumbnails((current) => ({
             ...current,
-            [asset.id]:
-              response.ok && response.status === 'ready'
-                ? { status: 'ready', dataUrl: response.dataUrl }
-                : { status: 'missing' },
+            [asset.id]: thumbnailStateFromResponse(response),
           }));
         })
         .catch(() => {
           if (!cancelled) {
             setThumbnails((current) => ({
               ...current,
-              [asset.id]: { status: 'missing' },
+              [asset.id]: { status: 'missing', reason: 'error' },
             }));
           }
         });
@@ -165,9 +162,9 @@ export function CharacterManager({
           <h2 id="character-manager-heading">角色与表情</h2>
         </div>
         <div>
-          <span>
+          <span data-project-revision={snapshot?.revision ?? 0}>
             {snapshot
-              ? `${snapshot.project.characters.length} 个角色 · 修订 ${snapshot.revision}`
+              ? `${snapshot.project.characters.length} 个角色`
               : '尚未打开项目'}
           </span>
         </div>
@@ -326,7 +323,7 @@ export function CharacterManager({
           onThumbnailError={(assetId) => {
             setThumbnails((current) => ({
               ...current,
-              [assetId]: { status: 'missing' },
+              [assetId]: { status: 'missing', reason: 'error' },
             }));
           }}
           thumbnails={thumbnails}

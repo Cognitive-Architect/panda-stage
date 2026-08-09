@@ -13,6 +13,9 @@ export function applyAssetMetadataResponse(
   if (!response.ok) {
     return { status: response.error.message, applied: false };
   }
+  if (response.result.status === 'error') {
+    return { status: response.result.error.message, applied: false };
+  }
   const acknowledgement = store.applyAssetMetadata(
     response.project,
     response.result.asset,
@@ -21,11 +24,9 @@ export function applyAssetMetadataResponse(
   );
   return {
     status:
-      response.result.status === 'ready'
-        ? acknowledgement === 'current'
-          ? 'Asset metadata refreshed.'
-          : 'Asset metadata refreshed; newer edits remain unsaved.'
-        : response.result.error.message,
+      acknowledgement === 'current'
+        ? 'Asset metadata refreshed.'
+        : 'Asset metadata refreshed; newer edits remain unsaved.',
     applied: true,
   };
 }
