@@ -31,11 +31,11 @@ describe('Issue 164 ActionPresetPanel formal owner restore', () => {
 
     expect(ACTION_PRESETS).toHaveLength(8);
     expect(panel).toContain('data-testid="action-preset-panel"');
+    // The panel renders every preset through one map over ACTION_PRESETS, so
+    // the per-preset markup is asserted once against that single source form.
     expect(panel).toContain('ACTION_PRESETS.map((preset)');
-    for (const preset of ACTION_PRESETS) {
-      expect(panel).toContain('data-preset-id={preset.id}');
-      expect(panel).toContain('preset-${preset.id}');
-    }
+    expect(panel).toContain('data-preset-id={preset.id}');
+    expect(panel).toContain('preset-${preset.id}');
   });
 
   it('preserves existing guard + history wiring (apply routes through store)', () => {
