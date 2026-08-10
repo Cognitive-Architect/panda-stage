@@ -9,6 +9,9 @@ import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { actionPresetStore } from './actionPresetStore';
+import { editorActionPreviewStore } from './editorActionPreviewStore';
+import { useEditorActionPreview } from './useEditorActionPreview';
+import { previewWindowFromEvents } from './editorActionPreviewModel';
 import {
   PresetParameterForm,
   type ExpressionOption,
@@ -41,6 +44,7 @@ export function ActionPresetPanel(): React.JSX.Element {
     shotStore.getCurrentShotId,
     shotStore.getCurrentShotId,
   );
+  const preview = useEditorActionPreview();
 
   const project = snapshot?.project ?? null;
   const shot = project?.shots.find((candidate) => candidate.id === shotId) ?? null;
@@ -87,14 +91,50 @@ export function ActionPresetPanel(): React.JSX.Element {
   };
 
   const apply = (id: ActionPresetId, params: CreatePresetEventsParams): void => {
+    const targetShotId = shotId;
+    const targetLayerId = selectedLayerId;
+    const beforeCount = shot?.timelineEvents.length ?? 0;
     const result = actionPresetStore.apply(id, params);
-    if (result.ok) {
-      setStatus(`已应用：${presetById(id).label}`);
-      setActivePresetId(null);
-    } else {
+    if (!result.ok) {
       setStatus(result.errors?.join('；') ?? '应用失败。');
+      return;
     }
+    setStatus(`已应用：${presetById(id).label}`);
+    setActivePresetId(null);
+    // Trigger a bounded, transient editor preview of exactly the action that was
+    // just written. This never touches the project, revision, dirty flag or
+    // history — it only drives the preview clock over the new event window.
+    triggerPreviewAfterApply(targetShotId, targetLayerId, beforeCount);
   };
+
+  /**
+   * Sizes the preview to the events the last apply added and starts it. Reads
+   * the post-apply snapshot (apply is synchronous) and diffs the shot's
+   * timeline events so only the newly added action is previewed.
+   */
+  function triggerPreviewAfterApply(
+    targetShotId: string | null,
+    targetLayerId: string | null,
+    beforeCount: number,
+  ): void {
+    if (!targetShotId || !targetLayerId) return;
+    const snapshot = editorProjectStore.getSnapshot();
+    if (!snapshot) return;
+    const shot = snapshot.project.shots.find(
+      (candidate) => candidate.id === targetShotId,
+    );
+    if (!shot) return;
+    const newEvents = shot.timelineEvents.slice(beforeCount);
+    const window = previewWindowFromEvents(newEvents);
+    if (!window) return;
+    editorActionPreviewStore.start({
+      projectId: snapshot.project.id,
+      shotId: targetShotId,
+      layerId: targetLayerId,
+      startMs: window.startMs,
+      endMs: window.endMs,
+    });
+  }
 
   const activePreset = activePresetId ? presetById(activePresetId) : null;
 
@@ -132,6 +172,23 @@ export function ActionPresetPanel(): React.JSX.Element {
         />
       ) : null}
       <output data-testid="action-preset-status">{status}</output>
+      {preview.active ? (
+        <span
+          className="action-preset-previewing"
+          data-testid="action-preset-previewing"
+        >
+          预览中…
+        </span>
+      ) : null}
+      {!preview.active && preview.session ? (
+        <button
+          type="button"
+          data-testid="action-preset-replay"
+          onClick={() => editorActionPreviewStore.replay()}
+        >
+          重播动作
+        </button>
+      ) : null}
     </section>
   );
 }

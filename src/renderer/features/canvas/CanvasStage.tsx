@@ -33,6 +33,8 @@ import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
+import { EditorActionPreviewOverlay } from '../actions/EditorActionPreviewOverlay';
+import { useEditorActionPreview } from '../actions/useEditorActionPreview';
 import {
   isTransformerOverlayVisible,
   LayerTransformer,
@@ -229,6 +231,7 @@ export function CanvasStage(): React.JSX.Element {
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const preview = useEditorActionPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -290,7 +293,11 @@ export function CanvasStage(): React.JSX.Element {
     backgroundSelected && backgroundLayer?.layer.locked === false;
 
   return (
-    <section className="project-canvas" aria-labelledby="canvas-heading">
+    <section
+      className="project-canvas"
+      aria-labelledby="canvas-heading"
+      style={{ position: 'relative' }}
+    >
       <div className="project-canvas-heading">
         <div>
           <p className="eyebrow">画布</p>
@@ -503,6 +510,14 @@ export function CanvasStage(): React.JSX.Element {
           </>
         )}
       </CanvasViewport>
+      {preview.active ? (
+        <EditorActionPreviewOverlay
+          project={snapshot?.project ?? null}
+          projectRoot={snapshot?.projectRoot ?? ''}
+          selectedLayerId={selectedLayerId}
+          shotId={currentShotId}
+        />
+      ) : null}
       <CanvasToolbar
         mode={viewport.mode}
         onModeChange={(mode) => canvasViewportStore.setMode(mode)}
