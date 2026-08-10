@@ -6,6 +6,7 @@ import {
   getEditorShellPage,
   getEditorShellState,
   getEditorShellSessionRegion,
+  shouldRenderProductSurface,
 } from '../../src/renderer/shell/EditorShell';
 import { parseEditorShellFlags } from '../../src/renderer/shell/useDebugFlag';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -71,6 +72,17 @@ describe('EditorShell state boundary', () => {
       'start-screen',
     );
     expect(getEditorShellSessionRegion('editor')).toBe('editor-layout');
+    expect(shouldRenderProductSurface(false)).toBe(true);
+    expect(shouldRenderProductSurface(true)).toBe(false);
+
+    const shell = readFileSync(
+      'src/renderer/shell/EditorShell.tsx',
+      'utf8',
+    );
+    expect(shell).toContain(
+      "!renderProductSurface ? null : page === 'project-center'",
+    );
+    expect(shell).toContain('data-testid="gate-preview-overlay"');
   });
 
   it('owns the secure create flow in the shell and keeps the entry presentational', () => {

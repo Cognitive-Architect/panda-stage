@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import Konva from 'konva';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type Konva from 'konva';
 import { Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { EvaluatedShot, Project } from '../../domain';
 import {
@@ -8,6 +8,10 @@ import {
   type StageRenderLayer,
 } from '../../shared/stage/render-model';
 import { STAGE_CAPTION_SAFE_AREA } from '../../shared/stage/layout';
+import {
+  configureKonvaScenePixelRatio,
+  PREVIEW_CANVAS_PIXEL_RATIO,
+} from './konva-pixel-ratio';
 
 interface StageRendererProps {
   project: Project;
@@ -18,8 +22,6 @@ interface StageRendererProps {
   onError?: (error: Error) => void;
   renderToken?: string | number;
 }
-
-Konva.pixelRatio = 1;
 
 interface ImageLoadState {
   images: ReadonlyMap<string, HTMLImageElement>;
@@ -87,6 +89,11 @@ export function StageRenderer({
   onError,
   renderToken,
 }: StageRendererProps): React.JSX.Element {
+  const configurePreviewLayer = useCallback((layer: Konva.Layer | null) => {
+    if (layer) {
+      configureKonvaScenePixelRatio(layer, PREVIEW_CANVAS_PIXEL_RATIO);
+    }
+  }, []);
   const modelResult = useMemo(() => {
     try {
       return {
@@ -157,7 +164,7 @@ export function StageRenderer({
         listening={false}
         width={modelResult.model.width}
       >
-        <Layer listening={false}>
+        <Layer listening={false} ref={configurePreviewLayer}>
           {modelResult.model.layers.map((layer) => {
             const image = imageState.images.get(layer.id);
             const render = layer.render;

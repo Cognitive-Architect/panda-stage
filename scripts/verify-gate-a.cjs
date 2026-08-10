@@ -153,6 +153,13 @@ async function main() {
   if (packagedRun.code !== 0) {
     throw new Error(`Packaged Gate exited ${packagedRun.code}: ${packagedRun.stderr.toString('utf8')}`);
   }
+  const packagedLogs = Buffer.concat([
+    packagedRun.stdout,
+    packagedRun.stderr,
+  ]).toString('utf8');
+  if (/No handler registered for 'recent-projects:list'/u.test(packagedLogs)) {
+    throw new Error('Packaged Gate mounted Project Center without its recent-projects IPC owner.');
+  }
   const packagedReportPath = path.join(outputRoot, 'packaged-gate-results.json');
   try {
     await fs.access(packagedReportPath);

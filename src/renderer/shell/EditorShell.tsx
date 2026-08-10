@@ -86,6 +86,10 @@ export function getEditorShellPage(
     : 'project-center';
 }
 
+export function shouldRenderProductSurface(gateA: boolean): boolean {
+  return !gateA;
+}
+
 export function getEditorShellRecoveryCandidate(
   state: EditorShellState,
   sessionSnapshot: ProjectSessionSnapshot,
@@ -432,6 +436,7 @@ export function EditorShell({
           ? 'dirty'
           : 'saved';
   const { debug, gateA } = useDebugFlag();
+  const renderProductSurface = shouldRenderProductSurface(gateA);
 
   useEffect(() => {
     session.activateAutosaveErrors((error) => setStatus(error.message));
@@ -855,7 +860,7 @@ export function EditorShell({
       data-editor-page={page}
       data-gate-a={gateA ? 'enabled' : 'disabled'}
     >
-      {page === 'project-center' ? (
+      {!renderProductSurface ? null : page === 'project-center' ? (
         <ProjectCenterScreen
           busy={busy}
           currentProject={projectSnapshot}
@@ -935,7 +940,9 @@ export function EditorShell({
           ) : null}
         </div>
       ) : null}
-      {page === 'project-center' && newProjectDialogOpen ? (
+      {renderProductSurface &&
+        page === 'project-center' &&
+        newProjectDialogOpen ? (
         <NewProjectDialog
           busy={busy}
           onCancel={cancelNewProject}
