@@ -7,6 +7,7 @@ import { shotStore } from '../stores/shotStore';
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
+import { ActionPresetPanel } from '../features/actions/ActionPresetPanel';
 
 // Issue 109's existing Electron receipt measures the right column by this
 // stable selector. Keep the selector as a non-visual alias on the real
@@ -140,6 +141,7 @@ export function RightInspector(): React.JSX.Element {
       <LayerOrderControls
         backgroundLayerSelected={selection.state === 'background'}
       />
+      <ActionPresetPanel />
     </aside>
   );
 }

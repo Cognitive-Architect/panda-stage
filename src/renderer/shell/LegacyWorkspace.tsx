@@ -1,5 +1,3 @@
-import { ActionPresetPanel } from '../features/actions/ActionPresetPanel';
-
 export function LegacyWorkspace(): React.JSX.Element {
   return (
     <div
@@ -12,7 +10,6 @@ export function LegacyWorkspace(): React.JSX.Element {
         aria-label="Action presets"
         className="day25-action-shell"
       >
-        <ActionPresetPanel />
       </section>
     </div>
   );

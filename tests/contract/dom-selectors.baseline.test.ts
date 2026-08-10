@@ -240,7 +240,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       'data-testid="legacy-workspace-scroll"',
     );
     expect(legacyWorkspace.match(/<CanvasStage/gu)).toBeNull();
-    expect(legacyWorkspace).toContain('<ActionPresetPanel');
+    expect(legacyWorkspace).not.toContain('<ActionPresetPanel');
     expect(styles).toMatch(
       /\.legacy-workspace\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
@@ -380,7 +380,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(left.match(/<ResourceActivityDock/gu)).toHaveLength(1);
     expect(left.match(/<LegacyCompatibilityActivity/gu)).toHaveLength(1);
     expect(canvasWorkspace.match(/<CanvasStage/gu)).toHaveLength(1);
-    expect(legacy.match(/<ActionPresetPanel/gu)).toHaveLength(1);
+    expect(legacy.match(/<ActionPresetPanel/gu) ?? []).toHaveLength(0);
     expect(legacy.match(/<CanvasStage/gu) ?? []).toHaveLength(0);
     expect(compatibility).toContain('{active ? <LegacyWorkspace');
 

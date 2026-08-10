@@ -132,7 +132,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(legacy).toContain('data-testid="legacy-workspace-scroll"');
     expect(count(legacy, /data-testid="legacy-workspace-scroll"/gu)).toBe(1);
     expect(legacy).not.toContain('<ProjectRecoveryPanel');
-    expect(legacy).toContain('<ActionPresetPanel');
+    expect(legacy).not.toContain('<ActionPresetPanel');
     expect(count(legacy, /<CanvasStage/gu)).toBe(0);
     expect(panel).toContain('<RecentProjectsPanel');
     expect(panel).not.toContain('<AssetLibrary');
