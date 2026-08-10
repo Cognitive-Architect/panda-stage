@@ -1,12 +1,13 @@
 import {
   createRef,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
-import Konva from 'konva';
+import type Konva from 'konva';
 import {
   Layer as KonvaLayer,
   Line,
@@ -38,12 +39,18 @@ import {
 } from './LayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
 import type { CanvasDropPreview } from './useCanvasDrop';
+import {
+  configureKonvaScenePixelRatio,
+  resolveEditorCanvasPixelRatio,
+} from '../../stage/konva-pixel-ratio';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
 const editorDevicePixelRatio =
   typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
-Konva.pixelRatio = Math.min(Math.max(editorDevicePixelRatio, 1), 2);
+const editorCanvasPixelRatio = resolveEditorCanvasPixelRatio(
+  editorDevicePixelRatio,
+);
 
 interface CanvasImageState {
   images: ReadonlyMap<string, HTMLImageElement>;
@@ -192,6 +199,11 @@ function useCanvasImages(
 }
 
 export function CanvasStage(): React.JSX.Element {
+  const configureEditorLayer = useCallback((layer: Konva.Layer | null) => {
+    if (layer) {
+      configureKonvaScenePixelRatio(layer, editorCanvasPixelRatio);
+    }
+  }, []);
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -370,7 +382,7 @@ export function CanvasStage(): React.JSX.Element {
                 listening
                 width={PROJECT_WIDTH}
               >
-                <KonvaLayer listening>
+                <KonvaLayer listening ref={configureEditorLayer}>
                   <Rect
                     fill="#111914"
                     height={PROJECT_HEIGHT}
@@ -432,6 +444,7 @@ export function CanvasStage(): React.JSX.Element {
                 <KonvaLayer
                   listening
                   name="transformer-overlay-layer"
+                  ref={configureEditorLayer}
                 >
                   {transformerVisible && selectedStageLayer ? (
                     <LayerTransformer
