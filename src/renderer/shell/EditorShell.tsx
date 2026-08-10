@@ -217,12 +217,12 @@ export class EditorShellSession {
     ) {
       return null;
     }
-    this.lastAutosaveSnapshot = snapshot;
     const update = this.autosaveUpdateQueue.then(() =>
       this.autosaveApi.update(snapshot),
     );
     this.autosaveUpdateQueue = update.then(
       (response) => {
+        if (response.ok) this.lastAutosaveSnapshot = snapshot;
         this.autosaveUpdateFailure = response.ok
           ? null
           : new Error(response.error.message);
@@ -233,6 +233,22 @@ export class EditorShellSession {
       },
     );
     return update;
+  }
+
+  async prepareForNativeClose(
+    getSnapshot: () => EditorProjectSnapshot | null,
+  ): Promise<void> {
+    while (true) {
+      const snapshot = getSnapshot();
+      this.assertNativeCloseSyncable(snapshot);
+      const response = await this.syncAutosave(snapshot);
+      if (response && !response.ok) {
+        throw new Error(response.error.message);
+      }
+      await this.flushAutosave();
+      this.assertNativeCloseSyncable(snapshot);
+      if (getSnapshot() === snapshot) return;
+    }
   }
 
   async switchProject(projectRoot: string): Promise<ProjectSessionSnapshot> {
@@ -301,6 +317,20 @@ export class EditorShellSession {
     const failure = this.autosaveUpdateFailure;
     this.autosaveUpdateFailure = null;
     if (failure) throw failure;
+  }
+
+  private assertNativeCloseSyncable(
+    snapshot: EditorProjectSnapshot | null,
+  ): void {
+    const trackedProjectRoot = this.getSnapshot().trackedProjectRoot;
+    if (
+      this.controllerTransitionDepth > 0 ||
+      (snapshot?.projectRoot ?? null) !== trackedProjectRoot
+    ) {
+      throw new Error(
+        'Project state is transitioning and cannot be synchronized for native close.',
+      );
+    }
   }
 
   private async runControllerTransition<T>(
@@ -412,16 +442,43 @@ export function EditorShell({
   }, [session]);
 
   useEffect(() => {
-    void session.syncAutosave(projectSnapshot).then((response) => {
-      if (response && !response.ok) setStatus(response.error.message);
-    }).catch((error: unknown) => {
-      const current = editorProjectStore.getSnapshot();
-      if (current?.projectRoot !== projectSnapshot?.projectRoot) return;
-      setStatus(
-        error instanceof Error ? error.message : 'Autosave 更新失败。',
-      );
-    });
+    void session
+      .syncAutosave(projectSnapshot)
+      .then((response) => {
+        if (response && !response.ok) setStatus(response.error.message);
+      })
+      .catch((error: unknown) => {
+        const current = editorProjectStore.getSnapshot();
+        if (current?.projectRoot !== projectSnapshot?.projectRoot) return;
+        setStatus(
+          error instanceof Error ? error.message : 'Autosave 更新失败。',
+        );
+      });
   }, [projectSnapshot, session]);
+
+  useEffect(() => {
+    return window.pandaStage.nativeClose.onSyncRequest(({ requestId }) => {
+      void session
+        .prepareForNativeClose(editorProjectStore.getSnapshot)
+        .then(() => {
+          window.pandaStage.nativeClose.respondSync({
+            ok: true,
+            requestId,
+          });
+        })
+        .catch((error: unknown) => {
+          const message =
+            error instanceof Error && error.message.trim()
+              ? error.message
+              : 'Autosave 同步失败，窗口保持打开。';
+          window.pandaStage.nativeClose.respondSync({
+            ok: false,
+            requestId,
+            error: message.slice(0, 2_000),
+          });
+        });
+    });
+  }, [session]);
 
   const updateSession = (
     nextSession: ProjectSessionSnapshot,

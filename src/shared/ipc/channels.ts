@@ -32,6 +32,8 @@ export const IPC_CHANNELS = Object.freeze({
   AUTOSAVE_UPDATE: 'autosave:update',
   AUTOSAVE_STOP: 'autosave:stop',
   AUTOSAVE_ERROR: 'autosave:error',
+  NATIVE_CLOSE_SYNC_REQUEST: 'native-close:sync-request',
+  NATIVE_CLOSE_SYNC_RESPONSE: 'native-close:sync-response',
   RECOVERY_DETECT: 'recovery:detect',
   RECOVERY_RESTORE: 'recovery:restore',
   RECOVERY_IGNORE: 'recovery:ignore',

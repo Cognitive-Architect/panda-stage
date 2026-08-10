@@ -29,6 +29,7 @@ const inertClock: AutosaveClock = {
     1 as unknown as ReturnType<typeof setInterval>,
   clearInterval: () => undefined,
 };
+const synchronizeRenderer = async () => ({ ok: true as const });
 
 afterEach(async () => {
   await Promise.all(
@@ -101,6 +102,7 @@ describe('unsaved close integration lifecycle', () => {
     });
     const guard = new UnsavedCloseGuard({
       controller,
+      synchronizeRenderer,
       closeWindow,
       quitApplication: vi.fn(),
     });
@@ -166,6 +168,7 @@ describe('unsaved close integration lifecycle', () => {
     });
     const guard = new UnsavedCloseGuard({
       controller,
+      synchronizeRenderer,
       closeWindow,
       quitApplication: vi.fn(),
     });
@@ -320,6 +323,7 @@ describe('unsaved close integration lifecycle', () => {
     });
     const guard = new UnsavedCloseGuard({
       controller,
+      synchronizeRenderer,
       closeWindow,
       quitApplication: vi.fn(),
     });

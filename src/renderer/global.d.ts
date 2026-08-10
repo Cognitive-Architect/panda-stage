@@ -65,6 +65,10 @@ import type {
   ExportStartResponse,
   FullProbeExportRequest,
 } from '../shared/export-types';
+import type {
+  NativeCloseSyncRequest,
+  NativeCloseSyncResponse,
+} from '../shared/native-close-sync';
 
 declare global {
   interface Window {
@@ -142,6 +146,12 @@ declare global {
         onError: (
           callback: (error: RecoveryError) => void,
         ) => () => void;
+      };
+      nativeClose: {
+        onSyncRequest: (
+          callback: (request: NativeCloseSyncRequest) => void,
+        ) => () => void;
+        respondSync: (response: NativeCloseSyncResponse) => void;
       };
       recovery: {
         detect: (projectRoot: string) => Promise<RecoveryDetectResponse>;

@@ -16,6 +16,10 @@ import {
   AssetCanvasImageReadResponseSchema,
   CANVAS_IMAGE_MAX_BYTES,
 } from '../../src/shared/asset-canvas-image-api';
+import {
+  NativeCloseSyncRequestSchema,
+  NativeCloseSyncResponseSchema,
+} from '../../src/shared/native-close-sync';
 
 describe('IPC channel registry', () => {
   it('keeps every channel unique and namespaced', () => {
@@ -56,6 +60,8 @@ describe('IPC channel registry', () => {
       'autosave:update',
       'autosave:stop',
       'autosave:error',
+      'native-close:sync-request',
+      'native-close:sync-response',
       'recovery:detect',
       'recovery:restore',
       'recovery:ignore',
@@ -64,6 +70,30 @@ describe('IPC channel registry', () => {
 });
 
 describe('IPC contracts', () => {
+  it('validates native-close synchronization request and response payloads', () => {
+    expect(
+      NativeCloseSyncRequestSchema.parse({ requestId: 'close-1' }),
+    ).toEqual({ requestId: 'close-1' });
+    expect(
+      NativeCloseSyncResponseSchema.parse({
+        ok: false,
+        requestId: 'close-1',
+        error: 'Autosave update failed.',
+      }),
+    ).toEqual({
+      ok: false,
+      requestId: 'close-1',
+      error: 'Autosave update failed.',
+    });
+    expect(
+      NativeCloseSyncResponseSchema.safeParse({
+        ok: true,
+        requestId: 'close-1',
+        error: 'must not be present',
+      }).success,
+    ).toBe(false);
+  });
+
   it('validates the strict canvas-image request and response boundary', () => {
     const request = {
       projectRoot: 'C:\\demo.pandastage',
