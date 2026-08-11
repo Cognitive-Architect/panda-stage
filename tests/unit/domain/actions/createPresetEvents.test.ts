@@ -3,6 +3,7 @@ import {
   createPresetEvents,
   applyPresetEvents,
   evaluateShotAtTime,
+  ProjectSchema,
   type CreatePresetEventsOptions,
   type CreatePresetEventsParams,
 } from '../../../../src/domain';
@@ -535,6 +536,203 @@ describe('T05 createPresetEvents — continuous chaining (Issue #54 P1, real fac
       expect(after.scaleX).toBeCloseTo(before.scaleX, 6);
       expect(after.scaleY).toBeCloseTo(before.scaleY, 6);
       expect(after.opacity).toBeCloseTo(before.opacity, 6);
+    }
+  });
+});
+
+/**
+ * Issue #169 — the original acceptance shot contains stale, same-window
+ * position events left by earlier enter applications. The regression must be
+ * exercised through the real factory -> apply -> formal evaluator chain.
+ */
+describe('Issue #169 enter preset conflict with existing timeline events', () => {
+  const ISSUE169_SHOT_ID = '32ea0805-7007-4461-985a-8e104c8c7774';
+  const ISSUE169_LAYER_ID = 'ba2a8ae5-4682-4fbd-8358-cafd4c7fdef3';
+  const TARGET_X = 410.0234444259751;
+  const TARGET_Y = 628.5109153368794;
+
+  function originalAcceptanceShape(): Project {
+    const project = buildProject();
+    const baseShot = project.shots[0]!;
+    const layers = baseShot.layers.map((layer) =>
+      layer.id === CHAR_LAYER
+        ? {
+            ...layer,
+            id: ISSUE169_LAYER_ID,
+            name: 'wanqiu',
+            x: TARGET_X,
+            y: TARGET_Y,
+            flipX: true,
+          }
+        : layer,
+    );
+    const timelineEvents: TimelineEvent[] = [
+      {
+        id: '7feaf869-499b-4820-8326-2d7e9228ec78',
+        layerId: ISSUE169_LAYER_ID,
+        startMs: 0,
+        endMs: 800,
+        type: 'move',
+        from: { x: -300, y: TARGET_Y },
+        to: { x: TARGET_X, y: TARGET_Y },
+        easing: 'ease-in-out',
+      },
+      {
+        id: 'a512021e-9e8e-48cd-9033-161991dc3f9c',
+        layerId: ISSUE169_LAYER_ID,
+        startMs: 0,
+        endMs: 800,
+        type: 'move',
+        from: { x: -300, y: TARGET_Y },
+        to: { x: -300, y: TARGET_Y },
+        easing: 'ease-in-out',
+      },
+      {
+        id: '23c7f359-0638-4c6e-a224-081d3bb50f2f',
+        layerId: ISSUE169_LAYER_ID,
+        startMs: 0,
+        endMs: 800,
+        type: 'move',
+        from: { x: -300, y: TARGET_Y },
+        to: { x: -300, y: TARGET_Y },
+        easing: 'ease-in-out',
+      },
+    ];
+
+    return {
+      ...project,
+      shots: [
+        {
+          ...baseShot,
+          id: ISSUE169_SHOT_ID,
+          layers,
+          timelineEvents,
+        },
+      ],
+    };
+  }
+
+  function evaluatedTarget(project: Project, timeMs: number) {
+    const shot = project.shots[0]!;
+    return evaluateShotAtTime(shot, timeMs, project).layers.find(
+      (layer) => layer.id === ISSUE169_LAYER_ID,
+    )!;
+  }
+
+  it.each([
+    ['enter-left', -300],
+    ['enter-right', 2220],
+  ] as const)(
+    '%s derives a real destination and wins the original overlapping event conflict',
+    (presetId, fromX) => {
+      const project = originalAcceptanceShape();
+      const event = createPresetEvents(
+        project,
+        ISSUE169_SHOT_ID,
+        ISSUE169_LAYER_ID,
+        presetId,
+        { startMs: 0, durationMs: 800 },
+        { createId: () => '00000000-0000-4000-8000-000000000099' },
+      )[0] as MoveEvent;
+
+      // The new event is created by the formal factory, not hand-authored.
+      expect(event.from.x).toBe(fromX);
+      expect(event.from.y).toBe(TARGET_Y);
+      expect(event.to.x).toBe(TARGET_X);
+      expect(event.to.y).toBe(TARGET_Y);
+
+      const applied = applyPresetEvents(project, ISSUE169_SHOT_ID, [event]);
+      const middle = evaluatedTarget(applied, 400).x;
+      const end = evaluatedTarget(applied, 800).x;
+      if (presetId === 'enter-left') {
+        expect(middle).toBeGreaterThan(fromX);
+        expect(middle).toBeLessThan(TARGET_X);
+      } else {
+        expect(middle).toBeLessThan(fromX);
+        expect(middle).toBeGreaterThan(TARGET_X);
+      }
+      expect(end).toBeCloseTo(TARGET_X, 6);
+    },
+  );
+
+  it('uses the authored destination when enter starts inside the ambiguous conflict window', () => {
+    const project = originalAcceptanceShape();
+    const enter = createPresetEvents(
+      project,
+      ISSUE169_SHOT_ID,
+      ISSUE169_LAYER_ID,
+      'enter-left',
+      { startMs: 400, durationMs: 800 },
+      { createId: () => '00000000-0000-4000-8000-000000000100' },
+    )[0] as MoveEvent;
+
+    // The pre-existing position events make the evaluated state at 400ms
+    // non-unique. The proven contract is therefore the authored destination,
+    // not an arbitrary interpolation from the stale winner.
+    expect(enter.to).toEqual({ x: TARGET_X, y: TARGET_Y });
+    const applied = applyPresetEvents(project, ISSUE169_SHOT_ID, [enter]);
+    expect(evaluatedTarget(applied, 800).x).toBeGreaterThan(-300);
+    expect(evaluatedTarget(applied, 800).x).toBeLessThan(TARGET_X);
+    expect(evaluatedTarget(applied, 1200).x).toBeCloseTo(TARGET_X, 6);
+  });
+
+  it('keeps an enter destination across a gap instead of reverting to the authored base', () => {
+    const project = buildProject();
+    const priorMove = createPresetEvents(
+      project,
+      SHOT_ID,
+      CHAR_LAYER,
+      'move-to',
+      { targetX: 1200, targetY: 700, startMs: 0, durationMs: 800 },
+      { createId: () => '00000000-0000-4000-8000-000000000101' },
+    );
+    const afterPriorMove = applyPresetEvents(project, SHOT_ID, priorMove);
+    const enter = createPresetEvents(
+      afterPriorMove,
+      SHOT_ID,
+      CHAR_LAYER,
+      'enter-left',
+      { startMs: 1500, durationMs: 800 },
+      { createId: () => '00000000-0000-4000-8000-000000000102' },
+    )[0] as MoveEvent;
+
+    // The 700ms gap must not make the factory fall back to the static layer
+    // base (500, 600); it must retain the evaluated state from the prior move.
+    expect(enter.to).toEqual({ x: 1200, y: 700 });
+    const applied = applyPresetEvents(afterPriorMove, SHOT_ID, [enter]);
+    const end = evaluateShotAtTime(
+      applied.shots.find((shot) => shot.id === SHOT_ID)!,
+      2300,
+      applied,
+    ).layers.find(
+      (layer) => layer.id === CHAR_LAYER,
+    )!;
+    expect(end.x).toBe(1200);
+    expect(end.y).toBe(700);
+  });
+
+  it('preserves the generated conflict semantics through schema serialization and reopen', () => {
+    const project = originalAcceptanceShape();
+    const enter = createPresetEvents(
+      project,
+      ISSUE169_SHOT_ID,
+      ISSUE169_LAYER_ID,
+      'enter-right',
+      { startMs: 0, durationMs: 800 },
+      { createId: () => '00000000-0000-4000-8000-000000000103' },
+    );
+    const applied = applyPresetEvents(project, ISSUE169_SHOT_ID, enter);
+    const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(applied)));
+
+    for (const timeMs of [0, 400, 800]) {
+      expect(evaluatedTarget(reopened, timeMs).x).toBeCloseTo(
+        evaluatedTarget(applied, timeMs).x,
+        6,
+      );
+      expect(evaluatedTarget(reopened, timeMs).y).toBeCloseTo(
+        evaluatedTarget(applied, timeMs).y,
+        6,
+      );
     }
   });
 });

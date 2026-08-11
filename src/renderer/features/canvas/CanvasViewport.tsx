@@ -30,6 +30,15 @@ export interface CanvasViewportProps {
   onStagePoint: (point: Point | null) => void;
   onTransform?: (transform: ViewportTransform) => void;
   onViewportChromePointerDown?: () => void;
+  /**
+   * Issue #168 (B): transient chrome rendered *inside* the viewport box, as a
+   * sibling of the scaled logical stage. Anything mounted here is positioned
+   * against `.canvas-viewport` itself, so it lines up with the canvas the user
+   * is looking at instead of against the surrounding panel. It must not be put
+   * into `children`, because `children` is rendered inside the already scaled
+   * `.canvas-logical-stage` and would be scaled a second time.
+   */
+  overlay?: ReactNode;
 }
 
 export function isViewportChromePointerTarget<T>(
@@ -49,6 +58,7 @@ export function CanvasViewport({
   onStagePoint,
   onTransform,
   onViewportChromePointerDown = () => undefined,
+  overlay = null,
 }: CanvasViewportProps): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [container, setContainer] = useState({
@@ -159,6 +169,7 @@ export function CanvasViewport({
           {children(transform)}
         </div>
       </div>
+      {overlay}
     </div>
   );
 }

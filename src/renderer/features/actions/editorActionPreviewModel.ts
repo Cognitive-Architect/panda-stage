@@ -1,14 +1,21 @@
 import {
   evaluateShotAtTime,
+  type EvaluatedShot,
   type Project,
   type Shot,
   type TimelineEvent,
 } from '../../../domain';
+import type { StageAssetUrlMap } from '../../../shared/stage/render-model';
 
 export interface EditorActionPreviewIdentity {
   projectId: string | null;
   shotId: string | null;
   layerId: string | null;
+}
+
+export interface EditorActionPreviewPositionBaseline {
+  x: number;
+  y: number;
 }
 
 export interface EditorActionPreviewSession {
@@ -19,6 +26,13 @@ export interface EditorActionPreviewSession {
   startMs: number;
   /** Last millisecond the applied action is still in effect. */
   endMs: number;
+  /** Exact events appended by the apply that started this preview. */
+  eventIds?: readonly string[];
+  /**
+   * The position visible in the normal editor render path when the action was
+   * applied. This is transient preview context, never project data.
+   */
+  positionBaseline?: EditorActionPreviewPositionBaseline;
 }
 
 /**
@@ -31,8 +45,90 @@ export function evaluatePreviewFrame(
   project: Project,
   shot: Shot,
   timeMs: number,
+  session?: EditorActionPreviewSession,
 ): ReturnType<typeof evaluateShotAtTime> {
-  return evaluateShotAtTime(shot, timeMs, project);
+  return evaluateShotAtTime(
+    session?.positionBaseline && session.eventIds?.length
+      ? withPreviewPositionBaseline(shot, session)
+      : shot,
+    timeMs,
+    project,
+  );
+}
+
+/**
+ * Inserts a transient, deterministic position baseline into a preview-only
+ * shot copy. The formal evaluator still does all frame evaluation; this only
+ * makes the event-conflict boundary explicit for the newly applied action.
+ *
+ * Historical position events stay in the project and remain available to the
+ * normal editor/product/export paths. They are ordered before the baseline,
+ * while the exact newly-added events are ordered after it, so Scale/Shake
+ * samples start from the position the editor was visibly showing.
+ */
+function withPreviewPositionBaseline(
+  shot: Shot,
+  session: EditorActionPreviewSession,
+): Shot {
+  const eventIds = session.eventIds;
+  const baseline = session.positionBaseline;
+  if (!eventIds?.length || !baseline) return shot;
+
+  const previewEventIdSet = new Set(eventIds);
+  const historicalEvents = shot.timelineEvents.filter(
+    (event) => !previewEventIdSet.has(event.id),
+  );
+  const previewEvents = shot.timelineEvents.filter((event) =>
+    previewEventIdSet.has(event.id),
+  );
+  if (previewEvents.length === 0) return shot;
+
+  // This event exists only in the cloned Shot passed to evaluateShotAtTime;
+  // it is never validated into or appended to the persisted project.
+  const transientBaseline: TimelineEvent = {
+    id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    layerId: session.layerId,
+    startMs: session.startMs,
+    endMs: session.endMs,
+    type: 'move',
+    from: { x: baseline.x, y: baseline.y },
+    to: { x: baseline.x, y: baseline.y },
+    easing: 'linear',
+  };
+
+  return {
+    ...shot,
+    timelineEvents: [...historicalEvents, transientBaseline, ...previewEvents],
+  };
+}
+
+/**
+ * Issue #168 (A): true only when every asset the evaluated frame needs already
+ * has a loadable URL.
+ *
+ * The formal render model refuses to build a partial scene: the first layer
+ * whose asset has no URL makes it throw `MISSING_ASSET_URL`, which the formal
+ * `StageRenderer` surfaces as the full-bleed red `舞台无法渲染` state. The
+ * overlay's asset map is filled asynchronously and the overlay is unmounted on
+ * `stop()`/`finish()`, so that map restarts **empty** on every `start` and every
+ * `replay`. Without this gate the preview therefore paints at least one invalid
+ * frame at the beginning of every session.
+ *
+ * Gating on this predicate keeps the preview strictly bounded: while the scene
+ * is not renderable the overlay renders nothing and the ordinary editor render
+ * path stays on screen, which is the same "no residue" behaviour the overlay
+ * already guarantees when the session ends.
+ */
+export function isPreviewSceneRenderable(
+  evaluatedShot: EvaluatedShot,
+  assetUrls: StageAssetUrlMap,
+): boolean {
+  if (evaluatedShot.layers.length === 0) {
+    return false;
+  }
+  return evaluatedShot.layers.every((layer) =>
+    Boolean(assetUrls[layer.assetId]),
+  );
 }
 
 /** True only when the live editor identity still matches the preview session. */

@@ -333,6 +333,21 @@ export function CanvasStage(): React.JSX.Element {
         }
         onTransform={setToolbarTransform}
         onViewportChromePointerDown={() => selectionStore.clear()}
+        overlay={
+          // Issue #168 (B): mounted inside the viewport box so the bounded
+          // preview replaces exactly the canvas the user is looking at. As a
+          // sibling of `.project-canvas` it used to stretch across the whole
+          // panel (heading included) and render its own 16:9 box, which read as
+          // a second, offset stage next to the editor canvas.
+          preview.active ? (
+            <EditorActionPreviewOverlay
+              project={snapshot?.project ?? null}
+              projectRoot={snapshot?.projectRoot ?? ''}
+              selectedLayerId={selectedLayerId}
+              shotId={currentShotId}
+            />
+          ) : null
+        }
       >
         {(transform) => (
           <>
@@ -510,14 +525,6 @@ export function CanvasStage(): React.JSX.Element {
           </>
         )}
       </CanvasViewport>
-      {preview.active ? (
-        <EditorActionPreviewOverlay
-          project={snapshot?.project ?? null}
-          projectRoot={snapshot?.projectRoot ?? ''}
-          selectedLayerId={selectedLayerId}
-          shotId={currentShotId}
-        />
-      ) : null}
       <CanvasToolbar
         mode={viewport.mode}
         onModeChange={(mode) => canvasViewportStore.setMode(mode)}

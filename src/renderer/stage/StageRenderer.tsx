@@ -18,6 +18,8 @@ interface StageRendererProps {
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
   caption: string | null;
+  /** Backing-store ratio for this rendered surface. */
+  pixelRatio?: number;
   onReady?: () => void;
   onError?: (error: Error) => void;
   renderToken?: string | number;
@@ -85,15 +87,16 @@ export function StageRenderer({
   evaluatedShot,
   assetUrls,
   caption,
+  pixelRatio = PREVIEW_CANVAS_PIXEL_RATIO,
   onReady,
   onError,
   renderToken,
 }: StageRendererProps): React.JSX.Element {
   const configurePreviewLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
-      configureKonvaScenePixelRatio(layer, PREVIEW_CANVAS_PIXEL_RATIO);
+      configureKonvaScenePixelRatio(layer, pixelRatio);
     }
-  }, []);
+  }, [pixelRatio]);
   const modelResult = useMemo(() => {
     try {
       return {

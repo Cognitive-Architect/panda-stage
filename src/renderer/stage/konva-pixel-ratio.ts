@@ -15,6 +15,17 @@ export function resolveEditorCanvasPixelRatio(
   return Math.min(Math.max(devicePixelRatio, 1), 2);
 }
 
+/**
+ * ActionPreset preview uses the same bounded DPR policy as the editor canvas.
+ * Keeping this named entry point makes the presentation contract explicit and
+ * keeps the policy deterministic for focused tests.
+ */
+export function resolvePreviewCanvasPixelRatio(
+  devicePixelRatio: number,
+): number {
+  return resolveEditorCanvasPixelRatio(devicePixelRatio);
+}
+
 export function configureKonvaScenePixelRatio(
   layer: KonvaSceneLayer,
   pixelRatio: number,

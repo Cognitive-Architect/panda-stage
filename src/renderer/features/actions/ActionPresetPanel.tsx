@@ -127,12 +127,22 @@ export function ActionPresetPanel(): React.JSX.Element {
     const newEvents = shot.timelineEvents.slice(beforeCount);
     const window = previewWindowFromEvents(newEvents);
     if (!window) return;
+    const targetLayer = shot.layers.find(
+      (candidate) => candidate.id === targetLayerId,
+    );
+    const hasExplicitPositionEvent = newEvents.some(
+      (event) => event.type === 'move',
+    );
     editorActionPreviewStore.start({
       projectId: snapshot.project.id,
       shotId: targetShotId,
       layerId: targetLayerId,
       startMs: window.startMs,
       endMs: window.endMs,
+      eventIds: newEvents.map((event) => event.id),
+      ...(targetLayer && !hasExplicitPositionEvent
+        ? { positionBaseline: { x: targetLayer.x, y: targetLayer.y } }
+        : {}),
     });
   }
 

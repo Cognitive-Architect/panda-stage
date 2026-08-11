@@ -52,8 +52,11 @@ describe('editor action preview contract', () => {
     ]) {
       expect(overlay).not.toContain(forbidden);
     }
-    // The only IPC it may use is the read-only thumbnail read.
+    // Both reads are read-only; original canvas bytes are preferred and the
+    // thumbnail path is an explicit last-resort fallback.
+    expect(overlay).toContain('window.pandaStage.assets.readCanvasImage');
     expect(overlay).toContain('window.pandaStage.assets.readThumbnail');
+    expect(overlay).toContain('Fall through to the bounded thumbnail fallback');
   });
 
   it('is mounted only while a preview session is active (no hidden DOM)', () => {
@@ -66,6 +69,32 @@ describe('editor action preview contract', () => {
     expect(canvas).toMatch(
       /preview\.active\s*\?\s*\(\s*<EditorActionPreviewOverlay/u,
     );
+  });
+
+  it('keeps the overlay hidden until StageRenderer reports a valid first frame', () => {
+    const overlay = readSource(OVERLAY_PATH);
+
+    expect(overlay).toContain('onReady={handlePreviewReady}');
+    expect(overlay).toContain(
+      "visibility: previewStageReady ? 'visible' : 'hidden'",
+    );
+    expect(overlay).toContain('data-preview-authoritative={String(previewStageReady)}');
+  });
+
+  it('prefers original canvas bytes and revokes transient object URLs', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const originalRead = overlay.indexOf(
+      'window.pandaStage.assets.readCanvasImage',
+    );
+    const thumbnailRead = overlay.indexOf(
+      'window.pandaStage.assets.readThumbnail',
+    );
+
+    expect(originalRead).toBeGreaterThan(-1);
+    expect(thumbnailRead).toBeGreaterThan(originalRead);
+    expect(overlay).toContain('new Blob([response.bytes]');
+    expect(overlay).toContain('URL.createObjectURL');
+    expect(overlay).toContain('URL.revokeObjectURL');
   });
 
   it('panel triggers a bounded preview after apply and offers replay', () => {

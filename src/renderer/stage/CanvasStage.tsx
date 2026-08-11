@@ -9,6 +9,8 @@ interface CanvasStageProps {
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
   caption: string | null;
+  /** Optional per-surface backing-store ratio; defaults to the preview policy. */
+  pixelRatio?: number;
   onReady?: () => void;
   onError?: (error: Error) => void;
   renderToken?: string | number;

@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   configureKonvaScenePixelRatio,
-  PREVIEW_CANVAS_PIXEL_RATIO,
   resolveEditorCanvasPixelRatio,
+  resolvePreviewCanvasPixelRatio,
   type KonvaSceneLayer,
 } from '../../src/renderer/stage/konva-pixel-ratio';
 
@@ -45,9 +45,8 @@ describe('Konva scene pixel-ratio ownership', () => {
 
     expect(preview).not.toContain('Konva.pixelRatio');
     expect(editor).not.toContain('Konva.pixelRatio');
-    expect(preview).toContain(
-      'configureKonvaScenePixelRatio(layer, PREVIEW_CANVAS_PIXEL_RATIO)',
-    );
+    expect(preview).toContain('pixelRatio = PREVIEW_CANVAS_PIXEL_RATIO');
+    expect(preview).toContain('configureKonvaScenePixelRatio(layer, pixelRatio)');
     expect(preview).toContain('ref={configurePreviewLayer}');
     expect(editor).toContain(
       'configureKonvaScenePixelRatio(layer, editorCanvasPixelRatio)',
@@ -55,9 +54,9 @@ describe('Konva scene pixel-ratio ownership', () => {
     expect(editor.match(/ref=\{configureEditorLayer\}/gu)).toHaveLength(2);
   });
 
-  it('keeps a 150% editor layer sharp without changing the preview layer contract', () => {
+  it('keeps a 150% editor and ActionPreset preview layer sharp', () => {
     const editor = layerWithPixelRatio(1);
-    const preview = layerWithPixelRatio(1.5);
+    const preview = layerWithPixelRatio(1);
 
     configureKonvaScenePixelRatio(
       editor.layer,
@@ -65,13 +64,13 @@ describe('Konva scene pixel-ratio ownership', () => {
     );
     configureKonvaScenePixelRatio(
       preview.layer,
-      PREVIEW_CANVAS_PIXEL_RATIO,
+      resolvePreviewCanvasPixelRatio(1.5),
     );
 
     expect(editor.getPixelRatio()).toBe(1.5);
-    expect(preview.getPixelRatio()).toBe(1);
+    expect(preview.getPixelRatio()).toBe(1.5);
     expect(editor.setPixelRatio).toHaveBeenCalledWith(1.5);
-    expect(preview.setPixelRatio).toHaveBeenCalledWith(1);
+    expect(preview.setPixelRatio).toHaveBeenCalledWith(1.5);
   });
 
   it('caps editor backing-store scaling and avoids redundant redraws', () => {
@@ -79,6 +78,8 @@ describe('Konva scene pixel-ratio ownership', () => {
     expect(resolveEditorCanvasPixelRatio(1.25)).toBe(1.25);
     expect(resolveEditorCanvasPixelRatio(3)).toBe(2);
     expect(resolveEditorCanvasPixelRatio(Number.NaN)).toBe(1);
+    expect(resolvePreviewCanvasPixelRatio(1.5)).toBe(1.5);
+    expect(resolvePreviewCanvasPixelRatio(3)).toBe(2);
 
     const unchanged = layerWithPixelRatio(1.5);
     configureKonvaScenePixelRatio(unchanged.layer, 1.5);

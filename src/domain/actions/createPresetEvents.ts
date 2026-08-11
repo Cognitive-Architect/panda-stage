@@ -81,7 +81,7 @@ function detectOverlap(
   property: string,
   startMs: number,
   endMs: number,
-): void {
+): boolean {
   const conflict = shot.timelineEvents.some(
     (event) =>
       event.layerId === layerId &&
@@ -95,6 +95,7 @@ function detectOverlap(
         '叠加语义将在 Day 27 解决。',
     );
   }
+  return conflict;
 }
 
 function moveFromX(presetId: ActionPresetId, layer: Layer): number {
@@ -169,21 +170,37 @@ export function createPresetEvents(
   // Map the preset's event *type* to its logical property so that e.g. a new
   // `move` event is correctly compared against existing `shake` events (both
   // mutate `position`). Passing the raw `preset.eventType` would never match.
-  detectOverlap(shot, layerId, propertyOfType(preset.eventType), startMs, endMs);
+  const hasPropertyOverlap = detectOverlap(
+    shot,
+    layerId,
+    propertyOfType(preset.eventType),
+    startMs,
+    endMs,
+  );
 
   let event: TimelineEvent;
 
   switch (preset.eventType) {
     case 'move': {
+      // An overlapping position timeline has no single trustworthy evaluated
+      // destination: the old evaluator may end on a stale/degenerate event.
+      // For a new enter action, use the layer's authored destination in that
+      // conflict case. With no overlap, retain Issue #54's evaluated chaining
+      // rule so enter-after-move still lands at the real boundary state.
+      const enterDestination =
+        presetId === 'enter-left' || presetId === 'enter-right'
+          ? hasPropertyOverlap
+            ? { x: layer.x, y: layer.y }
+            : { x: baseX, y: baseY }
+          : moveTarget(presetId, layer, params);
       const fromX =
         presetId === 'enter-left' || presetId === 'enter-right'
           ? moveFromX(presetId, layer)
           : baseX;
-      const fromY = baseY;
-      const target =
+      const fromY =
         presetId === 'enter-left' || presetId === 'enter-right'
-          ? { x: baseX, y: baseY }
-          : moveTarget(presetId, layer, params);
+          ? enterDestination.y
+          : baseY;
       event = TimelineEventSchema.parse({
         id,
         type: 'move',
@@ -191,7 +208,7 @@ export function createPresetEvents(
         startMs,
         endMs,
         from: { x: fromX, y: fromY },
-        to: target,
+        to: enterDestination,
         easing: 'ease-in-out',
       });
       break;

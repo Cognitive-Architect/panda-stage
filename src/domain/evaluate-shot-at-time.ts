@@ -131,14 +131,20 @@ export function evaluateShotAtTime(
       let visible = layer.visible;
       let assetId = resolveLayerAssetId(project, layer);
 
-      const events = [
-        ...(eventsByLayer.get(layer.id) ?? []),
-      ].sort(
-        (left, right) =>
-          left.startMs - right.startMs || left.id.localeCompare(right.id),
-      );
+      // Timeline array order is the deterministic precedence for events that
+      // start at the same millisecond. `applyPresetEvents` appends a newly
+      // applied action, so the newest explicit action wins an overlap. Event
+      // ids remain identity only; using their random lexical order here made
+      // the result depend on UUID generation and allowed stale events to win.
+      const events = [...(eventsByLayer.get(layer.id) ?? [])]
+        .map((event, index) => ({ event, index }))
+        .sort(
+          (left, right) =>
+            left.event.startMs - right.event.startMs ||
+            left.index - right.index,
+        );
 
-      for (const event of events) {
+      for (const { event } of events) {
         // Future events (timeMs before the event starts) must not participate
         // in evaluation: skipping them leaves the layer at its base state
         // (or the state produced by earlier events) instead of overwriting it
