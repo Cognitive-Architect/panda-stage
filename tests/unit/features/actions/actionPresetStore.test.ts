@@ -83,31 +83,6 @@ describe('T08 actionPresetStore (bridge)', () => {
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
   });
 
-  it('Issue #185: sequential bridge applies use target-layer end and remain one revision each', () => {
-    selectionStore.select(IDS.layerChar);
-
-    expect(actionPresetStore.apply('scale-emphasis').ok).toBe(true);
-    expect(actionPresetStore.apply('shake').ok).toBe(true);
-
-    const snapshot = editorProjectStore.getSnapshot()!;
-    const events = snapshot.project.shots[0]!.timelineEvents;
-    expect(events.map(({ type, startMs, endMs }) => ({ type, startMs, endMs }))).toEqual([
-      { type: 'scale', startMs: 0, endMs: 800 },
-      { type: 'shake', startMs: 800, endMs: 1400 },
-    ]);
-    expect(snapshot.revision).toBe(2);
-    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
-
-    expect(editorProjectStore.history.undo()).toBe(true);
-    expect(
-      editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents,
-    ).toHaveLength(1);
-    expect(editorProjectStore.history.redo()).toBe(true);
-    expect(
-      editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents,
-    ).toHaveLength(2);
-  });
-
   it('invalid duration does not crash the bridge (returns errors)', () => {
     selectionStore.select(IDS.layerChar);
     const result = actionPresetStore.apply('fade-in', { durationMs: -5 });

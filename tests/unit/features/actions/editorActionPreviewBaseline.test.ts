@@ -21,7 +21,6 @@ import {
 } from '../../../../src/renderer/features/actions/editorActionPreviewStore';
 import {
   evaluatePreviewFrame,
-  resolvePreviewPositionBaseline,
   type EditorActionPreviewSession,
 } from '../../../../src/renderer/features/actions/editorActionPreviewModel';
 import { buildProject, IDS } from '../../domain/testProject';
@@ -95,52 +94,6 @@ function sessionFor(
 }
 
 describe('Issue #174 stale position events and ActionPreset preview baseline', () => {
-  it('Issue #185: normal sequential preview baseline uses the settled evaluator position', () => {
-    const project = buildProject();
-    const move = createPresetEvents(
-      project,
-      IDS.shot,
-      IDS.layerChar,
-      'move-to',
-      { targetX: 900, targetY: 700 },
-      { createId: () => '70500000-0000-4000-8000-000000000001' },
-    );
-    const afterMove = applyPresetEvents(project, IDS.shot, move);
-    const scale = createPresetEvents(
-      afterMove,
-      IDS.shot,
-      IDS.layerChar,
-      'scale-emphasis',
-      {},
-      { createId: () => '70500000-0000-4000-8000-000000000002' },
-    );
-    const applied = applyPresetEvents(afterMove, IDS.shot, scale);
-    const baseline = resolvePreviewPositionBaseline(
-      applied,
-      applied.shots[0]!,
-      IDS.layerChar,
-      scale[0]!.startMs,
-      scale.map((event) => event.id),
-    );
-
-    expect(move[0]).toMatchObject({ startMs: 0, endMs: 800 });
-    expect(scale[0]).toMatchObject({ startMs: 800, endMs: 1600 });
-    expect(baseline).toEqual({ x: 900, y: 700 });
-  });
-
-  it('Issue #174: overlapping retained position conflicts keep the static compatibility baseline', () => {
-    const project = staleProject();
-    expect(
-      resolvePreviewPositionBaseline(
-        project,
-        project.shots[0]!,
-        IDS.layerChar,
-        800,
-        [],
-      ),
-    ).toEqual({ x: 410, y: 628 });
-  });
-
   it('Scale Emphasis keeps the current editor position while scale changes', () => {
     const project = staleProject();
     const scaleEvents = createPresetEvents(
@@ -148,7 +101,7 @@ describe('Issue #174 stale position events and ActionPreset preview baseline', (
       IDS.shot,
       IDS.layerChar,
       'scale-emphasis',
-      { scaleFactor: 2, startMs: 0, durationMs: 800 },
+      { scaleFactor: 2, durationMs: 800 },
       { createId: () => '71000000-0000-4000-8000-000000000001' },
     );
     const applied = applyPresetEvents(project, IDS.shot, scaleEvents);
@@ -184,13 +137,7 @@ describe('Issue #174 stale position events and ActionPreset preview baseline', (
       IDS.shot,
       IDS.layerChar,
       'shake',
-      {
-        amplitudeX: 24,
-        amplitudeY: 0,
-        frequencyHz: 6,
-        startMs: 0,
-        durationMs: 800,
-      },
+      { amplitudeX: 24, amplitudeY: 0, frequencyHz: 6, durationMs: 800 },
       { createId: () => '72000000-0000-4000-8000-000000000001' },
     );
     const applied = applyPresetEvents(project, IDS.shot, shakeEvents);
@@ -223,7 +170,7 @@ describe('Issue #174 stale position events and ActionPreset preview baseline', (
       IDS.shot,
       IDS.layerChar,
       'enter-left',
-      { startMs: 0, durationMs: 800 },
+      { durationMs: 800 },
       { createId: () => '73000000-0000-4000-8000-000000000001' },
     );
     const applied = applyPresetEvents(project, IDS.shot, enterEvents);
@@ -253,7 +200,7 @@ describe('Issue #174 stale position events and ActionPreset preview baseline', (
       IDS.shot,
       IDS.layerChar,
       'scale-emphasis',
-      { startMs: 0, durationMs: 800 },
+      { durationMs: 800 },
       { createId: () => '74000000-0000-4000-8000-000000000001' },
     );
     const applied = applyPresetEvents(project, IDS.shot, scaleEvents);

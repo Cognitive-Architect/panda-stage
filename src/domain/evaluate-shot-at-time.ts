@@ -178,11 +178,7 @@ export function evaluateShotAtTime(
             break;
           }
           case 'shake': {
-            // Shake is an additive transient over the half-open interval
-            // [startMs, endMs). At endMs its settled contribution is exactly
-            // zero, so an immediately following sequential action reads the
-            // stable position instead of one arbitrary sine sample.
-            if (timeMs >= event.startMs && timeMs < event.endMs) {
+            if (timeMs >= event.startMs && timeMs <= event.endMs) {
               const seconds = (timeMs - event.startMs) / 1000;
               const wave =
                 Math.sin(2 * Math.PI * event.frequencyHz * seconds);
