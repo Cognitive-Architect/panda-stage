@@ -9,7 +9,7 @@ export type {
   ActionPresetId,
   ActionPresetParameterField,
 } from './ActionPreset';
-export { createPresetEvents } from './createPresetEvents';
+export { createPresetEvents, nextPresetStartMs } from './createPresetEvents';
 export type {
   CreatePresetEventsOptions,
   CreatePresetEventsParams,

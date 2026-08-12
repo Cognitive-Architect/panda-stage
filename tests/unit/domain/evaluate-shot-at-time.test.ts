@@ -99,6 +99,8 @@ describe('T02 evaluateShotAtTime', () => {
     expect(layerAt(0).x).toBe(500);
     // At 125ms the sine reaches -1, so x = 500 - 24 = 476.
     expect(layerAt(125).x).toBe(476);
+    // The persisted end boundary is the settled position for composition.
+    expect(layerAt(1000).x).toBe(500);
   });
 
   it('applies flip and visibility flags', () => {

@@ -13,7 +13,10 @@ export interface CreatePresetEventsOptions {
 }
 
 export interface CreatePresetEventsParams {
-  /** Event start time in integer milliseconds (defaults to 0). */
+  /**
+   * Event start time in integer milliseconds. When omitted, the action starts
+   * at the end of the retained sequence for its target layer.
+   */
   startMs?: number;
   /** Override the preset's default duration in integer milliseconds. */
   durationMs?: number;
@@ -37,6 +40,19 @@ const OFFSCREEN_MARGIN = 300;
 const DEFAULT_SCALE_FACTOR = 1.3;
 const DEFAULT_SHAKE_AMPLITUDE = 24;
 const DEFAULT_SHAKE_FREQUENCY_HZ = 6;
+
+/**
+ * Returns the deterministic append boundary for one layer's action sequence.
+ * Events on other layers never serialize this target, and an empty sequence
+ * starts at the shot origin.
+ */
+export function nextPresetStartMs(shot: Shot, layerId: string): number {
+  return shot.timelineEvents.reduce(
+    (boundary, event) =>
+      event.layerId === layerId ? Math.max(boundary, event.endMs) : boundary,
+    0,
+  );
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -146,7 +162,9 @@ export function createPresetEvents(
   }
 
   const preset = ACTION_PRESET_BY_ID[presetId];
-  const startMs = Math.round(params.startMs ?? 0);
+  const startMs = Math.round(
+    params.startMs ?? nextPresetStartMs(shot, layerId),
+  );
   const durationMs = Math.round(params.durationMs ?? preset.defaultDurationMs);
   const endMs = startMs + durationMs;
   const id = createId();

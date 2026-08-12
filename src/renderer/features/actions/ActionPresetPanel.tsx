@@ -11,7 +11,10 @@ import { shotStore } from '../../stores/shotStore';
 import { actionPresetStore } from './actionPresetStore';
 import { editorActionPreviewStore } from './editorActionPreviewStore';
 import { useEditorActionPreview } from './useEditorActionPreview';
-import { previewWindowFromEvents } from './editorActionPreviewModel';
+import {
+  previewWindowFromEvents,
+  resolvePreviewPositionBaseline,
+} from './editorActionPreviewModel';
 import {
   PresetParameterForm,
   type ExpressionOption,
@@ -133,6 +136,15 @@ export function ActionPresetPanel(): React.JSX.Element {
     const hasExplicitPositionEvent = newEvents.some(
       (event) => event.type === 'move',
     );
+    const positionBaseline = targetLayer
+      ? resolvePreviewPositionBaseline(
+          snapshot.project,
+          shot,
+          targetLayerId,
+          window.startMs,
+          newEvents.map((event) => event.id),
+        )
+      : null;
     editorActionPreviewStore.start({
       projectId: snapshot.project.id,
       shotId: targetShotId,
@@ -140,8 +152,8 @@ export function ActionPresetPanel(): React.JSX.Element {
       startMs: window.startMs,
       endMs: window.endMs,
       eventIds: newEvents.map((event) => event.id),
-      ...(targetLayer && !hasExplicitPositionEvent
-        ? { positionBaseline: { x: targetLayer.x, y: targetLayer.y } }
+      ...(positionBaseline && !hasExplicitPositionEvent
+        ? { positionBaseline }
         : {}),
     });
   }
