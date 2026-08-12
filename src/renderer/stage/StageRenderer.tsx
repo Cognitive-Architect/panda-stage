@@ -131,7 +131,6 @@ export function StageRenderer({
     return () => window.cancelAnimationFrame(frame);
   }, [
     modelResult.error,
-    modelResult.model?.timeMs,
     onError,
     onReady,
     ready,

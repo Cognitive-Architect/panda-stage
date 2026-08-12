@@ -211,6 +211,7 @@ describe('Issue #174 stale position events and ActionPreset preview baseline', (
     store.setClock(clock);
 
     expect(store.start(session)).toBe(true);
+    store.beginPlayback(store.getState().runId);
     clock.advance(1000);
     expect(store.getState().active).toBe(false);
     expect(store.getState().session?.positionBaseline).toEqual({

@@ -2,6 +2,10 @@ import type { EditorActionPreviewSession } from './editorActionPreviewModel';
 
 export interface EditorActionPreviewState {
   active: boolean;
+  /** True only after the current run has a valid authoritative render frame. */
+  playing: boolean;
+  /** Monotonic identity for one Apply or Replay preparation/playback run. */
+  runId: number;
   session: EditorActionPreviewSession | null;
   /** Current playback position in milliseconds within the active session. */
   timeMs: number;
@@ -40,8 +44,11 @@ const defaultClock: PreviewClock = {
  *     never reads or writes the project, the revision, the dirty flag, the
  *     selection or the history. It reuses the formal evaluator via
  *     `evaluatePreviewFrame`; it does not implement a second animation model.
- *   - Bounded: a session always runs from `session.startMs` to `session.endMs`
- *     and then stops, restoring the normal editor render path.
+ *   - Readiness handshake: Apply/Replay first enter an active preparation state
+ *     pinned at `session.startMs`. The bounded clock starts only when the
+ *     formal renderer authorizes that exact `runId` after a valid first frame.
+ *   - Bounded: once authorized, a session runs from `session.startMs` to
+ *     `session.endMs` and then stops, restoring the normal editor render path.
  *   - Single session mutex: starting a new preview (or calling `replay`) always
  *     deterministically cancels any in-flight frame loop of the previous one via
  *     a monotonically increasing `sessionToken`, so no two loops can interleave.
@@ -50,6 +57,8 @@ const defaultClock: PreviewClock = {
 export class EditorActionPreviewStore {
   private state: EditorActionPreviewState = {
     active: false,
+    playing: false,
+    runId: 0,
     session: null,
     timeMs: 0,
   };
@@ -87,14 +96,15 @@ export class EditorActionPreviewStore {
       return false;
     }
     this.stop();
-    const token = ++this.sessionToken;
+    const runId = ++this.sessionToken;
     this.state = {
       active: true,
+      playing: false,
+      runId,
       session: { ...session },
       timeMs: session.startMs,
     };
     this.emit();
-    this.scheduleTick(token);
     return true;
   }
 
@@ -102,11 +112,35 @@ export class EditorActionPreviewStore {
   replay(): void {
     const session = this.state.session;
     if (!session) return;
-    const token = ++this.sessionToken;
+    const runId = ++this.sessionToken;
     this.clearFrame();
-    this.state = { ...this.state, active: true, timeMs: session.startMs };
+    this.state = {
+      ...this.state,
+      active: true,
+      playing: false,
+      runId,
+      timeMs: session.startMs,
+    };
     this.emit();
-    this.scheduleTick(token);
+  }
+
+  /** Start the bounded clock only for the exact run whose first frame is ready. */
+  beginPlayback(runId: number): boolean {
+    if (
+      runId !== this.sessionToken ||
+      runId !== this.state.runId ||
+      !this.state.active ||
+      !this.state.session
+    ) {
+      return false;
+    }
+    if (this.state.playing) {
+      return true;
+    }
+    this.state = { ...this.state, playing: true };
+    this.emit();
+    this.scheduleTick(runId);
+    return true;
   }
 
   /** Immediately end the preview and drop the retained session. */
@@ -114,7 +148,13 @@ export class EditorActionPreviewStore {
     this.sessionToken += 1;
     this.clearFrame();
     if (this.state.active || this.state.session) {
-      this.state = { active: false, session: null, timeMs: 0 };
+      this.state = {
+        active: false,
+        playing: false,
+        runId: this.sessionToken,
+        session: null,
+        timeMs: 0,
+      };
       this.emit();
     }
   }
@@ -130,7 +170,7 @@ export class EditorActionPreviewStore {
       return;
     }
     const session = this.state.session;
-    if (!session || !this.state.active) {
+    if (!session || !this.state.active || !this.state.playing) {
       this.clearFrame();
       return;
     }
@@ -158,6 +198,8 @@ export class EditorActionPreviewStore {
     // active playback so the editor's normal render path is restored.
     this.state = {
       active: false,
+      playing: false,
+      runId: this.sessionToken,
       session: this.state.session,
       timeMs: this.state.timeMs,
     };

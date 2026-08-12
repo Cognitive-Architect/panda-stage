@@ -14,6 +14,7 @@ const OVERLAY_PATH =
 const CANVAS_PATH = 'src/renderer/features/canvas/CanvasStage.tsx';
 const PANEL_PATH = 'src/renderer/features/actions/ActionPresetPanel.tsx';
 const STORE_PATH = 'src/renderer/features/actions/editorActionPreviewStore.ts';
+const STAGE_RENDERER_PATH = 'src/renderer/stage/StageRenderer.tsx';
 
 function readSource(path: string): string {
   return readFileSync(path, 'utf8');
@@ -73,12 +74,27 @@ describe('editor action preview contract', () => {
 
   it('keeps the overlay hidden until StageRenderer reports a valid first frame', () => {
     const overlay = readSource(OVERLAY_PATH);
+    const store = readSource(STORE_PATH);
+    const stageRenderer = readSource(STAGE_RENDERER_PATH);
 
     expect(overlay).toContain('onReady={handlePreviewReady}');
+    expect(overlay).toContain('editorActionPreviewStore.beginPlayback(preview.runId)');
     expect(overlay).toContain(
       "visibility: previewStageReady ? 'visible' : 'hidden'",
     );
     expect(overlay).toContain('data-preview-authoritative={String(previewStageReady)}');
+    const startBody = store.slice(
+      store.indexOf('start(session:'),
+      store.indexOf('/** Re-run the retained session'),
+    );
+    expect(startBody).not.toContain('scheduleTick');
+    expect(store).toContain('beginPlayback(runId: number)');
+    expect(stageRenderer).toContain(
+      'const frame = window.requestAnimationFrame(() => onReady?.())',
+    );
+    expect(stageRenderer).not.toMatch(
+      /\[\s*modelResult\.error,\s*modelResult\.model\?\.timeMs,/u,
+    );
   });
 
   it('prefers original canvas bytes and revokes transient object URLs', () => {

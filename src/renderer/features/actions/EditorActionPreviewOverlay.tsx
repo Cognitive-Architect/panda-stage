@@ -79,6 +79,7 @@ export function EditorActionPreviewOverlay({
     .map(([assetId, sourceUrl]) => `${assetId}\u0000${sourceUrl ?? ''}`)
     .join('\u0001');
   const previewRenderKey = [
+    preview.runId,
     identity.projectId ?? '',
     identity.shotId ?? '',
     preview.session?.startMs ?? '',
@@ -95,8 +96,13 @@ export function EditorActionPreviewOverlay({
     typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1,
   );
   const handlePreviewReady = useCallback(() => {
-    setReadyRenderKey(previewRenderKey);
-  }, [previewRenderKey]);
+    // A valid first frame is the deterministic authority boundary. Keep the
+    // bounded action pinned at startMs until this exact Apply/Replay run is
+    // ready; stale renderer callbacks cannot start a replacement run.
+    if (editorActionPreviewStore.beginPlayback(preview.runId)) {
+      setReadyRenderKey(previewRenderKey);
+    }
+  }, [preview.runId, previewRenderKey]);
   const handlePreviewError = useCallback(() => {
     setReadyRenderKey((current) =>
       current === previewRenderKey ? null : current,
@@ -128,6 +134,8 @@ export function EditorActionPreviewOverlay({
       className="editor-action-preview"
       data-preview-active="true"
       data-preview-authoritative={String(previewStageReady)}
+      data-preview-playing={String(preview.playing)}
+      data-preview-run-id={preview.runId}
       data-preview-pixel-ratio={previewPixelRatio}
       data-preview-source="original-canvas-image-preferred"
       data-preview-time={preview.timeMs}

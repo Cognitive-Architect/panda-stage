@@ -81,7 +81,12 @@ describe('editor action preview store', () => {
       }),
     ).toBe(true);
     expect(store.getState().active).toBe(true);
+    expect(store.getState().playing).toBe(false);
     expect(store.getState().timeMs).toBe(0);
+    expect(clock.pending).toBe(false);
+
+    expect(store.beginPlayback(store.getState().runId)).toBe(true);
+    expect(store.getState().playing).toBe(true);
 
     clock.advance(400);
     expect(store.getState().timeMs).toBe(400);
@@ -128,6 +133,7 @@ describe('editor action preview store', () => {
       startMs: window.startMs,
       endMs: window.endMs,
     });
+    store.beginPlayback(store.getState().runId);
     clock.advance(100_000); // fast-forward past the end
     store.stop();
 
@@ -177,6 +183,7 @@ describe('editor action preview store', () => {
         endMs: 1000,
       }),
     ).toBe(true);
+    store.beginPlayback(store.getState().runId);
     clock.advance(300);
     expect(store.getState().timeMs).toBe(300);
 
@@ -192,6 +199,9 @@ describe('editor action preview store', () => {
     ).toBe(true);
     expect(store.getState().timeMs).toBe(100); // reset to new start
     expect(store.getState().session?.layerId).toBe('l2');
+    expect(store.getState().playing).toBe(false);
+    expect(clock.pending).toBe(false);
+    store.beginPlayback(store.getState().runId);
     clock.advance(50);
     expect(store.getState().timeMs).toBe(150);
 
@@ -203,7 +213,9 @@ describe('editor action preview store', () => {
     // Replay
     store.replay();
     expect(store.getState().active).toBe(true);
+    expect(store.getState().playing).toBe(false);
     expect(store.getState().timeMs).toBe(100);
+    store.beginPlayback(store.getState().runId);
     clock.advance(100_000);
     expect(store.getState().timeMs).toBe(500);
     expect(store.getState().active).toBe(false);
@@ -266,6 +278,8 @@ describe('editor action preview store', () => {
       startMs: 0,
       endMs: 1000,
     });
+    expect(clock.pending).toBe(false);
+    store.beginPlayback(store.getState().runId);
     expect(clock.pending).toBe(true);
 
     clock.advance(100_000); // finishes naturally
@@ -283,10 +297,52 @@ describe('editor action preview store', () => {
       startMs: 0,
       endMs: 1000,
     });
+    store.beginPlayback(store.getState().runId);
     expect(clock.pending).toBe(true);
     store.stop();
     expect(clock.pending).toBe(false);
     expect(store.getState().active).toBe(false);
+  });
+
+  it('Issue #184: readiness gates time and stale authority cannot start a replacement run', () => {
+    const store = new EditorActionPreviewStore();
+    const clock = new ManualClock();
+    store.setClock(clock);
+
+    store.start({
+      projectId: 'p',
+      shotId: 's',
+      layerId: 'right-entrance',
+      startMs: 0,
+      endMs: 800,
+    });
+    const coldRunId = store.getState().runId;
+
+    // Arbitrarily long resource/render preparation cannot consume motion.
+    clock.advance(10_000);
+    expect(store.getState()).toMatchObject({
+      active: true,
+      playing: false,
+      timeMs: 0,
+    });
+    expect(clock.pending).toBe(false);
+
+    // A replacement Apply has a new identity; the old renderer callback loses.
+    store.start({
+      projectId: 'p',
+      shotId: 's',
+      layerId: 'left-entrance',
+      startMs: 0,
+      endMs: 800,
+    });
+    expect(store.beginPlayback(coldRunId)).toBe(false);
+    expect(store.getState().playing).toBe(false);
+
+    const currentRunId = store.getState().runId;
+    expect(store.beginPlayback(currentRunId)).toBe(true);
+    expect(store.beginPlayback(currentRunId)).toBe(true); // idempotent
+    clock.advance(100);
+    expect(store.getState().timeMs).toBe(100);
   });
 
   it('previewWindowFromEvents covers exactly the added events', () => {
