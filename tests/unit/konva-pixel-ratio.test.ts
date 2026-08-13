@@ -51,7 +51,9 @@ describe('Konva scene pixel-ratio ownership', () => {
     expect(editor).toContain(
       'configureKonvaScenePixelRatio(layer, editorCanvasPixelRatio)',
     );
-    expect(editor.match(/ref=\{configureEditorLayer\}/gu)).toHaveLength(2);
+    expect(editor.match(/ref=\{configureEditorContentLayer\}/gu)).toHaveLength(1);
+    expect(editor.match(/ref=\{configureEditorLayer\}/gu)).toHaveLength(1);
+    expect(editor).toContain('configureEditorLayer(layer)');
   });
 
   it('keeps a 150% editor and ActionPreset preview layer sharp', () => {

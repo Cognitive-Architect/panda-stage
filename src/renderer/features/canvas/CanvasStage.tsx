@@ -71,6 +71,23 @@ interface CanvasImageContext {
   shotId: string | null;
 }
 
+export interface EditorLayerAuthority {
+  draw(): unknown;
+}
+
+/**
+ * Publish one committed editor content tree to Konva's scene and hit canvases.
+ *
+ * Konva Layer.draw() synchronously redraws both surfaces. Calling it at the
+ * complete atomic image-handoff boundary prevents a newly mounted visible
+ * layer from temporarily retaining an older underlying hit target.
+ */
+export function synchronizeEditorLayerAuthority(
+  layer: EditorLayerAuthority,
+): void {
+  layer.draw();
+}
+
 function disposeCanvasImageResource(resource: EditorImageResource): void {
   if (resource.disposed) return;
   resource.disposed = true;
@@ -306,11 +323,19 @@ function useCanvasImages(
 }
 
 export function CanvasStage(): React.JSX.Element {
+  const editorContentLayerRef = useRef<Konva.Layer | null>(null);
   const configureEditorLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
       configureKonvaScenePixelRatio(layer, editorCanvasPixelRatio);
     }
   }, []);
+  const configureEditorContentLayer = useCallback(
+    (layer: Konva.Layer | null) => {
+      editorContentLayerRef.current = layer;
+      configureEditorLayer(layer);
+    },
+    [configureEditorLayer],
+  );
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -393,6 +418,21 @@ export function CanvasStage(): React.JSX.Element {
     Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
   const backgroundListening =
     backgroundSelected && backgroundLayer?.layer.locked === false;
+  const completeEditorScene = Boolean(
+    stageModel &&
+      stageModel.layers.every(({ asset }) => imageState.images.has(asset.id)),
+  );
+
+  useLayoutEffect(() => {
+    const layer = editorContentLayerRef.current;
+    if (!layer || !completeEditorScene) return;
+
+    // React-Konva has committed the complete atomic image map and layer tree.
+    // Publish both canvases synchronously before the browser can dispatch the
+    // next real pointer event. This is scoped to the content layer; transformer
+    // chrome keeps its independent normal React-Konva lifecycle.
+    synchronizeEditorLayerAuthority(layer);
+  }, [completeEditorScene, imageState.images, stageModel]);
 
   return (
     <section
@@ -506,7 +546,7 @@ export function CanvasStage(): React.JSX.Element {
                 listening
                 width={PROJECT_WIDTH}
               >
-                <KonvaLayer listening ref={configureEditorLayer}>
+                <KonvaLayer listening ref={configureEditorContentLayer}>
                   <Rect
                     fill="#111914"
                     height={PROJECT_HEIGHT}
