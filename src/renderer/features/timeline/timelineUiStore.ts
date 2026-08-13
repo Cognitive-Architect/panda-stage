@@ -64,7 +64,11 @@ export class TimelineUiStore {
    * is already current (avoids render thrash during drag).
    */
   seek(timeMs: number, durationMs: number): void {
-    const snapped = snapToFrame(clampTime(timeMs, durationMs));
+    const clamped = clampTime(timeMs, durationMs);
+    // Snap to the nearest 24 FPS frame, then re-clamp to the shot window so a
+    // non-integer-frame duration (e.g. 4321ms) never yields a playhead past
+    // the shot end. The final current time always satisfies [0, durationMs].
+    const snapped = Math.min(snapToFrame(clamped), durationMs);
     if (snapped === this.state.currentTimeMs) return;
     this.patch({ currentTimeMs: snapped });
   }

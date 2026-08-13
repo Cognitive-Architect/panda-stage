@@ -213,14 +213,18 @@ function assertRecentCards(sample, label) {
   );
 }
 
-function assertCompactBottom(sample, label, maxHeight = 76) {
+// The bottom workspace hosts both the Stage 3-C HistoryControls and the Day 26
+// Timeline Shell, so its height budget is intentionally taller than the old
+// history-only "compact" bar. The 172px ceiling covers the Day-26
+// `min-height:132px; max-height:168px` contract with a small safety margin.
+function assertCompactBottom(sample, label, maxHeight = 172) {
   assert(
     sample.bottom && sample.bottomMetrics && sample.historyMetrics,
     `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
   );
   assert(
     sample.bottom.height >= 52 && sample.bottom.height <= maxHeight,
-    `${label} bottom workspace is not compact: ${JSON.stringify(sample.bottom)}`,
+    `${label} bottom workspace exceeds the Day 26 Timeline Shell height budget: ${JSON.stringify(sample.bottom)}`,
   );
   assert(
     sample.bottomMetrics.overflow === 'hidden' &&

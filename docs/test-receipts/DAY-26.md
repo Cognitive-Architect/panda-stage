@@ -9,8 +9,9 @@
 | 项 | 值 |
 |---|---|
 | 分支 | `agent/day-26-timeline-shell` |
-| 收卷 HEAD | `323f36dc39724e2dc553dedfa1998ba0428a3967` |
-| 基线 | `origin/main`（同 HEAD，本验收未产生新 commit） |
+| 实现 HEAD（PR #193） | `37f30e528177a2752dd7d414ca60eb061232f57d` |
+| 基线（开工 = `main`） | `323f36dc39724e2dc553dedfa1998ba0428a3967`（Day 26 开工点；`main` 此后无新提交） |
+| 后续 review 修复 HEAD | Issue #195 审查跟进 commit（见下「Review Follow-up #195」小节） |
 
 ## 2. 变更文件
 
@@ -193,6 +194,19 @@ INTEGRATION_CLEAN_EXIT=0
    - **根因**：早期一次启动在 Git Bash 中传了反斜杠参数 `--user-data-dir=D:\panda-stage-main\.workbuddy\artifacts\electron-userdata`，反斜杠被 shell 当作转义吞掉，路径塌缩成该相对目录名。后续启动改用正斜杠后不再复现。
    - **清理受阻**：当前环境的删除保护 fail-closed，`rm -rf` / `rd /s /q` / `Remove-Item -Recurse -Force` 均被拦截，报 `[safe-delete][SAFE_DELETE_FAIL_CLOSED] ... reason:"trash-failed"`。
    - **处置**：未修改 `.gitignore`（避免污染 Day 26 diff），保留为纯环境残留，需维护者在宿主侧手工删除。它不影响构建、测试与本次验收 profile。
+
+## 9.1 Review Follow-up #195（审查跟进修复）
+
+维护者对 PR #193 / #194 做第二轮审查，提出若干待验证怀疑。代理先逐条复现/定位（见 Issue #195 验证矩阵），只对 CONFIRMED 项修复：
+
+| 项 | 值 |
+|---|---|
+| 修复 commit | `c3e1cb7`（分支 `agent/day-26-timeline-shell`，基于实现 HEAD `37f30e5`） |
+| 归属 #193 | V-193-01 playhead 末端越界；V-193-02 Timeline 收起后可重新展开；V-193-03 切 shot 后 DOM 滚动与 store 同步；V-CI-01 Issue-102 gate 阈值随 Day-26 Timeline 高度合同演进；V-DOC-01 本收据 Git 坐标失真修正 |
+| 归属 #194 | V-194-01 Drawer 鼠标关闭入口；V-194-02 Drawer 键盘焦点管理（见 #194 PR） |
+| 不修 | V-194-03（Drawer 惰性 `gap` 被子级 padding 补偿，无可见缺陷） |
+
+> 验证手段说明：本会话沙箱无 jsdom/RTL 且无法启动真实 Electron。故 V-193-01 以 store 单测真实复现并加回归；V-193-02/03、V-CI-01、V-DOC-01 以「源码/CSS 结构性断言 + 代码路径审查」为证据，其交互级（点击/滚动/焦点）验证留待真实 Electron 人工验收点（Issue #195 Phase D），不自评 PASS、不 skip Gate。
 
 ## 10. 结论
 

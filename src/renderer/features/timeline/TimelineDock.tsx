@@ -49,6 +49,14 @@ export function TimelineDock(): React.JSX.Element {
     return () => observer.disconnect();
   }, []);
 
+  // The store resets scrollPx to 0 on shot switch (resetForShot); mirror that
+  // into the real viewport so the playhead at 0ms stays within the visible
+  // track instead of being left off-screen at a stale horizontal offset.
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (node) node.scrollLeft = 0;
+  }, [currentShotId]);
+
   const pixelsPerMs = computePixelsPerMs(viewportWidth, durationMs, ui.zoom);
   const trackWidth = durationMs * pixelsPerMs;
   const playheadPx = timeToPx(ui.currentTimeMs, pixelsPerMs);

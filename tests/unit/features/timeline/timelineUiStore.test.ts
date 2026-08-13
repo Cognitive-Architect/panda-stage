@@ -41,6 +41,31 @@ describe('timelineUiStore seek boundaries', () => {
     expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(0);
     expect(timelineUiStore.getSnapshot().scrollPx).toBe(0);
   });
+
+  it('never seeks past the shot duration for non-integer-frame durations (V-193-01)', () => {
+    // Project FPS is 24 → frame ≈ 41.667ms. A 4321ms shot is not on a frame
+    // boundary, so a naive clamp-then-snap could land on frame 104 (4333ms),
+    // overshooting the shot end. The store must keep current time in [0, dur].
+    timelineUiStore.seek(0, 4321); // reset to a known state first
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(0);
+
+    timelineUiStore.seek(4321, 4321);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(4321);
+
+    timelineUiStore.seek(4333, 4321);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(4321);
+
+    timelineUiStore.seek(5000, 4321);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(4321);
+
+    timelineUiStore.seek(-50, 4321);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(0);
+
+    timelineUiStore.seek(2000, 4321);
+    const mid = timelineUiStore.getSnapshot().currentTimeMs;
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThanOrEqual(4321);
+  });
 });
 
 describe('timelineUiStore shot-switch reset (real project wiring)', () => {

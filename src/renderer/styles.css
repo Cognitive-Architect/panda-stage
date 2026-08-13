@@ -870,7 +870,11 @@ button:disabled {
   gap: 4px;
 }
 
-.timeline-dock[data-expanded='false'] {
+/* Collapse hides only the ruler body (React already removes it from the tree
+   when expanded=false). The header with the reopen button must stay reachable
+   so the user can expand the timeline again without a reload. */
+.timeline-dock[data-expanded='false'] .timeline-ruler-scroll,
+.timeline-dock[data-expanded='false'] .timeline-empty {
   display: none;
 }
 
