@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSyncExternalStore } from 'react';
 import {
   ACTION_PRESETS,
@@ -45,6 +45,15 @@ export function ActionPresetPanel(): React.JSX.Element {
     shotStore.getCurrentShotId,
   );
   const preview = useEditorActionPreview();
+
+  useEffect(
+    () => () => {
+      // The formal owner is keyed by project root. Drop a retained Apply or
+      // Replay session whenever that owner is replaced or closed.
+      editorActionPreviewStore.stop();
+    },
+    [],
+  );
 
   const project = snapshot?.project ?? null;
   const shot = project?.shots.find((candidate) => candidate.id === shotId) ?? null;

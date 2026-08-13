@@ -3,6 +3,7 @@ import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
 import { actionPresetStore } from '../../src/renderer/features/actions/actionPresetStore';
+import { editorActionPreviewStore } from '../../src/renderer/features/actions/editorActionPreviewStore';
 import { applyPresetEvents, createPresetEvents } from '../../src/domain';
 import { buildProject, IDS } from '../unit/domain/testProject';
 
@@ -39,10 +40,35 @@ describe('T07 preset application through history', () => {
     expect(editorProjectStore.history.redo()).toBe(true);
     expect(timelineEventCount()).toBe(1);
 
-    // serialization survives
+    // A live transient preview session must not enter project serialization.
+    expect(
+      editorActionPreviewStore.start({
+        projectId: editorProjectStore.getSnapshot()!.project.id,
+        shotId: IDS.shot,
+        layerId: IDS.layerChar,
+        startMs: 0,
+        endMs: 800,
+      }),
+    ).toBe(true);
+    expect(editorActionPreviewStore.getState().active).toBe(true);
+
+    // Authored data survives serialization while preview state does not.
     const json = JSON.stringify(editorProjectStore.getSnapshot()!.project);
     const reparsed = JSON.parse(json);
     expect(reparsed.shots[0].timelineEvents.length).toBe(1);
+    expect(json).not.toContain('editorActionPreview');
+    expect(json).not.toContain('sessionToken');
+
+    editorProjectStore.open('reopened.pandastage', reparsed);
+    expect(timelineEventCount()).toBe(1);
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      projectRoot: 'reopened.pandastage',
+      revision: 0,
+      dirty: false,
+    });
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+    expect(selectionStore.getSelectedLayerId()).toBeNull();
+    editorActionPreviewStore.stop();
   });
 
   it('bridge apply routes through history (undo restores prior state)', () => {

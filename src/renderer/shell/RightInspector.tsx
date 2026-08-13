@@ -141,7 +141,7 @@ export function RightInspector(): React.JSX.Element {
       <LayerOrderControls
         backgroundLayerSelected={selection.state === 'background'}
       />
-      <ActionPresetPanel />
+      <ActionPresetPanel key={snapshot?.projectRoot ?? 'no-project'} />
     </aside>
   );
 }

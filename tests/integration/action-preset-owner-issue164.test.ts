@@ -46,4 +46,18 @@ describe('Issue 164 ActionPresetPanel formal owner restore', () => {
     expect(panel).toContain('actionPresetStore.apply');
     expect(panel).toContain('presetDisabled');
   });
+
+  it('remounts panel-local drafts when the project root changes A -> B -> A', () => {
+    const inspector = readSource('src/renderer/shell/RightInspector.tsx');
+
+    // React component identity must follow the project root so an open preset
+    // parameter form from project A cannot survive into B (or a reopened A).
+    expect(inspector).toContain(
+      "<ActionPresetPanel key={snapshot?.projectRoot ?? 'no-project'} />",
+    );
+    const panel = readSource(
+      'src/renderer/features/actions/ActionPresetPanel.tsx',
+    );
+    expect(panel).toContain('editorActionPreviewStore.stop()');
+  });
 });
