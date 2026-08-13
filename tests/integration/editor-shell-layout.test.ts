@@ -53,7 +53,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(bottom).toContain('data-testid="bottom-workspace"');
     expect(bottom).toContain('<HistoryControls');
     expect(styles).toMatch(
-      /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*52px;[\s\S]*?max-height:\s*76px;[\s\S]*?overflow:\s*hidden;/u,
+      /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*132px;[\s\S]*?max-height:\s*168px;[\s\S]*?overflow:\s*hidden;/u,
     );
     expect(styles).toMatch(
       /\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) minmax\(0, 1\.3fr\);/u,
@@ -223,7 +223,56 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(canvas).not.toContain('<HistoryControls');
     expect(count(bottom, /<HistoryControls/gu)).toBe(1);
     expect(count(shortcuts, /window\.addEventListener\(['"]keydown/gu)).toBe(1);
-    expect(bottom).not.toMatch(/timeline|playhead|track/iu);
+    expect(bottom).toContain('<TimelineDock');
+    expect(bottom).not.toContain('ActionPresetPanel');
+    expect(bottom).not.toMatch(/track\b/iu);
+  });
+
+  it('mounts the Day 26 Timeline Shell into the formal BottomWorkspace without a second owner', () => {
+    const bottom = readSource('src/renderer/shell/BottomWorkspace.tsx');
+    const timelineDock = readSource(
+      'src/renderer/features/timeline/TimelineDock.tsx',
+    );
+    const timeGeometry = readSource(
+      'src/renderer/features/timeline/timeGeometry.ts',
+    );
+    const timelineUi = readSource(
+      'src/renderer/features/timeline/timelineUiStore.ts',
+    );
+
+    // Single Timeline surface, single History, single Canvas (unchanged).
+    expect(bottom).toContain('<TimelineDock');
+    expect(bottom).toContain('<HistoryControls');
+    expect(count(bottom, /<TimelineDock/gu)).toBe(1);
+    expect(count(bottom, /<HistoryControls/gu)).toBe(1);
+
+    // TimelineDock exposes the required, inspectable surfaces.
+    expect(timelineDock).toContain('data-testid="timeline-dock"');
+    expect(timelineDock).toContain('data-testid="timeline-ruler-track"');
+    expect(timelineDock).toContain('data-testid="timeline-playhead"');
+    expect(timelineDock).toContain('data-testid="timeline-timecode"');
+    expect(timelineDock).toContain('data-testid="timeline-zoom-in"');
+    expect(timelineDock).toContain('data-testid="timeline-zoom-out"');
+    expect(timelineDock).toContain('data-testid="timeline-collapse"');
+
+    // Time geometry is centralized and 24 FPS based.
+    expect(timeGeometry).toContain('export function timeToPx');
+    expect(timeGeometry).toContain('export function pxToTime');
+    expect(timeGeometry).toContain('export function clampTime');
+    expect(timeGeometry).toContain('export function snapToFrame');
+    expect(timeGeometry).toMatch(/TIMELINE_FPS\s*=\s*PROJECT_FPS/u);
+
+    // UI state is isolated from the project store.
+    expect(timelineUi).not.toContain('updateProject');
+    expect(timelineUi).not.toContain('setDuration');
+    expect(timelineUi).not.toContain('editorProjectStore.');
+    expect(timelineUi).not.toContain('ActionPreset');
+
+    // No Stage 3-B / PR #177 / generic NLE resurrection.
+    for (const source of [bottom, timelineDock, timeGeometry, timelineUi]) {
+      expect(source).not.toContain('ActionPresetPanel');
+      expect(source).not.toMatch(/Stage 3-B|PR #177|stage-3-b/iu);
+    }
   });
 
   it('locks root scrolling and keeps debug and gateA as orthogonal overlays', () => {
