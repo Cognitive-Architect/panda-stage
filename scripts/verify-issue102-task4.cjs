@@ -158,6 +158,7 @@ async function measure(window) {
       editorBody: box('[data-testid="editor-body"]'),
       canvas: box('[data-testid="canvas-workspace-scroll"]'),
       inspector: box('[data-testid="right-inspector-placeholder"]'),
+      inspectorRail: box('[data-testid="inspector-rail-handle"]'),
       bottom: box('[data-testid="bottom-workspace"]'),
       bottomMetrics: metrics('[data-testid="bottom-workspace"]'),
       historyMetrics: metrics('[data-testid="history-controls"]'),
@@ -241,13 +242,24 @@ function assertCompactBottom(sample, label, maxHeight = 172) {
   );
 }
 
+// The right inspector collapses to a 56px rail below 1100px (Issue #192), at which
+// point its full-panel measurement hook is display:none. Measure the visible rail
+// handle at narrow widths; otherwise keep measuring the full-panel placeholder.
+const NARROW_BREAKPOINT = 1100;
+function pickInspectorRegion(sample) {
+  if (sample.viewport.width <= NARROW_BREAKPOINT && sample.inspectorRail) {
+    return sample.inspectorRail;
+  }
+  return sample.inspector;
+}
+
 function assertEditorRegions(sample, label) {
   assert(sample.page === 'editor', `${label} is not on the editor page.`);
   assert(sample.topBar && sample.topBar.height <= 56.5, `${label} top bar exceeded 56px.`);
   for (const [name, region] of [
     ['editor body', sample.editorBody],
     ['canvas', sample.canvas],
-    ['right inspector', sample.inspector],
+    ['right inspector', pickInspectorRegion(sample)],
     ['bottom workspace', sample.bottom],
   ]) {
     assert(region && region.width > 0 && region.height > 0, `${label} ${name} is not visible.`);
