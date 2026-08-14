@@ -1,0 +1,42 @@
+name: Issue 204 A/B clone-error comparison
+
+on:
+  push:
+    branches:
+      - 'diag/issue204-*'
+  workflow_dispatch:
+
+jobs:
+  ab-compare:
+    name: Issue 204 A/B Electron gate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare Electron runtime
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            $env:force_no_cache = 'true'
+            pnpm exec electron --version
+          }
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            throw 'Electron runtime binary was not installed.'
+          }
+          pnpm exec electron --version
+
+      - name: Issue 204 A/B compare gate
+        run: pnpm verify:issue204
