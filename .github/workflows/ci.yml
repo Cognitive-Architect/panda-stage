@@ -384,24 +384,10 @@ jobs:
         env:
           RISK_SUITES: ${{ needs.classify.outputs.suites }}
         run: |
-          $selected = " $env:RISK_SUITES "
-          $groups = [ordered]@{
-            project = @('verify:day13','verify:day14','verify:m1','verify:issue73','verify:issue76','verify:issue102-task1','verify:issue102-task3')
-            assets = @('verify:day16','verify:day17','verify:day18')
-            character = @('verify:day19')
-            shot = @('verify:day20')
-            canvas = @('verify:day21','verify:day22','verify:day23')
-            history = @('verify:day24')
-            editor = @('verify:issue102-task2','verify:issue102-task4','verify:issue109-resource-workspace')
-          }
-          foreach ($entry in $groups.GetEnumerator()) {
-            if ($selected.Contains(" $($entry.Key) ")) {
-              Write-Host "Running $($entry.Key) regression suite"
-              foreach ($script in $entry.Value) {
-                & pnpm $script
-                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-              }
-            }
+          foreach ($suite in $env:RISK_SUITES.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
+            Write-Host "Running verify:$suite"
+            & pnpm "verify:$suite"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
   quality_full:
@@ -450,20 +436,14 @@ jobs:
         run: pnpm test:integration
       - name: Build
         run: pnpm build
+
       - name: Run full regression suites
         shell: pwsh
         run: |
-          $scripts = @(
-            'verify:day13','verify:day14','verify:m1',
-            'verify:day16','verify:day17','verify:day18',
-            'verify:day19','verify:day20',
-            'verify:day21','verify:day22','verify:day23','verify:day24',
-            'verify:issue73','verify:issue76',
-            'verify:issue102-task1','verify:issue102-task2','verify:issue102-task3','verify:issue102-task4',
-            'verify:issue109-resource-workspace'
-          )
-          foreach ($script in $scripts) {
-            & pnpm $script
+          $suites = @('project','assets','character','shot','canvas','history','editor')
+          foreach ($suite in $suites) {
+            Write-Host "Running verify:$suite"
+            & pnpm "verify:$suite"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
