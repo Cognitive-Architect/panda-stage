@@ -1,4 +1,4 @@
-const { app, ipcMain } = require('electron');
+const { app, ipcMain, session } = require('electron');
 const { mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
@@ -361,6 +361,15 @@ function projectFixture() {
 
 async function waitForMainWindow() {
   await app.whenReady();
+  // One-round test-only IPC diagnostics: prepend the diagnostic preload so the
+  // next CI run names the failing renderer->main IPC channel + arg types behind
+  // the "An object could not be cloned" crash. Pure observation; no product,
+  // preload, timeline, seek, zoom, or project-state change.
+  const diagPreload = path.join(__dirname, 'verify-issue199-ipc-diag-preload.cjs');
+  const preloads = session.defaultSession.getPreloads().slice();
+  if (!preloads.includes(diagPreload)) {
+    session.defaultSession.setPreloads([diagPreload, ...preloads]);
+  }
   const window = await createMainWindow({ show: false });
   // Diagnostics for the "An object could not be cloned" renderer crash seen in
   // CI: surface renderer console output and process-gone reasons so the next
