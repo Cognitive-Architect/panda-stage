@@ -161,14 +161,12 @@ try {
 }
 
 try {
-  const w =
-    typeof window !== 'undefined'
-      ? window
-      : typeof globalThis !== 'undefined'
-        ? globalThis.window
-        : undefined;
-  if (w && typeof w.addEventListener === 'function') {
-    w.addEventListener('error', (e) => {
+  // globalThis is the renderer global object in a preload; referencing the bare
+  // `window` identifier breaks ESLint (no-undef). Using globalThis only keeps
+  // the diagnostic lint-clean while still attaching the renderer error listener.
+  const g = typeof globalThis !== 'undefined' ? globalThis : undefined;
+  if (g && typeof g.addEventListener === 'function') {
+    g.addEventListener('error', (e) => {
       const stack =
         e && e.error && e.error.stack
           ? e.error.stack
