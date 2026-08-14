@@ -397,7 +397,7 @@ async function waitForMainWindow() {
   return window;
 }
 
-async function runCycle(window, label, slug, result) {
+async function runCycle(window, label, slug, result, expectedPlayhead) {
   console.error(`[issue199] runCycle start: ${label}`);
   const opened = await measure(window);
   console.error(`[issue199] runCycle measured: ${JSON.stringify(opened)}`);
@@ -421,10 +421,27 @@ async function runCycle(window, label, slug, result) {
   }
   const sample = await measure(window);
   assertTicksPresent(sample, label);
-  assert(
-    sample.currentTimeMs === 0,
-    `${label} started with a non-zero playhead: ${JSON.stringify(sample)}`,
-  );
+  if (expectedPlayhead === null) {
+    // First cycle: the project just opened on a fresh shot, so the playhead
+    // must start at 0. (timelineUiStore resets only on shot change, never on
+    // a window resize.)
+    assert(
+      sample.currentTimeMs === 0,
+      `${label} opened with a non-zero playhead (a fresh shot must start at 0): ` +
+        JSON.stringify(sample),
+    );
+  } else {
+    // Subsequent cycle entered via a window resize: the playhead is a
+    // shot-scoped singleton and must NOT be reset by a size change. Assert it
+    // carried over unchanged so a regression that silently zeroes the playhead
+    // on resize is caught — rather than masking it by re-seeking to 0 here.
+    assert(
+      sample.currentTimeMs === expectedPlayhead,
+      `${label} playhead changed across a window resize ` +
+        `(expected ${expectedPlayhead}, got ${sample.currentTimeMs}): ` +
+        JSON.stringify(sample),
+    );
+  }
   await capture(window, `issue199-${slug}-opened.png`);
 
   const before = sample.saveState;
@@ -451,6 +468,10 @@ async function runCycle(window, label, slug, result) {
       `rulerScroll ${sample.rulerScrollClientWidth}px, seek (10%/50%/90%) ordered, ` +
       `collapse→expand / resize / zoom 1..8 seek OK, saveState '${after.saveState}' unchanged`,
   );
+  // Carry the final playhead into the next (resize-entered) cycle so it can
+  // assert the resize did not move the playhead. run() does not seek between
+  // cycles, so this equals the playhead at the moment of the resize.
+  return after.currentTimeMs;
 }
 
 async function run() {
@@ -577,15 +598,18 @@ async function run() {
     );
     console.error('[issue199] editor opened, entering runCycle(wide)');
 
-    await runCycle(window, '1280x800 wide editor', 'wide', result);
+    const playheadAfterWide = await runCycle(window, '1280x800 wide editor', 'wide', result, null);
 
+    // resize-entered cycles must preserve the playhead (resize must not reset it)
     window.setContentSize(900, 620);
     await delay(320);
-    await runCycle(window, '900x620 narrow-short editor', 'narrowShort', result);
+    const playheadAfterNarrow = await runCycle(
+      window, '900x620 narrow-short editor', 'narrowShort', result, playheadAfterWide,
+    );
 
     window.setContentSize(700, 620);
     await delay(320);
-    await runCycle(window, '700x620 compact editor', 'compact', result);
+    await runCycle(window, '700x620 compact editor', 'compact', result, playheadAfterNarrow);
 
     result.passed = true;
     return result;
