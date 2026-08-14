@@ -387,6 +387,7 @@ async function runCycle(window, label, slug, result) {
     await capture(window, `issue199-${slug}-diag.png`);
     throw new Error(
       `${tickError.message}\nDIAGNOSTIC: ${JSON.stringify(dump, null, 2)}`,
+      { cause: tickError },
     );
   }
   const sample = await measure(window);
