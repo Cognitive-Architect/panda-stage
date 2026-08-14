@@ -337,6 +337,9 @@ jobs:
       - name: Issue 109 adaptive resource workspace gate
         run: pnpm verify:issue109-resource-workspace
 
+      - name: Issue 197 Timeline collapse releases vertical space to Canvas gate
+        run: pnpm verify:issue197
+
   quality:
     name: Final CI result
     if: ${{ always() }}

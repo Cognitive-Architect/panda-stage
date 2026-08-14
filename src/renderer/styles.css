@@ -862,6 +862,19 @@ button:disabled {
   background: rgb(8 14 10 / 74%);
 }
 
+/* Issue 197: the rule above stays the approved Day 26 *expanded* contract.
+   Collapsing the Timeline must release real vertical space, so the collapsed
+   state drops the expanded floor and is capped strictly below it
+   (112px < 132px), which proves collapsed height < expanded height. The freed
+   height flows into the `minmax(0, 1fr)` middle row of `.editor-layout`, i.e.
+   the row `.editor-body` / CanvasWorkspace grows into. The collapsed height
+   stays content-driven (`min-height: 0`), so the reopen entry, timecode and
+   History controls keep their natural size instead of being clipped. */
+.bottom-workspace[data-timeline-expanded='false'] {
+  min-height: 0;
+  max-height: 112px;
+}
+
 .timeline-dock {
   display: flex;
   flex-direction: column;
@@ -3307,6 +3320,13 @@ h1 {
     min-height: 128px;
     max-height: 160px;
     padding: 6px 6px;
+  }
+
+  /* Issue 197: the compact history grid below stacks into two rows, so the
+     collapsed cap is raised a little while staying strictly under the narrow
+     expanded floor (120px < 128px). Canvas still reclaims the difference. */
+  .bottom-workspace[data-timeline-expanded='false'] {
+    max-height: 120px;
   }
 
   .bottom-workspace > .history-controls {
