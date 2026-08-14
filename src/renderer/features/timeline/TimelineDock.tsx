@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import {
@@ -34,12 +40,26 @@ export function TimelineDock(): React.JSX.Element {
         ?.durationMs ?? 0
     : 0;
 
+  // Whether a seekable ruler is actually mounted. The ruler only renders when
+  // the Timeline is expanded AND a real shot is active, so `hasShot` flips
+  // false→true *after* this component first mounts (the active shot is
+  // selected once the project opens). The measurement effect below must re-run
+  // on this change or `viewportWidth` stays frozen at its first (often 0) value.
+  const hasShot = currentShotId !== null && durationMs > 0;
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const [viewportWidth, setViewportWidth] = useState(0);
 
-  useEffect(() => {
+  // Re-measure whenever the ruler actually mounts or unmounts. The ruler only
+  // exists when the Timeline is expanded (ui.expanded) and a real shot is
+  // active (hasShot); both can change after the first mount. A one-shot mount
+  // effect would freeze viewportWidth at its initial (often 0) reading, which
+  // makes pixelsPerMs=0 → no ticks and a playhead that never seeks. Re-running
+  // on [ui.expanded, hasShot] guarantees the live width is captured the moment
+  // the ruler appears, fixing the stuck-at-0 seek failure (Issue #199).
+  useLayoutEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
     const measure = (): void => setViewportWidth(node.clientWidth);
@@ -47,7 +67,7 @@ export function TimelineDock(): React.JSX.Element {
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [ui.expanded, hasShot]);
 
   // The store resets scrollPx to 0 on shot switch (resetForShot); mirror that
   // into the real viewport so the playhead at 0ms stays within the visible
@@ -61,7 +81,6 @@ export function TimelineDock(): React.JSX.Element {
   const trackWidth = durationMs * pixelsPerMs;
   const playheadPx = timeToPx(ui.currentTimeMs, pixelsPerMs);
   const ticks = generateRulerTicks(durationMs, pixelsPerMs);
-  const hasShot = currentShotId !== null && durationMs > 0;
 
   const seekFromClientX = (clientX: number): void => {
     const track = trackRef.current;

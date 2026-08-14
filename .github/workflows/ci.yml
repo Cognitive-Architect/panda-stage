@@ -340,6 +340,9 @@ jobs:
       - name: Issue 197 Timeline collapse releases vertical space to Canvas gate
         run: pnpm verify:issue197
 
+      - name: Issue 199 Timeline seek moves the playhead after the ruler mounts gate
+        run: pnpm verify:issue199
+
   quality:
     name: Final CI result
     if: ${{ always() }}
