@@ -362,16 +362,31 @@ function projectFixture() {
 async function waitForMainWindow() {
   await app.whenReady();
   const window = await createMainWindow({ show: false });
+  // Diagnostics for the "An object could not be cloned" renderer crash seen in
+  // CI: surface renderer console output and process-gone reasons so the next
+  // run names the exact failing IPC path instead of only an Electron frame.
+  const wc = window.webContents;
+  wc.on('console-message', (_event, level, message) => {
+    console.error(`[issue199] renderer console[${level}]: ${message}`);
+  });
+  wc.on('render-process-gone', (_event, details) => {
+    console.error(
+      `[issue199] renderer gone: reason=${details.reason} exitCode=${details.exitCode}`,
+    );
+  });
   await waitForDom(
     window,
     `document.querySelector('[data-testid="project-center-screen"]')`,
     'The real Electron Project Center did not render.',
   );
+  console.error('[issue199] project center rendered');
   return window;
 }
 
 async function runCycle(window, label, slug, result) {
+  console.error(`[issue199] runCycle start: ${label}`);
   const opened = await measure(window);
+  console.error(`[issue199] runCycle measured: ${JSON.stringify(opened)}`);
   assert(
     opened.page === 'editor' && opened.expanded === 'true',
     `${label} did not open on the expanded editor Timeline: ${JSON.stringify(opened)}`,
@@ -529,20 +544,24 @@ async function run() {
 
   try {
     window.setContentSize(1280, 800);
+    console.error('[issue199] sized 1280x800, waiting for recent-projects-list');
     await waitForDom(
       window,
       `document.querySelector('[data-testid="recent-projects-list"]')`,
       'The Issue 199 Project Center recent-project list did not render.',
     );
+    console.error('[issue199] recent-projects-list rendered, clicking recent-open');
     await click(
       window,
       '[data-project-status="available"] [data-task4-core="recent-open"]',
     );
+    console.error('[issue199] clicked recent-open, waiting for editor page');
     await waitForDom(
       window,
       `document.querySelector('[data-editor-page="editor"]')`,
       'The Issue 199 gate project did not open in the editor.',
     );
+    console.error('[issue199] editor opened, entering runCycle(wide)');
 
     await runCycle(window, '1280x800 wide editor', 'wide', result);
 
