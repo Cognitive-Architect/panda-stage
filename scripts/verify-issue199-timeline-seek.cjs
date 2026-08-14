@@ -120,6 +120,36 @@ async function measure(window) {
 // to a no-op so the real onPointerDown / onPointerMove seek handlers run. The
 // capture mechanism itself is out of scope — we are testing the seek math and
 // geometry that the Issue #199 fix restored.
+async function diagnose(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const q = (s) => document.querySelector(s);
+    const dock = q('[data-testid="timeline-dock"]');
+    const scroll = q('[data-testid="timeline-ruler-scroll"]');
+    const track = q('[data-testid="timeline-ruler-track"]');
+    const empty = q('[data-testid="timeline-empty"]');
+    const tc = q('[data-testid="timeline-timecode"]');
+    const bottom = q('[data-testid="bottom-workspace"]');
+    return {
+      editorPage: q('.editor-shell')?.dataset.editorPage ?? null,
+      dockExpanded: dock?.dataset.expanded ?? null,
+      dockHasShot: dock?.dataset.hasShot ?? null,
+      dockOuterHtml: dock ? dock.outerHTML.slice(0, 800) : null,
+      scrollPresent: !!scroll,
+      scrollClientWidth: scroll ? scroll.clientWidth : null,
+      scrollOffsetWidth: scroll ? scroll.offsetWidth : null,
+      trackPresent: !!track,
+      trackRectWidth: track ? Math.round(track.getBoundingClientRect().width) : null,
+      emptyPresent: !!empty,
+      timecodeCurrent: tc ? Number(tc.dataset.currentTime) : null,
+      timecodeDuration: tc ? Number(tc.dataset.duration) : null,
+      ticksByTestid: document.querySelectorAll('[data-testid="timeline-tick"]').length,
+      ticksByClass: document.querySelectorAll('.timeline-tick').length,
+      bottomWidth: bottom ? Math.round(bottom.getBoundingClientRect().width) : null,
+      bottomHeight: bottom ? Math.round(bottom.getBoundingClientRect().height) : null,
+    };
+  })()`);
+}
+
 async function seek(window, fraction) {
   const code = `(() => new Promise((resolve) => {
     const patch = () => {
@@ -346,11 +376,19 @@ async function runCycle(window, label, slug, result) {
     opened.page === 'editor' && opened.expanded === 'true',
     `${label} did not open on the expanded editor Timeline: ${JSON.stringify(opened)}`,
   );
-  await waitForDom(
-    window,
-    `document.querySelectorAll('[data-testid="timeline-tick"]').length > 0`,
-    `${label} never rendered ruler ticks after opening (viewportWidth stuck at 0).`,
-  );
+  try {
+    await waitForDom(
+      window,
+      `document.querySelectorAll('[data-testid="timeline-tick"]').length > 0`,
+      `${label} never rendered ruler ticks after opening (viewportWidth stuck at 0).`,
+    );
+  } catch (tickError) {
+    const dump = await diagnose(window);
+    await capture(window, `issue199-${slug}-diag.png`);
+    throw new Error(
+      `${tickError.message}\nDIAGNOSTIC: ${JSON.stringify(dump, null, 2)}`,
+    );
+  }
   const sample = await measure(window);
   assertTicksPresent(sample, label);
   assert(

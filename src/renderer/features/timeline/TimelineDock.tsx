@@ -183,6 +183,7 @@ export function TimelineDock(): React.JSX.Element {
                 <div
                   key={tick.timeMs}
                   className="timeline-tick"
+                  data-testid="timeline-tick"
                   style={{ left: `${tick.px}px` }}
                 >
                   <span className="timeline-tick-label">{tick.label}</span>
