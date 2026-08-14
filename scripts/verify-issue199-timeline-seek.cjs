@@ -150,6 +150,11 @@ async function diagnose(window) {
   })()`);
 }
 
+// The trailing `()` after the arrow function is load-bearing (Issue #206).
+// Without it executeJavaScript evaluates to a *function* rather than calling
+// it, Electron cannot structured-clone a function back to the main process,
+// and every seek fails with "An object could not be cloned." before any
+// pointer event is dispatched. Do not remove it.
 async function seek(window, fraction) {
   const code = `(() => new Promise((resolve) => {
     const patch = () => {
@@ -184,7 +189,7 @@ async function seek(window, fraction) {
       resolve({ currentTimeMs: tc ? Number(tc.dataset.currentTime) : null });
     };
     requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(read, 60)));
-  }))`;
+  }))()`;
   return window.webContents.executeJavaScript(code);
 }
 
@@ -234,7 +239,7 @@ async function seekDrag(window, fromFraction, toFraction) {
       resolve({ currentTimeMs: tc ? Number(tc.dataset.currentTime) : null });
     };
     requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(read, 60)));
-  }))`;
+  }))()`;
   return window.webContents.executeJavaScript(code);
 }
 
