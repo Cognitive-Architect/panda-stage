@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tier: ${{ steps.classify.outputs.tier }}
+      areas: ${{ steps.classify.outputs.areas }}
+      suites: ${{ steps.classify.outputs.suites }}
       reason: ${{ steps.classify.outputs.reason }}
     steps:
       - name: Checkout
@@ -34,37 +36,271 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
 
           docs_only=true
-          has_critical=false
+          has_full_escalation=false
           has_unknown=false
           reason=''
           changes=''
+          areas=''          # space-separated area names
+          suites=''         # space-separated suite names (after cross-domain expansion)
 
+          # Helper: add a unique area to the areas list
+          add_area() {
+            local a="$1"
+            if [[ " $areas " != *" $a "* ]]; then
+              areas="$areas $a"
+            fi
+          }
+
+          # Helper: add a unique suite to the suites list
+          add_suite() {
+            local s="$1"
+            if [[ " $suites " != *" $s "* ]]; then
+              suites="$suites $s"
+            fi
+          }
+
+          # Helper: map an area to its base suite(s) and apply cross-domain rules
+          map_area_to_suites() {
+            local a="$1"
+            case "$a" in
+              project)   add_suite project ;;
+              assets)    add_suite assets; add_suite character ;;   # characters depend on assets
+              character) add_suite character ;;
+              shot)      add_suite shot ;;
+              canvas)    add_suite canvas; add_suite history ;;      # canvas ops produce history records
+              history)   add_suite history; add_suite canvas ;;      # history UI needs canvas interaction
+              editor)    add_suite editor ;;
+              editor_timeline) add_suite editor; add_suite timeline ;; # BottomWorkspace/shell affects timeline space
+              timeline)  add_suite timeline ;;
+              ipc)       add_suite project; add_suite assets; add_suite character; add_suite shot; add_suite canvas; add_suite history; add_suite editor; add_suite timeline ;;
+              core)      add_suite project; add_suite assets; add_suite character; add_suite shot; add_suite canvas; add_suite history; add_suite editor; add_suite timeline ;;
+              infra)     add_suite project; add_suite assets; add_suite character; add_suite shot; add_suite canvas; add_suite history; add_suite editor; add_suite timeline ;;
+              unknown)   add_suite project; add_suite assets; add_suite character; add_suite shot; add_suite canvas; add_suite history; add_suite editor; add_suite timeline ;;
+            esac
+          }
+
+          # Helper: classify a single file path into an area
+          classify_path() {
+            local path="$1"
+
+            # --- Docs whitelist ---
+            if [[ "$path" =~ ^((README|AGENTS)\.md|docs(/[^/]*)*/[^/]+\.md)$ ]]; then
+              return 0  # docs path — no area
+            fi
+
+            # Not docs
+            docs_only=false
+
+            # --- CI / package / lockfile / config (Full escalation) ---
+            if [[ "$path" =~ ^(\.github/|package\.json$|pnpm-lock\.yaml$|npm-shrinkwrap\.json$|yarn\.lock$|tsconfig.*\.json$|.*\.config\.(js|cjs|mjs|ts)$|vitest\.integration\.config\.ts$|vite\.preload\.config\.ts$|eslint\.config\.js$)$ ]]; then
+              add_area infra
+              has_full_escalation=true
+              return 0
+            fi
+
+            # --- Cross-process boundary (Full escalation) ---
+            if [[ "$path" =~ ^src/(main|preload)/ ]]; then
+              # Check if it's a subsystem-specific main service
+              if [[ "$path" =~ ^src/main/services/ ]]; then
+                local svc
+                svc="$(basename "$path")"
+                case "$svc" in
+                  Project*|Recovery*|Recent*|Autosave*|UnsavedClose*|PathService*) add_area project; return 0 ;;
+                  Asset*|Thumbnail*|FFmpeg*|Cache*|Png*|Media*) add_area assets; return 0 ;;
+                  *) add_area ipc; has_full_escalation=true; return 0 ;;
+                esac
+              fi
+              add_area ipc
+              has_full_escalation=true
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/shared/ipc/ ]]; then
+              add_area ipc
+              has_full_escalation=true
+              return 0
+            fi
+
+            # --- Core logic (Full escalation) ---
+            if [[ "$path" =~ ^src/(domain|history)/ ]]; then
+              add_area core
+              has_full_escalation=true
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/shared/ ]]; then
+              add_area core
+              has_full_escalation=true
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/stores/ ]]; then
+              add_area core
+              has_full_escalation=true
+              return 0
+            fi
+
+            # --- Renderer features (Targeted) ---
+            if [[ "$path" =~ ^src/renderer/features/recovery/ ]]; then
+              add_area project
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/features/welcome/ ]]; then
+              add_area project
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/features/assets/ ]]; then
+              add_area assets
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/features/characters/ ]]; then
+              add_area character
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/features/shots/ ]]; then
+              add_area shot
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/features/canvas/ ]]; then
+              add_area canvas
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/stage/ ]]; then
+              add_area canvas
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/features/properties/ ]]; then
+              add_area canvas
+              return 0
+            fi
+
+            # History UI components live under editor/ but are history area
+            if [[ "$path" =~ ^src/renderer/features/editor/(HistoryControls|useHistoryShortcuts) ]]; then
+              add_area history
+              return 0
+            fi
+
+            # Other editor features
+            if [[ "$path" =~ ^src/renderer/features/editor/ ]]; then
+              add_area editor
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/features/actions/ ]]; then
+              add_area editor
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/features/timeline/ ]]; then
+              add_area timeline
+              return 0
+            fi
+
+            # --- Shell: BottomWorkspace and timeline-space-affecting files get editor+timeline ---
+            if [[ "$path" =~ ^src/renderer/shell/(BottomWorkspace|CanvasWorkspace|EditorShell|LeftWorkspace|RightInspector)\. ]]; then
+              add_area editor_timeline
+              return 0
+            fi
+
+            if [[ "$path" =~ ^src/renderer/shell/ ]]; then
+              add_area editor
+              return 0
+            fi
+
+            # --- CSS: global/responsive CSS may affect layout → editor+timeline ---
+            if [[ "$path" =~ \.(css|scss)$ ]]; then
+              add_area editor_timeline
+              return 0
+            fi
+
+            # --- Scripts: verify-* route to their suite; other scripts = infra ---
+            if [[ "$path" =~ ^scripts/verify- ]]; then
+              case "$path" in
+                scripts/verify-day13*|scripts/verify-day14*|scripts/verify-m1*|scripts/verify-issue73*|scripts/verify-issue76*|scripts/verify-issue102-task1*|scripts/verify-issue102-task3*)
+                  add_area project ;;
+                scripts/verify-day16*|scripts/verify-day17*|scripts/verify-day18*)
+                  add_area assets ;;
+                scripts/verify-day19*)
+                  add_area character ;;
+                scripts/verify-day20*)
+                  add_area shot ;;
+                scripts/verify-day21*|scripts/verify-day22*|scripts/verify-day23*|scripts/verify-issue47*)
+                  add_area canvas ;;
+                scripts/verify-day24*)
+                  add_area history ;;
+                scripts/verify-issue102-task2*|scripts/verify-issue102-task4*|scripts/verify-issue109*)
+                  add_area editor ;;
+                scripts/verify-issue197*|scripts/verify-issue199*)
+                  add_area timeline ;;
+                *)
+                  # New verify script not yet mapped → fail-safe
+                  add_area unknown
+                  has_unknown=true
+                  ;;
+              esac
+              return 0
+            fi
+
+            if [[ "$path" =~ ^scripts/ ]]; then
+              add_area infra
+              has_full_escalation=true
+              return 0
+            fi
+
+            # --- Tests: no area, no escalation (core checks still run) ---
+            if [[ "$path" =~ ^tests/ ]]; then
+              return 0
+            fi
+
+            if [[ "$path" =~ ^public/ ]]; then
+              return 0
+            fi
+
+            if [[ "$path" =~ ^demo-project/ ]]; then
+              return 0
+            fi
+
+            # --- Unknown path ---
+            add_area unknown
+            has_unknown=true
+            return 0
+          }
+
+          # ─── Event-level escalation ───
           if [[ "$EVENT_NAME" == 'push' ]]; then
             docs_only=false
-            has_critical=true
+            has_full_escalation=true
             reason='push to main keeps the full regression path'
           elif [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
             docs_only=false
-            has_critical=true
+            has_full_escalation=true
             reason='manual dispatch explicitly requests the full regression path'
           elif [[ -z "$BASE_SHA" || -z "$HEAD_SHA" || "$BASE_SHA" == 0000000000000000000000000000000000000000 ]]; then
             docs_only=false
-            has_critical=true
+            has_full_escalation=true
             reason='the comparison range is unavailable; fail safe to full regression'
           else
             if ! changes="$(git diff --name-status --find-renames "$BASE_SHA" "$HEAD_SHA")"; then
               docs_only=false
-              has_critical=true
+              has_full_escalation=true
               reason='the comparison range could not be read; fail safe to full regression'
             elif [[ -z "$changes" ]]; then
               docs_only=false
-              has_critical=true
+              has_full_escalation=true
               reason='no changed-file list was produced; fail safe to full regression'
             else
               while IFS=$'\t' read -r status first_path second_path extra; do
@@ -75,68 +311,90 @@ jobs:
                   paths+=("$second_path")
                 elif [[ -n "$second_path" || -n "$extra" ]]; then
                   docs_only=false
-                  has_critical=true
+                  has_full_escalation=true
                   has_unknown=true
                   echo "Unsafe path encoding detected for status $status; using full regression."
                 fi
 
+                # Non-add/modify → fail-safe to Full
                 if [[ "$status" != 'A' && "$status" != 'M' ]]; then
                   docs_only=false
-                  has_critical=true
+                  has_full_escalation=true
                   echo "Non-add/modify status $status; using full regression."
                 fi
 
                 for path in "${paths[@]}"; do
                   echo "Changed path [$status]: $path"
-
-                  if [[ ! "$path" =~ ^((README|AGENTS)\.md|docs(/[^/]*)*/[^/]+\.md)$ ]]; then
-                    docs_only=false
-                  fi
-
-                  if [[ "$path" =~ ^(\.github/|package\.json$|pnpm-lock\.yaml$|npm-shrinkwrap\.json$|yarn\.lock$|tsconfig.*\.json$|.*\.config\.(js|cjs|mjs|ts)$|src/(main|preload|domain|history|shared)/|src/renderer/(stores|shell|stage)/|src/renderer/features/(canvas|project|recovery)/|scripts/) ]]; then
-                    has_critical=true
-                  elif [[ "$path" =~ ^((README|AGENTS)\.md|docs(/[^/]*)*/[^/]+\.md)$ ]]; then
-                    :
-                  elif [[ ! "$path" =~ ^(src/renderer/|tests/|public/|.*\.(css|scss)$) ]]; then
-                    has_unknown=true
-                  fi
+                  classify_path "$path"
                 done
               done <<< "$changes"
 
               if [[ "$has_unknown" == true ]]; then
-                has_critical=true
-                reason='an unknown or infrastructure path was changed; fail safe to full regression'
-              elif [[ "$has_critical" == true ]]; then
-                reason='a critical or infrastructure path was changed'
+                has_full_escalation=true
+                reason='an unknown path was changed; fail safe to full regression'
+              elif [[ "$has_full_escalation" == true ]]; then
+                reason='a full-escalation path was changed (IPC/domain/CI/scripts)'
               elif [[ "$docs_only" == true ]]; then
                 reason='all changed files are approved Markdown documentation files'
               else
-                reason='normal code changed; baseline and regression gates remain enabled'
+                reason='normal code changed; targeted regression gates selected'
               fi
             fi
           fi
 
-          if [[ "$docs_only" == true && "$has_critical" == false ]]; then
-            tier='docs'
-          elif [[ "$has_critical" == true ]]; then
-            tier='critical'
-          else
-            tier='normal'
+          # ─── Draft / Ready strategy ───
+          # Draft PR: allow Targeted for fast development feedback
+          # Non-draft PR (opened/synchronize/reopened/ready_for_review): always Full
+          if [[ "$has_full_escalation" != true && "$docs_only" != true ]]; then
+            if [[ "$IS_DRAFT" == 'true' ]]; then
+              : # Draft PR with targeted areas → eligible for Targeted
+            else
+              # Non-draft PR → Full (ready_for_review or opened as non-draft)
+              has_full_escalation=true
+              if [[ -z "$reason" || "$reason" == 'normal code changed; targeted regression gates selected' ]]; then
+                reason='non-draft PR requires full regression (ready_for_review or opened non-draft)'
+              fi
+            fi
           fi
+
+          # ─── Compute suites from areas ───
+          for a in $areas; do
+            map_area_to_suites "$a"
+          done
+
+          # ─── Determine tier ───
+          if [[ "$docs_only" == true && "$has_full_escalation" != true ]]; then
+            tier='docs'
+          elif [[ "$has_full_escalation" == true ]]; then
+            tier='full'
+          else
+            tier='targeted'
+          fi
+
+          # Trim leading/trailing whitespace
+          areas="$(echo "$areas" | xargs)"
+          suites="$(echo "$suites" | xargs)"
 
           echo "Risk tier: $tier"
           echo "Reason: $reason"
+          echo "Areas: $areas"
+          echo "Suites: $suites"
           {
             echo "## CI risk classification"
             echo ""
             echo "- Event: \`$EVENT_NAME\`"
+            echo "- Draft: \`$IS_DRAFT\`"
             echo "- Tier: \`$tier\`"
             echo "- Reason: $reason"
+            echo "- Areas: \`$areas\`"
+            echo "- Suites: \`$suites\`"
             echo ""
-            echo 'The classifier is fail-safe: unavailable ranges, renames/deletes, infrastructure paths, and unknown paths do not receive the docs-only fast path.'
+            echo 'The classifier is fail-safe: unavailable ranges, renames/deletes, infrastructure paths, unknown paths, and non-draft PRs escalate to full regression.'
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "tier=$tier" >> "$GITHUB_OUTPUT"
+          echo "areas=$areas" >> "$GITHUB_OUTPUT"
+          echo "suites=$suites" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
 
   quality_docs:
@@ -221,10 +479,10 @@ jobs:
           console.log(`Validated relative links in ${files.length} Markdown file(s).`);
           NODE
 
-  quality_full:
-    name: Full quality and regression
+  quality_targeted:
+    name: Targeted quality and regression
     needs: classify
-    if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier != 'docs' }}
+    if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier == 'targeted' }}
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -235,11 +493,173 @@ jobs:
         env:
           RISK_TIER: ${{ needs.classify.outputs.tier }}
           RISK_REASON: ${{ needs.classify.outputs.reason }}
+          RISK_AREAS: ${{ needs.classify.outputs.areas }}
+          RISK_SUITES: ${{ needs.classify.outputs.suites }}
+        run: |
+          "## Targeted CI path" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Risk tier: ``$env:RISK_TIER``" >> $env:GITHUB_STEP_SUMMARY
+          "- Reason: $env:RISK_REASON" >> $env:GITHUB_STEP_SUMMARY
+          "- Areas: ``$env:RISK_AREAS``" >> $env:GITHUB_STEP_SUMMARY
+          "- Suites: ``$env:RISK_SUITES``" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare Electron runtime
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            $env:force_no_cache = 'true'
+            pnpm exec electron --version
+          }
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            throw 'Electron runtime binary was not installed.'
+          }
+          pnpm exec electron --version
+
+      # ─── Core Quality (always run) ───
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: Build
+        run: pnpm build
+
+      # ─── Targeted Regression Gates (conditional by suite) ───
+
+      # verify:project suite
+      - name: Day 13 recovery renderer gate
+        if: ${{ contains(needs.classify.outputs.suites, 'project') }}
+        run: pnpm verify:day13
+
+      - name: Day 14 recent-project renderer gate
+        if: ${{ contains(needs.classify.outputs.suites, 'project') }}
+        run: pnpm verify:day14
+
+      - name: M1 project lifecycle gate
+        if: ${{ contains(needs.classify.outputs.suites, 'project') }}
+        run: pnpm verify:m1
+
+      - name: Issue 73 project-switch and open-flow gate
+        if: ${{ contains(needs.classify.outputs.suites, 'project') }}
+        run: pnpm verify:issue73
+
+      - name: Issue 76 Stage 1B create / preview / close gate
+        if: ${{ contains(needs.classify.outputs.suites, 'project') }}
+        run: pnpm verify:issue76
+
+      - name: Issue 102 Task 1 project center gate
+        if: ${{ contains(needs.classify.outputs.suites, 'project') }}
+        run: pnpm verify:issue102-task1
+
+      - name: Issue 102 Task 3 project safety contract gate
+        if: ${{ contains(needs.classify.outputs.suites, 'project') }}
+        run: pnpm verify:issue102-task3
+
+      # verify:assets suite
+      - name: Day 16 asset import gate
+        if: ${{ contains(needs.classify.outputs.suites, 'assets') }}
+        run: pnpm verify:day16
+
+      - name: Day 17 asset metadata gate
+        if: ${{ contains(needs.classify.outputs.suites, 'assets') }}
+        run: pnpm verify:day17
+
+      - name: Day 18 asset library gate
+        if: ${{ contains(needs.classify.outputs.suites, 'assets') }}
+        run: pnpm verify:day18
+
+      # verify:character suite
+      - name: Day 19 character definitions gate
+        if: ${{ contains(needs.classify.outputs.suites, 'character') }}
+        run: pnpm verify:day19
+
+      # verify:shot suite
+      - name: Day 20 shot management M2 gate
+        if: ${{ contains(needs.classify.outputs.suites, 'shot') }}
+        run: pnpm verify:day20
+
+      # verify:canvas suite
+      - name: Day 21 fixed canvas and viewport gate
+        if: ${{ contains(needs.classify.outputs.suites, 'canvas') }}
+        run: pnpm verify:day21
+
+      - name: Day 22 layer placement gate
+        if: ${{ contains(needs.classify.outputs.suites, 'canvas') }}
+        run: pnpm verify:day22
+
+      - name: Day 23 layer transform and order gate
+        if: ${{ contains(needs.classify.outputs.suites, 'canvas') }}
+        run: pnpm verify:day23
+
+      # verify:history suite
+      - name: Day 24 command history gate
+        if: ${{ contains(needs.classify.outputs.suites, 'history') }}
+        run: pnpm verify:day24
+
+      # verify:editor suite
+      - name: Issue 102 Task 2 compact project bar gate
+        if: ${{ contains(needs.classify.outputs.suites, 'editor') }}
+        run: pnpm verify:issue102-task2
+
+      - name: Issue 102 Task 4 narrow-window and total regression gate
+        if: ${{ contains(needs.classify.outputs.suites, 'editor') }}
+        run: pnpm verify:issue102-task4
+
+      - name: Issue 109 adaptive resource workspace gate
+        if: ${{ contains(needs.classify.outputs.suites, 'editor') }}
+        run: pnpm verify:issue109-resource-workspace
+
+      # verify:timeline suite
+      - name: Issue 197 Timeline collapse releases vertical space to Canvas gate
+        if: ${{ contains(needs.classify.outputs.suites, 'timeline') }}
+        run: pnpm verify:issue197
+
+      - name: Issue 199 Timeline seek moves the playhead after the ruler mounts gate
+        if: ${{ contains(needs.classify.outputs.suites, 'timeline') }}
+        run: pnpm verify:issue199
+
+  quality_full:
+    name: Full quality and regression
+    needs: classify
+    if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier == 'full' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record selected risk tier
+        shell: pwsh
+        env:
+          RISK_TIER: ${{ needs.classify.outputs.tier }}
+          RISK_REASON: ${{ needs.classify.outputs.reason }}
+          RISK_AREAS: ${{ needs.classify.outputs.areas }}
+          RISK_SUITES: ${{ needs.classify.outputs.suites }}
         run: |
           "## Full CI path" >> $env:GITHUB_STEP_SUMMARY
           "" >> $env:GITHUB_STEP_SUMMARY
           "- Risk tier: ``$env:RISK_TIER``" >> $env:GITHUB_STEP_SUMMARY
           "- Reason: $env:RISK_REASON" >> $env:GITHUB_STEP_SUMMARY
+          "- Areas: ``$env:RISK_AREAS``" >> $env:GITHUB_STEP_SUMMARY
+          "- Suites: ``$env:RISK_SUITES``" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -337,12 +757,19 @@ jobs:
       - name: Issue 109 adaptive resource workspace gate
         run: pnpm verify:issue109-resource-workspace
 
+      - name: Issue 197 Timeline collapse releases vertical space to Canvas gate
+        run: pnpm verify:issue197
+
+      - name: Issue 199 Timeline seek moves the playhead after the ruler mounts gate
+        run: pnpm verify:issue199
+
   quality:
     name: Final CI result
     if: ${{ always() }}
     needs:
       - classify
       - quality_docs
+      - quality_targeted
       - quality_full
     runs-on: ubuntu-latest
     steps:
@@ -352,7 +779,10 @@ jobs:
           CLASSIFIER_RESULT: ${{ needs.classify.result }}
           TIER: ${{ needs.classify.outputs.tier }}
           REASON: ${{ needs.classify.outputs.reason }}
+          AREAS: ${{ needs.classify.outputs.areas }}
+          SUITES: ${{ needs.classify.outputs.suites }}
           DOCS_RESULT: ${{ needs.quality_docs.result }}
+          TARGETED_RESULT: ${{ needs.quality_targeted.result }}
           FULL_RESULT: ${{ needs.quality_full.result }}
         run: |
           set -euo pipefail
@@ -361,8 +791,11 @@ jobs:
             echo ''
             echo "- Risk tier: \`$TIER\`"
             echo "- Reason: $REASON"
+            echo "- Areas: \`$AREAS\`"
+            echo "- Suites: \`$SUITES\`"
             echo "- Classifier: \`$CLASSIFIER_RESULT\`"
             echo "- Docs-only fast path: \`$DOCS_RESULT\`"
+            echo "- Targeted quality path: \`$TARGETED_RESULT\`"
             echo "- Full quality path: \`$FULL_RESULT\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -372,12 +805,22 @@ jobs:
           fi
 
           if [[ "$TIER" == 'docs' ]]; then
-            if [[ "$DOCS_RESULT" != 'success' || "$FULL_RESULT" != 'skipped' ]]; then
+            if [[ "$DOCS_RESULT" != 'success' || "$TARGETED_RESULT" != 'skipped' || "$FULL_RESULT" != 'skipped' ]]; then
               echo 'Docs-only path did not produce the expected light result.' >&2
               exit 1
             fi
-          elif [[ "$FULL_RESULT" != 'success' || "$DOCS_RESULT" != 'skipped' ]]; then
-            echo 'Full path did not produce the expected regression result.' >&2
+          elif [[ "$TIER" == 'targeted' ]]; then
+            if [[ "$TARGETED_RESULT" != 'success' || "$DOCS_RESULT" != 'skipped' || "$FULL_RESULT" != 'skipped' ]]; then
+              echo 'Targeted path did not produce the expected regression result.' >&2
+              exit 1
+            fi
+          elif [[ "$TIER" == 'full' ]]; then
+            if [[ "$FULL_RESULT" != 'success' || "$DOCS_RESULT" != 'skipped' || "$TARGETED_RESULT" != 'skipped' ]]; then
+              echo 'Full path did not produce the expected regression result.' >&2
+              exit 1
+            fi
+          else
+            echo "Unknown tier: $TIER" >&2
             exit 1
           fi
 
