@@ -54,6 +54,7 @@
     "verify:issue109-resource-workspace": "pnpm build && electron scripts/verify-issue109-resource-workspace.cjs",
     "verify:issue197": "pnpm build && electron scripts/verify-issue197-timeline-collapse.cjs",
     "verify:issue199": "pnpm build && electron scripts/verify-issue199-timeline-seek.cjs",
+    "verify:issue206": "pnpm build && electron scripts/verify-issue206-v5.cjs",
     "verify:issue125": "pnpm build && pnpm test:integration && electron scripts/verify-issue76.cjs && electron scripts/verify-issue102-task3.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",
