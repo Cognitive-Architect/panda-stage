@@ -15,6 +15,7 @@ const manifest = JSON.parse(
   statusVocabulary: string[];
   platformVocabulary: string[];
   runInVocabulary: string[];
+  count: number;
   gates: Array<Record<string, unknown>>;
 };
 
@@ -22,7 +23,7 @@ const manifest = JSON.parse(
 // same status vocabulary; these are the authoritative allowed values.
 const STATUS_VOCAB = ['active', 'superseded', 'historical', 'manual', 'release-only', 'needs-review'];
 const PLATFORM_VOCAB = ['windows', 'cross-platform'];
-const RUNIN_VOCAB = ['ci', 'local', 'ci-and-local', 'manual'];
+const RUNIN_VOCAB = ['ci', 'local', 'ci-and-local', 'manual', 'unknown'];
 const REQUIRED = ['id', 'script', 'suite', 'subsystem', 'status', 'platform', 'runIn', 'owner'];
 
 const pkgVerify = Object.keys(pkg.scripts).filter((k) => k.startsWith('verify:'));
@@ -36,6 +37,8 @@ describe('RH-04 verification manifest — package.json <-> manifest drift contra
     expect(manifest.gates.length, 'manifest gate count must equal package.json verify:* count').toBe(
       pkgVerify.length,
     );
+    // The manifest's declared count must match the actual gate list length.
+    expect(manifest.count, 'manifest.count must equal gates.length').toBe(manifest.gates.length);
   });
 
   it('every manifest script actually exists in package.json', () => {
@@ -55,10 +58,19 @@ describe('RH-04 verification manifest — package.json <-> manifest drift contra
     expect(new Set(scripts).size, 'duplicate manifest scripts').toBe(scripts.length);
   });
 
-  it('status values come from the allowed vocabulary and match the declared vocabulary', () => {
+  it('declared vocabularies match the canonical vocabulary (status/platform/runIn)', () => {
     expect([...manifest.statusVocabulary].sort(), 'manifest.statusVocabulary drifted from canonical').toEqual(
       [...STATUS_VOCAB].sort(),
     );
+    expect([...manifest.platformVocabulary].sort(), 'manifest.platformVocabulary drifted from canonical').toEqual(
+      [...PLATFORM_VOCAB].sort(),
+    );
+    expect([...manifest.runInVocabulary].sort(), 'manifest.runInVocabulary drifted from canonical (must include unknown)').toEqual(
+      [...RUNIN_VOCAB].sort(),
+    );
+  });
+
+  it('status values come from the allowed vocabulary', () => {
     for (const g of manifest.gates) {
       expect(STATUS_VOCAB, `gate ${String(g.id)} status "${String(g.status)}" not allowed`).toContain(g.status);
     }

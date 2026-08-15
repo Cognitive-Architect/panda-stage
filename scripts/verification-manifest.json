@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "generatedFor": "issue-209 / RH-04 verification-gate manifest",
-  "generatedFrom": "current working-tree package.json (baseline main@e4eeb55 not present in local clone; local main is at PR #158 and behind this checkout). Manifest inventories the scripts present in the working tree so the drift contract can pass locally.",
+  "generatedFrom": "main@3acc1496e34b53a8115a308e2e3a8fd78d2feed7",
   "description": "Machine-readable ledger of every top-level `verify:*` package script. Makes verification-gate intent auditable and lets a contract test detect package.json <-> manifest drift. Inventory + contract phase only: does not change CI routing, verifier scripts, or product behavior.",
   "statusVocabulary": [
     "active",
@@ -19,7 +19,8 @@
     "ci",
     "local",
     "ci-and-local",
-    "manual"
+    "manual",
+    "unknown"
   ],
   "count": 45,
   "gates": [
@@ -66,7 +67,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-day03.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -78,7 +79,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-day04.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -90,7 +91,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-day05.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -102,7 +103,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-day06.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -114,7 +115,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-day07.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -126,7 +127,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-day08.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -138,7 +139,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-day09.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -293,8 +294,8 @@
       "suite": "gate-a",
       "subsystem": "gate-a",
       "status": "needs-review",
-      "platform": "cross-platform",
-      "runIn": "ci-and-local",
+      "platform": "windows",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Added via PR #158 (gate-a-dpi). Standalone node-based gate; not wired into any subsystem wrapper in this checkout — owner to confirm intended role."
@@ -318,7 +319,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-issue100.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -330,7 +331,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-issue101.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -400,12 +401,12 @@
       "script": "verify:issue125",
       "suite": "issue125",
       "subsystem": "project",
-      "status": "active",
+      "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "project",
+      "runIn": "unknown",
+      "owner": "unassigned",
       "supersedes": null,
-      "notes": "Composite gate: runs verify:issue76 + verify:issue102-task3 (both current project-subsystem gates). Standalone; not folded into verify:project wrapper."
+      "notes": "Standalone/composite verifier exists, but current wrapper/CI wiring does not establish its active role. verify:project wrapper does not route to it; Full regression runs project/assets/character/shot/canvas/history/editor/timeline only. Marked needs-review per Issue #209 (do not assume historical or policy intent)."
     },
     {
       "id": "issue197",
@@ -486,7 +487,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-issue94.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -498,7 +499,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-issue95.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
@@ -510,7 +511,7 @@
       "subsystem": "general",
       "status": "needs-review",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "unknown",
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Runnable verifier (scripts/verify-issue99.cjs). Not wired into any subsystem wrapper or CI in this checkout — owner to confirm current role (active vs historical)."
