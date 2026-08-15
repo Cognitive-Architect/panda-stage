@@ -903,7 +903,8 @@ async function verifyDay23() {
       evidence.lock.transformerVisible ||
       !evidence.lock.transformInputsDisabled ||
       !evidence.lock.orderButtonsDisabled ||
-      evidence.persistence.schemaVersion !== 5 ||
+      // schema version is 6 after Day 27 v5->v6 migration (PROJECT_SCHEMA_VERSION in src/domain/constants.ts)
+      evidence.persistence.schemaVersion !== 6 ||
       evidence.persistence.reopenedLayer?.flipX !== true ||
       evidence.persistence.reopenedLayer?.rotationDeg !== 90 ||
       evidence.persistence.reopenedLayer?.scaleX !== 1.25 ||

@@ -1070,7 +1070,8 @@ async function verifyDay22() {
       !evidence.invalidAsset.layerCountUnchanged ||
       !evidence.invalidAsset.revisionUnchanged ||
       !saveRequest ||
-      evidence.persistence.schemaVersion !== 5 ||
+      // schema version is 6 after Day 27 v5->v6 migration (PROJECT_SCHEMA_VERSION in src/domain/constants.ts)
+      evidence.persistence.schemaVersion !== 6 ||
       reopenedLayer?.x !== 900 ||
       reopenedLayer?.y !== 500 ||
       reopenedLayer?.locked !== true ||

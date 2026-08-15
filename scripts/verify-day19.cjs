@@ -931,7 +931,8 @@ async function verifyDay19() {
       !importRequest ||
       importRequest.baseRevision !== 0 ||
       saveRequest?.revision !== 6 ||
-      savedProject?.schemaVersion !== 5 ||
+      // schema version is 6 after Day 27 v5->v6 migration (PROJECT_SCHEMA_VERSION in src/domain/constants.ts)
+      savedProject?.schemaVersion !== 6 ||
       persistedCharacter?.defaultScale !== 0.75 ||
       persistedCharacter?.defaultFlipX !== true ||
       persistedCharacter?.mouthOpenAssetId !== assetIds.mouth ||
