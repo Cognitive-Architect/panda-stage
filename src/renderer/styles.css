@@ -849,15 +849,165 @@ button:disabled {
 
 .bottom-workspace {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 0;
-  min-height: 52px;
-  max-height: 76px;
-  padding: 4px 8px;
+  min-height: 132px;
+  max-height: 168px;
+  padding: 6px 8px;
   overflow: hidden;
+  gap: 6px;
   border: 1px solid rgb(127 199 148 / 22%);
   border-radius: 10px;
   background: rgb(8 14 10 / 74%);
+}
+
+/* Issue 197: the rule above stays the approved Day 26 *expanded* contract.
+   Collapsing the Timeline must release real vertical space, so the collapsed
+   state drops the expanded floor and is capped strictly below it
+   (112px < 132px), which proves collapsed height < expanded height. The freed
+   height flows into the `minmax(0, 1fr)` middle row of `.editor-layout`, i.e.
+   the row `.editor-body` / CanvasWorkspace grows into. The collapsed height
+   stays content-driven (`min-height: 0`), so the reopen entry, timecode and
+   History controls keep their natural size instead of being clipped. */
+.bottom-workspace[data-timeline-expanded='false'] {
+  min-height: 0;
+  max-height: 112px;
+}
+
+.timeline-dock {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 4px;
+}
+
+/* Collapse hides only the ruler body (React already removes it from the tree
+   when expanded=false). The header with the reopen button must stay reachable
+   so the user can expand the timeline again without a reload. */
+.timeline-dock[data-expanded='false'] .timeline-ruler-scroll,
+.timeline-dock[data-expanded='false'] .timeline-empty {
+  display: none;
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.timeline-collapse {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid rgb(127 199 148 / 30%);
+  border-radius: 8px;
+  background: rgb(18 31 23 / 90%);
+  color: #d7ebdc;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.timeline-timecode {
+  flex: 0 1 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: #b7c7bd;
+  white-space: nowrap;
+}
+
+.timeline-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.timeline-zoom button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgb(127 199 148 / 30%);
+  border-radius: 6px;
+  background: rgb(18 31 23 / 90%);
+  color: #d7ebdc;
+  cursor: pointer;
+}
+
+.timeline-zoom-value {
+  font-size: 12px;
+  color: #b7c7bd;
+  min-width: 28px;
+  text-align: center;
+}
+
+.timeline-ruler-scroll {
+  position: relative;
+  min-width: 0;
+  height: 64px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgb(127 199 148 / 18%);
+  border-radius: 8px;
+  background: rgb(10 18 12 / 92%);
+}
+
+.timeline-ruler-track {
+  position: relative;
+  height: 100%;
+  min-width: 100%;
+}
+
+.timeline-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgb(127 199 148 / 26%);
+  pointer-events: none;
+}
+
+.timeline-tick-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 10px;
+  color: #8fa897;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #7ddc9a;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.timeline-playhead-handle {
+  position: absolute;
+  top: -2px;
+  left: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #7ddc9a;
+}
+
+.timeline-empty {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: #8fa897;
+  font-size: 12px;
+  border: 1px dashed rgb(127 199 148 / 24%);
+  border-radius: 8px;
 }
 
 .bottom-workspace > .history-controls {
@@ -2932,8 +3082,9 @@ h1 {
     grid-template-columns:
       minmax(52px, 56px)
       minmax(0, 1fr)
-      minmax(220px, 240px);
-    /* Issue 109 narrow baseline reference: minmax(140px, 160px). */
+      minmax(52px, 56px);
+    /* Issue 192: collapse the right Inspector rail symmetrically with the left
+       edge so the central Canvas reclaims horizontal space in compact mode. */
     gap: 8px;
   }
 
@@ -3061,13 +3212,121 @@ h1 {
   .close-confirm-overlay {
     padding: 16px;
   }
+
+  /* Issue 192: mirror the left resource workspace compaction. The right
+     Inspector becomes a balanced 56px rail; its content opens as a temporary
+     right-side overlay that never permanently shrinks the Canvas. */
+  .right-inspector {
+    z-index: 20;
+    width: 56px;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .right-inspector-measurement-hook {
+    display: none;
+  }
+
+  .inspector-rail-handle {
+    position: absolute;
+    z-index: 32;
+    top: 0;
+    right: 0;
+    display: grid;
+    width: 52px;
+    height: 100%;
+    min-height: 52px;
+    padding: 8px 3px;
+    border: 1px solid rgb(127 199 148 / 34%);
+    border-radius: 12px;
+    color: #d8f2df;
+    background: #142019;
+    place-items: center;
+    gap: 4px;
+  }
+
+  .inspector-rail-handle:focus-visible {
+    outline: 2px solid #7fd398;
+    outline-offset: 2px;
+  }
+
+  .inspector-rail-handle strong {
+    font-size: 10px;
+    writing-mode: vertical-rl;
+  }
+
+  .right-inspector-drawer {
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    right: 0;
+    width: min(360px, calc(100vw - 24px));
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid rgb(127 199 148 / 38%);
+    border-radius: 14px;
+    background: #122018;
+    box-shadow: -18px 0 34px rgb(0 0 0 / 32%);
+    scrollbar-color: #3f6d4e #0a100c;
+    align-content: start;
+    gap: 10px;
+    transition:
+      opacity 120ms ease,
+      transform 120ms ease,
+      visibility 120ms ease;
+  }
+
+  .right-inspector:not(.right-inspector-drawer-open) .right-inspector-drawer {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(8px);
+  }
+
+  .right-inspector-drawer-open .inspector-rail-handle {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* V-194-01: a clear, non-keyboard close entry inside the drawer, mirroring
+     the left Resource Drawer's 关闭 button. Escape still works as a shortcut. */
+  .inspector-drawer-close {
+    display: block;
+    width: fit-content;
+    margin-left: auto;
+    margin-bottom: 8px;
+    padding: 4px 10px;
+    border: 1px solid rgb(127 199 148 / 34%);
+    border-radius: 8px;
+    color: #d8f2df;
+    background: #0f1812;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .inspector-drawer-close:focus-visible {
+    outline: 2px solid #7fd398;
+    outline-offset: 2px;
+  }
 }
 
 @media (max-width: 720px) {
   .bottom-workspace {
-    min-height: 68px;
-    max-height: 76px;
-    padding: 4px 6px;
+    min-height: 128px;
+    max-height: 160px;
+    padding: 6px 6px;
+  }
+
+  /* Issue 197: the compact history grid below stacks into two rows, so the
+     collapsed cap is raised a little while staying strictly under the narrow
+     expanded floor (120px < 128px). Canvas still reclaims the difference. */
+  .bottom-workspace[data-timeline-expanded='false'] {
+    max-height: 120px;
   }
 
   .bottom-workspace > .history-controls {

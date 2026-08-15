@@ -13,7 +13,7 @@ describe('Issue 109 adaptive resource workspace contract', () => {
       /\.editor-body\s*\{[\s\S]*?minmax\(320px, 360px\)[\s\S]*?minmax\(160px, 180px\)/u,
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*1100px\)[\s\S]*?minmax\(52px, 56px\)[\s\S]*?minmax\(140px, 160px\)/u,
+      /@media\s*\(max-width:\s*1100px\)[\s\S]*?\.editor-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(52px,\s*56px\)\s*minmax\(0,\s*1fr\)\s*minmax\(52px,\s*56px\);/u,
     );
     expect(styles).toContain('.resource-activity-surface');
     expect(styles).toContain('width: min(360px, calc(100vw - 24px));');

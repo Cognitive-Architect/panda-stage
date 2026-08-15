@@ -69,6 +69,8 @@ jobs:
               canvas) add_suite canvas; add_suite history ;;
               history) add_suite history; add_suite canvas ;;
               editor) add_suite editor ;;
+              editor_timeline) add_suite editor; add_suite timeline ;;
+              timeline) add_suite timeline ;;
             esac
           }
 
@@ -95,10 +97,10 @@ jobs:
               return 0
             fi
 
-            # Day 26 timeline gates are not on main yet; timeline changes stay Full until they land.
+            # Day 26 timeline work (PR #200): timeline changes route to the
+            # timeline suite and run as targeted regression under a Draft PR.
             if [[ "$path" =~ ^src/renderer/features/timeline/ ]]; then
               add_area timeline
-              full=true
               return 0
             fi
 
@@ -127,7 +129,7 @@ jobs:
               return 0
             fi
             if [[ "$path" =~ ^src/renderer/features/(editor|actions)/ || "$path" =~ ^src/renderer/shell/ || "$path" =~ \.(css|scss)$ ]]; then
-              add_area editor
+              add_area editor_timeline
               return 0
             fi
 
@@ -141,6 +143,7 @@ jobs:
                 scripts/verify-day21*|scripts/verify-day22*|scripts/verify-day23*|scripts/verify-issue47*) add_area canvas ;;
                 scripts/verify-day24*) add_area history ;;
                 scripts/verify-issue102-task2*|scripts/verify-issue102-task4*|scripts/verify-issue109*) add_area editor ;;
+                scripts/verify-issue197*|scripts/verify-issue199*|scripts/verify-issue207*) add_area timeline ;;
                 *) add_area unknown; unknown=true ;;
               esac
               return 0
@@ -440,7 +443,7 @@ jobs:
       - name: Run full regression suites
         shell: pwsh
         run: |
-          $suites = @('project','assets','character','shot','canvas','history','editor')
+          $suites = @('project','assets','character','shot','canvas','history','editor','timeline')
           foreach ($suite in $suites) {
             Write-Host "Running verify:$suite"
             & pnpm "verify:$suite"

@@ -23,14 +23,12 @@ const ACTIVITIES: readonly {
   { id: 'characters', label: '角色' },
 ];
 
-function isNarrowViewport(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    window.matchMedia('(max-width: 1100px)').matches
-  );
+export function isNarrowViewport(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(max-width: 1100px)').matches;
 }
 
-function useNarrowViewport(): boolean {
+export function useNarrowViewport(): boolean {
   const [narrow, setNarrow] = useState(isNarrowViewport);
 
   useEffect(() => {

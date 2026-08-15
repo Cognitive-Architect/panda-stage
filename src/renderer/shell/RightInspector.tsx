@@ -1,4 +1,9 @@
-import { useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { Layer } from '../../domain';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { editorProjectStore } from '../stores/EditorProjectStore';
@@ -7,6 +12,7 @@ import { shotStore } from '../stores/shotStore';
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
+import { isNarrowViewport, useNarrowViewport } from './ResourceActivityDock';
 
 // Issue 109's existing Electron receipt measures the right column by this
 // stable selector. Keep the selector as a non-visual alias on the real
@@ -100,20 +106,42 @@ export function RightInspector(): React.JSX.Element {
     snapshot?.project.shots.find((candidate) => candidate.id === currentShotId)
       ?.backgroundLayerId ?? '';
 
-  return (
-    <aside
-      aria-labelledby="right-inspector-heading"
-      className="right-inspector"
-      data-background-layer-id={backgroundLayerId}
-      data-selected-layer-id={selectedLayerId ?? ''}
-      data-selection-state={selection.state}
-      data-testid="right-inspector"
-    >
-      <span
-        aria-hidden="true"
-        className="right-inspector-measurement-hook"
-        data-testid={LEGACY_REGION_TEST_ID}
-      />
+  // Issue 192: reuse the same narrow seam as the left resource workspace so the
+  // two edges collapse symmetrically instead of inventing a second breakpoint.
+  const narrow = useNarrowViewport();
+  const [drawerOpen, setDrawerOpen] = useState(() => !isNarrowViewport());
+  const railRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const prevDrawerOpenRef = useRef(drawerOpen);
+
+  useEffect(() => {
+    setDrawerOpen(!narrow);
+  }, [narrow]);
+
+  useEffect(() => {
+    if (!narrow) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setDrawerOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [narrow]);
+
+  // V-194-02: keep keyboard focus inside the open drawer, and return it to the
+  // rail trigger when the drawer closes. The trigger is hidden while open, so
+  // without this, focus would strand on a visibility:hidden element.
+  useEffect(() => {
+    if (!narrow) return;
+    if (drawerOpen && !prevDrawerOpenRef.current) {
+      drawerRef.current?.focus();
+    } else if (!drawerOpen && prevDrawerOpenRef.current) {
+      railRef.current?.focus();
+    }
+    prevDrawerOpenRef.current = drawerOpen;
+  }, [drawerOpen, narrow]);
+
+  const inspectorBody = (
+    <>
       <div className="right-inspector-heading">
         <div>
           <p className="eyebrow">右侧检查器</p>
@@ -140,6 +168,64 @@ export function RightInspector(): React.JSX.Element {
       <LayerOrderControls
         backgroundLayerSelected={selection.state === 'background'}
       />
+    </>
+  );
+
+  return (
+    <aside
+      aria-labelledby="right-inspector-heading"
+      className={`right-inspector${narrow ? ' right-inspector-compact' : ''}${
+        drawerOpen ? ' right-inspector-drawer-open' : ''
+      }`}
+      data-background-layer-id={backgroundLayerId}
+      data-drawer-open={drawerOpen}
+      data-narrow={narrow ? 'true' : 'false'}
+      data-selected-layer-id={selectedLayerId ?? ''}
+      data-selection-state={selection.state}
+      data-testid="right-inspector"
+    >
+      <span
+        aria-hidden="true"
+        className="right-inspector-measurement-hook"
+        data-testid={LEGACY_REGION_TEST_ID}
+      />
+      {narrow ? (
+        <>
+      <button
+        ref={railRef}
+        aria-controls="right-inspector-drawer"
+        aria-expanded={drawerOpen}
+        aria-label={drawerOpen ? '收起图层检查器' : '打开图层检查器'}
+        className="inspector-rail-handle"
+        data-testid="inspector-rail-handle"
+        onClick={() => setDrawerOpen((open) => !open)}
+        type="button"
+      >
+        <span>{drawerOpen ? '›' : '‹'}</span>
+        <strong>属性</strong>
+      </button>
+      <div
+        ref={drawerRef}
+        tabIndex={-1}
+        className="right-inspector-drawer"
+        data-testid="right-inspector-drawer"
+        id="right-inspector-drawer"
+      >
+        <button
+          aria-label="关闭图层检查器"
+          className="inspector-drawer-close"
+          data-testid="inspector-drawer-close"
+          onClick={() => setDrawerOpen(false)}
+          type="button"
+        >
+          关闭
+        </button>
+        {inspectorBody}
+      </div>
+        </>
+      ) : (
+        inspectorBody
+      )}
     </aside>
   );
 }
