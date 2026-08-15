@@ -10,8 +10,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
-  ProjectSchema,
   ShotService,
+  migrateProject,
 } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
@@ -33,7 +33,7 @@ describe('explicit background identity lifecycle', () => {
     temporaryParents.push(parent);
     const root = path.join(parent, 'background.pandastage');
     await mkdir(root, { recursive: true });
-    const current = ProjectSchema.parse(exampleProject);
+    const current = migrateProject(exampleProject);
     const version2 = {
       ...current,
       schemaVersion: 2,

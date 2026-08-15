@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { ProjectSchema, migrateProject } from '../../src/domain';
 import {
   assetCategoryCounts,
   selectAssetLibraryEntries,
@@ -9,7 +9,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('asset library selectors', () => {
   it('categorizes character images, backgrounds, and audio', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     expect(assetCategoryCounts(project)).toEqual({
       character: 2,
       background: 1,
@@ -23,7 +23,7 @@ describe('asset library selectors', () => {
   });
 
   it('classifies a configured mouth image as a character image', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const withMouth = ProjectSchema.parse({
       ...project,
       characters: project.characters.map((character, index) =>
@@ -56,7 +56,7 @@ describe('asset library selectors', () => {
   });
 
   it('emits one explicit identity entry per character expression even when assets are shared', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const characterA = project.characters[0]!;
     const sharedAssetId = characterA.expressions[0]!.assetId;
     const characterB = {
@@ -107,7 +107,7 @@ describe('asset library selectors', () => {
   });
 
   it('selects and sorts 100 background fixtures without loading file paths', () => {
-    const base = ProjectSchema.parse({
+    const base = migrateProject({
       ...exampleProject,
       assets: [],
       characters: [],

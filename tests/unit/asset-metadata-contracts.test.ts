@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssetSchema } from '../../src/domain';
+import { AssetSchema, migrateProject } from '../../src/domain';
 import {
   AssetMetadataRequestSchema,
   AssetMetadataResponseSchema,
@@ -27,7 +27,7 @@ describe('asset metadata contracts', () => {
   });
 
   it('requires a non-negative integer duration and exact cache path contract', () => {
-    const project = structuredClone(exampleProject);
+    const project = migrateProject(exampleProject);
     const audio = project.assets.find((asset) => asset.kind === 'audio')!;
     const response = AssetMetadataResponseSchema.parse({
       ok: true,

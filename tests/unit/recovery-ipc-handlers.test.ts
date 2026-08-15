@@ -1,6 +1,6 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 const electronMocks = vi.hoisted(() => ({
@@ -28,7 +28,7 @@ import type { ProjectService } from '../../src/main/services/ProjectService';
 import type { RecoveryService } from '../../src/main/services/RecoveryService';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 
-const project = ProjectSchema.parse(exampleProject);
+const project = migrateProject(exampleProject);
 const projectRoot = 'D:\\projects\\recovery.pandastage';
 
 function mainWindow(senderId = 42): BrowserWindow {

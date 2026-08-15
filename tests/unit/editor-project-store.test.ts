@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { ProjectSchema, migrateProject } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -8,7 +8,7 @@ describe('EditorProjectStore', () => {
     const store = new EditorProjectStore();
     const listener = vi.fn();
     store.subscribe(listener);
-    const formalProject = ProjectSchema.parse(exampleProject);
+    const formalProject = migrateProject(exampleProject);
 
     store.open('D:\\project.pandastage', formalProject);
     expect(store.getSnapshot()).toMatchObject({
@@ -46,7 +46,7 @@ describe('EditorProjectStore', () => {
 
   it('marks the matching revision clean without moving revision backwards', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
     store.updateProject({ ...project, name: 'Revision 1' });
     store.updateProject({ ...project, name: 'Revision 2' });
@@ -62,7 +62,7 @@ describe('EditorProjectStore', () => {
 
   it('keeps newer dirty edits when an older save acknowledgement arrives', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
     store.updateProject({ ...project, name: 'Revision 1' });
     const savedRevisionTwo = { ...project, name: 'Saved revision 2' };
@@ -79,7 +79,7 @@ describe('EditorProjectStore', () => {
 
   it('rejects a save acknowledgement from a future revision', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
     store.updateProject({ ...project, name: 'Revision 1' });
     store.updateProject({ ...project, name: 'Revision 2' });
@@ -93,7 +93,7 @@ describe('EditorProjectStore', () => {
 
   it('rejects replacing the open project with a different identity', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
 
     expect(() =>
@@ -106,7 +106,7 @@ describe('EditorProjectStore', () => {
 
   it('commits an asset import at the matching base revision', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
     const imported = {
       id: '16000000-0000-4000-8000-000000000001',
@@ -138,7 +138,7 @@ describe('EditorProjectStore', () => {
 
   it('merges imported assets without losing newer editor changes', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
     const imported = {
       id: '16000000-0000-4000-8000-000000000001',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { ProjectSchema, migrateProject } from '../../src/domain';
 import { applyAssetDeleteResponse } from '../../src/renderer/features/assets/applyAssetDeleteResponse';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import {
@@ -13,7 +13,7 @@ const unreferencedAssetId =
   '18000000-0000-4000-8000-000000000001';
 
 function projectWithUnusedAsset() {
-  return ProjectSchema.parse({
+  return migrateProject({
     ...exampleProject,
     assets: [
       ...exampleProject.assets,

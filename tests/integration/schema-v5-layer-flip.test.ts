@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema } from '../../src/domain';
+import { ProjectSchema, migrateProject } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
 const temporaryRoots: string[] = [];
@@ -30,7 +30,7 @@ describe('schema v5 explicit flip lifecycle', () => {
     temporaryRoots.push(parent);
     const projectRoot = path.join(parent, 'schema-v4.pandastage');
     const projectFile = path.join(projectRoot, 'project.json');
-    const current = ProjectSchema.parse(exampleProject);
+    const current = migrateProject(exampleProject);
     const version4 = {
       ...current,
       schemaVersion: 4,

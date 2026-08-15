@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
-  ProjectSchema,
   buildEditorStageRenderModel,
   calculateViewportTransform,
   stageToScreen,
+  migrateProject,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import { isViewportChromePointerTarget } from '../../src/renderer/features/canvas/CanvasViewport';
@@ -162,7 +162,7 @@ describe('layer position input', () => {
 });
 
 describe('SelectableLayer interaction adapter', () => {
-  const project = ProjectSchema.parse(exampleProject);
+  const project = migrateProject(exampleProject);
   const shot = project.shots[0]!;
   const model = buildEditorStageRenderModel(project, shot);
   const ordinary = model.layers.find(

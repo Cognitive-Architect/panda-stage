@@ -20,7 +20,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { registerAssetImportIpcHandlers } from '../../src/main/ipc/register-asset-import-ipc-handlers';
 import {
   AssetImportServiceError,
@@ -29,7 +29,7 @@ import {
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
-const project = ProjectSchema.parse(exampleProject);
+const project = migrateProject(exampleProject);
 const request = {
   projectRoot: 'D:\\project.pandastage',
   project,

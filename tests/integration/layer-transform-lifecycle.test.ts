@@ -12,6 +12,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   LayerService,
   ProjectSchema,
+  migrateProject,
 } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -36,7 +37,7 @@ describe('Day 23 layer transform lifecycle', () => {
     temporaryRoots.push(parent);
     const projectRoot = path.join(parent, 'transform.pandastage');
     const projectFile = path.join(projectRoot, 'project.json');
-    const initial = ProjectSchema.parse(exampleProject);
+    const initial = migrateProject(exampleProject);
     const shot = initial.shots[0]!;
     const target = shot.layers[1]!;
     const extraId = 'd2300000-0000-4000-8000-000000000010';

@@ -4,13 +4,14 @@ import {
   LayerService,
   LayerServiceError,
   ProjectSchema,
+  migrateProject,
 } from '../../src/domain';
 
 const CREATED_LAYER_ID = 'd2200000-0000-4000-8000-000000000001';
 const NOW = new Date('2026-07-26T01:00:00.000Z');
 
 function fixture() {
-  return ProjectSchema.parse(exampleProject);
+  return migrateProject(exampleProject);
 }
 
 function service() {

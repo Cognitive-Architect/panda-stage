@@ -25,7 +25,7 @@ import {
   ProjectServiceError,
   type ProjectService,
 } from '../../src/main/services/ProjectService';
-import { ProjectSchema } from '../../src/domain';
+import { ProjectSchema, migrateProject } from '../../src/domain';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -106,7 +106,7 @@ describe('project IPC handlers', () => {
 
   it('forwards only the parent directory, name, and metadata to createAt', async () => {
     const service = projectService();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const document = {
       projectRoot: 'D:\\projects\\新项目.pandastage',
       projectFilePath: 'D:\\projects\\新项目.pandastage\\project.json',
@@ -243,7 +243,7 @@ describe('project IPC handlers', () => {
   it('validates and forwards the exact dirty snapshot to the shared switch guard', async () => {
     const service = projectService();
     const confirmProjectSwitch = vi.fn().mockResolvedValue('discarded');
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     registerProjectIpcHandlers({
       getMainWindow: () => mainWindow(),
       projectService: service,
@@ -282,7 +282,7 @@ describe('project IPC handlers', () => {
   it('returns a distinct failure response for a project identity mismatch', async () => {
     const service = projectService();
     const projectRoot = 'D:\\projects\\target.pandastage';
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     vi.spyOn(service, 'save').mockRejectedValue(
       new ProjectServiceError(
         'PROJECT_ID_MISMATCH',
@@ -311,7 +311,7 @@ describe('project IPC handlers', () => {
   it('returns the authoritative project and revision for a stale save', async () => {
     const service = projectService();
     const projectRoot = 'D:\\projects\\target.pandastage';
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const currentProject = ProjectSchema.parse({
       ...project,
       name: 'Revision 6',
@@ -346,7 +346,7 @@ describe('project IPC handlers', () => {
 
   it('records a successful open without failing the open when recent config is unavailable', async () => {
     const service = projectService();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const document = {
       projectRoot: 'D:\\projects\\demo.pandastage',
       projectFilePath: 'D:\\projects\\demo.pandastage\\project.json',

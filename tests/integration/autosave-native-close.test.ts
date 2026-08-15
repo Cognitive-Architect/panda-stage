@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { AutosaveService } from '../../src/main/services/AutosaveService';
 import { UnsavedCloseController } from '../../src/main/services/UnsavedCloseController';
 import { UnsavedCloseGuard } from '../../src/main/windows/unsaved-close-guard';
@@ -20,7 +20,7 @@ const inertClock = {
 describe('autosave/native close boundary', () => {
   it('does not allow a Renderer revision rejected before Main acknowledgement to close natively', async () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open(PROJECT_ROOT, project);
     for (let revision = 1; revision <= 5; revision += 1) {
       store.updateProject({ ...project, name: `Saved revision ${revision}` });

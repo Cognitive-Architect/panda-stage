@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import {
   getEditorShellRecoveryCandidate,
   getEditorShellPage,
@@ -24,7 +24,7 @@ describe('EditorShell state boundary', () => {
     const store = new EditorProjectStore();
     store.open(
       'D:\\projects\\shell.pandastage',
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
 
     const state = getEditorShellState(store.getSnapshot());
@@ -42,7 +42,7 @@ describe('EditorShell state boundary', () => {
     const store = new EditorProjectStore();
     store.open(
       'D:\\projects\\shell.pandastage',
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
 
     expect(getEditorShellPage('project-center', store.getSnapshot())).toBe(
@@ -134,7 +134,7 @@ describe('EditorShell state boundary', () => {
         'D:\\projects\\shell.pandastage\\recovery\\candidate.json',
       projectId: exampleProject.id,
       savedAtMs: 4_102_444_800_000,
-      project: ProjectSchema.parse(exampleProject),
+      project: migrateProject(exampleProject),
     };
     const withCandidate = {
       trackedProjectRoot: recoveryCandidate.projectRoot,

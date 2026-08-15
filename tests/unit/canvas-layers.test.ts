@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ProjectSchema,
   calculateCoverTransform,
   isShotBackgroundLayer,
   listShotImageAssets,
   resolveLayerImageAsset,
+  migrateProject,
 } from '../../src/domain';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
-const project = ProjectSchema.parse(exampleProject);
+const project = migrateProject(exampleProject);
 
 describe('canvas layer selectors', () => {
   it('identifies only asset-backed background layers', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { applyAssetImportResponse } from '../../src/renderer/features/assets/applyAssetImportResponse';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import {
@@ -11,7 +11,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 describe('applyAssetImportResponse', () => {
   it('does not change dirty editor state for a stale response', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
     store.updateProject({ ...project, name: 'Newer unsaved edit' });
     const before = structuredClone(store.getSnapshot());
@@ -42,7 +42,7 @@ describe('applyAssetImportResponse', () => {
 
   it('preserves the store and shows exact residual paths for cleanup failure', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
     store.updateProject({ ...project, name: 'Keep this dirty edit' });
     const before = structuredClone(store.getSnapshot());

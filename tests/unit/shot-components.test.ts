@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { ShotEditor } from '../../src/renderer/features/shots/ShotEditor';
 import {
   nextAvailableShotName,
@@ -15,7 +15,7 @@ const rejectCreate = () => false;
 
 describe('shot management components', () => {
   it('renders selection, drag ordering, duration, total duration, and save actions', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(ShotManager, {
         snapshot: {
@@ -38,7 +38,7 @@ describe('shot management components', () => {
   });
 
   it('renders an explicit empty-project creation path', () => {
-    const project = ProjectSchema.parse({
+    const project = migrateProject({
       ...exampleProject,
       shots: [],
     });
@@ -76,7 +76,7 @@ describe('shot management components', () => {
   });
 
   it('explains the duration boundary and renders only a placeholder thumbnail', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(ShotEditor, {
         index: 0,

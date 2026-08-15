@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   ProjectSchema,
+  migrateProject,
   SHOT_MIN_DURATION_MS,
   ShotSchema,
   ShotService,
@@ -47,7 +48,7 @@ function expectShotError(
 describe('ShotService', () => {
   it('creates, renames, reorders, removes, and sums five valid shots', () => {
     const shotService = service();
-    let project = ProjectSchema.parse({
+    let project = migrateProject({
       ...exampleProject,
       shots: [],
     });
@@ -78,7 +79,7 @@ describe('ShotService', () => {
   });
 
   it('duplicates a populated shot with globally new entity IDs and remapped internal references', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const duplicated = service().duplicate(project, project.shots[0]!.id);
     const source = duplicated.shots[0]!;
     const copy = duplicated.shots[1]!;
@@ -108,7 +109,7 @@ describe('ShotService', () => {
   });
 
   it('rejects fractional, NaN, and sub-500ms durations at both service and schema boundaries', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const shotId = project.shots[0]!.id;
     for (const durationMs of [499, 500.5, Number.NaN]) {
       expectShotError(
@@ -125,7 +126,7 @@ describe('ShotService', () => {
   });
 
   it('rejects a duration shorter than existing content', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     expectShotError(
       () => service().setDuration(project, project.shots[0]!.id, 2_999),
       'SHOT_CONTENT_OUT_OF_RANGE',
@@ -134,7 +135,7 @@ describe('ShotService', () => {
 
   it('allows the final shot to be removed and rejects duplicate names or invalid target order', () => {
     const shotService = service();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     expect(shotService.remove(project, project.shots[0]!.id).shots).toEqual(
       [],
     );

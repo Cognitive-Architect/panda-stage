@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   ProjectSchema,
+  migrateProject,
   buildEditorStageRenderModel,
   resolveLayerImageAsset,
   type Project,
@@ -83,7 +84,7 @@ function renderContracts(project: Project) {
 
 describe('shared stage layer render contract', () => {
   it('uses identical centered cover parameters for a non-16:9 background', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const backgroundAssetId =
       project.shots[0]!.layers[0]!.source.kind === 'asset'
         ? project.shots[0]!.layers[0]!.source.assetId
@@ -134,7 +135,7 @@ describe('shared stage layer render contract', () => {
   ])(
     'preserves background visible=$visible and opacity=$opacity in both paths',
     ({ visible, opacity }) => {
-      const project = ProjectSchema.parse(exampleProject);
+      const project = migrateProject(exampleProject);
       const configured = ProjectSchema.parse({
         ...project,
         shots: [
@@ -156,7 +157,7 @@ describe('shared stage layer render contract', () => {
   );
 
   it('preserves every ordinary layer transform and visibility field', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const configured = ProjectSchema.parse({
       ...project,
       shots: [
@@ -196,7 +197,7 @@ describe('shared stage layer render contract', () => {
   });
 
   it('keeps ordinary-layer center and geometry stable across a flip', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const ordinaryId = project.shots[0]!.layers.find(
       (layer) => layer.id !== project.shots[0]!.backgroundLayerId,
     )!.id;

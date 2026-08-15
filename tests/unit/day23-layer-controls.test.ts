@@ -3,8 +3,8 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   CharacterService,
   LayerService,
-  ProjectSchema,
   buildEditorStageRenderModel,
+  migrateProject,
 } from '../../src/domain';
 import {
   isTransformerBoxAllowed,
@@ -141,7 +141,7 @@ describe('Day 23 layer control adapters', () => {
   });
 
   it('renders explicit horizontal flip around the unchanged center', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
     const layer = shot.layers[1]!;
     const before = buildEditorStageRenderModel(project, shot).layers.find(
@@ -172,7 +172,7 @@ describe('Day 23 layer control adapters', () => {
   });
 
   it('keeps the same center across expression size changes and flip state', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const character = project.characters[0]!;
     const center = { x: 812.5, y: 431.25 };
     const service = new CharacterService();

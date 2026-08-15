@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import {
   AutosaveTrackRequestSchema,
   RecoveryEnvelopeSchema,
@@ -7,7 +7,7 @@ import {
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('recovery API contracts', () => {
-  const project = ProjectSchema.parse(exampleProject);
+  const project = migrateProject(exampleProject);
 
   it('requires integer timestamps and a matching project identity', () => {
     expect(
