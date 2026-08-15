@@ -102,8 +102,8 @@ describe('Day 23 layer transform lifecycle', () => {
 
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 5,
-      project: { schemaVersion: 5 },
+      sourceVersion: 6,
+      project: { schemaVersion: 6 },
     });
     expect(reopenedLayer).toMatchObject({
       anchor: 'center',

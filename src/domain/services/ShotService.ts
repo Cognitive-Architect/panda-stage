@@ -115,7 +115,10 @@ export class ShotService {
       dialogues: source.dialogues.map((dialogue) => ({
         ...dialogue,
         id: this.nextUniqueId(usedIds),
-        audioClipId: audioClipIds.get(dialogue.audioClipId)!,
+        audioClipId:
+          dialogue.audioClipId === undefined
+            ? undefined
+            : audioClipIds.get(dialogue.audioClipId),
       })),
       timelineEvents: source.timelineEvents.map((event) => ({
         ...event,

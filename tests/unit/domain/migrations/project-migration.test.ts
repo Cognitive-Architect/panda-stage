@@ -177,7 +177,7 @@ function v2WithoutTimelineEvents(): unknown {
 describe('T01 迁移回填 timelineEvents', () => {
   it('v1 旧项目（缺 timelineEvents）可被打开且结果含空数组', () => {
     const result = migrateProject(v1WithoutTimelineEvents()) as Project;
-    expect(result.schemaVersion).toBe(5);
+    expect(result.schemaVersion).toBe(6);
     expect(result.shots.length).toBeGreaterThan(0);
     for (const shot of result.shots) {
       expect(Array.isArray(shot.timelineEvents)).toBe(true);
@@ -187,7 +187,7 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('v2 旧项目（缺 timelineEvents）可被打开且结果含空数组', () => {
     const result = migrateProject(v2WithoutTimelineEvents()) as Project;
-    expect(result.schemaVersion).toBe(5);
+    expect(result.schemaVersion).toBe(6);
     for (const shot of result.shots) {
       expect(Array.isArray(shot.timelineEvents)).toBe(true);
       expect(shot.timelineEvents).toEqual([]);

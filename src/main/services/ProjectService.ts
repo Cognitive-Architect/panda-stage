@@ -9,6 +9,7 @@ import {
   UnsupportedSchemaVersionError,
   detectSchemaVersion,
   migrateProject,
+  type DetectedSchemaVersion,
   type Project,
 } from '../../domain';
 import {
@@ -463,7 +464,7 @@ export class ProjectService {
     projectRoot: string,
     project: Project,
     migrated: boolean,
-    sourceVersion: 0 | 1 | 2 | 3 | 4 | 5,
+    sourceVersion: DetectedSchemaVersion,
   ): ProjectDocument {
     return {
       projectRoot,

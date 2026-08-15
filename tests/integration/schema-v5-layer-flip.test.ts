@@ -55,7 +55,7 @@ describe('schema v5 explicit flip lifecycle', () => {
     expect(migrated).toMatchObject({
       migrated: true,
       sourceVersion: 4,
-      project: { schemaVersion: 5 },
+      project: { schemaVersion: 6 },
     });
     expect(
       migrated.project.shots.flatMap((shot) => shot.layers)
@@ -80,11 +80,11 @@ describe('schema v5 explicit flip lifecycle', () => {
       await readFile(projectFile, 'utf8'),
     );
     const reopened = await service.open(projectRoot);
-    expect(serialized.schemaVersion).toBe(5);
+    expect(serialized.schemaVersion).toBe(6);
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 5,
-      project: { schemaVersion: 5 },
+      sourceVersion: 6,
+      project: { schemaVersion: 6 },
     });
     expect(
       reopened.project.shots[0]!.layers.find(

@@ -61,7 +61,7 @@ describe('ProjectSchema v5', () => {
     const shot = project.shots[0]!;
 
     expect(project).toMatchObject({
-      schemaVersion: 5,
+      schemaVersion: 6,
       width: 1920,
       height: 1080,
       fps: 24,

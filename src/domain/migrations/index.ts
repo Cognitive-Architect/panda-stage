@@ -27,12 +27,15 @@ export type DetectedSchemaVersion =
   | 2
   | 3
   | 4
+  | 5
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(readonly receivedVersion: unknown) {
     super(
-      `Unsupported project schemaVersion: ${String(receivedVersion)}. Supported versions are 0, 1, 2, 3, 4, and ${PROJECT_SCHEMA_VERSION}.`,
+      `Unsupported project schemaVersion: ${String(
+        receivedVersion,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -53,9 +56,10 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 2 ||
     version === 3 ||
     version === 4 ||
+    version === PROJECT_SCHEMA_VERSION - 1 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
-    return version;
+    return version as DetectedSchemaVersion;
   }
   throw new UnsupportedSchemaVersionError(version);
 }

@@ -15,6 +15,7 @@ import {
   timeToPx,
 } from './timeGeometry';
 import { timelineUiStore, useTimelineUi } from './timelineUiStore';
+import { DialogueSheet } from '../dialogue/DialogueSheet';
 
 /**
  * The only product Timeline surface for Day 26. It renders the current shot's
@@ -205,6 +206,7 @@ export function TimelineDock(): React.JSX.Element {
           </div>
         )
       ) : null}
+      <DialogueSheet />
     </section>
   );
 }
