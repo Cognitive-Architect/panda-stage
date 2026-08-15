@@ -1,4 +1,4 @@
-import { ProjectSchema } from '../../../domain';
+import { migrateProject } from '../../../domain';
 import type {
   ProjectOperationResponse,
   ProjectSwitchGuardRequest,
@@ -138,7 +138,10 @@ export class ProjectSessionController {
           { cause: opened.error },
         );
       }
-      const preparedProject = ProjectSchema.parse(opened.document.project);
+      // Persisted document ingestion routes through the single migration
+      // pipeline; the real document is already v5 (migrated by ProjectService
+      // on open), but a legacy envelope is migrated here too.
+      const preparedProject = migrateProject(opened.document.project);
       if (
         currentEditor &&
         this.sameRoot(
