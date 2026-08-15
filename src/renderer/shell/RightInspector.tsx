@@ -103,6 +103,7 @@ export function RightInspector(): React.JSX.Element {
     dialogueSelectionStore.subscribe,
     dialogueSelectionStore.getSelectedDialogueId,
   );
+  const inspectorModeLabel = selectedDialogueId ? '对白检查器' : '图层检查器';
   const selection = getRightInspectorSelection(
     snapshot,
     currentShotId,
@@ -210,7 +211,7 @@ export function RightInspector(): React.JSX.Element {
         ref={railRef}
         aria-controls="right-inspector-drawer"
         aria-expanded={drawerOpen}
-        aria-label={drawerOpen ? '收起图层检查器' : '打开图层检查器'}
+        aria-label={drawerOpen ? `收起${inspectorModeLabel}` : `打开${inspectorModeLabel}`}
         className="inspector-rail-handle"
         data-testid="inspector-rail-handle"
         onClick={() => setDrawerOpen((open) => !open)}
@@ -227,7 +228,7 @@ export function RightInspector(): React.JSX.Element {
         id="right-inspector-drawer"
       >
         <button
-          aria-label="关闭图层检查器"
+          aria-label={`关闭${inspectorModeLabel}`}
           className="inspector-drawer-close"
           data-testid="inspector-drawer-close"
           onClick={() => setDrawerOpen(false)}

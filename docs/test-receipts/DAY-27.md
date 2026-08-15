@@ -2,7 +2,7 @@
 
 > **Issue #215 / Day 27（B-27/45）**：在 Day 26 已通过并合入的正式 Timeline / BottomWorkspace 基础上，为当前镜头建立可批量录入「角色：台词」的 Dialogue Sheet，并将对白选择接入唯一 RightInspector；所有提交进入现有 ProjectCommand / History / dirty / save 生命周期。
 >
-> **结论**：`PASS`（自动化 + 结构性验收全部通过）。真实 Windows Electron 主路径（6 行批量录入 / Undo/Redo / 保存重开 / A→B→A / 窄屏 drawer）是人工/CI 验收门，沙箱无 Electron 二进制无法本地执行，已在 PR #216 上开放待维护者/Windows CI 签字。本回执经自动化命令 + 单测/集成证据如实填写，未执行的 Electron 行显式标注 PENDING，绝不伪报 PASS。
+> **结论**：`automated/structural = PASS`（自动化命令 + 单测/集成全绿）；**`overall = PENDING`**（真人 Windows Electron Gate 签字前，Day 27 整体不得视为 PASS）。真实 Windows Electron 主路径（6 行批量录入 / Undo-Redo / 保存重开 / A→B→A / 窄屏 drawer / 草稿隔离复验）是人工/CI 验收门，沙箱无 Electron 二进制无法本地执行，已在 PR #216 上开放待维护者/Windows CI 签字。本回执据真实命令输出 + 单测/集成证据填写，未执行的 Electron 行显式标注 PENDING，绝不伪报 PASS。
 
 ## 1. 基线与收卷
 
@@ -56,7 +56,7 @@
 - **DECISION-B27-TIMELINE-OWNER**：`src/renderer/features/timeline/TimelineDock.tsx`。Day27 唯一 Timeline owner 未变；`DialogueSheet` 作为其子组件挂载，未另建第二 Timeline / bottom timeline root。
 - **DECISION-B27-PLAYHEAD-OWNER**：`timelineUiStore.getSnapshot().currentTimeMs`（UI-only）。`dialogueStore` 在提交瞬间读取，以普通 `pointTimeMs` 传给 domain；`DialogueService` 不 import renderer。
 - **DECISION-B27-SCHEMA-VERSION**：`PROJECT_SCHEMA_VERSION` 5 → 6（开工时 main 已是 5）。新增 `ProjectV5Schema` 作为 v5→v6 显式迁移入口（v5 数据 `audioClipId` 在 optional 下仍合法，迁移仅 bump 版本）。禁止只改常量。
-- **DECISION-B27-AUDIO-OPTIONAL**：`audioClipId` 正式可选；`null` 表示「尚未绑定音频」的文本对白。无 audioClip 的 Dialogue 是正式 `ProjectSchema` 数据，可保存/重开；旧有带 audioClip 的 Dialogue 继续兼容。Day27 不生成/伪造任何音频。
+- **DECISION-B27-AUDIO-OPTIONAL**：`audioClipId` 正式**可选**；其「未绑定音频」语义是**字段缺失 / `undefined`**（即该 key 不存在），**不是 `null`**——`explicit null` 不是当前 `DialogueSchema`（`.strict()`）的合法值。无 audioClip 的 Dialogue 是正式 `ProjectSchema` 数据，可保存/重开；旧有带 audioClip 的 Dialogue 继续兼容。Day27 不生成/伪造任何音频。
 - **DECISION-B27-POINT-TIME**：新 Dialogue `startMs = endMs = clamp(pointTimeMs, 0, shot.durationMs)`；批量整批共用提交瞬间捕获的一次 point-time，不按行重读、不自动估算时长。无「API 找不到就全 0ms」伪 fallback（`timelineUiStore` 在 main 上仍可安全读取）。
 - **DECISION-B27-SELECTION**：dialogue ↔ layer 在 Inspector 严格互斥。`dialogueSelectionStore` 订阅 `selectionStore`：选 layer/background 即清对白选择；选对白即清 layer 选择。两种 selection 均绑定 `projectRoot + shotId`，切换即失效。未重写全局 selection 架构。
 - **DECISION-B27-BATCH-HISTORY**：批量粘贴预览阶段不改 Project / dirty / revision / History；只有「提交」把整批作为 **1 个 History command** 写入，一次 Undo 撤销整批。
@@ -96,15 +96,17 @@ ESLINT_SRC_EXIT=0          # 提交源码零错误、零新增 lint error
 #   `src` 树 lint 干净，故 RH 门禁「无新增 lint error」成立。
 
 $ node_modules/.bin/vitest run                 # 单测
-Test Files  103 passed (103)
-     Tests  727 passed (727)
+Test Files  104 passed (104)
+     Tests  732 passed (732)
+# 含 post-review 新增 tests/unit/dialogue-authoring-draft.test.ts（5 项，草稿隔离）
 
 $ node_modules/.bin/vitest run --config vitest.integration.config.ts
-Test Files  24 passed | 1 failed (25)
-     Tests  145 passed | 1 failed (146)
+Test Files  26 passed | 1 failed (27)
+     Tests  146 passed | 1 failed (147)
 # 唯一失败：tests/integration/left-workspace.test.ts
-#   根因 = 沙箱无 electron 二进制（Cannot find module 'electron'），与 Day 27 无关；
-#   该 gate 只能在 CI Windows runner / 真实 Electron 下通过。
+#   根因 = 沙箱 safe-delete/trash 限制（vite emptyOutDir 调 rmSync 被 genie-safe-delete 拦，
+#   `pnpm build` 同样失败），与 Day 27 改动无关；该 gate 只能在 CI Windows runner / 真实 Electron 下通过。
+# 真实 v5→v6 持久化迁移测试（tests/integration/schema-v5-dialogue-migration.test.ts）已通过。
 
 $ node_modules/.bin/tsc --noEmit && node_modules/.bin/vite build \
   && node_modules/.bin/tsc -p tsconfig.electron.json \
@@ -124,9 +126,10 @@ BUILD_EXIT=0                   # renderer + electron tsc + 2 preload 构建均�
 
 - `schemaVersion`：旧 5 → 新 6（开工时 main 为 5）。
 - 当前旧版本显式 parser/migration 入口：`ProjectV5Schema` + `migrateFormalProject` 的 v5 分支（仅 `{...data, schemaVersion: 6}`，dialogue 数据不变）。
-- v5（或当前版本）真实 persisted shape → 新版本：migration 测试全过（`tests/unit/migrations/project-migration.test.ts`、`tests/unit/domain/migrations/project-migration.test.ts`、`tests/integration/schema-v5-layer-flip.test.ts`）。
-- 无 `audioClipId` Dialogue 在新版本合法：`dialogue-service.test.ts` round-trip 测试 + migration 测试覆盖。
-- 带 `audioClipId` 旧 Dialogue 仍兼容且引用校验不放水：`projectReferences` 存在性校验 + `shot-duplicate-regression.test.ts`。
+- **真实 v5→v6 持久化迁移测试（post-review 新增）**：`tests/integration/schema-v5-dialogue-migration.test.ts` 构造合法 `schemaVersion=5` 文档（含一条真实 audio-backed v5 Dialogue，`audioClipId` 必填且引用真实 clip），经 `ProjectService.open` → `sourceVersion=5` / `migrated=true` / `project.schemaVersion=6`，speaker/text/audioClipId 保留；`save`→`reopen` → `sourceVersion=6` / `migrated=false` / 数据一致。**这是唯一真正向 migration pipeline 输入 v5 persisted project 的测试。**
+- 既有「v5」测试的口径校正（诚实声明）：`buildProject()` 等单测 fixture 虽写 `schemaVersion:5`，但经 `ProjectSchema.parse` 会被 preprocess 迁到 6，测试代码看到的是 v6 产物，并非「向 pipeline 输入 v5」；`tests/integration/schema-v5-layer-flip.test.ts` 实际是 v4→v6（其输入 `schemaVersion:4`）。两者仍作为回归覆盖，但**不满足**「真实 v5 persisted 输入」要求，故 post-review 补了上面的真实测试。
+- 无 `audioClipId` Dialogue 在新版本合法：`dialogue-service.test.ts` round-trip 测试 + 上述真实 v5 迁移测试（dialogue 保留）覆盖。
+- 带 `audioClipId` 旧 Dialogue 仍兼容且引用校验不放水：`projectReferences` 存在性校验（`audioClipId !== undefined` 才查） + `shot-duplicate-regression.test.ts`。
 - shot duplicate 对有/无 audio link 都正确：`ShotService.duplicate` 修复 + `shot-duplicate-regression.test.ts`。
 
 ## 8. History / dirty 证据
@@ -197,10 +200,24 @@ BUILD_EXIT=0                   # renderer + electron tsc + 2 preload 构建均�
 
 ## 15. Day 结论
 
-- **自动化 + 结构性：`PASS`** —— typecheck（renderer+electron）0 错误、unit 727 通过、integration 145/146（1 个为沙箱无 electron 的既有失败）、build 通过、`src` lint 0 错误、RH-06/04 通过、schema v5→v6 migration 通过。
-- **真实 Windows Electron 人工/CI 门：`PENDING`** —— 沙箱无 Electron 二进制，已在 PR #216 开放待维护者/Windows CI 签字（mirror DAY-26 STOPPED AT MAINTAINER FINAL SIGN-OFF）。任一 Electron 主路径 FAIL 则 Day 27 整体 FAIL（HUMAN-001）。
+- **automated + structural：`PASS`** —— typecheck（renderer+electron）0 错误、unit 732 通过（104 文件）、integration 146/147（1 个为沙箱 safe-delete/trash 的既有 `left-workspace` 失败，与改动无关）、build 通过（renderer+electron tsc+2 preload）、`src` lint 0 错误、RH-06/04 通过、schema v5→v6 真实持久化迁移测试通过、草稿 identity 隔离单测通过。
+- **overall：`PENDING`** —— 真人 Windows Electron 人工/CI 门未签字前，Day 27 整体不得视为 PASS。沙箱无 Electron 二进制，已在 PR #216 开放待维护者/Windows CI 签字（mirror DAY-26 STOPPED AT MAINTAINER FINAL SIGN-OFF）。任一 Electron 主路径 FAIL 则 Day 27 整体 FAIL（HUMAN-001）。
 - 不开始 Day 28，直到 Electron 验收签字完成。
 
 ## 16. 下一步唯一动作
 
-- 在 PR #216（Windows CI / 维护者）完成真实 Windows Electron 六行批量录入、Undo/Redo、保存重开、A→B→A 与窄屏 RightInspector drawer 验收签字。
+- 在 PR #216（Windows CI / 维护者）完成真实 Windows Electron 六行批量录入、Undo/Redo、保存重开、A→B→A、窄屏 RightInspector drawer（对白/图层 mode 动态 aria-label）与**草稿 identity 隔离复验**（Shot A 填草稿→切 Shot B 已清、A→B→A 不复活）验收签字。
+
+## 17. 维护者审查修复（post-review）
+
+针对维护者代码审查的 5 项必须处理项，追加修复（均在现有 branch `agent/day27-dialogue-authoring` + PR #216，不新开 PR、不 merge、不关闭 #215）：
+
+1. **BLOCKER — Batch draft identity isolation**：新增 `src/renderer/features/dialogue/dialogueAuthoringDraft.ts`（`DialogueAuthoringDraft` 类，由 `DialogueSheet` 经 `useState` 持有实例、**非全局单例**、不持久化、不进 History）。`projectRoot`/`shotId` 变化即 `bindIdentity` 清空全部未提交草稿（single characterId/text、batch raw、manual mapping、batchOpen）；`DialogueBatchPaste` 受控于同一 draft。新增 `tests/unit/dialogue-authoring-draft.test.ts`（5 项）：Shot A 填草稿→切 Shot B 清空；Project A→B→A 不复活；同 identity 不重置。
+2. **BLOCKER — 真实 v5→v6 持久化迁移测试**：新增 `tests/integration/schema-v5-dialogue-migration.test.ts`，构造合法 `schemaVersion=5` 文档（含一条真实 audio-backed v5 Dialogue，`audioClipId` 必填且引用真实 clip），经 `ProjectService.open` → `sourceVersion=5` / `migrated=true` / `project.schemaVersion=6`，speaker/text/audioClipId 保留；`save`→`reopen` → `sourceVersion=6` / `migrated=false` / 数据一致。不复用 `ProjectSchema.parse`（其会把 v5 输入先迁到 6）。
+3. **Narrow RightInspector a11y**：`RightInspector` 窄屏 rail/close 的 `aria-label` 随 `selectedDialogueId` 动态显示「对白检查器」/「图层检查器」，保持同一 drawer/rail/Escape/focus contract（见 §3 DECISION-B27-SELECTION）。
+4. **Receipt truthfulness**：本回执结论改为 automated/structural=PASS、**overall=PENDING**；`audioClipId` 可选未绑定语义明确为字段缺失/`undefined`（非 `null`，explicit null 非合法 schema 值，见 DECISION-B27-AUDIO-OPTIONAL）；迁移证据据真实测试更正（§7）。
+5. **Minor UX**：`DialogueBatchPaste` 提交按钮数量改为实际 resolved/commit 数量（`resolvedLines` 数），不再只显示 `parsed.validCount`。
+
+### 质量门重跑（post-review，同 §5 环境）
+
+typecheck（renderer+electron）0 错误；`eslint src` 0 错误；unit **732 passed (104 files)**；integration **146 passed | 1 failed (147)**（唯一失败 `left-workspace` = 沙箱 safe-delete/trash 限制，与改动无关，新 v5 迁移测试通过）；build（renderer+electron tsc+2 preload）0 错误。RH-06/04 仍通过。
