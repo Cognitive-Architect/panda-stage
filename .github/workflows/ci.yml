@@ -143,7 +143,7 @@ jobs:
                 scripts/verify-day21*|scripts/verify-day22*|scripts/verify-day23*|scripts/verify-issue47*) add_area canvas ;;
                 scripts/verify-day24*) add_area history ;;
                 scripts/verify-issue102-task2*|scripts/verify-issue102-task4*|scripts/verify-issue109*) add_area editor ;;
-                scripts/verify-issue197*|scripts/verify-issue199*) add_area timeline ;;
+                scripts/verify-issue197*|scripts/verify-issue199*|scripts/verify-issue207*) add_area timeline ;;
                 *) add_area unknown; unknown=true ;;
               esac
               return 0
