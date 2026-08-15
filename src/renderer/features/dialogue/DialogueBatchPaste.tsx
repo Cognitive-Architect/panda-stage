@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import type { Character } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
@@ -6,6 +6,7 @@ import {
   parseDialoguePaste,
   type DialogueLineStatus,
 } from './parseDialoguePaste';
+import type { DialogueAuthoringDraft } from './dialogueAuthoringDraft';
 
 const STATUS_LABEL: Record<DialogueLineStatus, string> = {
   valid: '有效',
@@ -19,11 +20,15 @@ const STATUS_LABEL: Record<DialogueLineStatus, string> = {
  * Batch paste surface. Parsing and preview are pure UI state and never touch the
  * project, the History or the dirty flag. Unknown speakers are mapped manually;
  * only when every line is resolved does the commit button enable, and the whole
- * batch becomes a single History command.
+ * batch becomes a single History command. The draft (raw text + manual mapping)
+ * is owned by the DialogueAuthoringDraft bound to the current shot, so it is
+ * cleared on shot/project switch and on close.
  */
 export function DialogueBatchPaste({
+  draft,
   onClose,
 }: {
+  draft: DialogueAuthoringDraft;
   onClose: () => void;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
@@ -31,12 +36,11 @@ export function DialogueBatchPaste({
     editorProjectStore.getSnapshot,
   );
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
-  const [raw, setRaw] = useState('');
-  const [mapping, setMapping] = useState<Record<number, string>>({});
+  const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
 
   const parsed = useMemo(
-    () => parseDialoguePaste(raw, characters),
-    [raw, characters],
+    () => parseDialoguePaste(draftState.batchRaw, characters),
+    [draftState.batchRaw, characters],
   );
 
   const resolvedLines = parsed.lines.map((line) => {
@@ -45,14 +49,18 @@ export function DialogueBatchPaste({
     }
     if (
       (line.status === 'unknown' || line.status === 'ambiguous') &&
-      mapping[line.lineNumber]
+      draftState.batchMapping[line.lineNumber]
     ) {
-      return { characterId: mapping[line.lineNumber]!, text: line.text! };
+      return {
+        characterId: draftState.batchMapping[line.lineNumber]!,
+        text: line.text!,
+      };
     }
     return null;
   });
   const allResolved =
     parsed.lines.length > 0 && resolvedLines.every((line) => line !== null);
+  const resolvedCount = resolvedLines.filter((line) => line !== null).length;
 
   const handleCommit = (): void => {
     if (!allResolved) return;
@@ -79,8 +87,8 @@ export function DialogueBatchPaste({
         className="dialogue-batch-input"
         rows={8}
         placeholder="每行：角色名：台词"
-        value={raw}
-        onChange={(event) => setRaw(event.target.value)}
+        value={draftState.batchRaw}
+        onChange={(event) => draft.setBatchRaw(event.target.value)}
       />
       <p className="dialogue-batch-summary" data-testid="dialogue-batch-summary">
         {`共 ${parsed.lines.length} 行，有效 ${parsed.validCount} 行，忽略空行 ${parsed.ignoredEmpty} 行。`}
@@ -110,12 +118,9 @@ export function DialogueBatchPaste({
                   <select
                     data-testid={`dialogue-batch-map-${line.lineNumber}`}
                     className="dialogue-batch-map"
-                    value={mapping[line.lineNumber] ?? ''}
+                    value={draftState.batchMapping[line.lineNumber] ?? ''}
                     onChange={(event) =>
-                      setMapping((current) => ({
-                        ...current,
-                        [line.lineNumber]: event.target.value,
-                      }))
+                      draft.setBatchMapping(line.lineNumber, event.target.value)
                     }
                   >
                     <option value="">手动映射到…</option>
@@ -141,7 +146,7 @@ export function DialogueBatchPaste({
         disabled={!allResolved}
         onClick={handleCommit}
       >
-        {`提交 ${parsed.validCount} 条`}
+        {`提交 ${resolvedCount} 条`}
       </button>
     </div>
   );

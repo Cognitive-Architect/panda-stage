@@ -1,9 +1,16 @@
-import { useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { Character } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { dialogueStore } from '../../stores/dialogueStore';
+import {
+  DialogueAuthoringDraft,
+} from './dialogueAuthoringDraft';
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 
 /**
@@ -12,6 +19,10 @@ import { DialogueBatchPaste } from './DialogueBatchPaste';
  * TimelineDock so there is exactly one Timeline surface. Selecting a dialogue
  * here clears the layer selection and routes the RightInspector to the
  * DialogueInspector.
+ *
+ * All uncommitted authoring inputs live in a single draft bound to the
+ * (projectRoot, shotId) identity; switching shot or project clears the draft so
+ * a Shot A draft can never be committed into Shot B.
  */
 export function DialogueSheet(): React.JSX.Element {
   const snapshot = useSyncExternalStore(
@@ -26,16 +37,23 @@ export function DialogueSheet(): React.JSX.Element {
     dialogueSelectionStore.subscribe,
     dialogueSelectionStore.getSelectedDialogueId,
   );
-  const [characterId, setCharacterId] = useState('');
-  const [text, setText] = useState('');
-  const [batchOpen, setBatchOpen] = useState(false);
+  const [draft] = useState(() => new DialogueAuthoringDraft());
+  const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
+
+  const projectRoot = snapshot?.projectRoot ?? '';
+  const shotId = currentShotId ?? null;
+  useEffect(() => {
+    draft.bindIdentity({ projectRoot, shotId });
+  }, [draft, projectRoot, shotId]);
 
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
   const shot = snapshot?.project.shots.find(
     (candidate) => candidate.id === currentShotId,
   );
   const dialogues = shot?.dialogues ?? [];
-  const canAdd = characterId !== '' && text.trim().length > 0;
+  const canAdd =
+    draftState.singleCharacterId !== '' &&
+    draftState.singleText.trim().length > 0;
 
   if (!shot) {
     return (
@@ -47,8 +65,8 @@ export function DialogueSheet(): React.JSX.Element {
 
   const handleAdd = (): void => {
     if (!canAdd) return;
-    dialogueStore.create(characterId, text.trim());
-    setText('');
+    dialogueStore.create(draftState.singleCharacterId, draftState.singleText.trim());
+    draft.setSingleText('');
   };
 
   const characterName = (id: string): string =>
@@ -61,7 +79,7 @@ export function DialogueSheet(): React.JSX.Element {
         <button
           type="button"
           data-testid="dialogue-batch-open"
-          onClick={() => setBatchOpen(true)}
+          onClick={() => draft.openBatch()}
         >
           批量粘贴
         </button>
@@ -92,8 +110,8 @@ export function DialogueSheet(): React.JSX.Element {
       <div className="dialogue-add">
         <select
           data-testid="dialogue-add-speaker"
-          value={characterId}
-          onChange={(event) => setCharacterId(event.target.value)}
+          value={draftState.singleCharacterId}
+          onChange={(event) => draft.setSingleCharacterId(event.target.value)}
         >
           <option value="">选择角色…</option>
           {characters.map((candidate) => (
@@ -104,9 +122,9 @@ export function DialogueSheet(): React.JSX.Element {
         </select>
         <input
           data-testid="dialogue-add-text"
-          value={text}
+          value={draftState.singleText}
           placeholder="输入台词…"
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => draft.setSingleText(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && canAdd) handleAdd();
           }}
@@ -120,7 +138,9 @@ export function DialogueSheet(): React.JSX.Element {
           新增
         </button>
       </div>
-      {batchOpen && <DialogueBatchPaste onClose={() => setBatchOpen(false)} />}
+      {draftState.batchOpen && (
+        <DialogueBatchPaste draft={draft} onClose={() => draft.closeBatch()} />
+      )}
     </div>
   );
 }
