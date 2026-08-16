@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ExportJobUpdate } from '../shared/export-types';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema } from '../domain';
+import { migrateProject } from '../domain';
 import { editorProjectStore } from './stores/EditorProjectStore';
 import { StagePreview } from './stage/StagePreview';
 import { EditorShell } from './shell/EditorShell';
@@ -39,7 +39,7 @@ export function App(): React.JSX.Element {
       try {
         editorProjectStore.open(
           'D:\\day25-editor.pandastage',
-          ProjectSchema.parse(exampleProject),
+          migrateProject(exampleProject),
         );
       } catch (error) {
         console.error('无法打开示例项目用于编辑外壳。', error);

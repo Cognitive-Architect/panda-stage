@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   LayerService,
-  ProjectSchema,
+  migrateProject,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
 import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 
 function harness() {
-  const project = ProjectSchema.parse(exampleProject);
+  const project = migrateProject(exampleProject);
   const editor = new EditorProjectStore();
   editor.open('D:\\day22.pandastage', project);
   const listeners = new Set<() => void>();

@@ -7,12 +7,12 @@ import {
 } from '../../src/main/services/RecoveryService';
 import { AUTOSAVE_INTERVAL_MS } from '../../src/shared/recovery-api';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 
 const PROJECT_ROOT = 'D:\\projects\\autosave.pandastage';
 
 function project(name: string): Project {
-  return ProjectSchema.parse({ ...structuredClone(exampleProject), name });
+  return migrateProject({ ...structuredClone(exampleProject), name });
 }
 
 function recoveryService(

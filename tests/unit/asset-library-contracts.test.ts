@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { migrateProject } from '../../src/domain';
 import {
   AssetDeleteRequestSchema,
   AssetDeleteResponseSchema,
@@ -13,7 +14,7 @@ describe('asset library IPC contracts', () => {
   it('requires revision-aware deletion and structured references', () => {
     const request = AssetDeleteRequestSchema.parse({
       projectRoot: 'D:\\project.pandastage',
-      project: exampleProject,
+      project: migrateProject(exampleProject),
       baseRevision: 3,
       assetId: exampleProject.assets[0]!.id,
     });

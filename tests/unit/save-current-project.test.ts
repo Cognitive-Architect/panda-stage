@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { saveCurrentProject } from '../../src/renderer/features/recovery/saveCurrentProject';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import type { ProjectOperationResponse } from '../../src/shared/project-api';
@@ -19,7 +19,7 @@ function deferred<T>(): {
 describe('saveCurrentProject', () => {
   it('acknowledges the request-time revision instead of a newer response-time revision', async () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\project.pandastage', project);
     store.updateProject({ ...project, name: 'Revision 1' });
     const revisionTwo = { ...project, name: 'Revision 2' };

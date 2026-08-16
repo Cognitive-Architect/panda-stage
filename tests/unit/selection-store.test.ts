@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema, ShotService } from '../../src/domain';
+import { ProjectSchema, migrateProject, ShotService } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 import { ShotStore } from '../../src/renderer/stores/shotStore';
@@ -10,7 +10,7 @@ describe('LayerSelectionStore project boundary', () => {
     const editor = new EditorProjectStore();
     const shots = new ShotStore(editor, new ShotService());
     const selection = new LayerSelectionStore(editor, shots);
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const layerId = project.shots[0]!.layers[1]!.id;
 
     editor.open('D:\\selection-a.pandastage', project);

@@ -6,6 +6,9 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject, detectSchemaVersion } = require(
+  '../dist-electron/domain/migrations/index.js',
+);
 
 // Issue 76 / Stage 1B renderer gate.
 //
@@ -152,12 +155,13 @@ async function applyShotName(window, name) {
 }
 
 function documentFor(projectRoot, project) {
+  const sourceVersion = detectSchemaVersion(project);
   return {
     projectRoot,
     projectFilePath: `${projectRoot}\\project.json`,
-    project,
-    migrated: false,
-    sourceVersion: 5,
+    project: migrateProject(project),
+    migrated: sourceVersion !== 5,
+    sourceVersion,
   };
 }
 

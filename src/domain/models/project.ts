@@ -189,7 +189,7 @@ function addBackgroundIdentity<T extends {
   }));
 }
 
-function migrateFormalProject(input: unknown): unknown {
+export function migrateFormalProject(input: unknown): unknown {
   const version4 = ProjectV4Schema.safeParse(input);
   if (version4.success) {
     return {
@@ -254,9 +254,11 @@ function migrateFormalProject(input: unknown): unknown {
   };
 }
 
-export const ProjectSchema = z.preprocess(
-  migrateFormalProject,
-  ProjectDataSchema.superRefine(validateProjectReferences),
+// Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
+// Persisted migration (v0-v4 -> v5) is owned exclusively by `migrateProject`
+// in `../migrations`; this schema must never perform legacy migration.
+export const ProjectSchema = ProjectDataSchema.superRefine(
+  validateProjectReferences,
 );
 
 export type ProjectData = z.infer<typeof ProjectDataSchema>;

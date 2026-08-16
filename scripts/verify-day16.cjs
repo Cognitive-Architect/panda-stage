@@ -9,6 +9,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const evidenceDirectory = path.join(
   __dirname,
@@ -24,10 +25,10 @@ const importedAsset = {
   width: 16,
   height: 12,
 };
-const importedProject = {
+const importedProject = migrateProject({
   ...exampleProject,
   assets: [...exampleProject.assets, importedAsset],
-};
+});
 const residualPaths = [
   `${projectRoot}\\assets\\残留 图片.png`,
   `${projectRoot}\\assets\\.asset-import.issue-28.tmp`,
@@ -53,8 +54,8 @@ async function verifyDay16() {
     value: {
       projectRoot,
       projectFilePath: `${projectRoot}\\project.json`,
-      project: exampleProject,
-      migrated: false,
+      project: migrateProject(exampleProject),
+      migrated: true,
       sourceVersion: 1,
     },
   }));

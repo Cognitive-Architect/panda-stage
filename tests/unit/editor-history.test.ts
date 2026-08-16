@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 
 describe('EditorProjectStore history commands', () => {
   it('coalesces ten writes from one gesture into an exact before/final pair', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\history.pandastage', project);
     for (let index = 1; index <= 10; index += 1) {
       store.updateProject(
@@ -38,7 +38,7 @@ describe('EditorProjectStore history commands', () => {
 
   it('does not merge independent gestures and clears redo on a new edit', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\history.pandastage', project);
     for (const gestureId of ['gesture-1', 'gesture-2']) {
       store.updateProject(
@@ -67,7 +67,7 @@ describe('EditorProjectStore history commands', () => {
 
   it('keeps history after save and recalculates dirty against the saved value', () => {
     const store = new EditorProjectStore();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     store.open('D:\\history.pandastage', project);
     store.updateProject({ ...project, name: 'Saved edit' });
     store.markSaved(store.getSnapshot()!.project, 1);

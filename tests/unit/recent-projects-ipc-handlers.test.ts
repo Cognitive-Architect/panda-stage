@@ -20,14 +20,14 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { registerRecentProjectsIpcHandlers } from '../../src/main/ipc/register-recent-projects-ipc-handlers';
 import type { ProjectService } from '../../src/main/services/ProjectService';
 import type { RecentProjectsService } from '../../src/main/services/RecentProjectsService';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
-const project = ProjectSchema.parse(exampleProject);
+const project = migrateProject(exampleProject);
 const oldRoot = 'D:\\missing.pandastage';
 const movedRoot = 'D:\\moved.pandastage';
 const document = {

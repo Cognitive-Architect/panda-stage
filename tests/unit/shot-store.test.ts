@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema, ShotService } from '../../src/domain';
+import { ProjectSchema, migrateProject, ShotService } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { ShotStore } from '../../src/renderer/stores/shotStore';
 
@@ -14,7 +14,7 @@ function setup() {
   const store = new ShotStore(editor, service);
   editor.open(
     'D:\\镜头 项目.pandastage',
-    ProjectSchema.parse(exampleProject),
+    migrateProject(exampleProject),
   );
   return { editor, store };
 }
@@ -101,7 +101,7 @@ describe('ShotStore', () => {
   it('reconciles stale selection to the first shot when another project is opened', () => {
     const { editor, store } = setup();
     store.select(editor.getSnapshot()!.project.shots[0]!.id);
-    const empty = ProjectSchema.parse({
+    const empty = migrateProject({
       ...exampleProject,
       id: 'd2020000-0000-4000-8000-000000000099',
       shots: [],

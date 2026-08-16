@@ -8,6 +8,10 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+// ProjectService.open migrates any persisted project to the current schema
+// version before the document leaves Main, so the preload (which validates
+// the response as v5) only ever sees v5. Seed the same migrated shape here.
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const evidenceDirectory = path.join(
   __dirname,
@@ -24,8 +28,8 @@ async function verifyDay13Ui() {
     value: {
       projectRoot,
       projectFilePath: `${projectRoot}\\project.json`,
-      project: exampleProject,
-      migrated: false,
+      project: migrateProject(exampleProject),
+      migrated: true,
       sourceVersion: 1,
     },
   }));
@@ -39,10 +43,10 @@ async function verifyDay13Ui() {
       recoveryFilePath,
       projectId: exampleProject.id,
       savedAtMs: 4_102_444_800_000,
-      project: {
+      project: migrateProject({
         ...exampleProject,
         name: 'Recovered crash draft',
-      },
+      }),
     },
   }));
   ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({

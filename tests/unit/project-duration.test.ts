@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   projectDurationMs,
-  ProjectSchema,
   ShotService,
+  migrateProject,
 } from '../../src/domain';
 
 describe('projectDurationMs', () => {
   it('returns zero for no shots and the exact ordered-shot duration sum', () => {
-    const empty = ProjectSchema.parse({
+    const empty = migrateProject({
       ...exampleProject,
       shots: [],
     });

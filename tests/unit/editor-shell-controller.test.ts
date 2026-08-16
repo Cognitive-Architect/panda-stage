@@ -4,7 +4,7 @@ import {
   getEditorShellState,
 } from '../../src/renderer/shell/EditorShell';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import type { RecoveryAcknowledgeResponse } from '../../src/shared/recovery-api';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -102,7 +102,7 @@ describe('EditorShell ProjectSessionController ownership', () => {
     );
     harness.store.open(
       'D:\\projects\\shell.pandastage',
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
     expect(getEditorShellState(harness.store.getSnapshot())).toBe('editor');
 
@@ -113,7 +113,7 @@ describe('EditorShell ProjectSessionController ownership', () => {
     const harness = createHarness();
     harness.store.open(
       'D:\\projects\\shell.pandastage',
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
     const snapshot = harness.store.getSnapshot();
 
@@ -130,7 +130,7 @@ describe('EditorShell ProjectSessionController ownership', () => {
     const harness = createHarness();
     harness.store.open(
       'D:\\projects\\shell.pandastage',
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
 
     let release!: (response: { ok: true }) => void;
@@ -163,7 +163,7 @@ describe('EditorShell ProjectSessionController ownership', () => {
     const harness = createHarness();
     harness.store.open(
       'D:\\projects\\shell.pandastage',
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
     const failure = new Error('Injected autosave update failure.');
     harness.update.mockRejectedValueOnce(failure);
@@ -184,7 +184,7 @@ describe('EditorShell ProjectSessionController ownership', () => {
     const harness = createHarness();
     harness.store.open(
       'D:\\projects\\shell.pandastage',
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
     const snapshot = harness.store.getSnapshot();
     harness.update
@@ -205,7 +205,7 @@ describe('EditorShell ProjectSessionController ownership', () => {
   it('does not treat an explicit Main rejection as an autosave acknowledgement', async () => {
     const harness = createHarness();
     const projectRoot = 'D:\\projects\\shell.pandastage';
-    harness.store.open(projectRoot, ProjectSchema.parse(exampleProject));
+    harness.store.open(projectRoot, migrateProject(exampleProject));
     const snapshot = harness.store.getSnapshot();
     harness.update
       .mockResolvedValueOnce({
@@ -230,7 +230,7 @@ describe('EditorShell ProjectSessionController ownership', () => {
 
   it('acknowledges revisions created while native-close synchronization is in flight', async () => {
     const harness = createHarness();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     harness.store.open('D:\\projects\\shell.pandastage', project);
     let markFirstUpdateStarted!: () => void;
     let releaseFirstUpdate!: () => void;
@@ -301,7 +301,7 @@ describe('EditorShell ProjectSessionController ownership', () => {
     const harness = createHarness();
     harness.store.open(
       'D:\\projects\\shell.pandastage',
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
     expect(getEditorShellState(harness.store.getSnapshot())).toBe('editor');
 

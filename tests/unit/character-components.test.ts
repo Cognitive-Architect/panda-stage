@@ -5,6 +5,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   CharacterService,
   ProjectSchema,
+  migrateProject,
   type Project,
 } from '../../src/domain';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
@@ -14,7 +15,7 @@ import { CharacterManager } from '../../src/renderer/features/characters/Charact
 const noop = () => undefined;
 
 function projectWithWarning(): Project {
-  const project = ProjectSchema.parse(exampleProject);
+  const project = migrateProject(exampleProject);
   const character = project.characters[0]!;
   const secondExpression = character.expressions[1]!;
   return ProjectSchema.parse({
@@ -29,7 +30,7 @@ function projectWithWarning(): Project {
 
 describe('character management components', () => {
   it('renders the manager and creation form without duplicating the global save action', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(CharacterManager, {
         snapshot: {
@@ -95,7 +96,7 @@ describe('character management components', () => {
   });
 
   it('gives an explicit empty state when fewer than two images can define normal and angry', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const oneImage = project.assets.filter(
       (asset) => asset.kind === 'image',
     ).slice(0, 1);
