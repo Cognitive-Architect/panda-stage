@@ -30,6 +30,11 @@ import {
   type AssetCanvasImageReadRequest,
 } from '../shared/asset-canvas-image-api';
 import {
+  AssetAudioReadRequestSchema,
+  AssetAudioReadResponseSchema,
+  type AssetAudioReadRequest,
+} from '../shared/asset-audio-api';
+import {
   AppPingRequestSchema,
   AppPingResponseSchema,
 } from '../shared/ipc/contracts';
@@ -248,6 +253,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AssetCanvasImageReadResponseSchema.parse(response);
+    },
+    readAudio: async (rawRequest: AssetAudioReadRequest) => {
+      const request = AssetAudioReadRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_AUDIO_READ,
+        request,
+      );
+      return AssetAudioReadResponseSchema.parse(response);
     },
   }),
   recentProjects: Object.freeze({

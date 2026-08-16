@@ -52,6 +52,7 @@ describe('IPC channel registry', () => {
       'asset:delete',
       'asset-thumbnail:read',
       'asset-canvas-image:read',
+      'asset-audio:read',
       'recent-projects:list',
       'recent-projects:open',
       'recent-projects:remove',

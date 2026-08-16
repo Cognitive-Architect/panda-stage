@@ -1,4 +1,5 @@
 import type { Layer, Project, Shot, TimelineEvent } from './models';
+import { evaluateMouthMotionAtTime } from './evaluators/mouthMotionEvaluator';
 
 /**
  * A single evaluated layer at one exact moment. Shape is intentionally
@@ -26,6 +27,11 @@ export interface EvaluatedShot {
   timeMs: number;
   backgroundLayerId: string | null;
   layers: EvaluatedLayer[];
+}
+
+export interface EvaluateShotOptions {
+  /** Resolve a character layer to its mouth-open asset during speech. */
+  includeMouthMotion?: boolean;
 }
 
 function interpolate(from: number, to: number, progress: number): number {
@@ -95,7 +101,6 @@ function resolveExpressionAssetId(
 
 /**
  * Evaluates a validated shot into a deterministic, serializable snapshot at
- * Evaluates a validated shot into a deterministic, serializable snapshot at
  * one exact moment. Time is clamped to `[0, shot.durationMs]`. Supports all
  * seven timeline event kinds; character expression events resolve the active
  * image asset, falling back to the layer's base expression when the reference
@@ -105,6 +110,7 @@ export function evaluateShotAtTime(
   shot: Shot,
   requestedTimeMs: number,
   project: Project,
+  options: EvaluateShotOptions = {},
 ): EvaluatedShot {
   const timeMs = Math.max(
     0,
@@ -121,6 +127,7 @@ export function evaluateShotAtTime(
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EvaluatedLayer => {
+      const source = layer.source;
       let x = layer.x;
       let y = layer.y;
       let scaleX = layer.scaleX;
@@ -202,6 +209,31 @@ export function evaluateShotAtTime(
           case 'visibility': {
             visible = event.visible;
             break;
+          }
+        }
+      }
+
+      // Apply mouth motion after expression events so a speaking character's
+      // mouth asset remains the final render choice for this exact time.
+      if (options.includeMouthMotion && source.kind === 'character') {
+        const character = project.characters.find(
+          (candidate) => candidate.id === source.characterId,
+        );
+        const mouthAsset = character?.mouthOpenAssetId
+          ? project.assets.find(
+              (candidate) =>
+                candidate.id === character.mouthOpenAssetId &&
+                candidate.kind === 'image',
+            )
+          : undefined;
+        if (character && mouthAsset) {
+          const mouth = evaluateMouthMotionAtTime(
+            shot.dialogues,
+            character.id,
+            timeMs,
+          );
+          if (mouth.speaking && mouth.mouthOpen) {
+            assetId = mouthAsset.id;
           }
         }
       }

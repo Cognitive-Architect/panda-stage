@@ -48,7 +48,7 @@ describe('DialogueStore', () => {
     expect(shot.dialogues).toHaveLength(1);
     const dialogue = shot.dialogues[0]!;
     expect(dialogue.startMs).toBe(800);
-    expect(dialogue.endMs).toBe(800);
+    expect(dialogue.endMs).toBe(1800);
     expect(dialogue.text).toBe('你好，世界');
     expect(dialogue.audioClipId).toBeUndefined();
     expect(dialogueSelection.getSelectedDialogueId()).toBe(id);
@@ -60,11 +60,11 @@ describe('DialogueStore', () => {
     store.create(IDS.character, '越过终点');
     expect(
       editor.getSnapshot()!.project.shots[0]!.dialogues[0]!.startMs,
-    ).toBe(3000);
+    ).toBe(2000);
   });
 
   it('commits a batch as a single History command undoable at once', () => {
-    const { editor, store } = setup(1500);
+    const { editor, store } = setup(0);
     store.createMany([
       { characterId: IDS.character, text: '第一句' },
       { characterId: IDS.character, text: '第二句' },
@@ -72,9 +72,11 @@ describe('DialogueStore', () => {
     ]);
     const shot = editor.getSnapshot()!.project.shots[0]!;
     expect(shot.dialogues).toHaveLength(3);
-    for (const dialogue of shot.dialogues) {
-      expect(dialogue.startMs).toBe(1500);
-    }
+    expect(shot.dialogues.map((dialogue) => [dialogue.startMs, dialogue.endMs])).toEqual([
+      [0, 1000],
+      [1000, 2000],
+      [2000, 3000],
+    ]);
     expect(editor.history.getSnapshot().undoCount).toBe(1);
 
     editor.undo();

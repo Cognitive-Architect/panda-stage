@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type Konva from 'konva';
-import { Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
+import { Image as KonvaImage, Layer, Stage, Text } from 'react-konva';
 import type { EvaluatedShot, Project } from '../../domain';
+import type { SubtitleStyle } from '../../domain';
 import {
   buildStageRenderModel,
   type StageAssetUrlMap,
   type StageRenderLayer,
 } from '../../shared/stage/render-model';
-import { STAGE_CAPTION_SAFE_AREA } from '../../shared/stage/layout';
+import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
 import {
   configureKonvaScenePixelRatio,
   PREVIEW_CANVAS_PIXEL_RATIO,
@@ -18,6 +19,7 @@ interface StageRendererProps {
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
   caption: string | null;
+  captionStyle?: SubtitleStyle;
   onReady?: () => void;
   onError?: (error: Error) => void;
   renderToken?: string | number;
@@ -85,6 +87,7 @@ export function StageRenderer({
   evaluatedShot,
   assetUrls,
   caption,
+  captionStyle,
   onReady,
   onError,
   renderToken,
@@ -189,43 +192,7 @@ export function StageRenderer({
               />
             );
           })}
-          {caption ? (
-            <>
-              <Rect
-                cornerRadius={34}
-                fill="rgba(10, 20, 17, 0.78)"
-                height={STAGE_CAPTION_SAFE_AREA.height}
-                width={STAGE_CAPTION_SAFE_AREA.width}
-                x={STAGE_CAPTION_SAFE_AREA.x}
-                y={STAGE_CAPTION_SAFE_AREA.y}
-              />
-              <Text
-                align="center"
-                fill="#fffdf6"
-                fontFamily="Microsoft YaHei, Segoe UI, sans-serif"
-                fontSize={44}
-                height={
-                  STAGE_CAPTION_SAFE_AREA.height -
-                  STAGE_CAPTION_SAFE_AREA.verticalPadding * 2
-                }
-                lineHeight={1.35}
-                text={caption}
-                verticalAlign="middle"
-                width={
-                  STAGE_CAPTION_SAFE_AREA.width -
-                  STAGE_CAPTION_SAFE_AREA.horizontalPadding * 2
-                }
-                x={
-                  STAGE_CAPTION_SAFE_AREA.x +
-                  STAGE_CAPTION_SAFE_AREA.horizontalPadding
-                }
-                y={
-                  STAGE_CAPTION_SAFE_AREA.y +
-                  STAGE_CAPTION_SAFE_AREA.verticalPadding
-                }
-              />
-            </>
-          ) : null}
+          <SubtitleRenderer text={caption} style={captionStyle} />
           <Text
             fill="rgba(16, 45, 34, 0.7)"
             fontFamily="Segoe UI, sans-serif"

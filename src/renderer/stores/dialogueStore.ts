@@ -1,6 +1,9 @@
 import {
   DialogueService,
+  type AttachDialogueAudioInput,
+  type MoveDialogueInput,
   type Project,
+  type ResizeDialogueInput,
 } from '../../domain';
 import {
   EditorProjectStore,
@@ -75,7 +78,13 @@ export class DialogueStore {
 
   update(
     dialogueId: string,
-    input: { characterId?: string; text?: string },
+    input: {
+      characterId?: string;
+      text?: string;
+      subtitleStyleId?: string;
+      startMs?: number;
+      endMs?: number;
+    },
   ): void {
     const { project, shotId } = this.context();
     const next = this.service.update(project, {
@@ -85,6 +94,51 @@ export class DialogueStore {
     });
     if (next !== project) {
       this.editorStore.updateProject(next, 'Edit dialogue');
+    }
+  }
+
+  setTiming(dialogueId: string, startMs: number, endMs: number): void {
+    this.update(dialogueId, { startMs, endMs });
+  }
+
+  move(dialogueId: string, deltaMs: number): void {
+    const { project, shotId } = this.context();
+    const input: MoveDialogueInput = { shotId, dialogueId, deltaMs };
+    const next = this.service.move(project, input);
+    if (next !== project) this.editorStore.updateProject(next, 'Move dialogue');
+  }
+
+  resize(
+    dialogueId: string,
+    edge: ResizeDialogueInput['edge'],
+    timeMs: number,
+  ): void {
+    const { project, shotId } = this.context();
+    const input: ResizeDialogueInput = { shotId, dialogueId, edge, timeMs };
+    const next = this.service.resize(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Resize dialogue');
+    }
+  }
+
+  setStyle(dialogueId: string, subtitleStyleId: string): void {
+    this.update(dialogueId, { subtitleStyleId });
+  }
+
+  attachAudio(dialogueId: string, assetId: string): void {
+    const { project, shotId } = this.context();
+    const input: AttachDialogueAudioInput = { shotId, dialogueId, assetId };
+    const next = this.service.attachAudio(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Attach dialogue audio');
+    }
+  }
+
+  detachAudio(dialogueId: string): void {
+    const { project, shotId } = this.context();
+    const next = this.service.detachAudio(project, shotId, dialogueId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Detach dialogue audio');
     }
   }
 

@@ -14,7 +14,7 @@
  *   - No second project tree and no hidden DOM: the overlay is mounted only
  *     while open and unmounted on close.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { evaluateShotAtTime, type Project } from '../../domain';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
@@ -25,8 +25,14 @@ import {
   clampProductPreviewTime,
   formatProductPreviewTimecode,
   listProductPreviewAssetIds,
+  listProductPreviewAudioClips,
   resolveProductPreviewShot,
+  resolveProductPreviewSubtitleStyle,
 } from './productPreviewModel';
+import {
+  AudioScheduler,
+  toScheduledAudioClip,
+} from '../features/preview/AudioScheduler';
 
 export interface ProductPreviewOverlayProps {
   /** Project folder of the currently open project, used to read thumbnails. */
@@ -123,6 +129,75 @@ function useProductPreviewAssets(
   return state;
 }
 
+interface AudioLoadState {
+  status: 'loading' | 'ready' | 'error';
+  urls: Readonly<Record<string, string>>;
+  missingCount: number;
+}
+
+function useProductPreviewAudio(
+  projectRoot: string,
+  clips: ReturnType<typeof listProductPreviewAudioClips>,
+): AudioLoadState {
+  const [state, setState] = useState<AudioLoadState>({
+    status: 'ready',
+    urls: {},
+    missingCount: 0,
+  });
+  const clipKey = clips
+    .map((entry) => `${entry.assetId}:${entry.sha256 ?? 'missing'}`)
+    .sort()
+    .join('|');
+
+  useEffect(() => {
+    let active = true;
+    if (clips.length === 0) {
+      setState({ status: 'ready', urls: {}, missingCount: 0 });
+      return () => {
+        active = false;
+      };
+    }
+    setState({ status: 'loading', urls: {}, missingCount: 0 });
+    const requests = clips.map(async (entry) => {
+      if (!entry.sha256) return [entry.assetId, undefined] as const;
+      try {
+        const response = await window.pandaStage.assets.readAudio({
+          projectRoot,
+          assetId: entry.assetId,
+          sha256: entry.sha256,
+        });
+        return [
+          entry.assetId,
+          response.ok && response.status === 'ready'
+            ? response.dataUrl
+            : undefined,
+        ] as const;
+      } catch {
+        return [entry.assetId, undefined] as const;
+      }
+    });
+    void Promise.all(requests).then((entries) => {
+      if (!active) return;
+      const urls: Record<string, string> = {};
+      let missingCount = 0;
+      for (const [assetId, url] of entries) {
+        if (url) urls[assetId] = url;
+        else missingCount += 1;
+      }
+      setState({
+        status: missingCount > 0 ? 'error' : 'ready',
+        urls,
+        missingCount,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [clipKey, clips, projectRoot]);
+
+  return state;
+}
+
 export function ProductPreviewOverlay({
   projectRoot,
   project,
@@ -142,6 +217,20 @@ export function ProductPreviewOverlay({
     [project, shot],
   );
   const assets = useProductPreviewAssets(projectRoot, project, assetIds);
+  const audioEntries = useMemo(
+    () => (shot ? listProductPreviewAudioClips(project, shot) : []),
+    [project, shot],
+  );
+  const audioState = useProductPreviewAudio(projectRoot, audioEntries);
+  const scheduledAudio = useMemo(
+    () =>
+      audioEntries.flatMap((entry) => {
+        const url = audioState.urls[entry.assetId];
+        return url ? [toScheduledAudioClip(entry, url)] : [];
+      }),
+    [audioEntries, audioState.urls],
+  );
+  const audioSchedulerRef = useRef<AudioScheduler | null>(null);
   const cues = useMemo(
     () => (shot ? buildProductPreviewCues(shot) : []),
     [shot],
@@ -198,14 +287,32 @@ export function ProductPreviewOverlay({
             shot,
             clampProductPreviewTime(timeMs, shot.durationMs),
             project,
+            { includeMouthMotion: true },
           )
         : null,
     [project, shot, timeMs],
   );
-  const caption = evaluatedShot
-    ? (evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)?.text ?? null)
+  const activeCue = evaluatedShot
+    ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
+  const caption = activeCue?.text ?? null;
+  const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
   const atEnd = durationMs > 0 && timeMs >= durationMs;
+
+  useEffect(() => {
+    const scheduler = new AudioScheduler(scheduledAudio);
+    audioSchedulerRef.current = scheduler;
+    return () => {
+      if (audioSchedulerRef.current === scheduler) {
+        audioSchedulerRef.current = null;
+      }
+      scheduler.destroy();
+    };
+  }, [scheduledAudio]);
+
+  useEffect(() => {
+    audioSchedulerRef.current?.sync(timeMs, playing);
+  }, [playing, timeMs]);
 
   return (
     <div
@@ -268,6 +375,7 @@ export function ProductPreviewOverlay({
                 <CanvasStage
                   assetUrls={assets.urls}
                   caption={caption}
+                  captionStyle={captionStyle}
                   evaluatedShot={evaluatedShot}
                   project={project}
                 />

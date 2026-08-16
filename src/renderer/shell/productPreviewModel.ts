@@ -12,7 +12,13 @@
  * revision, the dirty flag, the selection or the history. They all take the
  * project as a readonly input and return new values.
  */
-import { listShotImageAssets, type Project, type Shot } from '../../domain';
+import {
+  listShotImageAssets,
+  type AudioClip,
+  type Project,
+  type Shot,
+  type SubtitleStyle,
+} from '../../domain';
 import type { SubtitleCue } from '../../shared/preview/subtitle-engine';
 
 /**
@@ -24,6 +30,13 @@ export const PRODUCT_PREVIEW_MAX_STEP_MS = 250;
 
 /** Longest subtitle text the shared subtitle contract accepts. */
 const PRODUCT_PREVIEW_MAX_CUE_LENGTH = 500;
+
+export interface ProductPreviewAudioClip {
+  clip: AudioClip;
+  assetId: string;
+  sha256: string | undefined;
+  durationMs: number | undefined;
+}
 
 export interface ProductPreviewTimeStep {
   /** Clamped, integer millisecond position inside `[0, durationMs]`. */
@@ -87,6 +100,12 @@ export function listProductPreviewAssetIds(
         assetIds.add(asset.id);
       }
     }
+    if (character.mouthOpenAssetId) {
+      const mouthAsset = project.assets.find(
+        (candidate) => candidate.id === character.mouthOpenAssetId,
+      );
+      if (mouthAsset?.kind === 'image') assetIds.add(mouthAsset.id);
+    }
   }
 
   return [...assetIds];
@@ -106,9 +125,64 @@ export function buildProductPreviewCues(shot: Shot): SubtitleCue[] {
       startMs: Math.max(0, Math.round(dialogue.startMs)),
       endMs: Math.max(1, Math.round(dialogue.endMs)),
       text: dialogue.text.trim().slice(0, PRODUCT_PREVIEW_MAX_CUE_LENGTH),
+      ...(dialogue.subtitleStyleId
+        ? { styleId: dialogue.subtitleStyleId }
+        : {}),
     }))
     .filter((cue) => cue.text.length > 0 && cue.endMs > cue.startMs)
-    .sort((left, right) => left.startMs - right.startMs);
+    .sort(
+      (left, right) =>
+        left.startMs - right.startMs ||
+        left.endMs - right.endMs ||
+        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+    );
+}
+
+/** Maps persisted audio clips to their validated project assets. */
+export function listProductPreviewAudioClips(
+  project: Project,
+  shot: Shot,
+): ProductPreviewAudioClip[] {
+  return shot.audioClips
+    .map((clip) => {
+      const asset = project.assets.find(
+        (candidate) => candidate.id === clip.assetId,
+      );
+      if (!asset || asset.kind !== 'audio') return null;
+      return {
+        clip,
+        assetId: asset.id,
+        sha256: asset.sha256,
+        durationMs: asset.durationMs,
+      } satisfies ProductPreviewAudioClip;
+    })
+    .filter((entry): entry is ProductPreviewAudioClip => entry !== null)
+    .sort((left, right) =>
+      right.clip.startMs - left.clip.startMs ||
+      right.clip.endMs - left.clip.endMs ||
+      (left.clip.id < right.clip.id ? -1 : left.clip.id > right.clip.id ? 1 : 0),
+    );
+}
+
+export function selectProductPreviewAudioClipAtTime(
+  clips: readonly ProductPreviewAudioClip[],
+  timeMs: number,
+): ProductPreviewAudioClip | null {
+  const safeTimeMs = Math.max(0, Math.round(timeMs));
+  return (
+    clips.find(
+      ({ clip }) =>
+        safeTimeMs >= clip.startMs && safeTimeMs < clip.endMs,
+    ) ?? null
+  );
+}
+
+export function resolveProductPreviewSubtitleStyle(
+  project: Project,
+  cue: SubtitleCue | null,
+): SubtitleStyle | undefined {
+  if (!cue?.styleId) return undefined;
+  return project.subtitleStyles.find((style) => style.id === cue.styleId);
 }
 
 /** Clamps an arbitrary position into the shot's integer millisecond range. */

@@ -19,6 +19,7 @@ import {
   PROJECT_WIDTH,
   calculateViewportTransform,
   buildEditorStageRenderModel,
+  evaluateDialogueAtTime,
   listShotImageAssets,
   type Shot,
   type ViewportTransform,
@@ -38,6 +39,8 @@ import {
   LayerTransformer,
 } from './LayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
+import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
+import { useTimelineUi } from '../timeline/timelineUiStore';
 import type { CanvasDropPreview } from './useCanvasDrop';
 import {
   configureKonvaScenePixelRatio,
@@ -216,6 +219,7 @@ export function CanvasStage(): React.JSX.Element {
     canvasViewportStore.subscribe,
     canvasViewportStore.getSnapshot,
   );
+  const timelineUi = useTimelineUi();
   const [toolbarTransform, setToolbarTransform] =
     useState<ViewportTransform>(() =>
       calculateViewportTransform({ width: 0, height: 0 }, 'fit'),
@@ -253,6 +257,18 @@ export function CanvasStage(): React.JSX.Element {
     [shot, snapshot],
   );
   const imageState = useCanvasImages(snapshot, shot);
+  const activeDialogue = useMemo(
+    () =>
+      shot
+        ? evaluateDialogueAtTime(shot.dialogues, timelineUi.currentTimeMs)
+        : null,
+    [shot, timelineUi.currentTimeMs],
+  );
+  const activeSubtitleStyle = activeDialogue
+    ? snapshot?.project.subtitleStyles.find(
+        (style) => style.id === activeDialogue.subtitleStyleId,
+      )
+    : undefined;
   const imageForAsset = (asset: {
     id: string;
     sha256?: string;
@@ -428,6 +444,10 @@ export function CanvasStage(): React.JSX.Element {
                         );
                       })
                     : null}
+                  <SubtitleRenderer
+                    style={activeSubtitleStyle}
+                    text={activeDialogue?.text ?? null}
+                  />
                   <Line
                     listening={false}
                     points={[PROJECT_WIDTH / 2, 0, PROJECT_WIDTH / 2, PROJECT_HEIGHT]}
