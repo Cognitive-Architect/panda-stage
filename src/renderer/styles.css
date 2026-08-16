@@ -883,11 +883,13 @@ button:disabled {
   gap: 4px;
 }
 
-/* Collapse hides only the ruler body (React already removes it from the tree
-   when expanded=false). The header with the reopen button must stay reachable
-   so the user can expand the timeline again without a reload. */
+/* Collapse hides the ruler and dialogue authoring bodies while keeping them
+   mounted (the latter preserves an unfinished draft). The header with the
+   reopen button must stay reachable so the user can expand the Timeline again
+   without a reload. */
 .timeline-dock[data-expanded='false'] .timeline-ruler-scroll,
-.timeline-dock[data-expanded='false'] .timeline-empty {
+.timeline-dock[data-expanded='false'] .timeline-empty,
+.timeline-dock[data-expanded='false'] > .dialogue-sheet {
   display: none;
 }
 

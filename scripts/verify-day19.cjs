@@ -348,7 +348,7 @@ async function verifyDay19() {
         projectFilePath: `${projectRoot}\\project.json`,
         project: savedProject ?? initialProject,
         migrated: !savedProject,
-        sourceVersion: savedProject ? 3 : 1,
+        sourceVersion: savedProject ? 6 : 1,
       },
     };
   });
@@ -362,7 +362,7 @@ async function verifyDay19() {
         projectFilePath: `${projectRoot}\\project.json`,
         project: savedProject,
         migrated: false,
-        sourceVersion: 5,
+        sourceVersion: 6,
       },
     };
   });

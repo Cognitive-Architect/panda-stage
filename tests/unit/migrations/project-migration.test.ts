@@ -252,7 +252,7 @@ describe('project migration framework', () => {
     expect(migrated.shots[0]!.layers[1]!.flipX).toBe(true);
   });
 
-  it('migrates a formal v1 project to v5 with character defaults and explicit background', () => {
+  it('migrates a formal v1 project to v6 with character defaults and explicit background', () => {
     const snapshot = structuredClone(exampleProject);
     const migrated = migrateProject(exampleProject);
     const character = migrated.characters[0]!;
@@ -344,7 +344,7 @@ describe('project migration framework', () => {
     expect(migrateProject(contentOnly).shots[0]!.backgroundLayerId).toBeNull();
   });
 
-  it('migrates strict v3 layers to v5 with locked=false and flipX=false', () => {
+  it('migrates strict v3 layers to v6 with locked=false and flipX=false', () => {
     const current = migrateProject(exampleProject);
     const version3 = {
       ...current,
@@ -370,7 +370,7 @@ describe('project migration framework', () => {
     ).toBe(true);
   });
 
-  it('requires flipX in v5 and rejects v4 files that smuggle it in', () => {
+  it('requires flipX in the current v6 schema and rejects v4 files that smuggle it in', () => {
     const current = migrateProject(exampleProject);
     const missingFlip = {
       ...current,
@@ -388,7 +388,7 @@ describe('project migration framework', () => {
     expect(() => migrateProject(v4WithFlip)).toThrow();
   });
 
-  it('migrates v4 to v5, preserving locked and adding flipX=false', () => {
+  it('migrates v4 to v6, preserving locked and adding flipX=false', () => {
     const current = migrateProject(exampleProject);
     const version4 = {
       ...current,

@@ -315,7 +315,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v4 -> v5) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v5 -> v6) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

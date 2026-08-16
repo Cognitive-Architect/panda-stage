@@ -8,6 +8,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
 const evidenceDirectory = path.join(
@@ -210,7 +211,7 @@ async function captureCanvasSection(window) {
 
 async function verifyDay21() {
   const sha256 = 'a'.repeat(64);
-  const project = {
+  const project = migrateProject({
     ...exampleProject,
     schemaVersion: 5,
     assets: exampleProject.assets.map((asset) =>
@@ -231,7 +232,7 @@ async function verifyDay21() {
       })),
       backgroundLayerId: shot.layers[0]?.id ?? null,
     })),
-  };
+  });
   const missingProject = {
     ...project,
     id: 'd2100000-0000-4000-8000-000000000002',
@@ -295,7 +296,7 @@ async function verifyDay21() {
         projectRoot: request.projectRoot,
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: selected,
-        migrated: false,
+        migrated: true,
         sourceVersion: 5,
       },
     };
@@ -310,7 +311,7 @@ async function verifyDay21() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 5,
+        sourceVersion: 6,
       },
     };
   });
@@ -814,7 +815,7 @@ async function verifyDay21() {
       branch: 'feat/day-21-canvas-stage',
       executedAt: new Date().toISOString(),
       contract: {
-        projectSchemaVersion: 5,
+        projectSchemaVersion: 6,
         logicalCanvas: { width: 1920, height: 1080, center: [960, 540] },
         fitFormula: 'min(containerWidth / 1920, containerHeight / 1080)',
         actualSizeScale: 1,

@@ -218,7 +218,7 @@ export class ProjectService {
     try {
       const sourceVersion = detectSchemaVersion(input);
       // Single authoritative pipeline for every persisted envelope (v0-v5).
-      // Current (v5) input is validated as-is; legacy input is migrated.
+      // Current (v6) input is validated as-is; legacy input is migrated.
       const project = migrateProject(input);
       return this.document(
         projectRoot,

@@ -177,7 +177,7 @@ function documentFor(projectRoot) {
     projectRoot,
     projectFilePath: `${projectRoot}\\project.json`,
     project: migrateProject(project),
-    migrated: sourceVersion !== 5,
+    migrated: sourceVersion !== 6,
     sourceVersion,
   };
 }
@@ -210,7 +210,7 @@ async function verifyIssue73() {
       ...documentFor(request.projectRoot),
       project: request.project,
       migrated: false,
-      sourceVersion: 5,
+      sourceVersion: 6,
     },
   }));
   ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => ({

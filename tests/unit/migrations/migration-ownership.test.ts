@@ -16,7 +16,7 @@ import exampleProject from '../../../demo-project/project-v1.example.json';
 /**
  * Focused lock-in tests for Issue #152 / #217: migration ownership is
  * consolidated into a single `migrateProject` pipeline. `ProjectSchema` is the
- * current (v5) validator only and must never migrate legacy input; every
+ * current (v6) validator only and must never migrate legacy input; every
  * persisted envelope (v0-v5) is resolved through `migrateProject`.
  */
 
@@ -168,20 +168,20 @@ describe('migration ownership: current-only validation boundary', () => {
     expect(() => ProjectSchema.parse(exampleProject)).toThrow();
   });
 
-  it('ProjectSchema still validates a current v5 project without migrating', () => {
-    const v5 = migrateProject(exampleProject);
-    expect(ProjectSchema.parse(v5)).toEqual(v5);
+  it('ProjectSchema still validates a current v6 project without migrating', () => {
+    const v6 = migrateProject(exampleProject);
+    expect(ProjectSchema.parse(v6)).toEqual(v6);
   });
 });
 
-describe('migration ownership: single pipeline routes every envelope to v5', () => {
+describe('migration ownership: single pipeline routes every envelope to v6', () => {
   it.each([
     ['v0', buildV0()],
     ['formal v1', exampleProject],
     ['legacy probe v1', buildLegacyProbeV1()],
-  ])('migrates %s through migrateProject to v5', (_label, input) => {
+  ])('migrates %s through migrateProject to v6', (_label, input) => {
     const result = migrateProject(input);
-    expect(result.schemaVersion).toBe(5);
+    expect(result.schemaVersion).toBe(6);
   });
 
   it('routes the v1 collision: formal v1 keeps characters, probe v1 yields empty collections', () => {
@@ -194,15 +194,15 @@ describe('migration ownership: single pipeline routes every envelope to v5', () 
     expect(probe.subtitleStyles).toHaveLength(1);
   });
 
-  it('is idempotent on an already-current v5 project', () => {
-    const v5 = migrateProject(exampleProject);
-    expect(migrateProject(v5)).toEqual(v5);
+  it('is idempotent on an already-current v6 project', () => {
+    const v6 = migrateProject(exampleProject);
+    expect(migrateProject(v6)).toEqual(v6);
   });
 });
 
 describe('migration ownership: rejects future / ambiguous / corrupt', () => {
   it('rejects a future schema version', () => {
-    expect(() => migrateProject({ schemaVersion: 6 })).toThrow(
+    expect(() => migrateProject({ schemaVersion: 7 })).toThrow(
       UnsupportedSchemaVersionError,
     );
   });
@@ -247,7 +247,7 @@ describe('migration ownership: ProjectService.open uses the single pipeline', ()
     const service = new ProjectService({ fileSystem: fs });
 
     const opened = await service.open(ROOT);
-    expect(opened.project.schemaVersion).toBe(5);
+    expect(opened.project.schemaVersion).toBe(6);
     expect(opened.migrated).toBe(true);
     expect(opened.sourceVersion).toBe(1);
   });
@@ -261,12 +261,12 @@ describe('migration ownership: ProjectService.open uses the single pipeline', ()
     const saved = await service.save(ROOT, opened.project);
     const reopened = await service.open(ROOT);
 
-    expect(saved.project.schemaVersion).toBe(5);
+    expect(saved.project.schemaVersion).toBe(6);
     expect(saved.migrated).toBe(false);
     expect(reopened.project).toEqual(saved.project);
     expect(reopened.migrated).toBe(false);
     expect(detectSchemaVersion(JSON.parse(JSON.stringify(reopened.project)))).toBe(
-      5,
+      6,
     );
   });
 });
