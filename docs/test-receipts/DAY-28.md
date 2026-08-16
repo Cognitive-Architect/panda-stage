@@ -1,9 +1,10 @@
-# Panda Stage Day 28 / Issue #223 rework receipt
+# Panda Stage Day 28 / Issues #223 and #224 rework receipt
 
 ## Identity and status
 
 - Parent execution issue: [#221](https://github.com/Cognitive-Architect/panda-stage/issues/221)
 - Rework issue: [#223](https://github.com/Cognitive-Architect/panda-stage/issues/223)
+- Human-acceptance blocker: [#224](https://github.com/Cognitive-Architect/panda-stage/issues/224)
 - Pull request: [#222](https://github.com/Cognitive-Architect/panda-stage/pull/222)
 - Branch: `agent/day28-dialogue-timing-subtitle-track`
 - Baseline: `origin/main@90bb37cb975147ca7d17efdd8d9d00a1993bdd34`
@@ -11,13 +12,23 @@
 - Canonical Git tree blob: `cd04c247facf32e068a888bfedc718f36e66b500`
 - PR head before rework: `501c8272b63b41caf8e7bfafdf348f119fe3f30b`
 - Rework implementation commit: `0141ad25d40b263c60e9f1c3dca54e1fcca73b8e`
+- Issue #224 implementation commit: `29729f2030ef9ca4e05850e73799176d17105553`
 - Day 26 prerequisite: `e4eeb551721864b0c2f3e2596d35d3d1dc2de323`
 - Day 27 prerequisite: `6092109c2c73dc8e056a41bd94fbfc1dfa87d31a`
 - Automated/structural status: `PASS`, with the full-repository local lint exception recorded below.
 - Maintainer Windows Electron acceptance: `PENDING`.
 - Overall Day 28 status: `PENDING`.
 
-This receipt records the Issue #223 correction of PR #222. It does not treat application startup, automated Electron verification, or CI as human acceptance.
+This receipt records the Issue #223 correction and Issue #224 no-op timing fix on PR #222. It does not treat application startup, automated Electron verification, or CI as human acceptance.
+
+## Issue #224 zero-delta resize blocker
+
+- Root cause: an identical resize boundary still passed through `replaceDialogueTiming()` and `finish()`, changing `updatedAt`; the resulting Project was therefore not equal to the saved Project and produced a fake `Resize dialogue` History command.
+- Fix: the shared timing replacement path compares the committed Dialogue `startMs/endMs` with the validated candidate and returns the original Project when both are identical. No History suppression or coordinate special case was added.
+- No-op evidence: `0–42 → 0–42` returns the same Project and keeps the same editor snapshot, `dirty=false`, `revision=0`, History `0/0`, selection, and playhead.
+- Real resize evidence: `0–42 → 0–84` produces exactly one `Resize dialogue` command; Undo restores `0–42` and saved state, and Redo restores `0–84` and dirty state.
+- Focused regression: dialogue service/store/gesture — 3 files / 32 tests PASS.
+- Maintainer Windows Electron re-test: `PENDING`.
 
 ## R1-R9 rework ledger
 
@@ -83,12 +94,12 @@ Existing files touched by the discarded audio/mouth/schema implementation were r
 |---|---|---|
 | `pnpm typecheck` | PASS | Renderer and Electron TypeScript checks exited 0 after the rework commit was staged. |
 | `pnpm exec eslint src tests` | PASS | Final product source and test scope exited 0. |
-| `pnpm test:unit` | PASS | 111 files / 781 tests. |
+| `pnpm test:unit` | PASS | 111 files / 783 tests. |
 | `pnpm test:integration` | PASS | 26 files / 147 tests; command exited 0. |
 | `pnpm build` | PASS | Renderer transformed 301 modules; Electron/preload builds exited 0; only the existing chunk-size warning remained. |
 | `pnpm verify:timeline` | PASS | Automated Windows Electron verifier passed Issue #197 wide/narrow/compact layout, Issue #199 ruler/zoom/save-state behavior, and Issue #207 empty-Timeline behavior. |
 | `git diff --check` | PASS | No whitespace errors in the rework implementation; rerun after this receipt before push. |
-| `pnpm lint` | FAIL (local artifact contamination) | 1031 errors are confined to pre-existing out-of-scope `.workbuddy/artifacts/*` and `scripts/diag-preload.cjs`. Those paths were not modified, deleted, staged, or hidden with ignore changes. The CI-equivalent `pnpm exec eslint src tests` passes. |
+| `pnpm lint` | FAIL (local artifact contamination) | 1031 errors: 1020 under pre-existing out-of-scope `.workbuddy/artifacts/*` and 11 in `scripts/diag-preload.cjs`. Those paths were not modified, deleted, staged, or hidden with ignore changes. The CI-equivalent `pnpm exec eslint src tests` passes. |
 
 Integration emitted the existing `asset-thumbnail:read No handler registered` fixture noise while still exiting 0. The automated Timeline verifier is regression evidence only and is not maintainer Windows Electron acceptance.
 
@@ -106,6 +117,7 @@ Integration emitted the existing `asset-thumbnail:read No handler registered` fi
 ## Remaining acceptance and debt
 
 - Maintainer must re-audit the pushed diff before starting Windows Electron acceptance.
+- The Issue #224 saved-project `0–42` zero-delta and real-resize Windows Electron re-test remains `PENDING`.
 - Maintainer Windows Electron acceptance is `PENDING`; every human checklist result remains unrecorded.
 - Automated tests do not replace real Konva pointer, DPI, save/reopen, and wide-to-narrow-to-wide human checks.
 - Full local lint remains polluted by unrelated local tool artifacts; no ignore rule was changed to conceal that fact.
@@ -113,4 +125,4 @@ Integration emitted the existing `asset-thumbnail:read No handler registered` fi
 
 ## Conclusion
 
-Issue #223's implementation and automated/structural rework are ready for maintainer diff review on the existing Draft PR #222. PR #222 must remain Draft/Open/Unmerged; Issues #221 and #223 must remain open. `maintainer Windows Electron = PENDING` and `overall = PENDING` until the maintainer explicitly completes and records human acceptance.
+Issues #223 and #224 are implemented and have automated/structural evidence on the existing Draft PR #222. PR #222 must remain Draft/Open/Unmerged; Issues #221, #223, and #224 must remain open. `maintainer Windows Electron = PENDING` and `overall = PENDING` until the maintainer explicitly completes and records the required human re-test and remaining acceptance.
