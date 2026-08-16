@@ -89,7 +89,7 @@ async function verifyDay18() {
       projectRoot,
       projectFilePath: `${projectRoot}\\project.json`,
       project: libraryProject,
-      migrated: false,
+      migrated: true,
       sourceVersion: 1,
     },
   }));

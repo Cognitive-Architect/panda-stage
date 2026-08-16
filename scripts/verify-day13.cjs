@@ -29,7 +29,7 @@ async function verifyDay13Ui() {
       projectRoot,
       projectFilePath: `${projectRoot}\\project.json`,
       project: migrateProject(exampleProject),
-      migrated: false,
+      migrated: true,
       sourceVersion: 1,
     },
   }));

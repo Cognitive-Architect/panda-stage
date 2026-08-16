@@ -1,7 +1,9 @@
 const { app, ipcMain } = require('electron');
 const { mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
-const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
+const { migrateProject, detectSchemaVersion } = require(
+  '../dist-electron/domain/migrations/index.js',
+);
 
 // Issue #197 real Electron gate: collapsing the Timeline must actually shrink
 // the BottomWorkspace and hand the freed vertical space to the central Canvas.
@@ -349,12 +351,13 @@ function assertReopenRestores(expanded, reopened, label) {
 }
 
 function documentFor(root, project) {
+  const sourceVersion = detectSchemaVersion(project);
   return {
     projectRoot: root,
     projectFilePath: `${root}\\project.json`,
     project: migrateProject(project),
-    migrated: false,
-    sourceVersion: 5,
+    migrated: sourceVersion !== 5,
+    sourceVersion,
   };
 }
 

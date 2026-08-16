@@ -1,7 +1,9 @@
 const { app, ipcMain, session } = require('electron');
 const { mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
-const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
+const { migrateProject, detectSchemaVersion } = require(
+  '../dist-electron/domain/migrations/index.js',
+);
 
 // Issue #199 real Electron gate: the Timeline playhead must be seekable by
 // clicking / dragging the ruler. The root cause (Issue #199) was that the
@@ -340,12 +342,13 @@ async function assertZoomSeek(window, durationMs, label) {
 }
 
 function documentFor(root, project) {
+  const sourceVersion = detectSchemaVersion(project);
   return {
     projectRoot: root,
     projectFilePath: `${root}\\project.json`,
     project: migrateProject(project),
-    migrated: false,
-    sourceVersion: 5,
+    migrated: sourceVersion !== 5,
+    sourceVersion,
   };
 }
 

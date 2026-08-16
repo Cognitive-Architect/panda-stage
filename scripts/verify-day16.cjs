@@ -55,7 +55,7 @@ async function verifyDay16() {
       projectRoot,
       projectFilePath: `${projectRoot}\\project.json`,
       project: migrateProject(exampleProject),
-      migrated: false,
+      migrated: true,
       sourceVersion: 1,
     },
   }));

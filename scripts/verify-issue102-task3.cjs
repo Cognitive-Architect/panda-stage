@@ -1,7 +1,9 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
-const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
+const { migrateProject, detectSchemaVersion } = require(
+  '../dist-electron/domain/migrations/index.js',
+);
 
 const repositoryRoot = path.join(__dirname, '..');
 const acceptanceRoot = 'D:\\PandaStage-Acceptance\\project-center-v1';
@@ -270,12 +272,13 @@ async function selectContentLayer(window) {
 }
 
 function documentFor(projectRoot, project) {
+  const sourceVersion = detectSchemaVersion(project);
   return {
     projectRoot,
     projectFilePath: `${projectRoot}\\project.json`,
     project: migrateProject(project),
-    migrated: false,
-    sourceVersion: 1,
+    migrated: sourceVersion !== 5,
+    sourceVersion,
   };
 }
 

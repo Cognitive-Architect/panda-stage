@@ -62,7 +62,7 @@ async function verifyDay14Ui() {
         projectRoot: availableRoot,
         projectFilePath: `${availableRoot}\\project.json`,
         project: migrateProject(exampleProject),
-        migrated: false,
+        migrated: true,
         sourceVersion: 1,
       },
     };
@@ -75,7 +75,7 @@ async function verifyDay14Ui() {
         projectRoot: availableRoot,
         projectFilePath: `${availableRoot}\\project.json`,
         project: migrateProject(exampleProject),
-        migrated: false,
+        migrated: true,
         sourceVersion: 1,
       },
     };
