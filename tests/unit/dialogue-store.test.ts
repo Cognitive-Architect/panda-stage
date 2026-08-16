@@ -19,7 +19,11 @@ interface Fixture {
   timelineState: { currentTimeMs: number };
 }
 
-function setup(pointTimeMs = 500): Fixture {
+function setup(
+  pointTimeMs = 500,
+  project = buildProject(),
+  service = new DialogueService(),
+): Fixture {
   const editor = new EditorProjectStore();
   const shots = new ShotStore(editor, new ShotService());
   const layerSelection = new LayerSelectionStore(editor, shots);
@@ -33,11 +37,11 @@ function setup(pointTimeMs = 500): Fixture {
   const store = new DialogueStore(
     editor,
     shots,
-    new DialogueService(),
+    service,
     timelineUi,
     dialogueSelection,
   );
-  editor.open('D:\\dialogue-store.pandastage', buildProject());
+  editor.open('D:\\dialogue-store.pandastage', project);
   shots.select(IDS.shot);
   return { editor, store, dialogueSelection, timelineState };
 }
@@ -152,6 +156,85 @@ describe('DialogueStore', () => {
     expect(editor.getSnapshot()!.revision).toBe(before.revision + 1);
     expect(editor.history.getSnapshot().undoCount).toBe(beforeUndo + 1);
     expect(timelineState.currentTimeMs).toBe(1000);
+  });
+
+  it('keeps a zero-delta resize as a true no-op and commits a real resize once', () => {
+    const seedService = new DialogueService({
+      now: () => new Date('2026-08-16T12:00:00.000Z'),
+    });
+    let savedProject = seedService.create(buildProject(), {
+      shotId: IDS.shot,
+      characterId: IDS.character,
+      text: 'resize guard',
+      pointTimeMs: 0,
+    });
+    const id = savedProject.shots[0]!.dialogues[0]!.id;
+    savedProject = seedService.arrange(savedProject, {
+      shotId: IDS.shot,
+      dialogueId: id,
+      frameSpanMs: 42,
+    });
+    const mutationService = new DialogueService({
+      now: () => new Date('2026-08-16T12:01:00.000Z'),
+    });
+    const {
+      editor,
+      store,
+      dialogueSelection,
+      timelineState,
+    } = setup(700, savedProject, mutationService);
+    dialogueSelection.select(id);
+    const before = editor.getSnapshot()!;
+    const historyBefore = editor.history.getSnapshot();
+
+    store.resize(id, 'end', 42);
+
+    expect(editor.getSnapshot()).toBe(before);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 42,
+    });
+    expect(editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    expect(editor.history.getSnapshot()).toEqual(historyBefore);
+    expect(dialogueSelection.getSelectedDialogueId()).toBe(id);
+    expect(timelineState.currentTimeMs).toBe(700);
+
+    store.resize(id, 'end', 84);
+
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 84,
+    });
+    expect(editor.getSnapshot()).toMatchObject({ dirty: true, revision: 1 });
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+      nextUndoLabel: 'Resize dialogue',
+    });
+    expect(dialogueSelection.getSelectedDialogueId()).toBe(id);
+    expect(timelineState.currentTimeMs).toBe(700);
+
+    expect(editor.undo()).toBe(true);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 42,
+    });
+    expect(editor.getSnapshot()!.dirty).toBe(false);
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 1,
+    });
+
+    expect(editor.redo()).toBe(true);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 84,
+    });
+    expect(editor.getSnapshot()!.dirty).toBe(true);
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
   });
 
   it('selection and inspection of saved Untimed Dialogue stay read-only', () => {

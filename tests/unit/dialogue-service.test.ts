@@ -240,6 +240,31 @@ describe('DialogueService Day28 timing contract', () => {
     expect(project.shots[0]!.dialogues[0]!.endMs).toBe(3000);
   });
 
+  it('returns the original Project for an identical resize boundary', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 0, 'no-op resize');
+    const id = project.shots[0]!.dialogues[0]!.id;
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: id,
+      frameSpanMs: 42,
+    });
+    const before = project;
+
+    const after = service.resize(project, {
+      shotId: IDS.shot,
+      dialogueId: id,
+      edge: 'end',
+      timeMs: 42,
+    });
+
+    expect(after).toBe(before);
+    expect(after.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 42,
+    });
+  });
+
   it('keeps legacy overlapping Timed data loadable while rejecting new overlap', () => {
     const raw = buildProject();
     const legacy = ProjectSchema.parse({

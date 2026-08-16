@@ -264,6 +264,13 @@ export class DialogueService {
     dialogueId: string,
     timing: { startMs: number; endMs: number },
   ): Project {
+    const current = this.dialogue(shot, dialogueId);
+    if (
+      current.startMs === timing.startMs &&
+      current.endMs === timing.endMs
+    ) {
+      return project;
+    }
     return this.replaceShot(project, shot.id, {
       ...shot,
       dialogues: shot.dialogues.map((candidate) =>
