@@ -221,3 +221,12 @@ BUILD_EXIT=0                   # renderer + electron tsc + 2 preload 构建均�
 ### 质量门重跑（post-review，同 §5 环境）
 
 typecheck（renderer+electron）0 错误；`eslint src` 0 错误；unit **732 passed (104 files)**；integration **146 passed | 1 failed (147)**（唯一失败 `left-workspace` = 沙箱 safe-delete/trash 限制，与改动无关，新 v5 迁移测试通过）；build（renderer+electron tsc+2 preload）0 错误。RH-06/04 仍通过。
+
+### GitHub CI 真实运行（run 31885841720 = PR #216 最新 head `cd71d421e85861c65c9fe1da2e9a9fa15ea08644`）
+
+- 路由：`tier=full`（classifier 对分支全量 diff `main..cd71d42` 触及多 area，fail safe 到 full 回归）；`Full quality and regression` 在 `windows-latest` 执行。
+- **质量门全绿**：`Typecheck` / `Lint` / `Unit tests` / `Integration tests` / `Build` 均 SUCCESS；`Run full regression suites` 步骤内的 vitest 集成测试 `26 passed (26)` / `147 passed (147)`。
+- **整体 FAILURE**：`Run full regression suites` 步骤失败，根因为 `verify:character`（Day 19 角色定义 UI 验证，`scripts/verify-day19.cjs`）。报错 `Day 19 UI verification failed`，payload `result:"PASS"` 但带 `warning`：表情图「angry」渲染尺寸 320×200 vs 基准 160×120、张嘴图 160×52，超 30% 阈值被脚本判失败。属**角色子系统**的 Electron 渲染/资源尺寸校验。
+- **与本次改动无关**：分支 `main..cd71d42` 不触碰任何 `src/renderer/features/characters/` 或角色 domain 代码；post-review 改动仅限 dialogue authoring + `RightInspector` 的 aria-label 字符串（无结构/行为变化），不可能改变表情图渲染尺寸。
+- **既存/偶发（main 自身也红）**：main 近期 full run 396（31876849411）、391（31868590127）同样失败在同一 `Run full regression suites` 步骤 → 该 `verify:character`（Day 19）是 full 回归套件里既存的环境类偶发失败，非 Day 27 引入。重跑会继续命中同一环境失败（已验证不值得重复触发）。
+- 结论：Day 27 对白代码质量门（typecheck/lint/unit/integration/build）PASS；`overall=PENDING` 维持，待真人 Windows Electron 对 5 项修复 + 草稿隔离复验签字。**CI 整体红 ≠ 代码回归**。
