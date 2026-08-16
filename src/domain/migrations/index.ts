@@ -29,12 +29,15 @@ export type DetectedSchemaVersion =
   | 2
   | 3
   | 4
+  | 5
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(readonly receivedVersion: unknown) {
     super(
-      `Unsupported project schemaVersion: ${String(receivedVersion)}. Supported versions are 0, 1, 2, 3, 4, and ${PROJECT_SCHEMA_VERSION}.`,
+      `Unsupported project schemaVersion: ${String(
+        receivedVersion,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -55,9 +58,10 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 2 ||
     version === 3 ||
     version === 4 ||
+    version === PROJECT_SCHEMA_VERSION - 1 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
-    return version;
+    return version as DetectedSchemaVersion;
   }
   throw new UnsupportedSchemaVersionError(version);
 }
@@ -140,11 +144,12 @@ function migrateLegacyProject(
  * The single authoritative persisted-project migration pipeline.
  *
  * Every persisted envelope (v0-v5) is routed here by version and resolved to
- * the current (v5) project through exactly one path. The formal v1-v4
- * transform lives in `migrateFormalProject` (a shared helper, NOT wired into
- * `ProjectSchema`), and the current-project validator (`ProjectSchema`) is
- * used only to validate the resolved v5 shape. There is no second, implicit
- * migration path: `ProjectSchema.parse` never migrates legacy input.
+ * the current v6 project through exactly one path. The formal v1-v4
+ * transform and the Day27 v5-to-v6 dialogue transition live in
+ * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
+ * and the current-project validator (`ProjectSchema`) is used only to
+ * validate the resolved v6 shape. There is no second, implicit migration
+ * path: `ProjectSchema.parse` never migrates legacy input.
  */
 export function migrateProject(input: unknown): Project {
   const version = detectSchemaVersion(input);
@@ -159,8 +164,14 @@ export function migrateProject(input: unknown): Project {
       // Formal v2-v4 envelopes are migrated to the current schema by the
       // shared formal transform, then validated as a current project.
       return ProjectSchema.parse(migrateFormalProject(input));
+    case 5:
+      // Day27 v5 envelopes carry mandatory audioClipId on dialogues. The
+      // formal transform explicitly recognises that historical shape and
+      // bumps it to the current v6 schema without changing dialogue data.
+      return ProjectSchema.parse(migrateFormalProject(input));
     case PROJECT_SCHEMA_VERSION:
-      // Current envelope: validated as-is, no migration, no in-place mutation.
+      // Current v6 envelope: validated as-is, no migration, no in-place
+      // mutation.
       return ProjectSchema.parse(input);
     default:
       throw new UnsupportedSchemaVersionError(version);

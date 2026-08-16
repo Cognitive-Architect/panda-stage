@@ -277,7 +277,10 @@ export function validateProjectReferences(
           `Dialogue references an unknown or foreign voice profile: ${dialogue.voiceProfileId}`,
         );
       }
-      if (!audioClips.has(dialogue.audioClipId)) {
+      if (
+        dialogue.audioClipId !== undefined &&
+        !audioClips.has(dialogue.audioClipId)
+      ) {
         addIssue(
           context,
           ['shots', shotIndex, 'dialogues', dialogueIndex, 'audioClipId'],

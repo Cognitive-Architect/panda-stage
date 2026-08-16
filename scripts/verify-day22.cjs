@@ -8,6 +8,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
 const evidenceDirectory = path.join(
@@ -367,7 +368,7 @@ async function selectLayerAtLogicalPoint(window, layerId, point) {
 
 async function verifyDay22() {
   const sha256 = 'b'.repeat(64);
-  const project = {
+  const project = migrateProject({
     ...exampleProject,
     schemaVersion: 5,
     assets: [
@@ -400,7 +401,7 @@ async function verifyDay22() {
         flipX: false,
       })),
     })),
-  };
+  });
   const emptyCanvasProject = {
     ...project,
     id: 'd2200000-0000-4000-8000-000000000020',
@@ -436,7 +437,7 @@ async function verifyDay22() {
         request.projectRoot === emptyCanvasRoot
           ? emptyCanvasProject
           : savedProject ?? project,
-      migrated: false,
+      migrated: true,
       sourceVersion: 5,
     },
   }));
@@ -450,7 +451,7 @@ async function verifyDay22() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 5,
+        sourceVersion: 6,
       },
     };
   });
@@ -1070,7 +1071,8 @@ async function verifyDay22() {
       !evidence.invalidAsset.layerCountUnchanged ||
       !evidence.invalidAsset.revisionUnchanged ||
       !saveRequest ||
-      evidence.persistence.schemaVersion !== 5 ||
+      // schema version is 6 after Day 27 v5->v6 migration (PROJECT_SCHEMA_VERSION in src/domain/constants.ts)
+      evidence.persistence.schemaVersion !== 6 ||
       reopenedLayer?.x !== 900 ||
       reopenedLayer?.y !== 500 ||
       reopenedLayer?.locked !== true ||

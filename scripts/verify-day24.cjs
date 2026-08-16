@@ -8,6 +8,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
 const evidenceDirectory = path.join(
@@ -356,7 +357,7 @@ async function shortcut(window, key, modifiers) {
 
 async function verifyDay24() {
   const sha256 = 'd'.repeat(64);
-  const firstProject = {
+  const firstProject = migrateProject({
     ...exampleProject,
     schemaVersion: 5,
     assets: exampleProject.assets.map((asset) =>
@@ -390,7 +391,7 @@ async function verifyDay24() {
         ],
       };
     }),
-  };
+  });
   const secondProject = {
     ...firstProject,
     id: 'd2400000-0000-4000-8000-000000000002',
@@ -418,7 +419,7 @@ async function verifyDay24() {
       projectFilePath: `${request.projectRoot}\\project.json`,
       project:
         request.projectRoot === secondRoot ? secondProject : firstProject,
-      migrated: false,
+      migrated: true,
       sourceVersion: 5,
     },
   }));
@@ -431,7 +432,7 @@ async function verifyDay24() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 5,
+        sourceVersion: 6,
       },
     };
   });

@@ -165,7 +165,7 @@ describe('legacy background candidate inference', () => {
 describe('project migration framework', () => {
   it('detects explicit v0 through v5 envelopes', () => {
     expect(detectSchemaVersion(createV0Fixture())).toBe(0);
-    expect(detectSchemaVersion(PROBE_PROJECT)).toBe(5);
+    expect(detectSchemaVersion(PROBE_PROJECT)).toBe(6);
     expect(detectSchemaVersion({ schemaVersion: 2 })).toBe(2);
     expect(detectSchemaVersion({ schemaVersion: 3 })).toBe(3);
     expect(detectSchemaVersion({ schemaVersion: 4 })).toBe(4);
@@ -173,7 +173,7 @@ describe('project migration framework', () => {
   });
 
   it.each([
-    { schemaVersion: 6 },
+    { schemaVersion: 7 },
     { schemaVersion: 99 },
     {},
   ])('rejects unknown or missing schema versions', (input) => {
@@ -190,7 +190,7 @@ describe('project migration framework', () => {
     expect(input).toEqual(snapshot);
     expect(ProjectSchema.parse(migrated)).toEqual(migrated);
     expect(migrated).toMatchObject({
-      schemaVersion: 5,
+      schemaVersion: 6,
       id: PROBE_PROJECT.id,
       name: PROBE_PROJECT.name,
       createdAt: PROBE_PROJECT.createdAt,
@@ -252,13 +252,13 @@ describe('project migration framework', () => {
     expect(migrated.shots[0]!.layers[1]!.flipX).toBe(true);
   });
 
-  it('migrates a formal v1 project to v5 with character defaults and explicit background', () => {
+  it('migrates a formal v1 project to v6 with character defaults and explicit background', () => {
     const snapshot = structuredClone(exampleProject);
     const migrated = migrateProject(exampleProject);
     const character = migrated.characters[0]!;
 
     expect(exampleProject).toEqual(snapshot);
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
     expect(character.defaultExpressionId).toBe(
       character.expressions[0]!.id,
     );
@@ -297,7 +297,7 @@ describe('project migration framework', () => {
     };
     const migrated = migrateProject(version2);
 
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
     expect(migrated.shots[0]!.backgroundLayerId).toBe(
       migrated.shots[0]!.layers[0]!.id,
     );
@@ -344,7 +344,7 @@ describe('project migration framework', () => {
     expect(migrateProject(contentOnly).shots[0]!.backgroundLayerId).toBeNull();
   });
 
-  it('migrates strict v3 layers to v5 with locked=false and flipX=false', () => {
+  it('migrates strict v3 layers to v6 with locked=false and flipX=false', () => {
     const current = migrateProject(exampleProject);
     const version3 = {
       ...current,
@@ -361,7 +361,7 @@ describe('project migration framework', () => {
 
     const migrated = migrateProject(version3);
 
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
     expect(
       migrated.shots.flatMap((shot) => shot.layers)
         .every(
@@ -370,7 +370,7 @@ describe('project migration framework', () => {
     ).toBe(true);
   });
 
-  it('requires flipX in v5 and rejects v4 files that smuggle it in', () => {
+  it('requires flipX in the current v6 schema and rejects v4 files that smuggle it in', () => {
     const current = migrateProject(exampleProject);
     const missingFlip = {
       ...current,
@@ -388,7 +388,7 @@ describe('project migration framework', () => {
     expect(() => migrateProject(v4WithFlip)).toThrow();
   });
 
-  it('migrates v4 to v5, preserving locked and adding flipX=false', () => {
+  it('migrates v4 to v6, preserving locked and adding flipX=false', () => {
     const current = migrateProject(exampleProject);
     const version4 = {
       ...current,
@@ -408,7 +408,7 @@ describe('project migration framework', () => {
     };
 
     const migrated = migrateProject(version4);
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
     expect(migrated.shots[0]!.layers.map((layer) => layer.locked))
       .toEqual([false, true]);
     expect(migrated.shots[0]!.layers.map((layer) => layer.flipX))

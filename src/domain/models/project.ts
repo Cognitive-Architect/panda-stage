@@ -4,12 +4,15 @@ import {
   PROJECT_HEIGHT,
   PROJECT_SCHEMA_VERSION,
   PROJECT_WIDTH,
+  SHOT_MIN_DURATION_MS,
 } from '../constants';
 import { validateProjectReferences } from '../validators/projectReferences';
 import { AssetSchema, type Asset } from './asset';
+import { AudioClipSchema } from './audio';
 import { CharacterSchema, VoiceProfileSchema } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import type { Layer, LayerV3, LayerV4 } from './layer';
+import { LayerSchema } from './layer';
 import {
   ShotSchema,
   ShotV2Schema,
@@ -17,6 +20,8 @@ import {
   ShotV4Schema,
 } from './shot';
 import { SubtitleStyleSchema } from './subtitle';
+import { DialogueV5Schema } from './dialogue';
+import { TimelineEventSchema } from './timeline-event';
 
 const CharacterExpressionV1Schema = z
   .object({
@@ -126,6 +131,53 @@ export const ProjectV4Schema = z
   })
   .strict();
 
+/**
+ * Historical v5 shot shape. Identical to the current shot except its dialogues
+ * use the v5 Dialogue schema, where `audioClipId` is mandatory. This is the
+ * only field that differs from the current `ShotSchema`; kept so the v5 →
+ * current migration entry recognises a project the v5 product wrote and bumps
+ * its schemaVersion without rewriting dialogue data (v5 dialogues already carry
+ * a real audioClipId, which stays valid once `audioClipId` becomes optional).
+ */
+const ShotV5BaseShape = {
+  id: IdSchema,
+  name: NameSchema,
+  durationMs: z.number().int().min(SHOT_MIN_DURATION_MS),
+  defaultSubtitleStyleId: IdSchema,
+  dialogues: z.array(DialogueV5Schema),
+  audioClips: z.array(AudioClipSchema),
+  timelineEvents: z.array(TimelineEventSchema).default([]),
+  layers: z.array(LayerSchema),
+  backgroundLayerId: IdSchema.nullable(),
+};
+
+export const ShotV5Schema = z.object(ShotV5BaseShape).strict();
+
+/**
+ * Historical v5 project shape. Matches exactly what the v5 product persisted,
+ * including the mandatory `audioClipId` on each dialogue. Used as the explicit
+ * v5 → current migration entry point so a project the v5 product saved can be
+ * unambiguously recognised and migrated forward (schemaVersion bump only; the
+ * dialogue data is already valid under the optional-audioClipId schema).
+ */
+export const ProjectV5Schema = z
+  .object({
+    schemaVersion: z.literal(5),
+    id: IdSchema,
+    name: NameSchema,
+    width: z.literal(PROJECT_WIDTH),
+    height: z.literal(PROJECT_HEIGHT),
+    fps: z.literal(PROJECT_FPS),
+    assets: z.array(AssetSchema),
+    characters: z.array(CharacterSchema),
+    voiceProfiles: z.array(VoiceProfileSchema),
+    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
+    shots: z.array(ShotV5Schema),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
 const LEGACY_BACKGROUND_MIN_WIDTH_RATIO = 0.75;
 const LEGACY_BACKGROUND_MIN_HEIGHT_RATIO = 0.75;
 
@@ -190,6 +242,14 @@ function addBackgroundIdentity<T extends {
 }
 
 export function migrateFormalProject(input: unknown): unknown {
+  const version5 = ProjectV5Schema.safeParse(input);
+  if (version5.success) {
+    // v5 dialogues already carry a real audioClipId, which is still valid once
+    // audioClipId becomes optional. Only the schemaVersion needs bumping; the
+    // dialogue/shot data passes through unchanged.
+    return { ...version5.data, schemaVersion: PROJECT_SCHEMA_VERSION };
+  }
+
   const version4 = ProjectV4Schema.safeParse(input);
   if (version4.success) {
     return {
@@ -255,7 +315,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v4 -> v5) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v5 -> v6) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

@@ -878,24 +878,35 @@ button:disabled {
 .timeline-dock {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   gap: 4px;
+  scrollbar-color: #3f6d4e #0a100c;
 }
 
-/* Collapse hides only the ruler body (React already removes it from the tree
-   when expanded=false). The header with the reopen button must stay reachable
-   so the user can expand the timeline again without a reload. */
+/* Collapse hides the ruler and dialogue authoring bodies while keeping them
+   mounted (the latter preserves an unfinished draft). The header with the
+   reopen button must stay reachable so the user can expand the Timeline again
+   without a reload. */
 .timeline-dock[data-expanded='false'] .timeline-ruler-scroll,
-.timeline-dock[data-expanded='false'] .timeline-empty {
+.timeline-dock[data-expanded='false'] .timeline-empty,
+.timeline-dock[data-expanded='false'] > .dialogue-sheet {
   display: none;
 }
 
 .timeline-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 10px;
   min-width: 0;
+  background: rgb(8 14 10 / 96%);
 }
 
 .timeline-collapse {
@@ -944,6 +955,7 @@ button:disabled {
 
 .timeline-ruler-scroll {
   position: relative;
+  flex: 0 0 64px;
   min-width: 0;
   height: 64px;
   overflow-x: auto;
@@ -1000,6 +1012,7 @@ button:disabled {
 }
 
 .timeline-empty {
+  flex: 0 0 64px;
   height: 64px;
   display: flex;
   align-items: center;
@@ -1012,6 +1025,7 @@ button:disabled {
 
 .bottom-workspace > .history-controls {
   display: grid;
+  flex: 0 0 auto;
   width: 100%;
   min-width: 0;
   margin: 0;
@@ -3755,4 +3769,187 @@ h1 {
   margin: 0;
   font-size: 0.75rem;
   color: #7e968a;
+}
+
+/* Day 27 — Dialogue Sheet + Inspector */
+.dialogue-sheet {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  border-top: 1px solid #2a3a32;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialogue-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialogue-sheet-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.dialogue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.dialogue-list-item {
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.dialogue-list-item:hover {
+  background: #1c2822;
+}
+
+.dialogue-list-item.selected {
+  background: #243b30;
+  border-color: #3fae7a;
+}
+
+.dialogue-list-item .dialogue-speaker {
+  font-weight: 600;
+  min-width: 64px;
+}
+
+.dialogue-list-item .dialogue-text {
+  color: #cfe3d8;
+}
+
+.dialogue-empty,
+.dialogue-batch-empty {
+  color: #7e968a;
+  font-size: 0.8rem;
+  padding: 6px 4px;
+}
+
+.dialogue-add {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: 6px;
+}
+
+.dialogue-add input {
+  min-width: 0;
+  flex: 1;
+}
+
+.dialogue-batch {
+  flex: 0 0 auto;
+  min-width: 0;
+  border: 1px solid #2a3a32;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #16201b;
+}
+
+.dialogue-batch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialogue-batch-header h4 {
+  margin: 0;
+}
+
+.dialogue-batch-input {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.dialogue-batch-summary {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #9fb8aa;
+}
+
+.dialogue-batch-preview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.dialogue-batch-preview li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #1c2822;
+}
+
+.dialogue-batch-preview li[data-status='valid'] {
+  border-left: 3px solid #3fae7a;
+}
+
+.dialogue-batch-preview li[data-status='unknown'],
+.dialogue-batch-preview li[data-status='ambiguous'],
+.dialogue-batch-preview li[data-status='malformed'],
+.dialogue-batch-preview li[data-status='invalid'] {
+  border-left: 3px solid #d98b3a;
+}
+
+.dialogue-batch-lineno {
+  min-width: 20px;
+  color: #7e968a;
+}
+
+.dialogue-batch-issue {
+  color: #e0b483;
+  font-size: 0.8rem;
+}
+
+.dialogue-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialogue-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+}
+
+.dialogue-inspector textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.dialogue-point-time {
+  margin: 0;
+  font-size: 0.74rem;
+  color: #7e968a;
+}
+
+.dialogue-delete {
+  align-self: flex-start;
 }

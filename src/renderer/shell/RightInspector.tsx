@@ -9,9 +9,11 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { editorProjectStore } from '../stores/EditorProjectStore';
 import { selectionStore } from '../stores/selectionStore';
 import { shotStore } from '../stores/shotStore';
+import { dialogueSelectionStore } from '../stores/dialogueSelectionStore';
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
+import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { isNarrowViewport, useNarrowViewport } from './ResourceActivityDock';
 
 // Issue 109's existing Electron receipt measures the right column by this
@@ -97,6 +99,11 @@ export function RightInspector(): React.JSX.Element {
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const selectedDialogueId = useSyncExternalStore(
+    dialogueSelectionStore.subscribe,
+    dialogueSelectionStore.getSelectedDialogueId,
+  );
+  const inspectorModeLabel = selectedDialogueId ? '对白检查器' : '图层检查器';
   const selection = getRightInspectorSelection(
     snapshot,
     currentShotId,
@@ -171,6 +178,15 @@ export function RightInspector(): React.JSX.Element {
     </>
   );
 
+  // A selected dialogue takes over the single inspector surface; the
+  // layer/background body is shown otherwise. The two selections are mutually
+  // exclusive (selecting one clears the other), so at most one is active.
+  const inspectorContent = selectedDialogueId ? (
+    <DialogueInspector dialogueId={selectedDialogueId} />
+  ) : (
+    inspectorBody
+  );
+
   return (
     <aside
       aria-labelledby="right-inspector-heading"
@@ -195,7 +211,7 @@ export function RightInspector(): React.JSX.Element {
         ref={railRef}
         aria-controls="right-inspector-drawer"
         aria-expanded={drawerOpen}
-        aria-label={drawerOpen ? '收起图层检查器' : '打开图层检查器'}
+        aria-label={drawerOpen ? `收起${inspectorModeLabel}` : `打开${inspectorModeLabel}`}
         className="inspector-rail-handle"
         data-testid="inspector-rail-handle"
         onClick={() => setDrawerOpen((open) => !open)}
@@ -212,7 +228,7 @@ export function RightInspector(): React.JSX.Element {
         id="right-inspector-drawer"
       >
         <button
-          aria-label="关闭图层检查器"
+          aria-label={`关闭${inspectorModeLabel}`}
           className="inspector-drawer-close"
           data-testid="inspector-drawer-close"
           onClick={() => setDrawerOpen(false)}
@@ -220,11 +236,11 @@ export function RightInspector(): React.JSX.Element {
         >
           关闭
         </button>
-        {inspectorBody}
+        {inspectorContent}
       </div>
         </>
       ) : (
-        inspectorBody
+        inspectorContent
       )}
     </aside>
   );

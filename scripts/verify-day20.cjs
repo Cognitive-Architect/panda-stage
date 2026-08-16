@@ -8,6 +8,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
 const evidenceDirectory = path.join(
@@ -396,7 +397,7 @@ function shotEntityIds(shot) {
 }
 
 async function verifyDay20() {
-  const initialProject = {
+  const initialProject = migrateProject({
     ...exampleProject,
     schemaVersion: 5,
     characters: exampleProject.characters.map((character) => ({
@@ -414,7 +415,7 @@ async function verifyDay20() {
       })),
       backgroundLayerId: shot.layers[0]?.id ?? null,
     })),
-  };
+  });
   const alternateProject = {
     ...initialProject,
     id: 'd2070000-0000-4000-8000-000000000001',
@@ -441,7 +442,7 @@ async function verifyDay20() {
         project: openingAlternate
           ? alternateProject
           : savedProject ?? initialProject,
-        migrated: false,
+        migrated: true,
         sourceVersion: 5,
       },
     };
@@ -456,7 +457,7 @@ async function verifyDay20() {
         projectFilePath: `${projectRoot}\\project.json`,
         project: savedProject,
         migrated: false,
-        sourceVersion: 5,
+        sourceVersion: 6,
       },
     };
   });

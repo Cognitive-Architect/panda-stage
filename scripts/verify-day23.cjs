@@ -8,6 +8,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
 const evidenceDirectory = path.join(
@@ -338,7 +339,7 @@ async function createSelectedCharacterLayer(window, point) {
 async function verifyDay23() {
   const sha256 = 'c'.repeat(64);
   const ordinary = exampleProject.shots[0].layers[1];
-  const project = {
+  const project = migrateProject({
     ...exampleProject,
     schemaVersion: 5,
     assets: exampleProject.assets.map((asset) =>
@@ -381,7 +382,7 @@ async function verifyDay23() {
         },
       ],
     })),
-  };
+  });
   let savedProject = null;
   let saveRequest = null;
   const autosaveUpdates = [];
@@ -405,7 +406,7 @@ async function verifyDay23() {
       projectRoot: request.projectRoot,
       projectFilePath: `${request.projectRoot}\\project.json`,
       project: savedProject ?? project,
-      migrated: false,
+      migrated: true,
       sourceVersion: 5,
     },
   }));
@@ -419,7 +420,7 @@ async function verifyDay23() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 5,
+        sourceVersion: 6,
       },
     };
   });
@@ -795,7 +796,7 @@ async function verifyDay23() {
       executedAt: new Date().toISOString(),
       baselineSha: '4a5266c',
       contract: {
-        schemaVersion: 5,
+        schemaVersion: 6,
         flipModel: 'explicit flipX boolean; positive uniform scale',
         centerAnchor: 'x/y remain the visual center',
         orderModel: 'continuous zIndex; background pinned at zero',
@@ -903,7 +904,8 @@ async function verifyDay23() {
       evidence.lock.transformerVisible ||
       !evidence.lock.transformInputsDisabled ||
       !evidence.lock.orderButtonsDisabled ||
-      evidence.persistence.schemaVersion !== 5 ||
+      // schema version is 6 after Day 27 v5->v6 migration (PROJECT_SCHEMA_VERSION in src/domain/constants.ts)
+      evidence.persistence.schemaVersion !== 6 ||
       evidence.persistence.reopenedLayer?.flipX !== true ||
       evidence.persistence.reopenedLayer?.rotationDeg !== 90 ||
       evidence.persistence.reopenedLayer?.scaleX !== 1.25 ||

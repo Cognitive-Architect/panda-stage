@@ -26,7 +26,7 @@ export const PROBE_SUBTITLE_CUES = SubtitleTrackSchema.parse([
 ]);
 
 export const PROBE_PROJECT: Project = ProjectSchema.parse({
-  schemaVersion: 5,
+  schemaVersion: 6,
   id: '00000000-0000-4000-8000-000000000004',
   name: 'Day 04 共享舞台探针',
   width: 1920,

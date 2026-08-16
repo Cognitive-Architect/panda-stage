@@ -148,8 +148,10 @@ describe('Day20 shot 复制回归 — store 层（断言 2/4/5）', () => {
       expect(origIds.has(e.layerId)).toBe(false);
     }
     const copyClipIds = new Set(copy.audioClips.map((c) => c.id));
-    // dialogue.audioClipId 指向副本自身的新 audioClip id
+    // dialogue.audioClipId 指向副本自身的新 audioClip id；无音频的文本对白
+    // 不绑定 clip，自然跳过（audioClipId 为 undefined）。
     for (const d of copy.dialogues) {
+      if (d.audioClipId === undefined) continue;
       expect(copyClipIds.has(d.audioClipId)).toBe(true);
       expect(origIds.has(d.audioClipId)).toBe(false);
     }

@@ -347,7 +347,7 @@ function documentFor(root, project) {
     projectRoot: root,
     projectFilePath: `${root}\\project.json`,
     project: migrateProject(project),
-    migrated: sourceVersion !== 5,
+    migrated: sourceVersion !== 6,
     sourceVersion,
   };
 }

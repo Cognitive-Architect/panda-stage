@@ -9,6 +9,7 @@ import {
   UnsupportedSchemaVersionError,
   detectSchemaVersion,
   migrateProject,
+  type DetectedSchemaVersion,
   type Project,
 } from '../../domain';
 import {
@@ -217,7 +218,7 @@ export class ProjectService {
     try {
       const sourceVersion = detectSchemaVersion(input);
       // Single authoritative pipeline for every persisted envelope (v0-v5).
-      // Current (v5) input is validated as-is; legacy input is migrated.
+      // Current (v6) input is validated as-is; legacy input is migrated.
       const project = migrateProject(input);
       return this.document(
         projectRoot,
@@ -459,7 +460,7 @@ export class ProjectService {
     projectRoot: string,
     project: Project,
     migrated: boolean,
-    sourceVersion: 0 | 1 | 2 | 3 | 4 | 5,
+    sourceVersion: DetectedSchemaVersion,
   ): ProjectDocument {
     return {
       projectRoot,
