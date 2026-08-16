@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateShotAtTime, ProjectSchema } from '../../../src/domain';
+import { evaluateShotAtTime } from '../../../src/domain';
 import type { EvaluatedLayer, Project, Shot, TimelineEvent } from '../../../src/domain';
 import { buildProject, IDS } from './testProject';
 
@@ -143,50 +143,6 @@ describe('T02 evaluateShotAtTime', () => {
       project,
     ).layers.find((candidate) => candidate.id === IDS.layerChar)!;
     expect(layer.assetId).toBe(IDS.assetChar2);
-  });
-
-  it('uses the speaking character mouth asset only during an open mouth phase', () => {
-    const mouthAssetId = '10000000-0000-4000-8000-000000000099';
-    const mouthProject = ProjectSchema.parse({
-      ...project,
-      assets: [
-        ...project.assets,
-        {
-          id: mouthAssetId,
-          kind: 'image',
-          name: 'mouth-open',
-          relativePath: 'mouth.png',
-          mimeType: 'image/png',
-          width: 640,
-          height: 640,
-        },
-      ],
-      characters: project.characters.map((character) => ({
-        ...character,
-        mouthOpenAssetId: mouthAssetId,
-      })),
-    });
-    const timedShot = {
-      ...shot,
-      dialogues: [
-        {
-          id: '70000000-0000-4000-8000-000000000001',
-          characterId: IDS.character,
-          voiceProfileId: IDS.voiceProfile,
-          subtitleStyleId: IDS.subtitle,
-          startMs: 1_000,
-          endMs: 2_000,
-          text: 'speaking',
-        },
-      ],
-    };
-    const layerAt = (timeMs: number) =>
-      evaluateShotAtTime(timedShot, timeMs, mouthProject, {
-        includeMouthMotion: true,
-      }).layers.find((layer) => layer.id === IDS.layerChar)!;
-    expect(layerAt(1_000).assetId).toBe(mouthAssetId);
-    expect(layerAt(1_125).assetId).toBe(IDS.assetChar);
-    expect(layerAt(2_000).assetId).toBe(IDS.assetChar);
   });
 
   it('R6: an invalid expression id falls back to the layer base expression (no throw)', () => {

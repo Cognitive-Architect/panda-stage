@@ -32,10 +32,7 @@ export function SubtitleRenderer({
   const y = subtitleY(resolvedStyle.position);
   const x = STAGE_CAPTION_SAFE_AREA.x;
   const textWidth = layout.width;
-  const backgroundHeight = Math.max(
-    STAGE_CAPTION_SAFE_AREA.height,
-    layout.lineCount > 1 ? STAGE_CAPTION_SAFE_AREA.height + 16 : STAGE_CAPTION_SAFE_AREA.height,
-  );
+  const backgroundHeight = STAGE_CAPTION_SAFE_AREA.height;
 
   return (
     <Group
@@ -62,8 +59,6 @@ export function SubtitleRenderer({
         lineHeight={1.25}
         name={layout.truncated ? 'subtitle-text-warning' : 'subtitle-text'}
         padding={0}
-        stroke={resolvedStyle.strokeColor}
-        strokeWidth={resolvedStyle.strokeWidth ?? 0}
         text={layout.text}
         verticalAlign="middle"
         width={textWidth}

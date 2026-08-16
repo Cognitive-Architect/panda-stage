@@ -46,7 +46,6 @@ import { registerAssetLibraryIpcHandlers } from './ipc/register-asset-library-ip
 import { AssetDeleteService } from './services/AssetDeleteService';
 import { AssetThumbnailService } from './services/AssetThumbnailService';
 import { AssetCanvasImageService } from './services/AssetCanvasImageService';
-import { AssetAudioSourceService } from './services/AssetAudioSourceService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
 import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer';
 
@@ -327,10 +326,6 @@ async function initialize(): Promise<void> {
       thumbnailService,
     }),
     assetCanvasImageService: new AssetCanvasImageService({
-      getCurrentProjectSnapshot: (projectRoot) =>
-        autosaveService?.getProjectSnapshot(projectRoot) ?? null,
-    }),
-    assetAudioSourceService: new AssetAudioSourceService({
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     }),

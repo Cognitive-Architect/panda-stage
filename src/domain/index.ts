@@ -10,9 +10,6 @@ export * from './actions';
 export {
   evaluateShotAtTime,
 } from './evaluate-shot-at-time';
-export type { EvaluateShotOptions } from './evaluate-shot-at-time';
-export * from './evaluators/dialogueEvaluator';
-export * from './evaluators/mouthMotionEvaluator';
 export type {
   EvaluatedLayer,
   EvaluatedShot,

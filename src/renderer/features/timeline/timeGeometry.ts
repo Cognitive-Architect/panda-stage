@@ -33,6 +33,11 @@ export function snapToFrame(timeMs: number, fps: number = TIMELINE_FPS): number 
   return Math.max(0, Math.round(frames * frameMs));
 }
 
+/** Integer persisted span for one Timeline frame at the active FPS. */
+export function integerFrameSpanMs(fps: number = TIMELINE_FPS): number {
+  return Math.max(1, snapToFrame(frameDurationMs(fps), fps));
+}
+
 /** Pixels per millisecond for a given viewport width, duration and zoom. */
 export function computePixelsPerMs(
   viewportWidthPx: number,

@@ -2,15 +2,11 @@ import {
   ProjectSchema,
   type Character,
   type Dialogue,
-  type AudioClip,
   type Project,
   type Shot,
 } from '../models';
-import {
-  DIALOGUE_DEFAULT_DURATION_MS,
-  DIALOGUE_MIN_DURATION_MS,
-} from '../constants';
-import { isDialogueTimed } from '../evaluators/dialogueEvaluator';
+
+const MIN_TIMED_DIALOGUE_DURATION_MS = 1;
 
 export type DialogueServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -18,12 +14,8 @@ export type DialogueServiceErrorCode =
   | 'CHARACTER_NOT_FOUND'
   | 'INVALID_DIALOGUE_TIME'
   | 'INVALID_DIALOGUE_DURATION'
-  | 'INVALID_SUBTITLE_STYLE'
   | 'INVALID_DIALOGUE_TEXT'
   | 'DIALOGUE_OVERLAP'
-  | 'AUDIO_ASSET_NOT_FOUND'
-  | 'AUDIO_ASSET_INVALID'
-  | 'AUDIO_DURATION_MISSING'
   | 'ID_GENERATION_FAILED';
 
 export class DialogueServiceError extends Error {
@@ -54,9 +46,19 @@ export interface UpdateDialogueInput {
   dialogueId: string;
   characterId?: string;
   text?: string;
-  subtitleStyleId?: string;
-  startMs?: number;
-  endMs?: number;
+}
+
+export interface SetDialogueTimingInput {
+  shotId: string;
+  dialogueId: string;
+  startMs: number;
+  endMs: number;
+}
+
+export interface ArrangeDialogueInput {
+  shotId: string;
+  dialogueId: string;
+  frameSpanMs: number;
 }
 
 export interface MoveDialogueInput {
@@ -72,51 +74,37 @@ export interface ResizeDialogueInput {
   timeMs: number;
 }
 
-export interface AttachDialogueAudioInput {
-  shotId: string;
-  dialogueId: string;
-  assetId: string;
-}
-
 export interface DialogueServiceOptions {
   createId?: () => string;
   now?: () => Date;
-  defaultDurationMs?: number;
 }
 
 /**
- * Pure Project → Project dialogue mutation owner. Centralises every dialogue
- * write so the renderer never hand-rolls project replacement across components.
- *
- * Point-time is supplied as a plain `pointTimeMs` number by the caller (the
- * renderer reads the Timeline playhead and passes it in). This service must not
- * import any renderer/timeline store — the playhead is UI-only state.
+ * Pure Project → Project dialogue mutation owner. Point-time and frame span are
+ * supplied as plain integer milliseconds; Timeline geometry remains renderer
+ * state and is never imported into the domain.
  */
 export class DialogueService {
   private readonly createId: () => string;
   private readonly now: () => Date;
-  private readonly defaultDurationMs: number;
 
   constructor(options: DialogueServiceOptions = {}) {
     this.createId = options.createId ?? (() => crypto.randomUUID());
     this.now = options.now ?? (() => new Date());
-    this.defaultDurationMs = this.validDefaultDuration(
-      options.defaultDurationMs ?? DIALOGUE_DEFAULT_DURATION_MS,
-    );
   }
 
+  /** Day27 contract: newly authored Dialogue is Untimed at one captured point. */
   create(project: Project, input: CreateDialogueInput): Project {
     const shot = this.shot(project, input.shotId);
     const character = this.character(project, input.characterId);
-    const timing = this.defaultWindow(shot, input.pointTimeMs);
-    this.assertNoOverlap(shot.dialogues, timing);
+    const timeMs = this.clampTime(shot, input.pointTimeMs);
     const dialogue: Dialogue = {
       id: this.nextId(this.collectIds(project)),
       characterId: character.id,
       voiceProfileId: character.defaultVoiceProfileId,
       subtitleStyleId: shot.defaultSubtitleStyleId,
-      startMs: timing.startMs,
-      endMs: timing.endMs,
+      startMs: timeMs,
+      endMs: timeMs,
       text: this.validText(input.text),
     };
     return this.replaceShot(project, shot.id, {
@@ -126,31 +114,25 @@ export class DialogueService {
   }
 
   /**
-   * Appends every resolved line as a single Project mutation. All lines share
-   * the capture-time point (the renderer passes one `pointTimeMs` captured at
-   * commit), so the whole batch becomes exactly one History command.
+   * Day27 batch contract: every line shares one captured point-time and the
+   * returned Project is committed by the renderer as one History command.
    */
   createMany(project: Project, input: CreateManyDialogueInput): Project {
     if (input.lines.length === 0) return project;
     const shot = this.shot(project, input.shotId);
+    const timeMs = this.clampTime(shot, input.pointTimeMs);
     const usedIds = this.collectIds(project);
-    const added: Dialogue[] = [];
-    input.lines.forEach((line, index) => {
+    const added: Dialogue[] = input.lines.map((line) => {
       const character = this.character(project, line.characterId);
-      const timing = this.defaultWindow(
-        shot,
-        input.pointTimeMs + index * this.defaultDurationMs,
-      );
-      this.assertNoOverlap([...shot.dialogues, ...added], timing);
-      added.push({
+      return {
         id: this.nextId(usedIds),
         characterId: character.id,
         voiceProfileId: character.defaultVoiceProfileId,
         subtitleStyleId: shot.defaultSubtitleStyleId,
-        startMs: timing.startMs,
-        endMs: timing.endMs,
+        startMs: timeMs,
+        endMs: timeMs,
         text: this.validText(line.text),
-      });
+      };
     });
     return this.replaceShot(project, shot.id, {
       ...shot,
@@ -176,45 +158,60 @@ export class DialogueService {
         voiceProfileId: character.defaultVoiceProfileId,
       };
     }
-    if (input.subtitleStyleId !== undefined) {
-      if (
-        !project.subtitleStyles.some(
-          (style) => style.id === input.subtitleStyleId,
-        )
-      ) {
-        throw new DialogueServiceError(
-          'INVALID_SUBTITLE_STYLE',
-          `找不到字幕样式：${input.subtitleStyleId}`,
-        );
-      }
-      next = { ...next, subtitleStyleId: input.subtitleStyleId };
-    }
-    if (input.startMs !== undefined || input.endMs !== undefined) {
-      const timing = this.validTimedWindow(
-        shot,
-        input.startMs ?? dialogue.startMs,
-        input.endMs ?? dialogue.endMs,
-      );
-      this.assertNoOverlap(
-        shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
-        timing,
-      );
-      next = { ...next, ...timing };
-    }
-    const replacement: Shot = {
+    return this.replaceShot(project, shot.id, {
       ...shot,
       dialogues: shot.dialogues.map((candidate) =>
         candidate.id === dialogue.id ? next : candidate,
       ),
-      audioClips:
-        input.startMs !== undefined || input.endMs !== undefined
-          ? this.syncAudioClipTiming(shot, next, {
-              startMs: next.startMs,
-              endMs: next.endMs,
-            })
-          : shot.audioClips,
-    };
-    return this.replaceShot(project, shot.id, replacement);
+    });
+  }
+
+  /** Explicitly commits a positive Timed interval. */
+  setTiming(project: Project, input: SetDialogueTimingInput): Project {
+    const shot = this.shot(project, input.shotId);
+    const dialogue = this.dialogue(shot, input.dialogueId);
+    const timing = this.validTimedWindow(shot, input.startMs, input.endMs);
+    this.assertNoOverlap(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      timing,
+    );
+    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
+  }
+
+  /**
+   * Explicit Untimed → Timed action. The renderer derives frameSpanMs from
+   * Day26 frameDurationMs()/snapToFrame() and passes the integer span as data.
+   */
+  arrange(project: Project, input: ArrangeDialogueInput): Project {
+    const shot = this.shot(project, input.shotId);
+    const dialogue = this.dialogue(shot, input.dialogueId);
+    if (dialogue.endMs !== dialogue.startMs) {
+      throw new DialogueServiceError(
+        'INVALID_DIALOGUE_DURATION',
+        '只有未定时对白可以使用“一帧安排”。',
+      );
+    }
+    this.validPositiveInteger(input.frameSpanMs, '默认帧时长');
+    const spanMs = Math.min(input.frameSpanMs, shot.durationMs);
+    if (spanMs < MIN_TIMED_DIALOGUE_DURATION_MS) {
+      throw new DialogueServiceError(
+        'INVALID_DIALOGUE_DURATION',
+        '镜头时长不足，无法安排对白。',
+      );
+    }
+    const pointMs = dialogue.startMs;
+    const timing =
+      pointMs + spanMs <= shot.durationMs
+        ? { startMs: pointMs, endMs: pointMs + spanMs }
+        : {
+            startMs: Math.max(0, shot.durationMs - spanMs),
+            endMs: shot.durationMs,
+          };
+    this.assertNoOverlap(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      timing,
+    );
+    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
   }
 
   move(project: Project, input: MoveDialogueInput): Project {
@@ -231,18 +228,13 @@ export class DialogueService {
       shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
       timing,
     );
-    return this.replaceShot(project, shot.id, {
-      ...shot,
-      dialogues: shot.dialogues.map((candidate) =>
-        candidate.id === dialogue.id ? { ...candidate, ...timing } : candidate,
-      ),
-      audioClips: this.syncAudioClipTiming(shot, dialogue, timing),
-    });
+    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
   }
 
   resize(project: Project, input: ResizeDialogueInput): Project {
     const shot = this.shot(project, input.shotId);
     const dialogue = this.dialogue(shot, input.dialogueId);
+    this.timedDuration(dialogue);
     this.validInteger(input.timeMs, '调整时间');
     const timing =
       input.edge === 'start'
@@ -252,96 +244,30 @@ export class DialogueService {
       shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
       timing,
     );
-    return this.replaceShot(project, shot.id, {
-      ...shot,
-      dialogues: shot.dialogues.map((candidate) =>
-        candidate.id === dialogue.id ? { ...candidate, ...timing } : candidate,
-      ),
-      audioClips: this.syncAudioClipTiming(shot, dialogue, timing),
-    });
-  }
-
-  attachAudio(project: Project, input: AttachDialogueAudioInput): Project {
-    const shot = this.shot(project, input.shotId);
-    const dialogue = this.dialogue(shot, input.dialogueId);
-    const asset = project.assets.find((candidate) => candidate.id === input.assetId);
-    if (!asset) {
-      throw new DialogueServiceError(
-        'AUDIO_ASSET_NOT_FOUND',
-        `找不到音频素材：${input.assetId}`,
-      );
-    }
-    if (asset.kind !== 'audio') {
-      throw new DialogueServiceError(
-        'AUDIO_ASSET_INVALID',
-        `素材不是音频：${asset.name}`,
-      );
-    }
-    if (asset.durationMs === undefined) {
-      throw new DialogueServiceError(
-        'AUDIO_DURATION_MISSING',
-        `音频尚未完成时长探测：${asset.name}`,
-      );
-    }
-    const durationMs = this.timedDuration(dialogue);
-    const clipDurationMs = Math.min(asset.durationMs, durationMs);
-    if (clipDurationMs < DIALOGUE_MIN_DURATION_MS) {
-      throw new DialogueServiceError(
-        'INVALID_DIALOGUE_DURATION',
-        '对白必须先设置为正时长才能绑定音频。',
-      );
-    }
-    const id = dialogue.audioClipId ?? this.nextId(this.collectIds(project));
-    const clip: AudioClip = {
-      id,
-      name: `${asset.name} · ${dialogue.text.slice(0, 24)}`,
-      assetId: asset.id,
-      startMs: dialogue.startMs,
-      endMs: dialogue.startMs + clipDurationMs,
-      offsetMs: 0,
-      volume: 1,
-    };
-    return this.replaceShot(project, shot.id, {
-      ...shot,
-      audioClips: [
-        ...shot.audioClips.filter((candidate) => candidate.id !== id),
-        clip,
-      ],
-      dialogues: shot.dialogues.map((candidate) =>
-        candidate.id === dialogue.id
-          ? { ...candidate, audioClipId: clip.id }
-          : candidate,
-      ),
-    });
-  }
-
-  detachAudio(project: Project, shotId: string, dialogueId: string): Project {
-    const shot = this.shot(project, shotId);
-    const dialogue = this.dialogue(shot, dialogueId);
-    if (!dialogue.audioClipId) return project;
-    const audioClipId = dialogue.audioClipId;
-    return this.replaceShot(project, shot.id, {
-      ...shot,
-      audioClips: shot.audioClips.filter((clip) => clip.id !== audioClipId),
-      dialogues: shot.dialogues.map((candidate) => {
-        if (candidate.id !== dialogue.id) return candidate;
-        return Object.fromEntries(
-          Object.entries(candidate).filter(([key]) => key !== 'audioClipId'),
-        ) as Dialogue;
-      }),
-    });
+    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
   }
 
   remove(project: Project, shotId: string, dialogueId: string): Project {
     const shot = this.shot(project, shotId);
-    const dialogue = this.dialogue(shot, dialogueId);
+    this.dialogue(shot, dialogueId);
     return this.replaceShot(project, shot.id, {
       ...shot,
-      audioClips: shot.audioClips.filter(
-        (clip) => clip.id !== dialogue.audioClipId,
-      ),
       dialogues: shot.dialogues.filter(
         (candidate) => candidate.id !== dialogueId,
+      ),
+    });
+  }
+
+  private replaceDialogueTiming(
+    project: Project,
+    shot: Shot,
+    dialogueId: string,
+    timing: { startMs: number; endMs: number },
+  ): Project {
+    return this.replaceShot(project, shot.id, {
+      ...shot,
+      dialogues: shot.dialogues.map((candidate) =>
+        candidate.id === dialogueId ? { ...candidate, ...timing } : candidate,
       ),
     });
   }
@@ -413,23 +339,8 @@ export class DialogueService {
   }
 
   private clampTime(shot: Shot, rawMs: number): number {
-    if (!Number.isFinite(rawMs) || !Number.isInteger(rawMs)) {
-      throw new DialogueServiceError(
-        'INVALID_DIALOGUE_TIME',
-        `对白时间点必须是有效整数毫秒：${rawMs}`,
-      );
-    }
+    this.validInteger(rawMs, '对白时间点');
     return Math.min(Math.max(rawMs, 0), shot.durationMs);
-  }
-
-  private defaultWindow(shot: Shot, rawMs: number): { startMs: number; endMs: number } {
-    const pointMs = this.clampTime(shot, rawMs);
-    const startMs =
-      pointMs >= shot.durationMs
-        ? Math.max(0, shot.durationMs - this.defaultDurationMs)
-        : pointMs;
-    const endMs = Math.min(shot.durationMs, startMs + this.defaultDurationMs);
-    return this.validTimedWindow(shot, startMs, endMs);
   }
 
   private validTimedWindow(
@@ -437,14 +348,12 @@ export class DialogueService {
     startMs: number,
     endMs: number,
   ): { startMs: number; endMs: number } {
-    this.validInteger(startMs, '开始时间');
-    this.validInteger(endMs, '结束时间');
     const start = this.clampTime(shot, startMs);
     const end = this.clampTime(shot, endMs);
-    if (end - start < DIALOGUE_MIN_DURATION_MS) {
+    if (end - start < MIN_TIMED_DIALOGUE_DURATION_MS) {
       throw new DialogueServiceError(
         'INVALID_DIALOGUE_DURATION',
-        `对白时长必须至少为 ${DIALOGUE_MIN_DURATION_MS}ms。`,
+        '对白结束时间必须晚于开始时间。',
       );
     }
     return { startMs: start, endMs: end };
@@ -452,36 +361,13 @@ export class DialogueService {
 
   private timedDuration(dialogue: Dialogue): number {
     const duration = dialogue.endMs - dialogue.startMs;
-    if (duration < DIALOGUE_MIN_DURATION_MS) {
+    if (duration < MIN_TIMED_DIALOGUE_DURATION_MS) {
       throw new DialogueServiceError(
         'INVALID_DIALOGUE_DURATION',
-        '对白必须先设置为正时长。',
+        '请先把未定时对白安排为正时长。',
       );
     }
     return duration;
-  }
-
-  /** Moves/truncates an attached source with its dialogue, never stretches it. */
-  private syncAudioClipTiming(
-    shot: Shot,
-    dialogue: Dialogue,
-    timing: { startMs: number; endMs: number },
-  ): AudioClip[] {
-    if (!dialogue.audioClipId) return shot.audioClips;
-    const existing = shot.audioClips.find(
-      (clip) => clip.id === dialogue.audioClipId,
-    );
-    if (!existing) return shot.audioClips;
-    const sourceDuration = Math.max(1, existing.endMs - existing.startMs);
-    return shot.audioClips.map((clip) =>
-      clip.id === existing.id
-        ? {
-            ...clip,
-            startMs: timing.startMs,
-            endMs: Math.min(timing.endMs, timing.startMs + sourceDuration),
-          }
-        : clip,
-    );
   }
 
   private assertNoOverlap(
@@ -490,14 +376,14 @@ export class DialogueService {
   ): void {
     const conflict = dialogues.find(
       (dialogue) =>
-        isDialogueTimed(dialogue) &&
+        dialogue.endMs > dialogue.startMs &&
         timing.startMs < dialogue.endMs &&
         timing.endMs > dialogue.startMs,
     );
     if (conflict) {
       throw new DialogueServiceError(
         'DIALOGUE_OVERLAP',
-        `对白与 ${conflict.startMs}–${conflict.endMs}ms 的已有对白重叠。相邻时间段可以连接。`,
+        `对白与 ${conflict.startMs}–${conflict.endMs}ms 的已有对白重叠；首尾相接可以。`,
       );
     }
   }
@@ -512,9 +398,13 @@ export class DialogueService {
     return raw;
   }
 
-  private validDefaultDuration(raw: number): number {
-    if (!Number.isInteger(raw) || raw < DIALOGUE_MIN_DURATION_MS) {
-      throw new Error('Dialogue default duration must be a positive integer.');
+  private validPositiveInteger(raw: number, label: string): number {
+    this.validInteger(raw, label);
+    if (raw < MIN_TIMED_DIALOGUE_DURATION_MS) {
+      throw new DialogueServiceError(
+        'INVALID_DIALOGUE_DURATION',
+        `${label}必须为正整数毫秒：${raw}`,
+      );
     }
     return raw;
   }

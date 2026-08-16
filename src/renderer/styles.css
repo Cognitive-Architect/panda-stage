@@ -1008,6 +1008,29 @@ button:disabled {
   box-shadow: 0 0 0 2px rgb(255 224 138 / 32%);
 }
 
+.dialogue-clip.untimed {
+  border-style: dashed;
+  border-color: #ffd477;
+  border-radius: 50%;
+  background: #694d1f;
+  cursor: pointer;
+}
+
+.dialogue-clip.untimed .dialogue-clip-label {
+  position: absolute;
+  left: 16px;
+  display: none;
+  min-width: 86px;
+  border-radius: 5px;
+  background: #302719;
+}
+
+.dialogue-clip.untimed:hover .dialogue-clip-label,
+.dialogue-clip.untimed:focus-visible .dialogue-clip-label,
+.dialogue-clip.untimed.selected .dialogue-clip-label {
+  display: flex;
+}
+
 .dialogue-clip-label {
   display: flex;
   min-width: 0;
@@ -4040,14 +4063,22 @@ h1 {
 
 .dialogue-timing-fields {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   align-items: end;
 }
 
 .dialogue-timing-fields button {
+  width: 100%;
   min-height: 32px;
+  grid-column: 1 / -1;
   white-space: nowrap;
+}
+
+.dialogue-arrange {
+  align-self: flex-start;
+  min-height: 36px;
 }
 
 .dialogue-editor-error {

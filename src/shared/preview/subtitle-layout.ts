@@ -21,8 +21,6 @@ export const DEFAULT_SUBTITLE_STYLE = {
   fontSize: DEFAULT_FONT_SIZE,
   textColor: DEFAULT_TEXT_COLOR,
   backgroundColor: DEFAULT_BACKGROUND_COLOR,
-  strokeColor: undefined as string | undefined,
-  strokeWidth: 0,
   position: 'bottom' as const,
   align: 'center' as const,
   maxWidth: STAGE_CAPTION_SAFE_AREA.width,

@@ -321,14 +321,11 @@ describe('product preview overlay contract', () => {
     ]) {
       expect(sources).not.toContain(forbidden);
     }
-    // The only IPC it may use is read-only image/audio source access.
+    // The only IPC it may use is the read-only thumbnail read.
     expect(overlay).toContain('window.pandaStage.assets.readThumbnail');
     expect(
       overlay.match(/window\.pandaStage\.[a-zA-Z.]+/gu),
-    ).toEqual([
-      'window.pandaStage.assets.readThumbnail',
-      'window.pandaStage.assets.readAudio',
-    ]);
+    ).toEqual(['window.pandaStage.assets.readThumbnail']);
   });
 
   it('owns only its local playback state and no second project tree', () => {

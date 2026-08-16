@@ -204,9 +204,7 @@ export function TimelineDock(): React.JSX.Element {
                 className="dialogue-track"
                 data-testid="dialogue-track"
               >
-                {shot?.dialogues
-                  .filter((dialogue) => dialogue.endMs > dialogue.startMs)
-                  .map((dialogue) => (
+                {shot?.dialogues.map((dialogue) => (
                     <DialogueClip
                       characterName={
                         characters.find(
@@ -217,8 +215,9 @@ export function TimelineDock(): React.JSX.Element {
                       durationMs={durationMs}
                       key={dialogue.id}
                       pixelsPerMs={pixelsPerMs}
+                      projectRoot={snapshot?.projectRoot ?? ''}
                       selected={dialogue.id === selectedDialogueId}
-                      trackRef={trackRef}
+                      shotId={shot.id}
                     />
                   ))}
               </div>

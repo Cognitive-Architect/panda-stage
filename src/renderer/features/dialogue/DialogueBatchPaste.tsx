@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import type { Character } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
@@ -37,7 +37,6 @@ export function DialogueBatchPaste({
   );
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
-  const [commitError, setCommitError] = useState<string | null>(null);
 
   const parsed = useMemo(
     () => parseDialoguePaste(draftState.batchRaw, characters),
@@ -65,15 +64,10 @@ export function DialogueBatchPaste({
 
   const handleCommit = (): void => {
     if (!allResolved) return;
-    try {
-      dialogueStore.createMany(
-        resolvedLines as { characterId: string; text: string }[],
-      );
-      setCommitError(null);
-      onClose();
-    } catch (error) {
-      setCommitError(error instanceof Error ? error.message : '批量对白时间段无效。');
-    }
+    dialogueStore.createMany(
+      resolvedLines as { characterId: string; text: string }[],
+    );
+    onClose();
   };
 
   return (
@@ -99,11 +93,6 @@ export function DialogueBatchPaste({
       <p className="dialogue-batch-summary" data-testid="dialogue-batch-summary">
         {`共 ${parsed.lines.length} 行，有效 ${parsed.validCount} 行，忽略空行 ${parsed.ignoredEmpty} 行。`}
       </p>
-      {commitError ? (
-        <p className="dialogue-editor-error" data-testid="dialogue-batch-error" role="alert">
-          {commitError}
-        </p>
-      ) : null}
       <ul
         className="dialogue-batch-preview"
         data-testid="dialogue-batch-preview"

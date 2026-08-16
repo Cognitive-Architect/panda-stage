@@ -19,7 +19,6 @@ import {
   PROJECT_WIDTH,
   calculateViewportTransform,
   buildEditorStageRenderModel,
-  evaluateDialogueAtTime,
   listShotImageAssets,
   type Shot,
   type ViewportTransform,
@@ -41,6 +40,8 @@ import {
 import { SelectableLayer } from './SelectableLayer';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
 import { useTimelineUi } from '../timeline/timelineUiStore';
+import { buildDialogueSubtitleCues } from '../../../shared/preview/dialogue-subtitle';
+import { evaluateSubtitleAtTime } from '../../../shared/preview/subtitle-engine';
 import type { CanvasDropPreview } from './useCanvasDrop';
 import {
   configureKonvaScenePixelRatio,
@@ -257,16 +258,17 @@ export function CanvasStage(): React.JSX.Element {
     [shot, snapshot],
   );
   const imageState = useCanvasImages(snapshot, shot);
-  const activeDialogue = useMemo(
-    () =>
-      shot
-        ? evaluateDialogueAtTime(shot.dialogues, timelineUi.currentTimeMs)
-        : null,
-    [shot, timelineUi.currentTimeMs],
+  const subtitleCues = useMemo(
+    () => (shot ? buildDialogueSubtitleCues(shot.dialogues) : []),
+    [shot],
   );
-  const activeSubtitleStyle = activeDialogue
+  const activeCue = useMemo(
+    () => evaluateSubtitleAtTime(subtitleCues, timelineUi.currentTimeMs),
+    [subtitleCues, timelineUi.currentTimeMs],
+  );
+  const activeSubtitleStyle = activeCue
     ? snapshot?.project.subtitleStyles.find(
-        (style) => style.id === activeDialogue.subtitleStyleId,
+        (style) => style.id === activeCue.styleId,
       )
     : undefined;
   const imageForAsset = (asset: {
@@ -446,7 +448,7 @@ export function CanvasStage(): React.JSX.Element {
                     : null}
                   <SubtitleRenderer
                     style={activeSubtitleStyle}
-                    text={activeDialogue?.text ?? null}
+                    text={activeCue?.text ?? null}
                   />
                   <Line
                     listening={false}

@@ -39,7 +39,6 @@ export function DialogueSheet(): React.JSX.Element {
   );
   const [draft] = useState(() => new DialogueAuthoringDraft());
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
-  const [authoringError, setAuthoringError] = useState<string | null>(null);
 
   const projectRoot = snapshot?.projectRoot ?? '';
   const shotId = currentShotId ?? null;
@@ -66,13 +65,8 @@ export function DialogueSheet(): React.JSX.Element {
 
   const handleAdd = (): void => {
     if (!canAdd) return;
-    try {
-      dialogueStore.create(draftState.singleCharacterId, draftState.singleText.trim());
-      draft.setSingleText('');
-      setAuthoringError(null);
-    } catch (error) {
-      setAuthoringError(error instanceof Error ? error.message : '对白时间段无效。');
-    }
+    dialogueStore.create(draftState.singleCharacterId, draftState.singleText.trim());
+    draft.setSingleText('');
   };
 
   const characterName = (id: string): string =>
@@ -144,11 +138,6 @@ export function DialogueSheet(): React.JSX.Element {
           新增
         </button>
       </div>
-      {authoringError ? (
-        <p className="dialogue-editor-error" data-testid="dialogue-authoring-error" role="alert">
-          {authoringError}
-        </p>
-      ) : null}
       {draftState.batchOpen && (
         <DialogueBatchPaste draft={draft} onClose={() => draft.closeBatch()} />
       )}

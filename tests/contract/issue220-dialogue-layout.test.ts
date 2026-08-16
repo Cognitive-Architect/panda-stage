@@ -56,4 +56,13 @@ describe('Issue 220 Dialogue Sheet bottom-layout contract', () => {
       /\.dialogue-batch\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?min-width:\s*0;/u,
     );
   });
+
+  it('keeps Day28 timing controls inside the narrow inspector width', () => {
+    expect(styles).toMatch(
+      /\.dialogue-timing-fields\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u,
+    );
+    expect(styles).toMatch(
+      /\.dialogue-timing-fields button\s*\{[\s\S]*?width:\s*100%;[\s\S]*?grid-column:\s*1 \/ -1;/u,
+    );
+  });
 });

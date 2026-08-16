@@ -9,8 +9,6 @@ export const SubtitleStyleSchema = z
     fontSize: z.number().int().min(12).max(160),
     textColor: ColorSchema,
     backgroundColor: ColorSchema,
-    strokeColor: ColorSchema.optional(),
-    strokeWidth: z.number().int().min(0).max(24).optional(),
     position: z.enum(['top', 'center', 'bottom']),
     align: z.enum(['left', 'center', 'right']),
     maxWidth: z.number().int().positive().max(1920),
