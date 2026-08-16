@@ -1,6 +1,7 @@
 const { app, ipcMain } = require('electron');
 const { mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
 const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue-109-resource-workspace';
@@ -300,7 +301,7 @@ function documentFor(root, project) {
   return {
     projectRoot: root,
     projectFilePath: `${root}\\project.json`,
-    project,
+    project: migrateProject(project),
     migrated: false,
     sourceVersion: 5,
   };

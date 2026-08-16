@@ -11,6 +11,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const evidenceDirectory = path.join(
   __dirname,
@@ -60,7 +61,7 @@ async function verifyDay14Ui() {
       value: {
         projectRoot: availableRoot,
         projectFilePath: `${availableRoot}\\project.json`,
-        project: exampleProject,
+        project: migrateProject(exampleProject),
         migrated: false,
         sourceVersion: 1,
       },
@@ -73,7 +74,7 @@ async function verifyDay14Ui() {
       document: {
         projectRoot: availableRoot,
         projectFilePath: `${availableRoot}\\project.json`,
-        project: exampleProject,
+        project: migrateProject(exampleProject),
         migrated: false,
         sourceVersion: 1,
       },

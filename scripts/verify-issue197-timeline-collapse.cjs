@@ -1,6 +1,7 @@
 const { app, ipcMain } = require('electron');
 const { mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 // Issue #197 real Electron gate: collapsing the Timeline must actually shrink
 // the BottomWorkspace and hand the freed vertical space to the central Canvas.
@@ -351,7 +352,7 @@ function documentFor(root, project) {
   return {
     projectRoot: root,
     projectFilePath: `${root}\\project.json`,
-    project,
+    project: migrateProject(project),
     migrated: false,
     sourceVersion: 5,
   };

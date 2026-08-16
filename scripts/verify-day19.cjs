@@ -12,6 +12,7 @@ const {
   MediaInspectionService,
 } = require('../dist-electron/main/services/MediaInspectionService.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
 const evidenceDirectory = path.join(
@@ -325,13 +326,13 @@ async function verifyDay19() {
       sha256: replacement.sha256,
     },
   ];
-  const initialProject = {
+  const initialProject = migrateProject({
     ...exampleProject,
     assets: [],
     characters: [],
     voiceProfiles: [],
     shots: [],
-  };
+  });
   let savedProject = null;
   let saveRequest = null;
   let importRequest = null;

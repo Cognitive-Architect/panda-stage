@@ -11,6 +11,7 @@ const {
   validatePngThumbnail,
 } = require('../dist-electron/main/services/PngThumbnailValidator.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
 const evidenceDirectory = path.join(
@@ -38,10 +39,10 @@ const fixtureAssets = Array.from({ length: 99 }, (_, offset) => {
     sha256: String(index).padStart(64, '0'),
   };
 });
-const libraryProject = {
+const libraryProject = migrateProject({
   ...exampleProject,
   assets: [...exampleProject.assets, ...fixtureAssets],
-};
+});
 
 app.on('window-all-closed', () => {});
 

@@ -6,6 +6,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const projectARoot = 'D:\\Projects\\Issue 73 A.pandastage';
 const projectBRoot = 'D:\\Projects\\Issue 73 B.pandastage';
@@ -172,7 +173,7 @@ function documentFor(projectRoot) {
   return {
     projectRoot,
     projectFilePath: `${projectRoot}\\project.json`,
-    project,
+    project: migrateProject(project),
     migrated: false,
     sourceVersion: 5,
   };
