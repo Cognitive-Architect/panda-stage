@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { LayerService, ProjectSchema } from '../../src/domain';
+import { LayerService, migrateProject } from '../../src/domain';
 import {
   getLayerBackgroundControlModel,
 } from '../../src/renderer/features/properties/LayerBackgroundControl';
@@ -93,7 +93,7 @@ describe('Issue 121 RightInspector selection and ownership', () => {
   });
 
   it('keeps background transforms editable but blocks ordinary order/delete actions', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
     const background = shot.layers.find(
       (layer) => layer.id === shot.backgroundLayerId,
@@ -143,7 +143,7 @@ describe('Issue 121 RightInspector selection and ownership', () => {
   });
 
   it('keeps explicit background selection coherent across bind and clear', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
     const editor = new EditorProjectStore();
     editor.open('D:\\Projects\\background-history.pandastage', project);
@@ -180,7 +180,7 @@ describe('Issue 121 RightInspector selection and ownership', () => {
   });
 
   it('keeps repeated background selection idempotent and history-clean', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
     const background = shot.layers.find(
       (layer) => layer.id === shot.backgroundLayerId,
@@ -208,7 +208,7 @@ describe('Issue 121 RightInspector selection and ownership', () => {
   });
 
   it('clears viewport-chrome selection without project or history changes', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
     const background = shot.layers.find(
       (layer) => layer.id === shot.backgroundLayerId,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AudioAssetSchema, ProjectSchema } from '../../src/domain';
+import { AudioAssetSchema, ProjectSchema, migrateProject } from '../../src/domain';
 import { sanitizeAssetFileName } from '../../src/main/services/AssetImportService';
 import {
   AssetImportDroppedRequestSchema,
@@ -30,7 +30,7 @@ describe('asset import contracts', () => {
   });
 
   it('rejects using duration-less audio on the timeline', () => {
-    const project = structuredClone(exampleProject);
+    const project = migrateProject(exampleProject);
     const audio = project.assets.find((asset) => asset.kind === 'audio')!;
     delete (audio as { durationMs?: number }).durationMs;
 

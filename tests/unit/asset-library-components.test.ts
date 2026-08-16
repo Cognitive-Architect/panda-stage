@@ -6,7 +6,7 @@ import {
 } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { AssetGrid } from '../../src/renderer/features/assets/AssetGrid';
 import {
   AssetCard,
@@ -25,7 +25,7 @@ const directPayload = (assetId: string) => ({
 
 describe('asset library components', () => {
   it('renders all three categories, thumbnail placeholders, import entry, and details guidance', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(AssetLibrary, {
         snapshot: {
@@ -110,7 +110,7 @@ describe('asset library components', () => {
   });
 
   it('renders a clear empty state for a category with no assets', () => {
-    const project = ProjectSchema.parse({
+    const project = migrateProject({
       ...exampleProject,
       assets: [],
       characters: [],
@@ -175,7 +175,7 @@ describe('asset library components', () => {
   });
 
   it('falls back only the image whose browser decode reports an error', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const imageAssets = project.assets.filter(
       (asset) => asset.kind === 'image',
     );

@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { ProjectSchema, type Project } from '../../src/domain';
+import { ProjectSchema, migrateProject, type Project } from '../../src/domain';
 import {
   AutosaveService,
   type AutosaveClock,
@@ -34,7 +34,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 
 const PROJECT_ROOT = 'D:\\projects\\shell.pandastage';
 const SECOND_PROJECT_ROOT = 'D:\\projects\\second.pandastage';
-const PROJECT = ProjectSchema.parse(exampleProject);
+const PROJECT = migrateProject(exampleProject);
 const inertClock: AutosaveClock = {
   setInterval: () =>
     1 as unknown as ReturnType<typeof setInterval>,
@@ -481,7 +481,7 @@ describe('EditorShell project session integration', () => {
 
   it('does not update the stopped A autosave session during save-and-switch', async () => {
     const store = new EditorProjectStore();
-    const projectB = ProjectSchema.parse({
+    const projectB = migrateProject({
       ...structuredClone(exampleProject),
       id: 'c0000000-0000-4000-8000-000000000001',
       name: 'Project B',
@@ -647,7 +647,7 @@ describe('EditorShell project session integration', () => {
   });
 
   it('keeps restore, save, and ignore semantics behind shell-owned actions', async () => {
-    const recoveredProject = ProjectSchema.parse({
+    const recoveredProject = migrateProject({
       ...structuredClone(exampleProject),
       name: 'Recovered project',
     });

@@ -69,6 +69,9 @@ const { ProjectService } = require(
   '../dist-electron/main/services/ProjectService.js',
 );
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject } = require(
+  '../dist-electron/domain/migrations/index.js',
+);
 
 app.on('window-all-closed', () => {});
 
@@ -236,11 +239,11 @@ async function waitForMainWindow() {
 async function createFixture() {
   const projectService = new ProjectService();
   const created = await projectService.create(projectRoot, { name: projectName });
-  const seededProject = {
+  const seededProject = migrateProject({
     ...exampleProject,
     id: created.project.id,
     name: projectName,
-  };
+  });
   await projectService.save(projectRoot, seededProject);
   return {
     ...created,

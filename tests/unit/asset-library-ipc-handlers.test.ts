@@ -1,6 +1,6 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 
 const electronMocks = vi.hoisted(() => ({
   handlers: new Map<string, (...arguments_: unknown[]) => unknown>(),
@@ -222,7 +222,7 @@ describe('asset library IPC handlers', () => {
       IPC_CHANNELS.ASSET_DELETE,
     )!(event(), {
       projectRoot: 'D:\\demo.pandastage',
-      project: exampleProject,
+      project: migrateProject(exampleProject),
       baseRevision: 0,
       assetId: '10000000-0000-4000-8000-000000000002',
     });
@@ -238,7 +238,7 @@ describe('asset library IPC handlers', () => {
 
   it('preserves the current project and revision in a stale response', async () => {
     const dependencies = services();
-    const currentProject = ProjectSchema.parse(exampleProject);
+    const currentProject = migrateProject(exampleProject);
     dependencies.deleteAsset.mockRejectedValue(
       new AssetDeleteServiceError(
         'ASSET_DELETE_STALE_REVISION',
@@ -261,7 +261,7 @@ describe('asset library IPC handlers', () => {
         event(),
         {
           projectRoot: 'D:\\demo.pandastage',
-          project: exampleProject,
+          project: migrateProject(exampleProject),
           baseRevision: 3,
           assetId: '10000000-0000-4000-8000-000000000002',
         },

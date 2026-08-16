@@ -74,7 +74,7 @@ function createLegacyBackgroundCandidate(
     zIndex?: number;
   },
 ) {
-  const project = ProjectSchema.parse(exampleProject);
+  const project = migrateProject(exampleProject);
   const asset = project.assets[0]!;
   const layer = project.shots[0]!.layers[0]!;
   if (asset.kind !== 'image' || layer.source.kind !== 'asset') {
@@ -279,7 +279,7 @@ describe('project migration framework', () => {
   });
 
   it('migrates v2 to an explicit background without name or zIndex runtime inference', () => {
-    const current = ProjectSchema.parse(exampleProject);
+    const current = migrateProject(exampleProject);
     const version2 = {
       ...current,
       schemaVersion: 2 as const,
@@ -309,7 +309,7 @@ describe('project migration framework', () => {
   });
 
   it('leaves an ordinary small zIndex-0 asset layer as content during migration', () => {
-    const current = ProjectSchema.parse(exampleProject);
+    const current = migrateProject(exampleProject);
     const contentOnly = {
       ...current,
       schemaVersion: 2 as const,
@@ -345,7 +345,7 @@ describe('project migration framework', () => {
   });
 
   it('migrates strict v3 layers to v5 with locked=false and flipX=false', () => {
-    const current = ProjectSchema.parse(exampleProject);
+    const current = migrateProject(exampleProject);
     const version3 = {
       ...current,
       schemaVersion: 3 as const,
@@ -371,7 +371,7 @@ describe('project migration framework', () => {
   });
 
   it('requires flipX in v5 and rejects v4 files that smuggle it in', () => {
-    const current = ProjectSchema.parse(exampleProject);
+    const current = migrateProject(exampleProject);
     const missingFlip = {
       ...current,
       shots: current.shots.map((shot) => ({
@@ -389,7 +389,7 @@ describe('project migration framework', () => {
   });
 
   it('migrates v4 to v5, preserving locked and adding flipX=false', () => {
-    const current = ProjectSchema.parse(exampleProject);
+    const current = migrateProject(exampleProject);
     const version4 = {
       ...current,
       schemaVersion: 4 as const,
@@ -416,7 +416,7 @@ describe('project migration framework', () => {
   });
 
   it('preserves explicit flip values in an existing v5 project', () => {
-    const current = ProjectSchema.parse(exampleProject);
+    const current = migrateProject(exampleProject);
     const version5 = ProjectSchema.parse({
       ...current,
       shots: current.shots.map((shot, shotIndex) => ({

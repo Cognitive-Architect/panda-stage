@@ -9,13 +9,17 @@ import {
   DialogueSchema,
   LayerSchema,
   ProjectSchema,
+  Project,
   ShotSchema,
   SubtitleStyleSchema,
   VoiceProfileSchema,
+  migrateProject,
 } from '../../../src/domain';
 
-function cloneExample(): typeof exampleProject {
-  return structuredClone(exampleProject);
+// Returns a migrated v5 project so the rejection tests below validate the
+// CURRENT-project validator (ProjectSchema) rather than legacy migration.
+function cloneExample(): Project {
+  return structuredClone(migrateProject(exampleProject));
 }
 
 function issuePaths(input: unknown): string[] {
@@ -57,7 +61,7 @@ function wavDurationMs(bytes: Buffer): number {
 
 describe('ProjectSchema v5', () => {
   it('migrates the human-readable v1 example with every MVP entity', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
 
     expect(project).toMatchObject({
@@ -81,7 +85,7 @@ describe('ProjectSchema v5', () => {
   });
 
   it('backs every example asset record with a matching source file', async () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const exampleRoot = resolve(process.cwd(), 'demo-project');
     const pngSignature = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -101,7 +105,7 @@ describe('ProjectSchema v5', () => {
 
   it('exports executable schemas for every MVP entity', () => {
     expect(AssetSchema.parse(exampleProject.assets[0])).toBeTruthy();
-    const migrated = ProjectSchema.parse(exampleProject);
+    const migrated = migrateProject(exampleProject);
     expect(CharacterSchema.parse(migrated.characters[0])).toBeTruthy();
     expect(VoiceProfileSchema.parse(exampleProject.voiceProfiles[0])).toBeTruthy();
     expect(SubtitleStyleSchema.parse(exampleProject.subtitleStyles[0])).toBeTruthy();
@@ -112,7 +116,7 @@ describe('ProjectSchema v5', () => {
   });
 
   it('is semantically stable across parse → serialize → parse', () => {
-    const first = ProjectSchema.parse(exampleProject);
+    const first = migrateProject(exampleProject);
     const second = ProjectSchema.parse(JSON.parse(JSON.stringify(first)));
 
     expect(second).toEqual(first);
@@ -150,23 +154,27 @@ describe('ProjectSchema v5', () => {
   it.each([
     {
       name: 'missing layer asset',
-      mutate: (input: typeof exampleProject) => {
-        input.shots[0]!.layers[0]!.source.assetId =
-          'ffffffff-ffff-4fff-8fff-fffffffffff1';
+      mutate: (input: Project) => {
+        const layer = input.shots[0]!.layers[0]!;
+        if (layer.source.kind === 'asset') {
+          layer.source.assetId = 'ffffffff-ffff-4fff-8fff-fffffffffff1';
+        }
       },
       path: 'shots.0.layers.0.source.assetId',
     },
     {
       name: 'missing character',
-      mutate: (input: typeof exampleProject) => {
-        input.shots[0]!.layers[1]!.source.characterId =
-          'ffffffff-ffff-4fff-8fff-fffffffffff2';
+      mutate: (input: Project) => {
+        const layer = input.shots[0]!.layers[1]!;
+        if (layer.source.kind === 'character') {
+          layer.source.characterId = 'ffffffff-ffff-4fff-8fff-fffffffffff2';
+        }
       },
       path: 'shots.0.layers.1.source.characterId',
     },
     {
       name: 'missing audio asset',
-      mutate: (input: typeof exampleProject) => {
+      mutate: (input: Project) => {
         input.shots[0]!.audioClips[0]!.assetId =
           'ffffffff-ffff-4fff-8fff-fffffffffff3';
       },
@@ -181,8 +189,10 @@ describe('ProjectSchema v5', () => {
 
   it('rejects a character expression that belongs to no character', () => {
     const input = cloneExample();
-    input.shots[0]!.layers[1]!.source.expressionId =
-      'ffffffff-ffff-4fff-8fff-fffffffffff4';
+    const layer = input.shots[0]!.layers[1]!;
+    if (layer.source.kind === 'character') {
+      layer.source.expressionId = 'ffffffff-ffff-4fff-8fff-fffffffffff4';
+    }
 
     expect(issuePaths(input)).toContain(
       'shots.0.layers.1.source.expressionId',
@@ -190,7 +200,7 @@ describe('ProjectSchema v5', () => {
   });
 
   it('rejects dangling or character-backed background references', () => {
-    const dangling = structuredClone(ProjectSchema.parse(exampleProject));
+    const dangling = structuredClone(migrateProject(exampleProject));
     dangling.shots[0]!.backgroundLayerId =
       'ffffffff-ffff-4fff-8fff-fffffffffff6';
     expect(issuePaths(dangling)).toContain(
@@ -198,7 +208,7 @@ describe('ProjectSchema v5', () => {
     );
 
     const characterBackground = structuredClone(
-      ProjectSchema.parse(exampleProject),
+      migrateProject(exampleProject),
     );
     characterBackground.shots[0]!.backgroundLayerId =
       characterBackground.shots[0]!.layers[1]!.id;
@@ -208,28 +218,28 @@ describe('ProjectSchema v5', () => {
   });
 
   it('rejects dangling defaults, duplicate expression names, non-image mouths, and invalid transforms', () => {
-    const dangling = structuredClone(ProjectSchema.parse(exampleProject));
+    const dangling = structuredClone(migrateProject(exampleProject));
     dangling.characters[0]!.defaultExpressionId =
       'ffffffff-ffff-4fff-8fff-fffffffffff5';
     expect(issuePaths(dangling)).toContain(
       'characters.0.defaultExpressionId',
     );
 
-    const duplicate = structuredClone(ProjectSchema.parse(exampleProject));
+    const duplicate = structuredClone(migrateProject(exampleProject));
     duplicate.characters[0]!.expressions[1]!.name =
       duplicate.characters[0]!.expressions[0]!.name.toUpperCase();
     expect(issuePaths(duplicate)).toContain(
       'characters.0.expressions.1.name',
     );
 
-    const audioMouth = structuredClone(ProjectSchema.parse(exampleProject));
+    const audioMouth = structuredClone(migrateProject(exampleProject));
     audioMouth.characters[0]!.mouthOpenAssetId =
       audioMouth.assets.find((asset) => asset.kind === 'audio')!.id;
     expect(issuePaths(audioMouth)).toContain(
       'characters.0.mouthOpenAssetId',
     );
 
-    const invalidScale = structuredClone(ProjectSchema.parse(exampleProject));
+    const invalidScale = structuredClone(migrateProject(exampleProject));
     invalidScale.characters[0]!.defaultScale = 0;
     expect(issuePaths(invalidScale)).toContain(
       'characters.0.defaultScale',

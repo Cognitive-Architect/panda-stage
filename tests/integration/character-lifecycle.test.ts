@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { CharacterService, ProjectSchema } from '../../src/domain';
+import { CharacterService, migrateProject } from '../../src/domain';
 import { PROJECT_FILE_NAME } from '../../src/main/services/ProjectFileSystemService';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
@@ -151,7 +151,7 @@ describe('Day 19 character persistence', () => {
     const root = await projectRoot();
     const projectService = new ProjectService();
     await projectService.create(root, { name: 'expression replacement' });
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     await writeFile(
       path.join(root, PROJECT_FILE_NAME),
       `${JSON.stringify(project, null, 2)}\n`,

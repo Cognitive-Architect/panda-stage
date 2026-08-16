@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProjectSchema, type Project } from '../../src/domain';
+import { type Project, migrateProject } from '../../src/domain';
 import {
   AutosaveService,
   type AutosaveClock,
@@ -18,8 +18,8 @@ const PROJECT_A_ROOT = 'D:\\projects\\a.pandastage';
 const PROJECT_A_ALIAS =
   'D:\\projects\\temp\\..\\a.pandastage';
 const PROJECT_B_ROOT = 'D:\\projects\\b.pandastage';
-const PROJECT_A = ProjectSchema.parse(exampleProject);
-const PROJECT_B = ProjectSchema.parse({
+const PROJECT_A = migrateProject(exampleProject);
+const PROJECT_B = migrateProject({
   ...structuredClone(exampleProject),
   id: 'c0000000-0000-4000-8000-000000000001',
   name: 'Project B',

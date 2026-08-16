@@ -7,7 +7,9 @@ import {
 } from '../constants';
 import {
   ProjectSchema,
+  ProjectV1Schema,
   inferLegacyBackgroundLayerId,
+  migrateFormalProject,
   type Project,
 } from '../models/project';
 import type { Layer } from '../models/layer';
@@ -138,17 +140,52 @@ function migrateLegacyProject(
   });
 }
 
+/**
+ * The single authoritative persisted-project migration pipeline.
+ *
+ * Every persisted envelope (v0-v5) is routed here by version and resolved to
+ * the current (v5) project through exactly one path. The formal v1-v4
+ * transform lives in `migrateFormalProject` (a shared helper, NOT wired into
+ * `ProjectSchema`), and the current-project validator (`ProjectSchema`) is
+ * used only to validate the resolved v5 shape. There is no second, implicit
+ * migration path: `ProjectSchema.parse` never migrates legacy input.
+ */
 export function migrateProject(input: unknown): Project {
   const version = detectSchemaVersion(input);
-  if (version === 0) {
-    return migrateLegacyProject(ProjectV0Schema.parse(input));
+  switch (version) {
+    case 0:
+      return migrateLegacyProject(ProjectV0Schema.parse(input));
+    case 1:
+      return migrateVersion1(input);
+    case 2:
+    case 3:
+    case 4:
+      // Formal v2-v4 envelopes are migrated to the current schema by the
+      // shared formal transform, then validated as a current project.
+      return ProjectSchema.parse(migrateFormalProject(input));
+    case PROJECT_SCHEMA_VERSION:
+      // Current envelope: validated as-is, no migration, no in-place mutation.
+      return ProjectSchema.parse(input);
+    default:
+      throw new UnsupportedSchemaVersionError(version);
   }
+}
 
-  const current = ProjectSchema.safeParse(input);
-  if (current.success) return current.data;
-
-  const legacyProbe = LegacyProbeProjectV1Schema.safeParse(input);
-  if (legacyProbe.success) return migrateLegacyProject(legacyProbe.data);
-
-  return ProjectSchema.parse(input);
+/**
+ * Resolves the `schemaVersion === 1` collision between the formal v1 envelope
+ * and the legacy probe v1 envelope. A formal v1 project is migrated through
+ * the shared formal transform; a legacy probe v1 project is migrated through
+ * `migrateLegacyProject`. An envelope that claims v1 but matches neither shape
+ * is rejected as ambiguous/corrupt instead of silently guessing a path.
+ */
+function migrateVersion1(input: unknown): Project {
+  const formal = ProjectV1Schema.safeParse(input);
+  if (formal.success) {
+    return ProjectSchema.parse(migrateFormalProject(input));
+  }
+  const probe = LegacyProbeProjectV1Schema.safeParse(input);
+  if (probe.success) {
+    return migrateLegacyProject(probe.data);
+  }
+  return ProjectSchema.parse(migrateFormalProject(input));
 }

@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../../demo-project/project-v1.example.json';
-import { ProjectSchema } from '../../../src/domain';
+import { ProjectSchema, migrateFormalProject, type Project } from '../../../src/domain';
 
 function projectWithAudioRange(
   startMs: number,
   endMs: number,
   offsetMs: number,
-): typeof exampleProject {
+): Project {
   const input = structuredClone(exampleProject);
   Object.assign(input.shots[0]!.audioClips[0]!, {
     startMs,
     endMs,
     offsetMs,
   });
-  return input;
+  return migrateFormalProject(input) as Project;
 }
 
 describe('AudioClip source range validation', () => {

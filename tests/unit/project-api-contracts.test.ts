@@ -8,7 +8,7 @@ import {
   ProjectSaveRequestSchema,
   projectNameIssue,
 } from '../../src/shared/project-api';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('project API contracts', () => {
@@ -127,7 +127,7 @@ describe('project API contracts', () => {
   });
 
   it('requires the editor revision on a valid formal save request', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     expect(
       ProjectSaveRequestSchema.safeParse({
         projectRoot: 'project.pandastage',

@@ -4,13 +4,14 @@ import {
   CharacterService,
   LayerService,
   ProjectSchema,
+  migrateProject,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { CharacterStore } from '../../src/renderer/stores/characterStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
 
 function harness() {
-  const initial = ProjectSchema.parse(exampleProject);
+  const initial = migrateProject(exampleProject);
   const shot = initial.shots[0]!;
   const ordinary = shot.layers[1]!;
   const project = ProjectSchema.parse({

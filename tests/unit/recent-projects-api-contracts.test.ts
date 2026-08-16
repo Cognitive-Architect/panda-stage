@@ -5,7 +5,7 @@ import {
   RecentProjectsRelocateRequestSchema,
   RecentProjectsRelocateResponseSchema,
 } from '../../src/shared/recent-projects-api';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('recent projects API contracts', () => {
@@ -38,7 +38,7 @@ describe('recent projects API contracts', () => {
         status: 'cancelled',
       }),
     ).toMatchObject({ ok: true, status: 'cancelled' });
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     expect(
       RecentProjectsRelocateResponseSchema.parse({
         ok: true,

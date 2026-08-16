@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   LayerService,
-  ProjectSchema,
+  migrateProject,
 } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
@@ -32,7 +32,7 @@ describe('layer placement persistence lifecycle', () => {
     );
     temporaryRoots.push(parent);
     const projectRoot = path.join(parent, 'placement.pandastage');
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
     const asset = project.assets[0]!;
     const service = new LayerService({

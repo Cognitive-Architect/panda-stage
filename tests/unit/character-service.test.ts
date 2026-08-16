@@ -4,6 +4,7 @@ import {
   CharacterService,
   CharacterServiceError,
   ProjectSchema,
+  migrateProject,
   scanAssetReferences,
   scanExpressionReferences,
   type Project,
@@ -27,7 +28,7 @@ function service(): CharacterService {
 }
 
 function emptyCharacterProject(): Project {
-  const migrated = ProjectSchema.parse(exampleProject);
+  const migrated = migrateProject(exampleProject);
   return ProjectSchema.parse({
     ...migrated,
     characters: [],
@@ -338,7 +339,7 @@ describe('CharacterService', () => {
   });
 
   it('blocks deleting a character used by a layer or dialogue through the shared reference scanner', () => {
-    const migrated = ProjectSchema.parse(exampleProject);
+    const migrated = migrateProject(exampleProject);
     const character = migrated.characters[0]!;
     const error = expectCharacterError(
       () => service().deleteCharacter(migrated, character.id),
@@ -353,7 +354,7 @@ describe('CharacterService', () => {
   });
 
   it('blocks deleting a non-default expression used by a timeline event', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const character = project.characters[0]!;
     const expression = character.expressions[1]!;
     const error = expectCharacterError(
@@ -376,7 +377,7 @@ describe('CharacterService', () => {
 
   it('replaces a shot/timeline-referenced expression asset without changing its ID or name', () => {
     const characterService = service();
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const character = project.characters[0]!;
     const expression = character.expressions[1]!;
     const oldAssetId = expression.assetId;
@@ -454,7 +455,7 @@ describe('CharacterService', () => {
   });
 
   it('rejects replacing an expression with a non-image asset', () => {
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const character = project.characters[0]!;
     const audio = project.assets.find((asset) => asset.kind === 'audio')!;
 

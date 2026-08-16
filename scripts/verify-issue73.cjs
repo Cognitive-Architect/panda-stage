@@ -6,6 +6,9 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { migrateProject, detectSchemaVersion } = require(
+  '../dist-electron/domain/migrations/index.js',
+);
 
 const projectARoot = 'D:\\Projects\\Issue 73 A.pandastage';
 const projectBRoot = 'D:\\Projects\\Issue 73 B.pandastage';
@@ -169,12 +172,13 @@ async function applyShotName(window, name) {
 
 function documentFor(projectRoot) {
   const project = projectRoot === projectBRoot ? projectB : projectA;
+  const sourceVersion = detectSchemaVersion(project);
   return {
     projectRoot,
     projectFilePath: `${projectRoot}\\project.json`,
-    project,
-    migrated: false,
-    sourceVersion: 5,
+    project: migrateProject(project),
+    migrated: sourceVersion !== 5,
+    sourceVersion,
   };
 }
 
@@ -205,6 +209,8 @@ async function verifyIssue73() {
     value: {
       ...documentFor(request.projectRoot),
       project: request.project,
+      migrated: false,
+      sourceVersion: 5,
     },
   }));
   ipcMain.handle(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => ({

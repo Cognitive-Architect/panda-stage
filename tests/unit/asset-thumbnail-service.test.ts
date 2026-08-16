@@ -10,7 +10,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { AssetThumbnailService } from '../../src/main/services/AssetThumbnailService';
 import { CacheService } from '../../src/main/services/CacheService';
 import exampleProject from '../../demo-project/project-v1.example.json';
@@ -68,7 +68,7 @@ async function serviceWithCachedBytes(
   );
   temporaryDirectories.push(projectRoot);
   const sha256 = 'a'.repeat(64);
-  const project = ProjectSchema.parse({
+  const project = migrateProject({
     ...exampleProject,
     assets: exampleProject.assets.map((asset, index) =>
       index === assetIndex ? { ...asset, sha256 } : asset,
@@ -117,7 +117,7 @@ async function serviceWithRepair(options?: {
     await writeFile(sourcePath, sourceBytes);
   }
   const sha256 = createHash('sha256').update(sourceBytes).digest('hex');
-  const project = ProjectSchema.parse({
+  const project = migrateProject({
     ...exampleProject,
     assets: [
       {
@@ -194,7 +194,7 @@ describe('AssetThumbnailService', () => {
     temporaryDirectories.push(projectRoot);
     const bytes = await readFile('tests/fixtures/assets/熊猫 图片.png');
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    const project = ProjectSchema.parse({
+    const project = migrateProject({
       ...exampleProject,
       assets: [
         {
@@ -239,7 +239,7 @@ describe('AssetThumbnailService', () => {
     );
     temporaryDirectories.push(projectRoot);
     const sha256 = 'a'.repeat(64);
-    const project = ProjectSchema.parse({
+    const project = migrateProject({
       ...exampleProject,
       assets: [
         { ...exampleProject.assets[0], sha256 },
@@ -343,7 +343,7 @@ describe('AssetThumbnailService', () => {
       path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-thumbnail-no-hash-'),
     );
     temporaryDirectories.push(projectRoot);
-    const project = ProjectSchema.parse(exampleProject);
+    const project = migrateProject(exampleProject);
     const service = new AssetThumbnailService({
       getCurrentProjectSnapshot: () => ({ project }),
     });
@@ -416,7 +416,7 @@ describe('AssetThumbnailService', () => {
   });
 
   it('rejects a hash that no longer matches the Main snapshot', async () => {
-    const project = ProjectSchema.parse({
+    const project = migrateProject({
       ...exampleProject,
       assets: [
         { ...exampleProject.assets[0], sha256: 'a'.repeat(64) },

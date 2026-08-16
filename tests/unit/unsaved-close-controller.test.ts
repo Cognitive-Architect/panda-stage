@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import {
   UnsavedCloseController,
   createUnsavedCloseDialogOptions,
@@ -10,7 +10,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 
 const dirtyProject: AutosaveTrackRequest = {
   projectRoot: 'D:\\projects\\dirty.pandastage',
-  project: ProjectSchema.parse(exampleProject),
+  project: migrateProject(exampleProject),
   dirty: true,
   revision: 4,
 };

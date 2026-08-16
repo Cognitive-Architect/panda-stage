@@ -23,7 +23,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema, ShotService, type Shot } from '../../src/domain';
+import { ProjectSchema, migrateProject, ShotService, type Shot } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
 import { ShotStore } from '../../src/renderer/stores/shotStore';
@@ -37,7 +37,7 @@ function predictableCreateId() {
 }
 
 // 单 shot 项目：深度克隆 exampleProject 后仅保留 shots[0]（name === 'Opening'）。
-// 深度克隆避免 ProjectSchema.parse 的回填（如 backgroundLayerId）污染导入的共享 fixture。
+// 深度克隆避免 migrateProject 的回填（如 backgroundLayerId）污染导入的共享 fixture。
 function makeSingleShotSource() {
   const clone = JSON.parse(JSON.stringify(exampleProject));
   return {
@@ -52,7 +52,7 @@ function setup() {
   const editor = new EditorProjectStore();
   const service = new ShotService({ createId: predictableCreateId() });
   const store = new ShotStore(editor, service);
-  editor.open('D:\\镜头 项目.pandastage', ProjectSchema.parse(makeSingleShotSource()));
+  editor.open('D:\\镜头 项目.pandastage', migrateProject(makeSingleShotSource()));
   return { editor, store };
 }
 
@@ -187,7 +187,7 @@ describe('Day20 shot 复制回归 — store 层（断言 2/4/5）', () => {
 
 describe('Day20 shot 复制回归 — 渲染层（断言 1/3 + 防双挂载）', () => {
   it('ShotManager 对单 shot 项目只渲染 1 个镜头项（防双挂载导致 DOM 翻倍）且存在真实复制按钮', () => {
-    const project = ProjectSchema.parse(makeSingleShotSource());
+    const project = migrateProject(makeSingleShotSource());
     const markup = renderToStaticMarkup(
       createElement(ShotManager, { snapshot: snapshotOf(project) }),
     );
@@ -200,7 +200,7 @@ describe('Day20 shot 复制回归 — 渲染层（断言 1/3 + 防双挂载）',
   it('ShotManager 对已含 "Opening 副本" 的项目渲染出该副本名（断言 3 的 DOM 文本）', () => {
     // 用真实 ShotService.duplicate 生成含合法 UUID 的 "Opening 副本" 双 shot 项目
     const service = new ShotService({ createId: predictableCreateId() });
-    const base = ProjectSchema.parse(makeSingleShotSource());
+    const base = migrateProject(makeSingleShotSource());
     const twoShotProject = service.duplicate(base, base.shots[0]!.id);
 
     expect(twoShotProject.shots.length).toBe(2);

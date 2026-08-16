@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   ProjectSchema,
+  migrateProject,
   scanAssetReferences,
   scanCharacterReferences,
   scanExpressionReferences,
 } from '../../src/domain';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
-const project = ProjectSchema.parse(exampleProject);
+const project = migrateProject(exampleProject);
 
 describe('scanAssetReferences', () => {
   it('reports background, character, audio clip, and dialogue locations', () => {

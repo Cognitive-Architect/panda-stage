@@ -108,19 +108,28 @@ const exampleProject = require(path.join(
   repositoryRoot,
   'demo-project/project-v1.example.json',
 ));
+// A real open migrates the persisted project to the current schema version
+// before the document leaves Main, so the gate serves an already-migrated v5
+// project (the renderer validates v5; it does not re-migrate). Issue #81
+// resource isolation is independent of schema version.
+const { migrateProject } = require(path.join(
+  repositoryRoot,
+  'dist-electron/domain/migrations/index.js',
+));
 
 const projectARoot = 'D:\\\\Projects\\\\Issue 81 A.pandastage';
 const projectBRoot = 'D:\\\\Projects\\\\Issue 81 B.pandastage';
-const projectA = JSON.parse(JSON.stringify(exampleProject));
-projectA.name = 'Issue 81 project A';
-projectA.assets = projectA.assets.map((asset) => ({
+const rawA = JSON.parse(JSON.stringify(exampleProject));
+rawA.name = 'Issue 81 project A';
+rawA.assets = rawA.assets.map((asset) => ({
   ...asset,
   name: 'A ' + asset.name,
 }));
-projectA.characters = projectA.characters.map((character) => ({
+rawA.characters = rawA.characters.map((character) => ({
   ...character,
   name: 'A ' + character.name,
 }));
+const projectA = migrateProject(rawA);
 
 const projectB = JSON.parse(JSON.stringify(projectA));
 projectB.id = '10000000-0000-4000-8000-000000000099';

@@ -20,13 +20,13 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { ProjectSchema } from '../../src/domain';
+import { migrateProject } from '../../src/domain';
 import { registerAssetMetadataIpcHandlers } from '../../src/main/ipc/register-asset-metadata-ipc-handlers';
 import type { AssetMetadataService } from '../../src/main/services/AssetMetadataService';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
-const project = ProjectSchema.parse(exampleProject);
+const project = migrateProject(exampleProject);
 const request = {
   projectRoot: 'D:\\project.pandastage',
   project,
