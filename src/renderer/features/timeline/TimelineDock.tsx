@@ -16,6 +16,8 @@ import {
 } from './timeGeometry';
 import { timelineUiStore, useTimelineUi } from './timelineUiStore';
 import { DialogueSheet } from '../dialogue/DialogueSheet';
+import { DialogueClip } from './DialogueClip';
+import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 
 /**
  * The only product Timeline surface for Day 26. It renders the current shot's
@@ -35,11 +37,19 @@ export function TimelineDock(): React.JSX.Element {
     editorProjectStore.getSnapshot,
   );
   const ui = useTimelineUi();
+  const selectedDialogueId = useSyncExternalStore(
+    dialogueSelectionStore.subscribe,
+    dialogueSelectionStore.getSelectedDialogueId,
+  );
 
   const durationMs = currentShotId
     ? snapshot?.project.shots.find((shot) => shot.id === currentShotId)
         ?.durationMs ?? 0
     : 0;
+  const shot = currentShotId
+    ? snapshot?.project.shots.find((candidate) => candidate.id === currentShotId) ?? null
+    : null;
+  const characters = snapshot?.project.characters ?? [];
 
   // Whether a seekable ruler is actually mounted. The ruler only renders when
   // the Timeline is expanded AND a real shot is active, so `hasShot` flips
@@ -190,6 +200,27 @@ export function TimelineDock(): React.JSX.Element {
                   <span className="timeline-tick-label">{tick.label}</span>
                 </div>
               ))}
+              <div
+                className="dialogue-track"
+                data-testid="dialogue-track"
+              >
+                {shot?.dialogues.map((dialogue) => (
+                    <DialogueClip
+                      characterName={
+                        characters.find(
+                          (character) => character.id === dialogue.characterId,
+                        )?.name ?? dialogue.characterId
+                      }
+                      dialogue={dialogue}
+                      durationMs={durationMs}
+                      key={dialogue.id}
+                      pixelsPerMs={pixelsPerMs}
+                      projectRoot={snapshot?.projectRoot ?? ''}
+                      selected={dialogue.id === selectedDialogueId}
+                      shotId={shot.id}
+                    />
+                  ))}
+              </div>
               <div
                 className="timeline-playhead"
                 data-testid="timeline-playhead"

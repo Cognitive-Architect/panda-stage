@@ -12,8 +12,14 @@
  * revision, the dirty flag, the selection or the history. They all take the
  * project as a readonly input and return new values.
  */
-import { listShotImageAssets, type Project, type Shot } from '../../domain';
+import {
+  listShotImageAssets,
+  type Project,
+  type Shot,
+  type SubtitleStyle,
+} from '../../domain';
 import type { SubtitleCue } from '../../shared/preview/subtitle-engine';
+import { buildDialogueSubtitleCues } from '../../shared/preview/dialogue-subtitle';
 
 /**
  * Upper bound for a single playback step. A background tab, a blocked main
@@ -21,9 +27,6 @@ import type { SubtitleCue } from '../../shared/preview/subtitle-engine';
  * keeps the preview from jumping across the whole shot in one frame.
  */
 export const PRODUCT_PREVIEW_MAX_STEP_MS = 250;
-
-/** Longest subtitle text the shared subtitle contract accepts. */
-const PRODUCT_PREVIEW_MAX_CUE_LENGTH = 500;
 
 export interface ProductPreviewTimeStep {
   /** Clamped, integer millisecond position inside `[0, durationMs]`. */
@@ -99,16 +102,15 @@ export function listProductPreviewAssetIds(
  * and are dropped; text is trimmed and capped to the shared contract limit.
  */
 export function buildProductPreviewCues(shot: Shot): SubtitleCue[] {
-  return shot.dialogues
-    .filter((dialogue) => dialogue.endMs > dialogue.startMs)
-    .map((dialogue) => ({
-      id: dialogue.id,
-      startMs: Math.max(0, Math.round(dialogue.startMs)),
-      endMs: Math.max(1, Math.round(dialogue.endMs)),
-      text: dialogue.text.trim().slice(0, PRODUCT_PREVIEW_MAX_CUE_LENGTH),
-    }))
-    .filter((cue) => cue.text.length > 0 && cue.endMs > cue.startMs)
-    .sort((left, right) => left.startMs - right.startMs);
+  return buildDialogueSubtitleCues(shot.dialogues);
+}
+
+export function resolveProductPreviewSubtitleStyle(
+  project: Project,
+  cue: SubtitleCue | null,
+): SubtitleStyle | undefined {
+  if (!cue?.styleId) return undefined;
+  return project.subtitleStyles.find((style) => style.id === cue.styleId);
 }
 
 /** Clamps an arbitrary position into the shot's integer millisecond range. */

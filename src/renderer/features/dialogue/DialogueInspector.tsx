@@ -1,15 +1,41 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Character } from '../../../domain';
+import { layoutSubtitleText } from '../../../shared/preview/subtitle-layout';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
-import { shotStore } from '../../stores/shotStore';
 import { dialogueStore } from '../../stores/dialogueStore';
+import { shotStore } from '../../stores/shotStore';
+import {
+  clampTime,
+  integerFrameSpanMs,
+} from '../timeline/timeGeometry';
+
+export function normalizeManualDialogueTiming(
+  startValue: string,
+  endValue: string,
+  durationMs: number,
+): { startMs: number; endMs: number } {
+  const rawStart = Number(startValue);
+  const rawEnd = Number(endValue);
+  if (
+    startValue.trim() === '' ||
+    endValue.trim() === '' ||
+    !Number.isFinite(rawStart) ||
+    !Number.isFinite(rawEnd) ||
+    !Number.isInteger(rawStart) ||
+    !Number.isInteger(rawEnd)
+  ) {
+    throw new Error('开始和结束时间必须是整数毫秒。');
+  }
+  return {
+    startMs: clampTime(rawStart, durationMs),
+    endMs: clampTime(rawEnd, durationMs),
+  };
+}
 
 /**
- * Editor for the currently selected dialogue. Rendered inside the single
- * RightInspector when a dialogue is selected; the layer/background inspector is
- * shown otherwise. The speaker is committed immediately on change; the textarea
- * commits on blur so a single edit is one History command rather than one per
- * keystroke.
+ * The existing single RightInspector owner, extended only with Day28 timing.
+ * Text still commits on blur; timing and Untimed arrangement are explicit,
+ * one-command actions.
  */
 export function DialogueInspector({
   dialogueId,
@@ -24,7 +50,6 @@ export function DialogueInspector({
     shotStore.subscribe,
     shotStore.getCurrentShotId,
   );
-
   const shot = snapshot?.project.shots.find(
     (candidate) => candidate.id === currentShotId,
   );
@@ -35,12 +60,22 @@ export function DialogueInspector({
   const character = characters.find(
     (candidate) => candidate.id === dialogue?.characterId,
   );
+  const subtitleStyle = snapshot?.project.subtitleStyles.find(
+    (style) => style.id === dialogue?.subtitleStyleId,
+  );
 
   const [text, setText] = useState(dialogue?.text ?? '');
+  const [startMs, setStartMs] = useState(String(dialogue?.startMs ?? 0));
+  const [endMs, setEndMs] = useState(String(dialogue?.endMs ?? 0));
+  const [error, setError] = useState<string | null>(null);
   const focusedRef = useRef(false);
+
   useEffect(() => {
     if (!focusedRef.current) setText(dialogue?.text ?? '');
-  }, [dialogue?.text]);
+    setStartMs(String(dialogue?.startMs ?? 0));
+    setEndMs(String(dialogue?.endMs ?? 0));
+    setError(null);
+  }, [dialogue?.id, dialogue?.text, dialogue?.startMs, dialogue?.endMs]);
 
   if (!shot || !dialogue) {
     return (
@@ -54,24 +89,64 @@ export function DialogueInspector({
     );
   }
 
-  const handleSpeaker = (characterId: string): void => {
-    if (characterId !== dialogue.characterId) {
-      dialogueStore.update(dialogueId, { characterId });
+  const timed = dialogue.endMs > dialogue.startMs;
+  const subtitleWarning = layoutSubtitleText(
+    dialogue.text,
+    subtitleStyle ?? { fontSize: 44, maxWidth: 1_420 },
+  ).warning;
+
+  const report = (action: () => void, fallback: string): void => {
+    try {
+      action();
+      setError(null);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : fallback);
     }
   };
-  const handleTextChange = (next: string): void => setText(next);
-  const handleTextBlur = (): void => {
+
+  const commitText = (): void => {
     focusedRef.current = false;
     const trimmed = text.trim();
-    if (trimmed.length === 0) {
+    if (!trimmed) {
       setText(dialogue.text);
+      setError('对白文本不能为空。');
       return;
     }
     if (trimmed !== dialogue.text) {
-      dialogueStore.update(dialogueId, { text: trimmed });
+      report(
+        () => dialogueStore.update(dialogue.id, { text: trimmed }),
+        '对白文本无效。',
+      );
     } else {
       setText(dialogue.text);
     }
+  };
+
+  const commitTiming = (): void => {
+    let timing: { startMs: number; endMs: number };
+    try {
+      timing = normalizeManualDialogueTiming(
+        startMs,
+        endMs,
+        shot.durationMs,
+      );
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : '开始和结束时间必须是整数毫秒。',
+      );
+      return;
+    }
+    report(() => {
+      dialogueStore.setTiming(
+        dialogue.id,
+        timing.startMs,
+        timing.endMs,
+      );
+      setStartMs(String(timing.startMs));
+      setEndMs(String(timing.endMs));
+    }, '对白时间段无效。');
   };
 
   return (
@@ -92,7 +167,7 @@ export function DialogueInspector({
         <p className="eyebrow">当前选择</p>
         <strong>{character?.name ?? '未知角色'}</strong>
         <span data-testid="right-inspector-selection-message">
-          {`已选择对白：${character?.name ?? dialogue.characterId}`}
+          已选择对白：{character?.name ?? dialogue.characterId}
         </span>
       </section>
       <div className="dialogue-inspector" data-testid="dialogue-inspector">
@@ -101,7 +176,15 @@ export function DialogueInspector({
           <select
             data-testid="dialogue-inspector-speaker"
             value={dialogue.characterId}
-            onChange={(event) => handleSpeaker(event.target.value)}
+            onChange={(event) =>
+              report(
+                () =>
+                  dialogueStore.update(dialogue.id, {
+                    characterId: event.target.value,
+                  }),
+                '角色无效。',
+              )
+            }
           >
             {characters.map((candidate) => (
               <option key={candidate.id} value={candidate.id}>
@@ -110,29 +193,100 @@ export function DialogueInspector({
             ))}
           </select>
         </label>
+        {subtitleWarning ? (
+          <p
+            className="dialogue-editor-error"
+            data-testid="dialogue-subtitle-warning"
+            role="status"
+          >
+            {subtitleWarning}
+          </p>
+        ) : null}
         <label className="dialogue-field">
           <span>台词</span>
           <textarea
             data-testid="dialogue-inspector-text"
             value={text}
             rows={4}
-            onChange={(event) => handleTextChange(event.target.value)}
+            onChange={(event) => setText(event.target.value)}
             onFocus={() => {
               focusedRef.current = true;
             }}
-            onBlur={handleTextBlur}
+            onBlur={commitText}
           />
         </label>
+        {timed ? (
+          <div className="dialogue-timing-fields">
+            <label className="dialogue-field">
+              <span>开始（ms）</span>
+              <input
+                data-testid="dialogue-inspector-start"
+                inputMode="numeric"
+                min={0}
+                onChange={(event) => setStartMs(event.target.value)}
+                type="number"
+                value={startMs}
+              />
+            </label>
+            <label className="dialogue-field">
+              <span>结束（ms）</span>
+              <input
+                data-testid="dialogue-inspector-end"
+                inputMode="numeric"
+                min={0}
+                onChange={(event) => setEndMs(event.target.value)}
+                type="number"
+                value={endMs}
+              />
+            </label>
+            <button
+              data-testid="dialogue-inspector-apply-timing"
+              onClick={commitTiming}
+              type="button"
+            >
+              应用时间
+            </button>
+          </div>
+        ) : (
+          <button
+            className="dialogue-arrange"
+            data-testid="dialogue-inspector-arrange"
+            onClick={() =>
+              report(
+                () =>
+                  dialogueStore.arrange(
+                    dialogue.id,
+                    integerFrameSpanMs(),
+                  ),
+                '未定时对白安排失败。',
+              )
+            }
+            type="button"
+          >
+            安排为一帧
+          </button>
+        )}
+        {error ? (
+          <p
+            className="dialogue-editor-error"
+            data-testid="dialogue-editor-error"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
         <button
           type="button"
           className="dialogue-delete"
           data-testid="dialogue-inspector-delete"
-          onClick={() => dialogueStore.remove(dialogueId)}
+          onClick={() => dialogueStore.remove(dialogue.id)}
         >
           删除对白
         </button>
         <p className="dialogue-point-time">
-          {`时间点：${dialogue.startMs}ms（来自时间轴播放头）`}
+          {timed
+            ? `时间段：${dialogue.startMs}–${dialogue.endMs}ms`
+            : `未定时：${dialogue.startMs}ms（选择“安排为一帧”后才产生字幕窗口）`}
         </p>
       </div>
     </>

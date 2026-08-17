@@ -26,6 +26,7 @@ import {
   formatProductPreviewTimecode,
   listProductPreviewAssetIds,
   resolveProductPreviewShot,
+  resolveProductPreviewSubtitleStyle,
 } from './productPreviewModel';
 
 export interface ProductPreviewOverlayProps {
@@ -202,9 +203,11 @@ export function ProductPreviewOverlay({
         : null,
     [project, shot, timeMs],
   );
-  const caption = evaluatedShot
-    ? (evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)?.text ?? null)
+  const activeCue = evaluatedShot
+    ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
+  const caption = activeCue?.text ?? null;
+  const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
   const atEnd = durationMs > 0 && timeMs >= durationMs;
 
   return (
@@ -268,6 +271,7 @@ export function ProductPreviewOverlay({
                 <CanvasStage
                   assetUrls={assets.urls}
                   caption={caption}
+                  captionStyle={captionStyle}
                   evaluatedShot={evaluatedShot}
                   project={project}
                 />

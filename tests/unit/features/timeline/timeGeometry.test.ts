@@ -6,6 +6,7 @@ import {
   formatTimecode,
   frameDurationMs,
   generateRulerTicks,
+  integerFrameSpanMs,
   pxToTime,
   snapToFrame,
   timeToPx,
@@ -33,8 +34,17 @@ describe('timeGeometry time<->pixel core', () => {
     expect(snapToFrame(13)).toBe(0);
     expect(snapToFrame(30)).toBe(Math.round(FRAME_MS)); // frame 1
     expect(snapToFrame(1041.66)).toBe(Math.round(25 * FRAME_MS)); // frame 25
+    expect(snapToFrame(459)).toBe(458);
+    expect(snapToFrame(460)).toBe(458);
     expect(snapToFrame(-50)).toBe(0);
     expect(snapToFrame(Number.NaN)).toBe(0);
+  });
+
+  it('derives the persisted one-frame span from Day26 frame geometry', () => {
+    expect(integerFrameSpanMs()).toBe(
+      snapToFrame(frameDurationMs()),
+    );
+    expect(integerFrameSpanMs()).toBe(42);
   });
 
   it('timeToPx / pxToTime are exact inverses for the same scale', () => {

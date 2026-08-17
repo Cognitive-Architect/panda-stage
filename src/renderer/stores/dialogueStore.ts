@@ -1,6 +1,10 @@
 import {
   DialogueService,
+  type ArrangeDialogueInput,
+  type MoveDialogueInput,
   type Project,
+  type ResizeDialogueInput,
+  type SetDialogueTimingInput,
 } from '../../domain';
 import {
   EditorProjectStore,
@@ -75,7 +79,10 @@ export class DialogueStore {
 
   update(
     dialogueId: string,
-    input: { characterId?: string; text?: string },
+    input: {
+      characterId?: string;
+      text?: string;
+    },
   ): void {
     const { project, shotId } = this.context();
     const next = this.service.update(project, {
@@ -85,6 +92,53 @@ export class DialogueStore {
     });
     if (next !== project) {
       this.editorStore.updateProject(next, 'Edit dialogue');
+    }
+  }
+
+  setTiming(dialogueId: string, startMs: number, endMs: number): void {
+    const { project, shotId } = this.context();
+    const input: SetDialogueTimingInput = {
+      shotId,
+      dialogueId,
+      startMs,
+      endMs,
+    };
+    const next = this.service.setTiming(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Set dialogue timing');
+    }
+  }
+
+  arrange(dialogueId: string, frameSpanMs: number): void {
+    const { project, shotId } = this.context();
+    const input: ArrangeDialogueInput = {
+      shotId,
+      dialogueId,
+      frameSpanMs,
+    };
+    const next = this.service.arrange(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Arrange dialogue');
+    }
+  }
+
+  move(dialogueId: string, deltaMs: number): void {
+    const { project, shotId } = this.context();
+    const input: MoveDialogueInput = { shotId, dialogueId, deltaMs };
+    const next = this.service.move(project, input);
+    if (next !== project) this.editorStore.updateProject(next, 'Move dialogue');
+  }
+
+  resize(
+    dialogueId: string,
+    edge: ResizeDialogueInput['edge'],
+    timeMs: number,
+  ): void {
+    const { project, shotId } = this.context();
+    const input: ResizeDialogueInput = { shotId, dialogueId, edge, timeMs };
+    const next = this.service.resize(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Resize dialogue');
     }
   }
 

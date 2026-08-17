@@ -6,12 +6,16 @@ import {
   type Shot,
 } from '../models';
 
+const MIN_TIMED_DIALOGUE_DURATION_MS = 1;
+
 export type DialogueServiceErrorCode =
   | 'SHOT_NOT_FOUND'
   | 'DIALOGUE_NOT_FOUND'
   | 'CHARACTER_NOT_FOUND'
   | 'INVALID_DIALOGUE_TIME'
+  | 'INVALID_DIALOGUE_DURATION'
   | 'INVALID_DIALOGUE_TEXT'
+  | 'DIALOGUE_OVERLAP'
   | 'ID_GENERATION_FAILED';
 
 export class DialogueServiceError extends Error {
@@ -44,18 +48,41 @@ export interface UpdateDialogueInput {
   text?: string;
 }
 
+export interface SetDialogueTimingInput {
+  shotId: string;
+  dialogueId: string;
+  startMs: number;
+  endMs: number;
+}
+
+export interface ArrangeDialogueInput {
+  shotId: string;
+  dialogueId: string;
+  frameSpanMs: number;
+}
+
+export interface MoveDialogueInput {
+  shotId: string;
+  dialogueId: string;
+  deltaMs: number;
+}
+
+export interface ResizeDialogueInput {
+  shotId: string;
+  dialogueId: string;
+  edge: 'start' | 'end';
+  timeMs: number;
+}
+
 export interface DialogueServiceOptions {
   createId?: () => string;
   now?: () => Date;
 }
 
 /**
- * Pure Project → Project dialogue mutation owner. Centralises every dialogue
- * write so the renderer never hand-rolls project replacement across components.
- *
- * Point-time is supplied as a plain `pointTimeMs` number by the caller (the
- * renderer reads the Timeline playhead and passes it in). This service must not
- * import any renderer/timeline store — the playhead is UI-only state.
+ * Pure Project → Project dialogue mutation owner. Point-time and frame span are
+ * supplied as plain integer milliseconds; Timeline geometry remains renderer
+ * state and is never imported into the domain.
  */
 export class DialogueService {
   private readonly createId: () => string;
@@ -66,6 +93,7 @@ export class DialogueService {
     this.now = options.now ?? (() => new Date());
   }
 
+  /** Day27 contract: newly authored Dialogue is Untimed at one captured point. */
   create(project: Project, input: CreateDialogueInput): Project {
     const shot = this.shot(project, input.shotId);
     const character = this.character(project, input.characterId);
@@ -86,9 +114,8 @@ export class DialogueService {
   }
 
   /**
-   * Appends every resolved line as a single Project mutation. All lines share
-   * the capture-time point (the renderer passes one `pointTimeMs` captured at
-   * commit), so the whole batch becomes exactly one History command.
+   * Day27 batch contract: every line shares one captured point-time and the
+   * returned Project is committed by the renderer as one History command.
    */
   createMany(project: Project, input: CreateManyDialogueInput): Project {
     if (input.lines.length === 0) return project;
@@ -139,6 +166,87 @@ export class DialogueService {
     });
   }
 
+  /** Explicitly commits a positive Timed interval. */
+  setTiming(project: Project, input: SetDialogueTimingInput): Project {
+    const shot = this.shot(project, input.shotId);
+    const dialogue = this.dialogue(shot, input.dialogueId);
+    const timing = this.validTimedWindow(shot, input.startMs, input.endMs);
+    this.assertNoOverlap(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      timing,
+    );
+    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
+  }
+
+  /**
+   * Explicit Untimed → Timed action. The renderer derives frameSpanMs from
+   * Day26 frameDurationMs()/snapToFrame() and passes the integer span as data.
+   */
+  arrange(project: Project, input: ArrangeDialogueInput): Project {
+    const shot = this.shot(project, input.shotId);
+    const dialogue = this.dialogue(shot, input.dialogueId);
+    if (dialogue.endMs !== dialogue.startMs) {
+      throw new DialogueServiceError(
+        'INVALID_DIALOGUE_DURATION',
+        '只有未定时对白可以使用“一帧安排”。',
+      );
+    }
+    this.validPositiveInteger(input.frameSpanMs, '默认帧时长');
+    const spanMs = Math.min(input.frameSpanMs, shot.durationMs);
+    if (spanMs < MIN_TIMED_DIALOGUE_DURATION_MS) {
+      throw new DialogueServiceError(
+        'INVALID_DIALOGUE_DURATION',
+        '镜头时长不足，无法安排对白。',
+      );
+    }
+    const pointMs = dialogue.startMs;
+    const timing =
+      pointMs + spanMs <= shot.durationMs
+        ? { startMs: pointMs, endMs: pointMs + spanMs }
+        : {
+            startMs: Math.max(0, shot.durationMs - spanMs),
+            endMs: shot.durationMs,
+          };
+    this.assertNoOverlap(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      timing,
+    );
+    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
+  }
+
+  move(project: Project, input: MoveDialogueInput): Project {
+    const shot = this.shot(project, input.shotId);
+    const dialogue = this.dialogue(shot, input.dialogueId);
+    this.validInteger(input.deltaMs, '移动量');
+    const duration = this.timedDuration(dialogue);
+    const startMs = Math.min(
+      Math.max(dialogue.startMs + input.deltaMs, 0),
+      shot.durationMs - duration,
+    );
+    const timing = { startMs, endMs: startMs + duration };
+    this.assertNoOverlap(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      timing,
+    );
+    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
+  }
+
+  resize(project: Project, input: ResizeDialogueInput): Project {
+    const shot = this.shot(project, input.shotId);
+    const dialogue = this.dialogue(shot, input.dialogueId);
+    this.timedDuration(dialogue);
+    this.validInteger(input.timeMs, '调整时间');
+    const timing =
+      input.edge === 'start'
+        ? this.validTimedWindow(shot, input.timeMs, dialogue.endMs)
+        : this.validTimedWindow(shot, dialogue.startMs, input.timeMs);
+    this.assertNoOverlap(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      timing,
+    );
+    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
+  }
+
   remove(project: Project, shotId: string, dialogueId: string): Project {
     const shot = this.shot(project, shotId);
     this.dialogue(shot, dialogueId);
@@ -146,6 +254,27 @@ export class DialogueService {
       ...shot,
       dialogues: shot.dialogues.filter(
         (candidate) => candidate.id !== dialogueId,
+      ),
+    });
+  }
+
+  private replaceDialogueTiming(
+    project: Project,
+    shot: Shot,
+    dialogueId: string,
+    timing: { startMs: number; endMs: number },
+  ): Project {
+    const current = this.dialogue(shot, dialogueId);
+    if (
+      current.startMs === timing.startMs &&
+      current.endMs === timing.endMs
+    ) {
+      return project;
+    }
+    return this.replaceShot(project, shot.id, {
+      ...shot,
+      dialogues: shot.dialogues.map((candidate) =>
+        candidate.id === dialogueId ? { ...candidate, ...timing } : candidate,
       ),
     });
   }
@@ -217,13 +346,74 @@ export class DialogueService {
   }
 
   private clampTime(shot: Shot, rawMs: number): number {
-    if (!Number.isFinite(rawMs) || !Number.isInteger(rawMs)) {
+    this.validInteger(rawMs, '对白时间点');
+    return Math.min(Math.max(rawMs, 0), shot.durationMs);
+  }
+
+  private validTimedWindow(
+    shot: Shot,
+    startMs: number,
+    endMs: number,
+  ): { startMs: number; endMs: number } {
+    const start = this.clampTime(shot, startMs);
+    const end = this.clampTime(shot, endMs);
+    if (end - start < MIN_TIMED_DIALOGUE_DURATION_MS) {
       throw new DialogueServiceError(
-        'INVALID_DIALOGUE_TIME',
-        `对白时间点必须是有效整数毫秒：${rawMs}`,
+        'INVALID_DIALOGUE_DURATION',
+        '对白结束时间必须晚于开始时间。',
       );
     }
-    return Math.min(Math.max(rawMs, 0), shot.durationMs);
+    return { startMs: start, endMs: end };
+  }
+
+  private timedDuration(dialogue: Dialogue): number {
+    const duration = dialogue.endMs - dialogue.startMs;
+    if (duration < MIN_TIMED_DIALOGUE_DURATION_MS) {
+      throw new DialogueServiceError(
+        'INVALID_DIALOGUE_DURATION',
+        '请先把未定时对白安排为正时长。',
+      );
+    }
+    return duration;
+  }
+
+  private assertNoOverlap(
+    dialogues: readonly Dialogue[],
+    timing: { startMs: number; endMs: number },
+  ): void {
+    const conflict = dialogues.find(
+      (dialogue) =>
+        dialogue.endMs > dialogue.startMs &&
+        timing.startMs < dialogue.endMs &&
+        timing.endMs > dialogue.startMs,
+    );
+    if (conflict) {
+      throw new DialogueServiceError(
+        'DIALOGUE_OVERLAP',
+        `对白与 ${conflict.startMs}–${conflict.endMs}ms 的已有对白重叠；首尾相接可以。`,
+      );
+    }
+  }
+
+  private validInteger(raw: number, label: string): number {
+    if (!Number.isFinite(raw) || !Number.isInteger(raw)) {
+      throw new DialogueServiceError(
+        'INVALID_DIALOGUE_TIME',
+        `${label}必须是整数毫秒：${raw}`,
+      );
+    }
+    return raw;
+  }
+
+  private validPositiveInteger(raw: number, label: string): number {
+    this.validInteger(raw, label);
+    if (raw < MIN_TIMED_DIALOGUE_DURATION_MS) {
+      throw new DialogueServiceError(
+        'INVALID_DIALOGUE_DURATION',
+        `${label}必须为正整数毫秒：${raw}`,
+      );
+    }
+    return raw;
   }
 
   private collectIds(project: Project): Set<string> {

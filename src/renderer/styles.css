@@ -971,6 +971,123 @@ button:disabled {
   min-width: 100%;
 }
 
+.dialogue-track {
+  position: absolute;
+  z-index: 3;
+  top: 25px;
+  left: 0;
+  right: 0;
+  height: 32px;
+  pointer-events: none;
+}
+
+.dialogue-clip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  min-width: 10px;
+  height: 30px;
+  overflow: visible;
+  border: 1px solid #67d39a;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #245d42, #327d57);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 26%);
+  color: #f0fff4;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.dialogue-clip:active {
+  cursor: grabbing;
+}
+
+.dialogue-clip.selected {
+  border-color: #ffe08a;
+  box-shadow: 0 0 0 2px rgb(255 224 138 / 32%);
+}
+
+.dialogue-clip.untimed {
+  border-style: dashed;
+  border-color: #ffd477;
+  border-radius: 50%;
+  background: #694d1f;
+  cursor: pointer;
+}
+
+.dialogue-clip.untimed .dialogue-clip-label {
+  position: absolute;
+  left: 16px;
+  display: none;
+  min-width: 86px;
+  border-radius: 5px;
+  background: #302719;
+}
+
+.dialogue-clip.untimed:hover .dialogue-clip-label,
+.dialogue-clip.untimed:focus-visible .dialogue-clip-label,
+.dialogue-clip.untimed.selected .dialogue-clip-label {
+  display: flex;
+}
+
+.dialogue-clip-label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2px 9px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.15;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.dialogue-clip-label strong,
+.dialogue-clip-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dialogue-clip-label strong {
+  color: #ffe6a5;
+  font-size: 9px;
+}
+
+.dialogue-clip-handle {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.dialogue-clip-handle-start {
+  left: -2px;
+}
+
+.dialogue-clip-handle-end {
+  right: -2px;
+}
+
+.dialogue-clip-error {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 5;
+  min-width: 180px;
+  padding: 4px 6px;
+  border: 1px solid #a85d43;
+  border-radius: 4px;
+  background: #321d19;
+  color: #ffd2bd;
+  font-size: 10px;
+  pointer-events: none;
+}
+
 .timeline-tick {
   position: absolute;
   top: 0;
@@ -3942,6 +4059,33 @@ h1 {
 .dialogue-inspector textarea {
   width: 100%;
   resize: vertical;
+}
+
+.dialogue-timing-fields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+}
+
+.dialogue-timing-fields button {
+  width: 100%;
+  min-height: 32px;
+  grid-column: 1 / -1;
+  white-space: nowrap;
+}
+
+.dialogue-arrange {
+  align-self: flex-start;
+  min-height: 36px;
+}
+
+.dialogue-editor-error {
+  margin: 0;
+  color: #ffc3a9;
+  font-size: 0.76rem;
+  line-height: 1.4;
 }
 
 .dialogue-point-time {
