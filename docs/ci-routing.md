@@ -124,3 +124,6 @@ verifier ownership, and every current first-party renderer feature directory.
 - `main` branch protection is strict and requires both `Final CI result` and
   `Ready Full proof`. Draft PR #231 remains merge-blocked even with a green
   fast-path Final because the exact-candidate Ready proof is absent.
+- Draft focused fixture HEAD `1518def85a2da8147f652669a599c0d4344b1f39`
+  used `Focused core quality` in run `32006495470`: classifier 6 seconds,
+  focused checks 2 minutes 46 seconds, Full skipped, stable Final passed.
