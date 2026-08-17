@@ -12,11 +12,13 @@ const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
 const manifest = JSON.parse(
   readFileSync(resolve(root, 'scripts', 'verification-manifest.json'), 'utf8'),
 ) as {
+  manifestVersion: number;
   statusVocabulary: string[];
   platformVocabulary: string[];
   runInVocabulary: string[];
   count: number;
   gates: Array<Record<string, unknown>>;
+  routing: Record<string, unknown>;
 };
 
 // Canonical vocabularies from Issue #209 (RH-04). The manifest must declare the
@@ -28,6 +30,13 @@ const REQUIRED = ['id', 'script', 'suite', 'subsystem', 'status', 'platform', 'r
 
 const pkgVerify = Object.keys(pkg.scripts).filter((k) => k.startsWith('verify:'));
 const manifestByScript = new Map(manifest.gates.map((g) => [g.script as string, g]));
+
+describe('RH-05 verification routing manifest', () => {
+  it('evolves the RH-04 ledger without creating a separate routing file', () => {
+    expect(manifest.manifestVersion).toBe(2);
+    expect(manifest.routing).toBeTruthy();
+  });
+});
 
 describe('RH-04 verification manifest — package.json <-> manifest drift contract', () => {
   it('every package.json verify:* script has exactly one manifest entry', () => {
