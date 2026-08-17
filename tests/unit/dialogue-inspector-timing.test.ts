@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { normalizeManualDialogueTiming } from '../../src/renderer/features/dialogue/DialogueInspector';
 
@@ -26,5 +27,17 @@ describe('DialogueInspector manual integer-ms timing', () => {
     expect(() => normalizeManualDialogueTiming(start, end, 3000)).toThrow(
       '开始和结束时间必须是整数毫秒。',
     );
+  });
+
+  it('exposes the current-project audio binding state without a second mutation owner', () => {
+    const source = readFileSync(
+      'src/renderer/features/dialogue/DialogueInspector.tsx',
+      'utf8',
+    );
+    expect(source).toContain('data-testid="dialogue-inspector-audio"');
+    expect(source).toContain('dialogueStore.bindAudio');
+    expect(source).toContain('disabled={!timed}');
+    expect(source).toContain('未绑定音频');
+    expect(source).toContain('未定时对白不可绑定音频。');
   });
 });

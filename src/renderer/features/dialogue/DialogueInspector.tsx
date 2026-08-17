@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { Character } from '../../../domain';
+import type { AudioAsset, Character } from '../../../domain';
 import { layoutSubtitleText } from '../../../shared/preview/subtitle-layout';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
@@ -59,6 +59,16 @@ export function DialogueInspector({
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
   const character = characters.find(
     (candidate) => candidate.id === dialogue?.characterId,
+  );
+  const audioAssets: readonly AudioAsset[] =
+    snapshot?.project.assets.filter(
+      (candidate): candidate is AudioAsset => candidate.kind === 'audio',
+    ) ?? [];
+  const audioClip = shot?.audioClips.find(
+    (candidate) => candidate.id === dialogue?.audioClipId,
+  );
+  const boundAudioAsset = audioAssets.find(
+    (candidate) => candidate.id === audioClip?.assetId,
   );
   const subtitleStyle = snapshot?.project.subtitleStyles.find(
     (style) => style.id === dialogue?.subtitleStyleId,
@@ -266,6 +276,45 @@ export function DialogueInspector({
             安排为一帧
           </button>
         )}
+        <label className="dialogue-field">
+          <span>对白音频</span>
+          <select
+            data-testid="dialogue-inspector-audio"
+            disabled={!timed}
+            value={boundAudioAsset?.id ?? ''}
+            onChange={(event) => {
+              if (!event.target.value) return;
+              report(
+                () => dialogueStore.bindAudio(dialogue.id, event.target.value),
+                '对白音频绑定失败。',
+              );
+            }}
+          >
+            <option value="">
+              {timed ? '未绑定音频' : '先安排对白时间段'}
+            </option>
+            {audioAssets.map((asset) => (
+              <option
+                key={asset.id}
+                disabled={asset.durationMs === undefined}
+                value={asset.id}
+              >
+                {asset.name}
+                {asset.durationMs === undefined ? '（待分析）' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p
+          className="dialogue-point-time"
+          data-testid="dialogue-inspector-audio-status"
+        >
+          {boundAudioAsset
+            ? `已绑定：${boundAudioAsset.name}`
+            : timed
+              ? '未绑定音频（仅可选择当前项目素材）'
+              : '未定时对白不可绑定音频。'}
+        </p>
         {error ? (
           <p
             className="dialogue-editor-error"

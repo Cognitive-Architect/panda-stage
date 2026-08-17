@@ -14,6 +14,7 @@
  */
 import {
   listShotImageAssets,
+  type EvaluatedShot,
   type Project,
   type Shot,
   type SubtitleStyle,
@@ -82,6 +83,12 @@ export function listProductPreviewAssetIds(
   }
   for (const character of project.characters) {
     if (!characterIds.has(character.id)) continue;
+    const mouthAsset = project.assets.find(
+      (candidate) => candidate.id === character.mouthOpenAssetId,
+    );
+    if (mouthAsset?.kind === 'image') {
+      assetIds.add(mouthAsset.id);
+    }
     for (const expression of character.expressions) {
       const asset = project.assets.find(
         (candidate) => candidate.id === expression.assetId,
@@ -93,6 +100,56 @@ export function listProductPreviewAssetIds(
   }
 
   return [...assetIds];
+}
+
+/**
+ * Applies the transient speaking-mouth projection after the formal shot
+ * evaluator has resolved expression/timeline state. It is intentionally not a
+ * Project mutation and never changes the evaluated layer transforms.
+ */
+export function projectProductPreviewMouth(
+  project: Project,
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+  activeDialogueId: string | null,
+): EvaluatedShot {
+  if (!activeDialogueId) return evaluatedShot;
+  const dialogue = shot.dialogues.find(
+    (candidate) => candidate.id === activeDialogueId,
+  );
+  if (!dialogue?.audioClipId) return evaluatedShot;
+  const audioClip = shot.audioClips.find(
+    (candidate) => candidate.id === dialogue.audioClipId,
+  );
+  if (!audioClip) return evaluatedShot;
+  const audioAsset = project.assets.find(
+    (candidate) => candidate.id === audioClip.assetId,
+  );
+  if (!audioAsset || audioAsset.kind !== 'audio') return evaluatedShot;
+
+  const speakingCharacters = new Map<string, string>();
+  for (const character of project.characters) {
+    if (!character.mouthOpenAssetId) continue;
+    const mouthAsset = project.assets.find(
+      (candidate) => candidate.id === character.mouthOpenAssetId,
+    );
+    if (mouthAsset?.kind === 'image') {
+      speakingCharacters.set(character.id, mouthAsset.id);
+    }
+  }
+  if (speakingCharacters.size === 0) return evaluatedShot;
+
+  let changed = false;
+  const layers = evaluatedShot.layers.map((layer) => {
+    const source = shot.layers.find((candidate) => candidate.id === layer.id)
+      ?.source;
+    if (source?.kind !== 'character') return layer;
+    const mouthAssetId = speakingCharacters.get(source.characterId);
+    if (!mouthAssetId || mouthAssetId === layer.assetId) return layer;
+    changed = true;
+    return { ...layer, assetId: mouthAssetId };
+  });
+  return changed ? { ...evaluatedShot, layers } : evaluatedShot;
 }
 
 /**

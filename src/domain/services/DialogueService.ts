@@ -1,5 +1,7 @@
 import {
   ProjectSchema,
+  type AudioClip,
+  type AudioAsset,
   type Character,
   type Dialogue,
   type Project,
@@ -16,6 +18,11 @@ export type DialogueServiceErrorCode =
   | 'INVALID_DIALOGUE_DURATION'
   | 'INVALID_DIALOGUE_TEXT'
   | 'DIALOGUE_OVERLAP'
+  | 'AUDIO_ASSET_NOT_FOUND'
+  | 'AUDIO_ASSET_NOT_AUDIO'
+  | 'AUDIO_ASSET_DURATION_UNAVAILABLE'
+  | 'AUDIO_CLIP_NOT_FOUND'
+  | 'AUDIO_CLIP_TOO_SHORT'
   | 'ID_GENERATION_FAILED';
 
 export class DialogueServiceError extends Error {
@@ -72,6 +79,12 @@ export interface ResizeDialogueInput {
   dialogueId: string;
   edge: 'start' | 'end';
   timeMs: number;
+}
+
+export interface BindDialogueAudioInput {
+  shotId: string;
+  dialogueId: string;
+  assetId: string;
 }
 
 export interface DialogueServiceOptions {
@@ -179,6 +192,74 @@ export class DialogueService {
   }
 
   /**
+   * Atomically binds one existing project AudioAsset to one timed Dialogue.
+   * Dialogue.audioClipId and Shot.audioClips are changed in the same Project
+   * snapshot so callers can commit exactly one renderer History command.
+   */
+  bindAudio(project: Project, input: BindDialogueAudioInput): Project {
+    const shot = this.shot(project, input.shotId);
+    const dialogue = this.dialogue(shot, input.dialogueId);
+    const dialogueDurationMs = this.timedDuration(dialogue);
+    const asset = this.audioAsset(project, input.assetId);
+    const existingClip = dialogue.audioClipId
+      ? this.audioClip(shot, dialogue.audioClipId)
+      : null;
+    const existingReferences = existingClip
+      ? shot.dialogues.filter(
+          (candidate) => candidate.audioClipId === existingClip.id,
+        ).length
+      : 0;
+    const sameAsset = existingClip?.assetId === asset.id;
+    const offsetMs = sameAsset ? existingClip!.offsetMs : 0;
+    const volume = sameAsset ? existingClip!.volume : 1;
+    const name = sameAsset ? existingClip!.name : asset.name;
+    this.assertAudioRange(asset, offsetMs, dialogueDurationMs);
+
+    if (
+      existingClip &&
+      sameAsset &&
+      existingClip.startMs === dialogue.startMs &&
+      existingClip.endMs === dialogue.endMs
+    ) {
+      return project;
+    }
+
+    const usedIds = this.collectIds(project);
+    const clipId =
+      existingClip && existingReferences === 1
+        ? existingClip.id
+        : this.nextId(usedIds);
+    const nextClip: AudioClip = {
+      id: clipId,
+      name,
+      assetId: asset.id,
+      startMs: dialogue.startMs,
+      endMs: dialogue.endMs,
+      offsetMs,
+      volume,
+    };
+    const nextDialogue: Dialogue = {
+      ...dialogue,
+      audioClipId: clipId,
+    };
+    const nextAudioClips = existingClip
+      ? existingReferences === 1
+        ? shot.audioClips.map((clip) =>
+            clip.id === existingClip.id ? nextClip : clip,
+          )
+        : [...shot.audioClips, nextClip]
+      : [...shot.audioClips, nextClip];
+
+    return this.replaceShot(project, shot.id, {
+      ...shot,
+      audioClips: nextAudioClips,
+      dialogues: shot.dialogues.map((candidate) =>
+        candidate.id === dialogue.id ? nextDialogue : candidate,
+      ),
+    });
+  }
+
+  /**
    * Explicit Untimed → Timed action. The renderer derives frameSpanMs from
    * Day26 frameDurationMs()/snapToFrame() and passes the integer span as data.
    */
@@ -271,10 +352,47 @@ export class DialogueService {
     ) {
       return project;
     }
+    const nextDialogue = { ...current, ...timing };
+    if (!current.audioClipId) {
+      return this.replaceShot(project, shot.id, {
+        ...shot,
+        dialogues: shot.dialogues.map((candidate) =>
+          candidate.id === dialogueId ? nextDialogue : candidate,
+        ),
+      });
+    }
+
+    const clip = this.audioClip(shot, current.audioClipId);
+    const asset = this.audioAsset(project, clip.assetId);
+    this.assertAudioRange(asset, clip.offsetMs, timing.endMs - timing.startMs);
+    const references = shot.dialogues.filter(
+      (candidate) => candidate.audioClipId === clip.id,
+    ).length;
+    const clipId =
+      references === 1
+        ? clip.id
+        : this.nextId(this.collectIds(project));
+    const nextClip: AudioClip = {
+      ...clip,
+      id: clipId,
+      startMs: timing.startMs,
+      endMs: timing.endMs,
+    };
+    const nextDialogueWithClip = {
+      ...nextDialogue,
+      audioClipId: clipId,
+    };
+    const nextAudioClips =
+      references === 1
+        ? shot.audioClips.map((candidate) =>
+            candidate.id === clip.id ? nextClip : candidate,
+          )
+        : [...shot.audioClips, nextClip];
     return this.replaceShot(project, shot.id, {
       ...shot,
+      audioClips: nextAudioClips,
       dialogues: shot.dialogues.map((candidate) =>
-        candidate.id === dialogueId ? { ...candidate, ...timing } : candidate,
+        candidate.id === dialogueId ? nextDialogueWithClip : candidate,
       ),
     });
   }
@@ -332,6 +450,53 @@ export class DialogueService {
       );
     }
     return character;
+  }
+
+  private audioAsset(project: Project, assetId: string): AudioAsset {
+    const asset = project.assets.find((candidate) => candidate.id === assetId);
+    if (!asset) {
+      throw new DialogueServiceError(
+        'AUDIO_ASSET_NOT_FOUND',
+        `找不到音频素材：${assetId}`,
+      );
+    }
+    if (asset.kind !== 'audio') {
+      throw new DialogueServiceError(
+        'AUDIO_ASSET_NOT_AUDIO',
+        '只能绑定音频素材。',
+      );
+    }
+    if (asset.durationMs === undefined) {
+      throw new DialogueServiceError(
+        'AUDIO_ASSET_DURATION_UNAVAILABLE',
+        '音频素材尚未完成时长分析，请先刷新素材元数据。',
+      );
+    }
+    return asset;
+  }
+
+  private audioClip(shot: Shot, clipId: string): AudioClip {
+    const clip = shot.audioClips.find((candidate) => candidate.id === clipId);
+    if (!clip) {
+      throw new DialogueServiceError(
+        'AUDIO_CLIP_NOT_FOUND',
+        `找不到对白引用的音频片段：${clipId}`,
+      );
+    }
+    return clip;
+  }
+
+  private assertAudioRange(
+    asset: AudioAsset,
+    offsetMs: number,
+    requestedDurationMs: number,
+  ): void {
+    if (offsetMs + requestedDurationMs > (asset.durationMs ?? 0)) {
+      throw new DialogueServiceError(
+        'AUDIO_CLIP_TOO_SHORT',
+        `音频素材时长不足以覆盖对白的 ${requestedDurationMs}ms 时间段。`,
+      );
+    }
   }
 
   private validText(raw: string): string {

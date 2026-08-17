@@ -25,9 +25,11 @@ import {
   clampProductPreviewTime,
   formatProductPreviewTimecode,
   listProductPreviewAssetIds,
+  projectProductPreviewMouth,
   resolveProductPreviewShot,
   resolveProductPreviewSubtitleStyle,
 } from './productPreviewModel';
+import { useProductPreviewAudio } from './productPreviewAudio';
 
 export interface ProductPreviewOverlayProps {
   /** Project folder of the currently open project, used to read thumbnails. */
@@ -138,6 +140,7 @@ export function ProductPreviewOverlay({
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [seekRevision, setSeekRevision] = useState(0);
   const assetIds = useMemo(
     () => (shot ? listProductPreviewAssetIds(project, shot) : []),
     [project, shot],
@@ -152,12 +155,14 @@ export function ProductPreviewOverlay({
   const stopPlayback = useCallback((): void => {
     setPlaying(false);
     setTimeMs(0);
+    setSeekRevision((revision) => revision + 1);
   }, []);
 
   useEffect(() => {
     // A shot switch resets the preview-local clock; nothing outside changes.
     setPlaying(false);
     setTimeMs(0);
+    setSeekRevision((revision) => revision + 1);
   }, [shot?.id]);
 
   useEffect(() => {
@@ -206,6 +211,27 @@ export function ProductPreviewOverlay({
   const activeCue = evaluatedShot
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
+  const audioWarning = useProductPreviewAudio({
+    projectRoot,
+    project,
+    shot,
+    activeDialogueId: activeCue?.id ?? null,
+    timeMs: evaluatedShot?.timeMs ?? 0,
+    playing,
+    seekRevision,
+  });
+  const renderedShot = useMemo(
+    () =>
+      shot && evaluatedShot
+        ? projectProductPreviewMouth(
+            project,
+            shot,
+            evaluatedShot,
+            activeCue?.id ?? null,
+          )
+        : evaluatedShot,
+    [activeCue?.id, evaluatedShot, project, shot],
+  );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
   const atEnd = durationMs > 0 && timeMs >= durationMs;
@@ -267,14 +293,14 @@ export function ProductPreviewOverlay({
                     有 {assets.missingCount} 个图片素材缺少可用缩略图，请在项目素材库中重新导入或刷新后再试。
                   </span>
                 </div>
-              ) : evaluatedShot ? (
-                <CanvasStage
-                  assetUrls={assets.urls}
-                  caption={caption}
-                  captionStyle={captionStyle}
-                  evaluatedShot={evaluatedShot}
-                  project={project}
-                />
+              ) : renderedShot ? (
+                  <CanvasStage
+                    assetUrls={assets.urls}
+                    caption={caption}
+                    captionStyle={captionStyle}
+                    evaluatedShot={renderedShot}
+                    project={project}
+                  />
               ) : null}
             </div>
 
@@ -322,6 +348,7 @@ export function ProductPreviewOverlay({
                 min={0}
                 onChange={(event) => {
                   setPlaying(false);
+                  setSeekRevision((revision) => revision + 1);
                   setTimeMs(
                     clampProductPreviewTime(
                       Number(event.target.value),
@@ -341,6 +368,16 @@ export function ProductPreviewOverlay({
                 {formatProductPreviewTimecode(durationMs)}
               </span>
             </div>
+
+            {audioWarning ? (
+              <p
+                className="product-preview-hint product-preview-warning"
+                data-testid="product-preview-audio-warning"
+                role="status"
+              >
+                {audioWarning}
+              </p>
+            ) : null}
 
             <p
               className="product-preview-hint"
