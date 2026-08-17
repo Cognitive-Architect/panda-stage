@@ -74,3 +74,12 @@ executability, associate active verifier files with routes, and prove that a
 hypothetical subsystem can be registered by manifest data alone. A new feature
 directory without a route fails the contract; runtime classification also
 fails unknown paths safe to Full.
+
+## Acceptance receipt
+
+PR #227 HEAD `f802e6b9a10265db4aa227c9c1a8a6c2a9093c66` had no proven
+same-PR Full-green predecessor, so CI run `31998785944` correctly fell back to
+complete base-to-HEAD classification. It selected all eight manifest suites;
+the Full job, manifest-selected regression, and stable `Final CI result` all
+passed. This HEAD is therefore eligible to be considered as a baseline for a
+later Draft delta, subject to the same-PR, ancestry, and job-proof checks above.
