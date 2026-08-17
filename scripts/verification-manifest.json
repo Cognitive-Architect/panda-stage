@@ -1,8 +1,8 @@
 {
-  "manifestVersion": 1,
-  "generatedFor": "issue-209 / RH-04 verification-gate manifest",
-  "generatedFrom": "main@3acc1496e34b53a8115a308e2e3a8fd78d2feed7",
-  "description": "Machine-readable ledger of every top-level `verify:*` package script. Makes verification-gate intent auditable and lets a contract test detect package.json <-> manifest drift. Inventory + contract phase only: does not change CI routing, verifier scripts, or product behavior.",
+  "manifestVersion": 2,
+  "generatedFor": "issue-209 / RH-04 gate inventory; issue-225 / RH-05 CI routing",
+  "generatedFrom": "main@8024a701a97b1ddacf18758eb55ac06a6e2b98c9",
+  "description": "Machine-readable ledger of every top-level `verify:*` package script plus the RH-05 source/test/verifier ownership and CI routing contract.",
   "statusVocabulary": [
     "active",
     "superseded",
@@ -22,6 +22,258 @@
     "manual",
     "unknown"
   ],
+  "routing": {
+    "schemaVersion": 1,
+    "description": "RH-05 source/test/verifier ownership and CI routing truth. Workflow control flow is generic; subsystem registration belongs here.",
+    "docsPatterns": [
+      "README.md",
+      "AGENTS.md",
+      "docs/**/*.md"
+    ],
+    "fullRegressionSuites": [
+      "project",
+      "assets",
+      "character",
+      "shot",
+      "canvas",
+      "history",
+      "editor",
+      "timeline"
+    ],
+    "unmatchedPolicy": "full",
+    "fullRiskRoutes": [
+      {
+        "id": "ci-build-infrastructure",
+        "sourcePatterns": [
+          ".github/**",
+          "package.json",
+          "pnpm-lock.yaml",
+          "npm-shrinkwrap.json",
+          "yarn.lock",
+          "tsconfig*.json",
+          "*.config.js",
+          "*.config.cjs",
+          "*.config.mjs",
+          "*.config.ts",
+          "public/probe/**",
+          "demo-project/**",
+          "scripts/**"
+        ],
+        "testPatterns": [
+          "tests/contract/ci-routing.test.ts",
+          "tests/contract/verification-manifest.test.ts"
+        ],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "incrementalEligible": false,
+        "owner": "ci",
+        "notes": "CI mechanics, build configuration, shared fixtures, and non-verifier scripts remain conservative Full risk."
+      },
+      {
+        "id": "cross-process-core",
+        "sourcePatterns": [
+          "src/main/**",
+          "src/preload/**",
+          "src/domain/**",
+          "src/history/**",
+          "src/shared/**",
+          "src/renderer/stores/**"
+        ],
+        "testPatterns": [
+          "tests/unit/domain/**",
+          "tests/unit/migrations/**",
+          "tests/integration/schema-*.test.ts"
+        ],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "incrementalEligible": false,
+        "owner": "architecture",
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems."
+      },
+      {
+        "id": "release-export-core",
+        "sourcePatterns": [
+          "build/**",
+          "resources/**"
+        ],
+        "testPatterns": [
+          "tests/unit/export-*.test.ts",
+          "tests/unit/ffmpeg-*.test.ts"
+        ],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "incrementalEligible": false,
+        "owner": "release",
+        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths."
+      }
+    ],
+    "routes": [
+      {
+        "id": "project",
+        "sourcePatterns": [
+          "src/renderer/features/recovery/**",
+          "src/renderer/features/welcome/**"
+        ],
+        "testPatterns": [
+          "tests/unit/recovery-*.test.ts",
+          "tests/unit/recent-projects-*.test.ts",
+          "tests/integration/recovery-lifecycle.test.ts"
+        ],
+        "verifierPatterns": [
+          "scripts/verify-day13*",
+          "scripts/verify-day14*",
+          "scripts/verify-m1*",
+          "scripts/verify-issue73*",
+          "scripts/verify-issue76*",
+          "scripts/verify-issue102-task1*",
+          "scripts/verify-issue102-task3*"
+        ],
+        "suites": ["project"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "project",
+        "notes": "Project Center, welcome/first-run, and renderer recovery UI use the project suite; persisted recovery core remains Full."
+      },
+      {
+        "id": "assets",
+        "sourcePatterns": ["src/renderer/features/assets/**"],
+        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts"],
+        "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
+        "suites": ["assets", "character"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "assets",
+        "notes": "Renderer asset library changes exercise asset and character consumers."
+      },
+      {
+        "id": "characters",
+        "sourcePatterns": ["src/renderer/features/characters/**"],
+        "testPatterns": ["tests/unit/character-*.test.ts", "tests/integration/character-*.test.ts"],
+        "verifierPatterns": ["scripts/verify-day19*"],
+        "suites": ["character"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "character",
+        "notes": "Character renderer ownership and verifier route."
+      },
+      {
+        "id": "shots",
+        "sourcePatterns": ["src/renderer/features/shots/**"],
+        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/integration/shot-*.test.ts"],
+        "verifierPatterns": ["scripts/verify-day20*"],
+        "suites": ["shot"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "shot",
+        "notes": "Shot renderer ownership and verifier route."
+      },
+      {
+        "id": "canvas",
+        "sourcePatterns": [
+          "src/renderer/features/canvas/**",
+          "src/renderer/features/properties/**",
+          "src/renderer/stage/**"
+        ],
+        "testPatterns": [
+          "tests/unit/canvas-*.test.ts",
+          "tests/unit/stage-*.test.ts",
+          "tests/unit/viewport-*.test.ts"
+        ],
+        "verifierPatterns": [
+          "scripts/verify-day21*",
+          "scripts/verify-day22*",
+          "scripts/verify-day23*",
+          "scripts/verify-issue47*"
+        ],
+        "suites": ["canvas", "history"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "canvas",
+        "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts."
+      },
+      {
+        "id": "history-controls",
+        "sourcePatterns": [
+          "src/renderer/features/editor/HistoryControls*",
+          "src/renderer/features/editor/useHistoryShortcuts*"
+        ],
+        "testPatterns": ["tests/unit/history-*.test.ts", "tests/unit/editor-history.test.ts"],
+        "verifierPatterns": ["scripts/verify-day24*"],
+        "suites": ["history", "canvas"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "history",
+        "notes": "Renderer history controls exercise history and canvas interactions; history core remains Full."
+      },
+      {
+        "id": "timeline",
+        "sourcePatterns": ["src/renderer/features/timeline/**"],
+        "testPatterns": [
+          "tests/unit/features/timeline/**",
+          "tests/contract/*timeline*.test.ts",
+          "tests/contract/day26-*.test.ts"
+        ],
+        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*"],
+        "suites": ["timeline"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "timeline",
+        "notes": "Timeline renderer capability, including durable preview/playback UI extension points, uses the timeline suite."
+      },
+      {
+        "id": "dialogue",
+        "sourcePatterns": ["src/renderer/features/dialogue/**"],
+        "testPatterns": ["tests/unit/dialogue-*.test.ts", "tests/contract/issue220-*.test.ts", "tests/contract/issue221-*.test.ts"],
+        "verifierPatterns": [],
+        "suites": ["editor", "timeline"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "dialogue",
+        "notes": "Dialogue authoring is renderer-owned and jointly covered by editor and timeline suites; formal DialogueService changes remain Full."
+      },
+      {
+        "id": "subtitles",
+        "sourcePatterns": ["src/renderer/features/subtitles/**"],
+        "testPatterns": ["tests/unit/subtitle-*.test.ts"],
+        "verifierPatterns": [],
+        "suites": ["canvas", "timeline"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "subtitles",
+        "notes": "Subtitle renderer changes exercise visual canvas output and timeline timing."
+      },
+      {
+        "id": "editor-shell",
+        "sourcePatterns": [
+          "src/renderer/features/actions/**",
+          "src/renderer/features/editor/**",
+          "src/renderer/shell/**",
+          "src/renderer/styles.css"
+        ],
+        "testPatterns": [
+          "tests/unit/editor-*.test.ts",
+          "tests/unit/left-workspace.test.ts",
+          "tests/unit/right-inspector*.test.ts",
+          "tests/integration/editor-shell-*.test.ts",
+          "tests/integration/left-workspace.test.ts",
+          "tests/integration/right-inspector*.test.ts"
+        ],
+        "verifierPatterns": [
+          "scripts/verify-issue102-task2*",
+          "scripts/verify-issue102-task4*",
+          "scripts/verify-issue109*"
+        ],
+        "suites": ["editor", "timeline"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "editor",
+        "notes": "Editor shell and actions use editor plus timeline regression without embedding subsystem names in the workflow."
+      }
+    ]
+  },
   "count": 45,
   "gates": [
     {
