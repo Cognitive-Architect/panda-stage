@@ -198,9 +198,11 @@ describe('RH-07 workflow and manifest contracts', () => {
   });
 
   it('keeps Draft CI self-test and delivery Full jobs on mutually exclusive tiers', () => {
-    expect(String(workflow.jobs.quality_ci_selftest.if)).toContain("tier == 'ci-selftest'");
-    expect(String(workflow.jobs.quality_full.if)).toContain("tier == 'full'");
-    expect(String(workflow.jobs.quality_ci_selftest.if)).not.toContain("tier == 'full'");
+    const ciSelftestCondition = String(workflow.jobs.quality_ci_selftest?.if);
+    const fullCondition = String(workflow.jobs.quality_full?.if);
+    expect(ciSelftestCondition).toContain("tier == 'ci-selftest'");
+    expect(fullCondition).toContain("tier == 'full'");
+    expect(ciSelftestCondition).not.toContain("tier == 'full'");
   });
 
   it('uses event before only for Draft synchronize and complete base for Ready', () => {
