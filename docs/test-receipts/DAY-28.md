@@ -1,10 +1,11 @@
-# Panda Stage Day 28 / Issues #223 and #224 rework receipt
+# Panda Stage Day 28 / Issues #223, #224, and #226 rework receipt
 
 ## Identity and status
 
 - Parent execution issue: [#221](https://github.com/Cognitive-Architect/panda-stage/issues/221)
 - Rework issue: [#223](https://github.com/Cognitive-Architect/panda-stage/issues/223)
 - Human-acceptance blocker: [#224](https://github.com/Cognitive-Architect/panda-stage/issues/224)
+- Exact-adjacency blocker: [#226](https://github.com/Cognitive-Architect/panda-stage/issues/226)
 - Pull request: [#222](https://github.com/Cognitive-Architect/panda-stage/pull/222)
 - Branch: `agent/day28-dialogue-timing-subtitle-track`
 - Baseline: `origin/main@90bb37cb975147ca7d17efdd8d9d00a1993bdd34`
@@ -13,13 +14,14 @@
 - PR head before rework: `501c8272b63b41caf8e7bfafdf348f119fe3f30b`
 - Rework implementation commit: `0141ad25d40b263c60e9f1c3dca54e1fcca73b8e`
 - Issue #224 implementation commit: `29729f2030ef9ca4e05850e73799176d17105553`
+- Issue #226 implementation commit: `957a7a5d516744b2c1e04cefda501df97dc58bad`
 - Day 26 prerequisite: `e4eeb551721864b0c2f3e2596d35d3d1dc2de323`
 - Day 27 prerequisite: `6092109c2c73dc8e056a41bd94fbfc1dfa87d31a`
 - Automated/structural status: `PASS`, with the full-repository local lint exception recorded below.
 - Maintainer Windows Electron acceptance: `PENDING`.
 - Overall Day 28 status: `PENDING`.
 
-This receipt records the Issue #223 correction and Issue #224 no-op timing fix on PR #222. It does not treat application startup, automated Electron verification, or CI as human acceptance.
+This receipt records the Issue #223 correction and focused Issue #224/#226 human-acceptance fixes on PR #222. It does not treat application startup, automated Electron verification, or CI as human acceptance.
 
 ## Issue #224 zero-delta resize blocker
 
@@ -28,7 +30,17 @@ This receipt records the Issue #223 correction and Issue #224 no-op timing fix o
 - No-op evidence: `0–42 → 0–42` returns the same Project and keeps the same editor snapshot, `dirty=false`, `revision=0`, History `0/0`, selection, and playhead.
 - Real resize evidence: `0–42 → 0–84` produces exactly one `Resize dialogue` command; Undo restores `0–42` and saved state, and Redo restores `0–84` and dirty state.
 - Focused regression: dialogue service/store/gesture — 3 files / 32 tests PASS.
-- Maintainer Windows Electron re-test: `PENDING`.
+- Maintainer Windows Electron re-test: `PASS`, as recorded in the PR #222 human-acceptance ledger on 2026-08-17: saved `0–42`, History `0/0`, click/release with no effective movement kept timing, History, and saved state unchanged.
+
+## Issue #226 exact manual timing blocker
+
+- Root cause: `DialogueInspector.commitTiming()` silently passed manual integer-ms fields through `snapToFrame()` before domain validation, changing `459` and `460` to `458` at 24 FPS and creating a real 1 ms overlap with `[167,459)`.
+- Fix: the manual Inspector path now requires non-empty, finite integer milliseconds, clamps those exact integers to shot bounds, and passes them unchanged to `dialogueStore.setTiming()`. Timeline pointer drag/resize snapping is unchanged.
+- Adjacency evidence: existing A `[167,459)` plus manual B `[459,833)` persists exactly and creates one `Set dialogue timing` History command.
+- Overlap evidence: manual B `[458,833)` is rejected; Project snapshot, dirty, revision, and History remain unchanged.
+- Pointer evidence: the Timeline geometry regression still proves `snapToFrame(459) === 458` and `snapToFrame(460) === 458`, preserving pointer-driven frame snapping.
+- Focused regression: Inspector helper, store, service, geometry, and gesture — 5 files / 53 tests PASS.
+- Maintainer Windows Electron Issue #226 re-test: `PENDING`.
 
 ## R1-R9 rework ledger
 
@@ -44,8 +56,9 @@ This receipt records the Issue #223 correction and Issue #224 no-op timing fix o
 
 ## Final files changed relative to origin/main
 
-The final Day 28 product/test diff is 26 files (`1951 insertions`, `227 deletions`):
+The final Day 28 delivery diff is 28 files including this receipt (`2336 insertions`, `230 deletions`); 27 are product/test files:
 
+- `docs/test-receipts/DAY-28.md`
 - `src/domain/services/DialogueService.ts`
 - `src/renderer/features/canvas/CanvasStage.tsx`
 - `src/renderer/features/dialogue/DialogueInspector.tsx`
@@ -66,6 +79,7 @@ The final Day 28 product/test diff is 26 files (`1951 insertions`, `227 deletion
 - `tests/contract/issue220-dialogue-layout.test.ts`
 - `tests/contract/issue221-day28.test.ts`
 - `tests/unit/dialogue-gesture.test.ts`
+- `tests/unit/dialogue-inspector-timing.test.ts`
 - `tests/unit/dialogue-service.test.ts`
 - `tests/unit/dialogue-store.test.ts`
 - `tests/unit/dialogue-subtitle.test.ts`
@@ -94,7 +108,7 @@ Existing files touched by the discarded audio/mouth/schema implementation were r
 |---|---|---|
 | `pnpm typecheck` | PASS | Renderer and Electron TypeScript checks exited 0 after the rework commit was staged. |
 | `pnpm exec eslint src tests` | PASS | Final product source and test scope exited 0. |
-| `pnpm test:unit` | PASS | 111 files / 783 tests. |
+| `pnpm test:unit` | PASS | 112 files / 792 tests. |
 | `pnpm test:integration` | PASS | 26 files / 147 tests; command exited 0. |
 | `pnpm build` | PASS | Renderer transformed 301 modules; Electron/preload builds exited 0; only the existing chunk-size warning remained. |
 | `pnpm verify:timeline` | PASS | Automated Windows Electron verifier passed Issue #197 wide/narrow/compact layout, Issue #199 ruler/zoom/save-state behavior, and Issue #207 empty-Timeline behavior. |
@@ -117,7 +131,7 @@ Integration emitted the existing `asset-thumbnail:read No handler registered` fi
 ## Remaining acceptance and debt
 
 - Maintainer must re-audit the pushed diff before starting Windows Electron acceptance.
-- The Issue #224 saved-project `0–42` zero-delta and real-resize Windows Electron re-test remains `PENDING`.
+- The Issue #224 saved-project `0–42` zero-delta Windows Electron re-test is recorded `PASS`; Issue #226 exact `459–833` adjacency and `458–833` rejection re-test remains `PENDING`.
 - Maintainer Windows Electron acceptance is `PENDING`; every human checklist result remains unrecorded.
 - Automated tests do not replace real Konva pointer, DPI, save/reopen, and wide-to-narrow-to-wide human checks.
 - Full local lint remains polluted by unrelated local tool artifacts; no ignore rule was changed to conceal that fact.
@@ -125,4 +139,4 @@ Integration emitted the existing `asset-thumbnail:read No handler registered` fi
 
 ## Conclusion
 
-Issues #223 and #224 are implemented and have automated/structural evidence on the existing Draft PR #222. PR #222 must remain Draft/Open/Unmerged; Issues #221, #223, and #224 must remain open. `maintainer Windows Electron = PENDING` and `overall = PENDING` until the maintainer explicitly completes and records the required human re-test and remaining acceptance.
+Issues #223, #224, and #226 are implemented and have automated/structural evidence on the existing Draft PR #222. PR #222 must remain Draft/Open/Unmerged; Issues #221, #223, #224, and #226 must remain open. `maintainer Windows Electron = PENDING` and `overall = PENDING` until the maintainer explicitly completes and records the Issue #226 re-test and remaining acceptance.
