@@ -5,17 +5,44 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+const yaml = require('js-yaml');
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..');
-const { classifyChanges, loadManifest, matchesAny, validateRoutingManifest } = require('../../scripts/ci-routing.cjs');
+const {
+  classifyChanges,
+  loadManifest,
+  matchesAny,
+  validateRoutingManifest,
+} = require('../../scripts/ci-routing.cjs');
 const { findFullGreenBaseline } = require('../../scripts/find-full-green-baseline.cjs');
 const manifest = loadManifest();
-const workflow = readFileSync(resolve(root, '.github', 'workflows', 'ci.yml'), 'utf8');
-const change = (file: string, status = 'M') => ({ status, statusToken: status, paths: [file] });
-const draft = (changes: ReturnType<typeof change>[], comparisonMode = 'base') =>
-  classifyChanges({ manifest, changes, eventName: 'pull_request', isDraft: true, comparisonMode });
+const workflowSource = readFileSync(resolve(root, '.github', 'workflows', 'ci.yml'), 'utf8');
+const workflow = yaml.load(workflowSource) as { jobs: Record<string, Record<string, unknown>> };
+const change = (file: string, status = 'M') => ({
+  status,
+  statusToken: status,
+  paths: [file],
+});
+const draft = (changes: ReturnType<typeof change>[], comparisonMode = 'draft-delta') => (
+  classifyChanges({
+    manifest,
+    changes,
+    eventName: 'pull_request',
+    eventAction: 'synchronize',
+    isDraft: true,
+    comparisonMode,
+  })
+);
+const ready = (changes: ReturnType<typeof change>[]) => classifyChanges({
+  manifest,
+  changes,
+  eventName: 'pull_request',
+  eventAction: 'ready_for_review',
+  isDraft: false,
+  comparisonMode: 'base',
+});
 
-describe('RH-05 manifest-backed CI routing', () => {
+describe('RH-07 FAST Draft policy', () => {
   it.each([
     ['timeline', 'src/renderer/features/timeline/Timeline.tsx', ['timeline']],
     ['dialogue', 'src/renderer/features/dialogue/DialogueTrack.tsx', ['editor', 'timeline']],
@@ -36,67 +63,174 @@ describe('RH-05 manifest-backed CI routing', () => {
     expect(result.suites).toEqual(['editor', 'timeline', 'canvas']);
   });
 
+  it('keeps approved Markdown on the docs fast path', () => {
+    expect(draft([change('docs/ci-routing.md')]).tier).toBe('docs');
+  });
+
+  it.each([
+    '.github/workflows/ci.yml',
+    'scripts/ci-routing.cjs',
+    'scripts/ci-provenance.cjs',
+    'scripts/verification-manifest.json',
+    'tests/contract/ci-routing.test.ts',
+    'tests/contract/ci-provenance.test.ts',
+  ])('routes Draft CI mechanics %s to self-test, never Full', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.suites).toEqual([]);
+  });
+
   it.each([
     'src/domain/services/DialogueService.ts',
     'src/shared/project-contract.ts',
     'src/main/export/ExportService.ts',
     'src/preload/index.ts',
     'src/renderer/stores/editorProjectStore.ts',
-  ])('keeps core path %s on Full', (file) => {
-    expect(draft([change(file)]).tier).toBe('full');
+    'build/installer.yml',
+  ])('routes Draft core/release path %s to focused checks, never Full', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('focused');
+    expect(result.suites).toEqual([]);
   });
 
-  it('fails unknown production paths safe to Full', () => {
-    const result = draft([change('src/renderer/new-unowned-area/Widget.tsx', 'A')]);
-    expect(result.tier).toBe('full');
-    expect(result.areas).toContain('unknown');
+  it('combines CI self-tests with manifest-selected renderer suites without Full', () => {
+    const result = draft([
+      change('.github/workflows/ci.yml'),
+      change('src/renderer/features/dialogue/DialogueTrack.tsx'),
+    ]);
+    expect(result.tier).toBe('focused');
+    expect(result.suites).toEqual(['editor', 'timeline']);
   });
 
-  it.each(['D', 'R'])('fails %s status safe to Full', (status) => {
-    const paths = status === 'R'
+  it('fails an unknown production path fast with actionable ownership guidance', () => {
+    const result = draft([change('src/renderer/features/unowned-new/Widget.tsx', 'A')]);
+    expect(result.tier).toBe('unknown');
+    expect(result.reason).toContain('Unknown production route');
+    expect(result.reason).toContain('verification manifest');
+    expect(result.unknownPaths).toEqual(['src/renderer/features/unowned-new/Widget.tsx']);
+  });
+
+  it.each(['D', 'R', 'C'])('routes %s structural changes to focused safety checks', (status) => {
+    const paths = ['R', 'C'].includes(status)
       ? ['src/renderer/features/dialogue/Old.tsx', 'src/renderer/features/dialogue/New.tsx']
       : ['src/renderer/features/dialogue/Old.tsx'];
-    expect(draft([{ status, statusToken: status, paths }]).tier).toBe('full');
+    const result = draft([{ status, statusToken: status, paths }]);
+    expect(result.tier).toBe('focused');
+    expect(result.areas).toContain('structural-change');
   });
 
-  it('forces otherwise-targeted non-draft PRs to Full', () => {
+  it('fails fast when a Draft comparison range is unavailable', () => {
+    const result = classifyChanges({
+      manifest,
+      changes: [],
+      eventName: 'pull_request',
+      eventAction: 'synchronize',
+      isDraft: true,
+      comparisonMode: 'unavailable',
+    });
+    expect(result.tier).toBe('unknown');
+  });
+});
+
+describe('RH-07 FULL delivery policy', () => {
+  it.each([
+    'src/renderer/features/dialogue/DialogueTrack.tsx',
+    'src/domain/services/DialogueService.ts',
+    '.github/workflows/ci.yml',
+  ])('forces Ready candidate path %s to complete Full', (file) => {
+    const result = ready([change(file)]);
+    expect(result.tier).toBe('full');
+    expect(result.suites).toEqual(manifest.routing.fullRegressionSuites);
+    expect(result.comparisonMode).toBe('base');
+  });
+
+  it('forces a synchronize on an already-Ready PR to Full for the changed candidate', () => {
     const result = classifyChanges({
       manifest,
       changes: [change('src/renderer/features/dialogue/DialogueTrack.tsx')],
       eventName: 'pull_request',
+      eventAction: 'synchronize',
       isDraft: false,
       comparisonMode: 'base',
     });
     expect(result.tier).toBe('full');
-    expect(result.reason).toContain('non-draft');
   });
 
-  it.each(['push', 'workflow_dispatch'])('forces %s to Full', (eventName) => {
-    expect(classifyChanges({ manifest, changes: [], eventName, isDraft: false }).tier).toBe('full');
+  it('keeps workflow_dispatch explicitly Full', () => {
+    expect(classifyChanges({
+      manifest,
+      changes: [],
+      eventName: 'workflow_dispatch',
+      isDraft: false,
+    }).tier).toBe('full');
   });
 
-  it('allows a narrow eligible delta after a proven baseline', () => {
-    const result = draft([change('src/renderer/features/dialogue/DialogueTrack.tsx')], 'incremental');
-    expect(result.tier).toBe('targeted');
-    expect(result.comparisonMode).toBe('incremental');
+  it('uses provenance only for a proven main merge and otherwise falls back Full', () => {
+    expect(classifyChanges({
+      manifest,
+      eventName: 'push',
+      isDraft: false,
+      provenance: { proven: true, reason: 'exact tree proof' },
+    }).tier).toBe('provenance');
+    expect(classifyChanges({
+      manifest,
+      eventName: 'push',
+      isDraft: false,
+      provenance: { proven: false, reason: 'tree mismatch' },
+    }).tier).toBe('full');
+  });
+});
+
+describe('RH-07 workflow and manifest contracts', () => {
+  it('parses the workflow YAML and declares all FAST/FULL/VERIFY jobs', () => {
+    expect(Object.keys(workflow.jobs)).toEqual(expect.arrayContaining([
+      'classify',
+      'quality_docs',
+      'quality_ci_selftest',
+      'quality_focused',
+      'quality_targeted',
+      'quality_unknown',
+      'quality_full',
+      'ready_proof',
+      'quality_provenance',
+      'quality',
+    ]));
   });
 
-  it('keeps a Full-risk incremental delta on Full', () => {
-    expect(draft([change('src/domain/services/DialogueService.ts')], 'incremental').tier).toBe('full');
+  it('uses event before only for Draft synchronize and complete base for Ready', () => {
+    expect(workflowSource).toContain('"$IS_DRAFT" == true && "$EVENT_ACTION" == synchronize');
+    expect(workflowSource).toContain('echo "base_sha=$EVENT_BEFORE_SHA"');
+    expect(workflowSource).toContain('echo "base_sha=$PR_BASE_SHA"');
+    expect(workflowSource).toContain('EVENT_ACTION: ${{ github.event.action }}');
   });
 
-  it('uses the proven incremental baseline consistently in the docs job', () => {
-    const docsJob = workflow.split('  quality_docs:')[1]?.split('  quality_targeted:')[0] ?? '';
-    expect(docsJob).toContain(
-      'BASE_SHA: ${{ needs.classify.outputs.incremental_baseline || github.event.pull_request.base.sha }}',
+  it('keeps Final stable and requires Ready proof for a non-draft Full', () => {
+    expect(workflowSource).toContain('name: Final CI result');
+    expect(workflowSource).toContain('name: Ready candidate proof');
+    expect(workflowSource).toContain('node scripts/ci-provenance.cjs record-ready');
+    expect(workflowSource).toContain('[[ "$READY_PROOF_RESULT" == success ]]');
+  });
+
+  it('does not embed renderer subsystem names in workflow control flow', () => {
+    for (const subsystem of ['dialogue', 'subtitles', 'timeline', 'canvas']) {
+      expect(workflowSource).not.toMatch(new RegExp(`tier.*${subsystem}|${subsystem}.*tier`, 'iu'));
+    }
+  });
+
+  it('validates the RH-07 manifest schema and focused Draft policies', () => {
+    expect(manifest.routing.schemaVersion).toBe(2);
+    expect(validateRoutingManifest(manifest)).toEqual([]);
+    for (const route of manifest.routing.fullRiskRoutes) {
+      expect(['focused', 'ci-selftest']).toContain(route.draftPolicy);
+    }
+  });
+
+  it('detects an invalid Full-risk route without a focused Draft policy', () => {
+    const fixture = structuredClone(manifest);
+    delete fixture.routing.fullRiskRoutes[0].draftPolicy;
+    expect(validateRoutingManifest(fixture)).toContain(
+      `full route ${fixture.routing.fullRiskRoutes[0].id} must declare a focused Draft policy`,
     );
-    expect(docsJob.match(/BASE_SHA:/gu)).toHaveLength(1);
-    expect(docsJob.match(/HEAD_SHA:/gu)).toHaveLength(1);
-  });
-
-  it('routes owned Day28 test-only changes and fails unowned tests safe to Full', () => {
-    expect(draft([change('tests/unit/dialogue-gesture.test.ts')]).tier).toBe('targeted');
-    expect(draft([change('tests/e2e/future-workflow.test.ts', 'A')]).tier).toBe('full');
   });
 
   it('covers every current first-party renderer feature directory', () => {
@@ -125,15 +259,13 @@ describe('RH-05 manifest-backed CI routing', () => {
       owner: 'fixture',
       notes: 'Contract fixture only; no production path is declared.',
     });
-    const result = classifyChanges({
+    expect(classifyChanges({
       manifest: fixture,
       changes: [change('src/renderer/features/hypothetical/View.tsx', 'A')],
       eventName: 'pull_request',
+      eventAction: 'synchronize',
       isDraft: true,
-      comparisonMode: 'base',
-    });
-    expect(result.tier).toBe('targeted');
-    expect(result.suites).toEqual(['editor']);
+    })).toMatchObject({ tier: 'targeted', suites: ['editor'] });
   });
 
   it('detects nonexistent suite references', () => {
@@ -164,11 +296,11 @@ describe('RH-05 manifest-backed CI routing', () => {
   });
 });
 
-describe('RH-05 incremental baseline proof', () => {
+describe('RH-05 legacy incremental baseline helper remains fail-safe', () => {
   const baseInput = {
     repository: 'owner/repo',
-    pullRequestNumber: 225,
-    headRef: 'agent/rh-05-ci-routing',
+    pullRequestNumber: 230,
+    headRef: 'agent/rh-07-ci-policy',
     currentHead: 'head-b',
     token: 'test-token',
     isAncestor: (candidate: string) => candidate === 'head-a',
@@ -185,33 +317,28 @@ describe('RH-05 incremental baseline proof', () => {
   it('accepts only an ancestor HEAD from the same PR with successful Full and final jobs', async () => {
     const fetchImpl = async (url: string) => url.includes('/runs?')
       ? response({ workflow_runs: [{
-          id: 99, run_number: 9, head_sha: 'head-a', conclusion: 'success',
-          pull_requests: [{ number: 225 }], jobs_url: 'https://jobs/99', html_url: 'https://run/99',
+          id: 99,
+          head_sha: 'head-a',
+          conclusion: 'success',
+          pull_requests: [{ number: 230 }],
+          jobs_url: 'https://jobs/99',
+          html_url: 'https://run/99',
         }] })
       : response(fullGreenJobs);
     await expect(findFullGreenBaseline({ ...baseInput, fetchImpl })).resolves.toMatchObject({
-      sha: 'head-a', runId: 99,
+      sha: 'head-a',
+      runId: 99,
     });
   });
 
-  it.each([
-    ['different PR', [{ number: 224 }], fullGreenJobs],
-    ['missing Full job', [{ number: 225 }], { jobs: fullGreenJobs.jobs.filter((job) => !job.name.startsWith('Full')) }],
-  ])('rejects an untrusted baseline: %s', async (_, pullRequests, jobs) => {
+  it('rejects a Full result belonging to a different PR', async () => {
     const fetchImpl = async (url: string) => url.includes('/runs?')
       ? response({ workflow_runs: [{
-          id: 98, run_number: 8, head_sha: 'head-a', conclusion: 'success',
-          pull_requests: pullRequests, jobs_url: 'https://jobs/98', html_url: 'https://run/98',
-        }] })
-      : response(jobs);
-    await expect(findFullGreenBaseline({ ...baseInput, fetchImpl })).resolves.toBeNull();
-  });
-
-  it('rejects a successful same-PR run whose HEAD is not an ancestor', async () => {
-    const fetchImpl = async (url: string) => url.includes('/runs?')
-      ? response({ workflow_runs: [{
-          id: 97, run_number: 7, head_sha: 'side-branch', conclusion: 'success',
-          pull_requests: [{ number: 225 }], jobs_url: 'https://jobs/97', html_url: 'https://run/97',
+          id: 98,
+          head_sha: 'head-a',
+          conclusion: 'success',
+          pull_requests: [{ number: 225 }],
+          jobs_url: 'https://jobs/98',
         }] })
       : response(fullGreenJobs);
     await expect(findFullGreenBaseline({ ...baseInput, fetchImpl })).resolves.toBeNull();

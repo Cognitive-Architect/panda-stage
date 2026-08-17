@@ -31,10 +31,11 @@ const REQUIRED = ['id', 'script', 'suite', 'subsystem', 'status', 'platform', 'r
 const pkgVerify = Object.keys(pkg.scripts).filter((k) => k.startsWith('verify:'));
 const manifestByScript = new Map(manifest.gates.map((g) => [g.script as string, g]));
 
-describe('RH-05 verification routing manifest', () => {
-  it('evolves the RH-04 ledger without creating a separate routing file', () => {
+describe('RH-07 verification routing manifest', () => {
+  it('evolves the RH-04/RH-05 ledger without creating a separate routing file', () => {
     expect(manifest.manifestVersion).toBe(2);
     expect(manifest.routing).toBeTruthy();
+    expect((manifest.routing as { schemaVersion?: number }).schemaVersion).toBe(2);
   });
 });
 
