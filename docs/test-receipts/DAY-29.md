@@ -9,9 +9,10 @@
 - Issue #235 blocker fix HEAD: `6a1462a3d0e3840ed6f834b54229502a429fff17`
 - Issue #236 blocker fix HEAD: `fa365e3ca104a967eaf6e305bef2e2c9110c5b87`
 - Issue #236 CI route repair: `497e881630c88be3a0e75d414ffc201de632f513`
+- Issue #238 blocker fix HEAD: `908053d18f7b307ae2cd09f286a930544276c8ae`
 - Delivery PR: [#233](https://github.com/Cognitive-Architect/panda-stage/pull/233)
 - Delivery branch: `agent/day29-audio-mouth-preview`
-- Current delivery HEAD: `fa365e3ca104a967eaf6e305bef2e2c9110c5b87`
+- Current delivery implementation HEAD: `908053d18f7b307ae2cd09f286a930544276c8ae`
 - Day28 prerequisite: `PASS + merged` (`#222`, `8024a701a97b1ddacf18758eb55ac06a6e2b98c9` is an ancestor)
 - RH-07 CI policy: `active`
 
@@ -183,6 +184,19 @@ resume/stop/shot/project transitions.
 - Windows reacceptance: `PENDING` — the maintainer must restart the updated Electron app, use the same Day29 project and existing MP3 files, click Retry analysis, confirm error → analyzing → ready with real duration for all three assets, confirm the 0–1000ms Inspector option, and bind through the normal UI. No automated result is recorded as human acceptance.
 - Scope guard: no global PATH workaround, hardcoded `D:\panda-stage-main`, schema bump, second probe/parser, or second PR was added. Existing PR #233 remains the delivery vehicle.
 
+## Issue #238 blocker correction
+
+- Original Windows evidence: with a 4000ms Shot, Dialogue A occupied `0–1300ms`; creating Dialogue B at playhead `0ms` left it Untimed at `0/0ms`. Clicking `安排为一帧` attempted `0–42ms`, correctly hit the strict overlap guard, and left the user with no legal product-path action because Untimed Inspector has no start/end fields.
+- Root cause: `DialogueService.arrange()` only tried the captured point (or the old shot-end backfill) and rejected the first occupied candidate instead of searching the Shot for the next legal positive interval.
+- Production fix: `908053d18f7b307ae2cd09f286a930544276c8ae` adds a deterministic `findFirstAvailableTiming()` search. It starts at the captured point, clamps the candidate to the Shot's latest legal start, sorts all positive Timed intervals by start/end, treats touching endpoints as legal, jumps to each conflicting interval's end, and returns the first span that fits without changing the single timeline clock or persisted schema.
+- No-space behavior: when no positive span fits within the Shot, `DIALOGUE_NO_AVAILABLE_SLOT` returns a readable error and throws before `replaceDialogueTiming()`, so Project, dirty/revision state, and History remain unchanged.
+- Scope preservation: explicit `setTiming`, `move`, and `resize` still use the unchanged strict `DIALOGUE_OVERLAP` guard; audio-bound timing still flows through the existing shared replacement path; the renderer `DialogueStore` still commits one successful arrange as one History command.
+- Regression evidence: `tests/unit/dialogue-service.test.ts` covers occupied creation points, endpoint adjacency, insufficient-gap skipping, insertion-order determinism, Shot-end clamping, no-space atomic failure/readable error, legacy overlapping data, and strict explicit timing; `tests/unit/dialogue-store.test.ts` covers the occupied-point arrange as one atomic History command. Focused dialogue/contract tests: `PASS` — 4 files / 45 tests.
+- Final local validation: `pnpm typecheck` `PASS`; `pnpm lint` `PASS`; `pnpm test:unit` `PASS` — 121 files / 891 tests; `pnpm test:integration` `PASS` — 27 files / 148 tests when run serially; `pnpm build` `PASS`; `git diff --check` `PASS`. A parallel run produced one isolated 5-second timeout in the pre-existing `asset-metadata-revision-safety` timeout case; that file and the complete integration suite passed on isolated/serial reruns.
+- CI route: local Draft classification is `focused`, areas `cross-process-core dialogue`, suites `editor timeline`, with `unknown_paths=[]`; CI run is pending the pushed HEAD and must remain Draft-focused with Full skipped.
+- Windows reacceptance: `PENDING` — maintainer must relaunch the updated real Windows Electron app, reproduce the existing A `0–1300ms` / B Untimed-at-`0ms` case, click `安排为一帧`, confirm B lands at `1300–1342ms` (or the first deterministic legal gap) with no overlap, then continue B to `1500–2500ms` and bind the second real MP3 through the normal UI. No DevTools/JSON/delete-recreate path is acceptance evidence.
+- Scope guard: no schema bump, second timing system, overlap weakening, hidden overlap, playback redesign, or second PR was added; PR #233 remains Draft/Open/Unmerged and Issue #238 remains open pending maintainer proof.
+
 ## Issue #234 blocker correction
 
 - Root cause: the Day29 projection built a mouth-asset map for every project character and applied it to every matching character layer, so a non-speaking character could also open its mouth.
@@ -320,4 +334,4 @@ closure action was taken.
 
 ## 下一步唯一动作
 
-Maintainer 在 Draft PR #233 上先执行 Issue #236 的真实 Windows Electron Retry analysis → ready → normal bind 验收，再执行 Day29 Gate A–F（3 条 Dialogue + 3 个真实音频，含 Save→Close→Reopen、Pause→Seek→Resume、Stop、Replay 5x、切 shot/project 与降级路径）并回填结果；在此之前不进入 Day30、不 Ready、不 merge、不关闭 Issue #232。
+Maintainer 在 Draft PR #233 上先执行 Issue #238 的真实 Windows Electron“安排为一帧”空档验收，再执行 Issue #236 的 Retry analysis → ready → normal bind 验收，最后执行 Day29 Gate A–F（3 条 Dialogue + 3 个真实音频，含 Save→Close→Reopen、Pause→Seek→Resume、Stop、Replay 5x、切 shot/project 与降级路径）并回填结果；在此之前不进入 Day30、不 Ready、不 merge、不关闭 Issue #238/#236/#232。
