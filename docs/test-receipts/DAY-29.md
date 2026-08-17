@@ -205,10 +205,11 @@ acceptance evidence for the new audio path.
 - Route repair: commit `ab150aabaeb6fbb4e2c09be0d79ae57d0a352644` registered the five cross-process/editor-shell test and type routes.
 - Draft synchronize run #444, run ID `32015364085`: `PASS`; `ci-selftest` tier, classifier success, policy contracts/typecheck/lint/diff whitespace pass. Focused/Targeted/Full/Ready jobs were skipped because the synchronized Draft delta was the manifest-only routing fix, as required by RH-07.
 - Receipt commit run #445, run ID `32015871939`: `PASS`; docs-only fast path validated whitespace, docs-only scope, and Markdown relative links. Production quality and Ready/Post-merge jobs were correctly skipped.
+- Issue #234 fix run #447, run ID `32018851632`: `PASS`; Draft `Targeted quality and regression` route, approximately 6m11s, with typecheck/lint/unit/integration/build and manifest-selected subsystem regression all successful. Full/Focused/Docs-only/Ready/Post-merge were skipped by RH-07.
 - Ready final candidate SHA: `SKIPPED` — PR remains Draft
 - Ready Full run: `SKIPPED` — PR remains Draft
 - Ready Full proof: `SKIPPED` — no Ready/Full candidate exists
-- Final CI result: `PASS` for Draft self-test run #444
+- Final CI result: `PASS` for Draft Targeted run #447; Full remains skipped
 - Post-merge provenance: `SKIPPED` — PR is not merged
 - Post-merge Full: `SKIPPED` — PR is not merged; no post-merge provenance exists
 
