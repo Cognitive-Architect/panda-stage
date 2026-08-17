@@ -83,3 +83,10 @@ complete base-to-HEAD classification. It selected all eight manifest suites;
 the Full job, manifest-selected regression, and stable `Final CI result` all
 passed. This HEAD is therefore eligible to be considered as a baseline for a
 later Draft delta, subject to the same-PR, ancestry, and job-proof checks above.
+
+The first follow-up, run `31999961820`, proved that baseline discovery worked
+but also exposed that the docs job still compared the complete PR for its own
+scope checks. Commit `f583c0d857e92be17c5e2f4f42cd0687bae35e82`
+centralized the docs comparison SHA on the classifier's proven incremental
+baseline, with PR base as the fallback. Full CI run `32000106625` then passed
+all eight suites and the stable final result for that CI-mechanics fix.
