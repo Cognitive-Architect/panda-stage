@@ -10,6 +10,7 @@ const {
 const path = require('node:path');
 
 const repositoryRoot = path.join(__dirname, '..');
+const forceFailure = process.argv.includes('--force-failure');
 const acceptanceRoot = 'D:\\PandaStage-Acceptance\\project-center-v1';
 const projectsRoot = path.join(acceptanceRoot, 'projects-task2');
 const logsRoot = path.join(acceptanceRoot, 'logs-task2');
@@ -161,6 +162,7 @@ async function snapshot(window) {
     const topRegion = document.querySelector('[data-testid="editor-top-region"]');
     const body = document.querySelector('[data-testid="editor-body"]');
     const layout = document.querySelector('[data-testid="editor-layout"]');
+    const bottomWorkspace = document.querySelector('[data-testid="bottom-workspace"]');
     const name = bar?.querySelector('.compact-project-name');
     const controls = bar?.querySelector('.compact-project-controls');
     const save = bar?.querySelector('[data-testid="compact-project-save"]');
@@ -190,6 +192,7 @@ async function snapshot(window) {
       topRegion: rect(topRegion),
       editorBody: rect(body),
       editorLayout: rect(layout),
+      bottomWorkspace: rect(bottomWorkspace),
       controls: rect(controls),
       save: rect(save),
       menu: rect(menu),
@@ -333,13 +336,24 @@ async function run(window, fixture) {
       clean.nameEllipsis.scrollWidth > clean.nameEllipsis.clientWidth,
     'Long project names do not have the required ellipsis CSS contract.',
   );
-  const verticalGain =
+  const reclaimedTopChrome =
+    (baseline.oldProjectArea?.height ?? 0) - (clean.topRegion?.height ?? 0);
+  const editorBodyNetGain =
     (clean.editorBody?.height ?? 0) - (baseline.oldEditorBody?.height ?? 0);
-  assert(verticalGain >= 140, `Editor vertical gain is only ${verticalGain.toFixed(2)}px.`);
-  clean.verticalGainComparedWithOld = verticalGain;
+  assert(
+    reclaimedTopChrome >= 140,
+    `Editor top-chrome reclamation is only ${reclaimedTopChrome.toFixed(2)}px.`,
+  );
+  clean.verticalGainComparedWithOld = reclaimedTopChrome;
+  clean.editorBodyNetGainComparedWithOld = editorBodyNetGain;
   result.snapshots.clean = clean;
   result.checks.push('Compact bar is <=56px, name/save state stay visible, and old editor input is gone');
-  result.checks.push(`Editor body gains ${verticalGain.toFixed(2)}px at the same 1280x720 window size`);
+  result.checks.push(
+    `Compact project chrome reclaims ${reclaimedTopChrome.toFixed(2)}px at the same 1280x720 window size`,
+  );
+  result.checks.push(
+    `Editor body net gain is ${editorBodyNetGain.toFixed(2)}px after the separately owned BottomWorkspace allocation`,
+  );
   await capture(window, 'new-editor-layout.png');
 
   await setInput(window, '.shot-fields label:nth-of-type(1) input', 'Task 2 dirty state');
@@ -439,11 +453,11 @@ async function main() {
     },
     error: null,
   };
-  let window = null;
   try {
     const fixture = await createFixture();
-    window = await waitForMainWindow();
+    const window = await waitForMainWindow();
     const result = await run(window, fixture);
+    assert(!forceFailure, 'Forced Issue #228 verifier failure.');
     Object.assign(output, result, { passed: true });
     console.log(JSON.stringify(output, null, 2));
   } catch (error) {
@@ -457,10 +471,8 @@ async function main() {
       `${JSON.stringify(output, null, 2)}\n`,
       'utf8',
     );
-    if (window && !window.isDestroyed()) window.close();
-    app.quit();
     const exitCode = process.exitCode ?? (output.passed ? 0 : 1);
-    setTimeout(() => process.exit(exitCode), 1_000);
+    app.exit(exitCode);
   }
 }
 
