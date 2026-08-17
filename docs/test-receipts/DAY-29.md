@@ -5,6 +5,7 @@
 - Day29 canonical task: `new agent task/DAY-29-AGENT-TASK.md`
 - Day29 开工 main: `66ce42ab47c4829515385adca4af58b65aef7134`
 - Day29 implementation/routing HEAD: `ab150aabaeb6fbb4e2c09be0d79ae57d0a352644`
+- Issue #234 blocker fix HEAD: `523d068f13e879bb794eb21b689ea55dd5594bc0`
 - Delivery PR: [#233](https://github.com/Cognitive-Architect/panda-stage/pull/233)
 - Delivery branch: `agent/day29-audio-mouth-preview`
 - Day28 prerequisite: `PASS + merged` (`#222`, `8024a701a97b1ddacf18758eb55ac06a6e2b98c9` is an ancestor)
@@ -40,7 +41,7 @@ replace the required real Windows Electron audio/speaker acceptance.
 
 ## Changed files
 
-`git diff --name-status origin/main...HEAD` at the implementation/routing HEAD:
+`git diff --name-status origin/main...HEAD` at the delivery code HEAD:
 
 ```text
 M  scripts/verification-manifest.json
@@ -128,10 +129,19 @@ resume/stop/shot/project transitions.
 - Before/start/inside/end half-open: `PASS`
 - No audio: `PASS` — normal evaluated image is retained
 - No mouth asset: `PASS` — safe fallback without crash
+- Non-image/invalid mouth asset: `PASS` — defensive runtime fallback retains the evaluated shot
 - Speaking layer asset override: `PASS`
-- Non-speaking layer unchanged: `PASS`
-- Legacy overlap winner matches subtitle: `PASS` — shared `evaluateSubtitleAtTime` winner is reused
+- Non-speaking layer unchanged: `PASS` — verified with two character layers, each carrying a valid mouth asset
+- Two-character active-speaker isolation: `PASS` — Dialogue A opens only A; Dialogue B opens only B, while the other evaluated layer remains identical
+- Legacy overlap winner matches subtitle: `PASS` — shared `evaluateSubtitleAtTime` winner is reused and only the winning character opens
 - Mouth asset preloaded: `PASS` — valid used `mouthOpenAssetId` image is included in the preview preload set
+
+## Issue #234 blocker correction
+
+- Root cause: the Day29 projection built a mouth-asset map for every project character and applied it to every matching character layer, so a non-speaking character could also open its mouth.
+- Production fix: `projectProductPreviewMouth()` now resolves `activeDialogueId -> shot.dialogues[] -> dialogue.characterId`, validates only that character's mouth asset, and changes only layers with the same `source.characterId`.
+- Regression fixture: `tests/unit/product-preview-mouth.test.ts` now contains two character layers and two valid mouth assets; it asserts both A-speaks and B-speaks cases, shared subtitle overlap winner A/B, transforms/other layers unchanged, and invalid/non-image fallback.
+- Scope guard: no Project schema, persisted state, History, ActionPreset, TimelineEvent, second evaluator, or audio transport changes.
 
 Mouth state is a pure evaluated-shot projection. It is not an ActionPreset,
 timeline event, persisted Project field, or second preview clock.
@@ -140,9 +150,9 @@ timeline event, persisted Project field, or second preview clock.
 
 - typecheck: `PASS` — `pnpm typecheck`
 - lint: `PASS` — `pnpm lint`
-- focused regressions: `PASS` — 6 files / 61 tests
-- Day29 focused tests: `PASS` — binding, audio IPC service, transport, mouth, and Inspector contract tests
-- unit: `PASS` — `pnpm test:unit`, 119 files / 872 tests
+- Issue #234 focused: `PASS` — `product-preview-mouth` + `dialogue-subtitle`, 2 files / 12 tests
+- Prior Day29 focused tests: `PASS` — binding, audio IPC service, transport, mouth, and Inspector contract tests
+- unit: `PASS` — `pnpm test:unit`, 119 files / 873 tests
 - integration: `PASS` — `pnpm test:integration`, 27 files / 148 tests
 - build: `PASS` — `pnpm build` (only the existing Vite chunk-size warning)
 - git diff --check: `PASS`
@@ -232,7 +242,7 @@ closure action was taken.
 - `DECISION-B29-MASTER-CLOCK`: Product Preview `timeMs`; audio follows `sourceOffsetMs + (timeMs - dialogue.startMs)`
 - `DECISION-B29-AUDIO-PRIMITIVE`: one reusable `HTMLAudioElement`; no fake timer or Web Audio mixer
 - `DECISION-B29-ACTIVE-DIALOGUE`: shared subtitle winner from `evaluateSubtitleAtTime` determines the active audio/mouth projection
-- `DECISION-B29-MOUTH`: pure transient evaluated-shot projection using the speaking character's `mouthOpenAssetId`
+- `DECISION-B29-MOUTH`: pure transient evaluated-shot projection using only the active Dialogue's `characterId` and that character's `mouthOpenAssetId`
 - `DECISION-B29-CLEANUP`: generation + identity checks, bounded Blob cache, deterministic pause/clear/revoke/dispose cleanup
 
 ## Debt
