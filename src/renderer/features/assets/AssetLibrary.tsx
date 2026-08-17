@@ -1,6 +1,8 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -20,12 +22,24 @@ import { ASSET_DRAG_MIME } from './AssetDropPayload';
 import { AssetDetails } from './AssetDetails';
 import { AssetGrid } from './AssetGrid';
 import {
+  refreshImportedAudioMetadata,
+  type AssetMetadataProjectIdentity,
+  type AssetMetadataRefreshOutcome,
+} from './assetMetadataQueue';
+import {
   thumbnailStateFromResponse,
   type ThumbnailState,
 } from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
 
 export type AssetWorkspaceView = 'browser' | 'details';
+
+const metadataStopCodes = new Set<string>([
+  'ASSET_METADATA_PROJECT_NOT_FOUND',
+  'ASSET_METADATA_PROJECT_MISMATCH',
+  'ASSET_METADATA_STALE_REVISION',
+  'ASSET_METADATA_CANCELLED',
+]);
 
 export interface AssetLibraryProps {
   snapshot: EditorProjectSnapshot | null;
@@ -56,6 +70,10 @@ export function AssetLibrary({
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
+  const [metadataErrors, setMetadataErrors] = useState<
+    Record<string, string>
+  >({});
+  const metadataQueue = useRef<Promise<void>>(Promise.resolve());
 
   const entries = useMemo(
     () =>
@@ -101,6 +119,10 @@ export function AssetLibrary({
       setAuthoritativeReferences([]);
     }
   }, [selectedAssetId, snapshot]);
+
+  useEffect(() => {
+    setMetadataErrors({});
+  }, [snapshot?.project.id, snapshot?.projectRoot]);
 
   useEffect(() => {
     let active = true;
@@ -195,7 +217,7 @@ export function AssetLibrary({
         editorProjectStore,
       );
       setStatus(
-        outcome.applied
+        outcome.applied && response.ok && response.result.status === 'ready'
           ? '缩略图已重新生成。'
           : outcome.status,
       );
@@ -207,6 +229,140 @@ export function AssetLibrary({
       setBusy(false);
     }
   };
+
+  const refreshAudioMetadataNow = useCallback(
+    async (
+      assetId: string,
+      expected?: AssetMetadataProjectIdentity,
+    ): Promise<AssetMetadataRefreshOutcome> => {
+      const current = editorProjectStore.getSnapshot();
+      if (
+        !current ||
+        (expected &&
+          (current.projectRoot !== expected.projectRoot ||
+            current.project.id !== expected.projectId))
+      ) {
+        return { status: 'stopped', applied: false };
+      }
+      const asset = current.project.assets.find(
+        (candidate) => candidate.id === assetId,
+      );
+      if (!asset) {
+        const status = `Audio asset ${assetId} is no longer in the active project.`;
+        setStatus(status);
+        return { status: 'error', applied: false };
+      }
+
+      setBusy(true);
+      setStatus('Analyzing audio metadata…');
+      try {
+        const response =
+          await window.pandaStage.assets.refreshMetadata({
+            projectRoot: current.projectRoot,
+            project: current.project,
+            baseRevision: current.revision,
+            assetId,
+            requestId: crypto.randomUUID(),
+          });
+        if (!response.ok) {
+          const stopped = metadataStopCodes.has(response.error.code);
+          if (!stopped) {
+            setMetadataErrors((existing) => ({
+              ...existing,
+              [assetId]: response.error.message,
+            }));
+          }
+          setStatus(response.error.message);
+          return {
+            status: stopped ? 'stopped' : 'error',
+            applied: false,
+          };
+        }
+
+        const outcome = applyAssetMetadataResponse(
+          response,
+          editorProjectStore,
+        );
+        setMetadataErrors((existing) => {
+          if (!(assetId in existing)) return existing;
+          const next = { ...existing };
+          delete next[assetId];
+          return next;
+        });
+        setStatus(outcome.status);
+        return {
+          status:
+            response.result.status === 'error' ? 'error' : 'ready',
+          applied: outcome.applied,
+        };
+      } catch (error) {
+        const active = editorProjectStore.getSnapshot();
+        const switched = Boolean(
+          expected &&
+            (!active ||
+              active.projectRoot !== expected.projectRoot ||
+              active.project.id !== expected.projectId),
+        );
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Audio metadata analysis failed.';
+        if (!switched) {
+          setMetadataErrors((existing) => ({
+            ...existing,
+            [assetId]: message,
+          }));
+          setStatus(message);
+        }
+        return {
+          status: switched ? 'stopped' : 'error',
+          applied: false,
+        };
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
+
+  const refreshAudioMetadata = useCallback(
+    (
+      assetId: string,
+      expected?: AssetMetadataProjectIdentity,
+    ): Promise<AssetMetadataRefreshOutcome> => {
+      const capturedExpected =
+        expected ??
+        (() => {
+          const current = editorProjectStore.getSnapshot();
+          return current
+            ? {
+                projectRoot: current.projectRoot,
+                projectId: current.project.id,
+              }
+            : undefined;
+        })();
+      const queued = metadataQueue.current.then(
+        () => refreshAudioMetadataNow(assetId, capturedExpected),
+        () => refreshAudioMetadataNow(assetId, capturedExpected),
+      );
+      metadataQueue.current = queued.then(
+        () => undefined,
+        () => undefined,
+      );
+      return queued;
+    },
+    [refreshAudioMetadataNow],
+  );
+
+  const analyzeImportedAudioAssets = useCallback(
+    (assetIds: readonly string[]) =>
+      refreshImportedAudioMetadata(assetIds, {
+        getSnapshot: () => editorProjectStore.getSnapshot(),
+        refresh: (assetId, expected) =>
+          refreshAudioMetadata(assetId, expected),
+      }),
+    [refreshAudioMetadata],
+  );
 
   const deleteSelected = async (): Promise<void> => {
     const current = editorProjectStore.getSnapshot();
@@ -298,6 +454,7 @@ export function AssetLibrary({
         <>
           <AssetImportPanel
             importRequestToken={importRequestToken}
+            onImportedAudioAssets={analyzeImportedAudioAssets}
             snapshot={snapshot}
           />
           <div
@@ -341,9 +498,18 @@ export function AssetLibrary({
                     '正在拖动素材；载荷仅包含受控身份 ID 和枚举类型。',
                   );
                 }}
-                onRebuildThumbnail={(assetId) =>
-                  void rebuildThumbnail(assetId)
-                }
+                onRebuildThumbnail={(assetId) => {
+                  const asset = editorProjectStore
+                    .getSnapshot()
+                    ?.project.assets.find(
+                      (candidate) => candidate.id === assetId,
+                    );
+                  if (asset?.kind === 'audio') {
+                    void refreshAudioMetadata(assetId);
+                  } else {
+                    void rebuildThumbnail(assetId);
+                  }
+                }}
                 onSelect={selectAsset}
                 onThumbnailError={(assetId) => {
                   setThumbnails((current) =>
@@ -359,6 +525,7 @@ export function AssetLibrary({
                   );
                 }}
                 selectedAssetId={selectedAssetId}
+                metadataErrors={metadataErrors}
                 thumbnails={thumbnails}
               />
             </div>
@@ -387,6 +554,17 @@ export function AssetLibrary({
             asset={selectedAsset}
             busy={busy}
             onDelete={() => void deleteSelected()}
+            metadataError={
+              selectedAsset ? metadataErrors[selectedAsset.id] : undefined
+            }
+            onRefreshMetadata={() => {
+              if (!selectedAsset) return;
+              if (selectedAsset.kind === 'audio') {
+                void refreshAudioMetadata(selectedAsset.id);
+              } else {
+                void rebuildThumbnail(selectedAsset.id);
+              }
+            }}
             references={references}
             thumbnail={selectedAsset ? thumbnails[selectedAsset.id] : undefined}
           />

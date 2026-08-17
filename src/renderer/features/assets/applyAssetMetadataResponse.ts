@@ -14,7 +14,13 @@ export function applyAssetMetadataResponse(
     return { status: response.error.message, applied: false };
   }
   if (response.result.status === 'error') {
-    return { status: response.result.error.message, applied: false };
+    store.applyAssetMetadata(
+      response.project,
+      response.result.asset,
+      response.baseRevision,
+      response.savedRevision,
+    );
+    return { status: response.result.error.message, applied: true };
   }
   const acknowledgement = store.applyAssetMetadata(
     response.project,

@@ -1,5 +1,9 @@
 import type { Asset } from '../../../domain';
 import type { ThumbnailState } from './AssetCard';
+import {
+  audioMetadataError,
+  audioMetadataState,
+} from './assetMetadataState';
 
 export interface AssetDetailsProps {
   asset: Asset | null;
@@ -7,6 +11,8 @@ export interface AssetDetailsProps {
   busy: boolean;
   onDelete: () => void;
   thumbnail?: ThumbnailState;
+  metadataError?: string;
+  onRefreshMetadata?: () => void;
 }
 
 function dimensions(asset: Asset): string {
@@ -24,6 +30,8 @@ export function AssetDetails({
   busy,
   onDelete,
   thumbnail,
+  metadataError,
+  onRefreshMetadata,
 }: AssetDetailsProps): React.JSX.Element {
   if (!asset) {
     return (
@@ -41,6 +49,8 @@ export function AssetDetails({
             thumbnail.reason === 'cache')
         ? 'present'
         : 'checking';
+  const metadataState = audioMetadataState(asset, metadataError);
+  const metadataErrorMessage = audioMetadataError(asset, metadataError);
   return (
     <aside className="asset-details">
       <div>
@@ -56,6 +66,18 @@ export function AssetDetails({
           <dt>尺寸 / 时长</dt>
           <dd>{dimensions(asset)}</dd>
         </div>
+        {metadataState ? (
+          <div>
+            <dt>Audio metadata</dt>
+            <dd data-audio-metadata-status={metadataState}>
+              {metadataState === 'pending'
+                ? 'Pending / analyzing'
+                : metadataState === 'ready'
+                  ? 'Ready'
+                  : metadataErrorMessage ?? 'Analysis failed'}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>项目内路径</dt>
           <dd>{asset.relativePath}</dd>
@@ -71,6 +93,15 @@ export function AssetDetails({
           </dd>
         </div>
       </dl>
+      {metadataState === 'error' && onRefreshMetadata ? (
+        <button
+          disabled={busy}
+          onClick={onRefreshMetadata}
+          type="button"
+        >
+          Retry audio analysis
+        </button>
+      ) : null}
       {references.length > 0 ? (
         <div className="asset-reference-warning" role="alert">
           <strong>正在被以下位置使用</strong>
