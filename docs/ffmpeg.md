@@ -6,11 +6,20 @@ Day 07 把 Day 06 的连续 PNG 帧编码为 1920×1080、24 FPS、H.264 (`libx2
 
 ## 可执行文件发现
 
-`FFmpegAdapter` 只存在于 Main Process，按以下顺序解析工具路径：
+`FFmpegAdapter` 只存在于 Main Process，生产资源和开发资源由
+`resolveMediaToolPaths()` 分开解析：
 
-1. 构造函数显式传入的 `ffmpegPath` / `ffprobePath`；
-2. `PANDA_STAGE_FFMPEG_PATH` / `PANDA_STAGE_FFPROBE_PATH` 环境变量；
-3. PATH 中的 `ffmpeg.exe` / `ffprobe.exe`（非 Windows 为无扩展名命令）。
+- 打包应用使用 `resources/media/ffmpeg.exe` 和
+  `resources/media/ffprobe.exe`；缺少 sidecar 时启动会给出重新安装提示。
+- Windows 开发态优先使用 `PANDA_STAGE_FFMPEG_PATH` /
+  `PANDA_STAGE_FFPROBE_PATH` 显式覆盖；没有覆盖时使用仓库已安装的
+  `@ffmpeg-installer/win32-x64` 与 `@ffprobe-installer/win32-x64` 包中的
+  二进制。开发态不要求系统 PATH 中存在 FFmpeg，也不把全局安装作为修复方式。
+- 非 Windows 开发态保留 `ffmpeg` / `ffprobe` 命令回退，因为上述安装包是
+  Windows 平台包。
+
+Windows 开发环境先运行 `pnpm install`。如果使用自定义二进制，再设置对应
+  `PANDA_STAGE_*_PATH`；路径会作为单独的可执行文件值传递给 Main Process。
 
 开发机示例：
 
