@@ -197,6 +197,12 @@ describe('RH-07 workflow and manifest contracts', () => {
     ]));
   });
 
+  it('keeps Draft CI self-test and delivery Full jobs on mutually exclusive tiers', () => {
+    expect(String(workflow.jobs.quality_ci_selftest.if)).toContain("tier == 'ci-selftest'");
+    expect(String(workflow.jobs.quality_full.if)).toContain("tier == 'full'");
+    expect(String(workflow.jobs.quality_ci_selftest.if)).not.toContain("tier == 'full'");
+  });
+
   it('uses event before only for Draft synchronize and complete base for Ready', () => {
     expect(workflowSource).toContain('"$IS_DRAFT" == true && "$EVENT_ACTION" == synchronize');
     expect(workflowSource).toContain('echo "base_sha=$EVENT_BEFORE_SHA"');

@@ -112,3 +112,9 @@ git diff --check
 The contracts cover Draft routing, Ready Full policy, exact-candidate proof
 invalidation, merge tree identity, API/proof fallback, manifest drift, active
 verifier ownership, and every current first-party renderer feature directory.
+
+## Acceptance receipts
+
+- Draft CI-mechanics HEAD `b3908cb432aa5ddc2fd14344fa54dd58ea4bf4b3`
+  used `CI policy self-test` in run `32005965628`: classifier 5 seconds,
+  self-test 39 seconds, Full skipped, stable Final passed.
