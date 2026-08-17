@@ -6,8 +6,10 @@
 - Day29 开工 main: `66ce42ab47c4829515385adca4af58b65aef7134`
 - Day29 implementation/routing HEAD: `ab150aabaeb6fbb4e2c09be0d79ae57d0a352644`
 - Issue #234 blocker fix HEAD: `523d068f13e879bb794eb21b689ea55dd5594bc0`
+- Issue #235 blocker fix HEAD: `6a1462a3d0e3840ed6f834b54229502a429fff17`
 - Delivery PR: [#233](https://github.com/Cognitive-Architect/panda-stage/pull/233)
 - Delivery branch: `agent/day29-audio-mouth-preview`
+- Current delivery HEAD: `6a1462a3d0e3840ed6f834b54229502a429fff17`
 - Day28 prerequisite: `PASS + merged` (`#222`, `8024a701a97b1ddacf18758eb55ac06a6e2b98c9` is an ancestor)
 - RH-07 CI policy: `active`
 
@@ -50,6 +52,14 @@ M  src/main/index.ts
 M  src/main/ipc/register-asset-library-ipc-handlers.ts
 A  src/main/services/AssetPreviewAudioService.ts
 M  src/preload/index.ts
+M  src/renderer/features/assets/AssetCard.tsx
+M  src/renderer/features/assets/AssetDetails.tsx
+M  src/renderer/features/assets/AssetGrid.tsx
+M  src/renderer/features/assets/AssetImportPanel.tsx
+M  src/renderer/features/assets/AssetLibrary.tsx
+M  src/renderer/features/assets/applyAssetMetadataResponse.ts
+A  src/renderer/features/assets/assetMetadataQueue.ts
+A  src/renderer/features/assets/assetMetadataState.ts
 M  src/renderer/features/dialogue/DialogueInspector.tsx
 M  src/renderer/global.d.ts
 M  src/renderer/shell/ProductPreviewOverlay.tsx
@@ -59,7 +69,9 @@ M  src/renderer/stores/dialogueStore.ts
 A  src/shared/asset-preview-audio-api.ts
 M  src/shared/ipc/channels.ts
 A  tests/integration/dialogue-audio-preview.test.ts
+A  tests/unit/asset-audio-metadata-ui.test.ts
 M  tests/unit/asset-library-ipc-handlers.test.ts
+A  tests/unit/asset-metadata-queue.test.ts
 A  tests/unit/asset-preview-audio-service.test.ts
 A  tests/unit/dialogue-audio-binding.test.ts
 M  tests/unit/dialogue-inspector-timing.test.ts
@@ -136,6 +148,17 @@ resume/stop/shot/project transitions.
 - Legacy overlap winner matches subtitle: `PASS` — shared `evaluateSubtitleAtTime` winner is reused and only the winning character opens
 - Mouth asset preloaded: `PASS` — valid used `mouthOpenAssetId` image is included in the preview preload set
 
+## Issue #235 blocker correction
+
+- Real Windows discovery: three valid MP3 files imported successfully through Asset Library, but all remained duration-less and were shown as disabled `（待分析）` options in Dialogue Inspector; this was recorded as the Day29 acceptance blocker in Issue #235.
+- Root cause: the existing Main `AssetMetadataService` and audio probe were available, but the renderer exposed refresh only through the image-thumbnail rebuild path; imported audio had no automatic product-path analysis, visible state, or retry path. The duration safety gate was intentionally retained.
+- Production fix commit: `6a1462a3d0e3840ed6f834b54229502a429fff17`.
+- Import flow: newly imported audio IDs are selected from the completed import response, then passed through the existing `assets.refreshMetadata` IPC and Main `AssetMetadataService` one at a time. The queue deduplicates IDs, observes each latest revision, serializes manual retries with automatic work, and stops on project identity/revision changes.
+- UI state: audio cards and details expose pending/analyzing, ready with duration, and error with a retry action. `DialogueInspector` still disables duration-less audio; no selector or `bindAudio` guard was bypassed.
+- Error flow: persisted Main `result.status = error` responses are now applied to the renderer store, while operation failures remain visibly retryable without mutating Project data.
+- Regression evidence: `tests/unit/asset-audio-metadata-ui.test.ts` (4 tests), `tests/unit/asset-metadata-queue.test.ts` (2 tests), existing real-probe integration (including 2+ sequential audio assets), revision-safety integration, duration guard, short-source atomic rejection, and Dialogue binding tests.
+- Scope guard: reused the existing metadata/probe owner; no second parser, IPC channel, schema bump, fake duration, DevTools/JSON path, playback rewrite, or second PR was added.
+
 ## Issue #234 blocker correction
 
 - Root cause: the Day29 projection built a mouth-asset map for every project character and applied it to every matching character layer, so a non-speaking character could also open its mouth.
@@ -150,9 +173,11 @@ timeline event, persisted Project field, or second preview clock.
 
 - typecheck: `PASS` — `pnpm typecheck`
 - lint: `PASS` — `pnpm lint`
+- Issue #235 focused: `PASS` — asset metadata UI/queue/import selection, 6 files / 24 tests
+- Issue #235 metadata integration: `PASS` — asset metadata and revision safety, 2 files / 13 tests
 - Issue #234 focused: `PASS` — `product-preview-mouth` + `dialogue-subtitle`, 2 files / 12 tests
 - Prior Day29 focused tests: `PASS` — binding, audio IPC service, transport, mouth, and Inspector contract tests
-- unit: `PASS` — `pnpm test:unit`, 119 files / 873 tests
+- unit: `PASS` — `pnpm test:unit`, 121 files / 879 tests
 - integration: `PASS` — `pnpm test:integration`, 27 files / 148 tests
 - build: `PASS` — `pnpm build` (only the existing Vite chunk-size warning)
 - git diff --check: `PASS`
@@ -206,10 +231,11 @@ acceptance evidence for the new audio path.
 - Draft synchronize run #444, run ID `32015364085`: `PASS`; `ci-selftest` tier, classifier success, policy contracts/typecheck/lint/diff whitespace pass. Focused/Targeted/Full/Ready jobs were skipped because the synchronized Draft delta was the manifest-only routing fix, as required by RH-07.
 - Receipt commit run #445, run ID `32015871939`: `PASS`; docs-only fast path validated whitespace, docs-only scope, and Markdown relative links. Production quality and Ready/Post-merge jobs were correctly skipped.
 - Issue #234 fix run #447, run ID `32018851632`: `PASS`; Draft `Targeted quality and regression` route, approximately 6m11s, with typecheck/lint/unit/integration/build and manifest-selected subsystem regression all successful. Full/Focused/Docs-only/Ready/Post-merge were skipped by RH-07.
+- Issue #235 fix run #449, run ID `32031365295`: `PASS`; Draft `Targeted quality and regression` route, 6m45s (`2026-08-17T12:44:30Z` → `2026-08-17T12:51:15Z`). Classifier, typecheck, lint, unit, integration, build, and manifest-selected assets/character/editor/timeline regressions all passed. `Full quality and regression` was explicitly skipped, as were Focused/Docs-only/Ready/Post-merge.
 - Ready final candidate SHA: `SKIPPED` — PR remains Draft
 - Ready Full run: `SKIPPED` — PR remains Draft
 - Ready Full proof: `SKIPPED` — no Ready/Full candidate exists
-- Final CI result: `PASS` for Draft Targeted run #447; Full remains skipped
+- Final CI result: `PASS` for Draft Targeted run #449; Full remains skipped
 - Post-merge provenance: `SKIPPED` — PR is not merged
 - Post-merge Full: `SKIPPED` — PR is not merged; no post-merge provenance exists
 
@@ -244,6 +270,7 @@ closure action was taken.
 - `DECISION-B29-AUDIO-PRIMITIVE`: one reusable `HTMLAudioElement`; no fake timer or Web Audio mixer
 - `DECISION-B29-ACTIVE-DIALOGUE`: shared subtitle winner from `evaluateSubtitleAtTime` determines the active audio/mouth projection
 - `DECISION-B29-MOUTH`: pure transient evaluated-shot projection using only the active Dialogue's `characterId` and that character's `mouthOpenAssetId`
+- `DECISION-B29-METADATA`: imported audio metadata uses the existing Main probe through a renderer-owned sequential queue; pending/error state is UI-derived or persisted by the existing metadata result, with no schema bump
 - `DECISION-B29-CLEANUP`: generation + identity checks, bounded Blob cache, deterministic pause/clear/revoke/dispose cleanup
 
 ## Debt
