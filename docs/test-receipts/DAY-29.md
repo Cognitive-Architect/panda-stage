@@ -194,6 +194,7 @@ acceptance evidence for the new audio path.
 - Draft synchronize run #443, run ID `32015241413`: `FAIL` at `Unknown route guard`; it identified five new paths not yet registered in the verification manifest. No production quality result was inferred from that failed routing run.
 - Route repair: commit `ab150aabaeb6fbb4e2c09be0d79ae57d0a352644` registered the five cross-process/editor-shell test and type routes.
 - Draft synchronize run #444, run ID `32015364085`: `PASS`; `ci-selftest` tier, classifier success, policy contracts/typecheck/lint/diff whitespace pass. Focused/Targeted/Full/Ready jobs were skipped because the synchronized Draft delta was the manifest-only routing fix, as required by RH-07.
+- Receipt commit run #445, run ID `32015871939`: `PASS`; docs-only fast path validated whitespace, docs-only scope, and Markdown relative links. Production quality and Ready/Post-merge jobs were correctly skipped.
 - Ready final candidate SHA: `SKIPPED` — PR remains Draft
 - Ready Full run: `SKIPPED` — PR remains Draft
 - Ready Full proof: `SKIPPED` — no Ready/Full candidate exists
