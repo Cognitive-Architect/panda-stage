@@ -31,6 +31,7 @@ function characterService(): CharacterService {
 function expectDialogueError(
   action: () => unknown,
   code: DialogueServiceError['code'],
+  messagePattern?: RegExp,
 ): void {
   try {
     action();
@@ -38,6 +39,9 @@ function expectDialogueError(
   } catch (error) {
     expect(error).toBeInstanceOf(DialogueServiceError);
     expect((error as DialogueServiceError).code).toBe(code);
+    if (messagePattern) {
+      expect((error as DialogueServiceError).message).toMatch(messagePattern);
+    }
   }
 }
 
@@ -167,7 +171,7 @@ describe('DialogueService Day28 timing contract', () => {
     });
   });
 
-  it('checks overlap only at explicit timing commit and allows adjacency', () => {
+  it('places an Untimed Dialogue in the first legal gap after occupied intervals', () => {
     const service = dialogueService();
     let project = createAt(service, buildProject(), 0, 'first');
     project = createAt(service, project, 42, 'adjacent');
@@ -188,18 +192,215 @@ describe('DialogueService Day28 timing contract', () => {
       { startMs: 0, endMs: 42 },
       { startMs: 42, endMs: 84 },
     ]);
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: overlap!.id,
+      frameSpanMs: 42,
+    });
+    expect(project.shots[0]!.dialogues[2]).toMatchObject({
+      startMs: 84,
+      endMs: 126,
+    });
+  });
+
+  it('moves an occupied-point Untimed Dialogue to the next interval endpoint', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 0, 'occupied');
+    const occupiedId = project.shots[0]!.dialogues[0]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: occupiedId,
+      startMs: 0,
+      endMs: 1300,
+    });
+    project = createAt(service, project, 0, 'new at occupied point');
+    const newId = project.shots[0]!.dialogues[1]!.id;
+
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: newId,
+      frameSpanMs: 42,
+    });
+
+    expect(project.shots[0]!.dialogues[1]).toMatchObject({
+      startMs: 1300,
+      endMs: 1342,
+    });
+  });
+
+  it('allows arranging exactly at a timed endpoint', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 0, 'occupied');
+    const occupiedId = project.shots[0]!.dialogues[0]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: occupiedId,
+      startMs: 0,
+      endMs: 1300,
+    });
+    project = createAt(service, project, 1300, 'new at endpoint');
+    const newId = project.shots[0]!.dialogues[1]!.id;
+
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: newId,
+      frameSpanMs: 42,
+    });
+
+    expect(project.shots[0]!.dialogues[1]).toMatchObject({
+      startMs: 1300,
+      endMs: 1342,
+    });
+  });
+
+  it('skips a gap that is too small and uses the next legal gap', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 510, 'later interval');
+    const laterId = project.shots[0]!.dialogues[0]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: laterId,
+      startMs: 510,
+      endMs: 1000,
+    });
+    project = createAt(service, project, 0, 'first interval');
+    const firstId = project.shots[0]!.dialogues[1]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: firstId,
+      startMs: 0,
+      endMs: 500,
+    });
+    project = createAt(service, project, 0, 'new dialogue');
+    const newId = project.shots[0]!.dialogues[2]!.id;
+
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: newId,
+      frameSpanMs: 42,
+    });
+
+    expect(project.shots[0]!.dialogues[2]).toMatchObject({
+      startMs: 1000,
+      endMs: 1042,
+    });
+  });
+
+  it('uses the same first gap regardless of timed dialogue insertion order', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 600, 'right interval');
+    const rightId = project.shots[0]!.dialogues[0]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: rightId,
+      startMs: 600,
+      endMs: 1000,
+    });
+    project = createAt(service, project, 0, 'left interval');
+    const leftId = project.shots[0]!.dialogues[1]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: leftId,
+      startMs: 0,
+      endMs: 500,
+    });
+    project = createAt(service, project, 0, 'new dialogue');
+    const newId = project.shots[0]!.dialogues[2]!.id;
+
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: newId,
+      frameSpanMs: 42,
+    });
+
+    expect(project.shots[0]!.dialogues[2]).toMatchObject({
+      startMs: 500,
+      endMs: 542,
+    });
+  });
+
+  it('fails atomically with a readable error when no legal slot exists', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 0, 'full shot');
+    const occupiedId = project.shots[0]!.dialogues[0]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: occupiedId,
+      startMs: 0,
+      endMs: 3000,
+    });
+    project = createAt(service, project, 0, 'no slot');
+    const newId = project.shots[0]!.dialogues[1]!.id;
+    const before = project;
+
     expectDialogueError(
       () =>
         service.arrange(project, {
           shotId: IDS.shot,
-          dialogueId: overlap!.id,
+          dialogueId: newId,
           frameSpanMs: 42,
+        }),
+      'DIALOGUE_NO_AVAILABLE_SLOT',
+      /空档/u,
+    );
+    expect(project).toBe(before);
+    expect(project.shots[0]!.dialogues[1]).toMatchObject({
+      startMs: 0,
+      endMs: 0,
+    });
+  });
+
+  it('keeps explicit timing, move, and resize overlap rejection strict', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 0, 'first');
+    const firstId = project.shots[0]!.dialogues[0]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: firstId,
+      startMs: 0,
+      endMs: 1000,
+    });
+    project = createAt(service, project, 1500, 'second');
+    const secondId = project.shots[0]!.dialogues[1]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: secondId,
+      startMs: 1500,
+      endMs: 1600,
+    });
+
+    expectDialogueError(
+      () =>
+        service.setTiming(project, {
+          shotId: IDS.shot,
+          dialogueId: secondId,
+          startMs: 500,
+          endMs: 600,
         }),
       'DIALOGUE_OVERLAP',
     );
-    expect(project.shots[0]!.dialogues[2]).toMatchObject({
-      startMs: 20,
-      endMs: 20,
+    expectDialogueError(
+      () =>
+        service.move(project, {
+          shotId: IDS.shot,
+          dialogueId: secondId,
+          deltaMs: -1000,
+        }),
+      'DIALOGUE_OVERLAP',
+    );
+    expectDialogueError(
+      () =>
+        service.resize(project, {
+          shotId: IDS.shot,
+          dialogueId: secondId,
+          edge: 'start',
+          timeMs: 500,
+        }),
+      'DIALOGUE_OVERLAP',
+    );
+    expect(project.shots[0]!.dialogues[1]).toMatchObject({
+      startMs: 1500,
+      endMs: 1600,
     });
   });
 
@@ -265,7 +466,7 @@ describe('DialogueService Day28 timing contract', () => {
     });
   });
 
-  it('keeps legacy overlapping Timed data loadable while rejecting new overlap', () => {
+  it('keeps legacy overlapping Timed data loadable while placing after its merged span', () => {
     const raw = buildProject();
     const legacy = ProjectSchema.parse({
       ...raw,
@@ -298,15 +499,15 @@ describe('DialogueService Day28 timing contract', () => {
     const service = dialogueService();
     const project = createAt(service, legacy, 750, 'new untimed');
     const id = project.shots[0]!.dialogues.at(-1)!.id;
-    expectDialogueError(
-      () =>
-        service.arrange(project, {
-          shotId: IDS.shot,
-          dialogueId: id,
-          frameSpanMs: 42,
-        }),
-      'DIALOGUE_OVERLAP',
-    );
+    const arranged = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: id,
+      frameSpanMs: 42,
+    });
+    expect(arranged.shots[0]!.dialogues.at(-1)).toMatchObject({
+      startMs: 1500,
+      endMs: 1542,
+    });
   });
 });
 

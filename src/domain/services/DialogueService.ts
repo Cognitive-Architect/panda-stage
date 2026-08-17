@@ -18,6 +18,7 @@ export type DialogueServiceErrorCode =
   | 'INVALID_DIALOGUE_DURATION'
   | 'INVALID_DIALOGUE_TEXT'
   | 'DIALOGUE_OVERLAP'
+  | 'DIALOGUE_NO_AVAILABLE_SLOT'
   | 'AUDIO_ASSET_NOT_FOUND'
   | 'AUDIO_ASSET_NOT_AUDIO'
   | 'AUDIO_ASSET_DURATION_UNAVAILABLE'
@@ -280,14 +281,12 @@ export class DialogueService {
         '镜头时长不足，无法安排对白。',
       );
     }
-    const pointMs = dialogue.startMs;
-    const timing =
-      pointMs + spanMs <= shot.durationMs
-        ? { startMs: pointMs, endMs: pointMs + spanMs }
-        : {
-            startMs: Math.max(0, shot.durationMs - spanMs),
-            endMs: shot.durationMs,
-          };
+    const timing = this.findFirstAvailableTiming(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      dialogue.startMs,
+      spanMs,
+      shot.durationMs,
+    );
     this.assertNoOverlap(
       shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
       timing,
@@ -395,6 +394,41 @@ export class DialogueService {
         candidate.id === dialogueId ? nextDialogueWithClip : candidate,
       ),
     });
+  }
+
+  private findFirstAvailableTiming(
+    dialogues: readonly Dialogue[],
+    pointMs: number,
+    spanMs: number,
+    shotDurationMs: number,
+  ): { startMs: number; endMs: number } {
+    const latestStartMs = shotDurationMs - spanMs;
+    let startMs = Math.min(pointMs, latestStartMs);
+    const occupiedIntervals = dialogues
+      .filter((dialogue) => dialogue.endMs > dialogue.startMs)
+      .map((dialogue) => ({
+        startMs: dialogue.startMs,
+        endMs: dialogue.endMs,
+      }))
+      .sort(
+        (left, right) =>
+          left.startMs - right.startMs || left.endMs - right.endMs,
+      );
+
+    for (const interval of occupiedIntervals) {
+      if (interval.endMs <= startMs) continue;
+      if (interval.startMs >= startMs + spanMs) break;
+      startMs = Math.max(startMs, interval.endMs);
+      if (startMs > latestStartMs) break;
+    }
+
+    if (startMs > latestStartMs) {
+      throw new DialogueServiceError(
+        'DIALOGUE_NO_AVAILABLE_SLOT',
+        '镜头内没有可用的一帧空档，请调整或移动已有对白后重试。',
+      );
+    }
+    return { startMs, endMs: startMs + spanMs };
   }
 
   private replaceShot(
