@@ -56,8 +56,8 @@ function fullSuiteIds(manifest) {
 function validateRoutingManifest(manifest, featureDirectories = []) {
   const errors = [];
   const routing = manifest.routing;
-  if (!routing || routing.schemaVersion !== 1) {
-    return ['routing.schemaVersion must be 1'];
+  if (!routing || routing.schemaVersion !== 2) {
+    return ['routing.schemaVersion must be 2'];
   }
 
   const gateById = new Map(manifest.gates.map((gate) => [gate.id, gate]));
@@ -71,6 +71,12 @@ function validateRoutingManifest(manifest, featureDirectories = []) {
     }
     if (!['targeted', 'full'].includes(route.riskPolicy)) {
       errors.push(`route ${route.id} has invalid riskPolicy ${route.riskPolicy}`);
+    }
+    if (route.riskPolicy === 'full' && !['focused', 'ci-selftest'].includes(route.draftPolicy)) {
+      errors.push(`full route ${route.id} must declare a focused Draft policy`);
+    }
+    if (route.riskPolicy === 'targeted' && route.draftPolicy) {
+      errors.push(`targeted route ${route.id} must not override its Draft policy`);
     }
     if (typeof route.incrementalEligible !== 'boolean') {
       errors.push(`route ${route.id} must declare incrementalEligible`);
@@ -106,24 +112,43 @@ function validateRoutingManifest(manifest, featureDirectories = []) {
   return errors;
 }
 
-function classifyChanges({ manifest, changes, eventName, isDraft, comparisonMode = 'base' }) {
+function classifyChanges({
+  manifest,
+  changes,
+  eventName,
+  eventAction,
+  isDraft,
+  comparisonMode = 'base',
+  provenance,
+}) {
   const routing = manifest.routing;
   const allRoutes = [...routing.fullRiskRoutes, ...routing.routes];
   const matchedRoutes = [];
   const areas = [];
   const suites = [];
   let docsOnly = true;
-  let full = false;
   let unknown = false;
   let unsafeStatus = false;
+  const unknownPaths = [];
 
   if (eventName === 'push') {
+    if (provenance?.proven) {
+      return {
+        tier: 'provenance',
+        reason: provenance.reason,
+        areas: ['delivery-provenance'],
+        suites: [],
+        comparisonMode: 'provenance',
+        unknownPaths: [],
+      };
+    }
     return {
       tier: 'full',
-      reason: 'push to main keeps the full regression path',
+      reason: provenance?.reason || 'untrusted push to main requires full regression',
       areas: ['infra'],
       suites: fullSuiteIds(manifest),
       comparisonMode: 'event',
+      unknownPaths: [],
     };
   }
   if (eventName === 'workflow_dispatch') {
@@ -133,22 +158,25 @@ function classifyChanges({ manifest, changes, eventName, isDraft, comparisonMode
       areas: ['infra'],
       suites: fullSuiteIds(manifest),
       comparisonMode: 'event',
+      unknownPaths: [],
     };
   }
   if (!changes || changes.length === 0) {
     return {
-      tier: 'full',
-      reason: 'changed-file list unavailable; fail safe to full regression',
+      tier: isDraft ? 'unknown' : 'full',
+      reason: isDraft
+        ? 'Draft comparison is unavailable; fix the comparison before continuing'
+        : 'changed-file list unavailable; fail safe to full regression',
       areas: ['unknown'],
-      suites: fullSuiteIds(manifest),
+      suites: isDraft ? [] : fullSuiteIds(manifest),
       comparisonMode,
+      unknownPaths: [],
     };
   }
 
   for (const change of changes) {
     if (!['A', 'M'].includes(change.status)) {
       unsafeStatus = true;
-      full = true;
     }
     for (const filePath of change.paths) {
       if (matchesAny(filePath, routing.docsPatterns)) continue;
@@ -157,39 +185,87 @@ function classifyChanges({ manifest, changes, eventName, isDraft, comparisonMode
       const route = allRoutes.find((candidate) => matchesAny(filePath, candidate[field]));
       if (!route) {
         unknown = true;
-        full = true;
         areas.push('unknown');
+        unknownPaths.push(filePath);
         continue;
       }
       matchedRoutes.push(route);
       areas.push(route.id);
       suites.push(...route.suites);
-      if (route.riskPolicy === 'full') full = true;
-      if (comparisonMode === 'incremental' && !route.incrementalEligible) full = true;
     }
   }
 
-  let reason;
-  if (unknown) reason = 'unknown path changed; fail safe to full regression';
-  else if (unsafeStatus) reason = 'rename, copy, delete, or unsupported change status; fail safe to full regression';
-  else if (full) reason = 'full-escalation route changed';
-  else if (docsOnly) reason = 'all changed files are approved Markdown documentation files';
-  else if (!isDraft) {
-    full = true;
-    reason = 'non-draft PR requires full regression';
-  } else if (comparisonMode === 'incremental') {
-    reason = 'Draft PR uses targeted incremental regression from a proven same-PR Full-green HEAD';
-  } else {
-    reason = 'Draft PR uses targeted subsystem regression';
+  if (unknown) {
+    return {
+      tier: 'unknown',
+      reason: `Unknown production route: ${unknownPaths.join(', ')}. Register ownership and risk policy in the verification manifest.`,
+      areas: unique(areas),
+      suites: [],
+      comparisonMode,
+      matchedRouteIds: unique(matchedRoutes.map((route) => route.id)),
+      unknownPaths: unique(unknownPaths),
+    };
   }
 
+  if (!isDraft || eventAction === 'ready_for_review') {
+    return {
+      tier: 'full',
+      reason: 'Ready/non-draft candidate requires complete base-to-HEAD Full regression',
+      areas: unique(areas),
+      suites: fullSuiteIds(manifest),
+      comparisonMode: 'base',
+      matchedRouteIds: unique(matchedRoutes.map((route) => route.id)),
+      unknownPaths: [],
+    };
+  }
+
+  if (unsafeStatus) {
+    return {
+      tier: 'focused',
+      reason: 'Draft rename, copy, delete, or unsupported status requires focused safety checks',
+      areas: unique([...areas, 'structural-change']),
+      suites: [],
+      comparisonMode,
+      matchedRouteIds: unique(matchedRoutes.map((route) => route.id)),
+      unknownPaths: [],
+    };
+  }
+
+  if (docsOnly) {
+    return {
+      tier: 'docs',
+      reason: 'all changed files are approved Markdown documentation files',
+      areas: [],
+      suites: [],
+      comparisonMode,
+      matchedRouteIds: [],
+      unknownPaths: [],
+    };
+  }
+
+  const draftPolicies = matchedRoutes.map((route) => (
+    route.riskPolicy === 'targeted' ? 'targeted' : route.draftPolicy
+  ));
+  const tier = draftPolicies.includes('focused') || (
+    draftPolicies.includes('ci-selftest') && draftPolicies.includes('targeted')
+  )
+    ? 'focused'
+    : draftPolicies.includes('ci-selftest')
+      ? 'ci-selftest'
+      : 'targeted';
+  const reasons = {
+    focused: 'Draft core/release change uses focused development checks without Full regression',
+    'ci-selftest': 'Draft CI mechanics change uses focused CI self-tests without Full regression',
+    targeted: 'Draft renderer/business change uses manifest-selected targeted suites',
+  };
   return {
-    tier: docsOnly && !full ? 'docs' : full ? 'full' : 'targeted',
-    reason,
+    tier,
+    reason: reasons[tier],
     areas: unique(areas),
-    suites: full ? fullSuiteIds(manifest) : unique(suites),
+    suites: ['targeted', 'focused'].includes(tier) ? unique(suites) : [],
     comparisonMode,
     matchedRouteIds: unique(matchedRoutes.map((route) => route.id)),
+    unknownPaths: [],
   };
 }
 
@@ -212,6 +288,7 @@ function writeGithubOutput(result) {
     `areas=${result.areas.join(' ')}`,
     `suites=${result.suites.join(' ')}`,
     `comparison_mode=${result.comparisonMode}`,
+    `unknown_paths=${(result.unknownPaths || []).join('|')}`,
   ];
   if (process.env.GITHUB_OUTPUT) {
     require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
@@ -221,6 +298,7 @@ function writeGithubOutput(result) {
   console.log(`Comparison: ${result.comparisonMode}`);
   console.log(`Areas: ${result.areas.join(' ')}`);
   console.log(`Suites: ${result.suites.join(' ')}`);
+  if (result.unknownPaths?.length) console.log(`Unknown paths: ${result.unknownPaths.join(', ')}`);
 }
 
 function runCli() {
@@ -233,16 +311,27 @@ function runCli() {
   if (command !== 'classify') throw new Error(`Unknown command: ${command}`);
 
   const eventName = process.env.EVENT_NAME;
+  const eventAction = process.env.EVENT_ACTION;
   const isDraft = process.env.IS_DRAFT === 'true';
   const head = process.env.HEAD_SHA;
-  const base = process.env.INCREMENTAL_BASE_SHA || process.env.BASE_SHA;
-  const comparisonMode = process.env.INCREMENTAL_BASE_SHA ? 'incremental' : 'base';
+  const base = process.env.BASE_SHA;
+  const comparisonMode = process.env.COMPARISON_MODE || 'base';
+  const provenance = eventName === 'push'
+    ? {
+        proven: process.env.PROVENANCE_VERIFIED === 'true',
+        reason: process.env.PROVENANCE_REASON || 'main provenance was not verified',
+      }
+    : undefined;
   let changes;
   if (eventName !== 'push' && eventName !== 'workflow_dispatch') {
     if (!base || !head || /^0+$/.test(base)) {
       writeGithubOutput({
-        tier: 'full', reason: 'comparison range unavailable; fail safe to full regression',
-        areas: ['unknown'], suites: fullSuiteIds(manifest), comparisonMode: 'unavailable',
+        tier: isDraft ? 'unknown' : 'full',
+        reason: isDraft
+          ? 'Draft comparison range unavailable; fix the comparison before continuing'
+          : 'comparison range unavailable; fail safe to full regression',
+        areas: ['unknown'], suites: isDraft ? [] : fullSuiteIds(manifest),
+        comparisonMode: 'unavailable', unknownPaths: [],
       });
       return;
     }
@@ -258,7 +347,15 @@ function runCli() {
       changes = [];
     }
   }
-  writeGithubOutput(classifyChanges({ manifest, changes, eventName, isDraft, comparisonMode }));
+  writeGithubOutput(classifyChanges({
+    manifest,
+    changes,
+    eventName,
+    eventAction,
+    isDraft,
+    comparisonMode,
+    provenance,
+  }));
 }
 
 if (require.main === module) runCli();

@@ -23,8 +23,8 @@
     "unknown"
   ],
   "routing": {
-    "schemaVersion": 1,
-    "description": "RH-05 source/test/verifier ownership and CI routing truth. Workflow control flow is generic; subsystem registration belongs here.",
+    "schemaVersion": 2,
+    "description": "RH-07 source/test/verifier ownership and FAST/FULL routing truth. Workflow control flow is generic; subsystem registration belongs here.",
     "docsPatterns": [
       "README.md",
       "AGENTS.md",
@@ -40,7 +40,10 @@
       "editor",
       "timeline"
     ],
-    "unmatchedPolicy": "full",
+    "unmatchedPolicy": {
+      "draft": "unknown",
+      "delivery": "full"
+    },
     "fullRiskRoutes": [
       {
         "id": "ci-build-infrastructure",
@@ -61,11 +64,13 @@
         ],
         "testPatterns": [
           "tests/contract/ci-routing.test.ts",
+          "tests/contract/ci-provenance.test.ts",
           "tests/contract/verification-manifest.test.ts"
         ],
         "verifierPatterns": [],
         "suites": [],
         "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
         "incrementalEligible": false,
         "owner": "ci",
         "notes": "CI mechanics, build configuration, shared fixtures, and non-verifier scripts remain conservative Full risk."
@@ -83,11 +88,13 @@
         "testPatterns": [
           "tests/unit/domain/**",
           "tests/unit/migrations/**",
-          "tests/integration/schema-*.test.ts"
+          "tests/integration/schema-*.test.ts",
+          "tests/contract/fixtures/ci-routing/core/**"
         ],
         "verifierPatterns": [],
         "suites": [],
         "riskPolicy": "full",
+        "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
         "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems."
@@ -105,6 +112,7 @@
         "verifierPatterns": [],
         "suites": [],
         "riskPolicy": "full",
+        "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "release",
         "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths."

@@ -9,6 +9,7 @@ on:
       - opened
       - synchronize
       - reopened
+      - converted_to_draft
       - ready_for_review
   workflow_dispatch:
 
@@ -16,6 +17,7 @@ permissions:
   contents: read
   actions: read
   pull-requests: read
+  statuses: write
 
 jobs:
   classify:
@@ -27,7 +29,11 @@ jobs:
       suites: ${{ steps.classify.outputs.suites }}
       reason: ${{ steps.classify.outputs.reason }}
       comparison_mode: ${{ steps.classify.outputs.comparison_mode }}
-      incremental_baseline: ${{ steps.baseline.outputs.sha }}
+      comparison_base: ${{ steps.range.outputs.base_sha }}
+      unknown_paths: ${{ steps.classify.outputs.unknown_paths }}
+      provenance_verified: ${{ steps.provenance.outputs.proven }}
+      provenance_candidate: ${{ steps.provenance.outputs.candidate_sha }}
+      provenance_ready_run: ${{ steps.provenance.outputs.ready_run_id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,52 +41,82 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Find proven same-PR Full-green baseline
-        id: baseline
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == true && github.event.action != 'ready_for_review' }}
+      - name: Verify main merge provenance
+        id: provenance
+        if: ${{ github.event_name == 'push' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/find-full-green-baseline.cjs
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: node scripts/ci-provenance.cjs verify-main
+
+      - name: Select comparison range
+        id: range
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            if [[ "$IS_DRAFT" == true && "$EVENT_ACTION" == synchronize && -n "$EVENT_BEFORE_SHA" ]]; then
+              echo "base_sha=$EVENT_BEFORE_SHA" >> "$GITHUB_OUTPUT"
+              echo "mode=draft-delta" >> "$GITHUB_OUTPUT"
+            else
+              echo "base_sha=$PR_BASE_SHA" >> "$GITHUB_OUTPUT"
+              echo "mode=base" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "base_sha=$EVENT_BEFORE_SHA" >> "$GITHUB_OUTPUT"
+            echo "mode=event" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Classify changed files from manifest
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ steps.range.outputs.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          INCREMENTAL_BASE_SHA: ${{ steps.baseline.outputs.sha }}
+          COMPARISON_MODE: ${{ steps.range.outputs.mode }}
+          PROVENANCE_VERIFIED: ${{ steps.provenance.outputs.proven }}
+          PROVENANCE_REASON: ${{ steps.provenance.outputs.reason }}
         run: node scripts/ci-routing.cjs classify
 
       - name: Record risk classification
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
           TIER: ${{ steps.classify.outputs.tier }}
           REASON: ${{ steps.classify.outputs.reason }}
           AREAS: ${{ steps.classify.outputs.areas }}
           SUITES: ${{ steps.classify.outputs.suites }}
           COMPARISON_MODE: ${{ steps.classify.outputs.comparison_mode }}
-          INCREMENTAL_BASELINE: ${{ steps.baseline.outputs.sha }}
-          BASELINE_REASON: ${{ steps.baseline.outputs.reason }}
+          COMPARISON_BASE: ${{ steps.range.outputs.base_sha }}
+          UNKNOWN_PATHS: ${{ steps.classify.outputs.unknown_paths }}
+          PROVENANCE_CANDIDATE: ${{ steps.provenance.outputs.candidate_sha }}
+          PROVENANCE_READY_RUN: ${{ steps.provenance.outputs.ready_run_id }}
         shell: bash
         run: |
           {
             echo '## CI risk classification'
             echo ''
-            echo "- Event: \`$EVENT_NAME\`"
+            echo "- Event/action: \`$EVENT_NAME/$EVENT_ACTION\`"
             echo "- Draft: \`$IS_DRAFT\`"
             echo "- Tier: \`$TIER\`"
             echo "- Reason: $REASON"
-            echo "- Comparison: \`$COMPARISON_MODE\`"
-            echo "- Incremental baseline: \`${INCREMENTAL_BASELINE:-none}\`"
-            echo "- Baseline proof: ${BASELINE_REASON:-not requested}"
+            echo "- Comparison: \`$COMPARISON_MODE\` from \`$COMPARISON_BASE\`"
             echo "- Areas: \`$AREAS\`"
             echo "- Suites: \`$SUITES\`"
+            echo "- Unknown paths: \`$UNKNOWN_PATHS\`"
+            echo "- Proven candidate: \`$PROVENANCE_CANDIDATE\`"
+            echo "- Ready proof run: \`$PROVENANCE_READY_RUN\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   quality_docs:
@@ -89,18 +125,16 @@ jobs:
     if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier == 'docs' }}
     runs-on: ubuntu-latest
     env:
-      BASE_SHA: ${{ needs.classify.outputs.incremental_baseline || github.event.pull_request.base.sha }}
+      BASE_SHA: ${{ needs.classify.outputs.comparison_base }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: Validate diff whitespace
         run: git diff --check "$BASE_SHA" "$HEAD_SHA"
-
       - name: Validate docs-only scope
         shell: bash
         run: |
@@ -112,7 +146,6 @@ jobs:
               exit 1
             fi
           done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-
       - name: Validate Markdown relative links
         shell: bash
         run: |
@@ -148,6 +181,93 @@ jobs:
           console.log(`Validated relative links in ${files.length} Markdown file(s).`);
           NODE
 
+  quality_ci_selftest:
+    name: CI policy self-test
+    needs: classify
+    if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier == 'ci-selftest' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        name: Set up pnpm
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Parse workflow YAML
+        run: node -e "require('js-yaml').load(require('node:fs').readFileSync('.github/workflows/ci.yml', 'utf8'))"
+      - name: Run CI policy contracts
+        run: pnpm exec vitest run tests/contract/ci-routing.test.ts tests/contract/verification-manifest.test.ts tests/contract/ci-provenance.test.ts
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Validate diff whitespace
+        env:
+          BASE_SHA: ${{ needs.classify.outputs.comparison_base }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git diff --check "$BASE_SHA" "$HEAD_SHA"
+
+  quality_focused:
+    name: Focused core quality
+    needs: classify
+    if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier == 'focused' }}
+    runs-on: windows-latest
+    env:
+      RISK_SUITES: ${{ needs.classify.outputs.suites }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        name: Set up pnpm
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Parse workflow YAML
+        run: node -e "require('js-yaml').load(require('node:fs').readFileSync('.github/workflows/ci.yml', 'utf8'))"
+      - name: Run CI policy contracts
+        run: pnpm exec vitest run tests/contract/ci-routing.test.ts tests/contract/verification-manifest.test.ts tests/contract/ci-provenance.test.ts
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Unit tests
+        run: pnpm test:unit
+      - name: Integration tests
+        run: pnpm test:integration
+      - name: Build
+        run: pnpm build
+      - name: Prepare Electron runtime for selected suites
+        if: ${{ needs.classify.outputs.suites != '' }}
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            $env:force_no_cache = 'true'
+            pnpm exec electron --version
+          }
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            throw 'Electron runtime binary was not installed.'
+          }
+          pnpm exec electron --version
+      - name: Run manifest-selected subsystem regression suites
+        if: ${{ needs.classify.outputs.suites != '' }}
+        shell: pwsh
+        run: |
+          foreach ($suite in $env:RISK_SUITES.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
+            & pnpm "verify:$suite"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
   quality_targeted:
     name: Targeted quality and regression
     needs: classify
@@ -163,12 +283,10 @@ jobs:
           RISK_AREAS: ${{ needs.classify.outputs.areas }}
           RISK_SUITES: ${{ needs.classify.outputs.suites }}
           COMPARISON_MODE: ${{ needs.classify.outputs.comparison_mode }}
-          INCREMENTAL_BASELINE: ${{ needs.classify.outputs.incremental_baseline }}
         run: |
           "## Targeted CI path" >> $env:GITHUB_STEP_SUMMARY
           "- Reason: $env:RISK_REASON" >> $env:GITHUB_STEP_SUMMARY
           "- Comparison: ``$env:COMPARISON_MODE``" >> $env:GITHUB_STEP_SUMMARY
-          "- Incremental baseline: ``$env:INCREMENTAL_BASELINE``" >> $env:GITHUB_STEP_SUMMARY
           "- Areas: ``$env:RISK_AREAS``" >> $env:GITHUB_STEP_SUMMARY
           "- Suites: ``$env:RISK_SUITES``" >> $env:GITHUB_STEP_SUMMARY
       - uses: pnpm/action-setup@v4
@@ -210,6 +328,22 @@ jobs:
             & pnpm "verify:$suite"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+
+  quality_unknown:
+    name: Unknown route guard
+    needs: classify
+    if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier == 'unknown' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail with ownership guidance
+        shell: bash
+        env:
+          REASON: ${{ needs.classify.outputs.reason }}
+          UNKNOWN_PATHS: ${{ needs.classify.outputs.unknown_paths }}
+        run: |
+          echo "::error::$REASON"
+          echo "Unknown paths: $UNKNOWN_PATHS"
+          exit 1
 
   quality_full:
     name: Full quality and regression
@@ -268,27 +402,77 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+  ready_proof:
+    name: Ready candidate proof
+    needs:
+      - classify
+      - quality_full
+    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.draft == false && needs.classify.outputs.tier == 'full' && needs.quality_full.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Record exact Ready Full proof
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        run: node scripts/ci-provenance.cjs record-ready
+
+  quality_provenance:
+    name: Post-merge provenance
+    needs: classify
+    if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier == 'provenance' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Re-verify exact merged content
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          REQUIRE_PROVEN: 'true'
+        run: node scripts/ci-provenance.cjs verify-main
+
   quality:
     name: Final CI result
     if: ${{ always() }}
     needs:
       - classify
       - quality_docs
+      - quality_ci_selftest
+      - quality_focused
       - quality_targeted
+      - quality_unknown
       - quality_full
+      - ready_proof
+      - quality_provenance
     runs-on: ubuntu-latest
     steps:
       - name: Publish stable final result
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
           CLASSIFIER_RESULT: ${{ needs.classify.result }}
           TIER: ${{ needs.classify.outputs.tier }}
           REASON: ${{ needs.classify.outputs.reason }}
-          AREAS: ${{ needs.classify.outputs.areas }}
-          SUITES: ${{ needs.classify.outputs.suites }}
           DOCS_RESULT: ${{ needs.quality_docs.result }}
+          CI_SELFTEST_RESULT: ${{ needs.quality_ci_selftest.result }}
+          FOCUSED_RESULT: ${{ needs.quality_focused.result }}
           TARGETED_RESULT: ${{ needs.quality_targeted.result }}
+          UNKNOWN_RESULT: ${{ needs.quality_unknown.result }}
           FULL_RESULT: ${{ needs.quality_full.result }}
+          READY_PROOF_RESULT: ${{ needs.ready_proof.result }}
+          PROVENANCE_RESULT: ${{ needs.quality_provenance.result }}
         run: |
           set -euo pipefail
           {
@@ -296,18 +480,29 @@ jobs:
             echo ''
             echo "- Tier: \`$TIER\`"
             echo "- Reason: $REASON"
-            echo "- Areas: \`$AREAS\`"
-            echo "- Suites: \`$SUITES\`"
             echo "- Classifier: \`$CLASSIFIER_RESULT\`"
-            echo "- Docs-only: \`$DOCS_RESULT\`"
+            echo "- Docs: \`$DOCS_RESULT\`"
+            echo "- CI self-test: \`$CI_SELFTEST_RESULT\`"
+            echo "- Focused: \`$FOCUSED_RESULT\`"
             echo "- Targeted: \`$TARGETED_RESULT\`"
+            echo "- Unknown guard: \`$UNKNOWN_RESULT\`"
             echo "- Full: \`$FULL_RESULT\`"
+            echo "- Ready proof: \`$READY_PROOF_RESULT\`"
+            echo "- Provenance: \`$PROVENANCE_RESULT\`"
           } >> "$GITHUB_STEP_SUMMARY"
           [[ "$CLASSIFIER_RESULT" == success ]]
           case "$TIER" in
-            docs) [[ "$DOCS_RESULT" == success && "$TARGETED_RESULT" == skipped && "$FULL_RESULT" == skipped ]] ;;
-            targeted) [[ "$DOCS_RESULT" == skipped && "$TARGETED_RESULT" == success && "$FULL_RESULT" == skipped ]] ;;
-            full) [[ "$DOCS_RESULT" == skipped && "$TARGETED_RESULT" == skipped && "$FULL_RESULT" == success ]] ;;
-            *) echo "Unknown tier: $TIER" >&2; exit 1 ;;
+            docs) [[ "$DOCS_RESULT" == success ]] ;;
+            ci-selftest) [[ "$CI_SELFTEST_RESULT" == success ]] ;;
+            focused) [[ "$FOCUSED_RESULT" == success ]] ;;
+            targeted) [[ "$TARGETED_RESULT" == success ]] ;;
+            unknown) false ;;
+            full)
+              [[ "$FULL_RESULT" == success ]]
+              if [[ "$EVENT_NAME" == pull_request && "$IS_DRAFT" == false ]]; then
+                [[ "$READY_PROOF_RESULT" == success ]]
+              fi
+              ;;
+            provenance) [[ "$PROVENANCE_RESULT" == success ]] ;;
+            *) false ;;
           esac
-          echo 'Stable final CI result: success.'
