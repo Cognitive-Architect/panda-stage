@@ -7,7 +7,8 @@
   "checks": [
     "Source contract declares 已保存 / 有未保存更改 / 保存中 / 保存失败",
     "Compact bar is <=56px, name/save state stay visible, and old editor input is gone",
-    "Editor body gains 195.40px at the same 1280x720 window size",
+    "Compact project chrome reclaims 195.40px at the same 1280x720 window size",
+    "Editor body net gain is 79.40px after the separately owned BottomWorkspace allocation",
     "Dirty project shows 有未保存更改 and enables 保存",
     "Save action returns the compact bar to 已保存 and disables 保存",
     "更多 menu exposes Project Center / folder / close actions without covering bar controls",
@@ -75,10 +76,10 @@
         "x": 12,
         "y": 78,
         "width": 1256,
-        "height": 568,
+        "height": 452,
         "top": 78,
         "right": 1268,
-        "bottom": 646
+        "bottom": 530
       },
       "editorLayout": {
         "x": 0,
@@ -88,6 +89,15 @@
         "top": 0,
         "right": 1280,
         "bottom": 720
+      },
+      "bottomWorkspace": {
+        "x": 12,
+        "y": 540,
+        "width": 1256,
+        "height": 168,
+        "top": 540,
+        "right": 1268,
+        "bottom": 708
       },
       "controls": {
         "x": 883.21875,
@@ -109,7 +119,8 @@
       },
       "menu": null,
       "menuItems": [],
-      "verticalGainComparedWithOld": 195.39581298828125
+      "verticalGainComparedWithOld": 195.39584350585938,
+      "editorBodyNetGainComparedWithOld": 79.39581298828125
     },
     "dirty": {
       "viewport": {
@@ -153,10 +164,10 @@
         "x": 12,
         "y": 78,
         "width": 1256,
-        "height": 568,
+        "height": 452,
         "top": 78,
         "right": 1268,
-        "bottom": 646
+        "bottom": 530
       },
       "editorLayout": {
         "x": 0,
@@ -166,6 +177,15 @@
         "top": 0,
         "right": 1280,
         "bottom": 720
+      },
+      "bottomWorkspace": {
+        "x": 12,
+        "y": 540,
+        "width": 1256,
+        "height": 168,
+        "top": 540,
+        "right": 1268,
+        "bottom": 708
       },
       "controls": {
         "x": 850.21875,
@@ -230,10 +250,10 @@
         "x": 12,
         "y": 78,
         "width": 1256,
-        "height": 568,
+        "height": 452,
         "top": 78,
         "right": 1268,
-        "bottom": 646
+        "bottom": 530
       },
       "editorLayout": {
         "x": 0,
@@ -243,6 +263,15 @@
         "top": 0,
         "right": 1280,
         "bottom": 720
+      },
+      "bottomWorkspace": {
+        "x": 12,
+        "y": 540,
+        "width": 1256,
+        "height": 168,
+        "top": 540,
+        "right": 1268,
+        "bottom": 708
       },
       "controls": {
         "x": 979.21875,
@@ -307,10 +336,10 @@
         "x": 12,
         "y": 78,
         "width": 1256,
-        "height": 568,
+        "height": 452,
         "top": 78,
         "right": 1268,
-        "bottom": 646
+        "bottom": 530
       },
       "editorLayout": {
         "x": 0,
@@ -320,6 +349,15 @@
         "top": 0,
         "right": 1280,
         "bottom": 720
+      },
+      "bottomWorkspace": {
+        "x": 12,
+        "y": 540,
+        "width": 1256,
+        "height": 168,
+        "top": 540,
+        "right": 1268,
+        "bottom": 708
       },
       "controls": {
         "x": 979.21875,
@@ -387,7 +425,7 @@
     "acceptanceRoot": "D:\\PandaStage-Acceptance\\project-center-v1",
     "projectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
     "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task2",
-    "repositoryEvidenceRoot": "D:\\panda-stage\\.worktrees\\m3-stage3a-integration\\docs\\evidence\\issue-102\\task2"
+    "repositoryEvidenceRoot": "D:\\panda-issue228-verifier\\docs\\evidence\\issue-102\\task2"
   },
   "error": null,
   "window": {
