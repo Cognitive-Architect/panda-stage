@@ -7,8 +7,30 @@ import { shotStore } from '../../stores/shotStore';
 import {
   clampTime,
   integerFrameSpanMs,
-  snapToFrame,
 } from '../timeline/timeGeometry';
+
+export function normalizeManualDialogueTiming(
+  startValue: string,
+  endValue: string,
+  durationMs: number,
+): { startMs: number; endMs: number } {
+  const rawStart = Number(startValue);
+  const rawEnd = Number(endValue);
+  if (
+    startValue.trim() === '' ||
+    endValue.trim() === '' ||
+    !Number.isFinite(rawStart) ||
+    !Number.isFinite(rawEnd) ||
+    !Number.isInteger(rawStart) ||
+    !Number.isInteger(rawEnd)
+  ) {
+    throw new Error('开始和结束时间必须是整数毫秒。');
+  }
+  return {
+    startMs: clampTime(rawStart, durationMs),
+    endMs: clampTime(rawEnd, durationMs),
+  };
+}
 
 /**
  * The existing single RightInspector owner, extended only with Day28 timing.
@@ -101,24 +123,29 @@ export function DialogueInspector({
   };
 
   const commitTiming = (): void => {
-    const rawStart = Number(startMs);
-    const rawEnd = Number(endMs);
-    if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) {
-      setError('开始和结束时间必须是整数毫秒。');
+    let timing: { startMs: number; endMs: number };
+    try {
+      timing = normalizeManualDialogueTiming(
+        startMs,
+        endMs,
+        shot.durationMs,
+      );
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : '开始和结束时间必须是整数毫秒。',
+      );
       return;
     }
-    const nextStart = clampTime(
-      snapToFrame(Math.round(rawStart)),
-      shot.durationMs,
-    );
-    const nextEnd = clampTime(
-      snapToFrame(Math.round(rawEnd)),
-      shot.durationMs,
-    );
     report(() => {
-      dialogueStore.setTiming(dialogue.id, nextStart, nextEnd);
-      setStartMs(String(nextStart));
-      setEndMs(String(nextEnd));
+      dialogueStore.setTiming(
+        dialogue.id,
+        timing.startMs,
+        timing.endMs,
+      );
+      setStartMs(String(timing.startMs));
+      setEndMs(String(timing.endMs));
     }, '对白时间段无效。');
   };
 

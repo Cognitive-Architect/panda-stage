@@ -46,6 +46,37 @@ function setup(
   return { editor, store, dialogueSelection, timelineState };
 }
 
+function setupManualAdjacency(): Fixture & { dialogueId: string } {
+  const service = new DialogueService();
+  let project = service.create(buildProject(), {
+    shotId: IDS.shot,
+    characterId: IDS.character,
+    text: 'A',
+    pointTimeMs: 167,
+  });
+  const firstId = project.shots[0]!.dialogues[0]!.id;
+  project = service.setTiming(project, {
+    shotId: IDS.shot,
+    dialogueId: firstId,
+    startMs: 167,
+    endMs: 459,
+  });
+  project = service.create(project, {
+    shotId: IDS.shot,
+    characterId: IDS.character,
+    text: 'B',
+    pointTimeMs: 1000,
+  });
+  const dialogueId = project.shots[0]!.dialogues[1]!.id;
+  project = service.setTiming(project, {
+    shotId: IDS.shot,
+    dialogueId,
+    startMs: 1000,
+    endMs: 1042,
+  });
+  return { ...setup(0, project), dialogueId };
+}
+
 describe('DialogueStore', () => {
   it('creates a dialogue at the captured playhead time and selects it', () => {
     const { editor, store, dialogueSelection } = setup(800);
@@ -235,6 +266,41 @@ describe('DialogueStore', () => {
       undoCount: 1,
       redoCount: 0,
     });
+  });
+
+  it('commits exact manual 459ms adjacency once without frame snapping', () => {
+    const { editor, store, dialogueId } = setupManualAdjacency();
+
+    store.setTiming(dialogueId, 459, 833);
+
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues).toMatchObject([
+      { startMs: 167, endMs: 459 },
+      { startMs: 459, endMs: 833 },
+    ]);
+    expect(editor.getSnapshot()).toMatchObject({ dirty: true, revision: 1 });
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+      nextUndoLabel: 'Set dialogue timing',
+    });
+  });
+
+  it('rejects manual 458ms overlap without Project or History pollution', () => {
+    const { editor, store, dialogueId } = setupManualAdjacency();
+    const before = editor.getSnapshot()!;
+    const historyBefore = editor.history.getSnapshot();
+
+    expect(() => store.setTiming(dialogueId, 458, 833)).toThrow(
+      /167–459ms/u,
+    );
+
+    expect(editor.getSnapshot()).toBe(before);
+    expect(editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[1]).toMatchObject({
+      startMs: 1000,
+      endMs: 1042,
+    });
+    expect(editor.history.getSnapshot()).toEqual(historyBefore);
   });
 
   it('selection and inspection of saved Untimed Dialogue stay read-only', () => {
