@@ -87,6 +87,7 @@ describe('RH-07 FAST Draft policy', () => {
     'src/preload/index.ts',
     'src/renderer/stores/editorProjectStore.ts',
     'build/installer.yml',
+    'tests/contract/fixtures/ci-routing/core/focused-probe.ts',
   ])('routes Draft core/release path %s to focused checks, never Full', (file) => {
     const result = draft([change(file)]);
     expect(result.tier).toBe('focused');

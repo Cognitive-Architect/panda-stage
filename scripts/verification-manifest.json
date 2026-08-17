@@ -88,7 +88,8 @@
         "testPatterns": [
           "tests/unit/domain/**",
           "tests/unit/migrations/**",
-          "tests/integration/schema-*.test.ts"
+          "tests/integration/schema-*.test.ts",
+          "tests/contract/fixtures/ci-routing/core/**"
         ],
         "verifierPatterns": [],
         "suites": [],

@@ -118,3 +118,9 @@ verifier ownership, and every current first-party renderer feature directory.
 - Draft CI-mechanics HEAD `b3908cb432aa5ddc2fd14344fa54dd58ea4bf4b3`
   used `CI policy self-test` in run `32005965628`: classifier 5 seconds,
   self-test 39 seconds, Full skipped, stable Final passed.
+- Draft CI follow-up HEAD `5224d7e63197732e7e2493466b3e11a3d4db79eb`
+  used `CI policy self-test` in run `32006267433`: classifier 10 seconds,
+  self-test 26 seconds, Full skipped, stable Final passed.
+- `main` branch protection is strict and requires both `Final CI result` and
+  `Ready Full proof`. Draft PR #231 remains merge-blocked even with a green
+  fast-path Final because the exact-candidate Ready proof is absent.
