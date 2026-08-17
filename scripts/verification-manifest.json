@@ -90,6 +90,7 @@
           "tests/unit/domain/**",
           "tests/unit/migrations/**",
           "tests/unit/ipc-contracts.test.ts",
+          "tests/unit/production-resources.test.ts",
           "tests/integration/schema-*.test.ts",
           "tests/integration/dialogue-audio-preview.test.ts",
           "tests/contract/fixtures/ci-routing/core/**"
