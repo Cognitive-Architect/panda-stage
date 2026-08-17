@@ -7,9 +7,11 @@
 - Day29 implementation/routing HEAD: `ab150aabaeb6fbb4e2c09be0d79ae57d0a352644`
 - Issue #234 blocker fix HEAD: `523d068f13e879bb794eb21b689ea55dd5594bc0`
 - Issue #235 blocker fix HEAD: `6a1462a3d0e3840ed6f834b54229502a429fff17`
+- Issue #236 blocker fix HEAD: `fa365e3ca104a967eaf6e305bef2e2c9110c5b87`
+- Issue #236 CI route repair: `497e881630c88be3a0e75d414ffc201de632f513`
 - Delivery PR: [#233](https://github.com/Cognitive-Architect/panda-stage/pull/233)
 - Delivery branch: `agent/day29-audio-mouth-preview`
-- Current delivery HEAD: `6a1462a3d0e3840ed6f834b54229502a429fff17`
+- Current delivery HEAD: `fa365e3ca104a967eaf6e305bef2e2c9110c5b87`
 - Day28 prerequisite: `PASS + merged` (`#222`, `8024a701a97b1ddacf18758eb55ac06a6e2b98c9` is an ancestor)
 - RH-07 CI policy: `active`
 
@@ -78,6 +80,17 @@ M  tests/unit/dialogue-inspector-timing.test.ts
 M  tests/unit/ipc-contracts.test.ts
 A  tests/unit/product-preview-audio.test.ts
 A  tests/unit/product-preview-mouth.test.ts
+```
+
+Issue #236 增量文件（相对 Issue #235 delivery HEAD）：
+
+```text
+M  docs/ffmpeg.md
+M  scripts/verification-manifest.json
+M  src/main/services/FFmpegAdapter.ts
+M  src/main/services/production-resources.ts
+M  tests/unit/ffmpeg-adapter.test.ts
+M  tests/unit/production-resources.test.ts
 ```
 
 No schema bump was made; `schemaVersion` remains v6. No Project, playback,
@@ -159,6 +172,17 @@ resume/stop/shot/project transitions.
 - Regression evidence: `tests/unit/asset-audio-metadata-ui.test.ts` (4 tests), `tests/unit/asset-metadata-queue.test.ts` (2 tests), existing real-probe integration (including 2+ sequential audio assets), revision-safety integration, duration guard, short-source atomic rejection, and Dialogue binding tests.
 - Scope guard: reused the existing metadata/probe owner; no second parser, IPC channel, schema bump, fake duration, DevTools/JSON path, playback rewrite, or second PR was added.
 
+## Issue #236 blocker correction
+
+- Original maintainer evidence recorded in Issue #236: `where.exe ffprobe` from the repository root found no system command, while `node_modules/@ffprobe-installer/win32-x64/ffprobe.exe` existed and directly returned `ffprobe version 2023-02-13-git-2296078397`.
+- Root cause: Windows development fallback in `resolveMediaToolPaths()` returned bare `ffmpeg.exe` / `ffprobe.exe`, so the existing repo-installed binaries were ignored when system PATH did not contain them.
+- Production fix: `fd7831e9ab73d0ca04f34a1c0b64b23a85b632aa` resolves the two Windows package directories through Node package resolution and uses their bundled executables; explicit `PANDA_STAGE_FFMPEG_PATH` / `PANDA_STAGE_FFPROBE_PATH` overrides remain first; packaged `resources/media` resolution is unchanged.
+- Resource safety: development binaries are checked before Main initialization. Missing package/files produce an actionable install-or-override error without exposing arbitrary absolute paths. `FFmpegAdapter` retains `EXECUTABLE_NOT_FOUND` for missing tools, reports other spawn failures as `PROCESS_FAILED`, and keeps those distinct from `AUDIO_INPUT_INVALID` / `PROBE_FAILED` media errors (`fa365e3ca104a967eaf6e305bef2e2c9110c5b87`).
+- Location/PATH guard: resolution contains no hardcoded checkout path and does not require a global FFmpeg installation or a PATH change. The compiled Main runtime resolved both real Windows binaries under the current repository's installed package store and each returned its version line.
+- Automation: `tests/unit/production-resources.test.ts` focused path coverage `PASS` (7 tests); production-resource + FFmpeg adapter focused coverage `PASS` (2 files / 26 tests); full unit `PASS` (121 files / 884 tests); integration `PASS` (27 files / 148 tests); typecheck, lint, build, and `git diff --check` `PASS`. CI routing/manifest contracts remained `PASS` (2 files / 56 tests).
+- Windows reacceptance: `PENDING` — the maintainer must restart the updated Electron app, use the same Day29 project and existing MP3 files, click Retry analysis, confirm error → analyzing → ready with real duration for all three assets, confirm the 0–1000ms Inspector option, and bind through the normal UI. No automated result is recorded as human acceptance.
+- Scope guard: no global PATH workaround, hardcoded `D:\panda-stage-main`, schema bump, second probe/parser, or second PR was added. Existing PR #233 remains the delivery vehicle.
+
 ## Issue #234 blocker correction
 
 - Root cause: the Day29 projection built a mouth-asset map for every project character and applied it to every matching character layer, so a non-speaking character could also open its mouth.
@@ -232,10 +256,13 @@ acceptance evidence for the new audio path.
 - Receipt commit run #445, run ID `32015871939`: `PASS`; docs-only fast path validated whitespace, docs-only scope, and Markdown relative links. Production quality and Ready/Post-merge jobs were correctly skipped.
 - Issue #234 fix run #447, run ID `32018851632`: `PASS`; Draft `Targeted quality and regression` route, approximately 6m11s, with typecheck/lint/unit/integration/build and manifest-selected subsystem regression all successful. Full/Focused/Docs-only/Ready/Post-merge were skipped by RH-07.
 - Issue #235 fix run #449, run ID `32031365295`: `PASS`; Draft `Targeted quality and regression` route, 6m45s (`2026-08-17T12:44:30Z` → `2026-08-17T12:51:15Z`). Classifier, typecheck, lint, unit, integration, build, and manifest-selected assets/character/editor/timeline regressions all passed. `Full quality and regression` was explicitly skipped, as were Focused/Docs-only/Ready/Post-merge.
+- Issue #236 first source run #451, run ID `32037138475`: `FAIL` at `Unknown route guard`; the classifier identified only `tests/unit/production-resources.test.ts` as an unregistered production test route. No quality result was inferred from this routing failure; Full was skipped.
+- Issue #236 route repair run #452, run ID `32037240307`: `PASS`; `ci-selftest` route validated the manifest addition, policy contracts, typecheck, lint, and whitespace. Focused/Targeted/Full/Ready/Post-merge were skipped because this Draft delta was the manifest-only route repair.
+- Issue #236 focused run #453, run ID `32037461407`: `PASS`; Draft `Focused core quality` route, 2m52s (`2026-08-17T14:00:03Z` → `2026-08-17T14:02:55Z`). Classifier, typecheck, lint, unit, integration, and build all passed; manifest-selected subsystem regression was not required for this focused route. `Full quality and regression` was explicitly skipped, as were Targeted/Docs-only/CI-selftest/Ready/Post-merge.
 - Ready final candidate SHA: `SKIPPED` — PR remains Draft
 - Ready Full run: `SKIPPED` — PR remains Draft
 - Ready Full proof: `SKIPPED` — no Ready/Full candidate exists
-- Final CI result: `PASS` for Draft Targeted run #449; Full remains skipped
+- Final CI result: `PASS` for Draft Focused run #453; Full remains skipped
 - Post-merge provenance: `SKIPPED` — PR is not merged
 - Post-merge Full: `SKIPPED` — PR is not merged; no post-merge provenance exists
 
@@ -257,6 +284,7 @@ closure action was taken.
 - switch shot: `PENDING`
 - switch project: `PENDING`
 - close preview cleanup: `PENDING`
+- Issue #236 Retry analysis → real duration → 3 assets ready → normal bind: `PENDING`
 - DevTools/JSON direct mutation used as acceptance evidence: `NO`
 
 ## Key decisions
@@ -271,6 +299,7 @@ closure action was taken.
 - `DECISION-B29-ACTIVE-DIALOGUE`: shared subtitle winner from `evaluateSubtitleAtTime` determines the active audio/mouth projection
 - `DECISION-B29-MOUTH`: pure transient evaluated-shot projection using only the active Dialogue's `characterId` and that character's `mouthOpenAssetId`
 - `DECISION-B29-METADATA`: imported audio metadata uses the existing Main probe through a renderer-owned sequential queue; pending/error state is UI-derived or persisted by the existing metadata result, with no schema bump
+- `DECISION-B29-MEDIA-TOOLS`: Windows development resolves the repository-installed FFmpeg/FFprobe packages after explicit overrides; system PATH is not the supported fallback
 - `DECISION-B29-CLEANUP`: generation + identity checks, bounded Blob cache, deterministic pause/clear/revoke/dispose cleanup
 
 ## Debt
@@ -291,4 +320,4 @@ closure action was taken.
 
 ## 下一步唯一动作
 
-Maintainer 在 Draft PR #233 上执行真实 Windows Electron 的 Day29 Gate A–F（3 条 Dialogue + 3 个真实音频，含 Save→Close→Reopen、Pause→Seek→Resume、Stop、Replay 5x、切 shot/project 与降级路径）并回填结果；在此之前不进入 Day30、不 Ready、不 merge、不关闭 Issue #232。
+Maintainer 在 Draft PR #233 上先执行 Issue #236 的真实 Windows Electron Retry analysis → ready → normal bind 验收，再执行 Day29 Gate A–F（3 条 Dialogue + 3 个真实音频，含 Save→Close→Reopen、Pause→Seek→Resume、Stop、Replay 5x、切 shot/project 与降级路径）并回填结果；在此之前不进入 Day30、不 Ready、不 merge、不关闭 Issue #232。
