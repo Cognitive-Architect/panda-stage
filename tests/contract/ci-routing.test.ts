@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +10,7 @@ const root = resolve(here, '..', '..');
 const { classifyChanges, loadManifest, matchesAny, validateRoutingManifest } = require('../../scripts/ci-routing.cjs');
 const { findFullGreenBaseline } = require('../../scripts/find-full-green-baseline.cjs');
 const manifest = loadManifest();
+const workflow = readFileSync(resolve(root, '.github', 'workflows', 'ci.yml'), 'utf8');
 const change = (file: string, status = 'M') => ({ status, statusToken: status, paths: [file] });
 const draft = (changes: ReturnType<typeof change>[], comparisonMode = 'base') =>
   classifyChanges({ manifest, changes, eventName: 'pull_request', isDraft: true, comparisonMode });
@@ -82,6 +83,15 @@ describe('RH-05 manifest-backed CI routing', () => {
 
   it('keeps a Full-risk incremental delta on Full', () => {
     expect(draft([change('src/domain/services/DialogueService.ts')], 'incremental').tier).toBe('full');
+  });
+
+  it('uses the proven incremental baseline consistently in the docs job', () => {
+    const docsJob = workflow.split('  quality_docs:')[1]?.split('  quality_targeted:')[0] ?? '';
+    expect(docsJob).toContain(
+      'BASE_SHA: ${{ needs.classify.outputs.incremental_baseline || github.event.pull_request.base.sha }}',
+    );
+    expect(docsJob.match(/BASE_SHA:/gu)).toHaveLength(1);
+    expect(docsJob.match(/HEAD_SHA:/gu)).toHaveLength(1);
   });
 
   it('routes owned Day28 test-only changes and fails unowned tests safe to Full', () => {

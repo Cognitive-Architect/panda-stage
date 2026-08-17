@@ -88,6 +88,9 @@ jobs:
     needs: classify
     if: ${{ needs.classify.result == 'success' && needs.classify.outputs.tier == 'docs' }}
     runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ needs.classify.outputs.incremental_baseline || github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,16 +99,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Validate diff whitespace
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: git diff --check "$BASE_SHA" "$HEAD_SHA"
 
       - name: Validate docs-only scope
         shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           while IFS= read -r path; do
@@ -118,9 +115,6 @@ jobs:
 
       - name: Validate Markdown relative links
         shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           node <<'NODE'
