@@ -1,0 +1,255 @@
+# Panda Stage Day 29 / B29-CLUSTER 收卷
+
+## Identity
+
+- Day29 canonical task: `new agent task/DAY-29-AGENT-TASK.md`
+- Day29 开工 main: `66ce42ab47c4829515385adca4af58b65aef7134`
+- Day29 implementation/routing HEAD: `ab150aabaeb6fbb4e2c09be0d79ae57d0a352644`
+- Delivery PR: [#233](https://github.com/Cognitive-Architect/panda-stage/pull/233)
+- Delivery branch: `agent/day29-audio-mouth-preview`
+- Day28 prerequisite: `PASS + merged` (`#222`, `8024a701a97b1ddacf18758eb55ac06a6e2b98c9` is an ancestor)
+- RH-07 CI policy: `active`
+
+## Status
+
+- B29-01 preflight: `PASS`
+- B29-02 binding: `PASS`
+- B29-03 audio IPC: `PASS`
+- B29-04 mouth projection: `PASS`
+- B29-05 audio transport: `PASS`
+- B29-06 integration: `PASS`
+- automated/structural: `PASS`
+- maintainer Windows Electron: `PENDING`
+- overall: `PENDING`
+
+`PENDING` is intentional: automated tests and the Draft CI self-test do not
+replace the required real Windows Electron audio/speaker acceptance.
+
+## Preflight owner map
+
+- Dialogue mutation owner: `src/domain/services/DialogueService.ts:100`, `DialogueService`; `bindAudio` at `:199`, timing replacement at `:342`
+- Dialogue renderer store: `src/renderer/stores/dialogueStore.ts:34`, `DialogueStore`; `bindAudio` at `:113`
+- Dialogue inspector: `src/renderer/features/dialogue/DialogueInspector.tsx:40`; audio selection at `:288`
+- Audio model/reference validator: existing `src/domain/validators/projectReferences.ts`; no new persisted field or timing-equality rule was added
+- Asset import owner: existing Main asset import service and Asset Library flow; Day29 does not add a second importer
+- Audio read IPC owner: `src/main/services/AssetPreviewAudioService.ts`; registered by `src/main/ipc/register-asset-library-ipc-handlers.ts`, exposed through `src/preload/index.ts` and `src/shared/asset-preview-audio-api.ts`
+- Preview clock owner: `src/renderer/shell/ProductPreviewOverlay.tsx:129`; `timeMs` remains the master clock
+- Mouth projection owner: `src/renderer/shell/productPreviewModel.ts:110`, `projectProductPreviewMouth`
+- Stage renderer owner: existing `src/renderer/stage/StageRenderer.tsx` / `CanvasStage.tsx`; receives the transient evaluated projection
+- CI route owner: `scripts/verification-manifest.json` and `scripts/ci-routing.cjs`
+
+## Changed files
+
+`git diff --name-status origin/main...HEAD` at the implementation/routing HEAD:
+
+```text
+M  scripts/verification-manifest.json
+M  src/domain/services/DialogueService.ts
+M  src/main/index.ts
+M  src/main/ipc/register-asset-library-ipc-handlers.ts
+A  src/main/services/AssetPreviewAudioService.ts
+M  src/preload/index.ts
+M  src/renderer/features/dialogue/DialogueInspector.tsx
+M  src/renderer/global.d.ts
+M  src/renderer/shell/ProductPreviewOverlay.tsx
+A  src/renderer/shell/productPreviewAudio.ts
+M  src/renderer/shell/productPreviewModel.ts
+M  src/renderer/stores/dialogueStore.ts
+A  src/shared/asset-preview-audio-api.ts
+M  src/shared/ipc/channels.ts
+A  tests/integration/dialogue-audio-preview.test.ts
+M  tests/unit/asset-library-ipc-handlers.test.ts
+A  tests/unit/asset-preview-audio-service.test.ts
+A  tests/unit/dialogue-audio-binding.test.ts
+M  tests/unit/dialogue-inspector-timing.test.ts
+M  tests/unit/ipc-contracts.test.ts
+A  tests/unit/product-preview-audio.test.ts
+A  tests/unit/product-preview-mouth.test.ts
+```
+
+No schema bump was made; `schemaVersion` remains v6. No Project, playback,
+mouth, or audio-byte transient state is persisted.
+
+## Binding contract evidence
+
+- Untimed reject: `PASS` — binding test and Inspector disable path
+- New bind: `PASS` — timed Dialogue creates/reuses the correct AudioClip reference
+- Rebind no leak: `PASS` — repeated/rebound binding does not grow duplicate clips
+- Shared legacy clip COW: `PASS` — timing changes do not mutate another Dialogue's shared clip
+- Source-too-short atomic reject: `PASS` — Project snapshot remains unchanged
+- Timing sync set/arrange/move/resize: `PASS` — common `replaceDialogueTiming` path keeps the bound clip range aligned
+- No-op timing: `PASS` — same timing returns the original Project without a new revision
+- History one-command: `PASS` — store update uses one `updateProject` command
+- Save/reopen: `PASS` — integration test preserves the v6 Dialogue/AudioClip relation
+
+Evidence: `tests/unit/dialogue-audio-binding.test.ts` (6 tests), existing
+Dialogue service/store regressions, and
+`tests/integration/dialogue-audio-preview.test.ts`.
+
+## Audio IPC security evidence
+
+- Tracked project: `PASS`
+- Audio kind: `PASS`
+- Hash identity: `PASS`
+- Traversal: `PASS` — lexical assets-root containment
+- Symlink escape: `PASS` — realpath containment guard and negative test path
+- Size guard: `PASS` — 64 MiB maximum per read
+- MIME/inspection: `PASS` — only `audio/mpeg` and `audio/wav`, plus media signature inspection
+- Actual SHA: `PASS` — bytes are rehashed before returning
+- Trusted sender: `PASS` — Main handler keeps the existing trusted-sender check
+- Concurrent dedupe/cleanup: `PASS` — in-flight reads are deduplicated and cleaned in `finally`
+
+The renderer receives bytes only through the allowlisted preload API. It does
+not use `fs`, `path`, `file://`, absolute source paths, or child processes.
+Unexpected Main failures return an opaque safe error; paths and raw stacks are
+not exposed.
+
+## Preview transport evidence
+
+- Single clock: `PASS` — Preview `timeMs` is authoritative; audio is subordinate
+- Play inside clip: `PASS`
+- Pause: `PASS`
+- Seek paused: `PASS`
+- Seek playing: `PASS`
+- Clip transition: `PASS`
+- Stop: `PASS`
+- Shot end: `PASS`
+- Stale async: `PASS` — generation/project/asset identity prevents old reads from restarting playback
+- 5x replay resource counts: `PASS` — transport test observed one reusable media element, one audio read, one Blob URL creation, and one revoke after cleanup
+- Object URL create/revoke: `PASS` — cache is keyed by project/asset/hash and URLs are revoked on invalidation/dispose
+- Project dirty/revision/History: `PASS` — playback, seek, mouth projection, and cleanup do not call Project mutation
+
+The implementation uses one reusable `HTMLAudioElement`, no `AudioContext`, no
+`setTimeout` playback substitute, and explicit seek revisions for pause/seek/
+resume/stop/shot/project transitions.
+
+## Mouth evidence
+
+- Before/start/inside/end half-open: `PASS`
+- No audio: `PASS` — normal evaluated image is retained
+- No mouth asset: `PASS` — safe fallback without crash
+- Speaking layer asset override: `PASS`
+- Non-speaking layer unchanged: `PASS`
+- Legacy overlap winner matches subtitle: `PASS` — shared `evaluateSubtitleAtTime` winner is reused
+- Mouth asset preloaded: `PASS` — valid used `mouthOpenAssetId` image is included in the preview preload set
+
+Mouth state is a pure evaluated-shot projection. It is not an ActionPreset,
+timeline event, persisted Project field, or second preview clock.
+
+## Automated quality report
+
+- typecheck: `PASS` — `pnpm typecheck`
+- lint: `PASS` — `pnpm lint`
+- focused regressions: `PASS` — 6 files / 61 tests
+- Day29 focused tests: `PASS` — binding, audio IPC service, transport, mouth, and Inspector contract tests
+- unit: `PASS` — `pnpm test:unit`, 119 files / 872 tests
+- integration: `PASS` — `pnpm test:integration`, 27 files / 148 tests
+- build: `PASS` — `pnpm build` (only the existing Vite chunk-size warning)
+- git diff --check: `PASS`
+- verification-manifest contracts: `PASS` — 2 files / 56 tests
+
+The integration harness emitted known noisy `No handler registered for
+asset-thumbnail:read` messages after passing; the command exit and all 148
+integration tests were successful. This is recorded as harness noise, not
+acceptance evidence for the new audio path.
+
+## Blade table
+
+| ID | Status | Evidence / boundary |
+|---|---|---|
+| FUNC-001 | `PASS` | Binding service/store tests |
+| FUNC-002 | `AUTOMATED PASS / Windows PENDING` | Transport and overlay tests; real audio still requires Electron |
+| FUNC-003 | `AUTOMATED PASS / Windows PENDING` | Pure mouth tests; speaker/media alignment requires Electron |
+| FUNC-004 | `PASS` | Timing synchronization tests |
+| CONST-001 | `PASS` | No persisted field or schema bump |
+| CONST-002 | `PASS` | Preload/Main audio seam and IPC tests |
+| CONST-003 | `AUTOMATED PASS / Windows PENDING` | Snapshot assertions pass; human playback still pending |
+| CONST-004 | `PASS` for Draft routing / `N/A` Ready and merge | RH-07 Draft self-test receipt below |
+| NEG-001 | `PASS` | Untimed, non-audio, missing-duration, and short-source negatives |
+| NEG-002 | `PASS` | Traversal, hash, symlink-containment, and sender negatives |
+| NEG-003 | `AUTOMATED PASS / Windows PENDING` | Stale async transport tests; real shot/project switching pending |
+| NEG-004 | `AUTOMATED PASS / Windows PENDING` | Mouth/audio fallback tests; Electron confirmation pending |
+| UX-001 | `AUTOMATED PASS / Windows PENDING` | Inspector source contract; human wording/interaction pending |
+| UX-002 | `PENDING` | Pause/Seek/Resume/Stop/Re-play requires maintainer Electron gate |
+| E2E-001 | `PENDING` | Three real dialogues and three imported audio assets require maintainer |
+| HIGH-001 | `AUTOMATED PASS / Windows PENDING` | Instrumented transport counts; real Windows replay/switch evidence pending |
+
+## P4 self-check
+
+| Check | Status | Evidence |
+|---|---|---|
+| CF | `AUTOMATED PASS / Windows PENDING` | Bind, playback, mouth, and timing-sync paths covered |
+| RG | `PASS` | Day28 timing/subtitle/no-op regressions, validator, and CI contracts pass |
+| NG | `PASS` | Negative tests cover untimed/short/bad hash/bad path/stale/missing mouth |
+| UX | `PENDING` | Real Windows Electron required |
+| E2E | `PENDING` | Real import → bind → save → reopen → preview required |
+| High | `AUTOMATED PASS / Windows PENDING` | Resource instrumentation pass; real replay/switch pending |
+| 字段完整性 | `PASS` | Required receipt sections and evidence are filled |
+| 需求映射 | `PASS` | B29-01..06 and blade IDs are mapped above |
+| 自测执行 | `PASS` | Full local automated validation was executed |
+| 范围债务 | `PASS` | TTS, viseme, complex mouth timeline, mixer, and whole-project preview are explicit non-goals |
+
+## CI V2 receipts
+
+- Draft synchronize run #443, run ID `32015241413`: `FAIL` at `Unknown route guard`; it identified five new paths not yet registered in the verification manifest. No production quality result was inferred from that failed routing run.
+- Route repair: commit `ab150aabaeb6fbb4e2c09be0d79ae57d0a352644` registered the five cross-process/editor-shell test and type routes.
+- Draft synchronize run #444, run ID `32015364085`: `PASS`; `ci-selftest` tier, classifier success, policy contracts/typecheck/lint/diff whitespace pass. Focused/Targeted/Full/Ready jobs were skipped because the synchronized Draft delta was the manifest-only routing fix, as required by RH-07.
+- Ready final candidate SHA: `SKIPPED` — PR remains Draft
+- Ready Full run: `SKIPPED` — PR remains Draft
+- Ready Full proof: `SKIPPED` — no Ready/Full candidate exists
+- Final CI result: `PASS` for Draft self-test run #444
+- Post-merge provenance: `SKIPPED` — PR is not merged
+- Post-merge Full: `SKIPPED` — PR is not merged; no post-merge provenance exists
+
+PR #233 remains `Draft / Open / Unmerged`. No merge, Ready-for-review, or Issue
+closure action was taken.
+
+## Maintainer Windows Electron
+
+- environment: `PENDING` — maintainer must run the real Windows Electron product window; browser/dev-server and headless tests do not count
+- 3 dialogue + 3 audio full play: `PENDING`
+- audio/subtitle/mouth alignment: `PENDING`
+- Pause → Seek → Resume: `PENDING`
+- Stop: `PENDING`
+- Replay 5x: `PENDING`
+- missing mouth fallback: `PENDING`
+- move/resize bound dialogue: `PENDING`
+- Undo/Redo: `PENDING`
+- Save → close → reopen: `PENDING`
+- switch shot: `PENDING`
+- switch project: `PENDING`
+- close preview cleanup: `PENDING`
+- DevTools/JSON direct mutation used as acceptance evidence: `NO`
+
+## Key decisions
+
+- `DECISION-B29-DATA-LINK`: `Dialogue.audioClipId -> AudioClip -> AudioAsset`
+- `DECISION-B29-NO-SCHEMA-BUMP`: confirmed; Project schema remains v6
+- `DECISION-B29-BINDING-OWNER`: `DialogueService`, called once by `DialogueStore.updateProject`
+- `DECISION-B29-SHARED-CLIP`: copy-on-write for shared legacy clips; no partial mutation on failure
+- `DECISION-B29-AUDIO-READ`: secure Main `AssetPreviewAudioService` behind trusted IPC and allowlisted preload
+- `DECISION-B29-MASTER-CLOCK`: Product Preview `timeMs`; audio follows `sourceOffsetMs + (timeMs - dialogue.startMs)`
+- `DECISION-B29-AUDIO-PRIMITIVE`: one reusable `HTMLAudioElement`; no fake timer or Web Audio mixer
+- `DECISION-B29-ACTIVE-DIALOGUE`: shared subtitle winner from `evaluateSubtitleAtTime` determines the active audio/mouth projection
+- `DECISION-B29-MOUTH`: pure transient evaluated-shot projection using the speaking character's `mouthOpenAssetId`
+- `DECISION-B29-CLEANUP`: generation + identity checks, bounded Blob cache, deterministic pause/clear/revoke/dispose cleanup
+
+## Debt
+
+- `DEBT-COMPLEXITY-B29`: no known untracked complexity; transport, IPC, and projection remain separated by owner
+- `DEBT-TEST-B29`: fake media tests prove state/transport contracts but cannot prove a real codec, speaker, OS audio device, or perceived no-overlap result; Windows gate remains mandatory
+- `DEBT-DOC-B29`: none after this receipt; remote CI routing incident is documented above
+- `DEBT-SCOPE-B29`: no TTS, viseme/RMS analysis, ActionPreset/timeline mouth authoring, multi-track mixer, or whole-project preview
+- `DEBT-PERF-B29`: audio bytes/Blob URLs are session-scoped and bounded per read at 64 MiB; no persistent audio cache was added
+- `DEBT-PLATFORM-AUDIO-B29`: browser/OS autoplay and codec behavior still require a user-gesture Windows Electron run
+- `DEBT-LEGACY-AUDIO-B29`: existing legacy clips are supported with copy-on-write; orphan/unbound clip cleanup and an audio-library management UX are out of scope
+
+## Day conclusion
+
+- automated/structural checks: `PASS`
+- maintainer human gate: `PENDING`
+- overall: `PENDING` — automated PASS plus human pending is not Day29 PASS
+
+## 下一步唯一动作
+
+Maintainer 在 Draft PR #233 上执行真实 Windows Electron 的 Day29 Gate A–F（3 条 Dialogue + 3 个真实音频，含 Save→Close→Reopen、Pause→Seek→Resume、Stop、Replay 5x、切 shot/project 与降级路径）并回填结果；在此之前不进入 Day30、不 Ready、不 merge、不关闭 Issue #232。
