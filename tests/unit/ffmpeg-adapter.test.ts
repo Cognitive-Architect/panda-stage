@@ -310,7 +310,24 @@ describe('FFmpegAdapter', () => {
 
     await expect(adapter.getVersion()).rejects.toMatchObject({
       code: 'EXECUTABLE_NOT_FOUND',
-      message: '找不到媒体工具：ffmpeg.exe。请配置开发环境路径。',
+      message:
+        '找不到媒体工具：ffmpeg.exe。请运行 pnpm install，或检查 PANDA_STAGE_FFMPEG_PATH / PANDA_STAGE_FFPROBE_PATH。',
+    });
+  });
+
+  it('keeps a spawn failure distinct from a real media probe failure', async () => {
+    const spawnFailure = Object.assign(new Error('spawn EACCES'), {
+      code: 'EACCES',
+    });
+    const adapter = new FFmpegAdapter({
+      ffprobePath: 'C:\\unusable tools\\ffprobe.exe',
+      runner: new FakeRunner([spawnFailure]),
+    });
+
+    await expect(adapter.probeVideo('video.mp4')).rejects.toMatchObject({
+      code: 'PROCESS_FAILED',
+      message:
+        '无法启动媒体工具进程，请检查可执行文件是否存在且可运行。',
     });
   });
 
