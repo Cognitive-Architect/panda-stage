@@ -1,10 +1,10 @@
-# Panda Stage Day 28 / Issues #223, #224, and #226 rework receipt
+# Panda Stage Day 28 / Issues #223, #224, and #226 final receipt
 
 ## Identity and status
 
 - Parent execution issue: [#221](https://github.com/Cognitive-Architect/panda-stage/issues/221)
 - Rework issue: [#223](https://github.com/Cognitive-Architect/panda-stage/issues/223)
-- Human-acceptance blocker: [#224](https://github.com/Cognitive-Architect/panda-stage/issues/224)
+- Zero-delta resize blocker: [#224](https://github.com/Cognitive-Architect/panda-stage/issues/224)
 - Exact-adjacency blocker: [#226](https://github.com/Cognitive-Architect/panda-stage/issues/226)
 - Pull request: [#222](https://github.com/Cognitive-Architect/panda-stage/pull/222)
 - Branch: `agent/day28-dialogue-timing-subtitle-track`
@@ -15,32 +15,34 @@
 - Rework implementation commit: `0141ad25d40b263c60e9f1c3dca54e1fcca73b8e`
 - Issue #224 implementation commit: `29729f2030ef9ca4e05850e73799176d17105553`
 - Issue #226 implementation commit: `957a7a5d516744b2c1e04cefda501df97dc58bad`
+- Human-validated implementation head: `aa4529f607deaba876c96d8dff0f5daf9334cbce`
 - Day 26 prerequisite: `e4eeb551721864b0c2f3e2596d35d3d1dc2de323`
 - Day 27 prerequisite: `6092109c2c73dc8e056a41bd94fbfc1dfa87d31a`
 - Automated/structural status: `PASS`, with the full-repository local lint exception recorded below.
-- Maintainer Windows Electron acceptance: `PENDING`.
-- Overall Day 28 status: `PENDING`.
+- Maintainer Windows Electron acceptance: `PASS`.
+- Overall Day 28 status: `PASS`.
 
-This receipt records the Issue #223 correction and focused Issue #224/#226 human-acceptance fixes on PR #222. It does not treat application startup, automated Electron verification, or CI as human acceptance.
+This receipt records the Issue #223 correction, the focused Issue #224/#226 fixes, and the completed real Windows Electron maintainer acceptance for PR #222. Automated Electron verification and CI are recorded separately from human acceptance.
 
 ## Issue #224 zero-delta resize blocker
 
 - Root cause: an identical resize boundary still passed through `replaceDialogueTiming()` and `finish()`, changing `updatedAt`; the resulting Project was therefore not equal to the saved Project and produced a fake `Resize dialogue` History command.
 - Fix: the shared timing replacement path compares the committed Dialogue `startMs/endMs` with the validated candidate and returns the original Project when both are identical. No History suppression or coordinate special case was added.
-- No-op evidence: `0–42 → 0–42` returns the same Project and keeps the same editor snapshot, `dirty=false`, `revision=0`, History `0/0`, selection, and playhead.
-- Real resize evidence: `0–42 → 0–84` produces exactly one `Resize dialogue` command; Undo restores `0–42` and saved state, and Redo restores `0–84` and dirty state.
+- No-op automated evidence: `0–42 → 0–42` returns the same Project and keeps the same editor snapshot, `dirty=false`, `revision=0`, History `0/0`, selection, and playhead.
+- Real resize automated evidence: `0–42 → 0–84` produces exactly one `Resize dialogue` command; Undo restores `0–42` and saved state, and Redo restores `0–84` and dirty state.
 - Focused regression: dialogue service/store/gesture — 3 files / 32 tests PASS.
-- Maintainer Windows Electron re-test: `PASS`, as recorded in the PR #222 human-acceptance ledger on 2026-08-17: saved `0–42`, History `0/0`, click/release with no effective movement kept timing, History, and saved state unchanged.
+- Maintainer Windows Electron re-test: `PASS`. From a saved `0–42 ms`, History `0/0` baseline, click/release on the resize handle with no effective movement kept timing `0–42 ms`, History `0/0`, and saved state unchanged.
+- Real pointer follow-up: a non-zero end-boundary resize produced one History command; later a non-zero start-boundary resize changed only `startMs`, kept `endMs` fixed, and Undo/Redo restored the two states correctly.
 
 ## Issue #226 exact manual timing blocker
 
 - Root cause: `DialogueInspector.commitTiming()` silently passed manual integer-ms fields through `snapToFrame()` before domain validation, changing `459` and `460` to `458` at 24 FPS and creating a real 1 ms overlap with `[167,459)`.
 - Fix: the manual Inspector path now requires non-empty, finite integer milliseconds, clamps those exact integers to shot bounds, and passes them unchanged to `dialogueStore.setTiming()`. Timeline pointer drag/resize snapping is unchanged.
-- Adjacency evidence: existing A `[167,459)` plus manual B `[459,833)` persists exactly and creates one `Set dialogue timing` History command.
-- Overlap evidence: manual B `[458,833)` is rejected; Project snapshot, dirty, revision, and History remain unchanged.
+- Automated adjacency evidence: existing A `[167,459)` plus manual B `[459,833)` persists exactly and creates one `Set dialogue timing` History command.
+- Automated overlap evidence: manual B `[458,833)` is rejected; Project snapshot, dirty, revision, and History remain unchanged.
 - Pointer evidence: the Timeline geometry regression still proves `snapToFrame(459) === 458` and `snapToFrame(460) === 458`, preserving pointer-driven frame snapping.
 - Focused regression: Inspector helper, store, service, geometry, and gesture — 5 files / 53 tests PASS.
-- Maintainer Windows Electron Issue #226 re-test: `PENDING`.
+- Maintainer Windows Electron re-test: `PASS`. With existing A=`167–459 ms`, manual B=`459–833 ms` committed successfully and remained exactly `459–833 ms`. Changing B start to `458 ms` was rejected as overlap; committed timing and History remained unchanged.
 
 ## R1-R9 rework ledger
 
@@ -51,12 +53,12 @@ This receipt records the Issue #223 correction and focused Issue #224/#226 human
 - **R5 — PASS:** `buildDialogueSubtitleCues()` is the single editor/Preview Dialogue-to-cue projection and both consumers call shared `evaluateSubtitleAtTime()`. Boundary and deterministic legacy-overlap winner tests cover before/start/inside/end/adjacency/overlap plus trim and 500-character projection.
 - **R6 — PASS:** Timeline renders every Dialogue. Untimed entries use an 18 px non-persisted marker, remain selectable through `dialogueSelectionStore` and the existing RightInspector, and expose the explicit one-frame arrange action. Store tests prove render/selection does not change timing, dirty, revision, or History; arrange is one command.
 - **R7 — PASS:** each gesture captures `projectRoot + shotId + dialogueId`; commit rechecks current project, shot, selection, and entity existence. Tests cover project switch, shot switch, deletion, selection change, pointer cancel, Escape/unmount cancellation, and one successful pointerup callback.
-- **R8 — PASS:** clip/handle pointer isolation calls preventDefault/stopPropagation while ruler seeking remains owned by the existing Timeline. Clips and ruler receive the same `pixelsPerMs` and scroll container. `verify:timeline` passed wide, narrow, compact, collapse/reopen, ruler seek, zoom, and empty-Timeline checks without increasing BottomWorkspace height.
-- **R9 — PASS at handoff:** this receipt and PR #222 body are corrected to the reworked scope and real counts. Maintainer Windows Electron and overall status remain `PENDING`; no old CI run is claimed for the new head.
+- **R8 — PASS:** clip/handle pointer isolation calls preventDefault/stopPropagation while ruler seeking remains owned by the existing Timeline. Clips and ruler receive the same `pixelsPerMs` and scroll container. Automated `verify:timeline` passed wide, narrow, compact, collapse/reopen, ruler seek, zoom, and empty-Timeline checks without increasing BottomWorkspace height; final real Windows wide→narrow→wide acceptance also passed.
+- **R9 — PASS:** this receipt and PR #222 truth ledger now record the reworked scope, final automated evidence, both blocker re-tests, and completed maintainer Windows Electron acceptance. `maintainer Windows Electron = PASS` and `overall = PASS` are based on completed human evidence, not CI alone.
 
 ## Final files changed relative to origin/main
 
-The final Day 28 delivery diff is 28 files including this receipt (`2336 insertions`, `230 deletions`); 27 are product/test files:
+The Day 28 delivery remains 28 changed files including this receipt; product/test scope is unchanged by this final receipt-only bookkeeping commit:
 
 - `docs/test-receipts/DAY-28.md`
 - `src/domain/services/DialogueService.ts`
@@ -106,16 +108,39 @@ Existing files touched by the discarded audio/mouth/schema implementation were r
 
 | Check | Result | Evidence |
 |---|---|---|
-| `pnpm typecheck` | PASS | Renderer and Electron TypeScript checks exited 0 after the rework commit was staged. |
+| `pnpm typecheck` | PASS | Renderer and Electron TypeScript checks exited 0 after the rework. |
 | `pnpm exec eslint src tests` | PASS | Final product source and test scope exited 0. |
+| Focused Day28 regression | PASS | Final Issue #226 scope: 5 files / 53 tests. |
 | `pnpm test:unit` | PASS | 112 files / 792 tests. |
-| `pnpm test:integration` | PASS | 26 files / 147 tests; command exited 0. |
+| `pnpm test:integration` | PASS | 26 files / 147 tests. |
 | `pnpm build` | PASS | Renderer transformed 301 modules; Electron/preload builds exited 0; only the existing chunk-size warning remained. |
 | `pnpm verify:timeline` | PASS | Automated Windows Electron verifier passed Issue #197 wide/narrow/compact layout, Issue #199 ruler/zoom/save-state behavior, and Issue #207 empty-Timeline behavior. |
-| `git diff --check` | PASS | No whitespace errors in the rework implementation; rerun after this receipt before push. |
+| `git diff --check` | PASS | No whitespace errors in the implementation/receipt validation runs. |
+| GitHub CI on human-validated implementation head `aa4529f...` | PASS | CI run `31981675583`, attempt 2, completed `success`; attempt 1 hit the unchanged fixed 5-second asset-metadata timeout after the main gates had passed, and the same commit passed on rerun without code/test changes. |
 | `pnpm lint` | FAIL (local artifact contamination) | 1031 errors: 1020 under pre-existing out-of-scope `.workbuddy/artifacts/*` and 11 in `scripts/diag-preload.cjs`. Those paths were not modified, deleted, staged, or hidden with ignore changes. The CI-equivalent `pnpm exec eslint src tests` passes. |
 
-Integration emitted the existing `asset-thumbnail:read No handler registered` fixture noise while still exiting 0. The automated Timeline verifier is regression evidence only and is not maintainer Windows Electron acceptance.
+Integration emitted the existing `asset-thumbnail:read No handler registered` fixture noise while still exiting 0. Automated Timeline verification is regression evidence and is not substituted for the completed maintainer human checks below.
+
+## Maintainer Windows Electron acceptance — PASS
+
+Human acceptance was completed against implementation head `aa4529f607deaba876c96d8dff0f5daf9334cbce` in a real Windows Electron session.
+
+- **Untimed authoring — PASS:** newly created Dialogue remained Untimed, stayed visible/selectable on Timeline, reused the existing RightInspector, and exposed the explicit `安排为一帧` action.
+- **Explicit one-frame arrange — PASS:** Untimed `0/0 ms` became `0–42 ms` at 24 FPS and added exactly one History command.
+- **Subtitle evaluation — PASS:** subtitle appeared inside the active interval and disappeared outside it. With a later interval ending at `459 ms`, the subtitle was visible at `458 ms` and absent by `500 ms`; exact end half-open behavior is additionally covered by automated boundary tests.
+- **Ruler/selection no-op behavior — PASS:** pure ruler seek did not add History; selecting a Dialogue clip did not add History.
+- **Overlap rejection — PASS:** arranging/setting timing into an occupied interval produced a readable overlap rejection and did not pollute Project/History.
+- **Persistence — PASS:** Save → close project → reopen preserved the timed Dialogue and its subtitle behavior.
+- **Issue #224 zero-delta resize — PASS:** click/release without effective movement kept `0–42 ms`, History `0/0`, and saved state unchanged.
+- **End-boundary resize — PASS:** a real end resize changed timing once and produced one History command.
+- **Move — PASS:** `0–292 ms → 167–459 ms` preserved the 292 ms duration, produced one independent History command, and did not accidentally seek the playhead. Undo/Redo restored each state correctly.
+- **Shot switch — PASS:** switching to a newly created empty shot cleared the previous shot's subtitle with no stale caption.
+- **Issue #226 exact adjacency — PASS:** A=`[167,459)`, B=`[459,833)` committed successfully and remained exact; B=`[458,833)` was rejected and did not change committed timing or History.
+- **Start-boundary resize — PASS:** a real start resize changed only `startMs` (`625→542`) while keeping `endMs=999`; it added exactly one History command. Undo restored `625–999`; Redo restored `542–999`.
+- **Subtitle click-through / Konva hit-test — PASS:** while the subtitle was visible, underlying Panda layers remained selectable; Transformer selection appeared and the existing layer RightInspector updated, proving the subtitle overlay did not consume the layer pointer hit.
+- **Responsive layout — PASS:** wide baseline was usable; narrowing the Electron window correctly collapsed side workspaces while Canvas, subtitle, Timeline, Dialogue clips, and History remained reachable; the narrow RightInspector opened normally; widening again restored the full left workspace, Canvas, RightInspector, Timeline, and clips without residual narrow-layout corruption.
+
+No remaining Day28 Windows Electron checklist item is pending.
 
 ## Ownership and behavior decisions
 
@@ -124,19 +149,19 @@ Integration emitted the existing `asset-thumbnail:read No handler registered` fi
 - Timeline geometry remains owned by `TimelineDock`, `timelineUiStore`, and `timeGeometry`; no second Timeline or playhead was introduced.
 - Untimed is a persisted point state. Visual marker width is UI-only and does not modify Project data.
 - New timed authoring uses half-open intervals, rejects overlap, permits exact adjacency, and never ripples another Dialogue.
+- Manual RightInspector numeric timing preserves exact integer-ms input after validation/clamp; pointer-driven Timeline move/resize continues to frame-snap.
 - Subtitle time selection is owned by shared `evaluateSubtitleAtTime()` after the shared dialogue projection. Legacy overlaps remain loadable and use one deterministic winner policy.
 - Shared `SubtitleRenderer` is non-listening and uses the existing safe area and persisted style fields only.
-- Gesture preview is transient; only a valid pointerup produces one Project/History mutation.
+- Gesture preview is transient; only a valid, effective pointerup produces one Project/History mutation.
 
-## Remaining acceptance and debt
+## Remaining debt / non-goals
 
-- Maintainer must re-audit the pushed diff before starting Windows Electron acceptance.
-- The Issue #224 saved-project `0–42` zero-delta Windows Electron re-test is recorded `PASS`; Issue #226 exact `459–833` adjacency and `458–833` rejection re-test remains `PENDING`.
-- Maintainer Windows Electron acceptance is `PENDING`; every human checklist result remains unrecorded.
-- Automated tests do not replace real Konva pointer, DPI, save/reopen, and wide-to-narrow-to-wide human checks.
-- Full local lint remains polluted by unrelated local tool artifacts; no ignore rule was changed to conceal that fact.
+- Full local `pnpm lint` remains polluted by unrelated local `.workbuddy/artifacts/*` and `scripts/diag-preload.cjs`; no ignore rule was changed to conceal that fact. CI-equivalent source/test lint and GitHub CI are green on the human-validated implementation head.
 - Day 28 does not implement TTS, audio scheduling/mixing, mouth animation, waveform editing, ActionPreset editing, ripple editing, a second Timeline, or a second Project store.
+- The final receipt update is documentation-only; it does not invalidate the completed product-code human acceptance. The PR's final HEAD CI should still be checked before merge.
 
 ## Conclusion
 
-Issues #223, #224, and #226 are implemented and have automated/structural evidence on the existing Draft PR #222. PR #222 must remain Draft/Open/Unmerged; Issues #221, #223, #224, and #226 must remain open. `maintainer Windows Electron = PENDING` and `overall = PENDING` until the maintainer explicitly completes and records the Issue #226 re-test and remaining acceptance.
+Day 28 implementation, automated/structural validation, Issue #224/#226 blocker re-tests, and maintainer Windows Electron acceptance are all `PASS`. `overall = PASS`.
+
+PR #222 remains Open and unmerged pending final bookkeeping / final-head CI confirmation. Parent Issue #221 remains open until the final PR merge. Rework/blocker Issues #223, #224, and #226 have satisfied their completion criteria and may be closed as completed.
