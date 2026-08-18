@@ -12,7 +12,7 @@
 - Issue #238 blocker fix HEAD: `908053d18f7b307ae2cd09f286a930544276c8ae`
 - Delivery PR: [#233](https://github.com/Cognitive-Architect/panda-stage/pull/233)
 - Delivery branch: `agent/day29-audio-mouth-preview`
-- Current delivery implementation HEAD: `908053d18f7b307ae2cd09f286a930544276c8ae`
+- Current delivery implementation HEAD: `a9ce23633671687d9cd6a659c7e3573e2e4ee1ed`
 - Day28 prerequisite: `PASS + merged` (`#222`, `8024a701a97b1ddacf18758eb55ac06a6e2b98c9` is an ancestor)
 - RH-07 CI policy: `active`
 
@@ -196,6 +196,17 @@ resume/stop/shot/project transitions.
 - CI route: local Draft classification is `focused`, areas `cross-process-core dialogue`, suites `editor timeline`, with `unknown_paths=[]`; CI run #455 / run ID `32072902166`: `PASS` — classifier, policy contracts, typecheck, lint, unit, integration, build, Electron runtime preparation, and the selected editor/timeline subsystem suites all passed. Targeted, Unknown, Full, and Ready candidate routes were skipped as required for Draft.
 - Windows reacceptance: `PENDING` — maintainer must relaunch the updated real Windows Electron app, reproduce the existing A `0–1300ms` / B Untimed-at-`0ms` case, click `安排为一帧`, confirm B lands at `1300–1342ms` (or the first deterministic legal gap) with no overlap, then continue B to `1500–2500ms` and bind the second real MP3 through the normal UI. No DevTools/JSON/delete-recreate path is acceptance evidence.
 - Scope guard: no schema bump, second timing system, overlap weakening, hidden overlap, playback redesign, or second PR was added; PR #233 remains Draft/Open/Unmerged and Issue #238 remains open pending maintainer proof.
+
+## Issue #240 acceptance polish bundle
+
+- Scope: subtitle/audio timing decoupling, Product Preview canvas-first polish, and deterministic Replay on PR #233; implementation commit: `a9ce23633671687d9cd6a659c7e3573e2e4ee1ed`.
+- Timing ownership: `Dialogue.startMs/endMs` owns subtitle visibility; `AudioClip.startMs/endMs` owns playback. New binding clamps the clip to the actual source duration, so a `0–1500ms` Dialogue with a `1330ms` source produces a `0–1330ms` clip and the subtitle remains visible through `1500ms`. No fake duration or schema bump was added; Project schema remains v6.
+- Timing mutation: binding preserves strict source/Shot validation; `move` translates a bound clip with the actual Dialogue delta, while `resize`, `setTiming`, and `arrange` change subtitle timing without stretching playback. Shared legacy clips retain copy-on-write behavior. Unit and integration coverage includes move/resize, Undo/Redo, and Save/Reopen persistence.
+- Product Preview: uses the existing bounded original-image Main/Preload seam (`readCanvasImage`) and renderer-owned Blob URL cleanup; Asset Library thumbnails remain on their existing path. The overlay is canvas-first, uses complete contain fitting, keeps transport below the stage, removes the hardcoded watermark, and does not use renderer filesystem access, `file://`, or a second evaluator.
+- Replay: one control resets the master time to `0`, increments the seek revision, cancels stale transport work, and starts immediately on the single reusable `HTMLAudioElement`. Audio and mouth projection stop at the independent clip end while the subtitle continues; repeated replay does not create dirty state, history entries, ghost audio, or stale mouth state.
+- Final local validation: `pnpm typecheck` `PASS`; `pnpm lint` `PASS`; `pnpm test:unit` `PASS` — 121 files / 895 tests; `pnpm test:integration` `PASS` — 27 files / 148 tests; `pnpm build` `PASS` (existing Vite chunk-size warning only); `git diff --check` `PASS`. The integration harness still emits known `asset-thumbnail:read` no-handler noise after passing; it does not change the successful exit or test count.
+- Windows Electron acceptance: `PENDING` — maintainer must verify the `0–1500ms` subtitle / `0–1330ms` audio case, move/resize plus Undo/Redo and Save/Reopen, canvas-first preview at full and resized window, sharp original preview with no watermark, unchanged Asset Library thumbnails, and Play/Pause/Replay repeated five times with clean audio, mouth, resources, dirty state, and History.
+- Delivery guard: PR #233 remains `Draft / Open / Unmerged`; no Ready, merge, or Issue #237/#239/#240 closure action was taken. Automated checks are not recorded as human acceptance.
 
 ## Issue #234 blocker correction
 
