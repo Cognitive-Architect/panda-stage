@@ -3695,12 +3695,17 @@ h1 {
 }
 
 .product-preview-frame {
+  --product-preview-stage-width: min(100%, calc((100vh - 150px) * 16 / 9));
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(1400px, 100%);
-  height: min(900px, calc(100vh - 32px));
+  width: min(
+    1400px,
+    100%,
+    calc((100vh - 150px) * 16 / 9 + 30px)
+  );
+  height: auto;
   min-height: 0;
   max-height: calc(100vh - 32px);
   padding: 42px 14px 12px;
@@ -3727,8 +3732,10 @@ h1 {
 
 .product-preview-stage {
   display: flex;
-  flex: 1 1 auto;
-  width: min(100%, calc((100vh - 150px) * 16 / 9));
+  flex: 0 1 auto;
+  width: var(--product-preview-stage-width);
+  height: auto;
+  aspect-ratio: 16 / 9;
   align-items: center;
   justify-content: center;
   min-height: 0;
@@ -3740,7 +3747,7 @@ h1 {
 
 .product-preview-player {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   flex-direction: column;
   align-items: center;
   width: 100%;
@@ -3791,7 +3798,7 @@ h1 {
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  width: min(100%, calc((100vh - 150px) * 16 / 9));
+  width: var(--product-preview-stage-width);
   max-width: 100%;
   min-height: 42px;
   gap: 10px;

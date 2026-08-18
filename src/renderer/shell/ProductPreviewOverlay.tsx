@@ -182,6 +182,14 @@ export function ProductPreviewOverlay({
     setPlaying(true);
   }, [durationMs]);
 
+  const stopPlayback = useCallback((): void => {
+    // Stop is intentionally different from Pause and Replay: invalidate any
+    // subordinate audio work, reset the master clock, and remain stopped.
+    setTimeMs(0);
+    setSeekRevision((revision) => revision + 1);
+    setPlaying(false);
+  }, []);
+
   useEffect(() => {
     // A shot switch resets the preview-local clock; nothing outside changes.
     setPlaying(false);
@@ -349,6 +357,20 @@ export function ProductPreviewOverlay({
                   >
                     <span aria-hidden="true" className="product-preview-icon">
                       {playing ? '⏸' : '▶'}
+                    </span>
+                  </button>
+                  <button
+                    aria-label="停止"
+                    className="product-preview-icon-button task4-hit-target"
+                    data-task4-core="preview-stop"
+                    data-testid="product-preview-stop"
+                    disabled={durationMs <= 0}
+                    onClick={stopPlayback}
+                    title="停止"
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="product-preview-icon">
+                      ■
                     </span>
                   </button>
                   <button

@@ -272,6 +272,46 @@ describe('Product Preview audio transport', () => {
     transport.dispose();
   });
 
+  it('keeps an explicit stop stopped until a later play request', async () => {
+    const project = buildAudioProject();
+    const audio = new FakeAudio();
+    const transport = new ProductPreviewAudioTransport({
+      createAudio: () => audio,
+      readAudio: async (request) => readyResponse(request),
+      createObjectUrl: () => 'blob:stop',
+      revokeObjectUrl: () => undefined,
+    });
+
+    transport.sync(syncInput(project, { timeMs: 600 }));
+    await flush();
+    expect(audio.playCount).toBe(1);
+
+    transport.sync(
+      syncInput(project, {
+        timeMs: 0,
+        playing: false,
+        seekRevision: 1,
+      }),
+    );
+    expect(audio.paused).toBe(true);
+    expect(audio.currentTime).toBe(0);
+    expect(audio.src).toBe('');
+    await flush();
+    expect(audio.playCount).toBe(1);
+
+    transport.sync(
+      syncInput(project, {
+        timeMs: 600,
+        playing: true,
+        seekRevision: 1,
+      }),
+    );
+    await flush();
+    expect(audio.playCount).toBe(2);
+    expect(audio.currentTime).toBe(0.2);
+    transport.dispose();
+  });
+
   it('replays repeatedly from cached bytes without creating more than one URL', async () => {
     const project = buildAudioProject();
     const audio = new FakeAudio();

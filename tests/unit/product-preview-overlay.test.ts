@@ -359,6 +359,7 @@ describe('product preview overlay contract', () => {
 
     for (const selector of [
       'data-testid="product-preview-overlay"',
+      'data-testid="product-preview-stop"',
       'data-testid="product-preview-replay"',
       'data-testid="product-preview-scrubber"',
       'data-testid="product-preview-timecode"',
@@ -370,9 +371,26 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain("'product-preview-pause'");
     expect(overlay).toContain("aria-label={playing ? '暂停' : '播放'}");
     expect(overlay).toContain('aria-pressed={playing}');
+    expect(overlay).toContain('aria-label="停止"');
+    expect(overlay).toContain('title="停止"');
+    expect(overlay).toContain('onClick={stopPlayback}');
+    expect(overlay).toContain('setTimeMs(0)');
+    expect(overlay).toContain('setPlaying(false)');
     expect(overlay).toContain('title="重放"');
     expect(overlay).toContain('aria-hidden="true"');
-    expect(overlay).not.toContain('product-preview-stop');
+    const controls = overlay.slice(
+      overlay.indexOf('className="product-preview-controls"'),
+      overlay.indexOf('className="product-preview-scrubber"'),
+    );
+    expect(controls.indexOf("'product-preview-play'")).toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(controls.indexOf('product-preview-stop')).toBeGreaterThan(
+      controls.indexOf("'product-preview-play'"),
+    );
+    expect(controls.indexOf('product-preview-replay')).toBeGreaterThan(
+      controls.indexOf('product-preview-stop'),
+    );
     expect(overlay).not.toContain('product-preview-hint"');
     expect(overlay).not.toContain('Replay / 重放');
     expect(overlay).not.toMatch(/>\s*(?:播放|暂停)\s*<\/button>/u);
@@ -390,14 +408,29 @@ describe('product preview overlay contract', () => {
     expect(overlay).not.toContain('product-preview-header');
     expect(overlay).not.toContain('product-preview-hint"');
     expect(renderer).not.toContain('PANDA STAGE');
-    expect(styles).toContain('height: min(900px, calc(100vh - 32px));');
+    expect(styles).toMatch(
+      /\.product-preview-frame\s*\{[\s\S]*?height:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.product-preview-frame\s*\{[\s\S]*?width:\s*min\([\s\S]*?calc\(\(100vh - 150px\) \* 16 \/ 9 \+ 30px\)/u,
+    );
+    expect(styles).toContain(
+      '--product-preview-stage-width: min(100%, calc((100vh - 150px) * 16 / 9));',
+    );
     expect(styles).toContain('.product-preview-player');
+    expect(styles).toMatch(
+      /\.product-preview-player\s*\{[\s\S]*?flex:\s*0 1 auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.product-preview-stage\s*\{[\s\S]*?flex:\s*0 1 auto;[\s\S]*?aspect-ratio:\s*16 \/ 9;/u,
+    );
+    expect(styles).not.toContain(
+      'height: min(900px, calc(100vh - 32px));',
+    );
     expect(styles).toContain(
       'grid-template-columns: auto minmax(0, 1fr) auto;',
     );
-    expect(styles).toContain(
-      'width: min(100%, calc((100vh - 150px) * 16 / 9));',
-    );
+    expect(styles).toContain('width: var(--product-preview-stage-width);');
     expect(styles).toContain('.product-preview-stage .stage-viewport');
   });
 
