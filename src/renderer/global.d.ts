@@ -69,6 +69,14 @@ import type {
   NativeCloseSyncRequest,
   NativeCloseSyncResponse,
 } from '../shared/native-close-sync';
+import type {
+  FlaCancelResponse,
+  FlaInspectionResponse,
+  FlaWorkerError,
+  FlaWorkerProgress,
+  FlaWorkerResult,
+  FlaWorkerStartRequest,
+} from '../shared/fla-import-api';
 
 declare global {
   interface Window {
@@ -169,6 +177,18 @@ declare global {
         cancel: (jobId: string) => Promise<ExportCancelResponse>;
         onUpdate: (callback: (update: ExportJobUpdate) => void) => () => void;
       };
+      fla: {
+        chooseAndInspect: (requestId?: string) => Promise<FlaInspectionResponse>;
+        cancel: (sessionId: string) => Promise<FlaCancelResponse>;
+      };
+    };
+    pandaStageFlaParser: {
+      ready: () => void;
+      onStart: (callback: (request: FlaWorkerStartRequest) => void) => () => void;
+      onCancel: (callback: (sessionId: string) => void) => () => void;
+      progress: (payload: FlaWorkerProgress) => void;
+      result: (payload: FlaWorkerResult) => void;
+      error: (payload: FlaWorkerError) => void;
     };
     pandaStageHidden: {
       ready: () => Promise<HiddenReadyResponse>;

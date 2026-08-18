@@ -12,6 +12,7 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
         hidden: path.resolve(__dirname, 'hidden.html'),
+        flaParser: path.resolve(__dirname, 'fla-parser.html'),
       },
     },
   },

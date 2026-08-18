@@ -5,6 +5,7 @@ import { migrateProject } from '../domain';
 import { editorProjectStore } from './stores/EditorProjectStore';
 import { StagePreview } from './stage/StagePreview';
 import { EditorShell } from './shell/EditorShell';
+import { FlaImportDebugSurface } from './fla-import/FlaImportDebugSurface';
 
 const GATE_PREVIEW_EVENT = 'panda-stage:gate-preview-time';
 
@@ -134,6 +135,7 @@ export function App(): React.JSX.Element {
     <EditorShell
       debugSurface={
         <>
+          <FlaImportDebugSurface />
           <header className="app-header">
             <div className="brand-lockup">
               <span className="brand-mark" aria-hidden="true">

@@ -65,6 +65,14 @@ describe('IPC channel registry', () => {
       'recovery:detect',
       'recovery:restore',
       'recovery:ignore',
+      'fla:inspect-choose',
+      'fla:cancel',
+      'fla:worker-ready',
+      'fla:worker-start',
+      'fla:worker-cancel',
+      'fla:worker-progress',
+      'fla:worker-result',
+      'fla:worker-error',
     ]);
   });
 });

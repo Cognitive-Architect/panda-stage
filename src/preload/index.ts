@@ -94,6 +94,12 @@ import {
   type NativeCloseSyncRequest,
   type NativeCloseSyncResponse,
 } from '../shared/native-close-sync';
+import {
+  FlaCancelRequestSchema,
+  FlaCancelResponseSchema,
+  FlaInspectRequestSchema,
+  FlaInspectionResponseSchema,
+} from '../shared/fla-import-api';
 
 type Unsubscribe = () => void;
 
@@ -391,6 +397,27 @@ const pandaStageApi = Object.freeze({
       ipcRenderer.on(IPC_CHANNELS.EXPORT_JOB_UPDATE, listener);
       return () =>
         ipcRenderer.removeListener(IPC_CHANNELS.EXPORT_JOB_UPDATE, listener);
+    },
+  }),
+  fla: Object.freeze({
+    chooseAndInspect: async (requestId = crypto.randomUUID()) => {
+      const request = FlaInspectRequestSchema.parse({ requestId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_INSPECT_CHOOSE,
+        request,
+      );
+      return FlaInspectionResponseSchema.parse(response);
+    },
+    cancel: async (sessionId: string) => {
+      const request = FlaCancelRequestSchema.parse({
+        requestId: sessionId,
+        sessionId,
+      });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_CANCEL,
+        request,
+      );
+      return FlaCancelResponseSchema.parse(response);
     },
   }),
 });
