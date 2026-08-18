@@ -222,6 +222,19 @@ resume/stop/shot/project transitions.
 - Windows Electron reacceptance: `PENDING` — maintainer must confirm icon meaning/labels, compact width, stateful Play/Pause, Replay x5 and seek behavior, stage-aligned scrubber after resize, readable timecode, full subtitles, sharp image, and no watermark.
 - Delivery guard: PR #233 remains `Draft / Open / Unmerged`; no Ready, merge, or Issue #237/#239/#240/#241 closure action was taken. Automated checks are not human acceptance.
 
+## Issue #242 Preview shell and Stop polish
+
+- Scope: final acceptance-driven refinement on the existing Day29 branch/PR; no second PR, Project schema change, second preview clock, or second audio primitive.
+- Stop: `product-preview-stop` is restored between Play/Pause and Replay. It increments the existing seek revision, resets the single preview master clock to `0`, cancels stale subordinate audio through the existing transport, and leaves `playing` false. It does not start audio; a later Play request starts from the new master position. Chinese `aria-label`/`title` values and the existing 44px hit target are preserved.
+- Preview shell: the frame is now auto-sized and bounded by the same viewport-derived stage width as the transport; the stage has an explicit 16:9 aspect ratio and no longer flex-fills a tall region. The Close button therefore follows the actual contain-fitted stage surface at narrow/tall and wide/short viewport shapes. The full stage, captions, transport, and responsive scrubber remain intact.
+- Preservation: bounded original-image Preview reads, watermark removal, canvas-first shared `CanvasStage`/`StageRenderer`, independent Dialogue/AudioClip timing, mouth projection, Replay semantics, read-only state, and one reusable audio transport remain unchanged.
+- Focused validation: `PASS` — Preview overlay, audio transport, and DOM selector contract; 3 files / 33 tests.
+- Final local validation: `pnpm typecheck` `PASS`; `pnpm lint` `PASS`; `pnpm test:unit` `PASS` — 121 files / 896 tests; `pnpm test:integration` `PASS` — 27 files / 148 tests on the isolated serial rerun; `pnpm build` `PASS` (existing Vite chunk-size warning only); `git diff --check` `PASS`. A parallel invocation showed one pre-existing 5-second timeout in `asset-metadata-revision-safety`; the affected file and the complete integration suite passed when rerun isolated/serial. Integration still emits known `asset-thumbnail:read` no-handler harness noise after passing.
+- Draft CI run #462 / run ID `32108040916`: `PASS` — classifier, Targeted quality and regression, and Final CI result passed. Focused, Unknown, Full, Ready, Post-merge, and Docs-only routes were skipped according to the Draft routing policy.
+- Implementation commit: `234ca9ec57887a6c93647b6561247d8a5be831e0`.
+- Windows Electron acceptance: `PENDING` — maintainer must check normal and narrow/tall Preview layouts, Close adjacency, full canvas/subtitle visibility, resize/scrubber geometry, then verify real bound audio Stop (audio/time/mouth reset to 0 and remains stopped), Play from 0, Replay immediate restart, and repeated Stop → Play / Replay cycles without ghost audio. Automated checks are not human acceptance.
+- Delivery guard: continue using PR #233 only; keep it `Draft / Open / Unmerged` until maintainer Windows reacceptance and remaining Day29 gates pass. Do not mark Ready, merge, or close Issue #242 from automated evidence.
+
 ## Issue #234 blocker correction
 
 - Root cause: the Day29 projection built a mouth-asset map for every project character and applied it to every matching character layer, so a non-speaking character could also open its mouth.
