@@ -12,7 +12,7 @@
 - Issue #238 blocker fix HEAD: `908053d18f7b307ae2cd09f286a930544276c8ae`
 - Delivery PR: [#233](https://github.com/Cognitive-Architect/panda-stage/pull/233)
 - Delivery branch: `agent/day29-audio-mouth-preview`
-- Current delivery implementation HEAD: `516c008bb0715cca395e371ad8b5bca287fa8d92`
+- Current delivery implementation HEAD: `80ad4465ed5feaf4e6e8f122d13f051400935068`
 - Day28 prerequisite: `PASS + merged` (`#222`, `8024a701a97b1ddacf18758eb55ac06a6e2b98c9` is an ancestor)
 - RH-07 CI policy: `active`
 
@@ -210,6 +210,18 @@ resume/stop/shot/project transitions.
 - Windows Electron acceptance: `PENDING` — maintainer must verify the `0–1500ms` subtitle / `0–1330ms` audio case, move/resize plus Undo/Redo and Save/Reopen, canvas-first preview at full and resized window, sharp original preview with no watermark, unchanged Asset Library thumbnails, and Play/Pause/Replay repeated five times with clean audio, mouth, resources, dirty state, and History.
 - Delivery guard: PR #233 remains `Draft / Open / Unmerged`; no Ready, merge, or Issue #237/#239/#240 closure action was taken. Automated checks are not recorded as human acceptance.
 
+## Issue #241 Preview transport UI polish
+
+- Scope: UI-only refinement on the existing Day29 branch/PR; no second PR, Project schema change, playback-state-machine rewrite, second clock, or second audio primitive.
+- Play/Pause: one stateful icon control now shows `▶` while paused and `⏸` while playing, toggles the existing `playing` state, and keeps the stable `product-preview-play` / `product-preview-pause` capability names as its stateful test ID.
+- Replay/Close: Replay is a compact `↺` icon with Chinese `aria-label`/`title`, Close keeps `×` with both accessible name and title. The visible `Replay / 重放`, `播放`, and `暂停` button text has been removed; icons remain keyboard-focusable 44px hit targets.
+- Scrubber geometry: stage and transport share a responsive usable width derived from the available viewport height; the transport uses fixed compact controls, a flexible scrubber, and fixed tabular timecode columns. It remains below the stage and does not alter the #240 contain fit or caption-safe area.
+- #240 preservation: bounded original image IPC, lightweight Asset Library thumbnails, watermark removal, independent Dialogue/AudioClip timing, deterministic Replay semantics, one evaluator/Stage renderer/clock, and read-only playback paths are unchanged.
+- Final local validation: focused overlay/DOM contracts `PASS` — 2 files / 26 tests; `pnpm typecheck` `PASS`; `pnpm lint` `PASS`; `pnpm test:unit` `PASS` — 121 files / 895 tests; `pnpm test:integration` `PASS` — 27 files / 148 tests; `pnpm build` `PASS` (existing Vite chunk-size warning only); `git diff --check` `PASS`. Integration still emits known `asset-thumbnail:read` no-handler harness noise after passing.
+- Draft CI run #460 / run ID `32103654807`: `PASS` — Draft `Targeted quality and regression`; classifier, typecheck, lint, unit, integration, build, and manifest-selected subsystem suites passed. Unknown, Focused, Full, Ready, and Post-merge routes were skipped according to Draft routing.
+- Windows Electron reacceptance: `PENDING` — maintainer must confirm icon meaning/labels, compact width, stateful Play/Pause, Replay x5 and seek behavior, stage-aligned scrubber after resize, readable timecode, full subtitles, sharp image, and no watermark.
+- Delivery guard: PR #233 remains `Draft / Open / Unmerged`; no Ready, merge, or Issue #237/#239/#240/#241 closure action was taken. Automated checks are not human acceptance.
+
 ## Issue #234 blocker correction
 
 - Root cause: the Day29 projection built a mouth-asset map for every project character and applied it to every matching character layer, so a non-speaking character could also open its mouth.
@@ -349,4 +361,4 @@ closure action was taken.
 
 ## 下一步唯一动作
 
-Maintainer 在 Draft PR #233 上先执行 Issue #238 的真实 Windows Electron“安排为一帧”空档验收，再执行 Issue #236 的 Retry analysis → ready → normal bind 验收，最后执行 Day29 Gate A–F（3 条 Dialogue + 3 个真实音频，含 Save→Close→Reopen、Pause→Seek→Resume、Stop、Replay 5x、切 shot/project 与降级路径）并回填结果；在此之前不进入 Day30、不 Ready、不 merge、不关闭 Issue #238/#236/#232。
+Maintainer 在 Draft PR #233 上先执行 Issue #238 的真实 Windows Electron“安排为一帧”空档验收，再执行 Issue #236 的 Retry analysis → ready → normal bind 验收，最后执行 Day29 Gate A–F（3 条 Dialogue + 3 个真实音频，含 Save→Close→Reopen、Pause→Seek→Resume、Stop、Replay 5x、切 shot/project 与降级路径）以及 #240/#241 Preview re-acceptance 并回填结果；在此之前不进入 Day30、不 Ready、不 merge、不关闭 Issue #238/#236/#232/#240/#241。
