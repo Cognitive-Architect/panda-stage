@@ -12,7 +12,7 @@
 - Issue #238 blocker fix HEAD: `908053d18f7b307ae2cd09f286a930544276c8ae`
 - Delivery PR: [#233](https://github.com/Cognitive-Architect/panda-stage/pull/233)
 - Delivery branch: `agent/day29-audio-mouth-preview`
-- Current delivery implementation HEAD: `a9ce23633671687d9cd6a659c7e3573e2e4ee1ed`
+- Current delivery implementation HEAD: `516c008bb0715cca395e371ad8b5bca287fa8d92`
 - Day28 prerequisite: `PASS + merged` (`#222`, `8024a701a97b1ddacf18758eb55ac06a6e2b98c9` is an ancestor)
 - RH-07 CI policy: `active`
 
@@ -205,6 +205,8 @@ resume/stop/shot/project transitions.
 - Product Preview: uses the existing bounded original-image Main/Preload seam (`readCanvasImage`) and renderer-owned Blob URL cleanup; Asset Library thumbnails remain on their existing path. The overlay is canvas-first, uses complete contain fitting, keeps transport below the stage, removes the hardcoded watermark, and does not use renderer filesystem access, `file://`, or a second evaluator.
 - Replay: one control resets the master time to `0`, increments the seek revision, cancels stale transport work, and starts immediately on the single reusable `HTMLAudioElement`. Audio and mouth projection stop at the independent clip end while the subtitle continues; repeated replay does not create dirty state, history entries, ghost audio, or stale mouth state.
 - Final local validation: `pnpm typecheck` `PASS`; `pnpm lint` `PASS`; `pnpm test:unit` `PASS` — 121 files / 895 tests; `pnpm test:integration` `PASS` — 27 files / 148 tests; `pnpm build` `PASS` (existing Vite chunk-size warning only); `git diff --check` `PASS`. The integration harness still emits known `asset-thumbnail:read` no-handler noise after passing; it does not change the successful exit or test count.
+- Draft CI routing: run #457 / run ID `32100251298` first failed only at `Unknown route guard` because `tests/contract/dom-selectors.baseline.test.ts` was not registered; no production quality result was inferred from that routing failure. Route repair commit `516c008bb0715cca395e371ad8b5bca287fa8d92` registers the selector contract under `editor-shell`; focused manifest/selector tests pass (2 files / 24 tests).
+- Draft CI route repair: run #458 / run ID `32100415828` `PASS` — classifier, CI policy contracts, typecheck, lint, and diff whitespace passed; Focused/Targeted/Full/Ready/Post-merge routes were skipped as required for a Draft manifest-only repair.
 - Windows Electron acceptance: `PENDING` — maintainer must verify the `0–1500ms` subtitle / `0–1330ms` audio case, move/resize plus Undo/Redo and Save/Reopen, canvas-first preview at full and resized window, sharp original preview with no watermark, unchanged Asset Library thumbnails, and Play/Pause/Replay repeated five times with clean audio, mouth, resources, dirty state, and History.
 - Delivery guard: PR #233 remains `Draft / Open / Unmerged`; no Ready, merge, or Issue #237/#239/#240 closure action was taken. Automated checks are not recorded as human acceptance.
 
@@ -284,10 +286,12 @@ acceptance evidence for the new audio path.
 - Issue #236 first source run #451, run ID `32037138475`: `FAIL` at `Unknown route guard`; the classifier identified only `tests/unit/production-resources.test.ts` as an unregistered production test route. No quality result was inferred from this routing failure; Full was skipped.
 - Issue #236 route repair run #452, run ID `32037240307`: `PASS`; `ci-selftest` route validated the manifest addition, policy contracts, typecheck, lint, and whitespace. Focused/Targeted/Full/Ready/Post-merge were skipped because this Draft delta was the manifest-only route repair.
 - Issue #236 focused run #453, run ID `32037461407`: `PASS`; Draft `Focused core quality` route, 2m52s (`2026-08-17T14:00:03Z` → `2026-08-17T14:02:55Z`). Classifier, typecheck, lint, unit, integration, and build all passed; manifest-selected subsystem regression was not required for this focused route. `Full quality and regression` was explicitly skipped, as were Targeted/Docs-only/CI-selftest/Ready/Post-merge.
+- Issue #240 initial implementation run #457, run ID `32100251298`: `FAIL` only at `Unknown route guard` for the unregistered `tests/contract/dom-selectors.baseline.test.ts`; no production quality result was inferred.
+- Issue #240 route repair run #458, run ID `32100415828`: `PASS`; Draft `ci-selftest` validated the manifest route, classifier, policy contracts, typecheck, lint, and whitespace. Focused/Targeted/Full/Ready/Post-merge were skipped because the synchronized delta was manifest-only.
 - Ready final candidate SHA: `SKIPPED` — PR remains Draft
 - Ready Full run: `SKIPPED` — PR remains Draft
 - Ready Full proof: `SKIPPED` — no Ready/Full candidate exists
-- Final CI result: `PASS` for Draft Focused run #453; Full remains skipped
+- Final CI result: `PASS` for current Draft ci-selftest run #458; Full remains skipped
 - Post-merge provenance: `SKIPPED` — PR is not merged
 - Post-merge Full: `SKIPPED` — PR is not merged; no post-merge provenance exists
 
