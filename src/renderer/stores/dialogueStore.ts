@@ -1,5 +1,6 @@
 import {
   DialogueService,
+  type BindDialogueAudioInput,
   type ArrangeDialogueInput,
   type MoveDialogueInput,
   type Project,
@@ -106,6 +107,19 @@ export class DialogueStore {
     const next = this.service.setTiming(project, input);
     if (next !== project) {
       this.editorStore.updateProject(next, 'Set dialogue timing');
+    }
+  }
+
+  bindAudio(dialogueId: string, assetId: string): void {
+    const { project, shotId } = this.context();
+    const input: BindDialogueAudioInput = {
+      shotId,
+      dialogueId,
+      assetId,
+    };
+    const next = this.service.bindAudio(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Bind dialogue audio');
     }
   }
 

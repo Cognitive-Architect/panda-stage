@@ -7,6 +7,10 @@ import type {
 } from '../../stores/assetLibrarySelectors';
 import type { AssetThumbnailReadResponse } from '../../../shared/asset-thumbnail-api';
 import { writeAssetDropPayload } from './AssetDropPayload';
+import {
+  audioMetadataError,
+  audioMetadataState,
+} from './assetMetadataState';
 
 export type ThumbnailMissingReason = 'cache' | 'source' | 'error';
 
@@ -55,6 +59,7 @@ export interface AssetCardProps {
   onDragEnd: () => void;
   onRebuildThumbnail: (assetId: string) => void;
   onThumbnailError: (assetId: string) => void;
+  metadataError?: string;
 }
 
 export function AssetCard({
@@ -70,8 +75,12 @@ export function AssetCard({
   onDragEnd,
   onRebuildThumbnail,
   onThumbnailError,
+  metadataError,
 }: AssetCardProps): React.JSX.Element {
   const image = asset.kind === 'image';
+  const audio = asset.kind === 'audio';
+  const audioState = audioMetadataState(asset, metadataError);
+  const audioError = audioMetadataError(asset, metadataError);
   const sourceMissing =
     image && thumbnail.status === 'missing' && thumbnail.reason === 'source';
   const sourceStatus = sourceMissing
@@ -119,6 +128,7 @@ export function AssetCard({
             className="asset-thumbnail-placeholder"
             data-thumbnail-status={thumbnail.status}
             data-thumbnail-source-status={sourceStatus}
+            data-audio-metadata-status={audio ? audioState : undefined}
           >
             <span aria-hidden="true">
               {image ? '▧' : '♫'}
@@ -132,6 +142,25 @@ export function AssetCard({
                     : '缩略图缺失'
                 : '音频素材'}
             </small>
+            {audioState ? (
+              <small data-testid="asset-audio-metadata-state">
+                {audioState === 'pending'
+                  ? 'Audio metadata pending / analyzing'
+                  : audioState === 'ready'
+                    ? 'Audio ready'
+                    : 'Audio metadata error'}
+              </small>
+            ) : null}
+            {audioState === 'ready' &&
+            asset.kind === 'audio' &&
+            asset.durationMs !== undefined ? (
+              <small>{`${(asset.durationMs / 1_000).toFixed(2)} s`}</small>
+            ) : null}
+            {audioError ? (
+              <small role="alert" title={audioError}>
+                {audioError}
+              </small>
+            ) : null}
             {sourceMissing && thumbnail.relativePath ? (
               <code>{thumbnail.relativePath}</code>
             ) : null}
@@ -144,6 +173,17 @@ export function AssetCard({
                 type="button"
               >
                 重建
+              </button>
+            ) : null}
+            {audioState === 'error' ? (
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRebuildThumbnail(asset.id);
+                }}
+                type="button"
+              >
+                Retry analysis
               </button>
             ) : null}
           </div>

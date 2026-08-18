@@ -110,15 +110,20 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     for (const selector of [
       'data-testid="product-preview-overlay"',
       'data-testid="product-preview-close"',
-      'data-testid="product-preview-play"',
-      'data-testid="product-preview-pause"',
       'data-testid="product-preview-stop"',
+      'data-testid="product-preview-replay"',
       'data-testid="product-preview-scrubber"',
       'data-testid="product-preview-timecode"',
       'data-testid="product-preview-empty"',
     ]) {
       expect(overlay).toContain(selector);
     }
+    expect(overlay).toContain("'product-preview-play'");
+    expect(overlay).toContain("'product-preview-pause'");
+    expect(overlay).toContain('aria-label="停止"');
+    expect(overlay).toContain('title="停止"');
+    expect(overlay).toContain('aria-label={playing ? \'暂停\' : \'播放\'}');
+    expect(overlay).toContain('title="重放"');
     expect(overlay).toContain('role="dialog"');
     expect(overlay).toContain('aria-modal="true"');
     expect(shell.match(/<ProductPreviewOverlay/gu)).toHaveLength(1);

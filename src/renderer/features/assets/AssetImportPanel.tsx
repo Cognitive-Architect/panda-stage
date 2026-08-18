@@ -1,15 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  AssetImportResponse,
   AssetImportResult,
 } from '../../../shared/asset-import-api';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { applyAssetImportResponse } from './applyAssetImportResponse';
+import type { AssetMetadataBatchOutcome } from './assetMetadataQueue';
 import { useAssetDrop } from './useAssetDrop';
 
 export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
   importRequestToken?: number;
+  onImportedAudioAssets?: (
+    assetIds: readonly string[],
+  ) => Promise<AssetMetadataBatchOutcome>;
+}
+
+export function selectImportedAudioAssetIds(
+  response: AssetImportResponse,
+): string[] {
+  if (
+    !response.ok ||
+    response.status !== 'completed' ||
+    !response.projectChanged
+  ) {
+    return [];
+  }
+  return response.results.flatMap((result) =>
+    result.status === 'imported' && result.asset?.kind === 'audio'
+      ? [result.asset.id]
+      : [],
+  );
 }
 
 function resultClass(result: AssetImportResult): string {
@@ -19,6 +41,7 @@ function resultClass(result: AssetImportResult): string {
 export function AssetImportPanel({
   snapshot,
   importRequestToken,
+  onImportedAudioAssets,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
@@ -27,17 +50,38 @@ export function AssetImportPanel({
   const [results, setResults] = useState<AssetImportResult[]>([]);
 
   const applyResponse = useCallback(
-    (response: Awaited<
+    async (response: Awaited<
       ReturnType<typeof window.pandaStage.assets.choose>
-    >): void => {
+    >): Promise<void> => {
       const outcome = applyAssetImportResponse(
         response,
         editorProjectStore,
       );
       if (outcome.results) setResults(outcome.results);
       setStatus(outcome.status);
+
+      const importedAudioIds = selectImportedAudioAssetIds(response);
+      if (importedAudioIds.length === 0 || !onImportedAudioAssets) return;
+      try {
+        const metadata = await onImportedAudioAssets(importedAudioIds);
+        setStatus(
+          metadata.stopped
+            ? 'Audio metadata analysis stopped because the active project changed.'
+            : `Audio metadata analysis complete: ${metadata.readyCount} ready${
+                metadata.errorCount > 0
+                  ? `, ${metadata.errorCount} failed; retry failed items.`
+                  : ''
+              }.`,
+        );
+      } catch (error) {
+        setStatus(
+          error instanceof Error
+            ? error.message
+            : 'Audio metadata analysis failed.',
+        );
+      }
     },
-    [],
+    [onImportedAudioAssets],
   );
 
   const chooseFiles = useCallback(async (): Promise<void> => {
@@ -45,7 +89,7 @@ export function AssetImportPanel({
     if (!current) return;
     setBusy(true);
     try {
-      applyResponse(
+      await applyResponse(
         await window.pandaStage.assets.choose({
           projectRoot: current.projectRoot,
           project: current.project,
@@ -77,7 +121,7 @@ export function AssetImportPanel({
       if (!current) return;
       setBusy(true);
       try {
-        applyResponse(
+        await applyResponse(
           await window.pandaStage.assets.importDropped(
             {
               projectRoot: current.projectRoot,

@@ -1,19 +1,16 @@
 import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { ProjectSchema, type Project } from '../../domain';
 import {
-  ProjectSchema,
-  type Project,
-} from '../../domain';
-import {
-  AssetCanvasImageReadRequestSchema,
-  CANVAS_IMAGE_MAX_BYTES,
-  type AssetCanvasImageReadRequest,
-  type AssetCanvasImageReadResponse,
-} from '../../shared/asset-canvas-image-api';
+  ASSET_PREVIEW_AUDIO_MAX_BYTES,
+  AssetPreviewAudioReadRequestSchema,
+  type AssetPreviewAudioReadRequest,
+  type AssetPreviewAudioReadResponse,
+} from '../../shared/asset-preview-audio-api';
 import { MediaInspectionService } from './MediaInspectionService';
 
-export interface AssetCanvasImageServiceOptions {
+export interface AssetPreviewAudioServiceOptions {
   getCurrentProjectSnapshot: (
     projectRoot: string,
   ) => { project: Project } | null;
@@ -21,39 +18,40 @@ export interface AssetCanvasImageServiceOptions {
 }
 
 /**
- * Reads the original imported image for the active editor canvas.
+ * Secure, read-only bridge for Product Preview audio.
  *
- * This service deliberately has no disk cache: thumbnails are a separate
- * small-card concern. Reads are lazy and deduplicated only while in flight;
- * the renderer owns any object URLs it creates from the bounded response and
- * revokes them when the consuming view becomes stale.
+ * The renderer supplies the project-root/asset/hash tuple that it already
+ * owns. Main re-checks the tracked Project, the asset kind and hash, the
+ * assets-directory containment, media signature, size, and final content hash
+ * before returning bytes. The response deliberately contains no filesystem
+ * path or raw error text.
  */
-export class AssetCanvasImageService {
+export class AssetPreviewAudioService {
   private readonly getCurrentProjectSnapshot: (
     projectRoot: string,
   ) => { project: Project } | null;
   private readonly inspectionService: MediaInspectionService;
   private readonly activeReads = new Map<
     string,
-    Promise<AssetCanvasImageReadResponse>
+    Promise<AssetPreviewAudioReadResponse>
   >();
 
-  constructor(options: AssetCanvasImageServiceOptions) {
+  constructor(options: AssetPreviewAudioServiceOptions) {
     this.getCurrentProjectSnapshot = options.getCurrentProjectSnapshot;
     this.inspectionService =
       options.inspectionService ?? new MediaInspectionService();
   }
 
-  read(rawRequest: unknown): Promise<AssetCanvasImageReadResponse> {
-    let request: AssetCanvasImageReadRequest;
+  read(rawRequest: unknown): Promise<AssetPreviewAudioReadResponse> {
+    let request: AssetPreviewAudioReadRequest;
     try {
-      request = AssetCanvasImageReadRequestSchema.parse(rawRequest);
+      request = AssetPreviewAudioReadRequestSchema.parse(rawRequest);
     } catch {
       return Promise.resolve(
         this.failure(
-          'ASSET_CANVAS_IMAGE_INVALID_REQUEST',
+          'ASSET_PREVIEW_AUDIO_INVALID_REQUEST',
           this.requestAssetId(rawRequest),
-          'Canvas image request is invalid.',
+          'Audio preview request is invalid.',
         ),
       );
     }
@@ -70,21 +68,21 @@ export class AssetCanvasImageService {
   }
 
   private async readValidated(
-    request: AssetCanvasImageReadRequest,
-  ): Promise<AssetCanvasImageReadResponse> {
+    request: AssetPreviewAudioReadRequest,
+  ): Promise<AssetPreviewAudioReadResponse> {
     let snapshot: { project: Project } | null;
     try {
       snapshot = this.getCurrentProjectSnapshot(request.projectRoot);
-    } catch (error) {
+    } catch {
       return this.failure(
-        'ASSET_CANVAS_IMAGE_READ_FAILED',
+        'ASSET_PREVIEW_AUDIO_READ_FAILED',
         request.assetId,
-        `Unable to read the current project snapshot: ${this.errorText(error)}`,
+        'Unable to read the current project snapshot.',
       );
     }
     if (!snapshot) {
       return this.failure(
-        'ASSET_CANVAS_IMAGE_PROJECT_NOT_TRACKED',
+        'ASSET_PREVIEW_AUDIO_PROJECT_NOT_TRACKED',
         request.assetId,
         'The project is not currently tracked by the Main Process.',
       );
@@ -93,11 +91,11 @@ export class AssetCanvasImageService {
     let project: Project;
     try {
       project = ProjectSchema.parse(snapshot.project);
-    } catch (error) {
+    } catch {
       return this.failure(
-        'ASSET_CANVAS_IMAGE_READ_FAILED',
+        'ASSET_PREVIEW_AUDIO_READ_FAILED',
         request.assetId,
-        `The current project snapshot is invalid: ${this.errorText(error)}`,
+        'The current project snapshot is invalid.',
       );
     }
 
@@ -106,28 +104,30 @@ export class AssetCanvasImageService {
     );
     if (!asset) {
       return this.failure(
-        'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+        'ASSET_PREVIEW_AUDIO_ASSET_NOT_FOUND',
         request.assetId,
         'The project does not contain this asset.',
       );
     }
+    if (asset.kind !== 'audio') {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_NOT_AUDIO',
+        request.assetId,
+        'The project asset is not audio.',
+      );
+    }
     if (asset.sha256 !== request.sha256) {
       return this.failure(
-        'ASSET_CANVAS_IMAGE_HASH_MISMATCH',
+        'ASSET_PREVIEW_AUDIO_HASH_MISMATCH',
         request.assetId,
         'The asset content hash no longer matches the current project.',
       );
     }
-
-    const mimeType = asset.mimeType;
-    if (
-      asset.kind !== 'image' ||
-      (mimeType !== 'image/png' && mimeType !== 'image/jpeg')
-    ) {
+    if (asset.mimeType !== 'audio/mpeg' && asset.mimeType !== 'audio/wav') {
       return this.failure(
-        'ASSET_CANVAS_IMAGE_READ_FAILED',
+        'ASSET_PREVIEW_AUDIO_READ_FAILED',
         request.assetId,
-        'The asset is not a supported PNG or JPEG image.',
+        'The asset MIME type is not supported for preview.',
       );
     }
 
@@ -137,53 +137,45 @@ export class AssetCanvasImageService {
     );
     if (!sourcePath) {
       return this.failure(
-        'ASSET_CANVAS_IMAGE_READ_FAILED',
+        'ASSET_PREVIEW_AUDIO_READ_FAILED',
         request.assetId,
-        'The asset source is missing or outside the project assets directory.',
+        'The audio source is missing or outside the project assets directory.',
       );
     }
 
     try {
       const sourceStats = await stat(sourcePath);
       if (!sourceStats.isFile() || sourceStats.size <= 0) {
-        throw new Error('The source is not a non-empty regular file.');
+        throw new Error('not a regular non-empty file');
       }
-      if (sourceStats.size > CANVAS_IMAGE_MAX_BYTES) {
-        throw new Error(
-          `The source exceeds the ${CANVAS_IMAGE_MAX_BYTES}-byte canvas image limit.`,
-        );
+      if (sourceStats.size > ASSET_PREVIEW_AUDIO_MAX_BYTES) {
+        throw new Error('source exceeds preview limit');
       }
 
       const inspected = await this.inspectionService.inspect(
         sourcePath,
-        mimeType,
+        asset.mimeType,
       );
       if (
-        inspected.kind !== 'image' ||
-        inspected.mimeType !== mimeType ||
-        inspected.width !== asset.width ||
-        inspected.height !== asset.height
+        inspected.kind !== 'audio' ||
+        inspected.mimeType !== asset.mimeType
       ) {
-        throw new Error(
-          `The source metadata does not match the project asset (${asset.width}x${asset.height}).`,
-        );
+        throw new Error('source media metadata does not match the project');
       }
 
       const bytes = await readFile(sourcePath);
-      if (bytes.byteLength === 0) {
-        throw new Error('The source is empty.');
-      }
-      if (bytes.byteLength > CANVAS_IMAGE_MAX_BYTES) {
-        throw new Error(
-          `The source exceeds the ${CANVAS_IMAGE_MAX_BYTES}-byte canvas image limit.`,
-        );
+      if (
+        bytes.byteLength === 0 ||
+        bytes.byteLength > ASSET_PREVIEW_AUDIO_MAX_BYTES
+      ) {
+        throw new Error('source byte length is outside the preview limit');
       }
       const actualSha256 = createHash('sha256')
         .update(bytes)
         .digest('hex');
       if (actualSha256 !== request.sha256) {
         return this.failure(
-          'ASSET_CANVAS_IMAGE_HASH_MISMATCH',
+          'ASSET_PREVIEW_AUDIO_HASH_MISMATCH',
           request.assetId,
           'The source file hash does not match the project asset.',
         );
@@ -193,17 +185,15 @@ export class AssetCanvasImageService {
         ok: true,
         status: 'ready',
         assetId: request.assetId,
-        mimeType,
-        width: asset.width,
-        height: asset.height,
+        mimeType: asset.mimeType,
         byteLength: bytes.byteLength,
-        bytes,
+        bytes: new Uint8Array(bytes),
       };
-    } catch (error) {
+    } catch {
       return this.failure(
-        'ASSET_CANVAS_IMAGE_READ_FAILED',
+        'ASSET_PREVIEW_AUDIO_READ_FAILED',
         request.assetId,
-        `Unable to read the original canvas image: ${this.errorText(error)}`,
+        'Unable to read and validate the audio source.',
       );
     }
   }
@@ -245,7 +235,10 @@ export class AssetCanvasImageService {
         typeof rawRequest === 'object' &&
         rawRequest !== null &&
         'assetId' in rawRequest &&
-        typeof rawRequest.assetId === 'string'
+        typeof rawRequest.assetId === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
+          rawRequest.assetId,
+        )
       ) {
         return rawRequest.assetId;
       }
@@ -255,36 +248,24 @@ export class AssetCanvasImageService {
     return '(invalid)';
   }
 
-  private errorText(error: unknown): string {
-    const message = error instanceof Error ? error.message : String(error);
-    return (
-      Array.from(message, (character) => {
-        const code = character.charCodeAt(0);
-        return code <= 0x1f || code === 0x7f ? ' ' : character;
-      })
-        .join('')
-        .replace(/\s+/gu, ' ')
-        .trim()
-        .slice(0, 900) || 'Operation failed.'
-    );
-  }
-
   private failure(
     code:
-      | 'ASSET_CANVAS_IMAGE_INVALID_REQUEST'
-      | 'ASSET_CANVAS_IMAGE_PROJECT_NOT_TRACKED'
-      | 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND'
-      | 'ASSET_CANVAS_IMAGE_HASH_MISMATCH'
-      | 'ASSET_CANVAS_IMAGE_READ_FAILED',
+      | 'ASSET_PREVIEW_AUDIO_INVALID_REQUEST'
+      | 'ASSET_PREVIEW_AUDIO_PROJECT_NOT_TRACKED'
+      | 'ASSET_PREVIEW_AUDIO_ASSET_NOT_FOUND'
+      | 'ASSET_PREVIEW_AUDIO_NOT_AUDIO'
+      | 'ASSET_PREVIEW_AUDIO_HASH_MISMATCH'
+      | 'ASSET_PREVIEW_AUDIO_READ_FAILED',
     assetId: string,
     message: string,
-  ): AssetCanvasImageReadResponse {
+  ): AssetPreviewAudioReadResponse {
     return {
       ok: false,
       error: {
         code,
-        message: this.errorText(message).slice(0, 1_000),
-        assetId: this.errorText(assetId).slice(0, 200),
+        // eslint-disable-next-line no-control-regex
+        message: message.replace(/[\u0000-\u001f\u007f]/gu, ' ').slice(0, 1_000),
+        assetId: assetId.slice(0, 200),
       },
     };
   }

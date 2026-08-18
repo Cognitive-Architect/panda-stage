@@ -1093,13 +1093,13 @@ export class FFmpegAdapter {
       if (nodeError.code === 'ENOENT') {
         throw new FFmpegAdapterError(
           'EXECUTABLE_NOT_FOUND',
-          `找不到媒体工具：${path.basename(executable)}。请配置开发环境路径。`,
+          `找不到媒体工具：${path.basename(executable)}。请运行 pnpm install，或检查 PANDA_STAGE_FFMPEG_PATH / PANDA_STAGE_FFPROBE_PATH。`,
           { executable, args, cause: error },
         );
       }
       throw new FFmpegAdapterError(
         'PROCESS_FAILED',
-        '无法启动媒体编码进程。',
+        '无法启动媒体工具进程，请检查可执行文件是否存在且可运行。',
         { executable, args, cause: error },
       );
     }

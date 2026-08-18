@@ -17,6 +17,11 @@ import {
   CANVAS_IMAGE_MAX_BYTES,
 } from '../../src/shared/asset-canvas-image-api';
 import {
+  AssetPreviewAudioReadRequestSchema,
+  AssetPreviewAudioReadResponseSchema,
+  ASSET_PREVIEW_AUDIO_MAX_BYTES,
+} from '../../src/shared/asset-preview-audio-api';
+import {
   NativeCloseSyncRequestSchema,
   NativeCloseSyncResponseSchema,
 } from '../../src/shared/native-close-sync';
@@ -52,6 +57,7 @@ describe('IPC channel registry', () => {
       'asset:delete',
       'asset-thumbnail:read',
       'asset-canvas-image:read',
+      'asset-preview-audio:read',
       'recent-projects:list',
       'recent-projects:open',
       'recent-projects:remove',
@@ -120,6 +126,32 @@ describe('IPC contracts', () => {
       }).success,
     ).toBe(false);
     expect(CANVAS_IMAGE_MAX_BYTES).toBe(64 * 1024 * 1024);
+  });
+
+  it('validates the strict preview-audio request and response boundary', () => {
+    const request = {
+      projectRoot: 'C:\\demo.pandastage',
+      assetId: '10000000-0000-4000-8000-000000000002',
+      sha256: 'a'.repeat(64),
+    };
+    expect(AssetPreviewAudioReadRequestSchema.parse(request)).toEqual(request);
+    expect(
+      AssetPreviewAudioReadRequestSchema.safeParse({
+        ...request,
+        sourcePath: 'C:\\outside.wav',
+      }).success,
+    ).toBe(false);
+    expect(
+      AssetPreviewAudioReadResponseSchema.safeParse({
+        ok: true,
+        status: 'ready',
+        assetId: request.assetId,
+        mimeType: 'audio/wav',
+        byteLength: 2,
+        bytes: new Uint8Array([1]),
+      }).success,
+    ).toBe(false);
+    expect(ASSET_PREVIEW_AUDIO_MAX_BYTES).toBe(64 * 1024 * 1024);
   });
 
   it('accepts only the empty app ping request', () => {

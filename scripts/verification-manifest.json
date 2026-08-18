@@ -83,12 +83,16 @@
           "src/domain/**",
           "src/history/**",
           "src/shared/**",
-          "src/renderer/stores/**"
+          "src/renderer/stores/**",
+          "src/renderer/global.d.ts"
         ],
         "testPatterns": [
           "tests/unit/domain/**",
           "tests/unit/migrations/**",
+          "tests/unit/ipc-contracts.test.ts",
+          "tests/unit/production-resources.test.ts",
           "tests/integration/schema-*.test.ts",
+          "tests/integration/dialogue-audio-preview.test.ts",
           "tests/contract/fixtures/ci-routing/core/**"
         ],
         "verifierPatterns": [],
@@ -264,10 +268,12 @@
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
           "tests/unit/left-workspace.test.ts",
+          "tests/unit/product-preview-*.test.ts",
           "tests/unit/right-inspector*.test.ts",
           "tests/integration/editor-shell-*.test.ts",
           "tests/integration/left-workspace.test.ts",
-          "tests/integration/right-inspector*.test.ts"
+          "tests/integration/right-inspector*.test.ts",
+          "tests/contract/dom-selectors.baseline.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-issue102-task2*",

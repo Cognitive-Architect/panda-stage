@@ -171,6 +171,48 @@ describe('DialogueStore', () => {
     });
   });
 
+  it('places an occupied-point Dialogue in one atomic History command', () => {
+    const service = new DialogueService();
+    let project = service.create(buildProject(), {
+      shotId: IDS.shot,
+      characterId: IDS.character,
+      text: 'occupied',
+      pointTimeMs: 0,
+    });
+    const occupiedId = project.shots[0]!.dialogues[0]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: occupiedId,
+      startMs: 0,
+      endMs: 1300,
+    });
+    project = service.create(project, {
+      shotId: IDS.shot,
+      characterId: IDS.character,
+      text: 'new at occupied point',
+      pointTimeMs: 0,
+    });
+    const dialogueId = project.shots[0]!.dialogues[1]!.id;
+    const { editor, store } = setup(0, project, service);
+    const before = editor.getSnapshot()!;
+    const beforeUndo = editor.history.getSnapshot().undoCount;
+
+    store.arrange(dialogueId, 42);
+
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[1]).toMatchObject({
+      startMs: 1300,
+      endMs: 1342,
+    });
+    expect(editor.getSnapshot()!.revision).toBe(before.revision + 1);
+    expect(editor.history.getSnapshot().undoCount).toBe(beforeUndo + 1);
+
+    editor.undo();
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[1]).toMatchObject({
+      startMs: 0,
+      endMs: 0,
+    });
+  });
+
   it('commits one successful move once without seeking the playhead', () => {
     const { editor, store, timelineState } = setup(1000);
     const id = store.create(IDS.character, 'move once');

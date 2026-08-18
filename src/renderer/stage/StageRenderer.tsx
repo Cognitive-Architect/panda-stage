@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type Konva from 'konva';
-import { Image as KonvaImage, Layer, Stage, Text } from 'react-konva';
+import { Image as KonvaImage, Layer, Stage } from 'react-konva';
 import type { EvaluatedShot, Project } from '../../domain';
 import type { SubtitleStyle } from '../../domain';
 import {
@@ -193,14 +193,6 @@ export function StageRenderer({
             );
           })}
           <SubtitleRenderer text={caption} style={captionStyle} />
-          <Text
-            fill="rgba(16, 45, 34, 0.7)"
-            fontFamily="Segoe UI, sans-serif"
-            fontSize={24}
-            text="PANDA STAGE · 1920 × 1080"
-            x={42}
-            y={36}
-          />
         </Layer>
       </Stage>
     </div>

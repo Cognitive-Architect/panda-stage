@@ -17,6 +17,11 @@ import {
   AssetCanvasImageReadResponseSchema,
   type AssetCanvasImageReadResponse,
 } from '../../shared/asset-canvas-image-api';
+import {
+  AssetPreviewAudioReadRequestSchema,
+  AssetPreviewAudioReadResponseSchema,
+  type AssetPreviewAudioReadResponse,
+} from '../../shared/asset-preview-audio-api';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import {
   AssetDeleteService,
@@ -24,12 +29,14 @@ import {
 } from '../services/AssetDeleteService';
 import { AssetThumbnailService } from '../services/AssetThumbnailService';
 import { AssetCanvasImageService } from '../services/AssetCanvasImageService';
+import { AssetPreviewAudioService } from '../services/AssetPreviewAudioService';
 
 export interface AssetLibraryIpcHandlerDependencies {
   getMainWindow: () => BrowserWindow | null;
   assetDeleteService: AssetDeleteService;
   assetThumbnailService: AssetThumbnailService;
   assetCanvasImageService: AssetCanvasImageService;
+  assetPreviewAudioService: AssetPreviewAudioService;
 }
 
 function assertTrustedSender(
@@ -104,6 +111,21 @@ function canvasImageFailure(
     error: {
       code: 'ASSET_CANVAS_IMAGE_READ_FAILED',
       message,
+      assetId: assetId.slice(0, 200),
+    },
+  });
+}
+
+function previewAudioFailure(
+  error: unknown,
+  assetId: string,
+): AssetPreviewAudioReadResponse {
+  void error;
+  return AssetPreviewAudioReadResponseSchema.parse({
+    ok: false,
+    error: {
+      code: 'ASSET_PREVIEW_AUDIO_READ_FAILED',
+      message: 'Audio preview service failed.',
       assetId: assetId.slice(0, 200),
     },
   });
@@ -212,9 +234,42 @@ export function registerAssetLibraryIpcHandlers(
     },
   );
 
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ,
+      );
+      let request;
+      try {
+        request = AssetPreviewAudioReadRequestSchema.parse(rawRequest);
+      } catch {
+        return AssetPreviewAudioReadResponseSchema.parse({
+          ok: false,
+          error: {
+            code: 'ASSET_PREVIEW_AUDIO_INVALID_REQUEST',
+            message: 'Audio preview request is invalid.',
+            assetId: '(invalid)',
+          },
+        });
+      }
+      try {
+        const response = await dependencies.assetPreviewAudioService.read(
+          request,
+        );
+        return AssetPreviewAudioReadResponseSchema.parse(response);
+      } catch (error) {
+        return previewAudioFailure(error, request.assetId);
+      }
+    },
+  );
+
   return () => {
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_DELETE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_THUMBNAIL_READ);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ);
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ);
   };
 }
