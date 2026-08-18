@@ -278,6 +278,7 @@ export function ProductPreviewOverlay({
           data-task4-core="preview-close"
           data-testid="product-preview-close"
           onClick={onClose}
+          title="关闭预览"
           type="button"
         >
           ×
@@ -293,103 +294,106 @@ export function ProductPreviewOverlay({
           </div>
         ) : (
           <>
-            <div
-              className="product-preview-stage"
-              data-preview-image-source="bounded-original"
-              data-preview-stage-fit="contain"
-            >
-              {assets.status === 'loading' ? (
-                <div
-                  className="product-preview-message"
-                  data-testid="product-preview-loading"
-                >
-                  <strong>预览素材加载中</strong>
-                  <span>正在读取当前镜头需要的图片素材。</span>
-                </div>
-              ) : assets.status === 'error' ? (
-                <div
-                  className="product-preview-message product-preview-warning"
-                  data-testid="product-preview-asset-warning"
-                >
-                  <strong>部分素材无法预览</strong>
-                  <span>
-                    有 {assets.missingCount} 个图片素材无法读取，请在项目素材库中重新导入或刷新后再试。
-                  </span>
-                </div>
-              ) : renderedShot ? (
-                  <CanvasStage
-                    assetUrls={assets.urls}
-                    caption={caption}
-                    captionStyle={captionStyle}
-                    evaluatedShot={renderedShot}
-                    project={project}
-                  />
-              ) : null}
-            </div>
-
-            <div className="product-preview-transport">
+            <div className="product-preview-player">
               <div
-                aria-label="产品预览播放控制"
-                className="product-preview-controls"
+                className="product-preview-stage"
+                data-preview-image-source="bounded-original"
+                data-preview-stage-fit="contain"
               >
-                <button
-                  className="task4-hit-target"
-                  data-task4-core="preview-play"
-                  data-testid="product-preview-play"
-                  disabled={playing || atEnd || durationMs <= 0}
-                  onClick={() => setPlaying(true)}
-                  type="button"
-                >
-                  播放
-                </button>
-                <button
-                  className="task4-hit-target"
-                  data-task4-core="preview-pause"
-                  data-testid="product-preview-pause"
-                  disabled={!playing}
-                  onClick={() => setPlaying(false)}
-                  type="button"
-                >
-                  暂停
-                </button>
-                <button
-                  className="task4-hit-target"
-                  data-task4-core="preview-replay"
-                  data-testid="product-preview-replay"
-                  disabled={durationMs <= 0}
-                  onClick={replayPlayback}
-                  type="button"
-                >
-                  Replay / 重放
-                </button>
+                {assets.status === 'loading' ? (
+                  <div
+                    className="product-preview-message"
+                    data-testid="product-preview-loading"
+                  >
+                    <strong>预览素材加载中</strong>
+                    <span>正在读取当前镜头需要的图片素材。</span>
+                  </div>
+                ) : assets.status === 'error' ? (
+                  <div
+                    className="product-preview-message product-preview-warning"
+                    data-testid="product-preview-asset-warning"
+                  >
+                    <strong>部分素材无法预览</strong>
+                    <span>
+                      有 {assets.missingCount} 个图片素材无法读取，请在项目素材库中重新导入或刷新后再试。
+                    </span>
+                  </div>
+                ) : renderedShot ? (
+                    <CanvasStage
+                      assetUrls={assets.urls}
+                      caption={caption}
+                      captionStyle={captionStyle}
+                      evaluatedShot={renderedShot}
+                      project={project}
+                    />
+                ) : null}
               </div>
-              <input
-                aria-label="产品预览进度"
-                className="product-preview-scrubber"
-                data-testid="product-preview-scrubber"
-                max={durationMs}
-                min={0}
-                onChange={(event) => {
-                  setPlaying(false);
-                  setSeekRevision((revision) => revision + 1);
-                  setTimeMs(
-                    clampProductPreviewTime(
-                      Number(event.target.value),
-                      durationMs,
-                    ),
-                  );
-                }}
-                step={10}
-                type="range"
-                value={timeMs}
-              />
-              <span
-                className="product-preview-timecode"
-                data-testid="product-preview-timecode"
-              >
-                {formatProductPreviewTimecode(timeMs)} /{' '}
-                {formatProductPreviewTimecode(durationMs)}
-              </span>
+
+              <div className="product-preview-transport">
+                <div
+                  aria-label="产品预览播放控制"
+                  className="product-preview-controls"
+                >
+                  <button
+                    aria-label={playing ? '暂停' : '播放'}
+                    aria-pressed={playing}
+                    className="product-preview-icon-button task4-hit-target"
+                    data-task4-core={playing ? 'preview-pause' : 'preview-play'}
+                    data-testid={
+                      playing ? 'product-preview-pause' : 'product-preview-play'
+                    }
+                    disabled={durationMs <= 0 || (!playing && atEnd)}
+                    onClick={() => setPlaying((current) => !current)}
+                    title={playing ? '暂停' : '播放'}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="product-preview-icon">
+                      {playing ? '⏸' : '▶'}
+                    </span>
+                  </button>
+                  <button
+                    aria-label="重放"
+                    className="product-preview-icon-button task4-hit-target"
+                    data-task4-core="preview-replay"
+                    data-testid="product-preview-replay"
+                    disabled={durationMs <= 0}
+                    onClick={replayPlayback}
+                    title="重放"
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="product-preview-icon">
+                      ↺
+                    </span>
+                  </button>
+                </div>
+                <input
+                  aria-label="产品预览进度"
+                  className="product-preview-scrubber"
+                  data-testid="product-preview-scrubber"
+                  max={durationMs}
+                  min={0}
+                  onChange={(event) => {
+                    setPlaying(false);
+                    setSeekRevision((revision) => revision + 1);
+                    setTimeMs(
+                      clampProductPreviewTime(
+                        Number(event.target.value),
+                        durationMs,
+                      ),
+                    );
+                  }}
+                  step={10}
+                  type="range"
+                  value={timeMs}
+                />
+                <span
+                  className="product-preview-timecode"
+                  data-testid="product-preview-timecode"
+                >
+                  {formatProductPreviewTimecode(timeMs)} /{' '}
+                  {formatProductPreviewTimecode(durationMs)}
+                </span>
+              </div>
             </div>
 
             {audioWarning ? (
