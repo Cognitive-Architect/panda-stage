@@ -272,7 +272,8 @@
           "tests/unit/right-inspector*.test.ts",
           "tests/integration/editor-shell-*.test.ts",
           "tests/integration/left-workspace.test.ts",
-          "tests/integration/right-inspector*.test.ts"
+          "tests/integration/right-inspector*.test.ts",
+          "tests/contract/dom-selectors.baseline.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-issue102-task2*",
