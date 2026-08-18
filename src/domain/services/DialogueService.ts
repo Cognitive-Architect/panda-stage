@@ -200,7 +200,7 @@ export class DialogueService {
   bindAudio(project: Project, input: BindDialogueAudioInput): Project {
     const shot = this.shot(project, input.shotId);
     const dialogue = this.dialogue(shot, input.dialogueId);
-    const dialogueDurationMs = this.timedDuration(dialogue);
+    this.timedDuration(dialogue);
     const asset = this.audioAsset(project, input.assetId);
     const existingClip = dialogue.audioClipId
       ? this.audioClip(shot, dialogue.audioClipId)
@@ -214,16 +214,20 @@ export class DialogueService {
     const offsetMs = sameAsset ? existingClip!.offsetMs : 0;
     const volume = sameAsset ? existingClip!.volume : 1;
     const name = sameAsset ? existingClip!.name : asset.name;
-    this.assertAudioRange(asset, offsetMs, dialogueDurationMs);
 
-    if (
-      existingClip &&
-      sameAsset &&
-      existingClip.startMs === dialogue.startMs &&
-      existingClip.endMs === dialogue.endMs
-    ) {
+    // Rebinding the same asset is intentionally a no-op. Audio timing is an
+    // independent persisted interval now, so changing the subtitle window
+    // must not silently reset an existing clip's trim/offset.
+    if (existingClip && sameAsset) {
       return project;
     }
+
+    const timing = this.initialAudioTiming(dialogue, asset, offsetMs);
+    this.assertAudioRange(
+      asset,
+      offsetMs,
+      timing.endMs - timing.startMs,
+    );
 
     const usedIds = this.collectIds(project);
     const clipId =
@@ -234,8 +238,8 @@ export class DialogueService {
       id: clipId,
       name,
       assetId: asset.id,
-      startMs: dialogue.startMs,
-      endMs: dialogue.endMs,
+      startMs: timing.startMs,
+      endMs: timing.endMs,
       offsetMs,
       volume,
     };
@@ -308,7 +312,13 @@ export class DialogueService {
       shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
       timing,
     );
-    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
+    return this.replaceMovedDialogueTiming(
+      project,
+      shot,
+      dialogue.id,
+      timing,
+      startMs - dialogue.startMs,
+    );
   }
 
   resize(project: Project, input: ResizeDialogueInput): Project {
@@ -324,6 +334,8 @@ export class DialogueService {
       shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
       timing,
     );
+    // Resizing is subtitle-only. The bound AudioClip keeps its own source
+    // backed interval, which permits a subtitle tail after speech ends.
     return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
   }
 
@@ -352,7 +364,35 @@ export class DialogueService {
       return project;
     }
     const nextDialogue = { ...current, ...timing };
+    return this.replaceShot(project, shot.id, {
+      ...shot,
+      dialogues: shot.dialogues.map((candidate) =>
+        candidate.id === dialogueId ? nextDialogue : candidate,
+      ),
+    });
+  }
+
+  /**
+   * Timeline move keeps the subtitle and its bound audio linked in position,
+   * while preserving the AudioClip's independent duration and source offset.
+   * Copy-on-write keeps shared legacy clips safe.
+   */
+  private replaceMovedDialogueTiming(
+    project: Project,
+    shot: Shot,
+    dialogueId: string,
+    timing: { startMs: number; endMs: number },
+    deltaMs: number,
+  ): Project {
+    const current = this.dialogue(shot, dialogueId);
+    const nextDialogue = { ...current, ...timing };
     if (!current.audioClipId) {
+      if (
+        current.startMs === timing.startMs &&
+        current.endMs === timing.endMs
+      ) {
+        return project;
+      }
       return this.replaceShot(project, shot.id, {
         ...shot,
         dialogues: shot.dialogues.map((candidate) =>
@@ -363,19 +403,31 @@ export class DialogueService {
 
     const clip = this.audioClip(shot, current.audioClipId);
     const asset = this.audioAsset(project, clip.assetId);
-    this.assertAudioRange(asset, clip.offsetMs, timing.endMs - timing.startMs);
+    const clipDurationMs = clip.endMs - clip.startMs;
+    this.assertAudioRange(asset, clip.offsetMs, clipDurationMs);
+    const nextClipTiming = this.shiftAudioTiming(
+      clip,
+      deltaMs,
+      shot.durationMs,
+    );
+    if (
+      current.startMs === timing.startMs &&
+      current.endMs === timing.endMs &&
+      clip.startMs === nextClipTiming.startMs &&
+      clip.endMs === nextClipTiming.endMs
+    ) {
+      return project;
+    }
+
     const references = shot.dialogues.filter(
       (candidate) => candidate.audioClipId === clip.id,
     ).length;
     const clipId =
-      references === 1
-        ? clip.id
-        : this.nextId(this.collectIds(project));
+      references === 1 ? clip.id : this.nextId(this.collectIds(project));
     const nextClip: AudioClip = {
       ...clip,
       id: clipId,
-      startMs: timing.startMs,
-      endMs: timing.endMs,
+      ...nextClipTiming,
     };
     const nextDialogueWithClip = {
       ...nextDialogue,
@@ -394,6 +446,43 @@ export class DialogueService {
         candidate.id === dialogueId ? nextDialogueWithClip : candidate,
       ),
     });
+  }
+
+  private initialAudioTiming(
+    dialogue: Dialogue,
+    asset: AudioAsset,
+    offsetMs: number,
+  ): { startMs: number; endMs: number } {
+    const dialogueDurationMs = this.timedDuration(dialogue);
+    const sourceDurationMs = Math.max(
+      0,
+      (asset.durationMs ?? 0) - offsetMs,
+    );
+    const clipDurationMs = Math.min(dialogueDurationMs, sourceDurationMs);
+    if (clipDurationMs < MIN_TIMED_DIALOGUE_DURATION_MS) {
+      throw new DialogueServiceError(
+        'AUDIO_CLIP_TOO_SHORT',
+        '音频素材在当前源位置没有可播放的有效时长。',
+      );
+    }
+    return {
+      startMs: dialogue.startMs,
+      endMs: dialogue.startMs + clipDurationMs,
+    };
+  }
+
+  private shiftAudioTiming(
+    clip: AudioClip,
+    deltaMs: number,
+    shotDurationMs: number,
+  ): { startMs: number; endMs: number } {
+    const durationMs = clip.endMs - clip.startMs;
+    const latestStartMs = Math.max(0, shotDurationMs - durationMs);
+    const startMs = Math.min(
+      Math.max(clip.startMs + deltaMs, 0),
+      latestStartMs,
+    );
+    return { startMs, endMs: startMs + durationMs };
   }
 
   private findFirstAvailableTiming(

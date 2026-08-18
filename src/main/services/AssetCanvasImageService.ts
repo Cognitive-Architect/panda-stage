@@ -25,7 +25,8 @@ export interface AssetCanvasImageServiceOptions {
  *
  * This service deliberately has no disk cache: thumbnails are a separate
  * small-card concern. Reads are lazy and deduplicated only while in flight;
- * object URL ownership remains with a later renderer/UI issue.
+ * the renderer owns any object URLs it creates from the bounded response and
+ * revokes them when the consuming view becomes stale.
  */
 export class AssetCanvasImageService {
   private readonly getCurrentProjectSnapshot: (

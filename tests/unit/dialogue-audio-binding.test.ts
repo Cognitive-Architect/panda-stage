@@ -128,9 +128,30 @@ describe('Dialogue audio binding', () => {
     expect(ProjectSchema.parse(JSON.parse(JSON.stringify(bound)))).toEqual(
       bound,
     );
+
+    const longSubtitle = timedProject(0, 1_500);
+    const boundedSource = ProjectSchema.parse({
+      ...longSubtitle.project,
+      assets: longSubtitle.project.assets.map((asset) =>
+        asset.id === AUDIO_A ? { ...asset, durationMs: 1_330 } : asset,
+      ),
+    });
+    const bounded = longSubtitle.service.bindAudio(boundedSource, {
+      shotId: IDS.shot,
+      dialogueId: longSubtitle.dialogueId,
+      assetId: AUDIO_A,
+    });
+    expect(bounded.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 1_500,
+    });
+    expect(bounded.shots[0]!.audioClips[0]).toMatchObject({
+      startMs: 0,
+      endMs: 1_330,
+    });
   });
 
-  it('rejects missing, non-audio, unanalysed, and too-short sources atomically', () => {
+  it('rejects missing, non-audio, and unanalysed sources atomically', () => {
     const { project, dialogueId } = timedProject();
     const mutationService = service();
     const before = project;
@@ -172,14 +193,18 @@ describe('Dialogue audio binding', () => {
         }),
       'AUDIO_ASSET_DURATION_UNAVAILABLE',
     );
-    expectDialogueError(
-      () =>
-        mutationService.bindAudio(project, {
-          shotId: IDS.shot,
-          dialogueId,
-          assetId: AUDIO_SHORT,
-        }),
-      'AUDIO_CLIP_TOO_SHORT',
+    const shortBound = mutationService.bindAudio(project, {
+      shotId: IDS.shot,
+      dialogueId,
+      assetId: AUDIO_SHORT,
+    });
+    expect(shortBound.shots[0]!.audioClips[0]).toMatchObject({
+      assetId: AUDIO_SHORT,
+      startMs: 500,
+      endMs: 1_000,
+    });
+    expect(ProjectSchema.parse(JSON.parse(JSON.stringify(shortBound)))).toEqual(
+      shortBound,
     );
     expect(project).toBe(before);
   });
@@ -253,7 +278,7 @@ describe('Dialogue audio binding', () => {
     ]);
   });
 
-  it('keeps bound clip timing synchronized, preserves metadata, and rejects a short resize atomically', () => {
+  it('keeps move linked while resize preserves an independent audio interval', () => {
     const seed = timedProject();
     const project = ProjectSchema.parse({
       ...seed.project,
@@ -297,17 +322,25 @@ describe('Dialogue audio binding', () => {
     ).toBe(beforeNoOp);
 
     const beforeFailure = bound;
-    expectDialogueError(
-      () =>
-        mutationService.resize(bound, {
-          shotId: IDS.shot,
-          dialogueId,
-          edge: 'end',
-          timeMs: 3_000,
-        }),
-      'AUDIO_CLIP_TOO_SHORT',
-    );
-    expect(bound).toBe(beforeFailure);
+    const resized = mutationService.resize(bound, {
+      shotId: IDS.shot,
+      dialogueId,
+      edge: 'end',
+      timeMs: 2_000,
+    });
+    expect(resized.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 600,
+      endMs: 2_000,
+    });
+    expect(resized.shots[0]!.audioClips[0]).toMatchObject({
+      startMs: 600,
+      endMs: 1_600,
+      assetId: AUDIO_A,
+      offsetMs: 0,
+      volume: 1,
+      name: '对白 A',
+    });
+    expect(resized).not.toBe(beforeFailure);
   });
 
   it('commits a successful Store bind as one undoable History command', () => {
@@ -341,5 +374,56 @@ describe('Dialogue audio binding', () => {
     expect(after.project.shots[0]!.audioClips).toHaveLength(1);
     expect(editor.undo()).toBe(true);
     expect(editor.getSnapshot()!.project.shots[0]!.audioClips).toHaveLength(0);
+  });
+
+  it('round-trips independent subtitle timing through one undoable resize', () => {
+    const seed = timedProject(0, 1_000);
+    const editor = new EditorProjectStore();
+    const shots = new ShotStore(editor, new ShotService());
+    const layers = new LayerSelectionStore(editor, shots);
+    const dialogueSelection = new DialogueSelectionStore(
+      editor,
+      shots,
+      layers,
+    );
+    const store = new DialogueStore(
+      editor,
+      shots,
+      service(),
+      { getSnapshot: () => ({ currentTimeMs: 0 }) },
+      dialogueSelection,
+    );
+    editor.open('D:\\dialogue-independent-timing.pandastage', seed.project);
+    shots.select(IDS.shot);
+
+    store.bindAudio(seed.dialogueId, AUDIO_SHORT);
+    store.resize(seed.dialogueId, 'end', 1_500);
+
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 1_500,
+    });
+    expect(editor.getSnapshot()!.project.shots[0]!.audioClips[0]).toMatchObject({
+      startMs: 0,
+      endMs: 500,
+    });
+
+    expect(editor.undo()).toBe(true);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 1_000,
+    });
+    expect(editor.getSnapshot()!.project.shots[0]!.audioClips[0]).toMatchObject({
+      startMs: 0,
+      endMs: 500,
+    });
+
+    expect(editor.redo()).toBe(true);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]!.endMs).toBe(
+      1_500,
+    );
+    expect(editor.getSnapshot()!.project.shots[0]!.audioClips[0]!.endMs).toBe(
+      500,
+    );
   });
 });

@@ -32,7 +32,7 @@ import {
 import { useProductPreviewAudio } from './productPreviewAudio';
 
 export interface ProductPreviewOverlayProps {
-  /** Project folder of the currently open project, used to read thumbnails. */
+  /** Project folder of the currently open project, used to read preview images. */
   projectRoot: string;
   /** The already loaded formal project. Treated as immutable input. */
   project: Project;
@@ -57,8 +57,10 @@ const INITIAL_ASSET_STATE: AssetLoadState = {
 };
 
 /**
- * Loads one data URL per image asset the shot can show. Read-only: it calls
- * the existing thumbnail read IPC and keeps the result in overlay-local state.
+ * Loads one bounded original-image object URL per image asset the shot can
+ * show. Asset Library thumbnails remain a separate lightweight path; Product
+ * Preview uses the existing secure canvas-image IPC so a large stage is not
+ * built by upscaling a 256px thumbnail.
  */
 function useProductPreviewAssets(
   projectRoot: string,
@@ -66,10 +68,17 @@ function useProductPreviewAssets(
   assetIds: readonly string[],
 ): AssetLoadState {
   const [state, setState] = useState<AssetLoadState>(INITIAL_ASSET_STATE);
-  const assetKey = [...assetIds].sort().join('|');
+  const assetKey = [...assetIds]
+    .map((assetId) => {
+      const asset = project.assets.find((candidate) => candidate.id === assetId);
+      return `${assetId}:${asset?.sha256 ?? 'missing'}`;
+    })
+    .sort()
+    .join('|');
 
   useEffect(() => {
     let active = true;
+    const objectUrls = new Set<string>();
     setState(INITIAL_ASSET_STATE);
     if (assetIds.length === 0) {
       setState({ status: 'ready', urls: {}, missingCount: 0 });
@@ -86,7 +95,7 @@ function useProductPreviewAssets(
         return [assetId, undefined] as const;
       }
       try {
-        const response = await window.pandaStage.assets.readThumbnail({
+        const response = await window.pandaStage.assets.readCanvasImage({
           projectRoot,
           assetId,
           sha256: asset.sha256,
@@ -94,7 +103,15 @@ function useProductPreviewAssets(
         if (!response.ok || response.status !== 'ready') {
           return [assetId, undefined] as const;
         }
-        return [assetId, response.dataUrl] as const;
+        const objectUrl = URL.createObjectURL(
+          new Blob([response.bytes], { type: response.mimeType }),
+        );
+        if (!active) {
+          URL.revokeObjectURL(objectUrl);
+          return [assetId, undefined] as const;
+        }
+        objectUrls.add(objectUrl);
+        return [assetId, objectUrl] as const;
       } catch {
         return [assetId, undefined] as const;
       }
@@ -104,9 +121,9 @@ function useProductPreviewAssets(
       if (!active) return;
       const urls: Record<string, string | undefined> = {};
       let missingCount = 0;
-      for (const [assetId, dataUrl] of entries) {
-        if (dataUrl) {
-          urls[assetId] = dataUrl;
+      for (const [assetId, objectUrl] of entries) {
+        if (objectUrl) {
+          urls[assetId] = objectUrl;
         } else {
           missingCount += 1;
         }
@@ -120,8 +137,12 @@ function useProductPreviewAssets(
 
     return () => {
       active = false;
+      for (const objectUrl of objectUrls) {
+        URL.revokeObjectURL(objectUrl);
+      }
+      objectUrls.clear();
     };
-  }, [assetKey, project, projectRoot]);
+  }, [assetIds, assetKey, project, projectRoot]);
 
   return state;
 }
@@ -152,11 +173,14 @@ export function ProductPreviewOverlay({
   );
   const durationMs = shot?.durationMs ?? 0;
 
-  const stopPlayback = useCallback((): void => {
-    setPlaying(false);
+  const replayPlayback = useCallback((): void => {
+    if (durationMs <= 0) return;
+    // The revision invalidates pending audio work and restarts the one
+    // reusable audio element from the new master-clock position.
     setTimeMs(0);
     setSeekRevision((revision) => revision + 1);
-  }, []);
+    setPlaying(true);
+  }, [durationMs]);
 
   useEffect(() => {
     // A shot switch resets the preview-local clock; nothing outside changes.
@@ -248,21 +272,16 @@ export function ProductPreviewOverlay({
       role="dialog"
     >
       <div className="product-preview-frame">
-        <header className="product-preview-header">
-          <div>
-            <p className="eyebrow">产品预览</p>
-            <h2>{shot ? shot.name : project.name}</h2>
-          </div>
-          <button
-            className="product-preview-close task4-hit-target"
-            data-task4-core="preview-close"
-            data-testid="product-preview-close"
-            onClick={onClose}
-            type="button"
-          >
-            关闭预览
-          </button>
-        </header>
+        <button
+          aria-label="关闭预览"
+          className="product-preview-close task4-hit-target"
+          data-task4-core="preview-close"
+          data-testid="product-preview-close"
+          onClick={onClose}
+          type="button"
+        >
+          ×
+        </button>
 
         {shot === null ? (
           <div
@@ -274,7 +293,11 @@ export function ProductPreviewOverlay({
           </div>
         ) : (
           <>
-            <div className="product-preview-stage">
+            <div
+              className="product-preview-stage"
+              data-preview-image-source="bounded-original"
+              data-preview-stage-fit="contain"
+            >
               {assets.status === 'loading' ? (
                 <div
                   className="product-preview-message"
@@ -290,7 +313,7 @@ export function ProductPreviewOverlay({
                 >
                   <strong>部分素材无法预览</strong>
                   <span>
-                    有 {assets.missingCount} 个图片素材缺少可用缩略图，请在项目素材库中重新导入或刷新后再试。
+                    有 {assets.missingCount} 个图片素材无法读取，请在项目素材库中重新导入或刷新后再试。
                   </span>
                 </div>
               ) : renderedShot ? (
@@ -331,13 +354,13 @@ export function ProductPreviewOverlay({
                 </button>
                 <button
                   className="task4-hit-target"
-                  data-task4-core="preview-stop"
-                  data-testid="product-preview-stop"
-                  disabled={!playing && timeMs === 0}
-                  onClick={stopPlayback}
+                  data-task4-core="preview-replay"
+                  data-testid="product-preview-replay"
+                  disabled={durationMs <= 0}
+                  onClick={replayPlayback}
                   type="button"
                 >
-                  停止
+                  Replay / 重放
                 </button>
               </div>
               <input
@@ -379,12 +402,6 @@ export function ProductPreviewOverlay({
               </p>
             ) : null}
 
-            <p
-              className="product-preview-hint"
-              data-testid="product-preview-hint"
-            >
-              预览只读：播放进度不会修改项目内容，也不会产生未保存更改。
-            </p>
           </>
         )}
       </div>

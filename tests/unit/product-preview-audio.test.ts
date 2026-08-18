@@ -9,6 +9,7 @@ import {
 } from '../../src/shared/asset-preview-audio-api';
 import {
   ProductPreviewAudioTransport,
+  isProductPreviewAudioActiveAtTime,
   productPreviewSourceTimeMs,
   resolveProductPreviewAudio,
   type ProductPreviewAudioElement,
@@ -160,6 +161,36 @@ describe('Product Preview audio transport', () => {
       productPreviewSourceTimeMs(99_999, selection.clip, selection.asset),
     ).toBe(3_000);
     expect(resolveProductPreviewAudio(project, shot, null)).toBeNull();
+    expect(isProductPreviewAudioActiveAtTime(999, selection)).toBe(true);
+    expect(isProductPreviewAudioActiveAtTime(1_000, selection)).toBe(false);
+  });
+
+  it('stops audio at an independent clip end while the subtitle remains active', async () => {
+    const project = buildAudioProject();
+    const independent = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        audioClips: shot.audioClips.map((clip) =>
+          clip.id === CLIP_A_ID ? { ...clip, endMs: 800 } : clip,
+        ),
+      })),
+    });
+    const audio = new FakeAudio();
+    const transport = new ProductPreviewAudioTransport({
+      createAudio: () => audio,
+      readAudio: async (request) => readyResponse(request),
+      createObjectUrl: () => 'blob:independent',
+      revokeObjectUrl: () => undefined,
+    });
+
+    transport.sync(syncInput(independent, { timeMs: 700 }));
+    await flush();
+    expect(audio.playCount).toBe(1);
+    transport.sync(syncInput(independent, { timeMs: 800 }));
+    expect(audio.paused).toBe(true);
+    expect(audio.playCount).toBe(1);
+    transport.dispose();
   });
 
   it('plays one element, does not re-seek on ordinary master ticks, and pauses/resumes from master time', async () => {

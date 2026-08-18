@@ -60,6 +60,18 @@ export function productPreviewSourceTimeMs(
   return Math.min(durationMs, Math.max(0, raw));
 }
 
+/** Audio is subordinate to the preview clock and only exists in its clip window. */
+export function isProductPreviewAudioActiveAtTime(
+  timeMs: number,
+  selection: ProductPreviewAudioSelection,
+): boolean {
+  return (
+    Number.isFinite(timeMs) &&
+    timeMs >= selection.clip.startMs &&
+    timeMs < selection.clip.endMs
+  );
+}
+
 export interface ProductPreviewAudioElement {
   src: string;
   currentTime: number;
@@ -140,7 +152,11 @@ export class ProductPreviewAudioTransport {
         )
       : null;
 
-    if (!input.playing || !selection) {
+    if (
+      !input.playing ||
+      !selection ||
+      !isProductPreviewAudioActiveAtTime(input.timeMs, selection)
+    ) {
       this.stopTransport(input.timeMs <= 0);
       this.lastSeekRevision = input.seekRevision;
       return;

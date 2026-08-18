@@ -205,6 +205,25 @@ describe('Product Preview mouth projection', () => {
     ).toBe(IDS.assetChar);
   });
 
+  it('closes the mouth when audio ends before the subtitle interval', () => {
+    const project = buildMouthProject();
+    const shot = project.shots[0]!;
+    const independentShot = {
+      ...shot,
+      audioClips: shot.audioClips.map((clip) => ({ ...clip, endMs: 1_000 })),
+    };
+    const evaluated = evaluateShotAtTime(independentShot, 1_200, project);
+
+    expect(
+      projectProductPreviewMouth(
+        project,
+        independentShot,
+        evaluated,
+        DIALOGUE_ID,
+      ).layers.find((layer) => layer.id === IDS.layerChar)?.assetId,
+    ).toBe(IDS.assetChar);
+  });
+
   it('changes only speaking character image ids and leaves evaluated transforms untouched', () => {
     const project = buildMouthProject();
     const shot = project.shots[0]!;

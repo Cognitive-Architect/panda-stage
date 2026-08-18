@@ -122,6 +122,15 @@ export function projectProductPreviewMouth(
     (candidate) => candidate.id === dialogue.audioClipId,
   );
   if (!audioClip) return evaluatedShot;
+  // Dialogue owns subtitle visibility, while the bound clip owns speaking
+  // audio/mouth activity. A subtitle tail after the clip must stay readable
+  // without leaving the character's mouth open after speech has ended.
+  if (
+    evaluatedShot.timeMs < audioClip.startMs ||
+    evaluatedShot.timeMs >= audioClip.endMs
+  ) {
+    return evaluatedShot;
+  }
   const audioAsset = project.assets.find(
     (candidate) => candidate.id === audioClip.assetId,
   );

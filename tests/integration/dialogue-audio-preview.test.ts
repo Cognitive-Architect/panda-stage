@@ -31,7 +31,7 @@ function addAudio(project: Project): Project {
         relativePath: 'assets/integration.wav',
         mimeType: 'audio/wav',
         sha256: 'd'.repeat(64),
-        durationMs: 2_000,
+        durationMs: 800,
       },
     ],
   });
@@ -107,8 +107,12 @@ describe('Dialogue audio Product Preview persistence integration', () => {
     expect(reopenedShot.audioClips).toHaveLength(1);
     expect(reopenedShot.audioClips[0]).toMatchObject({
       assetId: AUDIO_ID,
-      startMs: reopenedDialogue.startMs,
-      endMs: reopenedDialogue.endMs,
+      startMs: 500,
+      endMs: 1_300,
+    });
+    expect(reopenedDialogue).toMatchObject({
+      startMs: 500,
+      endMs: 1_500,
     });
 
     const cues = buildProductPreviewCues(reopenedShot);

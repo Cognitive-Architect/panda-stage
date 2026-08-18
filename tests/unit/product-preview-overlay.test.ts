@@ -321,11 +321,11 @@ describe('product preview overlay contract', () => {
     ]) {
       expect(sources).not.toContain(forbidden);
     }
-    // The only IPC it may use is the read-only thumbnail read.
-    expect(overlay).toContain('window.pandaStage.assets.readThumbnail');
+    // The only IPC it may use is the read-only bounded original-image read.
+    expect(overlay).toContain('window.pandaStage.assets.readCanvasImage');
     expect(
       overlay.match(/window\.pandaStage\.[a-zA-Z.]+/gu),
-    ).toEqual(['window.pandaStage.assets.readThumbnail']);
+    ).toEqual(['window.pandaStage.assets.readCanvasImage']);
   });
 
   it('owns only its local playback state and no second project tree', () => {
@@ -361,18 +361,32 @@ describe('product preview overlay contract', () => {
       'data-testid="product-preview-overlay"',
       'data-testid="product-preview-play"',
       'data-testid="product-preview-pause"',
-      'data-testid="product-preview-stop"',
+      'data-testid="product-preview-replay"',
       'data-testid="product-preview-scrubber"',
       'data-testid="product-preview-timecode"',
       'data-testid="product-preview-close"',
     ]) {
       expect(overlay).toContain(selector);
     }
-    expect(overlay).toContain(
-      '预览只读：播放进度不会修改项目内容，也不会产生未保存更改。',
-    );
+    expect(overlay).not.toContain('product-preview-stop');
+    expect(overlay).not.toContain('product-preview-hint"');
+    expect(overlay).toContain('Replay / 重放');
     expect(overlay).toContain('role="dialog"');
     expect(overlay).toContain('aria-modal="true"');
+  });
+
+  it('uses a canvas-first fitted stage without preview watermark chrome', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const renderer = readSource('src/renderer/stage/StageRenderer.tsx');
+    const styles = readSource('src/renderer/styles.css');
+
+    expect(overlay).toContain('data-preview-image-source="bounded-original"');
+    expect(overlay).toContain('data-preview-stage-fit="contain"');
+    expect(overlay).not.toContain('product-preview-header');
+    expect(overlay).not.toContain('product-preview-hint"');
+    expect(renderer).not.toContain('PANDA STAGE');
+    expect(styles).toContain('height: min(900px, calc(100vh - 32px));');
+    expect(styles).toContain('.product-preview-stage .stage-viewport');
   });
 
   it('is mounted only while open so no hidden DOM survives closing', () => {
