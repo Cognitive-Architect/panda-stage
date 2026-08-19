@@ -134,3 +134,12 @@ source and Project/Asset state remain unchanged.
 Do not merge, mark PR #252 Ready, close PR #252, or close Issue #253 from this
 receipt. Slice 3 import/materialization, atomic Project/Asset commit, and
 save/reopen behavior are not included.
+
+## Issue #254 UX follow-up
+
+The bounded review-width, independent-scroll, responsive-card, and card-click
+selection correction is recorded in the [Issue #254 UX receipt](./issue-254-slice2-ux-receipt.md).
+It is implemented on the same Draft PR #252 branch at
+`51eccb8979e5d38fa157b1c08a90251b797d4250`. Focused real Windows Electron
+verification passed; maintainer re-acceptance of the affected UX remains
+pending.
