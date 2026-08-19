@@ -156,7 +156,7 @@ export function FlaCompatibilityReviewSession({
         >
           <header className="fla-review-heading" data-testid="fla-review-header">
             <div>
-              <p className="eyebrow">FLA V1 · Slice 2</p>
+              <p className="eyebrow">导入前检查</p>
               <h2>FLA 兼容性预览</h2>
             </div>
             <button
@@ -169,7 +169,7 @@ export function FlaCompatibilityReviewSession({
             </button>
           </header>
           <div className="fla-review-body fla-review-status-body">
-            <p>正在读取所选 FLA。当前仅进行只读检查，不会修改项目或素材。</p>
+            <p>正在读取所选 FLA。预览过程中不会修改项目或素材。</p>
             <output data-testid="fla-review-status">正在检查源文件…</output>
           </div>
         </section>
@@ -190,7 +190,7 @@ export function FlaCompatibilityReviewSession({
         >
           <header className="fla-review-heading" data-testid="fla-review-header">
             <div>
-              <p className="eyebrow">FLA V1 · Slice 2</p>
+              <p className="eyebrow">导入前检查</p>
               <h2>FLA 兼容性预览</h2>
             </div>
             <button autoFocus onClick={onClose} type="button">返回素材库</button>
@@ -294,7 +294,7 @@ export function FlaCompatibilityReviewSession({
       >
         <header className="fla-review-heading" data-testid="fla-review-header">
           <div>
-            <p className="eyebrow">FLA V1 · Slice 2</p>
+            <p className="eyebrow">导入前检查</p>
             <h2>FLA 兼容性预览</h2>
           </div>
           <button
@@ -311,7 +311,7 @@ export function FlaCompatibilityReviewSession({
         <div className="fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
           <div>
             <strong data-testid="fla-review-selected-count">已选择：{selectedCount} / {reviewItems.length}</strong>
-            {intent ? <output data-testid="fla-review-intent-status">已确认选择（只读）；未创建素材。</output> : null}
+            {intent ? <output data-testid="fla-review-intent-status">已确认选择；尚未创建素材。</output> : null}
           </div>
           <div>
             <button
@@ -391,7 +391,7 @@ export function FlaCompatibilityReviewSession({
           ref={reviewBodyRef}
         >
           <p className="fla-review-readonly-note">
-            只读素材预览。确认后仅保留第 3 阶段所需的选择信息，不会创建素材、修改项目或写入历史记录。
+            这是导入前预览。确认选择只会记录本次选择；点击“导入”后才会创建项目素材。
           </p>
 
           <dl className="fla-review-summary" data-testid="fla-review-summary">
@@ -523,10 +523,10 @@ function FlaReviewMediaCard({
         )}
       </div>
       <strong title={media.name}>{media.name}</strong>
-      <span title={media.sourceReference}>源/素材库：{media.sourceReference}</span>
+      <span title={media.sourceReference}>来源：{media.sourceReference}</span>
       <span>{media.width} × {media.height} · 格式 {media.sourceFormat.toUpperCase()}</span>
       <span>{item.libraryOnly ? '仅素材库' : '已使用'}</span>
-      <span>未来目标：{item.name.targetFileName}</span>
+      <span>目标文件名：{item.name.targetFileName}</span>
       {item.warnings.length > 0 ? (
         <ul className="fla-review-name-warnings">
           {item.warnings.map((warning) => <li key={warning}>{warning}</li>)}
@@ -566,8 +566,8 @@ function compatibilityReason(
       : '未找到对应的位图引用。';
   }
   if (status === 'exact') return '此类内容可以在当前预览中使用。';
-  if (status === 'degraded') return '当前仅支持预览，完整时间轴语义将在后续版本处理。';
-  if (status === 'unsupported') return '此类内容暂不在 FLA V1 的导入范围内。';
+  if (status === 'degraded') return '当前可预览，时间轴动画暂不导入。';
+  if (status === 'unsupported') return '此类内容暂不在当前 FLA 导入范围内。';
   if (status === 'not-present') return '源文件中未发现此类内容。';
   return '暂时无法确定此类内容的兼容性。';
 }

@@ -30,6 +30,11 @@ const PRODUCT_SURFACE_FILES = [
   'src/renderer/features/actions/ActionPresetPanel.tsx',
 ] as const;
 
+const ASSET_LIBRARY_SOURCE = readFileSync(
+  'src/renderer/features/assets/AssetLibrary.tsx',
+  'utf8',
+);
+
 function productSources(): string {
   return PRODUCT_SURFACE_FILES.map((path) => readFileSync(path, 'utf8')).join(
     '\n',
@@ -37,6 +42,14 @@ function productSources(): string {
 }
 
 describe('Stage 1A product copy', () => {
+  it('keeps the normal FLA confirmation status localized and stage-free', () => {
+    expect(ASSET_LIBRARY_SOURCE).toContain(
+      '已确认 FLA 素材选择；尚未创建项目素材。',
+    );
+    expect(ASSET_LIBRARY_SOURCE).not.toContain('Read-only FLA selection intent');
+    expect(ASSET_LIBRARY_SOURCE).not.toContain('Slice 3');
+  });
+
   it('does not expose construction DAY or GATE labels in product JSX', () => {
     const source = productSources();
 

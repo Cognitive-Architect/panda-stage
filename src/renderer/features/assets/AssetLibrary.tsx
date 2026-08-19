@@ -371,7 +371,7 @@ export function AssetLibrary({
             );
             setStatus(outcome.status);
           }}
-          onIntent={() => setStatus('Read-only FLA selection intent is ready for Slice 3; no Assets were created.')}
+          onIntent={() => setStatus('已确认 FLA 素材选择；尚未创建项目素材。')}
           snapshot={snapshot}
         />
       ) : (

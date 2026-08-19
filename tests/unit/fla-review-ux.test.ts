@@ -94,7 +94,7 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('全选');
     expect(component).toContain('清空');
     expect(component).toContain('确认选择');
-    expect(component).toContain('只读素材预览');
+    expect(component).toContain('这是导入前预览');
     expect(component).toContain('正在读取所选 FLA');
     expect(component).toContain('正在检查源文件');
     expect(component).toContain('源文件');
@@ -103,6 +103,12 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('已使用');
     expect(component).toContain('仅素材库');
     expect(component).toContain('兼容性说明');
+    expect(component).toContain('导入前检查');
+    expect(component).toContain('这是导入前预览');
+    expect(component).toContain('目标文件名：');
+    expect(component).not.toContain('FLA V1 · Slice 2');
+    expect(component).not.toContain('第 3 阶段');
+    expect(component).not.toContain('Slice 3');
     expect(reviewModel).toContain("exact: '完全兼容'");
     expect(reviewModel).toContain("degraded: '部分兼容'");
     expect(reviewModel).toContain("unsupported: '暂不支持'");
