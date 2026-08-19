@@ -26,6 +26,36 @@ function heightBudget(
   };
 }
 
+function findResponsiveBlock(
+  css: string,
+  requiredSelectors: string[],
+): string | null {
+  const mediaBlockPattern = /@media\s*\(max-width:\s*720px\)\s*\{/gu;
+
+  for (const match of css.matchAll(mediaBlockPattern)) {
+    const bodyStart = (match.index ?? 0) + match[0].length;
+    let depth = 1;
+
+    for (let index = bodyStart; index < css.length; index += 1) {
+      const character = css[index];
+      if (character === '{') {
+        depth += 1;
+      } else if (character === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          const body = css.slice(bodyStart, index);
+          if (requiredSelectors.every((selector) => body.includes(selector))) {
+            return body;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 describe('Issue 197 Timeline collapse releases vertical space to Canvas', () => {
   const styles = readSource('src/renderer/styles.css');
   const bottom = readSource('src/renderer/shell/BottomWorkspace.tsx');
@@ -68,18 +98,18 @@ describe('Issue 197 Timeline collapse releases vertical space to Canvas', () => 
   });
 
   it('proves the same collapsed < expanded relation in the 720px compact layout', () => {
-    const narrow = /@media\s*\(max-width:\s*720px\)\s*\{([\s\S]*?)\n\}/u.exec(
-      styles,
-    );
-    expect(narrow).not.toBeNull();
-    const narrowCss = `\n${(narrow as RegExpExecArray)[1]}`;
+    const narrowCss = findResponsiveBlock(styles, [
+      '.bottom-workspace',
+      ".bottom-workspace[data-timeline-expanded='false']",
+    ]);
+    expect(narrowCss).not.toBeNull();
     const narrowExpanded = heightBudget(
-      narrowCss,
-      /\n\s*\.bottom-workspace\s*\{([^}]*)\}/u,
+      narrowCss as string,
+      /\.bottom-workspace\s*\{([^}]*)\}/u,
     );
     const narrowCollapsed = heightBudget(
-      narrowCss,
-      /\n\s*\.bottom-workspace\[data-timeline-expanded='false'\]\s*\{([^}]*)\}/u,
+      narrowCss as string,
+      /\.bottom-workspace\[data-timeline-expanded='false'\]\s*\{([^}]*)\}/u,
     );
     expect(narrowExpanded.minHeight).toBe(128);
     expect(narrowCollapsed.maxHeight as number).toBeLessThan(
