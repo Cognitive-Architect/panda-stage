@@ -154,3 +154,13 @@ and replaces the media-only scroll with one primary review-body scroll. Its
 focused validation and 13-point maintainer handoff are recorded in the
 [Issue #255 UX receipt](./issue-255-slice2-ux-receipt.md). Human re-acceptance
 remains pending; PR #252 must stay Draft / Open / Unmerged.
+
+## Issue #256 UX follow-up
+
+Issue [#256](https://github.com/Cognitive-Architect/panda-stage/issues/256)
+adds the third bounded Slice 2 UX correction on the same Draft PR #252 branch:
+Chinese-first copy, hidden engineering diagnostics in the normal review, and
+scrollbar-drag/state-update stability. The implementation and focused real
+Windows Electron evidence at commit `2873846` are recorded in the
+[Issue #256 UX receipt](./issue-256-slice2-ux-receipt.md). Maintainer human
+re-acceptance remains pending; PR #252 must stay Draft / Open / Unmerged.
