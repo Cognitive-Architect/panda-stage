@@ -1,3 +1,11 @@
+import { createHash } from 'node:crypto';
+import {
+  mkdtemp,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   FLA_IMPORT_LIMITS,
@@ -75,13 +83,29 @@ function expectPreflightCode(action: () => unknown, code: FlaPreflightError['cod
 }
 
 describe('FLA source preflight', () => {
-  it('accepts the real sample and preserves its source identity', async () => {
-    const result = await preflightFlaSource('D:\\表情合集\\文件.fla');
-    expect(result.sha256).toBe('84682edcd49b8fcc072ae740188677bae9d7d0fd603b8bed51a7ac4ddeb3119f');
-    expect(result.basename).toBe('文件.fla');
-    expect(result.byteLength).toBe(10_527_274);
-    expect(result.entries.length).toBeGreaterThan(150);
-    expect(result.entries.some((entry) => entry.name === 'DOMDocument.xml')).toBe(true);
+  it('accepts a synthetic file-backed archive and preserves its source identity', async () => {
+    const sourceBytes = makeZip([
+      { name: 'DOMDocument.xml', data: '<DOMDocument/>' },
+      { name: 'media/fixture.dat', data: 'synthetic media' },
+    ]);
+    const temporaryRoot = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-fla-preflight-'),
+    );
+    const sourcePath = path.join(temporaryRoot, 'synthetic.fla');
+
+    try {
+      await writeFile(sourcePath, sourceBytes);
+      const result = await preflightFlaSource(sourcePath);
+
+      expect(result.sourcePath).toBe(sourcePath);
+      expect(result.sha256).toBe(createHash('sha256').update(sourceBytes).digest('hex'));
+      expect(result.basename).toBe('synthetic.fla');
+      expect(result.byteLength).toBe(sourceBytes.byteLength);
+      expect(result.entries).toHaveLength(2);
+      expect(result.entries.some((entry) => entry.name === 'DOMDocument.xml')).toBe(true);
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+    }
   });
 
   it('rejects a non-ZIP container and a missing XFL document', () => {
