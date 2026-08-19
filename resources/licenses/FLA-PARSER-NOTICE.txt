@@ -1,0 +1,169 @@
+Panda Stage — FLA V1 parser runtime notice
+============================================
+
+This notice covers the bounded parser closure used by Panda Stage FLA V1.
+It is copied into packaged Windows builds by electron-builder.yml under
+resources/licenses. It is not a normal editor UI surface.
+
+Parser provenance
+-----------------
+
+Upstream repository: https://github.com/lifeart/fla-viewer
+Pinned upstream commit: 048000ccab67469980b8dedd1fc2b65a02d2b164
+Upstream entry point: FLAParser.parse
+Panda source adapter: src/renderer/fla-import/fla-viewer-adapter.ts
+
+The shipped parser-core closure is exactly these 12 upstream files:
+
+  adpcm-decoder.ts
+  binary-fla-parser.ts
+  binary-fla-structure.ts
+  binary-instance-decoder.ts
+  binary-shape-decoder.ts
+  binary-timeline-decoder.ts
+  edge-decoder.ts
+  fla-parser.ts
+  flv-parser.ts
+  ole2-reader.ts
+  path-utils.ts
+  types.ts
+
+The local copies are byte-for-byte equal to the pinned upstream files after
+normalizing repository line endings and removing one leading Panda build-
+compatibility comment (`// @ts-nocheck ...`) from each file. No parser logic,
+runtime behavior, or upstream file list is locally modified. The preamble is
+the only permitted local modification and is reviewable in the PR.
+
+The closure is bundled into the built Electron renderer by the `flaParser`
+Vite entry (`fla-parser.html`). It is not a dependency on the upstream viewer,
+player, exporter, muxer, or web application. The only external parser runtime
+imports are the exact packages listed below.
+
+License and residual-risk status
+--------------------------------
+
+The pinned upstream package and README declare ISC intent, but the pinned
+upstream tree has no authoritative LICENSE, COPYING, or NOTICE file. The
+status is therefore:
+
+  LICENSE_INTENT_ONLY
+
+The intended identity is ISC; this notice does not manufacture an upstream
+license grant. This status and the decision to proceed are the maintainer's
+explicit Issue #250 decision:
+
+  https://github.com/Cognitive-Architect/panda-stage/issues/250
+
+Direct parser runtime dependencies
+----------------------------------
+
+  jszip@3.10.1       (MIT OR GPL-3.0-or-later)
+  pako@1.0.11        (MIT AND Zlib)
+
+JSZip's package artifact offers a choice of MIT or GPLv3. Panda Stage uses the
+MIT option for this bounded closure. The authoritative package license file is
+`node_modules/jszip/LICENSE.markdown` and the pinned source is linked above.
+Pako's package README identifies MIT for its wrapper and Zlib for the
+`lib/zlib` subtree; the standard Zlib notice is reproduced below.
+
+Transitive parser-only runtime inventory
+----------------------------------------
+
+  lie@3.3.0                 MIT
+  immediate@3.0.6           MIT
+  readable-stream@2.3.8     MIT
+  core-util-is@1.0.3        MIT
+  inherits@2.0.4            ISC
+  isarray@1.0.0             MIT (package has no standalone license file)
+  process-nextick-args@2.0.1 MIT
+  safe-buffer@5.1.2         MIT
+  string_decoder@1.1.1     MIT
+  util-deprecate@1.0.2      MIT
+  setimmediate@1.0.5        MIT
+
+The inventory is limited to the parser-only closure. It deliberately does not
+bundle unrelated application, Electron, viewer, export, or development
+dependency notices.
+
+MIT License
+----------
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+The package-specific copyright notices carried by the authoritative package
+artifacts are:
+
+  JSZip: Copyright (c) 2009-2016 Stuart Knightley, David Duponchel, Franz
+  Buchinger, Antonio Afonso.
+  pako: Copyright (C) 2014-2017 Vitaly Puzrin and Andrei Tuputcyn.
+  lie: Copyright (c) 2014-2018 Calvin Metcalf, Jordan Harband.
+  immediate/setimmediate: Copyright (c) 2012 Barnesandnoble.com, llc, Donavon
+  West, Domenic Denicola, and Brian Cavalier.
+  readable-stream: Copyright (c) 2014 Nathan Rajlich.
+  core-util-is: Copyright Node.js contributors; Joyent, Inc. and other Node
+  contributors.
+  inherits: Copyright (c) Isaac Z. Schlueter.
+  isarray: Copyright (c) Feross Aboukhadijeh.
+  process-nextick-args: Copyright (c) 2015 Calvin Metcalf.
+  safe-buffer: Copyright (c) 2014 Nathan Rajlich.
+  string_decoder: Copyright (c) 2012 Barnesandnoble.com, llc, Donavon West,
+  and Domenic Denicola.
+  util-deprecate: Copyright (c) 2015 Joyent, Inc. and other Node contributors.
+
+ISC License
+-----------
+
+Copyright (c) Isaac Z. Schlueter
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+
+Zlib License
+------------
+
+Copyright (C) 1995-2022 Jean-loup Gailly and Mark Adler
+
+This software is provided 'as-is', without any express or implied warranty.
+In no event will the authors be held liable for any damages arising from the
+use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it freely,
+subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not claim
+   that you wrote the original software. If you use this software in a product,
+   an acknowledgment in the product documentation would be appreciated but is
+   not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
+
+Panda Stage's parser update/pinning policy is recorded at:
+
+  docs/handoff/issue-260-fla-parser-policy.md

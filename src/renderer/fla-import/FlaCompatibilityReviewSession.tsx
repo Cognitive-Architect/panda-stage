@@ -374,29 +374,41 @@ export function FlaCompatibilityReviewSession({
           </div>
         </div>
 
-        {intent && phase === 'confirmed' ? (
-          <div className="fla-review-commit-action" data-testid="fla-review-commit-action">
-            <button
-              data-testid="fla-review-commit"
-              disabled={phase !== 'confirmed'}
-              onClick={() => void commit()}
-              type="button"
+        <div className="fla-review-action-stack">
+          {intent && phase === 'confirmed' ? (
+            <div className="fla-review-commit-action" data-testid="fla-review-commit-action">
+              <div className="fla-review-commit-copy">
+                <strong data-testid="fla-review-commit-copy">已确认 {intent.selectedCount} 项</strong>
+                <span>确认选择仅保留选择信息；点击导入后才会创建普通图片素材。</span>
+              </div>
+              <button
+                className="fla-review-commit-primary"
+                data-testid="fla-review-commit"
+                disabled={phase !== 'confirmed'}
+                onClick={() => void commit()}
+                type="button"
+              >
+                导入这 {intent.selectedCount} 项
+              </button>
+            </div>
+          ) : null}
+          {phase === 'committing' ? (
+            <output data-testid="fla-review-commit-status">正在导入已选择的素材…</output>
+          ) : null}
+          {commitResponse && !commitResponse.ok ? (
+            <output data-testid="fla-review-commit-error" role="alert">{commitResponse.error.message}</output>
+          ) : null}
+          {phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
+            <output
+              data-testid="fla-review-commit-success"
+              data-imported-count={commitResponse.summary.importedCount}
+              data-duplicate-count={commitResponse.summary.duplicateCount}
+              data-renamed-count={commitResponse.summary.renamedCount}
             >
-              导入已选择的 {intent.selectedCount} 项
-            </button>
-          </div>
-        ) : null}
-        {phase === 'committing' ? (
-          <output data-testid="fla-review-commit-status">正在导入已选择的素材…</output>
-        ) : null}
-        {commitResponse && !commitResponse.ok ? (
-          <output data-testid="fla-review-commit-error" role="alert">{commitResponse.error.message}</output>
-        ) : null}
-        {phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
-          <output data-testid="fla-review-commit-success">
-            导入完成：{commitResponse.summary.importedCount} 项；已复用重复素材：{commitResponse.summary.duplicateCount} 项。
-          </output>
-        ) : null}
+              导入完成：{commitResponse.summary.importedCount} 项；已复用重复素材：{commitResponse.summary.duplicateCount} 项。
+            </output>
+          ) : null}
+        </div>
         <div
           className="fla-review-body"
           data-preserves-scroll-position="true"

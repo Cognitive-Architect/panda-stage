@@ -160,7 +160,7 @@
         "id": "fla-import",
         "sourcePatterns": ["src/renderer/fla-import/**"],
         "testPatterns": ["tests/unit/fla-*.test.ts"],
-        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*"],
+        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*"],
         "suites": ["assets"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -293,7 +293,7 @@
       }
     ]
   },
-  "count": 48,
+  "count": 49,
   "gates": [
     {
       "id": "assets",
@@ -342,6 +342,18 @@
       "owner": "fla-import",
       "supersedes": null,
       "notes": "Focused Windows Electron verifier for explicit selected-raster commit, ordinary ImageAsset persistence, source immutability, and Save/Close/Reopen evidence; failure injection remains targeted automation."
+    },
+    {
+      "id": "issue260-slice4",
+      "script": "verify:issue260-slice4",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused built-Electron all-158 stress acceptance for the final FLA V1 candidate; records STRESS_PASS, STRESS_DEFERRED_WITH_REASON, or STRESS_FAILED_WITH_BOUNDED_RESULT separately from the core correctness gate."
     },
     {
       "id": "canvas",

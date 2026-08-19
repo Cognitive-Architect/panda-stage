@@ -1789,7 +1789,7 @@ button:disabled {
   max-height: calc(100vh - 32px);
   padding: 18px;
   overflow: hidden;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   transform: none;
 }
 
@@ -1803,6 +1803,68 @@ button:disabled {
   position: relative;
   z-index: 2;
   min-width: 0;
+}
+
+.fla-review-action-stack {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.fla-review-commit-action {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid rgb(131 211 154 / 42%);
+  border-radius: 10px;
+  background: rgb(45 104 62 / 22%);
+  gap: 12px;
+}
+
+.fla-review-commit-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.fla-review-commit-copy strong {
+  color: #e4f7e8;
+  font-size: 13px;
+}
+
+.fla-review-commit-copy span {
+  overflow-wrap: anywhere;
+  color: #b5c9ba;
+  font-size: 11px;
+}
+
+.fla-review-commit-primary {
+  min-height: 46px;
+  flex: 0 1 auto;
+  border-color: #83d39a;
+  background: #2d683e;
+  color: #f2fff4;
+  font-weight: 800;
+  white-space: normal;
+}
+
+.fla-review-commit-primary:hover:not(:disabled),
+.fla-review-commit-primary:focus-visible:not(:disabled) {
+  border-color: #b0f0bf;
+  background: #3d8150;
+}
+
+.fla-review-commit-primary:disabled {
+  border-color: rgb(131 211 154 / 34%);
+  background: rgb(45 104 62 / 45%);
+  color: #9aaca0;
 }
 
 .fla-review-body {
@@ -1870,6 +1932,14 @@ button:disabled {
     height: calc(100vh - 20px);
     max-height: calc(100vh - 20px);
     padding: 14px;
+  }
+
+  .fla-review-commit-action {
+    align-items: stretch;
+  }
+
+  .fla-review-commit-primary {
+    width: 100%;
   }
 }
 

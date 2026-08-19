@@ -45,7 +45,7 @@ describe('FLA Slice 2 review UX contract', () => {
       component.indexOf('data-testid="fla-review-body"'),
     );
     expect(issue255Styles).toMatch(
-      /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?grid-template-rows:\s*auto auto minmax\(0, 1fr\);/u,
+      /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?grid-template-rows:\s*auto auto auto minmax\(0, 1fr\);/u,
     );
     expect(issue255Styles).toMatch(
       /\.fla-review-body\s*\{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;[\s\S]*?overscroll-behavior:\s*contain;/u,
@@ -73,11 +73,18 @@ describe('FLA Slice 2 review UX contract', () => {
   it('keeps Slice 3 commit as a separate explicit state-bound action', () => {
     expect(component).toContain('commitSelected');
     expect(component).toContain('confirmed: true');
+    expect(component).toContain('data-testid="fla-review-commit-action"');
+    expect(component).toContain('className="fla-review-commit-primary"');
     expect(component).toContain('data-testid="fla-review-commit"');
     expect(component).toContain('data-testid="fla-review-commit-status"');
     expect(component).toContain('data-testid="fla-review-commit-success"');
+    expect(component).toContain('data-imported-count={commitResponse.summary.importedCount}');
+    expect(component).toContain('data-duplicate-count={commitResponse.summary.duplicateCount}');
+    expect(component).toContain('data-renamed-count={commitResponse.summary.renamedCount}');
     expect(component).toContain("phase === 'committing'");
     expect(component).not.toContain('window.pandaStage.assets');
+    expect(issue255Styles).toContain('.fla-review-commit-action');
+    expect(issue255Styles).toContain('.fla-review-commit-primary');
   });
 
   it('uses Chinese-first copy for the normal review surface', () => {

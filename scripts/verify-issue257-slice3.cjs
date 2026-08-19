@@ -14,9 +14,13 @@ const path = require('node:path');
 const { inflateSync } = require('node:zlib');
 const { pathToFileURL } = require('node:url');
 
+const stressRun = process.env.PANDA_STAGE_FLA_STRESS === '1';
 const samplePath = 'D:\\表情合集\\文件.fla';
-const evidenceRoot = 'D:\\PandaStage-Acceptance\\issue-257-slice3';
+const evidenceRoot = stressRun
+  ? 'D:\\PandaStage-Acceptance\\issue-260-slice4'
+  : 'D:\\PandaStage-Acceptance\\issue-257-slice3';
 const evidencePath = path.join(evidenceRoot, 'real-electron-asset-commit.json');
+const expectedAssetCount = stressRun ? 158 : 3;
 const useAcceptanceWorkaround =
   process.env.PANDA_STAGE_ACCEPTANCE_NO_SANDBOX === '1';
 const isolatedUserData = path.join(
@@ -343,7 +347,7 @@ async function run() {
   require('../dist-electron/main/index.js');
 
   const mainWindow = await waitForMainWindow();
-  const projectName = `slice3-commit-${Date.now()}`;
+  const projectName = `${stressRun ? 'slice4-stress' : 'slice3-commit'}-${Date.now()}`;
   await click(mainWindow, '[data-testid="new-project-button"]');
   await waitForSelector(mainWindow, '[data-testid="new-project-dialog"]');
   await setInput(
@@ -424,7 +428,28 @@ async function run() {
     mainWindow,
     `document.querySelectorAll('[data-fla-media-id] input[type="checkbox"]:checked').length === 0`,
   );
-  const selectedCards = await mainWindow.webContents.executeJavaScript(`(() => {
+  let selectedCards;
+  if (stressRun) {
+    await click(mainWindow, '[data-testid="fla-review-select-all"]');
+    await waitForExpression(
+      mainWindow,
+      `document.querySelectorAll('[data-fla-media-id] input[type="checkbox"]:checked').length === ${expectedAssetCount}`,
+      30_000,
+    );
+    selectedCards = await mainWindow.webContents.executeJavaScript(`(() => {
+      const cards = [...document.querySelectorAll('[data-fla-media-id]')];
+      const transparent = cards.find((card) => Number(card.getAttribute('data-zero-alpha-pixels') || 0) > 0);
+      const jpeg = cards.find((card) => /^jpe?g$/i.test(card.getAttribute('data-source-format') || ''));
+      return {
+        ids: cards.map((card) => card.getAttribute('data-fla-media-id')),
+        names: cards.map((card) => card.querySelector('strong')?.textContent || ''),
+        targetFileNames: cards.map((card) => card.getAttribute('data-target-file-name') || ''),
+        transparentId: transparent?.getAttribute('data-fla-media-id') || '',
+        jpegId: jpeg?.getAttribute('data-fla-media-id') || '',
+      };
+    })()`);
+  } else {
+    selectedCards = await mainWindow.webContents.executeJavaScript(`(() => {
     const cards = [...document.querySelectorAll('[data-fla-media-id]')];
     const transparent = cards.find((card) => Number(card.getAttribute('data-zero-alpha-pixels') || 0) > 0);
     const nonDefault = cards.find((card) => card.querySelector('strong')?.textContent === 'a1.png');
@@ -442,16 +467,17 @@ async function run() {
       transparentId: transparent?.getAttribute('data-fla-media-id') || '',
       jpegId: jpeg?.getAttribute('data-fla-media-id') || '',
     };
-  })()`);
+    })()`);
+  }
   await waitForExpression(
     mainWindow,
-    `document.querySelectorAll('[data-fla-media-id] input[type="checkbox"]:checked').length === 3`,
+    `document.querySelectorAll('[data-fla-media-id] input[type="checkbox"]:checked').length === ${expectedAssetCount}`,
   );
   const selectedState = await mainWindow.webContents.executeJavaScript(`({
     count: document.querySelectorAll('[data-fla-media-id] input[type="checkbox"]:checked').length,
     commitButtonBeforeConfirm: Boolean(document.querySelector('[data-testid="fla-review-commit"]')),
   })`);
-  assert(selectedState.count === 3, `Representative selection failed: ${JSON.stringify(selectedState)}`);
+  assert(selectedState.count === expectedAssetCount, `Selection failed: ${JSON.stringify(selectedState)}`);
   assert(!selectedState.commitButtonBeforeConfirm, 'Commit action appeared before explicit confirmation.');
 
   await click(mainWindow, '[data-testid="fla-review-confirm"]');
@@ -463,7 +489,7 @@ async function run() {
     commitButtonVisible: Boolean(document.querySelector('[data-testid="fla-review-commit"]')),
     commitButtonEnabled: !document.querySelector('[data-testid="fla-review-commit"]')?.disabled,
   })`);
-  assert(afterConfirm.selectedCount === 3 && afterConfirm.commitButtonVisible && afterConfirm.commitButtonEnabled, `Explicit commit boundary is incomplete: ${JSON.stringify(afterConfirm)}`);
+  assert(afterConfirm.selectedCount === expectedAssetCount && afterConfirm.commitButtonVisible && afterConfirm.commitButtonEnabled, `Explicit commit boundary is incomplete: ${JSON.stringify(afterConfirm)}`);
 
   const commitSuccessToken = `__issue257_fla_commit_${Date.now()}`;
   const commitSuccessReady = waitForConsoleSignal(mainWindow, commitSuccessToken);
@@ -472,10 +498,15 @@ async function run() {
     '[data-testid="fla-review-commit-success"]',
     commitSuccessToken,
   );
+  const commitStartedAt = Date.now();
   await click(mainWindow, '[data-testid="fla-review-commit"]');
   await commitSuccessReady;
+  const commitWallTimeMs = Date.now() - commitStartedAt;
   const commitUi = await mainWindow.webContents.executeJavaScript(`({
     successText: document.querySelector('[data-testid="fla-review-commit-success"]')?.textContent?.trim() || '',
+    importedCount: Number(document.querySelector('[data-testid="fla-review-commit-success"]')?.getAttribute('data-imported-count') || 0),
+    duplicateCount: Number(document.querySelector('[data-testid="fla-review-commit-success"]')?.getAttribute('data-duplicate-count') || 0),
+    renamedCollisionCount: Number(document.querySelector('[data-testid="fla-review-commit-success"]')?.getAttribute('data-renamed-count') || 0),
     cancelDisabled: Boolean(document.querySelector('[data-testid="fla-review-cancel"]')?.disabled),
     selectionControlsDisabled: [...document.querySelectorAll('[data-testid="fla-review-select-all"], [data-testid="fla-review-clear-all"]')].every((element) => element.disabled),
   })`);
@@ -485,7 +516,7 @@ async function run() {
   assert(committedDocument.ok, `Committed Project could not be reopened: ${JSON.stringify(committedDocument)}`);
   const committedProject = committedDocument.value.project;
   const projectOnDisk = readProject(projectRoot);
-  assert(projectOnDisk.assets.length === 3 && committedProject.assets.length === 3, 'Commit did not create exactly three Assets.');
+  assert(projectOnDisk.assets.length === expectedAssetCount && committedProject.assets.length === expectedAssetCount, `Commit did not create exactly ${expectedAssetCount} Assets.`);
   assert(committedProject.assets.every((asset) => asset.kind === 'image' && asset.mimeType === 'image/png'), 'FLA commit did not produce ordinary PNG ImageAssets.');
   const selectedTargetNames = new Set(selectedCards.targetFileNames);
   const allReviewTargetNames = await mainWindow.webContents.executeJavaScript(`[
@@ -529,7 +560,7 @@ async function run() {
   const saveResponse = await mainWindow.webContents.executeJavaScript(`window.pandaStage.project.save(${JSON.stringify({
     projectRoot,
     project: committedProject,
-    revision: committedDocument.value.project.assets.length === 3 ? 1 : 0,
+    revision: committedDocument.value.project.assets.length === expectedAssetCount ? 1 : 0,
   })})`);
   assert(saveResponse.ok, `Explicit Project save failed: ${JSON.stringify(saveResponse)}`);
 
@@ -560,13 +591,13 @@ async function run() {
   await click(mainWindow, '[data-activity="assets"]');
   await waitForExpression(
     mainWindow,
-    `document.querySelectorAll('.asset-card').length === 3`,
+    `document.querySelectorAll('.asset-card').length === ${expectedAssetCount}`,
     30_000,
   );
   const reopenedDocument = await mainWindow.webContents.executeJavaScript(
     `window.pandaStage.project.open({ projectRoot: ${JSON.stringify(projectRoot)} })`,
   );
-  assert(reopenedDocument.ok && reopenedDocument.value.project.assets.length === 3, 'Imported Assets did not survive Save/Close/Reopen.');
+  assert(reopenedDocument.ok && reopenedDocument.value.project.assets.length === expectedAssetCount, 'Imported Assets did not survive Save/Close/Reopen.');
   const thumbnails = await mainWindow.webContents.executeJavaScript(`(async () => {
     const documentResponse = await window.pandaStage.project.open({ projectRoot: ${JSON.stringify(projectRoot)} });
     if (!documentResponse.ok) return { ok: false, results: [] };
@@ -582,12 +613,12 @@ async function run() {
       results: results.map((result) => ({ ok: result.ok, status: result.ok ? result.status : result.error.code })),
     };
   })()`);
-  assert(thumbnails.ok && thumbnails.results.length === 3 && thumbnails.results.every((result) => result.ok && result.status === 'ready'), `Reopened Asset thumbnails were not readable: ${JSON.stringify(thumbnails)}`);
+  assert(thumbnails.ok && thumbnails.results.length === expectedAssetCount && thumbnails.results.every((result) => result.ok && result.status === 'ready'), `Reopened Asset thumbnails were not readable: ${JSON.stringify(thumbnails)}`);
 
   const sourceAfter = sha256(samplePath);
   const result = {
-    issue: 257,
-    slice: 'FLA V1 Slice 3',
+    issue: stressRun ? 260 : 257,
+    slice: stressRun ? 'FLA V1 Slice 4 all-158 stress' : 'FLA V1 Slice 3',
     passed: true,
     electron: process.versions.electron,
     node: process.versions.node,
@@ -598,6 +629,19 @@ async function run() {
     projectRoot,
     assetCountBefore,
     assetCountAfter: committedProject.assets.length,
+    stressClassification: stressRun ? 'STRESS_PASS' : null,
+    stressMetrics: stressRun
+      ? {
+          selectedCount: expectedAssetCount,
+          importedCount: commitUi.importedCount,
+          reusedDuplicateCount: commitUi.duplicateCount,
+          renamedCollisionCount: commitUi.renamedCollisionCount,
+          wallTimeMs: commitWallTimeMs,
+          peakObservableFailure: null,
+          projectAssetCount: committedProject.assets.length,
+          saveCloseReopen: true,
+        }
+      : null,
     review,
     selectedCards,
     selectedState,
