@@ -7,6 +7,9 @@ const path = require('node:path');
 const samplePath = 'D:\\表情合集\\文件.fla';
 const evidenceRoot = 'D:\\PandaStage-Acceptance\\issue-251-slice1';
 const evidencePath = path.join(evidenceRoot, 'real-sample-electron.json');
+const isolatedUserData = path.join(evidenceRoot, 'electron-user-data');
+fs.mkdirSync(isolatedUserData, { recursive: true });
+app.setPath('userData', isolatedUserData);
 
 function sha256(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');

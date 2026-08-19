@@ -10,6 +10,7 @@ import { useAssetDrop } from './useAssetDrop';
 export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
   importRequestToken?: number;
+  onImportFla: () => void;
 }
 
 function resultClass(result: AssetImportResult): string {
@@ -19,6 +20,7 @@ function resultClass(result: AssetImportResult): string {
 export function AssetImportPanel({
   snapshot,
   importRequestToken,
+  onImportFla,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
@@ -112,6 +114,17 @@ export function AssetImportPanel({
           <h2 id="asset-import-heading">导入项目素材</h2>
         </div>
         <span className="asset-import-header-note">使用工作区顶部“导入素材”</span>
+      </div>
+      <div className="asset-import-actions">
+        <button
+          data-testid="asset-import-fla"
+          disabled={snapshot === null || busy}
+          onClick={onImportFla}
+          type="button"
+        >
+          Import FLA...
+        </button>
+        <span>Opens a read-only compatibility review; it does not use the ordinary raster/audio picker.</span>
       </div>
       <p className="asset-import-drop">
         {snapshot

@@ -59,6 +59,7 @@ export function ResourceActivityDock({
   const [characterView, setCharacterView] =
     useState<CharacterWorkspaceView>('list');
   const [assetImportRequest, setAssetImportRequest] = useState(0);
+  const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
   const narrow = useNarrowViewport();
   const [drawerOpen, setDrawerOpen] = useState(() => !isNarrowViewport());
 
@@ -164,7 +165,12 @@ export function ResourceActivityDock({
                 aria-label="关闭资源工作区"
                 className="resource-activity-close"
                 data-testid="resource-activity-close"
-                onClick={() => setDrawerOpen(false)}
+                onClick={() => {
+                  if (activeActivity === 'assets') {
+                    setAssetReviewCloseRequest((value) => value + 1);
+                  }
+                  setDrawerOpen(false);
+                }}
                 type="button"
               >
                 关闭
@@ -218,6 +224,7 @@ export function ResourceActivityDock({
               />
             ) : activeActivity === 'assets' ? (
               <AssetLibrary
+                closeRequestToken={assetReviewCloseRequest}
                 importRequestToken={assetImportRequest}
                 onViewChange={setAssetView}
                 snapshot={snapshot}

@@ -1432,6 +1432,18 @@ button:disabled {
   text-align: right;
 }
 
+.asset-import-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.asset-import-actions span {
+  color: #91a299;
+  font-size: 11px;
+}
+
 .asset-import-drop,
 .asset-import-status {
   margin: 0;
@@ -1464,6 +1476,204 @@ button:disabled {
 .asset-import-result-rejected,
 .asset-import-result-failed {
   color: #ffd7d2;
+}
+
+.fla-review-session {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
+.fla-review-heading,
+.fla-review-selection-toolbar,
+.fla-review-selection-toolbar > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.fla-review-heading h2,
+.fla-review-compatibility h3 {
+  margin: 0;
+}
+
+.fla-review-readonly-note,
+.fla-review-session > output {
+  margin: 0;
+  color: #9aaca0;
+  font-size: 12px;
+}
+
+.fla-review-summary {
+  display: grid;
+  margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.fla-review-summary > div {
+  padding: 9px 10px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.fla-review-summary dt,
+.fla-review-summary dd {
+  margin: 0;
+}
+
+.fla-review-summary dt {
+  color: #819188;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.fla-review-summary dd {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #dce8df;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fla-review-compatibility {
+  display: grid;
+  gap: 8px;
+}
+
+.fla-review-compatibility ul,
+.fla-review-name-warnings {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 5px;
+  list-style: none;
+}
+
+.fla-review-compatibility > ul:first-of-type {
+  grid-template-columns: repeat(5, minmax(90px, 1fr));
+}
+
+.fla-review-compatibility > ul:first-of-type li {
+  display: grid;
+  padding: 8px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 3%);
+  gap: 3px;
+}
+
+.fla-review-compatibility > ul:first-of-type span {
+  color: #9aaca0;
+  font-size: 12px;
+}
+
+.fla-review-warnings li {
+  display: grid;
+  padding: 8px 10px;
+  border-left: 3px solid #d5a85c;
+  background: rgb(213 168 92 / 9%);
+  gap: 3px;
+  font-size: 11px;
+}
+
+.fla-review-warnings span {
+  color: #c2cfc6;
+}
+
+.fla-review-selection-toolbar {
+  padding: 10px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 10px;
+  background: rgb(8 14 10 / 58%);
+}
+
+.fla-review-selection-toolbar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.fla-review-selection-toolbar output {
+  color: #83d39a;
+  font-size: 11px;
+}
+
+.fla-review-media-grid {
+  display: grid;
+  max-height: 560px;
+  min-width: 0;
+  padding: 2px 8px 8px 2px;
+  overflow: auto;
+  align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 10px;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.fla-review-media-card {
+  display: grid;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 3%);
+  gap: 5px;
+  font-size: 10px;
+}
+
+.fla-review-media-card-selected {
+  border-color: #83d39a;
+  background: rgb(45 104 62 / 27%);
+}
+
+.fla-review-media-card label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fla-review-thumbnail {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 7px;
+  background-color: #dce8df;
+  background-image:
+    linear-gradient(45deg, #aebdb2 25%, transparent 25%),
+    linear-gradient(-45deg, #aebdb2 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #aebdb2 75%),
+    linear-gradient(-45deg, transparent 75%, #aebdb2 75%);
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background-size: 12px 12px;
+  place-items: center;
+}
+
+.fla-review-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.fla-review-media-card > strong,
+.fla-review-media-card > span,
+.fla-review-media-card > code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fla-review-media-card > span {
+  color: #9aaca0;
+}
+
+.fla-review-name-warnings {
+  color: #e7c78a;
+  font-size: 10px;
 }
 
 .asset-library {

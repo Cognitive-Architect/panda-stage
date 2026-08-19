@@ -8,6 +8,7 @@ import {
   FLA_PARSER_PACKAGE,
   FlaImportErrorCodeSchema,
   FlaInspectionResponseSchema,
+  FlaRasterSelectionIntentSchema,
 } from '../../src/shared/fla-import-api';
 
 const sourceRoot = path.resolve(__dirname, '../../src/renderer/fla-import');
@@ -84,7 +85,38 @@ describe('FLA import contracts and parser boundary', () => {
     expect(
       FlaInspectionResponseSchema.safeParse({
         ...valid,
+        ir: {
+          ...valid.ir,
+          compatibility: [
+            { feature: 'symbols', status: 'not-present', reason: 'none found' },
+          ],
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      FlaInspectionResponseSchema.safeParse({
+        ...valid,
         ir: { ...valid.ir, projectRoot: 'C:\\outside' },
+      }).success,
+    ).toBe(false);
+    expect(
+      FlaRasterSelectionIntentSchema.safeParse({
+        format: 'fla-raster-selection',
+        version: 1,
+        sessionId: valid.sessionId,
+        source: { basename: 'sample.fla', sha256: 'a'.repeat(64) },
+        selectedMediaIds: [],
+        selectedCount: 0,
+      }).success,
+    ).toBe(true);
+    expect(
+      FlaRasterSelectionIntentSchema.safeParse({
+        format: 'fla-raster-selection',
+        version: 1,
+        sessionId: valid.sessionId,
+        source: { basename: 'sample.fla', sha256: 'a'.repeat(64) },
+        selectedMediaIds: ['fla-media-duplicate-0001', 'fla-media-duplicate-0001'],
+        selectedCount: 2,
       }).success,
     ).toBe(false);
     expect(
@@ -119,8 +151,14 @@ describe('FLA import contracts and parser boundary', () => {
       (filePath) => !filePath.endsWith(`${path.sep}fla-viewer-adapter.ts`),
     );
     for (const filePath of nonAdapterSources) {
+      // Slice 2 may create a short-lived Blob/object URL from already-owned
+      // PNG bytes for the review thumbnail. That is a renderer preview
+      // resource, not an upstream parser object or type.
+      const forbidden = filePath.endsWith(`${path.sep}FlaCompatibilityReviewSession.tsx`)
+        ? /\b(?:FLADocument|BitmapItem|HTMLImageElement|JSZip)\b/u
+        : /\b(?:FLADocument|BitmapItem|HTMLImageElement|JSZip|Blob)\b/u;
       expect(readFileSync(filePath, 'utf8')).not.toMatch(
-        /\b(?:FLADocument|BitmapItem|HTMLImageElement|JSZip|Blob)\b/u,
+        forbidden,
       );
     }
   });

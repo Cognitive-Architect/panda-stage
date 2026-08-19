@@ -42,6 +42,8 @@ describe('asset library components', () => {
     expect(markup).toContain('音频');
     expect(markup).toContain('导入项目素材');
     expect(markup).toContain('data-testid="asset-browser-view"');
+    expect(markup).toContain('Import FLA...');
+    expect(markup).toContain('data-testid="asset-import-fla"');
     const detailsMarkup = renderToStaticMarkup(
       createElement(AssetLibrary, {
         snapshot: {

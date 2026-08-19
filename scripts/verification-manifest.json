@@ -157,6 +157,17 @@
         "notes": "Renderer asset library changes exercise asset and character consumers."
       },
       {
+        "id": "fla-import",
+        "sourcePatterns": ["src/renderer/fla-import/**"],
+        "testPatterns": ["tests/unit/fla-*.test.ts"],
+        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*"],
+        "suites": ["assets"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "fla-import",
+        "notes": "FLA compatibility review owns read-only renderer presentation; Main/Preload/shared boundary changes remain on the cross-process Full-risk route."
+      },
+      {
         "id": "characters",
         "sourcePatterns": ["src/renderer/features/characters/**"],
         "testPatterns": ["tests/unit/character-*.test.ts", "tests/integration/character-*.test.ts"],
@@ -282,7 +293,7 @@
       }
     ]
   },
-  "count": 45,
+  "count": 47,
   "gates": [
     {
       "id": "assets",
@@ -295,6 +306,30 @@
       "owner": "assets",
       "supersedes": null,
       "notes": "Wrapper over verify:day16/17/18. Preserved per RH-04 (do not replace current subsystem routing)."
+    },
+    {
+      "id": "issue251-slice1",
+      "script": "verify:issue251-slice1",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused real-Electron Slice 1 verifier; Slice 2 uses the same parser boundary and adds review/selection evidence without forcing Full CI at the slice boundary."
+    },
+    {
+      "id": "issue253-slice2",
+      "script": "verify:issue253-slice2",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused Windows Electron verifier for the read-only compatibility review, thumbnails, deterministic selection, cancel cleanup, and zero Asset/Project mutation."
     },
     {
       "id": "canvas",

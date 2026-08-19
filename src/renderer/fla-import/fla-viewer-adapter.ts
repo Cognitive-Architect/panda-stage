@@ -12,6 +12,7 @@ import {
   FLA_PARSER_ENTRYPOINT,
   FLA_PARSER_PACKAGE,
   type AnimationImportIR,
+  type FlaCompatibilityStatus,
   type FlaImportErrorCode,
 } from '../../shared/fla-import-api';
 
@@ -239,7 +240,7 @@ function encodeImage(item: BitmapItem): {
 function addCompatibility(
   compatibility: AnimationImportIR['compatibility'],
   feature: string,
-  status: 'exact' | 'degraded' | 'unsupported' | 'unknown',
+  status: FlaCompatibilityStatus,
   reason: string,
 ): void {
   if (!compatibility.some((entry) => entry.feature === feature && entry.status === status)) {
@@ -252,9 +253,9 @@ function unsupportedElement(
 ): { feature: string; reason: string } {
   switch (element.type) {
     case 'symbol':
-      return { feature: 'symbol-instance', reason: 'Symbol/MovieClip semantics are reserved for Slice 2' };
+      return { feature: 'symbol-instance', reason: 'Symbol/MovieClip semantics are not imported by raster-only FLA V1' };
     case 'shape':
-      return { feature: 'vector-shape', reason: 'Vector shape semantics are outside the raster-only Slice 1 IR' };
+      return { feature: 'vector-shape', reason: 'Vector shape semantics are outside the raster-only FLA V1 boundary' };
     case 'video':
       return { feature: 'video', reason: 'Video media is outside the Slice 1 bitmap contract' };
     case 'text':
@@ -327,9 +328,33 @@ export async function adaptFlaDocument(
 
   const compatibility: AnimationImportIR['compatibility'] = [];
   addCompatibility(compatibility, 'bitmap-media', 'exact', 'Bitmap media is emitted as Panda-owned bounded PNG bytes');
-  addCompatibility(compatibility, 'timeline-frame-placement', 'exact', 'Bitmap placements retain source frame indices, duration, and 2D matrices');
+  addCompatibility(compatibility, 'timeline-frame-placement', 'degraded', 'Bitmap placements are inspection-only; V1 does not import timeline semantics');
   if (source.containsActionScript) {
     addCompatibility(compatibility, 'actionscript', 'unsupported', 'ActionScript was detected but is never executed by the parser worker');
+  } else {
+    addCompatibility(compatibility, 'actionscript', 'not-present', 'No ActionScript was detected in the inspected source');
+  }
+
+  const hasSymbols = document.symbols.size > 0;
+  const hasTweens = document.timelines.some((timeline) =>
+    timeline.layers.some((layer) =>
+      layer.frames.some((frame) =>
+        frame.tweenType === 'motion' ||
+        frame.tweenType === 'shape' ||
+        (frame.tweens?.length ?? 0) > 0 ||
+        frame.morphShape !== undefined,
+      ),
+    ),
+  );
+  if (hasSymbols) {
+    addCompatibility(compatibility, 'symbol-movieclip-semantics', 'unsupported', 'Symbol/MovieClip semantics are present but are not imported by raster-only FLA V1');
+  } else {
+    addCompatibility(compatibility, 'symbol-movieclip-semantics', 'not-present', 'No Symbol/MovieClip library items were detected');
+  }
+  if (hasTweens) {
+    addCompatibility(compatibility, 'basic-tweens', 'unsupported', 'Tween semantics are present but are not imported by raster-only FLA V1');
+  } else {
+    addCompatibility(compatibility, 'basic-tweens', 'not-present', 'No basic tween semantics were detected');
   }
 
   const timelines: AnimationImportIR['timelines'] = [];
@@ -397,6 +422,12 @@ export async function adaptFlaDocument(
       timelineIR.layers.push(layerIR);
     }
     timelines.push(timelineIR);
+  }
+
+  for (const feature of ['vector-shape', 'video', 'text'] as const) {
+    if (!compatibility.some((entry) => entry.feature === feature)) {
+      addCompatibility(compatibility, feature, 'not-present', `No ${feature} content was detected`);
+    }
   }
 
   return {

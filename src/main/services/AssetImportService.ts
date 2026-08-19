@@ -12,6 +12,11 @@ import {
   type AssetImportResult,
 } from '../../shared/asset-import-api';
 import {
+  assetDisplayName,
+  sanitizeAssetFileName,
+  safeUtf16Slice,
+} from '../../shared/asset-name';
+import {
   AssetImportFileSystemCleanupError,
   AssetImportFileSystemService,
 } from './AssetImportFileSystemService';
@@ -623,37 +628,7 @@ export class AssetImportService {
   }
 }
 
-export function assetDisplayName(sourceName: string): string {
-  const sourceExtension = path.extname(sourceName);
-  const normalized = path
-    .basename(sourceName, sourceExtension)
-    .normalize('NFC')
-    .replace(/\p{Cc}/gu, '_')
-    .trim();
-  return safeUtf16Slice(normalized || 'Imported asset', 200);
-}
-
-export function sanitizeAssetFileName(
-  sourceName: string,
-  extension: InspectedMedia['extension'],
-): string {
-  const sourceExtension = path.extname(sourceName);
-  const rawStem = path.basename(sourceName, sourceExtension);
-  const normalizedStem =
-    rawStem
-      .normalize('NFC')
-      .replace(/[\p{Cc}<>:"/\\|?*]/gu, '_')
-      .replace(/\s+/gu, ' ')
-      .replace(/[. ]+$/gu, '')
-      .trim() || 'asset';
-  const safeStem = safeUtf16Slice(normalizedStem, 120);
-  const stem = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(
-    safeStem,
-  )
-    ? `_${safeStem}`
-    : safeStem;
-  return `${stem}${extension}`;
-}
+export { assetDisplayName, sanitizeAssetFileName };
 
 function projectsEqual(left: Project, right: Project): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -667,13 +642,4 @@ function removePendingFile(
     (pending) => pending.filePath === filePath,
   );
   if (index >= 0) pendingFiles.splice(index, 1);
-}
-
-function safeUtf16Slice(value: string, maximumLength: number): string {
-  let result = value.slice(0, maximumLength);
-  const lastCodeUnit = result.charCodeAt(result.length - 1);
-  if (lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff) {
-    result = result.slice(0, -1);
-  }
-  return result;
 }

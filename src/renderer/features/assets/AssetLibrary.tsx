@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -24,6 +25,7 @@ import {
   type ThumbnailState,
 } from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
+import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
 
 export type AssetWorkspaceView = 'browser' | 'details';
 
@@ -32,6 +34,7 @@ export interface AssetLibraryProps {
   view?: AssetWorkspaceView;
   onViewChange?: (view: AssetWorkspaceView) => void;
   importRequestToken?: number;
+  closeRequestToken?: number;
 }
 
 export function AssetLibrary({
@@ -39,6 +42,7 @@ export function AssetLibrary({
   view = 'browser',
   onViewChange = () => undefined,
   importRequestToken,
+  closeRequestToken,
 }: AssetLibraryProps): React.JSX.Element {
   const [category, setCategory] =
     useState<AssetLibraryCategory>('background');
@@ -56,6 +60,19 @@ export function AssetLibrary({
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
+  const [flaReviewOpen, setFlaReviewOpen] = useState(false);
+  const lastCloseRequest = useRef(closeRequestToken ?? 0);
+
+  useEffect(() => {
+    if (
+      closeRequestToken === undefined ||
+      closeRequestToken === lastCloseRequest.current
+    ) {
+      return;
+    }
+    lastCloseRequest.current = closeRequestToken;
+    setFlaReviewOpen(false);
+  }, [closeRequestToken]);
 
   const entries = useMemo(
     () =>
@@ -247,6 +264,19 @@ export function AssetLibrary({
     }
   };
 
+  const openFlaReview = (): void => {
+    if (!snapshot) {
+      setStatus('Open a Panda Stage project before reviewing an FLA.');
+      return;
+    }
+    setFlaReviewOpen(true);
+  };
+
+  const closeFlaReview = (): void => {
+    setFlaReviewOpen(false);
+    setStatus('FLA review closed; Project and Asset state are unchanged.');
+  };
+
   return (
     <section
       className={[
@@ -294,10 +324,17 @@ export function AssetLibrary({
             : '尚未打开项目'}
         </output>
       </div>
-      {view === 'browser' ? (
+      {view === 'browser' ? flaReviewOpen ? (
+        <FlaCompatibilityReviewSession
+          onClose={closeFlaReview}
+          onIntent={() => setStatus('Read-only FLA selection intent is ready for Slice 3; no Assets were created.')}
+          snapshot={snapshot}
+        />
+      ) : (
         <>
           <AssetImportPanel
             importRequestToken={importRequestToken}
+            onImportFla={openFlaReview}
             snapshot={snapshot}
           />
           <div

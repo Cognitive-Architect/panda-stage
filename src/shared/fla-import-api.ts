@@ -48,6 +48,10 @@ export const FlaImportErrorCodeSchema = z.enum([
 
 export const FlaSourceFormatSchema = z.enum(['png', 'jpeg', 'jpg', 'unknown']);
 
+export const FlaMediaIdSchema = z.string().regex(
+  /^fla-media-[a-z0-9-]{8,160}$/u,
+);
+
 export const FlaSourceIRSchema = z
   .object({
     format: z.literal('fla'),
@@ -98,7 +102,7 @@ export const FlaEncodedImagePayloadIRSchema = z
 
 export const FlaBitmapMediaIRSchema = z
   .object({
-    id: z.string().regex(/^fla-media-[a-z0-9-]{8,160}$/u),
+    id: FlaMediaIdSchema,
     name: z.string().trim().min(1).max(500),
     sourceReference: z.string().trim().min(1).max(32_767),
     bitmapDataReference: z.string().trim().min(1).max(32_767).nullable(),
@@ -162,7 +166,13 @@ export const FlaTimelineIRSchema = z
 export const FlaCompatibilityEntryIRSchema = z
   .object({
     feature: z.string().trim().min(1).max(200),
-    status: z.enum(['exact', 'degraded', 'unsupported', 'unknown']),
+    status: z.enum([
+      'exact',
+      'degraded',
+      'unsupported',
+      'unknown',
+      'not-present',
+    ]),
     reason: z.string().trim().min(1).max(1_000),
   })
   .strict();
@@ -228,6 +238,36 @@ export const FlaCancelResponseSchema = z
   })
   .strict();
 
+/**
+ * Slice 2 handoff only.  This is a read-only intent; it is not an Asset or
+ * Project mutation request and must not be sent to the normal import IPC.
+ */
+export const FlaRasterSelectionIntentSchema = z
+  .object({
+    format: z.literal('fla-raster-selection'),
+    version: z.literal(1),
+    sessionId: z.uuid(),
+    source: z
+      .object({
+        basename: z.string().trim().min(1).max(260),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+      })
+      .strict(),
+    selectedMediaIds: z
+      .array(FlaMediaIdSchema)
+      .max(FLA_IMPORT_LIMITS.maxMediaCount)
+      .refine(
+        (ids) => new Set(ids).size === ids.length,
+        'selectedMediaIds must be unique',
+      ),
+    selectedCount: z.number().int().nonnegative().max(FLA_IMPORT_LIMITS.maxMediaCount),
+  })
+  .strict()
+  .refine(
+    (intent) => intent.selectedCount === intent.selectedMediaIds.length,
+    'selectedCount must match selectedMediaIds.length',
+  );
+
 /** Internal worker messages. They still contain only Panda-owned values. */
 export const FlaWorkerStartRequestSchema = z
   .object({
@@ -271,6 +311,8 @@ export type FlaInspectionResponse = z.infer<typeof FlaInspectionResponseSchema>;
 export type FlaInspectRequest = z.infer<typeof FlaInspectRequestSchema>;
 export type FlaCancelRequest = z.infer<typeof FlaCancelRequestSchema>;
 export type FlaCancelResponse = z.infer<typeof FlaCancelResponseSchema>;
+export type FlaCompatibilityStatus = AnimationImportIR['compatibility'][number]['status'];
+export type FlaRasterSelectionIntent = z.infer<typeof FlaRasterSelectionIntentSchema>;
 export type FlaWorkerStartRequest = z.infer<typeof FlaWorkerStartRequestSchema>;
 export type FlaWorkerProgress = z.infer<typeof FlaWorkerProgressSchema>;
 export type FlaWorkerResult = z.infer<typeof FlaWorkerResultSchema>;
