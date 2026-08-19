@@ -102,6 +102,16 @@ export function reviewMedia(
   });
 }
 
+export function toggleFlaMediaSelection(
+  selectedMediaIds: ReadonlySet<string>,
+  mediaId: string,
+): Set<string> {
+  const next = new Set(selectedMediaIds);
+  if (next.has(mediaId)) next.delete(mediaId);
+  else next.add(mediaId);
+  return next;
+}
+
 export function compatibilityCounts(
   ir: AnimationImportIR,
 ): Record<FlaCompatibilityStatus, number> {

@@ -4,6 +4,7 @@ import {
   compatibilityCounts,
   createFlaRasterSelectionIntent,
   reviewMedia,
+  toggleFlaMediaSelection,
 } from '../../src/renderer/fla-import/fla-review';
 
 function media(index: number, name = `media-${String(index).padStart(3, '0')}.png`): AnimationImportIR['media'][number] {
@@ -158,5 +159,18 @@ describe('FLA Slice 2 review model', () => {
       ir.media[157]!.id,
     ]);
     expect(intent.source.sha256).toBe(ir.source.sha256);
+  });
+
+  it('toggles card, thumbnail, and checkbox selections through the same stable media ID operation', () => {
+    const mediaId = 'fla-media-00000001';
+    const selected = new Set<string>();
+    const afterCard = toggleFlaMediaSelection(selected, mediaId);
+    const afterThumbnail = toggleFlaMediaSelection(afterCard, mediaId);
+    const afterCheckbox = toggleFlaMediaSelection(afterThumbnail, mediaId);
+
+    expect([...afterCard]).toEqual([mediaId]);
+    expect([...afterThumbnail]).toEqual([]);
+    expect([...afterCheckbox]).toEqual([mediaId]);
+    expect(selected).toEqual(new Set());
   });
 });

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import type {
   FlaInspectionResponse,
   FlaRasterSelectionIntent,
@@ -11,6 +18,7 @@ import {
   FLA_COMPATIBILITY_LABELS,
   FLA_COMPATIBILITY_STATUSES,
   reviewMedia,
+  toggleFlaMediaSelection,
   type FlaReviewMedia,
 } from './fla-review';
 
@@ -137,6 +145,7 @@ export function FlaCompatibilityReviewSession({
       <section
         aria-label="FLA compatibility review"
         className="fla-review-session"
+        data-review-layout="overlay"
         data-testid="fla-review-session"
       >
         <header className="fla-review-heading">
@@ -163,6 +172,7 @@ export function FlaCompatibilityReviewSession({
       <section
         aria-label="FLA compatibility review"
         className="fla-review-session"
+        data-review-layout="overlay"
         data-testid="fla-review-session"
       >
         <header className="fla-review-heading">
@@ -184,12 +194,7 @@ export function FlaCompatibilityReviewSession({
   const counts = compatibilityCounts(ir);
   const warnings = compatibilityWarnings(ir);
   const toggle = (mediaId: string): void => {
-    setSelectedMediaIds((current) => {
-      const next = new Set(current);
-      if (next.has(mediaId)) next.delete(mediaId);
-      else next.add(mediaId);
-      return next;
-    });
+    setSelectedMediaIds((current) => toggleFlaMediaSelection(current, mediaId));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
@@ -219,6 +224,7 @@ export function FlaCompatibilityReviewSession({
     <section
       aria-label="FLA compatibility review"
       className="fla-review-session"
+      data-review-layout="overlay"
       data-testid="fla-review-session"
     >
       <header className="fla-review-heading">
@@ -292,6 +298,7 @@ export function FlaCompatibilityReviewSession({
         aria-label="FLA raster media"
         className="fla-review-media-grid"
         data-testid="fla-review-media-grid"
+        data-scroll-region="fla-media"
       >
         {reviewItems.map((item) => (
           <FlaReviewMediaCard
@@ -321,22 +328,41 @@ function FlaReviewMediaCard({
   const { media } = item;
   return (
     <article
+      aria-label={`${selected ? 'Deselect' : 'Select'} ${media.name}`}
       className={`fla-review-media-card${selected ? ' fla-review-media-card-selected' : ''}`}
       data-alpha-kind={media.payload.alpha.kind}
       data-fla-media-id={media.id}
       data-library-only={item.libraryOnly ? 'true' : 'false'}
+      data-testid={`fla-review-media-card-${media.id}`}
       data-zero-alpha-pixels={media.payload.alpha.zeroAlphaPixels}
+      aria-pressed={selected}
+      onClick={(event: ReactMouseEvent<HTMLElement>) => {
+        if (isNestedInteractiveTarget(event.target)) return;
+        onToggle();
+      }}
+      onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) => {
+        if (isNestedInteractiveTarget(event.target)) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onToggle();
+      }}
+      role="button"
+      tabIndex={0}
     >
       <label>
         <input
           aria-label={`Select ${media.name}`}
           checked={selected}
+          data-selection-target="checkbox"
           onChange={onToggle}
           type="checkbox"
         />
         <span>Select</span>
       </label>
-      <div className="fla-review-thumbnail">
+      <div
+        className="fla-review-thumbnail"
+        data-selection-target="thumbnail"
+      >
         {thumbnailUrl ? (
           <img alt={media.name} loading="lazy" src={thumbnailUrl} />
         ) : (
@@ -355,5 +381,11 @@ function FlaReviewMediaCard({
         </ul>
       ) : null}
     </article>
+  );
+}
+
+function isNestedInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(
+    target.closest('input, label, button, a'),
   );
 }

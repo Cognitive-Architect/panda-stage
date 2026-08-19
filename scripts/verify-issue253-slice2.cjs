@@ -123,6 +123,17 @@ async function run() {
   const review = await mainWindow.webContents.executeJavaScript(`(() => {
     const cards = [...document.querySelectorAll('[data-fla-media-id]')];
     const count = (selector) => document.querySelector(selector)?.textContent?.trim() || '';
+    const session = document.querySelector('[data-testid="fla-review-session"]');
+    const mediaGrid = document.querySelector('[data-testid="fla-review-media-grid"]');
+    const sessionRect = session?.getBoundingClientRect();
+    const mediaGridStyle = mediaGrid ? getComputedStyle(mediaGrid) : null;
+    const actionSelectors = [
+      '[data-testid="fla-review-selected-count"]',
+      '[data-testid="fla-review-select-all"]',
+      '[data-testid="fla-review-clear-all"]',
+      '[data-testid="fla-review-confirm"]',
+      '[data-testid="fla-review-cancel"]',
+    ];
     return {
       mediaCount: count('[data-testid="fla-review-media-count"]'),
       placedText: [...document.querySelectorAll('[data-testid="fla-review-summary"] dd')].map((node) => node.textContent?.trim() || ''),
@@ -133,6 +144,23 @@ async function run() {
       a1Present: cards.some((card) => card.querySelector('strong')?.textContent === 'a1.png'),
       statusCounts: Object.fromEntries([...document.querySelectorAll('[data-testid="fla-compatibility-summary"] li')].map((node) => [node.getAttribute('data-status'), node.textContent?.trim() || ''])),
       selectedText: count('[data-testid="fla-review-selected-count"]'),
+      compatibilityLabels: [...document.querySelectorAll('[data-testid="fla-compatibility-summary"] strong')].map((node) => node.textContent?.trim() || ''),
+      overlay: {
+        width: sessionRect?.width ?? 0,
+        viewportWidth: window.innerWidth,
+        layout: session?.getAttribute('data-review-layout') || '',
+      },
+      scrollRegion: {
+        overflowY: mediaGridStyle?.overflowY || '',
+        clientHeight: mediaGrid?.clientHeight || 0,
+        scrollHeight: mediaGrid?.scrollHeight || 0,
+        independent: Boolean(mediaGrid && mediaGridStyle && ['auto', 'scroll'].includes(mediaGridStyle.overflowY) && mediaGrid.scrollHeight > mediaGrid.clientHeight),
+      },
+      actionsReachable: Boolean(sessionRect && actionSelectors.every((selector) => {
+        const element = document.querySelector(selector);
+        const rect = element?.getBoundingClientRect();
+        return Boolean(rect && rect.width > 0 && rect.height > 0 && rect.top >= sessionRect.top && rect.bottom <= sessionRect.bottom);
+      })),
     };
   })()`);
 
@@ -145,6 +173,33 @@ async function run() {
     document.querySelector('[data-testid="fla-review-clear-all"]')?.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     return document.querySelector('[data-testid="fla-review-selected-count"]')?.textContent?.trim() || '';
+  })()`);
+  const interactionText = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const card = document.querySelector('[data-fla-media-id]');
+    const thumbnail = card?.querySelector('[data-selection-target="thumbnail"]');
+    const checkbox = card?.querySelector('[data-selection-target="checkbox"]');
+    const body = card?.querySelector('strong');
+    const read = () => document.querySelector('[data-testid="fla-review-selected-count"]')?.textContent?.trim() || '';
+    card?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const afterCard = read();
+    thumbnail?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const afterThumbnail = read();
+    checkbox?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const afterCheckbox = read();
+    body?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return {
+      afterCard,
+      afterThumbnail,
+      afterCheckbox,
+      afterBody: read(),
+      cardTargetPresent: Boolean(card),
+      thumbnailTargetPresent: Boolean(thumbnail),
+      checkboxTargetPresent: Boolean(checkbox),
+    };
   })()`);
   const subsetText = await mainWindow.webContents.executeJavaScript(`(async () => {
     const cards = [...document.querySelectorAll('[data-fla-media-id]')];
@@ -228,6 +283,7 @@ async function run() {
     review,
     selectAllText,
     clearAllText,
+    interactionText,
     subsetText,
     afterConfirm,
     cancelledBackToAssetBrowser: true,
@@ -241,6 +297,26 @@ async function run() {
   }
   if (result.review.transparentCardCount < 1 || result.review.jpegOriginCardCount < 1) {
     throw new Error(`Representative raster review evidence is missing: ${JSON.stringify(result.review)}`);
+  }
+  if (
+    result.review.overlay.layout !== 'overlay' ||
+    result.review.overlay.width < Math.min(640, result.review.overlay.viewportWidth - 32) - 1 ||
+    !result.review.scrollRegion.independent ||
+    !result.review.actionsReachable ||
+    !['EXACT', 'DEGRADED', 'UNSUPPORTED', 'UNKNOWN', 'NOT_PRESENT'].every((label) => result.review.compatibilityLabels.includes(label))
+  ) {
+    throw new Error(`Review workspace UX evidence is incomplete: ${JSON.stringify(result.review)}`);
+  }
+  if (
+    !result.interactionText.cardTargetPresent ||
+    !result.interactionText.thumbnailTargetPresent ||
+    !result.interactionText.checkboxTargetPresent ||
+    !result.interactionText.afterCard.includes('1') ||
+    !result.interactionText.afterThumbnail.includes('0') ||
+    !result.interactionText.afterCheckbox.includes('1') ||
+    !result.interactionText.afterBody.includes('0')
+  ) {
+    throw new Error(`Card/thumbnail/checkbox selection evidence is incomplete: ${JSON.stringify(result.interactionText)}`);
   }
   if (!result.selectAllText.includes('158') || !result.clearAllText.includes('0') || !result.subsetText.text.includes('3')) {
     throw new Error(`Selection controls did not produce expected counts: ${JSON.stringify(result)}`);
