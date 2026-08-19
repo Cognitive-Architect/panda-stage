@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -27,6 +28,10 @@ import {
 import { AssetImportPanel } from './AssetImportPanel';
 import { applyFlaAssetCommitResponse } from './applyFlaAssetCommitResponse';
 import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
+import {
+  FlaInspectionLifecycle,
+  type FlaInspectionOperation,
+} from '../../fla-import/fla-inspection-lifecycle';
 
 export type AssetWorkspaceView = 'browser' | 'details';
 
@@ -62,7 +67,17 @@ export function AssetLibrary({
     Record<string, ThumbnailState>
   >({});
   const [flaReviewOpen, setFlaReviewOpen] = useState(false);
+  const [flaInspection, setFlaInspection] =
+    useState<FlaInspectionOperation | null>(null);
+  const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
   const lastCloseRequest = useRef(closeRequestToken ?? 0);
+
+  const closeFlaReview = useCallback((): void => {
+    setFlaReviewOpen(false);
+    setFlaInspection(null);
+    void flaInspectionLifecycle.current?.cancel();
+    setStatus('FLA review closed; Project and Asset state are unchanged.');
+  }, []);
 
   useEffect(() => {
     if (
@@ -72,8 +87,14 @@ export function AssetLibrary({
       return;
     }
     lastCloseRequest.current = closeRequestToken;
-    setFlaReviewOpen(false);
-  }, [closeRequestToken]);
+    closeFlaReview();
+  }, [closeFlaReview, closeRequestToken]);
+
+  useEffect(() => {
+    return () => {
+      void flaInspectionLifecycle.current?.cancel();
+    };
+  }, []);
 
   const entries = useMemo(
     () =>
@@ -270,13 +291,27 @@ export function AssetLibrary({
       setStatus('Open a Panda Stage project before reviewing an FLA.');
       return;
     }
+    const lifecycle =
+      flaInspectionLifecycle.current ??
+      (flaInspectionLifecycle.current = new FlaInspectionLifecycle(
+        window.pandaStage.fla,
+      ));
+    setFlaInspection(lifecycle.start());
     setFlaReviewOpen(true);
   };
 
-  const closeFlaReview = (): void => {
-    setFlaReviewOpen(false);
-    setStatus('FLA review closed; Project and Asset state are unchanged.');
-  };
+  useEffect(() => {
+    if (view !== 'browser' && flaReviewOpen) closeFlaReview();
+  }, [closeFlaReview, flaReviewOpen, view]);
+
+  const previousProjectRoot = useRef(snapshot?.projectRoot);
+  useEffect(() => {
+    const previousProject = previousProjectRoot.current;
+    previousProjectRoot.current = snapshot?.projectRoot;
+    if (previousProject !== snapshot?.projectRoot && flaReviewOpen) {
+      closeFlaReview();
+    }
+  }, [closeFlaReview, flaReviewOpen, snapshot?.projectRoot]);
 
   return (
     <section
@@ -325,8 +360,9 @@ export function AssetLibrary({
             : '尚未打开项目'}
         </output>
       </div>
-      {view === 'browser' ? flaReviewOpen ? (
+      {view === 'browser' ? flaReviewOpen && flaInspection ? (
         <FlaCompatibilityReviewSession
+          inspection={flaInspection}
           onClose={closeFlaReview}
           onCommit={(response) => {
             const outcome = applyFlaAssetCommitResponse(

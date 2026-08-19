@@ -26,8 +26,13 @@ import {
   toggleFlaMediaSelection,
   type FlaReviewMedia,
 } from './fla-review';
+import {
+  subscribeToFlaInspection,
+  type FlaInspectionOperation,
+} from './fla-inspection-lifecycle';
 
 interface FlaCompatibilityReviewSessionProps {
+  inspection: FlaInspectionOperation;
   snapshot: EditorProjectSnapshot | null;
   onClose: () => void;
   onIntent?: (intent: FlaRasterSelectionIntent) => void;
@@ -42,12 +47,8 @@ type SessionPhase =
   | 'success'
   | 'error';
 
-interface ActiveSession {
-  requestId?: string;
-  sessionId?: string;
-}
-
 export function FlaCompatibilityReviewSession({
+  inspection,
   snapshot,
   onClose,
   onIntent,
@@ -63,33 +64,25 @@ export function FlaCompatibilityReviewSession({
   const [commitResponse, setCommitResponse] = useState<FlaAssetCommitResponse | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const [compatibilityNotesOpen, setCompatibilityNotesOpen] = useState(false);
-  const activeSession = useRef<ActiveSession | null>(null);
-  const cancelled = useRef(false);
   const reviewBodyRef = useRef<HTMLDivElement | null>(null);
   const reviewScrollTop = useRef(0);
 
   useEffect(() => {
-    const nextRequestId = crypto.randomUUID();
-    activeSession.current = { requestId: nextRequestId };
-    void window.pandaStage.fla
-      .chooseAndInspect(nextRequestId)
-      .then((nextResponse) => {
-        if (cancelled.current) return;
+    return subscribeToFlaInspection(
+      inspection,
+      (nextResponse) => {
         setResponse(nextResponse);
         if (nextResponse.ok) {
-          activeSession.current = { sessionId: nextResponse.sessionId };
           setSessionId(nextResponse.sessionId);
           setSelectedMediaIds(
             new Set(nextResponse.ir.media.map((media) => media.id)),
           );
           setPhase('ready');
         } else {
-          activeSession.current = null;
           setPhase('error');
         }
-      })
-      .catch((error: unknown) => {
-        if (cancelled.current) return;
+      },
+      (error: unknown) => {
         setResponse({
           ok: false,
           error: {
@@ -97,22 +90,10 @@ export function FlaCompatibilityReviewSession({
             message: error instanceof Error ? error.message : 'FLA inspection failed',
           },
         });
-        activeSession.current = null;
         setPhase('error');
-      });
-
-    return () => {
-      cancelled.current = true;
-      const active = activeSession.current;
-      activeSession.current = null;
-      if (active?.requestId) {
-        void window.pandaStage.fla.cancel(active.requestId);
-      }
-      if (active?.sessionId) {
-        void window.pandaStage.fla.cancel(active.sessionId);
-      }
-    };
-  }, []);
+      },
+    );
+  }, [inspection]);
 
   const ir = response?.ok ? response.ir : null;
   const reviewItems = useMemo(
@@ -157,17 +138,9 @@ export function FlaCompatibilityReviewSession({
     if (reviewBodyRef.current) reviewScrollTop.current = reviewBodyRef.current.scrollTop;
   };
 
-  const closeSession = async (): Promise<void> => {
+  const closeSession = (): void => {
     if (phase === 'committing') return;
-    cancelled.current = true;
-    const active = activeSession.current;
-    activeSession.current = null;
-    try {
-      if (active?.requestId) await window.pandaStage.fla.cancel(active.requestId);
-      if (active?.sessionId) await window.pandaStage.fla.cancel(active.sessionId);
-    } finally {
-      onClose();
-    }
+    onClose();
   };
 
   if (phase === 'inspecting') {
@@ -288,7 +261,6 @@ export function FlaCompatibilityReviewSession({
       });
       setCommitResponse(nextResponse);
       if (nextResponse.ok && nextResponse.status === 'completed') {
-        activeSession.current = null;
         setPhase('success');
         onCommit?.(nextResponse);
       } else {
