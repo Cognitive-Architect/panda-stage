@@ -25,6 +25,7 @@ import {
   type ThumbnailState,
 } from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
+import { applyFlaAssetCommitResponse } from './applyFlaAssetCommitResponse';
 import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
 
 export type AssetWorkspaceView = 'browser' | 'details';
@@ -327,6 +328,13 @@ export function AssetLibrary({
       {view === 'browser' ? flaReviewOpen ? (
         <FlaCompatibilityReviewSession
           onClose={closeFlaReview}
+          onCommit={(response) => {
+            const outcome = applyFlaAssetCommitResponse(
+              response,
+              editorProjectStore,
+            );
+            setStatus(outcome.status);
+          }}
           onIntent={() => setStatus('Read-only FLA selection intent is ready for Slice 3; no Assets were created.')}
           snapshot={snapshot}
         />

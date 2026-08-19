@@ -8,6 +8,15 @@ export interface FileHash {
 }
 
 export class HashService {
+  hashBytes(bytes: Uint8Array): FileHash {
+    const buffer = Buffer.from(bytes);
+    return {
+      algorithm: 'sha256',
+      hex: createHash('sha256').update(buffer).digest('hex'),
+      bytes: buffer.byteLength,
+    };
+  }
+
   async hashFile(
     filePath: string,
     signal?: AbortSignal,

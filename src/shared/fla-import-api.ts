@@ -89,13 +89,17 @@ const Uint8ArraySchema = z.custom<Uint8Array>(
   (value) => value instanceof Uint8Array,
   'expected Uint8Array',
 );
+const EncodedPngBytesSchema = Uint8ArraySchema.refine(
+  (value) => value.byteLength <= FLA_IMPORT_LIMITS.maxSingleEntryBytes,
+  `encoded PNG payload must be at most ${FLA_IMPORT_LIMITS.maxSingleEntryBytes} bytes`,
+);
 
 export const FlaEncodedImagePayloadIRSchema = z
   .object({
     mimeType: z.literal('image/png'),
     width: z.number().int().positive().max(FLA_IMPORT_LIMITS.maxImageWidth),
     height: z.number().int().positive().max(FLA_IMPORT_LIMITS.maxImageHeight),
-    bytes: Uint8ArraySchema,
+    bytes: EncodedPngBytesSchema,
     alpha: FlaAlphaInfoIRSchema,
   })
   .strict();

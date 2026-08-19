@@ -38,6 +38,10 @@ export interface ProjectServiceOptions {
     project: Project,
     revision?: number,
   ) => void | Promise<void>;
+  onProjectOpened?: (
+    projectRoot: string,
+    project: Project,
+  ) => void | Promise<void>;
   onPostSaveError?: (error: unknown) => void;
   coordinator?: ProjectOperationCoordinator;
   pathService?: PathService;
@@ -93,6 +97,9 @@ export class ProjectService {
       ) => void | Promise<void>)
     | null;
   private readonly onPostSaveError: (error: unknown) => void;
+  private readonly onProjectOpened:
+    | ((projectRoot: string, project: Project) => void | Promise<void>)
+    | null;
   private readonly coordinator: ProjectOperationCoordinator;
   private readonly pathService: PathService;
   private readonly getCurrentProjectSnapshot:
@@ -105,6 +112,7 @@ export class ProjectService {
     this.createId = options.createId ?? randomUUID;
     this.onProjectSaved = options.onProjectSaved ?? null;
     this.onPostSaveError = options.onPostSaveError ?? (() => undefined);
+    this.onProjectOpened = options.onProjectOpened ?? null;
     this.coordinator =
       options.coordinator ?? new ProjectOperationCoordinator();
     this.pathService = options.pathService ?? new PathService();
@@ -220,12 +228,14 @@ export class ProjectService {
       // Single authoritative pipeline for every persisted envelope (v0-v5).
       // Current (v6) input is validated as-is; legacy input is migrated.
       const project = migrateProject(input);
-      return this.document(
+      const document = this.document(
         projectRoot,
         project,
         sourceVersion !== PROJECT_SCHEMA_VERSION,
         sourceVersion,
       );
+      await this.onProjectOpened?.(projectRoot, project);
+      return document;
     } catch (error) {
       throw this.mapError('open', projectRoot, error);
     }

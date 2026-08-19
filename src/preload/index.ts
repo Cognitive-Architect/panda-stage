@@ -100,6 +100,11 @@ import {
   FlaInspectRequestSchema,
   FlaInspectionResponseSchema,
 } from '../shared/fla-import-api';
+import {
+  FlaAssetCommitRequestSchema,
+  FlaAssetCommitResponseSchema,
+  type FlaAssetCommitRequest,
+} from '../shared/fla-asset-commit-api';
 
 type Unsubscribe = () => void;
 
@@ -418,6 +423,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaCancelResponseSchema.parse(response);
+    },
+    commitSelected: async (rawRequest: FlaAssetCommitRequest) => {
+      const request = FlaAssetCommitRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_COMMIT_SELECTED,
+        request,
+      );
+      return FlaAssetCommitResponseSchema.parse(response);
     },
   }),
 });

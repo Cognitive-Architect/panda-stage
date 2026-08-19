@@ -10,6 +10,9 @@ import {
   FlaInspectionResponseSchema,
   FlaRasterSelectionIntentSchema,
 } from '../../src/shared/fla-import-api';
+import { FlaAssetCommitRequestSchema } from '../../src/shared/fla-asset-commit-api';
+import { migrateProject } from '../../src/domain';
+import exampleProject from '../../demo-project/project-v1.example.json';
 
 const sourceRoot = path.resolve(__dirname, '../../src/renderer/fla-import');
 
@@ -124,6 +127,49 @@ describe('FLA import contracts and parser boundary', () => {
         ok: false,
         error: { code: 'USER_CANCELLED', message: 'cancelled' },
         sessionId: valid.sessionId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps Slice 3 commit requests identifier-only and confirmation-bound', () => {
+    const project = migrateProject(exampleProject);
+    const validRequest = {
+      format: 'fla-raster-commit' as const,
+      version: 1 as const,
+      projectRoot: 'D:\\project.pandastage',
+      project,
+      baseRevision: 0,
+      sessionId: '00000000-0000-4000-8000-000000000257',
+      source: { basename: 'sample.fla', sha256: 'a'.repeat(64) },
+      selectedMediaIds: ['fla-media-contract-0001'],
+      selectedCount: 1,
+      confirmed: true as const,
+    };
+
+    expect(FlaAssetCommitRequestSchema.safeParse(validRequest).success).toBe(true);
+    expect(
+      FlaAssetCommitRequestSchema.safeParse({
+        ...validRequest,
+        bytes: new Uint8Array([1, 2, 3]),
+      }).success,
+    ).toBe(false);
+    expect(
+      FlaAssetCommitRequestSchema.safeParse({
+        ...validRequest,
+        sourcePath: 'D:\\outside\\sample.fla',
+      }).success,
+    ).toBe(false);
+    expect(
+      FlaAssetCommitRequestSchema.safeParse({
+        ...validRequest,
+        selectedMediaIds: [],
+        selectedCount: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      FlaAssetCommitRequestSchema.safeParse({
+        ...validRequest,
+        confirmed: false,
       }).success,
     ).toBe(false);
   });

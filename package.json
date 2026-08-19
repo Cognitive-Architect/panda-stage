@@ -57,6 +57,7 @@
     "verify:issue207": "pnpm build && electron scripts/verify-issue207-neg002-empty-timeline.cjs",
     "verify:issue251-slice1": "pnpm build && electron scripts/verify-issue251-slice1.cjs",
     "verify:issue253-slice2": "pnpm build && electron scripts/verify-issue253-slice2.cjs",
+    "verify:issue257-slice3": "pnpm build && electron scripts/verify-issue257-slice3.cjs",
     "verify:issue125": "pnpm build && pnpm test:integration && electron scripts/verify-issue76.cjs && electron scripts/verify-issue102-task3.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",

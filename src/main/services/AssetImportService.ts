@@ -515,31 +515,13 @@ export class AssetImportService {
     sha256: string,
     occupiedNames: Set<string>,
   ): Promise<string> {
-    if (
-      !occupiedNames.has(preferredName.toLowerCase()) &&
-      !(await this.fileSystem.fileExists(
-        this.fileSystem.assetPath(projectRoot, preferredName),
-      ))
-    ) {
-      return preferredName;
-    }
-    const extension = path.extname(preferredName);
-    const stem = path.basename(preferredName, extension);
-    const hashSuffix = sha256.slice(0, 8);
-    for (let counter = 1; counter <= 10_000; counter += 1) {
-      const suffix =
-        counter === 1 ? hashSuffix : `${hashSuffix}-${counter}`;
-      const candidate = `${stem}-${suffix}${extension}`;
-      if (
-        !occupiedNames.has(candidate.toLowerCase()) &&
-        !(await this.fileSystem.fileExists(
-          this.fileSystem.assetPath(projectRoot, candidate),
-        ))
-      ) {
-        return candidate;
-      }
-    }
-    throw new Error(`Could not allocate a safe target for ${preferredName}.`);
+    return allocateAssetTargetName(
+      this.fileSystem,
+      projectRoot,
+      preferredName,
+      sha256,
+      occupiedNames,
+    );
   }
 
   private createAsset(
@@ -629,6 +611,44 @@ export class AssetImportService {
 }
 
 export { assetDisplayName, sanitizeAssetFileName };
+
+/**
+ * The deterministic collision policy shared by ordinary Asset import and the
+ * FLA byte-backed batch.  Keeping this in the existing Asset import module
+ * prevents the FLA path from inventing a second filename policy.
+ */
+export async function allocateAssetTargetName(
+  fileSystem: AssetImportFileSystemService,
+  projectRoot: string,
+  preferredName: string,
+  sha256: string,
+  occupiedNames: ReadonlySet<string>,
+): Promise<string> {
+  if (
+    !occupiedNames.has(preferredName.toLowerCase()) &&
+    !(await fileSystem.fileExists(
+      fileSystem.assetPath(projectRoot, preferredName),
+    ))
+  ) {
+    return preferredName;
+  }
+  const extension = path.extname(preferredName);
+  const stem = path.basename(preferredName, extension);
+  const hashSuffix = sha256.slice(0, 8);
+  for (let counter = 1; counter <= 10_000; counter += 1) {
+    const suffix = counter === 1 ? hashSuffix : `${hashSuffix}-${counter}`;
+    const candidate = `${stem}-${suffix}${extension}`;
+    if (
+      !occupiedNames.has(candidate.toLowerCase()) &&
+      !(await fileSystem.fileExists(
+        fileSystem.assetPath(projectRoot, candidate),
+      ))
+    ) {
+      return candidate;
+    }
+  }
+  throw new Error(`Could not allocate a safe target for ${preferredName}.`);
+}
 
 function projectsEqual(left: Project, right: Project): boolean {
   return JSON.stringify(left) === JSON.stringify(right);

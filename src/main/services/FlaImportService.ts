@@ -6,7 +6,9 @@ import {
   type FlaCancelRequest,
   type FlaInspectionResponse,
   type FlaWorkerStartRequest,
+  type AnimationImportIR,
 } from '../../shared/fla-import-api';
+import type { FlaAssetCommitSession } from './FlaAssetCommitService';
 import {
   FlaPreflightError,
   preflightFlaSource,
@@ -115,6 +117,22 @@ export class FlaImportService {
     const sessionId = request.sessionId;
     if (sessionId && this.sessions.delete(sessionId)) return { accepted: true };
     return { accepted: false };
+  }
+
+  /** Main-only lookup used by Slice 3.  The Renderer receives only the
+   * identifier; the encoded PNG payloads remain in this process-owned session.
+   */
+  getSession(sessionId: string): FlaAssetCommitSession | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    return {
+      sessionId,
+      ir: session.ir as AnimationImportIR,
+    };
+  }
+
+  releaseSession(sessionId: string): void {
+    this.sessions.delete(sessionId);
   }
 
   markWorkerReady(senderId: number): void {

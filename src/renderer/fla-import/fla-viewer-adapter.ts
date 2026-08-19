@@ -114,10 +114,16 @@ function matrix(value: Matrix): {
 }
 
 function sourceFormat(item: BitmapItem): 'png' | 'jpeg' | 'jpg' | 'unknown' {
-  const source = `${item.href} ${item.name}`.toLocaleLowerCase('en-US');
-  if (/\.png(?:\?|$)/u.test(source)) return 'png';
-  if (/\.jpeg(?:\?|$)/u.test(source)) return 'jpeg';
-  if (/\.jpg(?:\?|$)/u.test(source)) return 'jpg';
+  const references = [item.href, item.name, item.sourceExternalFilepath ?? ''];
+  for (const reference of references) {
+    const extension = reference
+      .trim()
+      .toLocaleLowerCase('en-US')
+      .match(/\.([a-z0-9]+)(?:[?#].*)?$/u)?.[1];
+    if (extension === 'png') return 'png';
+    if (extension === 'jpeg') return 'jpeg';
+    if (extension === 'jpg') return 'jpg';
+  }
   return 'unknown';
 }
 

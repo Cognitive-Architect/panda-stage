@@ -14,6 +14,7 @@ import type {
   FlaInspectionResponse,
   FlaRasterSelectionIntent,
 } from '../../shared/fla-import-api';
+import type { FlaAssetCommitResponse } from '../../shared/fla-asset-commit-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import {
   compatibilityCounts,
@@ -30,9 +31,16 @@ interface FlaCompatibilityReviewSessionProps {
   snapshot: EditorProjectSnapshot | null;
   onClose: () => void;
   onIntent?: (intent: FlaRasterSelectionIntent) => void;
+  onCommit?: (response: FlaAssetCommitResponse) => void;
 }
 
-type SessionPhase = 'inspecting' | 'ready' | 'confirmed' | 'error';
+type SessionPhase =
+  | 'inspecting'
+  | 'ready'
+  | 'confirmed'
+  | 'committing'
+  | 'success'
+  | 'error';
 
 interface ActiveSession {
   requestId?: string;
@@ -43,6 +51,7 @@ export function FlaCompatibilityReviewSession({
   snapshot,
   onClose,
   onIntent,
+  onCommit,
 }: FlaCompatibilityReviewSessionProps): React.JSX.Element {
   const [phase, setPhase] = useState<SessionPhase>('inspecting');
   const [response, setResponse] = useState<FlaInspectionResponse | null>(null);
@@ -51,6 +60,7 @@ export function FlaCompatibilityReviewSession({
     () => new Set(),
   );
   const [intent, setIntent] = useState<FlaRasterSelectionIntent | null>(null);
+  const [commitResponse, setCommitResponse] = useState<FlaAssetCommitResponse | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const [compatibilityNotesOpen, setCompatibilityNotesOpen] = useState(false);
   const activeSession = useRef<ActiveSession | null>(null);
@@ -112,6 +122,7 @@ export function FlaCompatibilityReviewSession({
   const selectedCount = reviewItems.filter(({ media }) =>
     selectedMediaIds.has(media.id),
   ).length;
+  const selectionLocked = phase === 'committing' || phase === 'success';
 
   useEffect(() => {
     if (!ir) return undefined;
@@ -147,6 +158,7 @@ export function FlaCompatibilityReviewSession({
   };
 
   const closeSession = async (): Promise<void> => {
+    if (phase === 'committing') return;
     cancelled.current = true;
     const active = activeSession.current;
     activeSession.current = null;
@@ -223,18 +235,21 @@ export function FlaCompatibilityReviewSession({
   const counts = compatibilityCounts(ir);
   const warnings = compatibilityWarnings(ir);
   const toggle = (mediaId: string): void => {
+    if (selectionLocked) return;
     rememberReviewScroll();
     setSelectedMediaIds((current) => toggleFlaMediaSelection(current, mediaId));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
   const selectAll = (): void => {
+    if (selectionLocked) return;
     rememberReviewScroll();
     setSelectedMediaIds(new Set(reviewItems.map(({ media }) => media.id)));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
   const clearAll = (): void => {
+    if (selectionLocked) return;
     rememberReviewScroll();
     setSelectedMediaIds(new Set());
     setIntent(null);
@@ -251,6 +266,48 @@ export function FlaCompatibilityReviewSession({
     setIntent(nextIntent);
     setPhase('confirmed');
     onIntent?.(nextIntent);
+  };
+
+  const commit = async (): Promise<void> => {
+    if (!intent || !snapshot || phase !== 'confirmed') return;
+    rememberReviewScroll();
+    setCommitResponse(null);
+    setPhase('committing');
+    try {
+      const nextResponse = await window.pandaStage.fla.commitSelected({
+        format: 'fla-raster-commit',
+        version: 1,
+        projectRoot: snapshot.projectRoot,
+        project: snapshot.project,
+        baseRevision: snapshot.revision,
+        sessionId: intent.sessionId,
+        source: intent.source,
+        selectedMediaIds: intent.selectedMediaIds,
+        selectedCount: intent.selectedCount,
+        confirmed: true,
+      });
+      setCommitResponse(nextResponse);
+      if (nextResponse.ok && nextResponse.status === 'completed') {
+        activeSession.current = null;
+        setPhase('success');
+        onCommit?.(nextResponse);
+      } else {
+        setPhase('confirmed');
+      }
+    } catch (error) {
+      setCommitResponse({
+        ok: false,
+        error: {
+          code: 'ASSET_COMMIT_FAILED',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'FLA 素材导入失败，请重试。',
+          projectRoot: snapshot.projectRoot,
+        },
+      });
+      setPhase('confirmed');
+    }
   };
 
   return (
@@ -270,6 +327,7 @@ export function FlaCompatibilityReviewSession({
           </div>
           <button
             autoFocus
+            disabled={phase === 'committing'}
             data-testid="fla-review-cancel"
             onClick={() => void closeSession()}
             type="button"
@@ -284,11 +342,30 @@ export function FlaCompatibilityReviewSession({
             {intent ? <output data-testid="fla-review-intent-status">已确认选择（只读）；未创建素材。</output> : null}
           </div>
           <div>
-            <button data-testid="fla-review-select-all" onClick={selectAll} type="button">全选</button>
-            <button data-testid="fla-review-clear-all" onClick={clearAll} type="button">清空</button>
+            <button
+              data-testid="fla-review-select-all"
+              disabled={selectionLocked}
+              onClick={selectAll}
+              type="button"
+            >
+              全选
+            </button>
+            <button
+              data-testid="fla-review-clear-all"
+              disabled={selectionLocked}
+              onClick={clearAll}
+              type="button"
+            >
+              清空
+            </button>
             <button
               data-testid="fla-review-confirm"
-              disabled={selectedCount === 0 || phase === 'confirmed'}
+              disabled={
+                selectedCount === 0 ||
+                phase === 'confirmed' ||
+                phase === 'committing' ||
+                phase === 'success'
+              }
               onClick={confirm}
               type="button"
             >
@@ -297,6 +374,29 @@ export function FlaCompatibilityReviewSession({
           </div>
         </div>
 
+        {intent && phase === 'confirmed' ? (
+          <div className="fla-review-commit-action" data-testid="fla-review-commit-action">
+            <button
+              data-testid="fla-review-commit"
+              disabled={phase !== 'confirmed'}
+              onClick={() => void commit()}
+              type="button"
+            >
+              导入已选择的 {intent.selectedCount} 项
+            </button>
+          </div>
+        ) : null}
+        {phase === 'committing' ? (
+          <output data-testid="fla-review-commit-status">正在导入已选择的素材…</output>
+        ) : null}
+        {commitResponse && !commitResponse.ok ? (
+          <output data-testid="fla-review-commit-error" role="alert">{commitResponse.error.message}</output>
+        ) : null}
+        {phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
+          <output data-testid="fla-review-commit-success">
+            导入完成：{commitResponse.summary.importedCount} 项；已复用重复素材：{commitResponse.summary.duplicateCount} 项。
+          </output>
+        ) : null}
         <div
           className="fla-review-body"
           data-preserves-scroll-position="true"
@@ -366,6 +466,7 @@ export function FlaCompatibilityReviewSession({
                 item={item}
                 key={item.media.id}
                 selected={selectedMediaIds.has(item.media.id)}
+                selectionLocked={selectionLocked}
                 thumbnailUrl={thumbnailUrls[item.media.id]}
                 onToggle={() => toggle(item.media.id)}
               />
@@ -380,11 +481,13 @@ export function FlaCompatibilityReviewSession({
 function FlaReviewMediaCard({
   item,
   selected,
+  selectionLocked,
   thumbnailUrl,
   onToggle,
 }: {
   item: FlaReviewMedia;
   selected: boolean;
+  selectionLocked: boolean;
   thumbnailUrl?: string;
   onToggle: () => void;
 }): React.JSX.Element {
@@ -397,6 +500,8 @@ function FlaReviewMediaCard({
       data-alpha-kind={media.payload.alpha.kind}
       data-fla-media-id={media.id}
       data-library-only={item.libraryOnly ? 'true' : 'false'}
+      data-source-format={media.sourceFormat}
+      data-target-file-name={item.name.targetFileName}
       data-testid={`fla-review-media-card-${media.id}`}
       data-zero-alpha-pixels={media.payload.alpha.zeroAlphaPixels}
       onClick={(event: ReactMouseEvent<HTMLElement>) => {
@@ -417,6 +522,7 @@ function FlaReviewMediaCard({
           aria-label={`选择 ${media.name}`}
           checked={selected}
           data-selection-target="checkbox"
+          disabled={selectionLocked}
           onChange={onToggle}
           type="checkbox"
         />

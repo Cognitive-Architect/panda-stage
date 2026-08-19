@@ -5,12 +5,21 @@ import {
   FlaInspectRequestSchema,
   FlaInspectionResponseSchema,
 } from '../../shared/fla-import-api';
+import {
+  FlaAssetCommitResponseSchema,
+  type FlaAssetCommitResponse,
+} from '../../shared/fla-asset-commit-api';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import { FlaImportService } from '../services/FlaImportService';
+import {
+  FlaAssetCommitService,
+  FlaAssetCommitServiceError,
+} from '../services/FlaAssetCommitService';
 
 export interface FlaImportIpcDependencies {
   getMainWindow: () => BrowserWindow | null;
   flaImportService: FlaImportService;
+  flaAssetCommitService: FlaAssetCommitService;
   selectFlaSource: (window: BrowserWindow) => Promise<string | null>;
 }
 
@@ -21,6 +30,51 @@ function assertTrustedSender(
   if (!expectedWindow || expectedWindow.isDestroyed() || event.sender.id !== expectedWindow.webContents.id) {
     throw new Error('Untrusted FLA IPC sender');
   }
+}
+
+function commitFailure(
+  error: unknown,
+  projectRoot: string,
+): FlaAssetCommitResponse {
+  const normalized =
+    error instanceof FlaAssetCommitServiceError
+      ? error
+      : new FlaAssetCommitServiceError(
+          'ASSET_COMMIT_FAILED',
+          projectRoot,
+          'The selected FLA Assets could not be committed.',
+          { cause: error },
+        );
+  return FlaAssetCommitResponseSchema.parse({
+    ok: false,
+    error: {
+      code: normalized.code,
+      message: normalized.message,
+      projectRoot: normalized.projectRoot,
+      ...(normalized.currentProject
+        ? { currentProject: normalized.currentProject }
+        : {}),
+      ...(normalized.currentRevision !== undefined
+        ? { currentRevision: normalized.currentRevision }
+        : {}),
+      ...(normalized.residualPaths.length > 0
+        ? { residualPaths: normalized.residualPaths }
+        : {}),
+    },
+  });
+}
+
+function requestProjectRoot(rawRequest: unknown): string {
+  if (
+    typeof rawRequest === 'object' &&
+    rawRequest !== null &&
+    'projectRoot' in rawRequest &&
+    typeof rawRequest.projectRoot === 'string' &&
+    rawRequest.projectRoot.trim()
+  ) {
+    return rawRequest.projectRoot;
+  }
+  return '(unknown project)';
 }
 
 export function registerFlaImportIpcHandlers(
@@ -84,6 +138,25 @@ export function registerFlaImportIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.FLA_INSPECT_CHOOSE, inspect);
   ipcMain.handle(IPC_CHANNELS.FLA_CANCEL, cancel);
+  ipcMain.handle(
+    IPC_CHANNELS.FLA_COMMIT_SELECTED,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow());
+      const projectRoot = requestProjectRoot(rawRequest);
+      try {
+        const operation = await dependencies.flaAssetCommitService.commit(
+          rawRequest,
+        );
+        return FlaAssetCommitResponseSchema.parse({
+          ok: true,
+          status: 'completed',
+          ...operation,
+        } satisfies FlaAssetCommitResponse);
+      } catch (error) {
+        return commitFailure(error, projectRoot);
+      }
+    },
+  );
   ipcMain.on(IPC_CHANNELS.FLA_WORKER_READY, onReady);
   ipcMain.on(IPC_CHANNELS.FLA_WORKER_PROGRESS, onProgress);
   ipcMain.on(IPC_CHANNELS.FLA_WORKER_RESULT, onResult);
@@ -92,6 +165,7 @@ export function registerFlaImportIpcHandlers(
   return () => {
     ipcMain.removeHandler(IPC_CHANNELS.FLA_INSPECT_CHOOSE);
     ipcMain.removeHandler(IPC_CHANNELS.FLA_CANCEL);
+    ipcMain.removeHandler(IPC_CHANNELS.FLA_COMMIT_SELECTED);
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_READY, onReady);
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_PROGRESS, onProgress);
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_RESULT, onResult);

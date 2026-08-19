@@ -39,6 +39,7 @@ export const IPC_CHANNELS = Object.freeze({
   RECOVERY_IGNORE: 'recovery:ignore',
   FLA_INSPECT_CHOOSE: 'fla:inspect-choose',
   FLA_CANCEL: 'fla:cancel',
+  FLA_COMMIT_SELECTED: 'fla:commit-selected',
   FLA_WORKER_READY: 'fla:worker-ready',
   FLA_WORKER_START: 'fla:worker-start',
   FLA_WORKER_CANCEL: 'fla:worker-cancel',

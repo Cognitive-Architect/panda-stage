@@ -77,6 +77,10 @@ import type {
   FlaWorkerResult,
   FlaWorkerStartRequest,
 } from '../shared/fla-import-api';
+import type {
+  FlaAssetCommitRequest,
+  FlaAssetCommitResponse,
+} from '../shared/fla-asset-commit-api';
 
 declare global {
   interface Window {
@@ -180,6 +184,9 @@ declare global {
       fla: {
         chooseAndInspect: (requestId?: string) => Promise<FlaInspectionResponse>;
         cancel: (sessionId: string) => Promise<FlaCancelResponse>;
+        commitSelected: (
+          request: FlaAssetCommitRequest,
+        ) => Promise<FlaAssetCommitResponse>;
       };
     };
     pandaStageFlaParser: {

@@ -70,6 +70,16 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).not.toContain('updateProject');
   });
 
+  it('keeps Slice 3 commit as a separate explicit state-bound action', () => {
+    expect(component).toContain('commitSelected');
+    expect(component).toContain('confirmed: true');
+    expect(component).toContain('data-testid="fla-review-commit"');
+    expect(component).toContain('data-testid="fla-review-commit-status"');
+    expect(component).toContain('data-testid="fla-review-commit-success"');
+    expect(component).toContain("phase === 'committing'");
+    expect(component).not.toContain('window.pandaStage.assets');
+  });
+
   it('uses Chinese-first copy for the normal review surface', () => {
     expect(component).toContain('FLA 兼容性预览');
     expect(component).toContain('取消');

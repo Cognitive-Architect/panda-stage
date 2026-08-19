@@ -67,6 +67,7 @@ describe('IPC channel registry', () => {
       'recovery:ignore',
       'fla:inspect-choose',
       'fla:cancel',
+      'fla:commit-selected',
       'fla:worker-ready',
       'fla:worker-start',
       'fla:worker-cancel',

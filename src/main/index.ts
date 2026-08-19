@@ -50,6 +50,7 @@ import { shouldExposeDevelopmentMenu } from './menu-policy';
 import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer';
 import { FlaImportService } from './services/FlaImportService';
 import { registerFlaImportIpcHandlers } from './ipc/register-fla-import-ipc-handlers';
+import { FlaAssetCommitService } from './services/FlaAssetCommitService';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -64,6 +65,7 @@ let removeAssetLibraryIpcHandlers: (() => void) | null = null;
 let removeFlaImportIpcHandlers: (() => void) | null = null;
 let autosaveService: AutosaveService | null = null;
 let projectService: ProjectService | null = null;
+let flaAssetCommitService: FlaAssetCommitService | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
 let rendererCloseSynchronizer: RendererCloseSynchronizer | null = null;
@@ -229,6 +231,8 @@ async function initialize(): Promise<void> {
     pathService,
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    onProjectOpened: (projectRoot, project) =>
+      flaAssetCommitService?.recoverProjectArtifacts(projectRoot, project),
     onProjectSaved: async (projectRoot, project, revision) => {
       try {
         await recoveryService.cleanupAfterFormalSave(
@@ -346,9 +350,17 @@ async function initialize(): Promise<void> {
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     }),
   });
+  flaAssetCommitService = new FlaAssetCommitService({
+    projectService,
+    getCurrentProjectSnapshot: (projectRoot) =>
+      autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    getSession: (sessionId) => flaImportService.getSession(sessionId),
+    releaseSession: (sessionId) => flaImportService.releaseSession(sessionId),
+  });
   removeFlaImportIpcHandlers = registerFlaImportIpcHandlers({
     getMainWindow: () => mainWindow,
     flaImportService,
+    flaAssetCommitService,
     selectFlaSource,
   });
   unsavedCloseController = new UnsavedCloseController({
@@ -500,6 +512,7 @@ app.on('will-quit', () => {
   void autosaveService?.stopAll();
   autosaveService = null;
   projectService = null;
+  flaAssetCommitService = null;
   unsavedCloseController = null;
   unsavedCloseGuard = null;
   hiddenWindowManager.close();
