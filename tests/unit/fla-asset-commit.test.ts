@@ -617,4 +617,124 @@ describe('FLA Slice 3 atomic Asset commit', () => {
       access(path.join(value.projectRoot, 'assets', committedEntry.entries[0]!.temporaryFileName)),
     ).rejects.toThrow();
   });
+
+  it('preserves a durable Project when the journal is still finalized after the save', async () => {
+    const value = await harness();
+    const committed = await value.service.commit(request(value));
+    const operationId = '26000000-0000-4000-8000-000000000259';
+    const finalized: FlaAssetCommitJournal = {
+      version: 1,
+      operationId,
+      projectId: committed.project.id,
+      baseRevision: committed.baseRevision,
+      phase: 'finalized',
+      entries: committed.results.map((result, index) => ({
+        assetId: result.asset.id,
+        sha256: result.sha256,
+        temporaryFileName: `.fla-asset-commit.${operationId}-${String(index + 1).padStart(4, '0')}.tmp`,
+        targetFileName: result.targetFileName,
+      })),
+    };
+    const journal = new FlaAssetCommitJournalService();
+    await journal.write(value.projectRoot, finalized);
+    for (const entry of finalized.entries) {
+      await writeFile(
+        path.join(value.projectRoot, 'assets', entry.temporaryFileName),
+        Buffer.from('stale temporary output'),
+      );
+    }
+
+    await value.service.recoverProjectArtifacts(
+      value.projectRoot,
+      committed.project,
+    );
+
+    expect((await assetEntries(value.projectRoot)).filter((entry) => !entry.startsWith('.'))).toEqual(
+      committed.results.map((result) => result.targetFileName).sort(),
+    );
+    for (const result of committed.results) {
+      const bytes = await readFile(
+        path.join(value.projectRoot, 'assets', result.targetFileName),
+      );
+      expect(createHash('sha256').update(bytes).digest('hex')).toBe(result.sha256);
+    }
+    expect((await value.projectService.open(value.projectRoot)).project.assets).toEqual(
+      committed.project.assets,
+    );
+    await expect(
+      access(path.join(value.projectRoot, 'recovery', '.fla-asset-commit-journal.json')),
+    ).rejects.toThrow();
+    for (const entry of finalized.entries) {
+      await expect(
+        access(path.join(value.projectRoot, 'assets', entry.temporaryFileName)),
+      ).rejects.toThrow();
+    }
+  });
+
+  it('fails safely when a late journal disagrees with the durable Project or target file', async () => {
+    const cases = ['missing-target', 'changed-target', 'path-mismatch'] as const;
+    for (const scenario of cases) {
+      const value = await harness();
+      const committed = await value.service.commit(request(value));
+      const result = committed.results[0]!;
+      const operationId =
+        scenario === 'missing-target'
+          ? '26000000-0000-4000-8000-000000000260'
+          : scenario === 'changed-target'
+            ? '26000000-0000-4000-8000-000000000261'
+            : '26000000-0000-4000-8000-000000000262';
+      const targetFileName =
+        scenario === 'path-mismatch' ? 'different-path.png' : result.targetFileName;
+      const entry = {
+        assetId: result.asset.id,
+        sha256: result.sha256,
+        temporaryFileName: `.fla-asset-commit.${operationId}-0001.tmp`,
+        targetFileName,
+      };
+      const journal = new FlaAssetCommitJournalService();
+      await journal.write(value.projectRoot, {
+        version: 1,
+        operationId,
+        projectId: committed.project.id,
+        baseRevision: committed.baseRevision,
+        phase: 'finalized',
+        entries: [entry],
+      });
+      await writeFile(
+        path.join(value.projectRoot, 'assets', entry.temporaryFileName),
+        Buffer.from('stale temporary output'),
+      );
+      if (scenario === 'missing-target') {
+        await rm(
+          path.join(value.projectRoot, 'assets', result.targetFileName),
+          { force: true },
+        );
+      } else if (scenario === 'changed-target') {
+        await writeFile(
+          path.join(value.projectRoot, 'assets', result.targetFileName),
+          Buffer.from('changed committed output'),
+        );
+      } else {
+        await writeFile(
+          path.join(value.projectRoot, 'assets', targetFileName),
+          await readFile(
+            path.join(value.projectRoot, 'assets', result.targetFileName),
+          ),
+        );
+      }
+
+      await expect(
+        value.service.recoverProjectArtifacts(
+          value.projectRoot,
+          committed.project,
+        ),
+      ).rejects.toMatchObject({ code: 'JOURNAL_RECOVERY_FAILED' });
+      await expect(
+        access(path.join(value.projectRoot, 'recovery', '.fla-asset-commit-journal.json')),
+      ).resolves.toBeUndefined();
+      await expect(
+        access(path.join(value.projectRoot, 'assets', entry.temporaryFileName)),
+      ).rejects.toThrow();
+    }
+  });
 });

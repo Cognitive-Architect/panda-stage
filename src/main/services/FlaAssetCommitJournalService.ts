@@ -58,6 +58,21 @@ export interface FlaAssetCommitRecoveryResult {
   removedPaths: readonly string[];
 }
 
+type LatePhaseEntryEvidence =
+  | {
+      kind: 'durable';
+      entry: FlaAssetCommitJournalEntry;
+    }
+  | {
+      kind: 'orphaned';
+      entry: FlaAssetCommitJournalEntry;
+    }
+  | {
+      kind: 'inconsistent';
+      entry: FlaAssetCommitJournalEntry;
+      reason: string;
+    };
+
 export class FlaAssetCommitJournalService {
   private readonly faults: FlaAssetCommitJournalFaultInjector;
   private readonly hashService: HashService;
@@ -131,10 +146,13 @@ export class FlaAssetCommitJournalService {
   }
 
   /**
-   * Reconciles one bounded journal before a project becomes available.  A
-   * project-saved journal is retained only when every recorded ImageAsset and
-   * target path is present in the durable project; otherwise all files owned
-   * by the interrupted operation are removed.
+   * Reconciles one bounded journal before a project becomes available.
+   *
+   * The Project save and the journal phase update are separate durable writes.
+   * Consequently, a `finalized` journal can still describe a fully committed
+   * Project after a crash.  Late phases are therefore decided from the exact
+   * Project Asset identity/path/hash and the finalized file hash, rather than
+   * from the journal phase alone.
    */
   async recover(
     projectRoot: string,
@@ -151,17 +169,62 @@ export class FlaAssetCommitJournalService {
       };
     }
 
-    const projectWasSaved =
-      journal.phase === 'project-saved' &&
-      journal.entries.every((entry) =>
-        project.assets.some(
-          (asset) =>
-            asset.id === entry.assetId &&
-            asset.relativePath === `assets/${entry.targetFileName}` &&
-            asset.sha256 === entry.sha256,
-        ),
-      );
+    this.assertJournalIdentityAndUniqueness(journal, project);
 
+    if (journal.phase === 'planned' || journal.phase === 'staged') {
+      for (const entry of journal.entries) {
+        this.assertEarlyPhaseDoesNotOwnProjectAsset(entry, project);
+        await this.removeAssetFile(
+          projectRoot,
+          entry.targetFileName,
+          removedPaths,
+        );
+        await this.removeAssetFile(
+          projectRoot,
+          entry.temporaryFileName,
+          removedPaths,
+        );
+      }
+      await this.clear(projectRoot);
+      return { hadJournal: true, projectWasSaved: false, removedPaths };
+    }
+
+    const evidence = await this.inspectLatePhaseEntries(projectRoot, project, journal);
+    const inconsistent = evidence.filter(
+      (item): item is Extract<LatePhaseEntryEvidence, { kind: 'inconsistent' }> =>
+        item.kind === 'inconsistent',
+    );
+    if (inconsistent.length > 0) {
+      throw new Error(
+        `FLA Asset commit recovery is ambiguous: ${inconsistent
+          .map((item) => `${item.entry.targetFileName} (${item.reason})`)
+          .join('; ')}`,
+      );
+    }
+
+    const durable = evidence.filter((item) => item.kind === 'durable');
+    const orphaned = evidence.filter((item) => item.kind === 'orphaned');
+    if (durable.length > 0 && orphaned.length > 0) {
+      for (const item of orphaned) {
+        await this.removeAssetFile(
+          projectRoot,
+          item.entry.targetFileName,
+          removedPaths,
+        );
+      }
+      for (const entry of journal.entries) {
+        await this.removeAssetFile(
+          projectRoot,
+          entry.temporaryFileName,
+          removedPaths,
+        );
+      }
+      throw new Error(
+        'FLA Asset commit recovery found a partially durable Project; the operation was not blessed.',
+      );
+    }
+
+    const projectWasSaved = durable.length === journal.entries.length;
     for (const entry of journal.entries) {
       if (!projectWasSaved) {
         await this.removeAssetFile(
@@ -169,20 +232,6 @@ export class FlaAssetCommitJournalService {
           entry.targetFileName,
           removedPaths,
         );
-      } else {
-        if (!(await this.assetFileExists(projectRoot, entry.targetFileName))) {
-          throw new Error(
-            `FLA Asset commit journal references a missing committed file: ${entry.targetFileName}`,
-          );
-        }
-        const fileHash = await this.hashService.hashFile(
-          path.join(projectRoot, 'assets', entry.targetFileName),
-        );
-        if (fileHash.hex !== entry.sha256) {
-          throw new Error(
-            `FLA Asset commit journal references a changed committed file: ${entry.targetFileName}`,
-          );
-        }
       }
       await this.removeAssetFile(
         projectRoot,
@@ -192,6 +241,122 @@ export class FlaAssetCommitJournalService {
     }
     await this.clear(projectRoot);
     return { hadJournal: true, projectWasSaved, removedPaths };
+  }
+
+  private assertJournalIdentityAndUniqueness(
+    journal: FlaAssetCommitJournal,
+    project: Project,
+  ): void {
+    if (journal.projectId !== project.id) {
+      throw new Error(
+        `FLA Asset commit journal belongs to Project ${journal.projectId}, not ${project.id}.`,
+      );
+    }
+    const assetIds = new Set<string>();
+    const targetFileNames = new Set<string>();
+    const temporaryFileNames = new Set<string>();
+    for (const entry of journal.entries) {
+      if (assetIds.has(entry.assetId)) {
+        throw new Error(`FLA Asset commit journal repeats Asset ${entry.assetId}.`);
+      }
+      if (targetFileNames.has(entry.targetFileName)) {
+        throw new Error(
+          `FLA Asset commit journal repeats target file ${entry.targetFileName}.`,
+        );
+      }
+      if (temporaryFileNames.has(entry.temporaryFileName)) {
+        throw new Error(
+          `FLA Asset commit journal repeats temporary file ${entry.temporaryFileName}.`,
+        );
+      }
+      assetIds.add(entry.assetId);
+      targetFileNames.add(entry.targetFileName);
+      temporaryFileNames.add(entry.temporaryFileName);
+    }
+  }
+
+  private assertEarlyPhaseDoesNotOwnProjectAsset(
+    entry: FlaAssetCommitJournalEntry,
+    project: Project,
+  ): void {
+    const targetPath = `assets/${entry.targetFileName}`;
+    if (
+      project.assets.some(
+        (asset) => asset.id === entry.assetId || asset.relativePath === targetPath,
+      )
+    ) {
+      throw new Error(
+        `FLA Asset commit journal phase ${entry.targetFileName} conflicts with a durable Project Asset.`,
+      );
+    }
+  }
+
+  private async inspectLatePhaseEntries(
+    projectRoot: string,
+    project: Project,
+    journal: FlaAssetCommitJournal,
+  ): Promise<LatePhaseEntryEvidence[]> {
+    const evidence: LatePhaseEntryEvidence[] = [];
+    for (const entry of journal.entries) {
+      const targetPath = `assets/${entry.targetFileName}`;
+      const assetById = project.assets.find((asset) => asset.id === entry.assetId);
+      const assetByPath = project.assets.find(
+        (asset) => asset.relativePath === targetPath,
+      );
+      const projectAsset = project.assets.find(
+        (asset) =>
+          asset.id === entry.assetId &&
+          asset.relativePath === targetPath &&
+          asset.sha256 === entry.sha256,
+      );
+
+      if (!projectAsset) {
+        if (assetById || assetByPath) {
+          evidence.push({
+            kind: 'inconsistent',
+            entry,
+            reason: 'Project Asset identity/path/hash does not match the journal',
+          });
+        } else {
+          evidence.push({ kind: 'orphaned', entry });
+        }
+        continue;
+      }
+
+      if (!(await this.assetFileExists(projectRoot, entry.targetFileName))) {
+        evidence.push({
+          kind: 'inconsistent',
+          entry,
+          reason: 'Project references a missing target file',
+        });
+        continue;
+      }
+      let fileHash: string;
+      try {
+        fileHash = (
+          await this.hashService.hashFile(
+            path.join(projectRoot, 'assets', entry.targetFileName),
+          )
+        ).hex;
+      } catch {
+        evidence.push({
+          kind: 'inconsistent',
+          entry,
+          reason: 'Project target file could not be hashed',
+        });
+        continue;
+      }
+      if (fileHash !== entry.sha256) {
+        evidence.push({
+          kind: 'inconsistent',
+          entry,
+          reason: 'Project target file hash differs from the journal',
+        });
+        continue;
+      }
+      evidence.push({ kind: 'durable', entry });
+    }
+    return evidence;
   }
 
   private async removeStaleTemporaryFiles(
