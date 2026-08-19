@@ -20,11 +20,11 @@ export const FLA_COMPATIBILITY_STATUSES: readonly FlaCompatibilityStatus[] = [
 export const FLA_COMPATIBILITY_LABELS: Readonly<
   Record<FlaCompatibilityStatus, string>
 > = {
-  exact: 'EXACT',
-  degraded: 'DEGRADED',
-  unsupported: 'UNSUPPORTED',
-  unknown: 'UNKNOWN',
-  'not-present': 'NOT_PRESENT',
+  exact: '完全兼容',
+  degraded: '部分兼容',
+  unsupported: '暂不支持',
+  unknown: '未知',
+  'not-present': '未出现',
 };
 
 export interface ExistingAssetName {

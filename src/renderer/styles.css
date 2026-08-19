@@ -1813,7 +1813,9 @@ button:disabled {
   overflow-x: hidden;
   overflow-y: auto;
   align-content: start;
+  overflow-anchor: none;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   scrollbar-color: #3f6d4e transparent;
   gap: 12px;
 }
@@ -1850,6 +1852,12 @@ button:disabled {
 
 .fla-review-compatibility-notes .fla-review-warnings {
   padding: 8px;
+}
+
+/* Issue #256: preserve a user's deep review position while React updates
+   selection/thumbnail state, and let the body own the browser's scrollbar. */
+.fla-review-body[data-preserves-scroll-position='true'] {
+  scroll-behavior: auto;
 }
 
 @media (max-width: 720px) {

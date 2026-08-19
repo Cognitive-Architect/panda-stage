@@ -135,6 +135,7 @@ async function run() {
     const firstCard = cards[0];
     const firstCardRect = firstCard?.getBoundingClientRect();
     const toolbarRect = toolbar?.getBoundingClientRect();
+    const visibleReviewText = session?.textContent || '';
     const firstCardClearOfToolbar = Boolean(
       firstCardRect && toolbarRect && firstCardRect.top >= toolbarRect.bottom,
     );
@@ -157,11 +158,12 @@ async function run() {
       cardCount: cards.length,
       thumbnailCount: document.querySelectorAll('[data-testid="fla-review-media-grid"] img').length,
       transparentCardCount: cards.filter((card) => Number(card.getAttribute('data-zero-alpha-pixels') || 0) > 0).length,
-      jpegOriginCardCount: cards.filter((card) => card.textContent?.includes('source jpg') || card.textContent?.includes('source jpeg')).length,
+      jpegOriginCardCount: cards.filter((card) => /source\\s+(jpg|jpeg)|格式\\s+(jpg|jpeg)/i.test(card.textContent || '')).length,
       a1Present: cards.some((card) => card.querySelector('strong')?.textContent === 'a1.png'),
       statusCounts: Object.fromEntries([...document.querySelectorAll('[data-testid="fla-compatibility-summary"] li')].map((node) => [node.getAttribute('data-status'), node.textContent?.trim() || ''])),
       selectedText: count('[data-testid="fla-review-selected-count"]'),
       compatibilityLabels: [...document.querySelectorAll('[data-testid="fla-compatibility-summary"] strong')].map((node) => node.textContent?.trim() || ''),
+      diagnosticsVisible: visibleReviewText.includes('SHA-256') || /fla-media-[a-z0-9-]+/i.test(visibleReviewText),
       compatibilityNotes: {
         present: Boolean(compatibilityNotes),
         collapsedByDefault: compatibilityNotes ? !compatibilityNotes.open : false,
@@ -198,6 +200,42 @@ async function run() {
         const rect = element?.getBoundingClientRect();
         return Boolean(rect && rect.width > 0 && rect.height > 0 && rect.top >= sessionRect.top && rect.bottom <= sessionRect.bottom);
       })),
+    };
+  })()`);
+
+  const scrollStability = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const body = document.querySelector('[data-testid="fla-review-body"]');
+    const cards = [...document.querySelectorAll('[data-fla-media-id]')];
+    const summary = document.querySelector('[data-testid="fla-compatibility-notes"] summary');
+    if (!body || !summary || cards.length < 3) throw new Error('Scroll stability targets are missing');
+    const mediaIdsBefore = cards.map((card) => card.getAttribute('data-fla-media-id'));
+    const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
+    const deepTarget = Math.max(1, Math.floor(maxScrollTop * 0.72));
+    body.scrollTop = deepTarget;
+    body.dispatchEvent(new Event('scroll', { bubbles: true }));
+    const beforeSelection = body.scrollTop;
+    cards[Math.floor(cards.length / 2)]?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const afterSelection = body.scrollTop;
+    const beforeExpand = body.scrollTop;
+    summary.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const afterExpand = body.scrollTop;
+    summary.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const afterCollapse = body.scrollTop;
+    const mediaIdsAfter = [...document.querySelectorAll('[data-fla-media-id]')]
+      .map((card) => card.getAttribute('data-fla-media-id'));
+    return {
+      deepTarget,
+      beforeSelection,
+      afterSelection,
+      beforeExpand,
+      afterExpand,
+      afterCollapse,
+      mediaOrderStable: JSON.stringify(mediaIdsBefore) === JSON.stringify(mediaIdsAfter),
+      selectionPreserved: Math.abs(afterSelection - beforeSelection) <= 1,
+      disclosureDidNotReset: afterExpand > 0 && afterCollapse > 0,
     };
   })()`);
 
@@ -242,7 +280,7 @@ async function run() {
     const cards = [...document.querySelectorAll('[data-fla-media-id]')];
     const transparent = cards.find((card) => Number(card.getAttribute('data-zero-alpha-pixels') || 0) > 0);
     const non350 = cards.find((card) => card.querySelector('strong')?.textContent === 'a1.png');
-    const jpeg = cards.find((card) => card.textContent?.includes('source jpg') || card.textContent?.includes('source jpeg'));
+    const jpeg = cards.find((card) => /source\\s+(jpg|jpeg)|格式\\s+(jpg|jpeg)/i.test(card.textContent || ''));
     [transparent, non350, jpeg]
       .filter((card, index, selected) => card && selected.indexOf(card) === index)
       .forEach((card) => card.querySelector('input[type="checkbox"]')?.click());
@@ -318,6 +356,11 @@ async function run() {
     assetCountTextBefore,
     assetCountTextAfter: afterConfirm.assetCountText,
     review,
+    issue256: {
+      chineseFirstReview: review.compatibilityLabels.length === 5 && !review.diagnosticsVisible,
+      diagnosticsVisible: review.diagnosticsVisible,
+      scrollStability,
+    },
     selectAllText,
     clearAllText,
     interactionText,
@@ -350,9 +393,18 @@ async function run() {
     !result.review.actionsReachable ||
     !result.review.compatibilityNotes.present ||
     !result.review.compatibilityNotes.collapsedByDefault ||
-    !['EXACT', 'DEGRADED', 'UNSUPPORTED', 'UNKNOWN', 'NOT_PRESENT'].every((label) => result.review.compatibilityLabels.includes(label))
+    !['完全兼容', '部分兼容', '暂不支持', '未知', '未出现'].every((label) => result.review.compatibilityLabels.includes(label)) ||
+    result.review.diagnosticsVisible
   ) {
     throw new Error(`Review workspace UX evidence is incomplete: ${JSON.stringify(result.review)}`);
+  }
+  if (
+    !scrollStability.mediaOrderStable ||
+    !scrollStability.selectionPreserved ||
+    !scrollStability.disclosureDidNotReset ||
+    scrollStability.deepTarget < 1
+  ) {
+    throw new Error(`Review scroll position was not preserved: ${JSON.stringify(scrollStability)}`);
   }
   if (
     !result.interactionText.cardTargetPresent ||

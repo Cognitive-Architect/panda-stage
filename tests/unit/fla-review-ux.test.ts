@@ -7,6 +7,7 @@ const component = readFileSync(
 );
 const styles = readFileSync('src/renderer/styles.css', 'utf8');
 const issue255Styles = styles.slice(styles.indexOf('/* Issue #255:'));
+const reviewModel = readFileSync('src/renderer/fla-import/fla-review.ts', 'utf8');
 
 describe('FLA Slice 2 review UX contract', () => {
   it('exposes full-card, thumbnail, and one checkbox selection paths without double toggling', () => {
@@ -56,7 +57,7 @@ describe('FLA Slice 2 review UX contract', () => {
 
   it('compacts compatibility notes while preserving all statuses and actions', () => {
     expect(component).toContain('data-testid="fla-compatibility-notes"');
-    expect(component).toContain('<summary>Compatibility notes ({warnings.length})</summary>');
+    expect(component).toContain('兼容性说明（{warnings.length}）');
     expect(component).toContain('data-testid="fla-compatibility-warnings"');
     expect(component).toContain('FLA_COMPATIBILITY_LABELS[status]');
     expect(component).toContain('data-testid="fla-review-selected-count"');
@@ -67,5 +68,52 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(issue255Styles).toContain('.fla-review-compatibility-notes summary');
     expect(component).not.toContain('window.pandaStage.assets');
     expect(component).not.toContain('updateProject');
+  });
+
+  it('uses Chinese-first copy for the normal review surface', () => {
+    expect(component).toContain('FLA 兼容性预览');
+    expect(component).toContain('取消');
+    expect(component).toContain('已选择：');
+    expect(component).toContain('全选');
+    expect(component).toContain('清空');
+    expect(component).toContain('确认选择');
+    expect(component).toContain('只读素材预览');
+    expect(component).toContain('正在读取所选 FLA');
+    expect(component).toContain('正在检查源文件');
+    expect(component).toContain('源文件');
+    expect(component).toContain('舞台');
+    expect(component).toContain('素材');
+    expect(component).toContain('已使用');
+    expect(component).toContain('仅素材库');
+    expect(component).toContain('兼容性说明');
+    expect(reviewModel).toContain("exact: '完全兼容'");
+    expect(reviewModel).toContain("degraded: '部分兼容'");
+    expect(reviewModel).toContain("unsupported: '暂不支持'");
+    expect(reviewModel).toContain("'not-present': '未出现'");
+  });
+
+  it('hides diagnostic identifiers from the default UI but retains internal contracts', () => {
+    expect(component).not.toContain('<dt>SHA-256</dt>');
+    expect(component).not.toContain('<code>{media.id}</code>');
+    expect(component).not.toContain('requestId ?');
+    expect(component).toContain('createFlaRasterSelectionIntent');
+    expect(component).toContain('sessionId');
+    expect(reviewModel).toContain('sha256: ir.source.sha256');
+    expect(reviewModel).toContain('sessionId,');
+  });
+
+  it('preserves deep scroll across review updates and keeps media identity stable', () => {
+    expect(component).toContain('data-preserves-scroll-position="true"');
+    expect(component).toContain('reviewScrollTop.current = event.currentTarget.scrollTop');
+    expect(component).toContain('body.scrollTop = nextScrollTop');
+    expect(component).toContain('useLayoutEffect');
+    expect(component).toContain('rememberReviewScroll();');
+    expect(component).toContain('open={compatibilityNotesOpen}');
+    expect(component).toContain('event.preventDefault();');
+    expect(component).toContain('key={item.media.id}');
+    expect(component).not.toContain('scrollIntoView');
+    expect(issue255Styles).toContain('overflow-anchor: none;');
+    expect(issue255Styles).toContain('scrollbar-gutter: stable;');
+    expect(issue255Styles).toContain("scroll-behavior: auto;");
   });
 });

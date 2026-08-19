@@ -1,4 +1,5 @@
 import {
+  useLayoutEffect,
   useEffect,
   useMemo,
   useRef,
@@ -9,6 +10,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import type {
+  FlaCompatibilityStatus,
   FlaInspectionResponse,
   FlaRasterSelectionIntent,
 } from '../../shared/fla-import-api';
@@ -44,26 +46,26 @@ export function FlaCompatibilityReviewSession({
 }: FlaCompatibilityReviewSessionProps): React.JSX.Element {
   const [phase, setPhase] = useState<SessionPhase>('inspecting');
   const [response, setResponse] = useState<FlaInspectionResponse | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [selectedMediaIds, setSelectedMediaIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [intent, setIntent] = useState<FlaRasterSelectionIntent | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
+  const [compatibilityNotesOpen, setCompatibilityNotesOpen] = useState(false);
   const activeSession = useRef<ActiveSession | null>(null);
   const cancelled = useRef(false);
+  const reviewBodyRef = useRef<HTMLDivElement | null>(null);
+  const reviewScrollTop = useRef(0);
 
   useEffect(() => {
     const nextRequestId = crypto.randomUUID();
     activeSession.current = { requestId: nextRequestId };
-    setRequestId(nextRequestId);
     void window.pandaStage.fla
       .chooseAndInspect(nextRequestId)
       .then((nextResponse) => {
         if (cancelled.current) return;
         setResponse(nextResponse);
-        setRequestId(null);
         if (nextResponse.ok) {
           activeSession.current = { sessionId: nextResponse.sessionId };
           setSessionId(nextResponse.sessionId);
@@ -78,7 +80,6 @@ export function FlaCompatibilityReviewSession({
       })
       .catch((error: unknown) => {
         if (cancelled.current) return;
-        setRequestId(null);
         setResponse({
           ok: false,
           error: {
@@ -114,6 +115,7 @@ export function FlaCompatibilityReviewSession({
 
   useEffect(() => {
     if (!ir) return undefined;
+    reviewScrollTop.current = reviewBodyRef.current?.scrollTop ?? reviewScrollTop.current;
     const created: Record<string, string> = {};
     if (typeof URL.createObjectURL === 'function') {
       for (const media of ir.media) {
@@ -129,6 +131,20 @@ export function FlaCompatibilityReviewSession({
       for (const url of Object.values(created)) URL.revokeObjectURL(url);
     };
   }, [ir]);
+
+  useLayoutEffect(() => {
+    const body = reviewBodyRef.current;
+    if (!body) return;
+    const maximumScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
+    const nextScrollTop = Math.min(reviewScrollTop.current, maximumScrollTop);
+    if (Math.abs(body.scrollTop - nextScrollTop) > 0.5) {
+      body.scrollTop = nextScrollTop;
+    }
+  }, [compatibilityNotesOpen, intent, phase, reviewItems, selectedMediaIds, thumbnailUrls]);
+
+  const rememberReviewScroll = (): void => {
+    if (reviewBodyRef.current) reviewScrollTop.current = reviewBodyRef.current.scrollTop;
+  };
 
   const closeSession = async (): Promise<void> => {
     cancelled.current = true;
@@ -146,7 +162,7 @@ export function FlaCompatibilityReviewSession({
     return (
       <FlaReviewPortal>
         <section
-          aria-label="FLA compatibility review"
+          aria-label="FLA 兼容性预览"
           aria-modal="true"
           className="fla-review-session"
           data-review-layout="portal"
@@ -155,8 +171,8 @@ export function FlaCompatibilityReviewSession({
         >
           <header className="fla-review-heading" data-testid="fla-review-header">
             <div>
-              <p className="eyebrow">FLA V1 Slice 2</p>
-              <h2>Compatibility review</h2>
+              <p className="eyebrow">FLA V1 · Slice 2</p>
+              <h2>FLA 兼容性预览</h2>
             </div>
             <button
               autoFocus
@@ -164,12 +180,12 @@ export function FlaCompatibilityReviewSession({
               onClick={() => void closeSession()}
               type="button"
             >
-              Cancel
+              取消
             </button>
           </header>
           <div className="fla-review-body fla-review-status-body">
-            <p>Reading the selected FLA in the isolated parser. No Project or Asset data is being changed.</p>
-            <output data-testid="fla-review-status">Inspecting source{requestId ? ` (${requestId})` : ''}...</output>
+            <p>正在读取所选 FLA。当前仅进行只读检查，不会修改项目或素材。</p>
+            <output data-testid="fla-review-status">正在检查源文件…</output>
           </div>
         </section>
       </FlaReviewPortal>
@@ -180,7 +196,7 @@ export function FlaCompatibilityReviewSession({
     return (
       <FlaReviewPortal>
         <section
-          aria-label="FLA compatibility review"
+          aria-label="FLA 兼容性预览"
           aria-modal="true"
           className="fla-review-session"
           data-review-layout="portal"
@@ -189,16 +205,14 @@ export function FlaCompatibilityReviewSession({
         >
           <header className="fla-review-heading" data-testid="fla-review-header">
             <div>
-              <p className="eyebrow">FLA V1 Slice 2</p>
-              <h2>Compatibility review</h2>
+              <p className="eyebrow">FLA V1 · Slice 2</p>
+              <h2>FLA 兼容性预览</h2>
             </div>
-            <button autoFocus onClick={onClose} type="button">Back to Asset Library</button>
+            <button autoFocus onClick={onClose} type="button">返回素材库</button>
           </header>
           <div className="fla-review-body fla-review-status-body">
             <output data-testid="fla-review-error" role="alert">
-              {response?.ok === false
-                ? `${response.error.code}: ${response.error.message}`
-                : 'FLA inspection failed.'}
+              FLA 检查失败，请关闭后重试。
             </output>
           </div>
         </section>
@@ -209,22 +223,26 @@ export function FlaCompatibilityReviewSession({
   const counts = compatibilityCounts(ir);
   const warnings = compatibilityWarnings(ir);
   const toggle = (mediaId: string): void => {
+    rememberReviewScroll();
     setSelectedMediaIds((current) => toggleFlaMediaSelection(current, mediaId));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
   const selectAll = (): void => {
+    rememberReviewScroll();
     setSelectedMediaIds(new Set(reviewItems.map(({ media }) => media.id)));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
   const clearAll = (): void => {
+    rememberReviewScroll();
     setSelectedMediaIds(new Set());
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
   const confirm = (): void => {
     if (selectedCount === 0) return;
+    rememberReviewScroll();
     const nextIntent = createFlaRasterSelectionIntent(
       ir,
       sessionId,
@@ -238,7 +256,7 @@ export function FlaCompatibilityReviewSession({
   return (
     <FlaReviewPortal>
       <section
-        aria-label="FLA compatibility review"
+        aria-label="FLA 兼容性预览"
         aria-modal="true"
         className="fla-review-session"
         data-review-layout="portal"
@@ -247,8 +265,8 @@ export function FlaCompatibilityReviewSession({
       >
         <header className="fla-review-heading" data-testid="fla-review-header">
           <div>
-            <p className="eyebrow">FLA V1 Slice 2</p>
-            <h2>Compatibility review</h2>
+            <p className="eyebrow">FLA V1 · Slice 2</p>
+            <h2>FLA 兼容性预览</h2>
           </div>
           <button
             autoFocus
@@ -256,45 +274,52 @@ export function FlaCompatibilityReviewSession({
             onClick={() => void closeSession()}
             type="button"
           >
-            Cancel
+            取消
           </button>
         </header>
 
         <div className="fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
           <div>
-            <strong data-testid="fla-review-selected-count">Selected: {selectedCount} / {reviewItems.length}</strong>
-            {intent ? <output data-testid="fla-review-intent-status">Read-only selection intent ready; no Assets were created.</output> : null}
+            <strong data-testid="fla-review-selected-count">已选择：{selectedCount} / {reviewItems.length}</strong>
+            {intent ? <output data-testid="fla-review-intent-status">已确认选择（只读）；未创建素材。</output> : null}
           </div>
           <div>
-            <button data-testid="fla-review-select-all" onClick={selectAll} type="button">Select all</button>
-            <button data-testid="fla-review-clear-all" onClick={clearAll} type="button">Clear all</button>
+            <button data-testid="fla-review-select-all" onClick={selectAll} type="button">全选</button>
+            <button data-testid="fla-review-clear-all" onClick={clearAll} type="button">清空</button>
             <button
               data-testid="fla-review-confirm"
               disabled={selectedCount === 0 || phase === 'confirmed'}
               onClick={confirm}
               type="button"
             >
-              {phase === 'confirmed' ? 'Selection intent confirmed' : 'Continue / Confirm selection'}
+              {phase === 'confirmed' ? '已确认选择' : '确认选择'}
             </button>
           </div>
         </div>
 
-        <div className="fla-review-body" data-testid="fla-review-body">
+        <div
+          className="fla-review-body"
+          data-preserves-scroll-position="true"
+          data-testid="fla-review-body"
+          onScroll={(event) => {
+            reviewScrollTop.current = event.currentTarget.scrollTop;
+          }}
+          ref={reviewBodyRef}
+        >
           <p className="fla-review-readonly-note">
-            Read-only raster review. Confirming creates only a selection intent for Slice 3; it does not create Assets, change Project state, or add History.
+            只读素材预览。确认后仅保留第 3 阶段所需的选择信息，不会创建素材、修改项目或写入历史记录。
           </p>
 
           <dl className="fla-review-summary" data-testid="fla-review-summary">
-            <div><dt>Source</dt><dd>{ir.source.basename}</dd></div>
-            <div><dt>SHA-256</dt><dd><code>{ir.source.sha256}</code></dd></div>
-            <div><dt>Stage</dt><dd>{ir.document.width} x {ir.document.height} @ {ir.document.frameRate} fps</dd></div>
-            <div><dt>Media</dt><dd data-testid="fla-review-media-count">{ir.media.length}</dd></div>
-            <div><dt>Placed</dt><dd>{ir.summary.placedInstanceCount}</dd></div>
-            <div><dt>Library-only</dt><dd>{ir.summary.libraryOnlyMediaCount}</dd></div>
+            <div><dt>源文件</dt><dd>{ir.source.basename}</dd></div>
+            <div><dt>舞台</dt><dd>{ir.document.width} × {ir.document.height} · {ir.document.frameRate} fps</dd></div>
+            <div><dt>素材</dt><dd data-testid="fla-review-media-count">{ir.media.length}</dd></div>
+            <div><dt>已使用</dt><dd>{ir.summary.placedInstanceCount}</dd></div>
+            <div><dt>仅素材库</dt><dd>{ir.summary.libraryOnlyMediaCount}</dd></div>
           </dl>
 
           <section aria-labelledby="fla-compatibility-heading" className="fla-review-compatibility">
-            <h3 id="fla-compatibility-heading">Compatibility</h3>
+            <h3 id="fla-compatibility-heading">兼容性</h3>
             <ul data-testid="fla-compatibility-summary">
               {FLA_COMPATIBILITY_STATUSES.map((status) => (
                 <li data-status={status} key={status}>
@@ -304,13 +329,25 @@ export function FlaCompatibilityReviewSession({
               ))}
             </ul>
             {warnings.length > 0 ? (
-              <details className="fla-review-compatibility-notes" data-testid="fla-compatibility-notes">
-                <summary>Compatibility notes ({warnings.length})</summary>
+              <details
+                className="fla-review-compatibility-notes"
+                data-testid="fla-compatibility-notes"
+                open={compatibilityNotesOpen}
+              >
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault();
+                    rememberReviewScroll();
+                    setCompatibilityNotesOpen((current) => !current);
+                  }}
+                >
+                  兼容性说明（{warnings.length}）
+                </summary>
                 <ul className="fla-review-warnings" data-testid="fla-compatibility-warnings">
                   {warnings.map((warning) => (
                     <li key={`${warning.feature}:${warning.status}`}>
-                      <strong>{FLA_COMPATIBILITY_LABELS[warning.status]} / {warning.feature}</strong>
-                      <span>{warning.reason}</span>
+                      <strong>{FLA_COMPATIBILITY_LABELS[warning.status]} · {compatibilityFeatureLabel(warning.feature)}</strong>
+                      <span>{compatibilityReason(warning.feature, warning.status, warning.reason)}</span>
                     </li>
                   ))}
                 </ul>
@@ -319,7 +356,7 @@ export function FlaCompatibilityReviewSession({
           </section>
 
           <div
-            aria-label="FLA raster media"
+            aria-label="FLA 位图素材"
             className="fla-review-media-grid"
             data-scroll-region="fla-media-grid"
             data-testid="fla-review-media-grid"
@@ -354,7 +391,7 @@ function FlaReviewMediaCard({
   const { media } = item;
   return (
     <article
-      aria-label={`${selected ? 'Deselect' : 'Select'} ${media.name}`}
+      aria-label={`${selected ? '取消选择' : '选择'} ${media.name}`}
       aria-pressed={selected}
       className={`fla-review-media-card${selected ? ' fla-review-media-card-selected' : ''}`}
       data-alpha-kind={media.payload.alpha.kind}
@@ -377,13 +414,13 @@ function FlaReviewMediaCard({
     >
       <label>
         <input
-          aria-label={`Select ${media.name}`}
+          aria-label={`选择 ${media.name}`}
           checked={selected}
           data-selection-target="checkbox"
           onChange={onToggle}
           type="checkbox"
         />
-        <span>Select</span>
+        <span>{selected ? '已选' : '选择'}</span>
       </label>
       <div
         className="fla-review-thumbnail"
@@ -392,15 +429,14 @@ function FlaReviewMediaCard({
         {thumbnailUrl ? (
           <img alt={media.name} loading="lazy" src={thumbnailUrl} />
         ) : (
-          <span>Thumbnail unavailable</span>
+          <span>缩略图不可用</span>
         )}
       </div>
       <strong title={media.name}>{media.name}</strong>
-      <span title={media.sourceReference}>Source/library: {media.sourceReference}</span>
-      <span>{media.width} x {media.height} / source {media.sourceFormat}</span>
-      <span>{item.libraryOnly ? 'Library-only' : 'Placed in timeline'}</span>
-      <code>{media.id}</code>
-      <span>Future target: {item.name.targetFileName}</span>
+      <span title={media.sourceReference}>源/素材库：{media.sourceReference}</span>
+      <span>{media.width} × {media.height} · 格式 {media.sourceFormat.toUpperCase()}</span>
+      <span>{item.libraryOnly ? '仅素材库' : '已使用'}</span>
+      <span>未来目标：{item.name.targetFileName}</span>
       {item.warnings.length > 0 ? (
         <ul className="fla-review-name-warnings">
           {item.warnings.map((warning) => <li key={warning}>{warning}</li>)}
@@ -414,6 +450,36 @@ function isNestedInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(
     target.closest('input, label, button, a'),
   );
+}
+
+function compatibilityFeatureLabel(feature: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    'actionscript': 'ActionScript 脚本',
+    'basic-tweens': '基础补间',
+    'bitmap-media': '位图素材',
+    'symbol-movieclip-semantics': '元件/影片剪辑',
+    'timeline-frame-placement': '时间轴使用',
+    'unresolved-bitmap-reference': '位图引用',
+  };
+  return labels[feature] ?? '其他功能';
+}
+
+function compatibilityReason(
+  feature: string,
+  status: FlaCompatibilityStatus,
+  reason: string,
+): string {
+  if (feature === 'unresolved-bitmap-reference') {
+    const prefix = 'Bitmap reference was not found: ';
+    return reason.startsWith(prefix)
+      ? `未找到位图引用：${reason.slice(prefix.length)}`
+      : '未找到对应的位图引用。';
+  }
+  if (status === 'exact') return '此类内容可以在当前预览中使用。';
+  if (status === 'degraded') return '当前仅支持预览，完整时间轴语义将在后续版本处理。';
+  if (status === 'unsupported') return '此类内容暂不在 FLA V1 的导入范围内。';
+  if (status === 'not-present') return '源文件中未发现此类内容。';
+  return '暂时无法确定此类内容的兼容性。';
 }
 
 function FlaReviewPortal({ children }: { children: ReactNode }): React.JSX.Element {
@@ -430,7 +496,7 @@ function FlaReviewPortal({ children }: { children: ReactNode }): React.JSX.Eleme
 
   const surface = (
     <div
-      aria-label="FLA compatibility review foreground"
+      aria-label="FLA 兼容性预览前景层"
       className="fla-review-portal"
       data-testid="fla-review-portal"
     >
