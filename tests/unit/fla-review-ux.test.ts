@@ -6,6 +6,7 @@ const component = readFileSync(
   'utf8',
 );
 const styles = readFileSync('src/renderer/styles.css', 'utf8');
+const issue255Styles = styles.slice(styles.indexOf('/* Issue #255:'));
 
 describe('FLA Slice 2 review UX contract', () => {
   it('exposes full-card, thumbnail, and one checkbox selection paths without double toggling', () => {
@@ -19,33 +20,51 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component.match(/onChange=\{onToggle\}/gu)).toHaveLength(1);
   });
 
-  it('keeps the review wide, its media browser independently scrollable, and cards responsive', () => {
-    expect(component).toContain('data-review-layout="overlay"');
-    expect(component).toContain('data-scroll-region="fla-media"');
-    expect(styles).toMatch(
-      /\.fla-review-session\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?width:\s*min\(1080px, calc\(100vw - 32px\)\);/u,
+  it('owns one top-level foreground layer and suppresses background interaction', () => {
+    expect(component).toContain('data-review-layout="portal"');
+    expect(component).toContain('createPortal(surface, document.body)');
+    expect(component).toContain('data-testid="fla-review-portal"');
+    expect(component).toContain('data-testid="fla-review-backdrop"');
+    expect(component).toContain('appRoot.inert = true');
+    expect(component).toContain('appRoot.inert = wasInert');
+    expect(issue255Styles).toMatch(
+      /\.fla-review-portal\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?z-index:\s*1000;[\s\S]*?inset:\s*0;/u,
     );
-    expect(styles).toMatch(
-      /\.fla-review-media-grid\s*\{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;[\s\S]*?grid-template-columns:\s*repeat\(auto-fit, minmax\(220px, 1fr\)\);/u,
+    expect(issue255Styles).toMatch(
+      /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?position:\s*relative;[\s\S]*?z-index:\s*1;/u,
     );
-    expect(styles).toMatch(
-      /\.fla-review-compatibility > ul:first-of-type\s*\{[\s\S]*?repeat\(auto-fit, minmax\(140px, 1fr\)\);/u,
+    expect(issue255Styles).toContain('.fla-review-backdrop');
+  });
+
+  it('uses one primary review-body scroll and keeps the action row out of that scroll', () => {
+    expect(component).toContain('data-testid="fla-review-header"');
+    expect(component).toContain('data-testid="fla-review-selection-toolbar"');
+    expect(component).toContain('data-testid="fla-review-body"');
+    expect(component.indexOf('data-testid="fla-review-selection-toolbar"')).toBeLessThan(
+      component.indexOf('data-testid="fla-review-body"'),
     );
-    expect(styles).toMatch(
-      /@media\s*\(max-width: 720px\)[\s\S]*?\.fla-review-media-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/u,
+    expect(issue255Styles).toMatch(
+      /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?grid-template-rows:\s*auto auto minmax\(0, 1fr\);/u,
     );
-    expect(styles).toMatch(
-      /\.fla-review-selection-toolbar button\s*\{[\s\S]*?min-height:\s*44px;/u,
+    expect(issue255Styles).toMatch(
+      /\.fla-review-body\s*\{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;[\s\S]*?overscroll-behavior:\s*contain;/u,
+    );
+    expect(issue255Styles).toMatch(
+      /\.fla-review-body \.fla-review-media-grid\s*\{[\s\S]*?overflow:\s*visible;/u,
     );
   });
 
-  it('keeps the review action and compatibility surfaces in the non-mutating component', () => {
+  it('compacts compatibility notes while preserving all statuses and actions', () => {
+    expect(component).toContain('data-testid="fla-compatibility-notes"');
+    expect(component).toContain('<summary>Compatibility notes ({warnings.length})</summary>');
+    expect(component).toContain('data-testid="fla-compatibility-warnings"');
+    expect(component).toContain('FLA_COMPATIBILITY_LABELS[status]');
     expect(component).toContain('data-testid="fla-review-selected-count"');
     expect(component).toContain('data-testid="fla-review-select-all"');
     expect(component).toContain('data-testid="fla-review-clear-all"');
     expect(component).toContain('data-testid="fla-review-confirm"');
     expect(component).toContain('data-testid="fla-review-cancel"');
-    expect(component).toContain('FLA_COMPATIBILITY_LABELS[status]');
+    expect(issue255Styles).toContain('.fla-review-compatibility-notes summary');
     expect(component).not.toContain('window.pandaStage.assets');
     expect(component).not.toContain('updateProject');
   });

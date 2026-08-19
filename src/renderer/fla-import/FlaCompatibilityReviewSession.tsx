@@ -5,7 +5,9 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   FlaInspectionResponse,
   FlaRasterSelectionIntent,
@@ -142,52 +144,65 @@ export function FlaCompatibilityReviewSession({
 
   if (phase === 'inspecting') {
     return (
-      <section
-        aria-label="FLA compatibility review"
-        className="fla-review-session"
-        data-review-layout="overlay"
-        data-testid="fla-review-session"
-      >
-        <header className="fla-review-heading">
-          <div>
-            <p className="eyebrow">FLA V1 Slice 2</p>
-            <h2>Compatibility review</h2>
+      <FlaReviewPortal>
+        <section
+          aria-label="FLA compatibility review"
+          aria-modal="true"
+          className="fla-review-session"
+          data-review-layout="portal"
+          data-testid="fla-review-session"
+          role="dialog"
+        >
+          <header className="fla-review-heading" data-testid="fla-review-header">
+            <div>
+              <p className="eyebrow">FLA V1 Slice 2</p>
+              <h2>Compatibility review</h2>
+            </div>
+            <button
+              autoFocus
+              data-testid="fla-review-cancel"
+              onClick={() => void closeSession()}
+              type="button"
+            >
+              Cancel
+            </button>
+          </header>
+          <div className="fla-review-body fla-review-status-body">
+            <p>Reading the selected FLA in the isolated parser. No Project or Asset data is being changed.</p>
+            <output data-testid="fla-review-status">Inspecting source{requestId ? ` (${requestId})` : ''}...</output>
           </div>
-          <button
-            data-testid="fla-review-cancel"
-            onClick={() => void closeSession()}
-            type="button"
-          >
-            Cancel
-          </button>
-        </header>
-        <p>Reading the selected FLA in the isolated parser. No Project or Asset data is being changed.</p>
-        <output data-testid="fla-review-status">Inspecting source{requestId ? ` (${requestId})` : ''}...</output>
-      </section>
+        </section>
+      </FlaReviewPortal>
     );
   }
 
   if (!ir || !sessionId) {
     return (
-      <section
-        aria-label="FLA compatibility review"
-        className="fla-review-session"
-        data-review-layout="overlay"
-        data-testid="fla-review-session"
-      >
-        <header className="fla-review-heading">
-          <div>
-            <p className="eyebrow">FLA V1 Slice 2</p>
-            <h2>Compatibility review</h2>
+      <FlaReviewPortal>
+        <section
+          aria-label="FLA compatibility review"
+          aria-modal="true"
+          className="fla-review-session"
+          data-review-layout="portal"
+          data-testid="fla-review-session"
+          role="dialog"
+        >
+          <header className="fla-review-heading" data-testid="fla-review-header">
+            <div>
+              <p className="eyebrow">FLA V1 Slice 2</p>
+              <h2>Compatibility review</h2>
+            </div>
+            <button autoFocus onClick={onClose} type="button">Back to Asset Library</button>
+          </header>
+          <div className="fla-review-body fla-review-status-body">
+            <output data-testid="fla-review-error" role="alert">
+              {response?.ok === false
+                ? `${response.error.code}: ${response.error.message}`
+                : 'FLA inspection failed.'}
+            </output>
           </div>
-          <button onClick={onClose} type="button">Back to Asset Library</button>
-        </header>
-        <output data-testid="fla-review-error" role="alert">
-          {response?.ok === false
-            ? `${response.error.code}: ${response.error.message}`
-            : 'FLA inspection failed.'}
-        </output>
-      </section>
+        </section>
+      </FlaReviewPortal>
     );
   }
 
@@ -221,96 +236,107 @@ export function FlaCompatibilityReviewSession({
   };
 
   return (
-    <section
-      aria-label="FLA compatibility review"
-      className="fla-review-session"
-      data-review-layout="overlay"
-      data-testid="fla-review-session"
-    >
-      <header className="fla-review-heading">
-        <div>
-          <p className="eyebrow">FLA V1 Slice 2</p>
-          <h2>Compatibility review</h2>
-        </div>
-        <button
-          data-testid="fla-review-cancel"
-          onClick={() => void closeSession()}
-          type="button"
-        >
-          Cancel
-        </button>
-      </header>
-      <p className="fla-review-readonly-note">
-        Read-only review. Confirming creates only a selection intent for Slice 3; it does not create Assets, change Project state, or add History.
-      </p>
-
-      <dl className="fla-review-summary" data-testid="fla-review-summary">
-        <div><dt>Source</dt><dd>{ir.source.basename}</dd></div>
-        <div><dt>SHA-256</dt><dd><code>{ir.source.sha256}</code></dd></div>
-        <div><dt>Stage</dt><dd>{ir.document.width} x {ir.document.height} @ {ir.document.frameRate} fps</dd></div>
-        <div><dt>Media</dt><dd data-testid="fla-review-media-count">{ir.media.length}</dd></div>
-        <div><dt>Placed</dt><dd>{ir.summary.placedInstanceCount}</dd></div>
-        <div><dt>Library-only</dt><dd>{ir.summary.libraryOnlyMediaCount}</dd></div>
-      </dl>
-
-      <section aria-labelledby="fla-compatibility-heading" className="fla-review-compatibility">
-        <h3 id="fla-compatibility-heading">Compatibility</h3>
-        <ul data-testid="fla-compatibility-summary">
-          {FLA_COMPATIBILITY_STATUSES.map((status) => (
-            <li data-status={status} key={status}>
-              <strong>{FLA_COMPATIBILITY_LABELS[status]}</strong>
-              <span>{counts[status]}</span>
-            </li>
-          ))}
-        </ul>
-        {warnings.length > 0 ? (
-          <ul className="fla-review-warnings" data-testid="fla-compatibility-warnings">
-            {warnings.map((warning) => (
-              <li key={`${warning.feature}:${warning.status}`}>
-                <strong>{FLA_COMPATIBILITY_LABELS[warning.status]} · {warning.feature}</strong>
-                <span>{warning.reason}</span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
-      <div className="fla-review-selection-toolbar">
-        <div>
-          <strong data-testid="fla-review-selected-count">Selected: {selectedCount} / {reviewItems.length}</strong>
-          {intent ? <output data-testid="fla-review-intent-status">Read-only selection intent ready; no Assets were created.</output> : null}
-        </div>
-        <div>
-          <button data-testid="fla-review-select-all" onClick={selectAll} type="button">Select all</button>
-          <button data-testid="fla-review-clear-all" onClick={clearAll} type="button">Clear all</button>
+    <FlaReviewPortal>
+      <section
+        aria-label="FLA compatibility review"
+        aria-modal="true"
+        className="fla-review-session"
+        data-review-layout="portal"
+        data-testid="fla-review-session"
+        role="dialog"
+      >
+        <header className="fla-review-heading" data-testid="fla-review-header">
+          <div>
+            <p className="eyebrow">FLA V1 Slice 2</p>
+            <h2>Compatibility review</h2>
+          </div>
           <button
-            data-testid="fla-review-confirm"
-            disabled={selectedCount === 0 || phase === 'confirmed'}
-            onClick={confirm}
+            autoFocus
+            data-testid="fla-review-cancel"
+            onClick={() => void closeSession()}
             type="button"
           >
-            {phase === 'confirmed' ? 'Selection intent confirmed' : 'Continue / Confirm selection'}
+            Cancel
           </button>
-        </div>
-      </div>
+        </header>
 
-      <div
-        aria-label="FLA raster media"
-        className="fla-review-media-grid"
-        data-testid="fla-review-media-grid"
-        data-scroll-region="fla-media"
-      >
-        {reviewItems.map((item) => (
-          <FlaReviewMediaCard
-            item={item}
-            key={item.media.id}
-            selected={selectedMediaIds.has(item.media.id)}
-            thumbnailUrl={thumbnailUrls[item.media.id]}
-            onToggle={() => toggle(item.media.id)}
-          />
-        ))}
-      </div>
-    </section>
+        <div className="fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
+          <div>
+            <strong data-testid="fla-review-selected-count">Selected: {selectedCount} / {reviewItems.length}</strong>
+            {intent ? <output data-testid="fla-review-intent-status">Read-only selection intent ready; no Assets were created.</output> : null}
+          </div>
+          <div>
+            <button data-testid="fla-review-select-all" onClick={selectAll} type="button">Select all</button>
+            <button data-testid="fla-review-clear-all" onClick={clearAll} type="button">Clear all</button>
+            <button
+              data-testid="fla-review-confirm"
+              disabled={selectedCount === 0 || phase === 'confirmed'}
+              onClick={confirm}
+              type="button"
+            >
+              {phase === 'confirmed' ? 'Selection intent confirmed' : 'Continue / Confirm selection'}
+            </button>
+          </div>
+        </div>
+
+        <div className="fla-review-body" data-testid="fla-review-body">
+          <p className="fla-review-readonly-note">
+            Read-only raster review. Confirming creates only a selection intent for Slice 3; it does not create Assets, change Project state, or add History.
+          </p>
+
+          <dl className="fla-review-summary" data-testid="fla-review-summary">
+            <div><dt>Source</dt><dd>{ir.source.basename}</dd></div>
+            <div><dt>SHA-256</dt><dd><code>{ir.source.sha256}</code></dd></div>
+            <div><dt>Stage</dt><dd>{ir.document.width} x {ir.document.height} @ {ir.document.frameRate} fps</dd></div>
+            <div><dt>Media</dt><dd data-testid="fla-review-media-count">{ir.media.length}</dd></div>
+            <div><dt>Placed</dt><dd>{ir.summary.placedInstanceCount}</dd></div>
+            <div><dt>Library-only</dt><dd>{ir.summary.libraryOnlyMediaCount}</dd></div>
+          </dl>
+
+          <section aria-labelledby="fla-compatibility-heading" className="fla-review-compatibility">
+            <h3 id="fla-compatibility-heading">Compatibility</h3>
+            <ul data-testid="fla-compatibility-summary">
+              {FLA_COMPATIBILITY_STATUSES.map((status) => (
+                <li data-status={status} key={status}>
+                  <strong>{FLA_COMPATIBILITY_LABELS[status]}</strong>
+                  <span>{counts[status]}</span>
+                </li>
+              ))}
+            </ul>
+            {warnings.length > 0 ? (
+              <details className="fla-review-compatibility-notes" data-testid="fla-compatibility-notes">
+                <summary>Compatibility notes ({warnings.length})</summary>
+                <ul className="fla-review-warnings" data-testid="fla-compatibility-warnings">
+                  {warnings.map((warning) => (
+                    <li key={`${warning.feature}:${warning.status}`}>
+                      <strong>{FLA_COMPATIBILITY_LABELS[warning.status]} / {warning.feature}</strong>
+                      <span>{warning.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </section>
+
+          <div
+            aria-label="FLA raster media"
+            className="fla-review-media-grid"
+            data-scroll-region="fla-media-grid"
+            data-testid="fla-review-media-grid"
+          >
+            {reviewItems.map((item) => (
+              <FlaReviewMediaCard
+                item={item}
+                key={item.media.id}
+                selected={selectedMediaIds.has(item.media.id)}
+                thumbnailUrl={thumbnailUrls[item.media.id]}
+                onToggle={() => toggle(item.media.id)}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    </FlaReviewPortal>
   );
 }
 
@@ -329,13 +355,13 @@ function FlaReviewMediaCard({
   return (
     <article
       aria-label={`${selected ? 'Deselect' : 'Select'} ${media.name}`}
+      aria-pressed={selected}
       className={`fla-review-media-card${selected ? ' fla-review-media-card-selected' : ''}`}
       data-alpha-kind={media.payload.alpha.kind}
       data-fla-media-id={media.id}
       data-library-only={item.libraryOnly ? 'true' : 'false'}
       data-testid={`fla-review-media-card-${media.id}`}
       data-zero-alpha-pixels={media.payload.alpha.zeroAlphaPixels}
-      aria-pressed={selected}
       onClick={(event: ReactMouseEvent<HTMLElement>) => {
         if (isNestedInteractiveTarget(event.target)) return;
         onToggle();
@@ -371,7 +397,7 @@ function FlaReviewMediaCard({
       </div>
       <strong title={media.name}>{media.name}</strong>
       <span title={media.sourceReference}>Source/library: {media.sourceReference}</span>
-      <span>{media.width} x {media.height} · source {media.sourceFormat}</span>
+      <span>{media.width} x {media.height} / source {media.sourceFormat}</span>
       <span>{item.libraryOnly ? 'Library-only' : 'Placed in timeline'}</span>
       <code>{media.id}</code>
       <span>Future target: {item.name.targetFileName}</span>
@@ -388,4 +414,34 @@ function isNestedInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(
     target.closest('input, label, button, a'),
   );
+}
+
+function FlaReviewPortal({ children }: { children: ReactNode }): React.JSX.Element {
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const appRoot = document.getElementById('root');
+    if (!appRoot) return undefined;
+    const wasInert = appRoot.inert;
+    appRoot.inert = true;
+    return () => {
+      appRoot.inert = wasInert;
+    };
+  }, []);
+
+  const surface = (
+    <div
+      aria-label="FLA compatibility review foreground"
+      className="fla-review-portal"
+      data-testid="fla-review-portal"
+    >
+      <div
+        aria-hidden="true"
+        className="fla-review-backdrop"
+        data-testid="fla-review-backdrop"
+      />
+      {children}
+    </div>
+  );
+  if (typeof document === 'undefined') return <>{children}</>;
+  return createPortal(surface, document.body);
 }

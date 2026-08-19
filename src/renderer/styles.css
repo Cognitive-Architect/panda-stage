@@ -1758,6 +1758,113 @@ button:disabled {
   }
 }
 
+/* Issue #255: the FLA review owns one deliberate top-level foreground layer.
+   The body below is the only review scroll surface; the media grid stays
+   content-sized so it cannot become a nested wheel trap. */
+.fla-review-portal {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  padding: 16px;
+  pointer-events: auto;
+  place-items: center;
+}
+
+.fla-review-backdrop {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: rgb(0 0 0 / 52%);
+  pointer-events: auto;
+}
+
+.fla-review-portal .fla-review-session {
+  position: relative;
+  z-index: 1;
+  top: auto;
+  left: auto;
+  width: min(1080px, 100%);
+  height: min(calc(100vh - 32px), 900px);
+  max-height: calc(100vh - 32px);
+  padding: 18px;
+  overflow: hidden;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  transform: none;
+}
+
+.fla-review-heading {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+}
+
+.fla-review-selection-toolbar {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+}
+
+.fla-review-body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 2px 8px 12px 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  overscroll-behavior: contain;
+  scrollbar-color: #3f6d4e transparent;
+  gap: 12px;
+}
+
+.fla-review-status-body {
+  align-content: start;
+}
+
+.fla-review-body .fla-review-media-grid {
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  padding: 0 0 8px;
+  overflow: visible;
+}
+
+.fla-review-compatibility-notes {
+  border: 1px solid rgb(213 168 92 / 28%);
+  border-radius: 8px;
+  background: rgb(213 168 92 / 7%);
+}
+
+.fla-review-compatibility-notes summary {
+  padding: 8px 10px;
+  color: #e7c78a;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fla-review-compatibility-notes[open] summary {
+  border-bottom: 1px solid rgb(213 168 92 / 22%);
+}
+
+.fla-review-compatibility-notes .fla-review-warnings {
+  padding: 8px;
+}
+
+@media (max-width: 720px) {
+  .fla-review-portal {
+    padding: 10px;
+  }
+
+  .fla-review-portal .fla-review-session {
+    width: 100%;
+    height: calc(100vh - 20px);
+    max-height: calc(100vh - 20px);
+    padding: 14px;
+  }
+}
+
 .asset-library {
   display: grid;
   max-width: 1180px;

@@ -124,9 +124,26 @@ async function run() {
     const cards = [...document.querySelectorAll('[data-fla-media-id]')];
     const count = (selector) => document.querySelector(selector)?.textContent?.trim() || '';
     const session = document.querySelector('[data-testid="fla-review-session"]');
+    const portal = document.querySelector('[data-testid="fla-review-portal"]');
+    const reviewBody = document.querySelector('[data-testid="fla-review-body"]');
     const mediaGrid = document.querySelector('[data-testid="fla-review-media-grid"]');
     const sessionRect = session?.getBoundingClientRect();
+    const portalStyle = portal ? getComputedStyle(portal) : null;
+    const reviewBodyStyle = reviewBody ? getComputedStyle(reviewBody) : null;
     const mediaGridStyle = mediaGrid ? getComputedStyle(mediaGrid) : null;
+    const toolbar = document.querySelector('[data-testid="fla-review-selection-toolbar"]');
+    const firstCard = cards[0];
+    const firstCardRect = firstCard?.getBoundingClientRect();
+    const toolbarRect = toolbar?.getBoundingClientRect();
+    const firstCardClearOfToolbar = Boolean(
+      firstCardRect && toolbarRect && firstCardRect.top >= toolbarRect.bottom,
+    );
+    const root = document.getElementById('root');
+    const compatibilityNotes = document.querySelector('[data-testid="fla-compatibility-notes"]');
+    if (reviewBody) reviewBody.scrollTop = reviewBody.scrollHeight;
+    const lastCard = cards[cards.length - 1];
+    const lastCardRect = lastCard?.getBoundingClientRect();
+    const reviewBodyRect = reviewBody?.getBoundingClientRect();
     const actionSelectors = [
       '[data-testid="fla-review-selected-count"]',
       '[data-testid="fla-review-select-all"]',
@@ -145,16 +162,36 @@ async function run() {
       statusCounts: Object.fromEntries([...document.querySelectorAll('[data-testid="fla-compatibility-summary"] li')].map((node) => [node.getAttribute('data-status'), node.textContent?.trim() || ''])),
       selectedText: count('[data-testid="fla-review-selected-count"]'),
       compatibilityLabels: [...document.querySelectorAll('[data-testid="fla-compatibility-summary"] strong')].map((node) => node.textContent?.trim() || ''),
+      compatibilityNotes: {
+        present: Boolean(compatibilityNotes),
+        collapsedByDefault: compatibilityNotes ? !compatibilityNotes.open : false,
+      },
       overlay: {
         width: sessionRect?.width ?? 0,
         viewportWidth: window.innerWidth,
         layout: session?.getAttribute('data-review-layout') || '',
       },
+      foreground: {
+        portalInBody: Boolean(portal && portal.parentElement === document.body),
+        rootInert: Boolean(root?.inert),
+        portalPosition: portalStyle?.position || '',
+        portalZIndex: portalStyle?.zIndex || '',
+        backdropPresent: Boolean(document.querySelector('[data-testid="fla-review-backdrop"]')),
+      },
       scrollRegion: {
-        overflowY: mediaGridStyle?.overflowY || '',
-        clientHeight: mediaGrid?.clientHeight || 0,
-        scrollHeight: mediaGrid?.scrollHeight || 0,
-        independent: Boolean(mediaGrid && mediaGridStyle && ['auto', 'scroll'].includes(mediaGridStyle.overflowY) && mediaGrid.scrollHeight > mediaGrid.clientHeight),
+        overflowY: reviewBodyStyle?.overflowY || '',
+        clientHeight: reviewBody?.clientHeight || 0,
+        scrollHeight: reviewBody?.scrollHeight || 0,
+        scrollTop: reviewBody?.scrollTop || 0,
+        primary: Boolean(reviewBody && reviewBodyStyle && ['auto', 'scroll'].includes(reviewBodyStyle.overflowY) && reviewBody.scrollHeight > reviewBody.clientHeight),
+        mediaOverflowY: mediaGridStyle?.overflowY || '',
+        mediaSecondScroll: Boolean(mediaGrid && mediaGridStyle && ['auto', 'scroll'].includes(mediaGridStyle.overflowY) && mediaGrid.scrollHeight > mediaGrid.clientHeight),
+        bodyTop: reviewBodyRect?.top ?? 0,
+        bodyBottom: reviewBodyRect?.bottom ?? 0,
+        lastCardTop: lastCardRect?.top ?? 0,
+        lastCardBottom: lastCardRect?.bottom ?? 0,
+        lateItemReachable: Boolean(lastCardRect && reviewBodyRect && lastCardRect.top >= reviewBodyRect.top - 1 && lastCardRect.bottom <= reviewBodyRect.bottom + 1),
+        firstCardClearOfToolbar,
       },
       actionsReachable: Boolean(sessionRect && actionSelectors.every((selector) => {
         const element = document.querySelector(selector);
@@ -299,10 +336,20 @@ async function run() {
     throw new Error(`Representative raster review evidence is missing: ${JSON.stringify(result.review)}`);
   }
   if (
-    result.review.overlay.layout !== 'overlay' ||
+    result.review.overlay.layout !== 'portal' ||
     result.review.overlay.width < Math.min(640, result.review.overlay.viewportWidth - 32) - 1 ||
-    !result.review.scrollRegion.independent ||
+    !result.review.foreground.portalInBody ||
+    !result.review.foreground.rootInert ||
+    result.review.foreground.portalPosition !== 'fixed' ||
+    result.review.foreground.portalZIndex !== '1000' ||
+    !result.review.foreground.backdropPresent ||
+    !result.review.scrollRegion.primary ||
+    result.review.scrollRegion.mediaSecondScroll ||
+    !result.review.scrollRegion.lateItemReachable ||
+    !result.review.scrollRegion.firstCardClearOfToolbar ||
     !result.review.actionsReachable ||
+    !result.review.compatibilityNotes.present ||
+    !result.review.compatibilityNotes.collapsedByDefault ||
     !['EXACT', 'DEGRADED', 'UNSUPPORTED', 'UNKNOWN', 'NOT_PRESENT'].every((label) => result.review.compatibilityLabels.includes(label))
   ) {
     throw new Error(`Review workspace UX evidence is incomplete: ${JSON.stringify(result.review)}`);
