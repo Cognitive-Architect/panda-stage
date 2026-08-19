@@ -83,13 +83,16 @@
           "src/domain/**",
           "src/history/**",
           "src/shared/**",
-          "src/renderer/stores/**"
+          "src/renderer/stores/**",
+          "src/renderer/App.tsx",
+          "src/renderer/global.d.ts"
         ],
         "testPatterns": [
           "tests/unit/domain/**",
           "tests/unit/migrations/**",
           "tests/integration/schema-*.test.ts",
-          "tests/contract/fixtures/ci-routing/core/**"
+          "tests/contract/fixtures/ci-routing/core/**",
+          "tests/unit/ipc-contracts.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*"],
         "suites": [],
@@ -158,8 +161,8 @@
       },
       {
         "id": "fla-import",
-        "sourcePatterns": ["src/renderer/fla-import/**"],
-        "testPatterns": ["tests/unit/fla-*.test.ts"],
+        "sourcePatterns": ["src/renderer/fla-import/**", "fla-parser.html"],
+        "testPatterns": ["tests/unit/fla-*.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts"],
         "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*"],
         "suites": ["assets"],
         "riskPolicy": "targeted",
