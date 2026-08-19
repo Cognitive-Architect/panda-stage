@@ -151,7 +151,7 @@
       {
         "id": "assets",
         "sourcePatterns": ["src/renderer/features/assets/**"],
-        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts"],
+        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts"],
         "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
         "suites": ["assets", "character"],
         "riskPolicy": "targeted",
