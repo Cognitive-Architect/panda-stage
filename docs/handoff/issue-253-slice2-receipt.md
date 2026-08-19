@@ -143,3 +143,14 @@ It is implemented on the same Draft PR #252 branch at
 `51eccb8979e5d38fa157b1c08a90251b797d4250`. Focused real Windows Electron
 verification passed; maintainer re-acceptance of the affected UX remains
 pending.
+
+## Issue #255 UX follow-up
+
+Issue [#255](https://github.com/Cognitive-Architect/panda-stage/issues/255)
+extends the #254 review UX correction on the same Draft PR #252 branch. The
+current follow-up commit `eef9931` moves the review into a body-level portal,
+suppresses background interaction with an inert renderer root and backdrop,
+and replaces the media-only scroll with one primary review-body scroll. Its
+focused validation and 13-point maintainer handoff are recorded in the
+[Issue #255 UX receipt](./issue-255-slice2-ux-receipt.md). Human re-acceptance
+remains pending; PR #252 must stay Draft / Open / Unmerged.
