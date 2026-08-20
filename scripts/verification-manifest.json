@@ -162,13 +162,13 @@
       {
         "id": "fla-import",
         "sourcePatterns": ["src/renderer/fla-import/**", "fla-parser.html"],
-        "testPatterns": ["tests/unit/fla-*.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts", "tests/helpers/fla-structural-probe.ts", "tests/integration/fla-b0-structural-probe.test.ts", "tests/unit/fla-derive-structure-summary.test.ts", "tests/integration/fla-b1-structural-fields.test.ts"],
+        "testPatterns": ["tests/unit/fla-*.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts", "tests/helpers/fla-structural-probe.ts", "tests/integration/fla-b0-structural-probe.test.ts", "tests/unit/fla-derive-structure-summary.test.ts", "tests/integration/fla-b1-structural-fields.test.ts", "tests/unit/fla-corpus-probe.test.ts", "tests/integration/fla-corpus-collector.test.ts"],
         "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*"],
         "suites": ["assets"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "fla-import",
-        "notes": "FLA compatibility review owns read-only renderer presentation; Main/Preload/shared boundary changes remain on the cross-process Full-risk route. V1.5-B0 evidence files (tests/helpers/fla-structural-probe.ts and tests/integration/fla-b0-structural-probe.test.ts) and V1.5-B1 evidence files (tests/unit/fla-derive-structure-summary.test.ts and tests/integration/fla-b1-structural-fields.test.ts) are read-only structural-probe/contract artifacts owned by this subsystem, not production behavior."
+        "notes": "FLA compatibility review owns read-only renderer presentation; Main/Preload/shared boundary changes remain on the cross-process Full-risk route. V1.5-B0/B1 evidence files (tests/helpers/fla-structural-probe.ts, tests/integration/fla-b0-structural-probe.test.ts, tests/unit/fla-derive-structure-summary.test.ts, tests/integration/fla-b1-structural-fields.test.ts) and the V1.5-D corpus harness (tests/helpers/fla-corpus-probe.ts, tests/unit/fla-corpus-probe.test.ts, tests/integration/fla-corpus-collector.test.ts) are read-only structural-probe/contract/corpus artifacts owned by this subsystem, not production behavior."
       },
       {
         "id": "characters",

@@ -170,6 +170,17 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.matchedRouteIds).toContain('cross-process-core');
   });
 
+  it.each([
+    'tests/unit/fla-corpus-probe.test.ts',
+    'tests/integration/fla-corpus-collector.test.ts',
+  ])('routes V1.5-D corpus harness path %s into the fla-import targeted route', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.suites).toEqual(['assets']);
+  });
+
   it('does not let the B0 registration absorb unrelated unknown test paths', () => {
     const result = draft([change('tests/integration/fla-b1-unregistered-spike.test.ts', 'A')]);
     expect(result.tier).toBe('unknown');
