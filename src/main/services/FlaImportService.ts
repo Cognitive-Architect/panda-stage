@@ -8,6 +8,10 @@ import {
   type FlaWorkerStartRequest,
   type AnimationImportIR,
 } from '../../shared/fla-import-api';
+import {
+  flaErrorDiagnostics,
+  flaZeroRasterDiagnostic,
+} from '../../shared/fla-import-diagnostics';
 import type { FlaAssetCommitSession } from './FlaAssetCommitService';
 import {
   FlaPreflightError,
@@ -31,9 +35,11 @@ function errorResponse(
   code: FlaImportErrorCode,
   message: string,
 ): FlaInspectionResponse {
+  const trimmed = message.trim().slice(0, 1_000) || 'FLA inspection failed';
   return {
     ok: false,
-    error: { code, message: message.trim().slice(0, 1_000) || 'FLA inspection failed' },
+    error: { code, message: trimmed },
+    diagnostics: flaErrorDiagnostics({ code, message: trimmed }),
   };
 }
 
@@ -86,7 +92,12 @@ export class FlaImportService {
       ) {
         return errorResponse('PARSER_CRASH', 'FLA parser returned a source identity mismatch');
       }
-      const response = { ok: true as const, sessionId, ir: validated };
+      const response = {
+        ok: true as const,
+        sessionId,
+        ir: validated,
+        diagnostics: flaZeroRasterDiagnostic(validated),
+      };
       this.sessions.set(sessionId, response);
       while (this.sessions.size > MAX_SESSIONS) {
         const oldest = this.sessions.keys().next().value;

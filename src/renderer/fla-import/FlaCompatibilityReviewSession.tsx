@@ -178,6 +178,7 @@ export function FlaCompatibilityReviewSession({
   }
 
   if (!ir || !sessionId) {
+    const diagnostic = flaDiagnosticUserMessage(response);
     return (
       <FlaReviewPortal>
         <section
@@ -196,9 +197,15 @@ export function FlaCompatibilityReviewSession({
             <button autoFocus onClick={onClose} type="button">返回素材库</button>
           </header>
           <div className="fla-review-body fla-review-status-body">
-            <output data-testid="fla-review-error" role="alert">
-              FLA 检查失败，请关闭后重试。
-            </output>
+            {diagnostic ? (
+              <output data-testid="fla-review-diagnostic" role="alert">
+                {diagnostic}
+              </output>
+            ) : (
+              <output data-testid="fla-review-error" role="alert">
+                FLA 检查失败，请关闭后重试。
+              </output>
+            )}
           </div>
         </section>
       </FlaReviewPortal>
@@ -439,23 +446,33 @@ export function FlaCompatibilityReviewSession({
             ) : null}
           </section>
 
-          <div
-            aria-label="FLA 位图素材"
-            className="fla-review-media-grid"
-            data-scroll-region="fla-media-grid"
-            data-testid="fla-review-media-grid"
-          >
-            {reviewItems.map((item) => (
-              <FlaReviewMediaCard
-                item={item}
-                key={item.media.id}
-                selected={selectedMediaIds.has(item.media.id)}
-                selectionLocked={selectionLocked}
-                thumbnailUrl={thumbnailUrls[item.media.id]}
-                onToggle={() => toggle(item.media.id)}
-              />
-            ))}
-          </div>
+          {ir.media.length === 0 ? (
+            <div
+              className="fla-review-zero-raster"
+              data-testid="fla-review-zero-raster"
+              role="note"
+            >
+              {flaDiagnosticUserMessage(response) ?? '文件已成功读取，但没有找到可直接导入的位图素材。'}
+            </div>
+          ) : (
+            <div
+              aria-label="FLA 位图素材"
+              className="fla-review-media-grid"
+              data-scroll-region="fla-media-grid"
+              data-testid="fla-review-media-grid"
+            >
+              {reviewItems.map((item) => (
+                <FlaReviewMediaCard
+                  item={item}
+                  key={item.media.id}
+                  selected={selectedMediaIds.has(item.media.id)}
+                  selectionLocked={selectionLocked}
+                  thumbnailUrl={thumbnailUrls[item.media.id]}
+                  onToggle={() => toggle(item.media.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </FlaReviewPortal>
@@ -540,6 +557,22 @@ function isNestedInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(
     target.closest('input, label, button, a'),
   );
+}
+
+/**
+ * Primary user-facing diagnostic copy derived from the response.  Prefers the
+ * most specific category (archive-malformed) and otherwise falls back to the
+ * first attached diagnostic.  Returns `null` when no diagnostic is present so
+ * callers can show a neutral fallback without implying a specific cause.
+ * Developer-only detail fields are never surfaced here.
+ */
+function flaDiagnosticUserMessage(response: FlaInspectionResponse | null): string | null {
+  const diagnostics = response?.diagnostics;
+  if (!diagnostics || diagnostics.length === 0) return null;
+  const archive = diagnostics.find(
+    (diagnostic) => diagnostic.category === 'archive-malformed',
+  );
+  return (archive ?? diagnostics[0]!).userMessage;
 }
 
 function compatibilityFeatureLabel(feature: string): string {

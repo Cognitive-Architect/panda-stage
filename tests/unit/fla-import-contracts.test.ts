@@ -6,6 +6,7 @@ import {
   FLA_PARSER_COMMIT,
   FLA_PARSER_ENTRYPOINT,
   FLA_PARSER_PACKAGE,
+  FlaDiagnosticCategorySchema,
   FlaImportErrorCodeSchema,
   FlaInspectionResponseSchema,
   FlaRasterSelectionIntentSchema,
@@ -58,6 +59,14 @@ describe('FLA import contracts and parser boundary', () => {
       'MEDIA_DECODE_FAILED',
       'UNSUPPORTED_FEATURE_PRESENT',
       'USER_CANCELLED',
+    ]);
+  });
+
+  it('exposes the three V1.5-A diagnostic categories', () => {
+    expect(FlaDiagnosticCategorySchema.options).toEqual([
+      'archive-malformed',
+      'no-importable-raster',
+      'unsupported-or-unknown',
     ]);
   });
 
@@ -127,6 +136,56 @@ describe('FLA import contracts and parser boundary', () => {
         ok: false,
         error: { code: 'USER_CANCELLED', message: 'cancelled' },
         sessionId: valid.sessionId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('allows bounded diagnostics on both inspection response branches', () => {
+    const base = {
+      source: {
+        format: 'fla' as const,
+        basename: 'sample.fla',
+        byteLength: 1,
+        sha256: 'a'.repeat(64),
+        parser: {
+          package: FLA_PARSER_PACKAGE,
+          entrypoint: FLA_PARSER_ENTRYPOINT,
+          commit: FLA_PARSER_COMMIT,
+        },
+      },
+      document: { width: 1, height: 1, frameRate: 1, backgroundColor: '#fff' },
+      media: [] as unknown[],
+      timelines: [],
+      compatibility: [],
+      summary: { placedInstanceCount: 0, libraryOnlyMediaCount: 0 },
+    };
+    const ok = FlaInspectionResponseSchema.safeParse({
+      ok: true as const,
+      sessionId: '00000000-0000-4000-8000-000000000251',
+      ir: base,
+      diagnostics: [
+        { category: 'no-importable-raster', userMessage: '没有找到可直接导入的位图素材。' },
+      ],
+    });
+    expect(ok.success).toBe(true);
+
+    const fail = FlaInspectionResponseSchema.safeParse({
+      ok: false as const,
+      error: { code: 'MALFORMED_ARCHIVE', message: 'ZIP central directory exceeds the source boundary' },
+      diagnostics: [
+        {
+          category: 'archive-malformed',
+          userMessage: '此 FLA 文件的压缩包元数据不一致，已被当前安全规则拒绝导入。',
+          developerNote: 'ZIP central directory exceeds the source boundary',
+        },
+      ],
+    });
+    expect(fail.success).toBe(true);
+    expect(
+      FlaInspectionResponseSchema.safeParse({
+        ok: false as const,
+        error: { code: 'MALFORMED_ARCHIVE', message: 'x' },
+        diagnostics: [{ category: 'bogus', userMessage: 'y' }],
       }).success,
     ).toBe(false);
   });
