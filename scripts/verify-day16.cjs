@@ -311,7 +311,8 @@ async function verifyDay16() {
     if (
       ui.heading !== '导入项目素材' ||
       ui.button !== '导入素材' ||
-      !ui.dropText?.includes('SHA-256') ||
+      !ui.dropText?.includes('拖到这里') ||
+      !ui.dropText?.includes('导入项目') ||
       ui.resultStatus !== 'imported' ||
       !ui.resultMessage?.includes('已导入') ||
       ui.status !== '素材已复制并保存到项目。' ||

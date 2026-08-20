@@ -4,7 +4,15 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'dist-electron/**', 'node_modules/**'],
+    ignores: [
+      'dist/**',
+      'dist-electron/**',
+      'node_modules/**',
+      // This is an exact pinned upstream parser closure. TypeScript build
+      // compatibility is handled at the adapter boundary; linting it would
+      // turn an upstream byte-for-byte import into a local rewrite.
+      'src/renderer/fla-import/parser-core/**',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

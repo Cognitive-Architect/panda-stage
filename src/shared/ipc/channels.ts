@@ -37,6 +37,15 @@ export const IPC_CHANNELS = Object.freeze({
   RECOVERY_DETECT: 'recovery:detect',
   RECOVERY_RESTORE: 'recovery:restore',
   RECOVERY_IGNORE: 'recovery:ignore',
+  FLA_INSPECT_CHOOSE: 'fla:inspect-choose',
+  FLA_CANCEL: 'fla:cancel',
+  FLA_COMMIT_SELECTED: 'fla:commit-selected',
+  FLA_WORKER_READY: 'fla:worker-ready',
+  FLA_WORKER_START: 'fla:worker-start',
+  FLA_WORKER_CANCEL: 'fla:worker-cancel',
+  FLA_WORKER_PROGRESS: 'fla:worker-progress',
+  FLA_WORKER_RESULT: 'fla:worker-result',
+  FLA_WORKER_ERROR: 'fla:worker-error',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

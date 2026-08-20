@@ -10,6 +10,7 @@ import { useAssetDrop } from './useAssetDrop';
 export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
   importRequestToken?: number;
+  onImportFla: () => void;
 }
 
 function resultClass(result: AssetImportResult): string {
@@ -19,6 +20,7 @@ function resultClass(result: AssetImportResult): string {
 export function AssetImportPanel({
   snapshot,
   importRequestToken,
+  onImportFla,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
@@ -113,9 +115,20 @@ export function AssetImportPanel({
         </div>
         <span className="asset-import-header-note">使用工作区顶部“导入素材”</span>
       </div>
+      <div className="asset-import-actions">
+        <button
+          data-testid="asset-import-fla"
+          disabled={snapshot === null || busy}
+          onClick={onImportFla}
+          type="button"
+        >
+          导入 FLA
+        </button>
+        <span>打开 FLA 后可先预览并选择需要的素材，确认导入前不会修改项目。</span>
+      </div>
       <p className="asset-import-drop">
         {snapshot
-          ? '也可把文件拖放到这里。文件会经过类型、签名和 SHA-256 校验后复制到项目 assets/。'
+          ? '也可以把素材文件拖到这里导入项目。'
           : '请先打开一个 .pandastage 项目。'}
       </p>
       {results.length > 0 ? (

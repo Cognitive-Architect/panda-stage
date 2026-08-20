@@ -1,6 +1,8 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -24,6 +26,12 @@ import {
   type ThumbnailState,
 } from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
+import { applyFlaAssetCommitResponse } from './applyFlaAssetCommitResponse';
+import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
+import {
+  FlaInspectionLifecycle,
+  type FlaInspectionOperation,
+} from '../../fla-import/fla-inspection-lifecycle';
 
 export type AssetWorkspaceView = 'browser' | 'details';
 
@@ -32,6 +40,7 @@ export interface AssetLibraryProps {
   view?: AssetWorkspaceView;
   onViewChange?: (view: AssetWorkspaceView) => void;
   importRequestToken?: number;
+  closeRequestToken?: number;
 }
 
 export function AssetLibrary({
@@ -39,6 +48,7 @@ export function AssetLibrary({
   view = 'browser',
   onViewChange = () => undefined,
   importRequestToken,
+  closeRequestToken,
 }: AssetLibraryProps): React.JSX.Element {
   const [category, setCategory] =
     useState<AssetLibraryCategory>('background');
@@ -56,6 +66,35 @@ export function AssetLibrary({
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
+  const [flaReviewOpen, setFlaReviewOpen] = useState(false);
+  const [flaInspection, setFlaInspection] =
+    useState<FlaInspectionOperation | null>(null);
+  const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
+  const lastCloseRequest = useRef(closeRequestToken ?? 0);
+
+  const closeFlaReview = useCallback((): void => {
+    setFlaReviewOpen(false);
+    setFlaInspection(null);
+    void flaInspectionLifecycle.current?.cancel();
+    setStatus('FLA review closed; Project and Asset state are unchanged.');
+  }, []);
+
+  useEffect(() => {
+    if (
+      closeRequestToken === undefined ||
+      closeRequestToken === lastCloseRequest.current
+    ) {
+      return;
+    }
+    lastCloseRequest.current = closeRequestToken;
+    closeFlaReview();
+  }, [closeFlaReview, closeRequestToken]);
+
+  useEffect(() => {
+    return () => {
+      void flaInspectionLifecycle.current?.cancel();
+    };
+  }, []);
 
   const entries = useMemo(
     () =>
@@ -247,6 +286,33 @@ export function AssetLibrary({
     }
   };
 
+  const openFlaReview = (): void => {
+    if (!snapshot) {
+      setStatus('Open a Panda Stage project before reviewing an FLA.');
+      return;
+    }
+    const lifecycle =
+      flaInspectionLifecycle.current ??
+      (flaInspectionLifecycle.current = new FlaInspectionLifecycle(
+        window.pandaStage.fla,
+      ));
+    setFlaInspection(lifecycle.start());
+    setFlaReviewOpen(true);
+  };
+
+  useEffect(() => {
+    if (view !== 'browser' && flaReviewOpen) closeFlaReview();
+  }, [closeFlaReview, flaReviewOpen, view]);
+
+  const previousProjectRoot = useRef(snapshot?.projectRoot);
+  useEffect(() => {
+    const previousProject = previousProjectRoot.current;
+    previousProjectRoot.current = snapshot?.projectRoot;
+    if (previousProject !== snapshot?.projectRoot && flaReviewOpen) {
+      closeFlaReview();
+    }
+  }, [closeFlaReview, flaReviewOpen, snapshot?.projectRoot]);
+
   return (
     <section
       className={[
@@ -294,10 +360,25 @@ export function AssetLibrary({
             : '尚未打开项目'}
         </output>
       </div>
-      {view === 'browser' ? (
+      {view === 'browser' ? flaReviewOpen && flaInspection ? (
+        <FlaCompatibilityReviewSession
+          inspection={flaInspection}
+          onClose={closeFlaReview}
+          onCommit={(response) => {
+            const outcome = applyFlaAssetCommitResponse(
+              response,
+              editorProjectStore,
+            );
+            setStatus(outcome.status);
+          }}
+          onIntent={() => setStatus('已确认 FLA 素材选择；尚未创建项目素材。')}
+          snapshot={snapshot}
+        />
+      ) : (
         <>
           <AssetImportPanel
             importRequestToken={importRequestToken}
+            onImportFla={openFlaReview}
             snapshot={snapshot}
           />
           <div

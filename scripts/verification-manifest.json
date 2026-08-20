@@ -83,15 +83,18 @@
           "src/domain/**",
           "src/history/**",
           "src/shared/**",
-          "src/renderer/stores/**"
+          "src/renderer/stores/**",
+          "src/renderer/App.tsx",
+          "src/renderer/global.d.ts"
         ],
         "testPatterns": [
           "tests/unit/domain/**",
           "tests/unit/migrations/**",
           "tests/integration/schema-*.test.ts",
-          "tests/contract/fixtures/ci-routing/core/**"
+          "tests/contract/fixtures/ci-routing/core/**",
+          "tests/unit/ipc-contracts.test.ts"
         ],
-        "verifierPatterns": [],
+        "verifierPatterns": ["scripts/verify-issue257-slice3*"],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
@@ -148,13 +151,24 @@
       {
         "id": "assets",
         "sourcePatterns": ["src/renderer/features/assets/**"],
-        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts"],
+        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts"],
         "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
         "suites": ["assets", "character"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "assets",
         "notes": "Renderer asset library changes exercise asset and character consumers."
+      },
+      {
+        "id": "fla-import",
+        "sourcePatterns": ["src/renderer/fla-import/**", "fla-parser.html"],
+        "testPatterns": ["tests/unit/fla-*.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts"],
+        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*"],
+        "suites": ["assets"],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "fla-import",
+        "notes": "FLA compatibility review owns read-only renderer presentation; Main/Preload/shared boundary changes remain on the cross-process Full-risk route."
       },
       {
         "id": "characters",
@@ -282,7 +296,7 @@
       }
     ]
   },
-  "count": 45,
+  "count": 49,
   "gates": [
     {
       "id": "assets",
@@ -295,6 +309,54 @@
       "owner": "assets",
       "supersedes": null,
       "notes": "Wrapper over verify:day16/17/18. Preserved per RH-04 (do not replace current subsystem routing)."
+    },
+    {
+      "id": "issue251-slice1",
+      "script": "verify:issue251-slice1",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused real-Electron Slice 1 verifier; Slice 2 uses the same parser boundary and adds review/selection evidence without forcing Full CI at the slice boundary."
+    },
+    {
+      "id": "issue253-slice2",
+      "script": "verify:issue253-slice2",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused Windows Electron verifier for the read-only compatibility review, thumbnails, deterministic selection, cancel cleanup, and zero Asset/Project mutation."
+    },
+    {
+      "id": "issue257-slice3",
+      "script": "verify:issue257-slice3",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused Windows Electron verifier for explicit selected-raster commit, ordinary ImageAsset persistence, source immutability, and Save/Close/Reopen evidence; failure injection remains targeted automation."
+    },
+    {
+      "id": "issue260-slice4",
+      "script": "verify:issue260-slice4",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused built-Electron all-158 stress acceptance for the final FLA V1 candidate; records STRESS_PASS, STRESS_DEFERRED_WITH_REASON, or STRESS_FAILED_WITH_BOUNDED_RESULT separately from the core correctness gate."
     },
     {
       "id": "canvas",

@@ -34,6 +34,13 @@ export interface ValidatedPngThumbnail {
   height: number;
 }
 
+export interface PngValidationOptions {
+  maxWidth?: number;
+  maxHeight?: number;
+  maxPixels?: number;
+  maxEncodedBytes?: number;
+}
+
 interface PngHeader {
   width: number;
   height: number;
@@ -45,7 +52,38 @@ interface PngHeader {
 export function validatePngThumbnail(
   bytes: Buffer,
 ): ValidatedPngThumbnail | null {
+  return validatePngEncodedImage(bytes, {
+    maxWidth: MAX_THUMBNAIL_EDGE,
+    maxHeight: MAX_THUMBNAIL_EDGE,
+    maxPixels: MAX_THUMBNAIL_EDGE * MAX_THUMBNAIL_EDGE,
+  });
+}
+
+/**
+ * Validates a Panda-owned PNG payload, including chunk CRCs and decompressed
+ * scanline filters.  The thumbnail reader keeps its historical 256px limit;
+ * FLA Slice 3 uses this same validator with the production image budget.
+ */
+export function validatePngEncodedImage(
+  bytes: Buffer,
+  options: PngValidationOptions = {},
+): ValidatedPngThumbnail | null {
   try {
+    const maxWidth = options.maxWidth ?? MAX_THUMBNAIL_EDGE;
+    const maxHeight = options.maxHeight ?? MAX_THUMBNAIL_EDGE;
+    const maxPixels = options.maxPixels ?? maxWidth * maxHeight;
+    if (
+      !Number.isInteger(maxWidth) ||
+      !Number.isInteger(maxHeight) ||
+      !Number.isInteger(maxPixels) ||
+      maxWidth < 1 ||
+      maxHeight < 1 ||
+      maxPixels < 1 ||
+      (options.maxEncodedBytes !== undefined &&
+        bytes.length > options.maxEncodedBytes)
+    ) {
+      return null;
+    }
     if (
       bytes.length < PNG_SIGNATURE.length ||
       !bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
@@ -87,7 +125,7 @@ export function validatePngThumbnail(
 
       if (!header) {
         if (type !== 'IHDR' || length !== 13) return null;
-        header = parseHeader(data);
+        header = parseHeader(data, maxWidth, maxHeight, maxPixels);
         if (!header) return null;
       } else if (type === 'IHDR') {
         return null;
@@ -137,7 +175,12 @@ export function validatePngThumbnail(
   }
 }
 
-function parseHeader(data: Buffer): PngHeader | null {
+function parseHeader(
+  data: Buffer,
+  maxWidth: number,
+  maxHeight: number,
+  maxPixels: number,
+): PngHeader | null {
   const width = data.readUInt32BE(0);
   const height = data.readUInt32BE(4);
   const bitDepth = data[8] ?? 0;
@@ -148,8 +191,9 @@ function parseHeader(data: Buffer): PngHeader | null {
   if (
     width < 1 ||
     height < 1 ||
-    width > MAX_THUMBNAIL_EDGE ||
-    height > MAX_THUMBNAIL_EDGE ||
+    width > maxWidth ||
+    height > maxHeight ||
+    width * height > maxPixels ||
     compression !== 0 ||
     filter !== 0 ||
     (interlace !== 0 && interlace !== 1) ||

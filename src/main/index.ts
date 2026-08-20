@@ -48,6 +48,9 @@ import { AssetThumbnailService } from './services/AssetThumbnailService';
 import { AssetCanvasImageService } from './services/AssetCanvasImageService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
 import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer';
+import { FlaImportService } from './services/FlaImportService';
+import { registerFlaImportIpcHandlers } from './ipc/register-fla-import-ipc-handlers';
+import { FlaAssetCommitService } from './services/FlaAssetCommitService';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -59,12 +62,15 @@ let removeRecentProjectsIpcHandlers: (() => void) | null = null;
 let removeAssetImportIpcHandlers: (() => void) | null = null;
 let removeAssetMetadataIpcHandlers: (() => void) | null = null;
 let removeAssetLibraryIpcHandlers: (() => void) | null = null;
+let removeFlaImportIpcHandlers: (() => void) | null = null;
 let autosaveService: AutosaveService | null = null;
 let projectService: ProjectService | null = null;
+let flaAssetCommitService: FlaAssetCommitService | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
 let rendererCloseSynchronizer: RendererCloseSynchronizer | null = null;
 let removeNativeCloseSyncListener: (() => void) | null = null;
+const flaImportService = new FlaImportService();
 
 async function selectProjectDirectory(
   window: BrowserWindow,
@@ -74,6 +80,18 @@ async function selectProjectDirectory(
     title,
     buttonLabel: '选择项目文件夹',
     properties: ['openDirectory'],
+  });
+  return selection.canceled ? null : selection.filePaths[0] ?? null;
+}
+
+async function selectFlaSource(window: BrowserWindow): Promise<string | null> {
+  const acceptanceSource = process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE?.trim();
+  if (acceptanceSource && !app.isPackaged) return acceptanceSource;
+  const selection = await dialog.showOpenDialog(window, {
+    title: '选择 FLA 文件进行只读检查',
+    buttonLabel: '检查 FLA',
+    properties: ['openFile'],
+    filters: [{ name: 'Adobe Animate FLA', extensions: ['fla'] }],
   });
   return selection.canceled ? null : selection.filePaths[0] ?? null;
 }
@@ -213,6 +231,8 @@ async function initialize(): Promise<void> {
     pathService,
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    onProjectOpened: (projectRoot, project) =>
+      flaAssetCommitService?.recoverProjectArtifacts(projectRoot, project),
     onProjectSaved: async (projectRoot, project, revision) => {
       try {
         await recoveryService.cleanupAfterFormalSave(
@@ -329,6 +349,19 @@ async function initialize(): Promise<void> {
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     }),
+  });
+  flaAssetCommitService = new FlaAssetCommitService({
+    projectService,
+    getCurrentProjectSnapshot: (projectRoot) =>
+      autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    getSession: (sessionId) => flaImportService.getSession(sessionId),
+    releaseSession: (sessionId) => flaImportService.releaseSession(sessionId),
+  });
+  removeFlaImportIpcHandlers = registerFlaImportIpcHandlers({
+    getMainWindow: () => mainWindow,
+    flaImportService,
+    flaAssetCommitService,
+    selectFlaSource,
   });
   unsavedCloseController = new UnsavedCloseController({
     getDirtyProject: () =>
@@ -470,6 +503,8 @@ app.on('will-quit', () => {
   removeAssetMetadataIpcHandlers = null;
   removeAssetLibraryIpcHandlers?.();
   removeAssetLibraryIpcHandlers = null;
+  removeFlaImportIpcHandlers?.();
+  removeFlaImportIpcHandlers = null;
   removeNativeCloseSyncListener?.();
   removeNativeCloseSyncListener = null;
   rendererCloseSynchronizer?.dispose();
@@ -477,9 +512,11 @@ app.on('will-quit', () => {
   void autosaveService?.stopAll();
   autosaveService = null;
   projectService = null;
+  flaAssetCommitService = null;
   unsavedCloseController = null;
   unsavedCloseGuard = null;
   hiddenWindowManager.close();
+  flaImportService.close();
 });
 
 app.on('window-all-closed', () => {
