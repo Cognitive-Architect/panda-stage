@@ -111,6 +111,34 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual(['src/renderer/features/unowned-new/Widget.tsx']);
   });
 
+  it.each([
+    'tests/helpers/fla-structural-probe.ts',
+    'tests/integration/fla-b0-structural-probe.test.ts',
+  ])('routes V1.5-B0 FLA probe path %s into the existing fla-import targeted route', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).not.toContain('unknown');
+    expect(result.matchedRouteIds).toContain('fla-import');
+    expect(result.suites).toEqual(['assets']);
+  });
+
+  it('keeps both V1.5-B0 FLA probe paths on the fla-import targeted route together, never Full', () => {
+    const result = draft([
+      change('tests/helpers/fla-structural-probe.ts'),
+      change('tests/integration/fla-b0-structural-probe.test.ts'),
+    ]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).not.toContain('unknown');
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.areas).toEqual(['fla-import']);
+  });
+
+  it('does not let the B0 registration absorb unrelated unknown test paths', () => {
+    const result = draft([change('tests/integration/fla-b1-unregistered-spike.test.ts', 'A')]);
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(['tests/integration/fla-b1-unregistered-spike.test.ts']);
+  });
+
   it.each(['D', 'R', 'C'])('routes %s structural changes to focused safety checks', (status) => {
     const paths = ['R', 'C'].includes(status)
       ? ['src/renderer/features/dialogue/Old.tsx', 'src/renderer/features/dialogue/New.tsx']
