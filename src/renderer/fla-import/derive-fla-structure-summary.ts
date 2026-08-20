@@ -9,10 +9,12 @@
  * - `totalTimelineCount`   = top-level timelines + symbol-internal timelines
  * - `layerCount`           = DOMLayer count across top-level + symbol timelines
  * - `frameCount`           = DOMFrame count across top-level + symbol timelines
- * - `tweenCount`           = frames carrying supported structural
- *                            `tweenType=motion|shape` evidence, OR
- *                            with `tweens.length>0`, OR
- *                            with a defined `morphShape`
+ * - `tweenCount`           = frames carrying `tweenType="motion"` or
+ *                            `tweenType="shape"` (exact B0 evidence matrix
+ *                            definition; deliberately NOT broadened to the
+ *                            parser's `frame.tweens` array or `morphShape`,
+ *                            which are parser-normalized artifacts with no
+ *                            proven 1:1 equivalence to the B0 source fact)
  * - `symbolCount`          = total DOMSymbolItem structural count
  * - `movieClipCount` /
  *   `graphicCount`  /
@@ -89,15 +91,29 @@ function accumulateTimeline(
     layerCount += 1;
     for (const frame of layer.frames) {
       frameCount += 1;
-      if (isTweenFrame(frame)) tweenCount += 1;
+      if (isB0TweenFrame(frame)) tweenCount += 1;
     }
   }
   consume({ layerCount, frameCount, tweenCount });
 }
 
-function isTweenFrame(frame: Frame): boolean {
-  if (frame.tweenType === 'motion' || frame.tweenType === 'shape') return true;
-  if ((frame.tweens?.length ?? 0) > 0) return true;
-  if (frame.morphShape !== undefined) return true;
-  return false;
+/**
+ * B0 evidence matrix (and #275 spike): a frame counts as tween-bearing only
+ * when its `tweenType` attribute is `motion` or `shape`. This matches the
+ * B0 XML probe exactly (`<DOMFrame ... tweenType="motion|shape">`).
+ *
+ * `frame.tweens` (parser-collected `<Ease>`/`<CustomEase>` elements) and
+ * `frame.morphShape` are NOT included. They are parser-normalized artifacts
+ * with no 1:1 proven equivalence to the B0 source structural fact:
+ *  - `morphShape` is set by the parser *only when* `tweenType === 'shape'`,
+ *    so it is strictly subsumed by the B0 definition.
+ *  - `tweens` is parsed unconditionally for every frame; an XFL can carry
+ *    `<Ease>` child elements without a matching `tweenType` attribute, which
+ *    would let a broad definition count non-B0 frames as tweens.
+ *
+ * Until a wider equivalence is proven (a future V1.5-D or later slice), B1
+ * must stay narrow. See issue #278 §"Required task B".
+ */
+function isB0TweenFrame(frame: Frame): boolean {
+  return frame.tweenType === 'motion' || frame.tweenType === 'shape';
 }

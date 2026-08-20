@@ -141,7 +141,11 @@ describe('deriveStructureSummary — top-level scenes only', () => {
     expect(deriveStructureSummary(doc).tweenCount).toBe(1);
   });
 
-  it('counts tween frames via tweens array', () => {
+  it('does NOT count tween frames via only `tweens` array (parser-normalized, not B0 evidence)', () => {
+    // #278 corrective: a frame with no `tweenType` attribute but with a
+    // non-empty parser-collected `tweens` array must NOT be counted as a
+    // tween under B0 semantics. The B0 evidence matrix defines a tween
+    // structural fact strictly by `tweenType="motion|shape"`.
     const doc = emptyDoc();
     doc.timelines = [
       makeTimeline([
@@ -150,10 +154,15 @@ describe('deriveStructureSummary — top-level scenes only', () => {
         ]),
       ]),
     ];
-    expect(deriveStructureSummary(doc).tweenCount).toBe(1);
+    expect(deriveStructureSummary(doc).tweenCount).toBe(0);
   });
 
-  it('counts tween frames via morphShape', () => {
+  it('does NOT count tween frames via only `morphShape` (parser-normalized, not B0 evidence)', () => {
+    // #278 corrective: a frame with no `tweenType` attribute but with a
+    // parser-set `morphShape` must NOT be counted as a tween under B0
+    // semantics. In production, `morphShape` is set only when
+    // `tweenType === 'shape'`, so this case should not arise; we still
+    // pin the narrow B0 definition here to prevent future drift.
     const doc = emptyDoc();
     doc.timelines = [
       makeTimeline([
@@ -162,7 +171,22 @@ describe('deriveStructureSummary — top-level scenes only', () => {
         ]),
       ]),
     ];
-    expect(deriveStructureSummary(doc).tweenCount).toBe(1);
+    expect(deriveStructureSummary(doc).tweenCount).toBe(0);
+  });
+
+  it('does NOT count tween frames with tweenType="none" even if `tweens` is non-empty', () => {
+    const doc = emptyDoc();
+    doc.timelines = [
+      makeTimeline([
+        makeLayer('L1', [
+          makeFrame(0, 1, {
+            tweenType: 'none',
+            tweens: [{ target: 'Layer_1' }],
+          }),
+        ]),
+      ]),
+    ];
+    expect(deriveStructureSummary(doc).tweenCount).toBe(0);
   });
 });
 
@@ -211,18 +235,27 @@ describe('deriveStructureSummary — symbols + their internal timelines', () => 
   });
 });
 
-describe('deriveStructureSummary — file.fla / 剑.fla known-good baselines', () => {
+describe('deriveStructureSummary — file.fla / 剑.fla known-good baselines (corrected #278)', () => {
   it('matches B0-documented file.fla structure', () => {
     const doc = emptyDoc();
-    // file.fla B0 evidence (handoff #270 / spike #275):
-    // scene 1 / layer 1 / frame 1 / symbol 0 / placed 156 / library 2
+    // file.fla B0 evidence (handoff #270 / spike #275 / corrective #278):
+    //   sha256    = 84682EDCD49B8FCC072AE740188677BAE9D7D0FD603B8BED51A7AC4DDEB3119F
+    //   scene     = 1
+    //   layers    = 1 (top-level)
+    //   frames    = 1 (top-level DOMFrame count, NOT bitmap placements)
+    //   symbols   = 0
+    //   bitmaps   = 158 (independent from frameCount)
+    //   placed    = 156 (independent from frameCount)
+    //   libraryOnly = 2 (independent from frameCount)
+    //   tweenType attrs = 0 (no XML `tweenType="motion|shape"` anywhere)
+    //   <Ease> elements = 0 (no parser-normalized tween references)
+    //
+    // #277 accidentally encoded `frameCount = 156` (= placed bitmap
+    // instances) into the synthetic fixture, contradicting the B0 evidence
+    // matrix. #278 corrects this so the tests no longer teach CI that
+    // "156 placed bitmaps = 156 frames".
     doc.timelines = [
-      makeTimeline([
-        makeLayer('Layer 1', [
-          makeFrame(0, 1),
-          ...Array.from({ length: 155 }, (_, i) => makeFrame(i + 1, 1)),
-        ]),
-      ]),
+      makeTimeline([makeLayer('Layer 1', [makeFrame(0, 1)])]),
     ];
     // No symbols; bitmaps/sounds/videos are not used by deriveStructureSummary
     const result = deriveStructureSummary(doc);
@@ -231,7 +264,8 @@ describe('deriveStructureSummary — file.fla / 剑.fla known-good baselines', (
       totalTimelineCount: 1,
       symbolCount: 0,
       layerCount: 1,
-      frameCount: 156,
+      frameCount: 1,
+      tweenCount: 0,
       movieClipCount: 0,
       graphicCount: 0,
       buttonCount: 0,
@@ -240,8 +274,16 @@ describe('deriveStructureSummary — file.fla / 剑.fla known-good baselines', (
 
   it('matches B0-documented 剑.fla zero-raster structure', () => {
     const doc = emptyDoc();
-    // 剑.fla B0 evidence: scene 1 / symbol 1 / graphic 1 /
-    //                     layer 2 / frame 2 / placed 0
+    // 剑.fla B0 evidence:
+    //   sha256  = E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377
+    //   scene   = 1
+    //   symbol  = 1 graphic
+    //   layers  = 2 (1 top-level + 1 inside the symbol)
+    //   frames  = 2 (1 top-level DOMFrame + 1 inside the symbol timeline;
+    //                NOT "1 + 2 = 3" as #277's fixture asserted)
+    //   bitmaps = 0
+    //   tweenType attrs = 0
+    //   <Ease> elements = 0
     doc.timelines = [
       makeTimeline([makeLayer('L1', [makeFrame(0, 1)])]),
     ];
@@ -250,7 +292,7 @@ describe('deriveStructureSummary — file.fla / 剑.fla known-good baselines', (
       makeSymbol(
         'graphic_sym',
         'graphic',
-        makeTimeline([makeLayer('Inner', [makeFrame(0, 1), makeFrame(1, 1)])]),
+        makeTimeline([makeLayer('Inner', [makeFrame(0, 1)])]),
       ),
     );
     const result = deriveStructureSummary(doc);
@@ -262,7 +304,8 @@ describe('deriveStructureSummary — file.fla / 剑.fla known-good baselines', (
       movieClipCount: 0,
       buttonCount: 0,
       layerCount: 2,
-      frameCount: 3,
+      frameCount: 2,
+      tweenCount: 0,
     });
   });
 });
