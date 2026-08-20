@@ -133,10 +133,53 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.areas).toEqual(['fla-import']);
   });
 
+  it.each([
+    'tests/unit/fla-derive-structure-summary.test.ts',
+    'tests/integration/fla-b1-structural-fields.test.ts',
+  ])('routes V1.5-B1 FLA evidence path %s into the fla-import targeted route', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).not.toContain('unknown');
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.suites).toEqual(['assets']);
+  });
+
+  it('routes V1.5-B1 production source into the fla-import targeted route (B0 evidence + B1 contract)', () => {
+    const result = draft([
+      change('src/renderer/fla-import/derive-fla-structure-summary.ts'),
+      change('src/renderer/fla-import/fla-viewer-adapter.ts'),
+      change('src/renderer/fla-import/FlaCompatibilityReviewSession.tsx'),
+    ]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+  });
+
+  it('promotes to focused when a B1 change also touches the shared contract (expected cross-process propagation)', () => {
+    const result = draft([
+      change('src/renderer/fla-import/derive-fla-structure-summary.ts'),
+      change('src/renderer/fla-import/fla-viewer-adapter.ts'),
+      change('src/renderer/fla-import/FlaCompatibilityReviewSession.tsx'),
+      change('src/shared/fla-import-api.ts'),
+    ]);
+    expect(result.tier).toBe('focused');
+    expect(result.areas).toContain('fla-import');
+    expect(result.areas).toContain('cross-process-core');
+    expect(result.matchedRouteIds).toContain('fla-import');
+    expect(result.matchedRouteIds).toContain('cross-process-core');
+  });
+
   it('does not let the B0 registration absorb unrelated unknown test paths', () => {
     const result = draft([change('tests/integration/fla-b1-unregistered-spike.test.ts', 'A')]);
     expect(result.tier).toBe('unknown');
     expect(result.unknownPaths).toEqual(['tests/integration/fla-b1-unregistered-spike.test.ts']);
+  });
+
+  it('does not let the B1 registration absorb still-future V1.5-D test paths', () => {
+    const result = draft([change('tests/integration/fla-d-corpus-extension.test.ts', 'A')]);
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(['tests/integration/fla-d-corpus-extension.test.ts']);
   });
 
   it.each(['D', 'R', 'C'])('routes %s structural changes to focused safety checks', (status) => {

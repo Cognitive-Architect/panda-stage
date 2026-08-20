@@ -15,6 +15,7 @@ import {
   type FlaCompatibilityStatus,
   type FlaImportErrorCode,
 } from '../../shared/fla-import-api';
+import { deriveStructureSummary } from './derive-fla-structure-summary';
 
 /**
  * The sole adapter boundary for lifeart/fla-viewer.
@@ -461,5 +462,6 @@ export async function adaptFlaDocument(
       placedInstanceCount,
       libraryOnlyMediaCount: media.length - referencedItems.size,
     },
+    structure: deriveStructureSummary(document),
   };
 }

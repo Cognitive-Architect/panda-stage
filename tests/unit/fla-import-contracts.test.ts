@@ -242,6 +242,7 @@ describe('FLA import contracts and parser boundary', () => {
       /from\s+['"]\.\/parser-core\//u.test(readFileSync(filePath, 'utf8')),
     );
     expect(parserImportOwners.map((filePath) => path.relative(sourceRoot, filePath))).toEqual([
+      'derive-fla-structure-summary.ts',
       'fla-viewer-adapter.ts',
     ]);
 
@@ -253,12 +254,18 @@ describe('FLA import contracts and parser boundary', () => {
     ]);
 
     const nonAdapterSources = outsideParserCore.filter(
-      (filePath) => !filePath.endsWith(`${path.sep}fla-viewer-adapter.ts`),
+      (filePath) =>
+        !filePath.endsWith(`${path.sep}fla-viewer-adapter.ts`) &&
+        !filePath.endsWith(`${path.sep}derive-fla-structure-summary.ts`),
     );
     for (const filePath of nonAdapterSources) {
       // Slice 2 may create a short-lived Blob/object URL from already-owned
       // PNG bytes for the review thumbnail. That is a renderer preview
       // resource, not an upstream parser object or type.
+      // `derive-fla-structure-summary.ts` is the V1.5-B1 read-only counts
+      // derivation; it consumes FLADocument only as a TypeScript type to walk
+      // its own property fields and emits only Panda-owned numbers (no
+      // FLADocument value crosses this module's boundary).
       const forbidden = filePath.endsWith(`${path.sep}FlaCompatibilityReviewSession.tsx`)
         ? /\b(?:FLADocument|BitmapItem|HTMLImageElement|JSZip)\b/u
         : /\b(?:FLADocument|BitmapItem|HTMLImageElement|JSZip|Blob)\b/u;
