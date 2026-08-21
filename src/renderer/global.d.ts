@@ -81,6 +81,16 @@ import type {
   FlaAssetCommitRequest,
   FlaAssetCommitResponse,
 } from '../shared/fla-asset-commit-api';
+import type {
+  FlaRenderableTargetCatalogRequest,
+  FlaRenderableTargetCatalogResponse,
+  FlaStaticSnapshotCancelRequest,
+  FlaStaticSnapshotCancelResponse,
+  FlaStaticSnapshotCommitRequest,
+  FlaStaticSnapshotCommitResponse,
+  FlaStaticSnapshotPreviewRequest,
+  FlaStaticSnapshotPreviewResponse,
+} from '../shared/fla-static-snapshot-api';
 
 declare global {
   interface Window {
@@ -187,6 +197,18 @@ declare global {
         commitSelected: (
           request: FlaAssetCommitRequest,
         ) => Promise<FlaAssetCommitResponse>;
+        staticSnapshotCatalog: (
+          request: FlaRenderableTargetCatalogRequest,
+        ) => Promise<FlaRenderableTargetCatalogResponse>;
+        staticSnapshotPreview: (
+          request: FlaStaticSnapshotPreviewRequest,
+        ) => Promise<FlaStaticSnapshotPreviewResponse>;
+        staticSnapshotCommit: (
+          request: FlaStaticSnapshotCommitRequest,
+        ) => Promise<FlaStaticSnapshotCommitResponse>;
+        staticSnapshotCancel: (
+          request: FlaStaticSnapshotCancelRequest,
+        ) => Promise<FlaStaticSnapshotCancelResponse>;
       };
     };
     pandaStageFlaParser: {

@@ -108,6 +108,7 @@ export const FlaRenderableTargetCatalogEntrySchema = z
 
 export const FlaRenderableTargetCatalogSchema = z
   .object({
+    ok: z.literal(true),
     sessionId: z.uuid(),
     entries: z
       .array(FlaRenderableTargetCatalogEntrySchema)
@@ -117,6 +118,37 @@ export const FlaRenderableTargetCatalogSchema = z
     summary: z.string().trim().min(1).max(1_000),
   })
   .strict();
+
+// Renderer asks for the catalog by session id; Main returns either the
+// catalog (success) or a typed failure. Kept minimal on purpose.
+export const FlaRenderableTargetCatalogRequestSchema = z
+  .object({
+    format: z.literal('fla-static-snapshot-catalog'),
+    version: z.literal(1),
+    sessionId: z.uuid(),
+  })
+  .strict();
+
+export const FlaRenderableTargetCatalogResponseSchema = z.union([
+  FlaRenderableTargetCatalogSchema,
+  z
+    .object({
+      ok: z.literal(false),
+      error: z
+        .object({
+          code: z.enum(['SESSION_NOT_FOUND', 'INVALID_REQUEST', 'UNKNOWN_ERROR']),
+          message: z.string().trim().min(1).max(1_000),
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+export type FlaRenderableTargetCatalogRequest = z.infer<
+  typeof FlaRenderableTargetCatalogRequestSchema
+>;
+export type FlaRenderableTargetCatalogResponse = z.infer<
+  typeof FlaRenderableTargetCatalogResponseSchema
+>;
 
 // ---- R1-B preview request (renderer -> main -> sandboxed browser window) ----
 export const FlaStaticSnapshotPreviewRequestSchema = z

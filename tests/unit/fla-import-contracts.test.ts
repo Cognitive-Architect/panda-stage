@@ -262,11 +262,18 @@ describe('FLA import contracts and parser boundary', () => {
       // Slice 2 may create a short-lived Blob/object URL from already-owned
       // PNG bytes for the review thumbnail. That is a renderer preview
       // resource, not an upstream parser object or type.
+      // R1 static snapshot preview (FlaStaticSnapshotReview.tsx) likewise
+      // builds a short-lived Blob/object URL from already-owned PNG bytes
+      // returned by the sandboxed renderer; it is a renderer preview
+      // resource, not an upstream parser object or type.
       // `derive-fla-structure-summary.ts` is the V1.5-B1 read-only counts
       // derivation; it consumes FLADocument only as a TypeScript type to walk
       // its own property fields and emits only Panda-owned numbers (no
       // FLADocument value crosses this module's boundary).
-      const forbidden = filePath.endsWith(`${path.sep}FlaCompatibilityReviewSession.tsx`)
+      const previewResource =
+        filePath.endsWith(`${path.sep}FlaCompatibilityReviewSession.tsx`) ||
+        filePath.endsWith(`${path.sep}FlaStaticSnapshotReview.tsx`);
+      const forbidden = previewResource
         ? /\b(?:FLADocument|BitmapItem|HTMLImageElement|JSZip)\b/u
         : /\b(?:FLADocument|BitmapItem|HTMLImageElement|JSZip|Blob)\b/u;
       expect(readFileSync(filePath, 'utf8')).not.toMatch(

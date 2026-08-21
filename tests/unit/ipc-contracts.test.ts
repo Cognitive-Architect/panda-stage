@@ -74,6 +74,15 @@ describe('IPC channel registry', () => {
       'fla:worker-progress',
       'fla:worker-result',
       'fla:worker-error',
+      'fla:snapshot-catalog',
+      'fla:snapshot-preview',
+      'fla:snapshot-commit',
+      'fla:snapshot-cancel',
+      'fla:snapshot-renderer-ready',
+      'fla:snapshot-render',
+      'fla:snapshot-render-cancel',
+      'fla:snapshot-render-result',
+      'fla:snapshot-render-error',
     ]);
   });
 });

@@ -93,6 +93,7 @@ describe('R1-A render target contract', () => {
 describe('R1-A renderable target catalog', () => {
   it('accepts a valid catalog', () => {
     const catalog = {
+      ok: true as const,
       sessionId: validUuid,
       entries: [
         { target: validTarget, previewSupported: true },
@@ -116,6 +117,7 @@ describe('R1-A renderable target catalog', () => {
 
   it('accepts an unsupported entry WITH a reason (R1-F: do not silently support)', () => {
     const catalog = {
+      ok: true as const,
       sessionId: validUuid,
       entries: [
         { target: validTarget, previewSupported: false, unsupportedReason: 'shape tween not implemented' },

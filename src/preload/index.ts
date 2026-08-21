@@ -105,6 +105,20 @@ import {
   FlaAssetCommitResponseSchema,
   type FlaAssetCommitRequest,
 } from '../shared/fla-asset-commit-api';
+import {
+  FlaRenderableTargetCatalogRequestSchema,
+  FlaRenderableTargetCatalogResponseSchema,
+  FlaStaticSnapshotCancelRequestSchema,
+  FlaStaticSnapshotCancelResponseSchema,
+  FlaStaticSnapshotCommitRequestSchema,
+  FlaStaticSnapshotCommitResponseSchema,
+  FlaStaticSnapshotPreviewRequestSchema,
+  FlaStaticSnapshotPreviewResponseSchema,
+  type FlaRenderableTargetCatalogRequest,
+  type FlaStaticSnapshotCancelRequest,
+  type FlaStaticSnapshotCommitRequest,
+  type FlaStaticSnapshotPreviewRequest,
+} from '../shared/fla-static-snapshot-api';
 
 type Unsubscribe = () => void;
 
@@ -431,6 +445,38 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaAssetCommitResponseSchema.parse(response);
+    },
+    staticSnapshotCatalog: async (rawRequest: FlaRenderableTargetCatalogRequest) => {
+      const request = FlaRenderableTargetCatalogRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_SNAPSHOT_CATALOG,
+        request,
+      );
+      return FlaRenderableTargetCatalogResponseSchema.parse(response);
+    },
+    staticSnapshotPreview: async (rawRequest: FlaStaticSnapshotPreviewRequest) => {
+      const request = FlaStaticSnapshotPreviewRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_SNAPSHOT_PREVIEW,
+        request,
+      );
+      return FlaStaticSnapshotPreviewResponseSchema.parse(response);
+    },
+    staticSnapshotCommit: async (rawRequest: FlaStaticSnapshotCommitRequest) => {
+      const request = FlaStaticSnapshotCommitRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_SNAPSHOT_COMMIT,
+        request,
+      );
+      return FlaStaticSnapshotCommitResponseSchema.parse(response);
+    },
+    staticSnapshotCancel: async (rawRequest: FlaStaticSnapshotCancelRequest) => {
+      const request = FlaStaticSnapshotCancelRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_SNAPSHOT_CANCEL,
+        request,
+      );
+      return FlaStaticSnapshotCancelResponseSchema.parse(response);
     },
   }),
 });

@@ -51,6 +51,10 @@ import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer
 import { FlaImportService } from './services/FlaImportService';
 import { registerFlaImportIpcHandlers } from './ipc/register-fla-import-ipc-handlers';
 import { FlaAssetCommitService } from './services/FlaAssetCommitService';
+import { FlaStaticSnapshotRenderSession } from './services/fla-static-snapshot-render-session';
+import { FlaStaticSnapshotWindowManager } from './services/fla-static-snapshot-window-manager';
+import { FlaStaticSnapshotCommitService } from './services/FlaStaticSnapshotCommitService';
+import { registerFlaStaticSnapshotIpcHandlers } from './ipc/register-fla-static-snapshot-ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -66,6 +70,9 @@ let removeFlaImportIpcHandlers: (() => void) | null = null;
 let autosaveService: AutosaveService | null = null;
 let projectService: ProjectService | null = null;
 let flaAssetCommitService: FlaAssetCommitService | null = null;
+let flaSnapshotRenderSession: FlaStaticSnapshotRenderSession | null = null;
+let flaSnapshotCommitService: FlaStaticSnapshotCommitService | null = null;
+let removeFlaSnapshotIpcHandlers: (() => void) | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
 let rendererCloseSynchronizer: RendererCloseSynchronizer | null = null;
@@ -363,6 +370,37 @@ async function initialize(): Promise<void> {
     flaAssetCommitService,
     selectFlaSource,
   });
+
+  // V2-R1 Static Snapshot (Issue #287).  The render session reuses the
+  // existing FLA inspection session to obtain source bytes (same
+  // sessionId), and delegates rasterization to a sandboxed window.
+  const flaSnapshotWindowManager = new FlaStaticSnapshotWindowManager();
+  const flaSnapshotSession = new FlaStaticSnapshotRenderSession({
+    rasterizer: flaSnapshotWindowManager,
+    sourceLookup: {
+      getSource: (sessionId) => {
+        const session = flaImportService.getSession(sessionId);
+        if (!session) return null;
+        const { sourceBytes } = session;
+        const { basename, sha256 } = session.ir.source;
+        if (!sourceBytes || !basename || !sha256) return null;
+        return { bytes: sourceBytes, basename, sha256 };
+      },
+    },
+  });
+  flaSnapshotRenderSession = flaSnapshotSession;
+  flaSnapshotCommitService = new FlaStaticSnapshotCommitService({
+    projectService,
+    getCurrentProjectSnapshot: (projectRoot) =>
+      autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    previewStore: flaSnapshotSession,
+  });
+  removeFlaSnapshotIpcHandlers = registerFlaStaticSnapshotIpcHandlers({
+    getMainWindow: () => mainWindow,
+    renderSession: flaSnapshotSession,
+    commitService: flaSnapshotCommitService,
+    windowManager: flaSnapshotWindowManager,
+  });
   unsavedCloseController = new UnsavedCloseController({
     getDirtyProject: () =>
       autosaveService?.getDirtyProjectSnapshot() ?? null,
@@ -505,6 +543,11 @@ app.on('will-quit', () => {
   removeAssetLibraryIpcHandlers = null;
   removeFlaImportIpcHandlers?.();
   removeFlaImportIpcHandlers = null;
+  removeFlaSnapshotIpcHandlers?.();
+  removeFlaSnapshotIpcHandlers = null;
+  flaSnapshotRenderSession?.close();
+  flaSnapshotRenderSession = null;
+  flaSnapshotCommitService = null;
   removeNativeCloseSyncListener?.();
   removeNativeCloseSyncListener = null;
   rendererCloseSynchronizer?.dispose();

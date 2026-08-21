@@ -16,6 +16,7 @@ import type {
   FlaStructuralSummary,
 } from '../../shared/fla-import-api';
 import type { FlaAssetCommitResponse } from '../../shared/fla-asset-commit-api';
+import type { FlaStaticSnapshotCommitResponse } from '../../shared/fla-static-snapshot-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import {
   compatibilityCounts,
@@ -31,6 +32,7 @@ import {
   subscribeToFlaInspection,
   type FlaInspectionOperation,
 } from './fla-inspection-lifecycle';
+import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
 
 interface FlaCompatibilityReviewSessionProps {
   inspection: FlaInspectionOperation;
@@ -38,6 +40,7 @@ interface FlaCompatibilityReviewSessionProps {
   onClose: () => void;
   onIntent?: (intent: FlaRasterSelectionIntent) => void;
   onCommit?: (response: FlaAssetCommitResponse) => void;
+  onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
 }
 
 type SessionPhase =
@@ -54,6 +57,7 @@ export function FlaCompatibilityReviewSession({
   onClose,
   onIntent,
   onCommit,
+  onSnapshotImported,
 }: FlaCompatibilityReviewSessionProps): React.JSX.Element {
   const [phase, setPhase] = useState<SessionPhase>('inspecting');
   const [response, setResponse] = useState<FlaInspectionResponse | null>(null);
@@ -458,6 +462,13 @@ export function FlaCompatibilityReviewSession({
             >
               {flaZeroRasterUserMessage(response, ir.structure) ??
                 '文件已成功读取，但没有找到可直接导入的位图素材。'}
+              <FlaStaticSnapshotReview
+                sessionId={sessionId}
+                source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+                snapshot={snapshot}
+                onImported={(response) => onSnapshotImported?.(response)}
+                onClose={() => onClose()}
+              />
             </div>
           ) : (
             <div

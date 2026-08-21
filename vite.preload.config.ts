@@ -2,8 +2,13 @@ import { defineConfig } from 'vite';
 import path from 'node:path';
 
 const entryName = process.env.PRELOAD_ENTRY;
-if (entryName !== 'index' && entryName !== 'hidden' && entryName !== 'fla-parser') {
-  throw new Error('PRELOAD_ENTRY must be either "index", "hidden", or "fla-parser".');
+if (
+  entryName !== 'index' &&
+  entryName !== 'hidden' &&
+  entryName !== 'fla-parser' &&
+  entryName !== 'fla-static-snapshot'
+) {
+  throw new Error('PRELOAD_ENTRY must be "index", "hidden", "fla-parser", or "fla-static-snapshot".');
 }
 
 export default defineConfig({

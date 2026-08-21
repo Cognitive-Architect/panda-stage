@@ -52,7 +52,10 @@ function operationErrorResponse(error: unknown): FlaInspectionResponse {
 
 export class FlaImportService {
   private readonly parserWindowManager: FlaParserWindowManager;
-  private readonly sessions = new Map<string, FlaInspectionResponse & { ok: true }>();
+  private readonly sessions = new Map<
+    string,
+    (FlaInspectionResponse & { ok: true }) & { sourceBytes: Uint8Array }
+  >();
   private active: ActiveInspection | null = null;
 
   constructor(parserWindowManager = new FlaParserWindowManager()) {
@@ -98,7 +101,7 @@ export class FlaImportService {
         ir: validated,
         diagnostics: flaZeroRasterDiagnostic(validated),
       };
-      this.sessions.set(sessionId, response);
+      this.sessions.set(sessionId, { ...response, sourceBytes: preflight.bytes });
       while (this.sessions.size > MAX_SESSIONS) {
         const oldest = this.sessions.keys().next().value;
         if (!oldest) break;
@@ -139,6 +142,7 @@ export class FlaImportService {
     return {
       sessionId,
       ir: session.ir as AnimationImportIR,
+      sourceBytes: session.sourceBytes,
     };
   }
 

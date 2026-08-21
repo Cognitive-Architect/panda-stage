@@ -46,6 +46,19 @@ export const IPC_CHANNELS = Object.freeze({
   FLA_WORKER_PROGRESS: 'fla:worker-progress',
   FLA_WORKER_RESULT: 'fla:worker-result',
   FLA_WORKER_ERROR: 'fla:worker-error',
+  // V2-R1 Static Snapshot (Issue #287).  Preview/commit/cancel reuse the
+  // same trusted-sender boundary as the V1/V1.5 FLA IPC.  The renderer only
+  // ever sends serialized R1 contract objects; the sandboxed rasterizer
+  // never sees the FLA source bytes, only the Main-built SVG.
+  FLA_SNAPSHOT_CATALOG: 'fla:snapshot-catalog',
+  FLA_SNAPSHOT_PREVIEW: 'fla:snapshot-preview',
+  FLA_SNAPSHOT_COMMIT: 'fla:snapshot-commit',
+  FLA_SNAPSHOT_CANCEL: 'fla:snapshot-cancel',
+  FLA_SNAPSHOT_RENDERER_READY: 'fla:snapshot-renderer-ready',
+  FLA_SNAPSHOT_RENDER: 'fla:snapshot-render',
+  FLA_SNAPSHOT_RENDER_CANCEL: 'fla:snapshot-render-cancel',
+  FLA_SNAPSHOT_RENDER_RESULT: 'fla:snapshot-render-result',
+  FLA_SNAPSHOT_RENDER_ERROR: 'fla:snapshot-render-error',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
