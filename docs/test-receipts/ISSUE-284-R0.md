@@ -14,7 +14,7 @@ R0 backfill receipt commit SHA         6cb44ea  (docs(fla): backfill R0 stage-fi
 PR #285 opened (Draft)                 ba6a6dc  (docs(fla): backfill PR #285 + R0 comment URL into receipt)
 R0 RESULT comment posted on #284       <issuecomment-5365565441>
 R0 acceptance review found gaps       —
-R0 corrective closeout (this issue)    <see "Corrective closeout" below; new commit on agent/fla-v2-r>
+R0 corrective closeout (this issue)    713a3db  (fix(fla): close V2-R0 isolation and evidence gaps (#286))
 ```
 
 The corrected R0 result is the one that is acceptance-grade.
@@ -43,7 +43,7 @@ only.
 baseline_main: 3c47a4ee8af07e834338b223fcb3260a4c6dddbc
 integration_pr: https://github.com/Cognitive-Architect/panda-stage/pull/285
 stage_final_commit: 1df6a678627a6a61090d432904c54b0c3551855a
-corrected_commit: <filled when corrective commit lands; see "next_gate">
+corrected_commit: 713a3dbc422cc9667651a025b5778dfb6bde5aa2
 R0_conclusion: R0_RENDER_FEASIBLE_WITH_LIMITS
 
 renderer_path:
@@ -246,8 +246,8 @@ V2-R0 CORRECTIVE RESULT
 
 issue: #286
 shared_pr: #285
-corrective_commit: <filled when commit lands; see PR #285 head SHA>
-corrected_pr_head: <same SHA after push>
+corrective_commit: 713a3dbc422cc9667651a025b5778dfb6bde5aa2
+corrected_pr_head: 713a3dbc422cc9667651a025b5778dfb6bde5aa2 (after push)
 
 sandbox: true
 contextIsolation: true
