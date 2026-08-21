@@ -506,8 +506,8 @@ function commandsToSvgPath(commands: DecodedEdges['commands']): string {
 }
 
 function parseFillStyle(block: string): { type: string; index: number; color: string; alpha: number } {
-  const type = (block.match(/<FillStyle\b[^>]*\btype="([^"]*)"/) ?? [, 'solid'])[1] as string;
-  const idx = (block.match(/<FillStyle\b[^>]*\bindex="([^"]*)"/) ?? [, '0'])[1];
+  const type = (block.match(/<FillStyle\b[^>]*\btype="([^"]*)"/) ?? ['', 'solid'])[1] as string;
+  const idx = (block.match(/<FillStyle\b[^>]*\bindex="([^"]*)"/) ?? ['', '0'])[1];
   const solidMatch = block.match(/<SolidColor\b[^>]*\bcolor="([^"]*)"(?:\s+[^>]*\balpha="([^"]*)")?/);
   if (solidMatch) {
     return { type, index: Number(idx), color: solidMatch[1] as string, alpha: solidMatch[2] ? Number(solidMatch[2]) : 1 };
@@ -560,8 +560,8 @@ function parseShapeAt(block: string): ParsedShape {
   if (edgesBlock) {
     const edgeBlocks = extractSelfClosingTags(edgesBlock, 'Edge');
     for (const eb of edgeBlocks) {
-      const cubics = ((eb.match(/\bcubics="([^"]*)"/) ?? [, ''])[1]) as string;
-      const edges = ((eb.match(/\bedges="([^"]*)"/) ?? [, ''])[1]) as string;
+      const cubics = ((eb.match(/\bcubics="([^"]*)"/) ?? ['', ''])[1]) as string;
+      const edges = ((eb.match(/\bedges="([^"]*)"/) ?? ['', ''])[1]) as string;
       result.edgeStrings.push({ cubics, edges });
     }
   }
@@ -601,7 +601,7 @@ function uuid(): string {
 }
 
 function findGraphicSymbolShape(libraryXml: string): { shapeBlock: string; matrix: Matrix2D | null; symbolName: string; graphicFrameCount: number } | null {
-  const symbolName = (libraryXml.match(/<DOMSymbolItem\b[^>]*\bname="([^"]*)"/) ?? [, 'unnamed-graphic'])[1] as string;
+  const symbolName = (libraryXml.match(/<DOMSymbolItem\b[^>]*\bname="([^"]*)"/) ?? ['', 'unnamed-graphic'])[1] as string;
   const timelines = extractBalancedBlocks(libraryXml, 'DOMTimeline');
   for (const tl of timelines) {
     const layers = extractBalancedBlocks(tl, 'DOMLayer');
@@ -706,9 +706,8 @@ export async function buildSvgForRenderTarget(bytes: Uint8Array, target: FlaRend
   const stage = stageSize(docXml);
 
   // 1. Resolve the target to a DOMShape block.
-  let shapeBlock: string | null = null;
-  let groupMatrix: Matrix2D | null = null;
-  let frameCount = target.frameCount;
+  let shapeBlock: string;
+  let groupMatrix: Matrix2D | null;
   if (target.kind === 'graphic-symbol') {
     const lib = libraryXmlEntries.find(l => l.name.endsWith(`/${target.sourceLibraryItemName ?? ''}.xml`) || l.name === `LIBRARY/${target.sourceLibraryItemName ?? ''}.xml`);
     if (!lib) {
@@ -720,11 +719,10 @@ export async function buildSvgForRenderTarget(bytes: Uint8Array, target: FlaRend
     }
     shapeBlock = found.shapeBlock;
     groupMatrix = found.matrix;
-    frameCount = found.graphicFrameCount;
   } else if (target.kind === 'scene' || target.kind === 'timeline') {
     const idx = target.selectedFrameIndex ?? 0;
-    if (idx >= frameCount) {
-      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: `selectedFrameIndex ${idx} >= frameCount ${frameCount}` };
+    if (idx >= target.frameCount) {
+      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: `selectedFrameIndex ${idx} >= frameCount ${target.frameCount}` };
     }
     const found = findSceneTimelineFrameShape(docXml, idx);
     if (!found) {
@@ -732,7 +730,6 @@ export async function buildSvgForRenderTarget(bytes: Uint8Array, target: FlaRend
     }
     shapeBlock = found.shapeBlock;
     groupMatrix = found.matrix;
-    frameCount = found.frameCount;
   } else {
     return { ok: false, code: 'TARGET_UNSUPPORTED', message: `Unknown target kind: ${target.kind as string}` };
   }
@@ -745,15 +742,12 @@ export async function buildSvgForRenderTarget(bytes: Uint8Array, target: FlaRend
 
   // 3. Decode all edges, preferring cubics.
   const allCommands: DecodedEdges['commands'] = [];
-  let usedCubic = 0;
-  let usedEdges = 0;
   for (const { cubics, edges } of shape.edgeStrings) {
     const src = cubics || edges;
     if (!src) continue;
     if (src.length > MAX_EDGE_CHARS) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: `Edge attribute exceeds ${MAX_EDGE_CHARS} chars` };
     }
-    if (cubics) usedCubic++; else usedEdges++;
     const { commands } = decodeEdgesWithStyleChanges(src);
     for (const c of commands) allCommands.push(c);
   }
