@@ -194,13 +194,17 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
 
   close(): void {
     this.disposed = true;
-    // Settle any startup owner whose ensureWindow()/READY wait is pending.
-    if (this.owner) {
-      const { rejectStartup } = this.owner;
-      this.owner = null;
-      rejectStartup(new Error('Snapshot rasterizer closed'));
-    }
-    this.settlePendingError(new Error('Snapshot rasterizer closed'));
+    // Defer settlement to a microtask so a caller that attaches its
+    // rejection listener synchronously after close() still observes it
+    // (avoids a spurious unhandled rejection in async test clients).
+    queueMicrotask(() => {
+      if (this.owner) {
+        const { rejectStartup } = this.owner;
+        this.owner = null;
+        rejectStartup(new Error('Snapshot rasterizer closed'));
+      }
+      this.settlePendingError(new Error('Snapshot rasterizer closed'));
+    });
     this.destroyWindow();
   }
 

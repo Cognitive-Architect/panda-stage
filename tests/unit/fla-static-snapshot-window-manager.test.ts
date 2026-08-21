@@ -259,25 +259,46 @@ describe('FlaStaticSnapshotWindowManager — crash / teardown cleanup (Correctiv
   it('clears all pending jobs on close without waiting for the wall clock', async () => {
     const mgr = manager();
     const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const rejectError = promise.then(
+      () => null,
+      (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+    );
     latestWindow();
     mgr.close();
-    await expect(promise).rejects.toThrow(/closed/i);
+    const error = await rejectError;
+    expect(error).not.toBeNull();
+    expect((error as Error).message).toMatch(/closed/i);
   });
 });
 
 describe('FlaStaticSnapshotWindowManager — cold-start cancellation (Issue #290)', () => {
   afterEach(reset);
 
+  // Eagerly attach a rejection handler so a synchronous startup rejection
+  // (cancel/close during the READY handshake) is never reported as an
+  // unhandled rejection before the test's assertion attaches its listener.
+  // `rejectError` resolves to the rejection Error (or null on success).
+  function rasterizeTracked(mgr: FlaStaticSnapshotWindowManager) {
+    const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const rejectError = promise.then(
+      () => null,
+      (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+    );
+    return { promise, rejectError };
+  }
+
   it('cancel-before-READY settles A, destroys its window, and never sends raster IPC', async () => {
     const mgr = manager();
-    const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const { rejectError } = rasterizeTracked(mgr);
     const window = latestWindow();
     // A is still waiting for READY; do NOT call markReady.
     expect(window.isDestroyed()).toBe(false);
     expect(mgr.cancel(REQUEST_A)).toBe(true);
     // Window is torn down and the startup promise rejects promptly.
     expect(window.isDestroyed()).toBe(true);
-    await expect(promise).rejects.toThrow(/cancelled/i);
+    const error = await rejectError;
+    expect(error).not.toBeNull();
+    expect((error as Error).message).toMatch(/cancelled/i);
     // No raster IPC was ever dispatched for the cancelled startup.
     expect(window.webContents.send).not.toHaveBeenCalled();
     mgr.close();
@@ -286,6 +307,10 @@ describe('FlaStaticSnapshotWindowManager — cold-start cancellation (Issue #290
   it('supersede-before-READY settles A and lets only B proceed to raster IPC', async () => {
     const mgr = manager();
     const promiseA = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const rejectErrorA = promiseA.then(
+      () => null,
+      (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+    );
     const windowA = latestWindow();
     // B arrives while A is still in the READY handshake.
     const promiseB = mgr.rasterize({ requestId: REQUEST_B, svg: SVG, width: 8, height: 8, pixelCount: 64 });
@@ -293,7 +318,9 @@ describe('FlaStaticSnapshotWindowManager — cold-start cancellation (Issue #290
     // A's startup window is destroyed/retired; no unresolved startup promise.
     expect(windowA.isDestroyed()).toBe(true);
     expect(windowB).not.toBe(windowA);
-    await expect(promiseA).rejects.toThrow(/superseded/i);
+    const errorA = await rejectErrorA;
+    expect(errorA).not.toBeNull();
+    expect((errorA as Error).message).toMatch(/superseded/i);
     // Only B proceeds to READY + raster IPC.
     makeReady(windowB, mgr);
     await flush();
@@ -313,16 +340,18 @@ describe('FlaStaticSnapshotWindowManager — cold-start cancellation (Issue #290
 
   it('close-before-READY settles the startup request without a hung handshake', async () => {
     const mgr = manager();
-    const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const { rejectError } = rasterizeTracked(mgr);
     latestWindow();
     // No markReady; close() during startup must settle the request.
     mgr.close();
-    await expect(promise).rejects.toThrow(/closed/i);
+    const error = await rejectError;
+    expect(error).not.toBeNull();
+    expect((error as Error).message).toMatch(/closed/i);
   });
 
   it('a late RESULT after cancel-before-READY is ignored', async () => {
     const mgr = manager();
-    const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const { rejectError } = rasterizeTracked(mgr);
     const window = latestWindow();
     expect(mgr.cancel(REQUEST_A)).toBe(true);
     // A stale renderer RESULT must not resolve the rejected startup promise.
@@ -332,7 +361,9 @@ describe('FlaStaticSnapshotWindowManager — cold-start cancellation (Issue #290
       width: 8,
       height: 8,
     });
-    await expect(promise).rejects.toThrow(/cancelled/i);
+    const error = await rejectError;
+    expect(error).not.toBeNull();
+    expect((error as Error).message).toMatch(/cancelled/i);
     mgr.close();
   });
 });
