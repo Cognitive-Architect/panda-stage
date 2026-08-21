@@ -43,7 +43,6 @@ export const FLA_STATIC_SNAPSHOT_LIMITS = {
   maxSnapshotBytes: FLA_IMPORT_LIMITS.maxSingleEntryBytes, // 64 MiB
   previewWallTimeMs: 30_000,
   firstPreviewReservedMs: 5_000, // cold-spawn reservation; R0 measured ~28s
-  cancellationTimeoutMs: 2_000,
   maxOutputWidth: FLA_IMPORT_LIMITS.maxImageWidth, // 4,096
   maxOutputHeight: FLA_IMPORT_LIMITS.maxImageHeight, // 4,096
   maxOutputPixels: FLA_IMPORT_LIMITS.maxImagePixels, // 16,777,216

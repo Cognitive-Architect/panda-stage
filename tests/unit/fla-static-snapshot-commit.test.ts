@@ -96,6 +96,7 @@ function target(userLabel = 'Snapshot'): FlaRenderTarget {
 function confirmedPreview(png: Uint8Array, sha256: string, tgt = target()): FlaConfirmedSnapshotPreview {
   return {
     requestId: PREVIEW_ID,
+    sessionId: SESSION_ID,
     pngBytes: png,
     sha256,
     width: 8,

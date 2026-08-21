@@ -107,7 +107,10 @@ export function FlaStaticSnapshotReview({
     };
   }, [previewUrl]);
 
-  // A target/frame change invalidates any prior preview (R1-D stale guard).
+  // A target/frame change invalidates any prior preview. The UI must
+  // return to a usable selecting state even while a preview is in flight
+  // (Corrective A), and the previous selection must be invalidated in Main
+  // so it can never be committed (Corrective B).
   const selecting = selectedEntry?.target;
   useEffect(() => {
     setPreview(null);
@@ -116,8 +119,16 @@ export function FlaStaticSnapshotReview({
       return null;
     });
     previewRequestIdRef.current = null;
-    if (phase === 'preview-ready' || phase === 'committing') setPhase('selecting');
-  }, [selectedTargetId, selectedFrameIndex]);
+    // Corrective A: never get stuck in `previewing` on a supersede.
+    setPhase((current) => (current === 'previewing' ? 'selecting' : current === 'committing' ? 'selecting' : current));
+    // Corrective B: tell Main to invalidate the prior preview(s) for this
+    // session so a late/settled result can no longer be committed.
+    void flaStaticSnapshotClient.cancel({
+      format: 'fla-static-snapshot-cancel',
+      version: 1,
+      sessionId,
+    });
+  }, [selectedTargetId, selectedFrameIndex, sessionId]);
 
   if (!selectedEntry || !selecting) {
     return (

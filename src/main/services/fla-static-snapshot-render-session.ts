@@ -63,6 +63,8 @@ export interface FlaStaticSnapshotRasterizeOutput {
 
 export interface FlaStaticSnapshotRasterizer {
   rasterize(input: FlaStaticSnapshotRasterizeInput): Promise<FlaStaticSnapshotRasterizeOutput>;
+  /** Bounded per-request cancellation: terminate/reject pending raster work. */
+  cancel(requestId: string): boolean;
   close(): void;
 }
 
@@ -78,6 +80,7 @@ export interface FlaStaticSnapshotSourceLookup {
 
 export interface FlaConfirmedSnapshotPreview {
   requestId: string;
+  sessionId: string;
   pngBytes: Uint8Array;
   sha256: string;
   width: number;
@@ -196,6 +199,8 @@ export class FlaStaticSnapshotRenderSession {
     };
     active.wallTimer = setTimeout(() => {
       if (active.settled) return;
+      // C: stop the underlying rasterizer work when the wall clock fires.
+      this.rasterizer?.cancel(requestId);
       this.settleActive(
         active,
         this.previewError('RENDER_TIMEOUT', 'Snapshot preview exceeded the wall-clock budget', requestId),
@@ -266,6 +271,10 @@ export class FlaStaticSnapshotRenderSession {
             startedAt,
           } satisfies FlaStaticSnapshotPreviewResponse);
           this.sessionsWithPreview.add(sessionId);
+          // D: retain only the minimum ephemeral data for a safe commit.
+          // Drop any previously accepted preview for this session before
+          // pinning the new one, so retained PNG buffers stay bounded.
+          this.releaseConfirmedForSessionExcept(sessionId, requestId);
           this.latestAccepted.set(sessionId, {
             requestId,
             target,
@@ -276,6 +285,7 @@ export class FlaStaticSnapshotRenderSession {
           });
           this.confirmed.set(requestId, {
             requestId,
+            sessionId,
             pngBytes: raster.pngBytes,
             sha256,
             width: raster.width,
@@ -316,21 +326,65 @@ export class FlaStaticSnapshotRenderSession {
         (request.sessionId && other.sessionId === request.sessionId)
       ) {
         cancelledRequestId = other.requestId;
+        // C: actually terminate the underlying rasterizer work for this
+        // request so a cancelled job does not keep cooking in the hidden
+        // BrowserWindow until its own wall timer fires.
+        this.rasterizer?.cancel(other.requestId);
         this.settleActive(
           other,
           this.previewError('RENDER_CANCELLED', 'Snapshot preview was cancelled', other.requestId),
         );
       }
     }
+    // B/D: a selection change or review close must invalidate any already
+    // completed preview in Main, not only clear React state. Without this,
+    // a settled preview would remain commit-eligible until a newer one
+    // replaced it.
+    if (request.sessionId) {
+      this.invalidateSession(request.sessionId);
+    }
     return FlaStaticSnapshotCancelResponseSchema.parse({
-      accepted: cancelledRequestId !== undefined,
+      accepted: cancelledRequestId !== undefined || Boolean(request.sessionId),
       ...(cancelledRequestId ? { cancelledRequestId } : {}),
     });
+  }
+
+  /**
+   * B/D: drop the latest-accepted identity and every retained confirmed
+   * preview for a session. After this, no preview for the session is
+   * commit-eligible until a new successful preview pins one. Safe to call
+   * on selection change, explicit cancel, or review close.
+   */
+  invalidateSession(sessionId: string): void {
+    this.latestAccepted.delete(sessionId);
+    for (const [requestId, preview] of [...this.confirmed.entries()]) {
+      if (preview.sessionId === sessionId) {
+        this.confirmed.delete(requestId);
+      }
+    }
   }
 
   /** R1-E store: returns the confirmed preview bytes for a commit requestId. */
   getConfirmedPreview(requestId: string): FlaConfirmedSnapshotPreview | null {
     return this.confirmed.get(requestId) ?? null;
+  }
+
+  /** Test/observability helper: count retained confirmed previews per session. */
+  getConfirmedPreviewCount(sessionId: string): number {
+    let count = 0;
+    for (const preview of this.confirmed.values()) {
+      if (preview.sessionId === sessionId) count += 1;
+    }
+    return count;
+  }
+
+  /** Test/observability helper: active (in-flight) request ids, optional session filter. */
+  getActiveRequestIds(sessionId?: string): string[] {
+    const ids: string[] = [];
+    for (const active of this.active.values()) {
+      if (!sessionId || active.sessionId === sessionId) ids.push(active.requestId);
+    }
+    return ids;
   }
 
   releasePreview(requestId: string): void {
@@ -341,6 +395,15 @@ export class FlaStaticSnapshotRenderSession {
   isLatestAcceptedPreview(sessionId: string, requestId: string): boolean {
     const latest = this.latestAccepted.get(sessionId);
     return Boolean(latest && latest.requestId === requestId);
+  }
+
+  /** D: release every confirmed preview for a session except one requestId. */
+  private releaseConfirmedForSessionExcept(sessionId: string, exceptRequestId: string): void {
+    for (const [requestId, preview] of [...this.confirmed.entries()]) {
+      if (preview.sessionId === sessionId && requestId !== exceptRequestId) {
+        this.confirmed.delete(requestId);
+      }
+    }
   }
 
   close(): void {

@@ -30,7 +30,6 @@ import {
 export interface FlaStaticSnapshotWindowTiming {
   readyTimeoutMs: number;
   rasterizeWallTimeMs: number;
-  cancelGraceMs: number;
 }
 
 export interface FlaStaticSnapshotWindowFactory {
@@ -40,7 +39,6 @@ export interface FlaStaticSnapshotWindowFactory {
 const DEFAULT_TIMING: FlaStaticSnapshotWindowTiming = {
   readyTimeoutMs: 10_000,
   rasterizeWallTimeMs: FLA_STATIC_SNAPSHOT_LIMITS.previewWallTimeMs,
-  cancelGraceMs: FLA_STATIC_SNAPSHOT_LIMITS.cancellationTimeoutMs,
 };
 
 const DEFAULT_WINDOW_FACTORY: FlaStaticSnapshotWindowFactory = {
@@ -141,12 +139,21 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     pending.reject(new Error(payload.message ?? 'Snapshot rasterization failed'));
   }
 
+  /** Bounded per-request cancellation (Corrective C). */
+  cancel(requestId: string): boolean {
+    const pending = this.pending.get(requestId);
+    if (!pending) return false;
+    this.pending.delete(requestId);
+    clearTimeout(pending.wallTimer);
+    // Canvas work cannot be cooperatively interrupted, but rejecting the
+    // pending promise stops the caller from awaiting a result that will
+    // never be used; a late RESULT/ERROR for this requestId finds no entry.
+    pending.reject(new Error('Snapshot rasterization cancelled'));
+    return true;
+  }
+
   close(): void {
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.wallTimer);
-      pending.reject(new Error('Snapshot rasterizer closed'));
-    }
-    this.pending.clear();
+    this.settlePendingError(new Error('Snapshot rasterizer closed'));
     this.destroyWindow();
   }
 
@@ -189,7 +196,13 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     );
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event) => event.preventDefault());
-    window.webContents.on('render-process-gone', () => this.destroyWindow());
+    window.webContents.on('render-process-gone', () => {
+      // C: when the snapshot renderer process/window dies, settle all
+      // affected pending raster requests immediately instead of making
+      // callers wait for the full wall-clock timeout.
+      this.settlePendingError(new Error('Snapshot renderer process gone'));
+      this.destroyWindow();
+    });
     window.once('closed', () => {
       if (this.window === window) {
         this.window = null;
@@ -221,6 +234,15 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
 
   private getWindow(): BrowserWindow | null {
     return this.window && !this.window.isDestroyed() ? this.window : null;
+  }
+
+  /** Reject every pending raster request with the given error (crash path). */
+  private settlePendingError(error: Error): void {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.wallTimer);
+      pending.reject(error);
+    }
+    this.pending.clear();
   }
 
   private destroyWindow(): void {

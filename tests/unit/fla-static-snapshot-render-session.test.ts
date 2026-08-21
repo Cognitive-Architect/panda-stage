@@ -125,6 +125,9 @@ function resolvingRasterizer(): FlaStaticSnapshotRasterizer {
     async rasterize() {
       return { pngBytes: FIXED_PNG, width: 8, height: 8, pixelCount: 64 };
     },
+    cancel() {
+      return false;
+    },
     close() {},
   };
 }
@@ -134,6 +137,35 @@ function stallingRasterizer(): FlaStaticSnapshotRasterizer {
     // Never resolves within the test's wall-clock budget.
     rasterize() {
       return new Promise(() => undefined);
+    },
+    cancel() {
+      return false;
+    },
+    close() {},
+  };
+}
+
+// Records cancelled request ids so tests can prove bounded cancellation
+// actually propagated to the rasterizer (Corrective C). When `stall` is
+// true the rasterize promise never resolves, so a request stays in flight
+// until an explicit cancel / latest-request-wins / timeout stops it.
+function trackingRasterizer(stall = false): FlaStaticSnapshotRasterizer & {
+  cancelled: Set<string>;
+  rasterizeCalls: string[];
+} {
+  const cancelled = new Set<string>();
+  const rasterizeCalls: string[] = [];
+  return {
+    cancelled,
+    rasterizeCalls,
+    rasterize(input) {
+      rasterizeCalls.push(input.requestId);
+      if (stall) return new Promise(() => undefined);
+      return Promise.resolve({ pngBytes: FIXED_PNG, width: 8, height: 8, pixelCount: 64 });
+    },
+    cancel(requestId: string) {
+      cancelled.add(requestId);
+      return true;
     },
     close() {},
   };
@@ -211,10 +243,12 @@ describe('FlaStaticSnapshotRenderSession', () => {
         target,
       }),
     );
-    // Both confirmed previews are still retrievable, but only B is "latest".
+    // Only B is "latest", and (Corrective D) the previously accepted
+    // preview A is released so retained PNG buffers stay bounded.
     expect(session.isLatestAcceptedPreview(SESSION_ID, PREVIEW_A)).toBe(false);
     expect(session.isLatestAcceptedPreview(SESSION_ID, PREVIEW_B)).toBe(true);
-    expect(session.getConfirmedPreview(PREVIEW_A)).not.toBeNull();
+    expect(session.getConfirmedPreview(PREVIEW_A)).toBeNull();
+    expect(session.getConfirmedPreview(PREVIEW_B)).not.toBeNull();
     session.close();
   });
 
@@ -303,6 +337,227 @@ describe('FlaStaticSnapshotRenderSession', () => {
     expect(unknown.ok).toBe(false);
     if (unknown.ok) throw new Error('preview must fail');
     expect(unknown.error.code).toBe('SESSION_NOT_FOUND');
+    session.close();
+  });
+
+  it('stops in-flight raster work on a session-scoped cancel (Corrective C + B)', async () => {
+    const fla = await buildMinimalFla();
+    const rasterizer = trackingRasterizer(true);
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer,
+      sourceLookup: sourceLookup(fla),
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    // A is in flight (rasterizer stalls), so it stays registered as active.
+    void session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_A,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    for (let i = 0; i < 50 && !session.getActiveRequestIds(SESSION_ID).includes(PREVIEW_A); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    expect(session.getActiveRequestIds(SESSION_ID)).toContain(PREVIEW_A);
+    // A selection change / supersede issues a session-scoped cancel, which
+    // must cancel the still-in-flight raster work (latest-request-wins).
+    session.cancel(
+      FlaStaticSnapshotCancelRequestSchema.parse({
+        format: 'fla-static-snapshot-cancel',
+        version: 1,
+        sessionId: SESSION_ID,
+      }),
+    );
+    expect(rasterizer.cancelled.has(PREVIEW_A)).toBe(true);
+    expect(session.getActiveRequestIds(SESSION_ID)).not.toContain(PREVIEW_A);
+    session.close();
+  });
+
+  it('propagates an explicit cancel to the rasterizer (Corrective C)', async () => {
+    const fla = await buildMinimalFla();
+    const rasterizer = trackingRasterizer(true);
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer,
+      sourceLookup: sourceLookup(fla),
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    void session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_A,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    for (let i = 0; i < 50 && !session.getActiveRequestIds(SESSION_ID).includes(PREVIEW_A); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    session.cancel(
+      FlaStaticSnapshotCancelRequestSchema.parse({
+        format: 'fla-static-snapshot-cancel',
+        version: 1,
+        requestId: PREVIEW_A,
+      }),
+    );
+    expect(rasterizer.cancelled.has(PREVIEW_A)).toBe(true);
+    session.close();
+  });
+
+  it('invalidates a settled preview in Main on selection change (Corrective B)', async () => {
+    const fla = await buildMinimalFla();
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(fla),
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    const response = await session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_A,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    expect(response.ok).toBe(true);
+    // Selection change sends a session-scoped cancel, which must invalidate
+    // the already-completed preview in Main (not only clear React state).
+    session.cancel(
+      FlaStaticSnapshotCancelRequestSchema.parse({
+        format: 'fla-static-snapshot-cancel',
+        version: 1,
+        sessionId: SESSION_ID,
+      }),
+    );
+    expect(session.isLatestAcceptedPreview(SESSION_ID, PREVIEW_A)).toBe(false);
+    expect(session.getConfirmedPreview(PREVIEW_A)).toBeNull();
+    session.close();
+  });
+
+  it('releases previous confirmed bytes when a new preview is accepted (Corrective D)', async () => {
+    const fla = await buildMinimalFla();
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(fla),
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    await session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_A,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    await session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_B,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    // Only B's bytes remain; A's PNG buffer was released.
+    expect(session.getConfirmedPreview(PREVIEW_A)).toBeNull();
+    expect(session.getConfirmedPreview(PREVIEW_B)).not.toBeNull();
+    session.close();
+  });
+
+  it('clears all confirmed state on session invalidation (Corrective D)', async () => {
+    const fla = await buildMinimalFla();
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(fla),
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    await session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_A,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    session.invalidateSession(SESSION_ID);
+    expect(session.isLatestAcceptedPreview(SESSION_ID, PREVIEW_A)).toBe(false);
+    expect(session.getConfirmedPreview(PREVIEW_A)).toBeNull();
+    session.close();
+  });
+
+  it('keeps retained preview state bounded across repeated preview/cancel cycles (Corrective D)', async () => {
+    const fla = await buildMinimalFla();
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(fla),
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    // 10 cycles of preview -> cancel; retained confirmed map must never
+    // grow beyond a single entry per session.
+    for (let i = 0; i < 10; i += 1) {
+      const requestId = `27000000-0000-4000-8000-0000000000${(i + 10).toString(16).padStart(2, '0')}`;
+      await session.preview(
+        FlaStaticSnapshotPreviewRequestSchema.parse({
+          format: 'fla-static-snapshot-preview',
+          version: 1,
+          requestId,
+          sessionId: SESSION_ID,
+          target,
+        }),
+      );
+      session.cancel(
+        FlaStaticSnapshotCancelRequestSchema.parse({
+          format: 'fla-static-snapshot-cancel',
+          version: 1,
+          sessionId: SESSION_ID,
+        }),
+      );
+    }
+    expect(session.getConfirmedPreviewCount(SESSION_ID)).toBe(0);
+    session.close();
+  });
+
+  it('cancels the underlying rasterizer work when the wall-clock timeout fires (Corrective C)', async () => {
+    const fla = await buildMinimalFla();
+    const rasterizer = trackingRasterizer(true);
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer,
+      sourceLookup: sourceLookup(fla),
+      wallTimeMs: 10,
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    await session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_A,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    // The stalling rasterizer never resolves; the timeout must both settle
+    // the caller and stop the underlying work.
+    expect(rasterizer.cancelled.has(PREVIEW_A)).toBe(true);
     session.close();
   });
 });
