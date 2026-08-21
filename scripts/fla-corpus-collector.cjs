@@ -26,7 +26,7 @@ const { createHash } = require('node:crypto');
 
 const probe = require('../tests/helpers/fla-corpus-probe.cjs');
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 function parseArgs(argv) {
   const out = {};
@@ -159,22 +159,29 @@ async function main() {
     },
     byOrigin: {},
     byEvidenceShape: {
-      offlineStrictPass: 0,
-      offlineStructEmpty: 0,
+      // Issue #281 Part A taxonomy cleanup: the prior `offlineStrictPass` /
+      // `offlineStructEmpty` names were semantically misleading — the first
+      // was "offline probe succeeded AND raster media is present" (NOT all
+      // strict-preflight PASS samples, since 剑.fla also strict-PASSes); the
+      // second was "offline probe succeeded with zero raster media" (NOT
+      // structurally empty, since 剑.fla is structurally non-empty).
+      // Renamed to accurately describe the offline-raster classification.
+      offlineRasterPresent: 0,
+      offlineZeroRaster: 0,
       parserNotVerified: 0,
     },
   };
   for (const r of records) {
     totals.byOrigin[r.evidenceOrigin] = (totals.byOrigin[r.evidenceOrigin] || 0) + 1;
-    // Issue #280 corrective item 3: evidence shape now keys on the offline-probe
-    // status, since `productionParser.status` is hard-pinned to `'not-verified'`
-    // by the offline-only helper.
+    // Issue #281 Part A: evidence shape now keys on offline-raster presence
+    // (not on the preflight PASS/REJECT split), since the previous
+    // `offlineStrictPass` name conflated preflight PASS with raster presence.
     if (r.offlineProbe.status !== 'success') {
       totals.byEvidenceShape.parserNotVerified += 1;
     } else if (r.offlineProbe.raster && r.offlineProbe.raster.bitmapMediaCount > 0) {
-      totals.byEvidenceShape.offlineStrictPass += 1;
+      totals.byEvidenceShape.offlineRasterPresent += 1;
     } else {
-      totals.byEvidenceShape.offlineStructEmpty += 1;
+      totals.byEvidenceShape.offlineZeroRaster += 1;
     }
   }
 

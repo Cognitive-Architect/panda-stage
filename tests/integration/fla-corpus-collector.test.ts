@@ -219,12 +219,13 @@ describe('fla-corpus-collector integration', () => {
     const manifest = JSON.parse(readFileSync(outPath, 'utf8'));
     expect(manifest.totals.samples).toBe(6);
     expect(manifest.totals.byPreflight).toEqual({ pass: 2, reject: 4 });
-    // Issue #280 corrective item 3: byEvidenceShape is keyed on offline-probe
-    // status / offline raster presence, since productionParser is hard-pinned
-    // to 'not-verified' by the offline-only helper.
+    // Issue #280 corrective item 3 + #281 Part A: byEvidenceShape is keyed
+    // on offline-raster presence (renamed from the prior misleading
+    // `offlineStrictPass` / `offlineStructEmpty` names), since productionParser
+    // is hard-pinned to 'not-verified' by the offline-only helper.
     expect(manifest.totals.byEvidenceShape).toEqual({
-      offlineStrictPass: 1,
-      offlineStructEmpty: 1,
+      offlineRasterPresent: 1,
+      offlineZeroRaster: 1,
       parserNotVerified: 4,
     });
     expect(manifest.cReadinessAssessment.plus54FamilySampleCount).toBe(4);

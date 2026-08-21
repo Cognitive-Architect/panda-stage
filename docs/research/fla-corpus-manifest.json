@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "1.1.0",
-  "generatedAt": "2026-08-21T00:05:54.550Z",
+  "schemaVersion": "1.2.0",
+  "generatedAt": "2026-08-21T00:29:52.263Z",
   "command": "node scripts/fla-corpus-collector.cjs --root \"<seed-root>\" --out \"docs/research/fla-corpus-manifest.json\"",
   "totals": {
     "samples": 6,
@@ -12,8 +12,8 @@
       "external-original": 6
     },
     "byEvidenceShape": {
-      "offlineStrictPass": 1,
-      "offlineStructEmpty": 1,
+      "offlineRasterPresent": 1,
+      "offlineZeroRaster": 1,
       "parserNotVerified": 4
     }
   },
