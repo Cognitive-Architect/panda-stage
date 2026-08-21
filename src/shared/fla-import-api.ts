@@ -181,6 +181,32 @@ export const FlaCompatibilityEntryIRSchema = z
   })
   .strict();
 
+/**
+ * V1.5-B1 read-only structural summary.
+ *
+ * Inspection-only metadata derived from the same FLADocument that produced the
+ * raster IR (media/timelines/compatibility).  It carries NO Project schema,
+ * persists to NO Asset metadata, and creates NO Shots/Layers/Timeline objects.
+ *
+ * Counts reuse B0's proven definitions (see tests/helpers/fla-structural-probe.ts
+ * and the B0 structural probe integration test).  Implementation must follow the
+ * production parser source of truth via the adapter; the B0 helper stays in
+ * tests/ evidence scope and is not duplicated as the production architecture.
+ */
+export const FlaStructuralSummaryIRSchema = z
+  .object({
+    sceneCount: z.number().int().nonnegative(),
+    totalTimelineCount: z.number().int().nonnegative(),
+    layerCount: z.number().int().nonnegative(),
+    frameCount: z.number().int().nonnegative(),
+    tweenCount: z.number().int().nonnegative(),
+    symbolCount: z.number().int().nonnegative(),
+    movieClipCount: z.number().int().nonnegative(),
+    graphicCount: z.number().int().nonnegative(),
+    buttonCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const AnimationImportIRSchema = z
   .object({
     source: FlaSourceIRSchema,
@@ -194,6 +220,7 @@ export const AnimationImportIRSchema = z
         libraryOnlyMediaCount: z.number().int().nonnegative(),
       })
       .strict(),
+    structure: FlaStructuralSummaryIRSchema.optional(),
   })
   .strict();
 
@@ -204,18 +231,47 @@ export const FlaImportErrorSchema = z
   })
   .strict();
 
+/**
+ * V1.5-A diagnostic category.  Three user-distinguishable states keep the
+ * fail-closed V1 behavior while making rejections / empty results explainable:
+ * `archive-malformed` (safety-rejected container), `no-importable-raster`
+ * (valid file, nothing raster to import), and `unsupported-or-unknown` (a state
+ * the contract can distinguish but is not a raster import).  A diagnostic is
+ * observability only; it never changes the security decision.
+ */
+export const FlaDiagnosticCategorySchema = z.enum([
+  'archive-malformed',
+  'no-importable-raster',
+  'unsupported-or-unknown',
+]);
+
+export const FlaDiagnosticSchema = z
+  .object({
+    category: FlaDiagnosticCategorySchema,
+    // Beginner-facing copy.  Must never contain developer-only archive
+    // internals such as hashes, offsets, centralDirectorySize, EOCD, the
+    // parser package name, or internal paths.
+    userMessage: z.string().trim().min(1).max(500),
+    // Optional developer-only detail; surfaced only in logs / debug surfaces,
+    // never in the primary user copy.
+    developerNote: z.string().trim().max(1_000).optional(),
+  })
+  .strict();
+
 export const FlaInspectionResponseSchema = z.discriminatedUnion('ok', [
   z
     .object({
       ok: z.literal(true),
       sessionId: z.uuid(),
       ir: AnimationImportIRSchema,
+      diagnostics: z.array(FlaDiagnosticSchema).max(16).optional(),
     })
     .strict(),
   z
     .object({
       ok: z.literal(false),
       error: FlaImportErrorSchema,
+      diagnostics: z.array(FlaDiagnosticSchema).max(16).optional(),
     })
     .strict(),
 ]);
@@ -321,3 +377,6 @@ export type FlaWorkerStartRequest = z.infer<typeof FlaWorkerStartRequestSchema>;
 export type FlaWorkerProgress = z.infer<typeof FlaWorkerProgressSchema>;
 export type FlaWorkerResult = z.infer<typeof FlaWorkerResultSchema>;
 export type FlaWorkerError = z.infer<typeof FlaWorkerErrorSchema>;
+export type FlaDiagnosticCategory = z.infer<typeof FlaDiagnosticCategorySchema>;
+export type FlaDiagnostic = z.infer<typeof FlaDiagnosticSchema>;
+export type FlaStructuralSummary = z.infer<typeof FlaStructuralSummaryIRSchema>;

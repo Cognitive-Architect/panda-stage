@@ -125,6 +125,21 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(reviewModel).toContain('sessionId,');
   });
 
+  it('V1.5-A surfaces archive-malformed and zero-raster diagnostics without jargon', () => {
+    // Archive-malformed error state gets its own beginner-facing testid.
+    expect(component).toContain('data-testid="fla-review-diagnostic"');
+    expect(component).toContain('data-testid="fla-review-zero-raster"');
+    // Zero-raster copy is explicit and non-alarming.
+    expect(component).toContain('没有找到可直接导入的位图素材');
+    // Primary copy must not surface developer-only archive internals.
+    expect(component).not.toContain('centralDirectorySize');
+    expect(component).not.toContain('EOCD');
+    expect(component).not.toContain('lifeart/fla-viewer');
+    expect(component).not.toContain('developerNote');
+    // The helper keys on the response diagnostics, not on raw error messages.
+    expect(component).toContain('flaDiagnosticUserMessage(response)');
+  });
+
   it('preserves deep scroll across review updates and keeps media identity stable', () => {
     expect(component).toContain('data-preserves-scroll-position="true"');
     expect(component).toContain('reviewScrollTop.current = event.currentTarget.scrollTop');

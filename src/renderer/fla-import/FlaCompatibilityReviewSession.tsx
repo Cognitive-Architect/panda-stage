@@ -13,6 +13,7 @@ import type {
   FlaCompatibilityStatus,
   FlaInspectionResponse,
   FlaRasterSelectionIntent,
+  FlaStructuralSummary,
 } from '../../shared/fla-import-api';
 import type { FlaAssetCommitResponse } from '../../shared/fla-asset-commit-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
@@ -178,6 +179,7 @@ export function FlaCompatibilityReviewSession({
   }
 
   if (!ir || !sessionId) {
+    const diagnostic = flaDiagnosticUserMessage(response);
     return (
       <FlaReviewPortal>
         <section
@@ -196,9 +198,15 @@ export function FlaCompatibilityReviewSession({
             <button autoFocus onClick={onClose} type="button">返回素材库</button>
           </header>
           <div className="fla-review-body fla-review-status-body">
-            <output data-testid="fla-review-error" role="alert">
-              FLA 检查失败，请关闭后重试。
-            </output>
+            {diagnostic ? (
+              <output data-testid="fla-review-diagnostic" role="alert">
+                {diagnostic}
+              </output>
+            ) : (
+              <output data-testid="fla-review-error" role="alert">
+                FLA 检查失败，请关闭后重试。
+              </output>
+            )}
           </div>
         </section>
       </FlaReviewPortal>
@@ -400,6 +408,9 @@ export function FlaCompatibilityReviewSession({
             <div><dt>素材</dt><dd data-testid="fla-review-media-count">{ir.media.length}</dd></div>
             <div><dt>已使用</dt><dd>{ir.summary.placedInstanceCount}</dd></div>
             <div><dt>仅素材库</dt><dd>{ir.summary.libraryOnlyMediaCount}</dd></div>
+            {ir.structure ? (
+              <FlaStructuralSummaryReadOnly summary={ir.structure} />
+            ) : null}
           </dl>
 
           <section aria-labelledby="fla-compatibility-heading" className="fla-review-compatibility">
@@ -439,23 +450,34 @@ export function FlaCompatibilityReviewSession({
             ) : null}
           </section>
 
-          <div
-            aria-label="FLA 位图素材"
-            className="fla-review-media-grid"
-            data-scroll-region="fla-media-grid"
-            data-testid="fla-review-media-grid"
-          >
-            {reviewItems.map((item) => (
-              <FlaReviewMediaCard
-                item={item}
-                key={item.media.id}
-                selected={selectedMediaIds.has(item.media.id)}
-                selectionLocked={selectionLocked}
-                thumbnailUrl={thumbnailUrls[item.media.id]}
-                onToggle={() => toggle(item.media.id)}
-              />
-            ))}
-          </div>
+          {ir.media.length === 0 ? (
+            <div
+              className="fla-review-zero-raster"
+              data-testid="fla-review-zero-raster"
+              role="note"
+            >
+              {flaZeroRasterUserMessage(response, ir.structure) ??
+                '文件已成功读取，但没有找到可直接导入的位图素材。'}
+            </div>
+          ) : (
+            <div
+              aria-label="FLA 位图素材"
+              className="fla-review-media-grid"
+              data-scroll-region="fla-media-grid"
+              data-testid="fla-review-media-grid"
+            >
+              {reviewItems.map((item) => (
+                <FlaReviewMediaCard
+                  item={item}
+                  key={item.media.id}
+                  selected={selectedMediaIds.has(item.media.id)}
+                  selectionLocked={selectionLocked}
+                  thumbnailUrl={thumbnailUrls[item.media.id]}
+                  onToggle={() => toggle(item.media.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </FlaReviewPortal>
@@ -539,6 +561,122 @@ function FlaReviewMediaCard({
 function isNestedInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(
     target.closest('input, label, button, a'),
+  );
+}
+
+/**
+ * Primary user-facing diagnostic copy derived from the response.  Prefers the
+ * most specific category (archive-malformed) and otherwise falls back to the
+ * first attached diagnostic.  Returns `null` when no diagnostic is present so
+ * callers can show a neutral fallback without implying a specific cause.
+ * Developer-only detail fields are never surfaced here.
+ */
+function flaDiagnosticUserMessage(response: FlaInspectionResponse | null): string | null {
+  const diagnostics = response?.diagnostics;
+  if (!diagnostics || diagnostics.length === 0) return null;
+  const archive = diagnostics.find(
+    (diagnostic) => diagnostic.category === 'archive-malformed',
+  );
+  return (archive ?? diagnostics[0]!).userMessage;
+}
+
+/**
+ * V1.5-B1 zero-raster copy that explicitly links the missing-raster fact to
+ * the present-but-not-importable structure summary. Never claims that symbols,
+ * layers, frames, or tweens are currently editable in Panda; says "detected"
+ * (检测到) only.
+ */
+function flaZeroRasterUserMessage(
+  response: FlaInspectionResponse | null,
+  structure: FlaStructuralSummary | undefined,
+): string | null {
+  if (!structure) return null;
+  const parts: string[] = [];
+  if (structure.sceneCount > 0) {
+    parts.push(
+      structure.sceneCount === 1
+        ? '1 个场景'
+        : `${structure.sceneCount} 个场景`,
+    );
+  }
+  if (structure.symbolCount > 0) {
+    const breakdown: string[] = [];
+    if (structure.graphicCount > 0) breakdown.push(`图形 ${structure.graphicCount}`);
+    if (structure.movieClipCount > 0) breakdown.push(`影片剪辑 ${structure.movieClipCount}`);
+    if (structure.buttonCount > 0) breakdown.push(`按钮 ${structure.buttonCount}`);
+    const inner =
+      breakdown.length > 0 ? `（${breakdown.join('、')}）` : '';
+    parts.push(
+      structure.symbolCount === 1
+        ? `1 个元件${inner}`
+        : `${structure.symbolCount} 个元件${inner}`,
+    );
+  }
+  if (structure.layerCount > 0) {
+    parts.push(
+      structure.layerCount === 1
+        ? '1 层'
+        : `${structure.layerCount} 层`,
+    );
+  }
+  if (structure.frameCount > 0) {
+    parts.push(
+      structure.frameCount === 1
+        ? '1 帧'
+        : `${structure.frameCount} 帧`,
+    );
+  }
+  if (parts.length === 0) {
+    return flaDiagnosticUserMessage(response) ??
+      '文件已读取；没有可直接导入的位图。';
+  }
+  return `文件已读取；没有可直接导入的位图，不过检测到可读的 FLA 结构：${parts.join('、')}。Panda 目前不会导入这些结构信息。`;
+}
+
+function FlaStructuralSummaryReadOnly({
+  summary,
+}: {
+  summary: FlaStructuralSummary;
+}): React.JSX.Element {
+  const symbolBreakdown: string[] = [];
+  if (summary.graphicCount > 0) symbolBreakdown.push(`图形 ${summary.graphicCount}`);
+  if (summary.movieClipCount > 0) symbolBreakdown.push(`影片剪辑 ${summary.movieClipCount}`);
+  if (summary.buttonCount > 0) symbolBreakdown.push(`按钮 ${summary.buttonCount}`);
+  return (
+    <div
+      className="fla-review-structure"
+      data-testid="fla-review-structure"
+      role="group"
+      aria-label="FLA 结构信息"
+    >
+      <div className="fla-review-structure-row">
+        <dt>场景</dt>
+        <dd data-testid="fla-review-structure-scene">{summary.sceneCount}</dd>
+      </div>
+      <div className="fla-review-structure-row">
+        <dt>元件</dt>
+        <dd data-testid="fla-review-structure-symbol">
+          {summary.symbolCount}
+          {symbolBreakdown.length > 0
+            ? `（${symbolBreakdown.join('、')}）`
+            : ''}
+        </dd>
+      </div>
+      <div className="fla-review-structure-row">
+        <dt>图层</dt>
+        <dd data-testid="fla-review-structure-layer">{summary.layerCount}</dd>
+      </div>
+      <div className="fla-review-structure-row">
+        <dt>帧</dt>
+        <dd data-testid="fla-review-structure-frame">{summary.frameCount}</dd>
+      </div>
+      {summary.tweenCount > 0 ? (
+        <div className="fla-review-structure-row">
+          <dt>补间</dt>
+          <dd data-testid="fla-review-structure-tween">{summary.tweenCount}</dd>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

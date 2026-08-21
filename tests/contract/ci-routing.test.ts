@@ -111,6 +111,118 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual(['src/renderer/features/unowned-new/Widget.tsx']);
   });
 
+  it.each([
+    'tests/helpers/fla-structural-probe.ts',
+    'tests/integration/fla-b0-structural-probe.test.ts',
+  ])('routes V1.5-B0 FLA probe path %s into the existing fla-import targeted route', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).not.toContain('unknown');
+    expect(result.matchedRouteIds).toContain('fla-import');
+    expect(result.suites).toEqual(['assets']);
+  });
+
+  it('keeps both V1.5-B0 FLA probe paths on the fla-import targeted route together, never Full', () => {
+    const result = draft([
+      change('tests/helpers/fla-structural-probe.ts'),
+      change('tests/integration/fla-b0-structural-probe.test.ts'),
+    ]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).not.toContain('unknown');
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.areas).toEqual(['fla-import']);
+  });
+
+  it.each([
+    'tests/unit/fla-derive-structure-summary.test.ts',
+    'tests/integration/fla-b1-structural-fields.test.ts',
+  ])('routes V1.5-B1 FLA evidence path %s into the fla-import targeted route', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).not.toContain('unknown');
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.suites).toEqual(['assets']);
+  });
+
+  it('routes V1.5-B1 production source into the fla-import targeted route (B0 evidence + B1 contract)', () => {
+    const result = draft([
+      change('src/renderer/fla-import/derive-fla-structure-summary.ts'),
+      change('src/renderer/fla-import/fla-viewer-adapter.ts'),
+      change('src/renderer/fla-import/FlaCompatibilityReviewSession.tsx'),
+    ]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+  });
+
+  it('promotes to focused when a B1 change also touches the shared contract (expected cross-process propagation)', () => {
+    const result = draft([
+      change('src/renderer/fla-import/derive-fla-structure-summary.ts'),
+      change('src/renderer/fla-import/fla-viewer-adapter.ts'),
+      change('src/renderer/fla-import/FlaCompatibilityReviewSession.tsx'),
+      change('src/shared/fla-import-api.ts'),
+    ]);
+    expect(result.tier).toBe('focused');
+    expect(result.areas).toContain('fla-import');
+    expect(result.areas).toContain('cross-process-core');
+    expect(result.matchedRouteIds).toContain('fla-import');
+    expect(result.matchedRouteIds).toContain('cross-process-core');
+  });
+
+  it.each([
+    'tests/unit/fla-corpus-probe.test.ts',
+    'tests/integration/fla-corpus-collector.test.ts',
+  ])('routes V1.5-D corpus harness path %s into the fla-import targeted route', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.suites).toEqual(['assets']);
+  });
+
+  it.each([
+    'tests/helpers/fla-corpus-probe.cjs',
+    'tests/helpers/fla-corpus-probe.d.ts',
+    'docs/research/fla-corpus-manifest.json',
+  ])('routes V1.5-D corrective path %s into the fla-import targeted route (#280)', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.areas).not.toContain('unknown');
+  });
+
+  it('keeps the V1.5-D corrective registered paths together (no Full on Draft push)', () => {
+    const result = draft([
+      change('tests/helpers/fla-corpus-probe.cjs'),
+      change('tests/helpers/fla-corpus-probe.d.ts'),
+      change('docs/research/fla-corpus-manifest.json'),
+    ]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+  });
+
+  it('does not let the D registration absorb still-future V1.5-D test paths', () => {
+    const result = draft([change('tests/integration/fla-d-corpus-extension.test.ts', 'A')]);
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(['tests/integration/fla-d-corpus-extension.test.ts']);
+  });
+
+  it('does not let the D registration absorb arbitrary helper or research paths (fail-closed)', () => {
+    // An unrelated helper .cjs / .d.ts / unknown research artifact must still
+    // fail-closed; the D-corrective registration narrows specific paths only.
+    const unrelatedPaths = [
+      'tests/helpers/unrelated-helper.cjs',
+      'tests/helpers/unrelated-helper.d.ts',
+      'docs/research/unrelated-artifact.json',
+    ];
+    const result = draft(unrelatedPaths.map((p) => change(p, 'A')));
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(expect.arrayContaining(unrelatedPaths));
+  });
+
   it.each(['D', 'R', 'C'])('routes %s structural changes to focused safety checks', (status) => {
     const paths = ['R', 'C'].includes(status)
       ? ['src/renderer/features/dialogue/Old.tsx', 'src/renderer/features/dialogue/New.tsx']

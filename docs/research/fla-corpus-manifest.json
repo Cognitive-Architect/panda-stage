@@ -1,0 +1,245 @@
+{
+  "schemaVersion": "1.2.0",
+  "generatedAt": "2026-08-21T00:29:52.263Z",
+  "command": "node scripts/fla-corpus-collector.cjs --root \"<seed-root>\" --out \"docs/research/fla-corpus-manifest.json\"",
+  "totals": {
+    "samples": 6,
+    "byPreflight": {
+      "pass": 2,
+      "reject": 4
+    },
+    "byOrigin": {
+      "external-original": 6
+    },
+    "byEvidenceShape": {
+      "offlineRasterPresent": 1,
+      "offlineZeroRaster": 1,
+      "parserNotVerified": 4
+    }
+  },
+  "cReadinessAssessment": {
+    "state": "C_EVIDENCE_IMPROVED_BUT_STILL_BLOCKED",
+    "plus54FamilySampleCount": 4,
+    "provenanceGrouping": "single-seed-bundle",
+    "negativeEdgeCoverage": [
+      "preflight_reject_eocd_cd_size_overdeclare",
+      "preflight_reject_no_domdocument",
+      "zero_raster_structural_not_empty"
+    ],
+    "stillMissingEvidence": [
+      "additional independent real originals beyond the seed six",
+      "parser-runtime end-to-end on strict-PASS samples (pending GUI runner)",
+      "cross-producer +54 family provenance grouping"
+    ]
+  },
+  "samples": [
+    {
+      "sampleId": "fla-e773508c4079c4fa",
+      "basename": "剑.fla",
+      "sha256": "E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377",
+      "byteLength": 32997,
+      "containerFamily": "ZIP/XFL",
+      "evidenceOrigin": "external-original",
+      "categoryTags": [],
+      "preflight": {
+        "result": "pass",
+        "reasonCategory": null,
+        "centralDirectoryDeclaredBytes": 831,
+        "centralDirectoryActualBytes": 831,
+        "centralDirectoryDeltaBytes": 0,
+        "cdEndsExactlyAtEocd": true,
+        "zip64Indicator": false,
+        "encryptionIndicator": false
+      },
+      "offlineProbe": {
+        "status": "success",
+        "raster": {
+          "bitmapMediaCount": 0,
+          "placedInstanceCount": 0,
+          "libraryOnlyMediaCount": 0
+        },
+        "structure": {
+          "sceneCount": 1,
+          "totalTimelineCount": 2,
+          "layerCount": 2,
+          "frameCount": 2,
+          "tweenCount": 0,
+          "symbolCount": 1,
+          "movieClipCount": 0,
+          "graphicCount": 1,
+          "buttonCount": 0
+        }
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
+      "sourceUnchanged": "verified",
+      "notes": ""
+    },
+    {
+      "sampleId": "fla-91c9331b68b49fb4",
+      "basename": "性感修仙女.fla",
+      "sha256": "91C9331B68B49FB43CF720A7ACACF45EBB26142C28B9D586B7FCF69D5D8CB64F",
+      "byteLength": 2115287,
+      "containerFamily": "ZIP/XFL",
+      "evidenceOrigin": "external-original",
+      "categoryTags": [],
+      "preflight": {
+        "result": "reject",
+        "reasonCategory": "archive-malformed",
+        "centralDirectoryDeclaredBytes": 2170,
+        "centralDirectoryActualBytes": 2116,
+        "centralDirectoryDeltaBytes": 54,
+        "cdEndsExactlyAtEocd": false,
+        "zip64Indicator": false,
+        "encryptionIndicator": false
+      },
+      "offlineProbe": {
+        "status": "not-run",
+        "raster": null,
+        "structure": null
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
+      "sourceUnchanged": "verified",
+      "notes": ""
+    },
+    {
+      "sampleId": "fla-84682edcd49b8fcc",
+      "basename": "文件.fla",
+      "sha256": "84682EDCD49B8FCC072AE740188677BAE9D7D0FD603B8BED51A7AC4DDEB3119F",
+      "byteLength": 10527274,
+      "containerFamily": "ZIP/XFL",
+      "evidenceOrigin": "external-original",
+      "categoryTags": [],
+      "preflight": {
+        "result": "pass",
+        "reasonCategory": null,
+        "centralDirectoryDeclaredBytes": 11556,
+        "centralDirectoryActualBytes": 11556,
+        "centralDirectoryDeltaBytes": 0,
+        "cdEndsExactlyAtEocd": true,
+        "zip64Indicator": false,
+        "encryptionIndicator": false
+      },
+      "offlineProbe": {
+        "status": "success",
+        "raster": {
+          "bitmapMediaCount": 158,
+          "placedInstanceCount": 156,
+          "libraryOnlyMediaCount": 2
+        },
+        "structure": {
+          "sceneCount": 1,
+          "totalTimelineCount": 1,
+          "layerCount": 1,
+          "frameCount": 1,
+          "tweenCount": 0,
+          "symbolCount": 0,
+          "movieClipCount": 0,
+          "graphicCount": 0,
+          "buttonCount": 0
+        }
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
+      "sourceUnchanged": "verified",
+      "notes": ""
+    },
+    {
+      "sampleId": "fla-d7d92d3f38eaf3fb",
+      "basename": "沙雕表情大全（免费分享，短剧慎用）.fla",
+      "sha256": "D7D92D3F38EAF3FBAC812F991B1A9E7239480AFAAFB4BDDF7E62A374355EBC59",
+      "byteLength": 12350154,
+      "containerFamily": "ZIP/XFL",
+      "evidenceOrigin": "external-original",
+      "categoryTags": [],
+      "preflight": {
+        "result": "reject",
+        "reasonCategory": "archive-malformed",
+        "centralDirectoryDeclaredBytes": 77538,
+        "centralDirectoryActualBytes": 77484,
+        "centralDirectoryDeltaBytes": 54,
+        "cdEndsExactlyAtEocd": false,
+        "zip64Indicator": false,
+        "encryptionIndicator": false
+      },
+      "offlineProbe": {
+        "status": "not-run",
+        "raster": null,
+        "structure": null
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
+      "sourceUnchanged": "verified",
+      "notes": ""
+    },
+    {
+      "sampleId": "fla-3ed47c25685ece18",
+      "basename": "炼丹房.fla",
+      "sha256": "3ED47C25685ECE18AFE50E646996DE9C39AB22B29DCDE96A81FAB291368209D2",
+      "byteLength": 1575078,
+      "containerFamily": "ZIP/XFL",
+      "evidenceOrigin": "external-original",
+      "categoryTags": [],
+      "preflight": {
+        "result": "reject",
+        "reasonCategory": "archive-malformed",
+        "centralDirectoryDeclaredBytes": 742,
+        "centralDirectoryActualBytes": 688,
+        "centralDirectoryDeltaBytes": 54,
+        "cdEndsExactlyAtEocd": false,
+        "zip64Indicator": false,
+        "encryptionIndicator": false
+      },
+      "offlineProbe": {
+        "status": "not-run",
+        "raster": null,
+        "structure": null
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
+      "sourceUnchanged": "verified",
+      "notes": ""
+    },
+    {
+      "sampleId": "fla-3fdb31478c6e5fe3",
+      "basename": "蓝衣修仙男（补面需求）.fla",
+      "sha256": "3FDB31478C6E5FE3FFCA30F27FE69D9B3BA8F29F4BCF28EB39B9CE1B0FA3FDF2",
+      "byteLength": 1777905,
+      "containerFamily": "ZIP/XFL",
+      "evidenceOrigin": "external-original",
+      "categoryTags": [],
+      "preflight": {
+        "result": "reject",
+        "reasonCategory": "archive-malformed",
+        "centralDirectoryDeclaredBytes": 2110,
+        "centralDirectoryActualBytes": 2056,
+        "centralDirectoryDeltaBytes": 54,
+        "cdEndsExactlyAtEocd": false,
+        "zip64Indicator": false,
+        "encryptionIndicator": false
+      },
+      "offlineProbe": {
+        "status": "not-run",
+        "raster": null,
+        "structure": null
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
+      "sourceUnchanged": "verified",
+      "notes": ""
+    }
+  ]
+}

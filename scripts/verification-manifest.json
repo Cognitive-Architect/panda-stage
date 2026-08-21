@@ -161,14 +161,14 @@
       },
       {
         "id": "fla-import",
-        "sourcePatterns": ["src/renderer/fla-import/**", "fla-parser.html"],
-        "testPatterns": ["tests/unit/fla-*.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts"],
+        "sourcePatterns": ["src/renderer/fla-import/**", "fla-parser.html", "docs/research/fla-corpus-manifest.json"],
+        "testPatterns": ["tests/unit/fla-*.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts", "tests/helpers/fla-structural-probe.ts", "tests/integration/fla-b0-structural-probe.test.ts", "tests/unit/fla-derive-structure-summary.test.ts", "tests/integration/fla-b1-structural-fields.test.ts", "tests/unit/fla-corpus-probe.test.ts", "tests/integration/fla-corpus-collector.test.ts", "tests/helpers/fla-corpus-probe.cjs", "tests/helpers/fla-corpus-probe.d.ts"],
         "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*"],
         "suites": ["assets"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "fla-import",
-        "notes": "FLA compatibility review owns read-only renderer presentation; Main/Preload/shared boundary changes remain on the cross-process Full-risk route."
+        "notes": "FLA compatibility review owns read-only renderer presentation; Main/Preload/shared boundary changes remain on the cross-process Full-risk route. V1.5-B0/B1 evidence files (tests/helpers/fla-structural-probe.ts, tests/integration/fla-b0-structural-probe.test.ts, tests/unit/fla-derive-structure-summary.test.ts, tests/integration/fla-b1-structural-fields.test.ts) and the V1.5-D corpus harness (tests/helpers/fla-corpus-probe.cjs, tests/helpers/fla-corpus-probe.d.ts, docs/research/fla-corpus-manifest.json, tests/unit/fla-corpus-probe.test.ts, tests/integration/fla-corpus-collector.test.ts) are read-only structural-probe/contract/corpus artifacts owned by this subsystem, not production behavior. The 3 narrow exact-match D-corrective paths (tests/helpers/fla-corpus-probe.cjs, tests/helpers/fla-corpus-probe.d.ts, docs/research/fla-corpus-manifest.json) are intentionally registered here without broad catch-all patterns (tests/helpers/**, docs/**, scripts/**) so the unknown-path fail-closed contract remains intact for any future D/E path."
       },
       {
         "id": "characters",
