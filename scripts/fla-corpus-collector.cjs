@@ -26,7 +26,7 @@ const { createHash } = require('node:crypto');
 
 const probe = require('../tests/helpers/fla-corpus-probe.cjs');
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 function parseArgs(argv) {
   const out = {};
@@ -126,10 +126,15 @@ async function main() {
           zip64Indicator: null,
           encryptionIndicator: null,
         },
-        parserReached: false,
-        raster: null,
-        structure: null,
-        previewAvailable: false,
+        offlineProbe: {
+          status: 'error',
+          raster: null,
+          structure: null,
+        },
+        productionParser: {
+          status: 'not-verified',
+          previewAvailable: false,
+        },
         sourceUnchanged: 'verified',
         notes: `corpus-probe threw: ${(err && err.message) || String(err)}`,
       };
@@ -154,16 +159,23 @@ async function main() {
     },
     byOrigin: {},
     byEvidenceShape: {
-      rasterHeavy: 0,
-      zeroRaster: 0,
-      parserNotReached: 0,
+      offlineStrictPass: 0,
+      offlineStructEmpty: 0,
+      parserNotVerified: 0,
     },
   };
   for (const r of records) {
     totals.byOrigin[r.evidenceOrigin] = (totals.byOrigin[r.evidenceOrigin] || 0) + 1;
-    if (!r.parserReached) totals.byEvidenceShape.parserNotReached += 1;
-    else if (r.raster && r.raster.bitmapMediaCount > 0) totals.byEvidenceShape.rasterHeavy += 1;
-    else totals.byEvidenceShape.zeroRaster += 1;
+    // Issue #280 corrective item 3: evidence shape now keys on the offline-probe
+    // status, since `productionParser.status` is hard-pinned to `'not-verified'`
+    // by the offline-only helper.
+    if (r.offlineProbe.status !== 'success') {
+      totals.byEvidenceShape.parserNotVerified += 1;
+    } else if (r.offlineProbe.raster && r.offlineProbe.raster.bitmapMediaCount > 0) {
+      totals.byEvidenceShape.offlineStrictPass += 1;
+    } else {
+      totals.byEvidenceShape.offlineStructEmpty += 1;
+    }
   }
 
   // C readiness assessment (read-only evidence; no production tolerance).

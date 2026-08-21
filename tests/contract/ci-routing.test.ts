@@ -181,16 +181,46 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.suites).toEqual(['assets']);
   });
 
-  it('does not let the B0 registration absorb unrelated unknown test paths', () => {
-    const result = draft([change('tests/integration/fla-b1-unregistered-spike.test.ts', 'A')]);
-    expect(result.tier).toBe('unknown');
-    expect(result.unknownPaths).toEqual(['tests/integration/fla-b1-unregistered-spike.test.ts']);
+  it.each([
+    'tests/helpers/fla-corpus-probe.cjs',
+    'tests/helpers/fla-corpus-probe.d.ts',
+    'docs/research/fla-corpus-manifest.json',
+  ])('routes V1.5-D corrective path %s into the fla-import targeted route (#280)', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.areas).not.toContain('unknown');
   });
 
-  it('does not let the B1 registration absorb still-future V1.5-D test paths', () => {
+  it('keeps the V1.5-D corrective registered paths together (no Full on Draft push)', () => {
+    const result = draft([
+      change('tests/helpers/fla-corpus-probe.cjs'),
+      change('tests/helpers/fla-corpus-probe.d.ts'),
+      change('docs/research/fla-corpus-manifest.json'),
+    ]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+  });
+
+  it('does not let the D registration absorb still-future V1.5-D test paths', () => {
     const result = draft([change('tests/integration/fla-d-corpus-extension.test.ts', 'A')]);
     expect(result.tier).toBe('unknown');
     expect(result.unknownPaths).toEqual(['tests/integration/fla-d-corpus-extension.test.ts']);
+  });
+
+  it('does not let the D registration absorb arbitrary helper or research paths (fail-closed)', () => {
+    // An unrelated helper .cjs / .d.ts / unknown research artifact must still
+    // fail-closed; the D-corrective registration narrows specific paths only.
+    const unrelatedPaths = [
+      'tests/helpers/unrelated-helper.cjs',
+      'tests/helpers/unrelated-helper.d.ts',
+      'docs/research/unrelated-artifact.json',
+    ];
+    const result = draft(unrelatedPaths.map((p) => change(p, 'A')));
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(expect.arrayContaining(unrelatedPaths));
   });
 
   it.each(['D', 'R', 'C'])('routes %s structural changes to focused safety checks', (status) => {

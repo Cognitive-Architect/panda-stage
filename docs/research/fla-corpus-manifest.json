@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "1.0.0",
-  "generatedAt": "2026-08-20T14:35:21.184Z",
+  "schemaVersion": "1.1.0",
+  "generatedAt": "2026-08-21T00:05:54.550Z",
   "command": "node scripts/fla-corpus-collector.cjs --root \"<seed-root>\" --out \"docs/research/fla-corpus-manifest.json\"",
   "totals": {
     "samples": 6,
@@ -12,9 +12,9 @@
       "external-original": 6
     },
     "byEvidenceShape": {
-      "rasterHeavy": 1,
-      "zeroRaster": 1,
-      "parserNotReached": 4
+      "offlineStrictPass": 1,
+      "offlineStructEmpty": 1,
+      "parserNotVerified": 4
     }
   },
   "cReadinessAssessment": {
@@ -51,24 +51,29 @@
         "zip64Indicator": false,
         "encryptionIndicator": false
       },
-      "parserReached": true,
-      "raster": {
-        "bitmapMediaCount": 0,
-        "placedInstanceCount": 0,
-        "libraryOnlyMediaCount": 0
+      "offlineProbe": {
+        "status": "success",
+        "raster": {
+          "bitmapMediaCount": 0,
+          "placedInstanceCount": 0,
+          "libraryOnlyMediaCount": 0
+        },
+        "structure": {
+          "sceneCount": 1,
+          "totalTimelineCount": 2,
+          "layerCount": 2,
+          "frameCount": 2,
+          "tweenCount": 0,
+          "symbolCount": 1,
+          "movieClipCount": 0,
+          "graphicCount": 1,
+          "buttonCount": 0
+        }
       },
-      "structure": {
-        "sceneCount": 1,
-        "totalTimelineCount": 2,
-        "layerCount": 1,
-        "frameCount": 1,
-        "tweenCount": 0,
-        "symbolCount": 1,
-        "movieClipCount": 0,
-        "graphicCount": 1,
-        "buttonCount": 0
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
       },
-      "previewAvailable": false,
       "sourceUnchanged": "verified",
       "notes": ""
     },
@@ -90,10 +95,15 @@
         "zip64Indicator": false,
         "encryptionIndicator": false
       },
-      "parserReached": false,
-      "raster": null,
-      "structure": null,
-      "previewAvailable": false,
+      "offlineProbe": {
+        "status": "not-run",
+        "raster": null,
+        "structure": null
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
       "sourceUnchanged": "verified",
       "notes": ""
     },
@@ -115,24 +125,29 @@
         "zip64Indicator": false,
         "encryptionIndicator": false
       },
-      "parserReached": true,
-      "raster": {
-        "bitmapMediaCount": 158,
-        "placedInstanceCount": 156,
-        "libraryOnlyMediaCount": 2
+      "offlineProbe": {
+        "status": "success",
+        "raster": {
+          "bitmapMediaCount": 158,
+          "placedInstanceCount": 156,
+          "libraryOnlyMediaCount": 2
+        },
+        "structure": {
+          "sceneCount": 1,
+          "totalTimelineCount": 1,
+          "layerCount": 1,
+          "frameCount": 1,
+          "tweenCount": 0,
+          "symbolCount": 0,
+          "movieClipCount": 0,
+          "graphicCount": 0,
+          "buttonCount": 0
+        }
       },
-      "structure": {
-        "sceneCount": 1,
-        "totalTimelineCount": 1,
-        "layerCount": 1,
-        "frameCount": 1,
-        "tweenCount": 0,
-        "symbolCount": 0,
-        "movieClipCount": 0,
-        "graphicCount": 0,
-        "buttonCount": 0
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
       },
-      "previewAvailable": true,
       "sourceUnchanged": "verified",
       "notes": ""
     },
@@ -154,10 +169,15 @@
         "zip64Indicator": false,
         "encryptionIndicator": false
       },
-      "parserReached": false,
-      "raster": null,
-      "structure": null,
-      "previewAvailable": false,
+      "offlineProbe": {
+        "status": "not-run",
+        "raster": null,
+        "structure": null
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
       "sourceUnchanged": "verified",
       "notes": ""
     },
@@ -179,10 +199,15 @@
         "zip64Indicator": false,
         "encryptionIndicator": false
       },
-      "parserReached": false,
-      "raster": null,
-      "structure": null,
-      "previewAvailable": false,
+      "offlineProbe": {
+        "status": "not-run",
+        "raster": null,
+        "structure": null
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
       "sourceUnchanged": "verified",
       "notes": ""
     },
@@ -204,10 +229,15 @@
         "zip64Indicator": false,
         "encryptionIndicator": false
       },
-      "parserReached": false,
-      "raster": null,
-      "structure": null,
-      "previewAvailable": false,
+      "offlineProbe": {
+        "status": "not-run",
+        "raster": null,
+        "structure": null
+      },
+      "productionParser": {
+        "status": "not-verified",
+        "previewAvailable": false
+      },
       "sourceUnchanged": "verified",
       "notes": ""
     }

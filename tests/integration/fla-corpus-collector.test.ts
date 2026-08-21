@@ -219,10 +219,13 @@ describe('fla-corpus-collector integration', () => {
     const manifest = JSON.parse(readFileSync(outPath, 'utf8'));
     expect(manifest.totals.samples).toBe(6);
     expect(manifest.totals.byPreflight).toEqual({ pass: 2, reject: 4 });
+    // Issue #280 corrective item 3: byEvidenceShape is keyed on offline-probe
+    // status / offline raster presence, since productionParser is hard-pinned
+    // to 'not-verified' by the offline-only helper.
     expect(manifest.totals.byEvidenceShape).toEqual({
-      rasterHeavy: 1,
-      zeroRaster: 1,
-      parserNotReached: 4,
+      offlineStrictPass: 1,
+      offlineStructEmpty: 1,
+      parserNotVerified: 4,
     });
     expect(manifest.cReadinessAssessment.plus54FamilySampleCount).toBe(4);
   });
@@ -239,10 +242,130 @@ describe('fla-corpus-collector integration', () => {
     });
     const manifest = JSON.parse(readFileSync(outPath, 'utf8'));
     const sample = manifest.samples[0]!;
-    expect(sample.raster?.bitmapMediaCount).toBe(0);
-    expect(sample.structure?.sceneCount).toBe(1);
-    expect(sample.structure?.frameCount).toBe(2);
-    expect(sample.previewAvailable).toBe(false);
+    expect(sample.offlineProbe.raster?.bitmapMediaCount).toBe(0);
+    expect(sample.offlineProbe.structure?.sceneCount).toBe(1);
+    expect(sample.offlineProbe.structure?.frameCount).toBe(2);
+    // Issue #280 corrective item 3: previewAvailable must NOT be asserted
+    // just because the offline probe found raster; here raster=0 anyway but
+    // we additionally assert productionParser.previewAvailable stays false.
+    expect(sample.productionParser.previewAvailable).toBe(false);
+  });
+
+  it('pins B0/B1 semantic parity for the corrected D probe (top + symbol-internal timelines)', () => {
+    mkdirSync(WORK_ROOT, { recursive: true });
+    // Synthetic 剑-equivalent: top-level DOMDocument + graphic symbol-internal timeline.
+    const jianEquivXml = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument width="100" height="100" frameRate="24">
+  <media/>
+  <timelines>
+    <DOMTimeline>
+      <layers><DOMLayer><frames><DOMFrame index="0" duration="1"/></frames></DOMLayer></layers>
+    </DOMTimeline>
+  </timelines>
+  <symbols/>
+</DOMDocument>`;
+    // Synthetic 剑 graphic symbol timeline (LIBRARY/scene-1-symbols.xml shape)
+    const jianGraphicXml = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem symbolType="graphic" name="Graphic">
+  <DOMTimeline>
+    <layers><DOMLayer><frames><DOMFrame index="0" duration="1"/></frames></DOMLayer></layers>
+  </DOMTimeline>
+</DOMSymbolItem>`;
+    // Build a small ZIP containing DOMDocument.xml + LIBRARY/GraphicSymbol.xml
+    // to exercise the cross-timeline aggregation path.
+    function buildTwoEntryZip(content: string, libContent: string): Buffer {
+      const domName = Buffer.from('DOMDocument.xml', 'utf8');
+      const libName = Buffer.from('LIBRARY/GraphicSymbol.xml', 'utf8');
+      const contentBuf = Buffer.from(content, 'utf8');
+      const libBuf = Buffer.from(libContent, 'utf8');
+      const lh1 = 30 + domName.byteLength;
+      const lh2 = 30 + libName.byteLength;
+      const cdEntry1 = 46 + domName.byteLength;
+      const cdEntry2 = 46 + libName.byteLength;
+      const totalSize = lh1 + contentBuf.byteLength + lh2 + libBuf.byteLength + cdEntry1 + cdEntry2 + 22;
+      const buf = Buffer.alloc(totalSize);
+      function writeLocalHeader(name: Buffer, content: Buffer, buf: Buffer, offStart: number): number {
+        let p = offStart;
+        buf.writeUInt32LE(0x04034b50, p); p += 4;
+        buf.writeUInt16LE(20, p); p += 2;
+        buf.writeUInt16LE(0, p); p += 2;
+        buf.writeUInt16LE(0, p); p += 2;
+        buf.writeUInt16LE(0, p); p += 2;
+        buf.writeUInt16LE(0, p); p += 2;
+        buf.writeUInt32LE(crc32Of(content), p); p += 4;
+        buf.writeUInt32LE(content.byteLength, p); p += 4;
+        buf.writeUInt32LE(content.byteLength, p); p += 4;
+        buf.writeUInt16LE(name.byteLength, p); p += 2;
+        buf.writeUInt16LE(0, p); p += 2;
+        name.copy(buf, p); p += name.byteLength;
+        content.copy(buf, p); p += content.byteLength;
+        return p;
+      }
+      const end1 = writeLocalHeader(domName, contentBuf, buf, 0);
+      const end2 = writeLocalHeader(libName, libBuf, buf, end1);
+      const cdStart = end2;
+      let p = cdStart;
+      function writeCentralHeader(name: Buffer, content: Buffer, localOffset: number, buf: Buffer, offStart: number): number {
+        let q = offStart;
+        buf.writeUInt32LE(0x02014b50, q); q += 4;
+        buf.writeUInt16LE(20, q); q += 2;
+        buf.writeUInt16LE(20, q); q += 2;
+        buf.writeUInt16LE(0, q); q += 2;
+        buf.writeUInt16LE(0, q); q += 2;
+        buf.writeUInt16LE(0, q); q += 2;
+        buf.writeUInt16LE(0, q); q += 2;
+        buf.writeUInt32LE(crc32Of(content), q); q += 4;
+        buf.writeUInt32LE(content.byteLength, q); q += 4;
+        buf.writeUInt32LE(content.byteLength, q); q += 4;
+        buf.writeUInt16LE(name.byteLength, q); q += 2;
+        buf.writeUInt16LE(0, q); q += 2;
+        buf.writeUInt16LE(0, q); q += 2;
+        buf.writeUInt16LE(0, q); q += 2;
+        buf.writeUInt16LE(0, q); q += 2;
+        buf.writeUInt32LE(0, q); q += 4;
+        buf.writeUInt32LE(localOffset, q); q += 4;
+        name.copy(buf, q); q += name.byteLength;
+        return q;
+      }
+      p = writeCentralHeader(domName, contentBuf, 0, buf, p);
+      p = writeCentralHeader(libName, libBuf, end1, buf, p);
+      // EOCD
+      const cdSizeDeclared = cdEntry1 + cdEntry2;
+      buf.writeUInt32LE(0x06054b50, p); p += 4;
+      buf.writeUInt16LE(0, p); p += 2;
+      buf.writeUInt16LE(0, p); p += 2;
+      buf.writeUInt16LE(2, p); p += 2;
+      buf.writeUInt16LE(2, p); p += 2;
+      buf.writeUInt32LE(cdSizeDeclared, p); p += 4;
+      buf.writeUInt32LE(cdStart, p); p += 4;
+      buf.writeUInt16LE(0, p);
+      return buf;
+    }
+    writeFileSync(
+      resolve(WORK_ROOT, 'jian-equiv.fla'),
+      buildTwoEntryZip(jianEquivXml, jianGraphicXml),
+    );
+    const outPath = resolve(WORK_ROOT, 'manifest.json');
+    const res = spawnSync(
+      process.execPath,
+      [COLLECTOR, '--root', WORK_ROOT, '--out', outPath],
+      { encoding: 'utf8' },
+    );
+    expect(res.status).toBe(0);
+    const manifest = JSON.parse(readFileSync(outPath, 'utf8'));
+    const sample = manifest.samples[0]!;
+    expect(sample.preflight.result).toBe('pass');
+    expect(sample.offlineProbe.status).toBe('success');
+    expect(sample.offlineProbe.structure?.sceneCount).toBe(1);
+    expect(sample.offlineProbe.structure?.totalTimelineCount).toBe(2);
+    expect(sample.offlineProbe.structure?.layerCount).toBe(2);
+    expect(sample.offlineProbe.structure?.frameCount).toBe(2);
+    expect(sample.offlineProbe.structure?.tweenCount).toBe(0);
+    expect(sample.offlineProbe.structure?.symbolCount).toBe(1);
+    expect(sample.offlineProbe.structure?.graphicCount).toBe(1);
+    // Production parser stays not-verified, even though offline-parse succeeded.
+    expect(sample.productionParser.status).toBe('not-verified');
+    expect(sample.productionParser.previewAvailable).toBe(false);
   });
 
   it('excludes absolute local paths from the output', () => {

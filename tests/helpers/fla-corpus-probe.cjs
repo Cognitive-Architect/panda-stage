@@ -15,11 +15,22 @@
  *  - it computes SHA-256 deterministically and exposes container + structural
  *    facts that can be diffed across runs.
  *
- * The structural probe re-implements the B0 evidence matrix from
- * `tests/helpers/fla-structural-probe.ts` in plain JS so the corpus collector
- * can run via `node scripts/fla-corpus-collector.cjs` without TypeScript
- * compilation. The two probes share no runtime code, but their output shape
- * is intentionally kept aligned (B0 numeric allowlist).
+ * B0/B1 parity (Issue #280 corrective item 2):
+ *   The structural counts intentionally mirror the proven B0/B1 definitions
+ *   from `tests/helpers/fla-structural-probe.ts`. `layerCount` and
+ *   `frameCount` are aggregated across BOTH top-level DOMDocument timelines
+ *   AND symbol-internal LIBRARY timelines; `sceneCount` is top-level only;
+ *   `totalTimelineCount` covers both populations. Symbol-type breakdowns
+ *   (`movieClip`/`graphic`/`button`) come from `LIBRARY/*.xml`. Tween counts
+ *   remain narrow (`tweenType in {motion,shape}`) per #278 corrective.
+ *
+ * Offline-vs-production evidence (Issue #280 corrective item 3):
+ *   `inspectSample` returns an `offlineProbe` shape (always populated by this
+ *   helper) and a `productionParser` shape that is **strictly** marked
+ *   `status: 'not-verified'`. It is NEVER upgraded to `'verified'` here,
+ *   because this helper is offline-only and can never claim production-parser
+ *   execution. Real Windows/Electron acceptance runs may upgrade that field
+ *   in a follow-up; see Issue #280 §"Required Issue backfill".
  *
  * Privacy: this module never returns absolute filesystem paths. The collector
  * is responsible for mapping local paths to a stable `sampleId` derived from
@@ -187,12 +198,21 @@ function detectEocdDiscrepancy(bytes) {
 }
 
 /**
- * Structural probe (B0-aligned, narrow B1-corrected): derives the 9 B1
- * counts from `DOMDocument.xml` and the `LIBRARY/*.xml` entries.
+ * Structural probe (B0/B1-aligned per Issue #280 corrective item 2):
+ * mirrors the proven B0/B1 definitions from `tests/helpers/fla-structural-probe.ts`:
  *
- * `tweenCount` strictly counts `<DOMFrame ... tweenType="motion|shape">`
- * per the #278 corrected B0/B1 semantics. `frameCount` counts `<DOMFrame>`
- * elements (NOT bitmap placements).
+ *   sceneCount           = top-level DOMTimeline count
+ *   totalTimelineCount   = top-level + symbol-internal timelines
+ *   layerCount           = DOMLayer count across top-level + symbol timelines
+ *   frameCount           = DOMFrame count across top-level + symbol timelines
+ *   tweenCount           = tweenType in {motion, shape} across the same timelines
+ *   symbolCount          = supported DOMSymbolItem structural count
+ *   movieClipCount       = proven symbolType subset
+ *   graphicCount         = proven symbolType subset
+ *   buttonCount          = proven symbolType subset
+ *
+ * Keyframe / animated-timeline production fields are intentionally NOT
+ * derived here (still deferred per Issue #278 / #280 §"MUST NOT").
  */
 function probeStructure(domDocumentXml, libraryXmlEntries) {
   if (!domDocumentXml) {
@@ -205,6 +225,10 @@ function probeStructure(domDocumentXml, libraryXmlEntries) {
   let movieClipCount = 0;
   let graphicCount = 0;
   let buttonCount = 0;
+  // Per-symbol timeline analyses; aggregated below with top-level analyses so
+  // layerCount/frameCount/tweenCount span top-level + symbol timelines, per
+  // B0/B1 proof semantics (Issue #280 corrective item 2).
+  const symbolTimelineAnalyses = [];
   for (const libXml of libraryXmlEntries) {
     if (/<DOMBitmapItem\b/.test(libXml)) bitmapInLibrary += 1;
     const m = libXml.match(/<DOMSymbolItem\b[^>]*\bsymbolType="(\w+)"/);
@@ -212,6 +236,9 @@ function probeStructure(domDocumentXml, libraryXmlEntries) {
       if (m[1] === 'movieclip') movieClipCount += 1;
       else if (m[1] === 'graphic') graphicCount += 1;
       else if (m[1] === 'button') buttonCount += 1;
+      for (const tl of extractBalancedBlocks(libXml, 'DOMTimeline')) {
+        symbolTimelineAnalyses.push(analyzeTimeline(tl));
+      }
     }
   }
 
@@ -227,24 +254,17 @@ function probeStructure(domDocumentXml, libraryXmlEntries) {
   const placedInstanceCount = placedNames.size;
   const libraryOnlyMediaCount = Math.max(0, bitmapMediaCount - placedInstanceCount);
 
-  // Top-level timeline structure (only DOMDocument.xml contributes; library
-  // symbols' internal timelines are intentionally NOT double-counted here to
-  // keep this probe aligned with the B0 spike's evidence matrix).
-  let layerCount = 0;
-  let frameCount = 0;
-  let tweenCount = 0;
-  const sceneCount = extractBalancedBlocks(domDocumentXml, 'DOMTimeline').length;
-  for (const tl of extractBalancedBlocks(domDocumentXml, 'DOMTimeline')) {
-    layerCount += (tl.match(/<DOMLayer\b/g) || []).length;
-    const frames = (tl.match(/<DOMFrame\b/g) || []).length;
-    frameCount += frames;
-    const tweens = (tl.match(/\btweenType="(motion|shape)"/g) || []).length;
-    tweenCount += tweens;
-  }
+  // Top-level timeline analyses (DOMDocument.xml <timelines>).
+  const topTimelines = extractBalancedBlocks(domDocumentXml, 'DOMTimeline');
+  const topAnalyses = topTimelines.map(analyzeTimeline);
+  const allAnalyses = topAnalyses.concat(symbolTimelineAnalyses);
+  const layerCount = allAnalyses.reduce((sum, a) => sum + a.layers, 0);
+  const frameCount = allAnalyses.reduce((sum, a) => sum + a.frames, 0);
+  const tweenCount = allAnalyses.reduce((sum, a) => sum + a.tweens, 0);
 
   return {
-    sceneCount,
-    totalTimelineCount: sceneCount + (movieClipCount + graphicCount + buttonCount + embeddedSymbols),
+    sceneCount: topAnalyses.length,
+    totalTimelineCount: allAnalyses.length,
     layerCount,
     frameCount,
     tweenCount,
@@ -256,6 +276,21 @@ function probeStructure(domDocumentXml, libraryXmlEntries) {
     placedInstanceCount,
     libraryOnlyMediaCount,
   };
+}
+
+/**
+ * Per-timeline analysis used by `probeStructure` to keep B0/B1 parity.
+ * Mirrors the TS implementation in `tests/helpers/fla-structural-probe.ts`.
+ *
+ * `tweens` is strictly `tweenType="motion|shape"` per Issue #278 — child
+ * `<Ease/>` / `<CustomEase/>` markers do not count, and synthetic-`none`
+ * markers also do not count.
+ */
+function analyzeTimeline(timelineXml) {
+  const layers = (timelineXml.match(/<DOMLayer\b/g) || []).length;
+  const frames = (timelineXml.match(/<DOMFrame\b/g) || []).length;
+  const tweens = (timelineXml.match(/\btweenType="(motion|shape)"/g) || []).length;
+  return { layers, frames, tweens };
 }
 
 /**
@@ -315,7 +350,20 @@ function zeroStructure() {
 
 /**
  * Normalized per-sample record (the smallest unit of the corpus manifest).
- * Fields are intentionally restrictive to keep the on-disk diff small.
+ *
+ * Evidence contract (Issue #280 corrective item 3):
+ *
+ *   preflight        — container-level offline probe (EOCD/CD-size/PASS-REJECT)
+ *   offlineProbe     — strictly offline structural + raster facts derived by
+ *                      THIS helper from `DOMDocument.xml` / `LIBRARY/*.xml`
+ *   productionParser — strictly `not-verified` here; only real Windows/Electron
+ *                      acceptance may upgrade this to `verified`. This helper
+ *                      MUST NOT upgrade it itself.
+ *   previewAvailable — gated on `productionParser.status === 'verified'`,
+ *                      never asserted solely because the offline probe found
+ *                      raster media.
+ *   sourceUnchanged  — always `verified` from this read-only helper; the
+ *                      collector never mutates original bytes.
  */
 function buildSampleRecord({
   sampleId,
@@ -329,7 +377,29 @@ function buildSampleRecord({
   notes,
 }) {
   const preflightResult = containerEvidence.preflightResult;
-  const parserReached = preflightResult === 'pass' && containerEvidence.hasDomDocument;
+  const offlinePass = preflightResult === 'pass' && containerEvidence.hasDomDocument;
+  // Offline-probe structural + raster evidence: present iff we successfully
+  // decoded DOMDocument.xml/LIBRARY from a strict-PASS container.
+  const offlineRaster = offlinePass
+    ? {
+        bitmapMediaCount: structureEvidence.bitmapMediaCount,
+        placedInstanceCount: structureEvidence.placedInstanceCount,
+        libraryOnlyMediaCount: structureEvidence.libraryOnlyMediaCount,
+      }
+    : null;
+  const offlineStructure = offlinePass
+    ? {
+        sceneCount: structureEvidence.sceneCount,
+        totalTimelineCount: structureEvidence.totalTimelineCount,
+        layerCount: structureEvidence.layerCount,
+        frameCount: structureEvidence.frameCount,
+        tweenCount: structureEvidence.tweenCount,
+        symbolCount: structureEvidence.symbolCount,
+        movieClipCount: structureEvidence.movieClipCount,
+        graphicCount: structureEvidence.graphicCount,
+        buttonCount: structureEvidence.buttonCount,
+      }
+    : null;
   return {
     sampleId: safeString(sampleId, 128),
     basename: safeString(basename, 260),
@@ -348,28 +418,20 @@ function buildSampleRecord({
       zip64Indicator: containerEvidence.zip64Indicator,
       encryptionIndicator: containerEvidence.encryptionIndicator,
     },
-    parserReached,
-    raster: parserReached
-      ? {
-          bitmapMediaCount: structureEvidence.bitmapMediaCount,
-          placedInstanceCount: structureEvidence.placedInstanceCount,
-          libraryOnlyMediaCount: structureEvidence.libraryOnlyMediaCount,
-        }
-      : null,
-    structure: parserReached
-      ? {
-          sceneCount: structureEvidence.sceneCount,
-          totalTimelineCount: structureEvidence.totalTimelineCount,
-          layerCount: structureEvidence.layerCount,
-          frameCount: structureEvidence.frameCount,
-          tweenCount: structureEvidence.tweenCount,
-          symbolCount: structureEvidence.symbolCount,
-          movieClipCount: structureEvidence.movieClipCount,
-          graphicCount: structureEvidence.graphicCount,
-          buttonCount: structureEvidence.buttonCount,
-        }
-      : null,
-    previewAvailable: parserReached && (structureEvidence.bitmapMediaCount ?? 0) > 0,
+    offlineProbe: {
+      // 'not-run' for strict-REJECT containers (no DOMDocument parsing); 'success'
+      // for strict-PASS containers we successfully parsed.
+      status: offlinePass ? 'success' : 'not-run',
+      raster: offlineRaster,
+      structure: offlineStructure,
+    },
+    productionParser: {
+      // Offline-only helper can NEVER claim production-parser execution. A
+      // follow-up Windows/Electron acceptance run may upgrade this to
+      // 'verified' without redefining the schema.
+      status: 'not-verified',
+      previewAvailable: false,
+    },
     sourceUnchanged: 'verified',
     notes: safeString(notes, 1000),
   };

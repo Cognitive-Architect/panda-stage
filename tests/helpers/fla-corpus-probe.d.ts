@@ -2,6 +2,13 @@
 // so the corpus collector can run via `node scripts/fla-corpus-collector.cjs`
 // without a TS compilation step. The Vitest unit/integration tests load
 // the same `.cjs` via `createRequire(import.meta.url)`.
+//
+// Evidence shape (Issue #280 corrective item 3):
+//   - `offlineProbe` carries strictly OFFLINE structural + raster facts.
+//   - `productionParser` is hard-pinned to `not-verified` from this offline
+//     helper; only a real Windows/Electron acceptance run may upgrade it.
+//   - `previewAvailable` is gated on `productionParser.status === 'verified'`
+//     — never asserted solely because the offline probe found raster media.
 export type ContainerEvidence = {
   preflightResult: 'pass' | 'reject';
   preflightReasonCategory: 'archive-malformed' | null;
@@ -29,6 +36,12 @@ export type StructureEvidence = {
   libraryOnlyMediaCount: number;
 };
 
+/**
+ * Sample record emitted by `inspectSample`. The `offlineProbe` /
+ * `productionParser` split is the authoritative truth: this helper is
+ * offline-only and MUST NOT promote `productionParser.status` to anything
+ * other than `'not-verified'`.
+ */
 export type SampleRecord = {
   sampleId: string;
   basename: string;
@@ -47,24 +60,29 @@ export type SampleRecord = {
     zip64Indicator: boolean | null;
     encryptionIndicator: boolean | null;
   };
-  parserReached: boolean;
-  raster: {
-    bitmapMediaCount: number;
-    placedInstanceCount: number;
-    libraryOnlyMediaCount: number;
-  } | null;
-  structure: {
-    sceneCount: number;
-    totalTimelineCount: number;
-    layerCount: number;
-    frameCount: number;
-    tweenCount: number;
-    symbolCount: number;
-    movieClipCount: number;
-    graphicCount: number;
-    buttonCount: number;
-  } | null;
-  previewAvailable: boolean;
+  offlineProbe: {
+    status: 'success' | 'not-run' | 'error';
+    raster: {
+      bitmapMediaCount: number;
+      placedInstanceCount: number;
+      libraryOnlyMediaCount: number;
+    } | null;
+    structure: {
+      sceneCount: number;
+      totalTimelineCount: number;
+      layerCount: number;
+      frameCount: number;
+      tweenCount: number;
+      symbolCount: number;
+      movieClipCount: number;
+      graphicCount: number;
+      buttonCount: number;
+    } | null;
+  };
+  productionParser: {
+    status: 'not-verified' | 'verified';
+    previewAvailable: boolean;
+  };
   sourceUnchanged: 'verified';
   notes: string;
 };
