@@ -259,6 +259,8 @@ describe('FlaStaticSnapshotWindowManager — crash / teardown cleanup (Correctiv
   it('clears all pending jobs on close without waiting for the wall clock', async () => {
     const mgr = manager();
     const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    // Hard sink so a synchronous close() settlement is never seen as unhandled.
+    promise.catch(() => {});
     const rejectError = promise.then(
       () => null,
       (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
@@ -280,6 +282,11 @@ describe('FlaStaticSnapshotWindowManager — cold-start cancellation (Issue #290
   // `rejectError` resolves to the rejection Error (or null on success).
   function rasterizeTracked(mgr: FlaStaticSnapshotWindowManager) {
     const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    // Hard sink: close()/cancel() may settle the startup promise
+    // synchronously, so attach a permanent catch to the rasterize promise
+    // itself. Without it V8 flags the synchronous rejection as unhandled
+    // before the test's `await rejectError` runs. (Corrective B)
+    promise.catch(() => {});
     const rejectError = promise.then(
       () => null,
       (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
@@ -365,5 +372,45 @@ describe('FlaStaticSnapshotWindowManager — cold-start cancellation (Issue #290
     expect(error).not.toBeNull();
     expect((error as Error).message).toMatch(/cancelled/i);
     mgr.close();
+  });
+
+  // Corrective C — the exact sub-state not previously proven:
+  // load completed (window created, loadFile resolved) but READY has NOT
+  // arrived, then close(). The startup promise must settle promptly, the
+  // window is destroyed, no raster IPC is sent, and a late READY/RESULT/
+  // ERROR cannot resurrect or resolve the request.
+  it('load-complete + READY-pending + close settles A, destroys window, and ignores late READY/RESULT/ERROR', async () => {
+    const mgr = manager();
+    const { rejectError } = rasterizeTracked(mgr);
+    const window = latestWindow();
+    // Window created and load completed; READY handshake still pending.
+    expect(window.isDestroyed()).toBe(false);
+    expect(window.webContents.send).not.toHaveBeenCalled();
+
+    mgr.close();
+
+    // A settles promptly with a closed error; no startup/READY promise leaks.
+    const error = await rejectError;
+    expect(error).not.toBeNull();
+    expect((error as Error).message).toMatch(/closed/i);
+    // Window is torn down.
+    expect(window.isDestroyed()).toBe(true);
+    // No raster IPC was ever dispatched for the closed startup.
+    expect(window.webContents.send).not.toHaveBeenCalled();
+
+    // A late READY cannot resurrect the request (disposed guard).
+    mgr.markReady(window.webContents.id);
+    expect(window.webContents.send).not.toHaveBeenCalled();
+    // A late RESULT cannot resolve the rejected startup promise.
+    mgr.markResult(window.webContents.id, {
+      requestId: REQUEST_A,
+      png: Array.from(new Uint8Array([9])),
+      width: 8,
+      height: 8,
+    });
+    expect(window.webContents.send).not.toHaveBeenCalled();
+    // A late ERROR cannot resolve the rejected startup promise.
+    mgr.markError(window.webContents.id, { requestId: REQUEST_A, message: 'late error' });
+    expect(window.webContents.send).not.toHaveBeenCalled();
   });
 });

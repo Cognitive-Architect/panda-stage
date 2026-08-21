@@ -111,6 +111,11 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     this.readyTimer = null;
     this.readyResolve?.();
     this.readyResolve = null;
+    // Hand off the startup owner to the post-READY raster `pending` state
+    // here (not in the ensureWindow() microtask continuation). Otherwise a
+    // close() arriving after READY but before that continuation runs would
+    // reject a startup promise the caller no longer observes, leaking it.
+    this.owner = null;
   }
 
   markResult(senderId: number, rawPayload: unknown): void {
@@ -194,17 +199,18 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
 
   close(): void {
     this.disposed = true;
-    // Defer settlement to a microtask so a caller that attaches its
-    // rejection listener synchronously after close() still observes it
-    // (avoids a spurious unhandled rejection in async test clients).
-    queueMicrotask(() => {
-      if (this.owner) {
-        const { rejectStartup } = this.owner;
-        this.owner = null;
-        rejectStartup(new Error('Snapshot rasterizer closed'));
-      }
-      this.settlePendingError(new Error('Snapshot rasterizer closed'));
-    });
+    // Settle the startup owner and every pending raster request BEFORE
+    // tearing down the window. destroyWindow() clears owner/readyResolve,
+    // so a deferred reject would never reach the awaiting ensureWindow()
+    // / READY handshake (a startup promise leak). close() means the work
+    // is closed now; correctness must not depend on when a caller attaches
+    // its rejection listener.
+    if (this.owner) {
+      const { rejectStartup } = this.owner;
+      this.owner = null;
+      rejectStartup(new Error('Snapshot rasterizer closed'));
+    }
+    this.settlePendingError(new Error('Snapshot rasterizer closed'));
     this.destroyWindow();
   }
 
@@ -288,6 +294,11 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
         reject(new Error('Snapshot renderer ready handshake timed out'));
       }, this.timing.readyTimeoutMs);
     });
+    // Hard sink: close()/cancel() may settle this promise synchronously.
+    // The `await` below observes it, but a same-tick synchronous rejection
+    // can be flagged unhandled before that continuation runs; the sink
+    // guarantees the startup promise is always observed.
+    readyPromise.catch(() => {});
 
     try {
       if (developmentUrl) {
