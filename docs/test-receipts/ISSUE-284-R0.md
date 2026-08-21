@@ -15,8 +15,9 @@
 
 ```text
 baseline_main: 3c47a4ee8af07e834338b223fcb3260a4c6dddbc
-integration_pr: <filled when Draft PR is opened; see "next_gate">
+integration_pr: https://github.com/Cognitive-Architect/panda-stage/pull/285
 stage_final_commit: 1df6a678627a6a61090d432904c54b0c3551855a
+R0_result_comment: https://github.com/Cognitive-Architect/panda-stage/issues/284#issuecomment-5365565441
 R0_conclusion: R0_RENDER_FEASIBLE_WITH_LIMITS
 
 renderer_path:
@@ -253,11 +254,12 @@ V1_5_C_boundary_changed: NO
 next_gate:
   Maintainer review of this receipt + the human visual check
   on docs/evidence/issue-284-r0/r0-render-sword.png. On accept:
-  open the shared V2-R Draft PR (agent/fla-v2-r branch, base
-  3c47a4e) and post a link on Issue #284. Do NOT start R1
-  work; R1 requires its own Issue (#285+) and explicit
-  maintainer authorization per the Issue #284 R0 → R1
-  gate contract.
+  the shared V2-R Draft PR (agent/fla-v2-r branch, base
+  3c47a4e) is already open as PR #285 and the R0 RESULT
+  comment has been posted as #issuecomment-5365565441.
+  Do NOT start R1 work; R1 requires its own Issue (#286+)
+  and explicit maintainer authorization per the Issue #284
+  R0 → R1 gate contract.
 ```
 
 ## Files added in this R0 stage-final commit
