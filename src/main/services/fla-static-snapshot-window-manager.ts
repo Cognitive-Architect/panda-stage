@@ -59,6 +59,12 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
   private readyResolve: (() => void) | null = null;
   private readyTimer: NodeJS.Timeout | null = null;
   private readonly pending = new Map<string, PendingRasterize>();
+  // E: the single in-flight raster job identity. Must equal the pending
+  // map key; a different request id replaces it via forced window teardown.
+  private activeRequestId: string | null = null;
+  // Set once close() is called; forces any in-flight ensureWindow() to
+  // reject immediately instead of hanging on the ready handshake.
+  private disposed = false;
 
   constructor(
     timing: Partial<FlaStaticSnapshotWindowTiming> = {},
@@ -69,8 +75,14 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
   }
 
   async rasterize(input: FlaStaticSnapshotRasterizeInput): Promise<FlaStaticSnapshotRasterizeOutput> {
-    const window = await this.ensureWindow();
-    const requestId = randomUUID();
+    if (this.disposed) {
+      throw new Error('Snapshot rasterizer closed');
+    }
+    // E: enforce a single in-flight raster job. If a different request is
+    // already pending, forcibly tear down its hidden window so the new
+    // request gets a fresh, dedicated sandboxed renderer.
+    const window = await this.ensureWindow(input.requestId);
+    const requestId = input.requestId;
     const payload = { requestId, svg: input.svg };
     const promise = new Promise<FlaStaticSnapshotRasterizeOutput>((resolve, reject) => {
       this.pending.set(requestId, {
@@ -89,6 +101,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
   }
 
   markReady(senderId: number): void {
+    if (this.disposed) return;
     const window = this.window;
     if (!window || window.webContents.id !== senderId) return;
     this.ready = true;
@@ -99,6 +112,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
   }
 
   markResult(senderId: number, rawPayload: unknown): void {
+    if (this.disposed) return;
     const window = this.window;
     if (!window || window.webContents.id !== senderId) return;
     if (typeof rawPayload !== 'object' || rawPayload === null) return;
@@ -108,6 +122,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     const pending = this.pending.get(requestId);
     if (!pending) return;
     this.pending.delete(requestId);
+    if (this.activeRequestId === requestId) this.activeRequestId = null;
     clearTimeout(pending.wallTimer);
     if (
       !Array.isArray(payload.png) ||
@@ -126,6 +141,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
   }
 
   markError(senderId: number, rawPayload: unknown): void {
+    if (this.disposed) return;
     const window = this.window;
     if (!window || window.webContents.id !== senderId) return;
     if (typeof rawPayload !== 'object' || rawPayload === null) return;
@@ -135,31 +151,63 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     const pending = this.pending.get(requestId);
     if (!pending) return;
     this.pending.delete(requestId);
+    if (this.activeRequestId === requestId) this.activeRequestId = null;
     clearTimeout(pending.wallTimer);
     pending.reject(new Error(payload.message ?? 'Snapshot rasterization failed'));
   }
 
-  /** Bounded per-request cancellation (Corrective C). */
+  /**
+   * Bounded per-request cancellation (Corrective C).
+   *
+   * This is real cancellation: it rejects the caller's promise AND
+   * forcibly destroys the dedicated hidden BrowserWindow that is executing
+   * the raster job, so the canvas stops cooking. The next preview rebuilds
+   * a fresh, sandboxed window via ensureWindow(). The security boundary is
+   * unchanged (sandbox/contextIsolation/nodeIntegration are window
+   * properties, not relaxed).
+   */
   cancel(requestId: string): boolean {
     const pending = this.pending.get(requestId);
     if (!pending) return false;
     this.pending.delete(requestId);
     clearTimeout(pending.wallTimer);
-    // Canvas work cannot be cooperatively interrupted, but rejecting the
-    // pending promise stops the caller from awaiting a result that will
-    // never be used; a late RESULT/ERROR for this requestId finds no entry.
+    if (this.activeRequestId === requestId) this.activeRequestId = null;
+    // Physical stop: terminate the hidden renderer rather than leaving the
+    // canvas to finish a result we will discard.
+    this.destroyWindow();
     pending.reject(new Error('Snapshot rasterization cancelled'));
     return true;
   }
 
   close(): void {
+    this.disposed = true;
     this.settlePendingError(new Error('Snapshot rasterizer closed'));
     this.destroyWindow();
   }
 
-  private async ensureWindow(): Promise<BrowserWindow> {
+  private async ensureWindow(requestId: string): Promise<BrowserWindow> {
+    // E: a real rasterizer can only run one job at a time. If a different
+    // request is already in flight, tear down its hidden window first so
+    // the new request owns a fresh sandboxed renderer (old pending entry is
+    // settled as cancelled by the caller path; here we just reclaim the
+    // window). This prevents the `pending` map from becoming an unbounded
+    // set of actual hidden-renderer jobs.
+    if (this.activeRequestId && this.activeRequestId !== requestId) {
+      const oldPending = this.pending.get(this.activeRequestId);
+      if (oldPending) {
+        this.pending.delete(this.activeRequestId);
+        clearTimeout(oldPending.wallTimer);
+        oldPending.reject(new Error('Snapshot rasterization superseded'));
+      }
+      this.activeRequestId = null;
+      this.destroyWindow();
+    }
+
     const existing = this.getWindow();
-    if (existing && this.ready) return existing;
+    if (existing && this.ready) {
+      this.activeRequestId = requestId;
+      return existing;
+    }
     if (existing) this.destroyWindow();
 
     const window = this.windowFactory.create({
@@ -224,7 +272,11 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       } else {
         await window.loadFile(path.join(__dirname, '../../../dist/renderer/fla-static-snapshot.html'));
       }
+      // A close() during spawn must reject the caller instead of hanging on
+      // the handshake forever.
+      if (this.disposed) throw new Error('Snapshot rasterizer closed');
       await readyPromise;
+      this.activeRequestId = requestId;
       return window;
     } catch (error) {
       this.destroyWindow();
@@ -243,12 +295,14 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       pending.reject(error);
     }
     this.pending.clear();
+    this.activeRequestId = null;
   }
 
   private destroyWindow(): void {
     const window = this.getWindow();
     this.window = null;
     this.ready = false;
+    this.activeRequestId = null;
     if (this.readyTimer) clearTimeout(this.readyTimer);
     this.readyTimer = null;
     this.readyResolve = null;

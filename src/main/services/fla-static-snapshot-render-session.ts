@@ -48,6 +48,8 @@ import {
 } from '../../shared/fla-static-snapshot-api';
 
 export interface FlaStaticSnapshotRasterizeInput {
+  /** End-to-end request identity: RenderSession preview requestId. */
+  requestId: string;
   svg: string;
   width: number;
   height: number;
@@ -234,6 +236,7 @@ export class FlaStaticSnapshotRenderSession {
     // still pending (a stalling rasterizer must not hang the session).
     void this.rasterizer
       .rasterize({
+        requestId,
         svg: svgResult.svg,
         width: svgResult.width,
         height: svgResult.height,
