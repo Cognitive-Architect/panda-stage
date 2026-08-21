@@ -30,9 +30,17 @@ const JSZip = require('jszip');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const FLA_INPUT = process.env.FLA_R0_INPUT || 'D:\\表情合集\\剑.fla';
-const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'issue-284-r0');
+// Issue #286 §B: default to local external evidence storage; do NOT
+// write private real-sample visuals into the tracked repo.
+const EVIDENCE_DIR = process.env.FLA_R0_EVIDENCE_DIR
+  || 'D:\\PandaStage-Acceptance\\fla-v2-r0';
+// The script also emits repo-safe metadata under docs/evidence/issue-284-r0
+// (no visual bytes; hashes + dimensions + selectedIdentity only).
+const REPO_METADATA_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'issue-284-r0');
 const SVG_OUT = path.join(EVIDENCE_DIR, 'r0-render-sword.svg');
+const PNG_OUT = path.join(EVIDENCE_DIR, 'r0-render-sword.png');
 const JSON_OUT = path.join(EVIDENCE_DIR, 'r0-extract.json');
+const REPO_METADATA_OUT = path.join(REPO_METADATA_DIR, 'r0-extract.json');
 const EXPECTED_SHA256 = 'E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377';
 
 const LIMITS = {
@@ -495,6 +503,7 @@ function pathBoundingBoxAfterMatrix(commands, m) {
 async function main() {
   const startedAt = Date.now();
   fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
+  fs.mkdirSync(REPO_METADATA_DIR, { recursive: true });
 
   // 1. Read source.
   const sourceBytes = fs.readFileSync(FLA_INPUT);
@@ -610,6 +619,7 @@ async function main() {
 
   // 14. Save extraction record.
   const cmdTypes = allCommands.reduce((acc, c) => (acc[c.type] = (acc[c.type] || 0) + 1, acc), {});
+  const svgHash = sha256(Buffer.from(svg, 'utf-8'));
   const extractRecord = {
     source: {
       path: FLA_INPUT,
@@ -646,11 +656,45 @@ async function main() {
       networkAccess: false,
       projectMutation: false,
     },
+    outputs: {
+      svg: { path: SVG_OUT, byteLength: Buffer.byteLength(svg, 'utf-8'), sha256: svgHash },
+      png: { path: PNG_OUT, status: 'pending — produced by scripts/fla-r0-spike-rasterize.cjs' },
+    },
     path: { svg: pathD.substring(0, 400) + (pathD.length > 400 ? '…(truncated)' : ''), commandTypes: cmdTypes },
     wallClockMs: Date.now() - startedAt,
     budget: LIMITS,
   };
   fs.writeFileSync(JSON_OUT, JSON.stringify(extractRecord, null, 2), 'utf-8');
+
+  // 15. Write a smaller repo-safe metadata record under docs/.
+  // Per Issue #286 §B, the tracked repo must not hold private/sample-derived
+  // visual bytes. The repo copy contains only metadata: hashes, dimensions,
+  // the selected structural identity, the public manifest hash, the
+  // command-type distribution, and an explicit LOCAL_ONLY pointer.
+  const repoMetadata = {
+    source: {
+      sha256: sourceHashBefore,
+      byteLength: sourceBytes.byteLength,
+      sha256MatchesManifest: sourceHashBefore === EXPECTED_SHA256,
+      note: 'private path omitted from tracked repo per Issue #286',
+    },
+    output: {
+      svgSha256: svgHash,
+      svgByteLength: Buffer.byteLength(svg, 'utf-8'),
+      png: { status: 'pending rasterization' },
+      pngSha256: null,
+      pngByteLength: null,
+      width: outputWidth,
+      height: outputHeight,
+      pixelCount: outputWidth * outputHeight,
+      visualPath: 'LOCAL_ONLY (not committed; see D:\\PandaStage-Acceptance\\fla-v2-r0\\)',
+    },
+    selected: extractRecord.selected,
+    fillUsed: fill,
+    securityInvariants: extractRecord.securityInvariants,
+    transparency: extractRecord.transparency,
+  };
+  fs.writeFileSync(REPO_METADATA_OUT, JSON.stringify(repoMetadata, null, 2), 'utf-8');
 
   process.stdout.write(JSON.stringify(extractRecord, null, 2) + '\n');
 }

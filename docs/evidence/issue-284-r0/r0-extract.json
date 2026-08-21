@@ -1,23 +1,22 @@
 {
   "source": {
-    "path": "D:\\表情合集\\剑.fla",
-    "byteLength": 32997,
     "sha256": "E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377",
-    "sha256Unchanged": true,
-    "sha256MatchesManifest": true
+    "byteLength": 32997,
+    "sha256MatchesManifest": true,
+    "note": "private path omitted from tracked repo per Issue #286"
   },
-  "archive": {
-    "eocdFound": true,
-    "centralDirectoryDeclaredBytes": 831,
-    "centralDirectoryActualBytes": 831,
-    "cdEndsExactlyAtEocd": true,
-    "entryCount": 12
-  },
-  "document": {
+  "output": {
+    "svgSha256": "92ADC3637AB7C2DFE0A5BE0B151868F78A13ABD6C30A089DECBBB397A6C590D4",
+    "svgByteLength": 77705,
+    "png": {
+      "status": "pending rasterization"
+    },
+    "pngSha256": null,
+    "pngByteLength": null,
     "width": 1920,
     "height": 1080,
-    "outputWidth": 1920,
-    "outputHeight": 1080
+    "pixelCount": 2073600,
+    "visualPath": "LOCAL_ONLY (not committed; see D:\\PandaStage-Acceptance\\fla-v2-r0\\)"
   },
   "selected": {
     "symbolName": "素材来自-cilisucai.com13/素材来自-cilisucai.com63",
@@ -32,24 +31,12 @@
     "edgesUsingEdges": 191,
     "totalCommands": 2358
   },
-  "matrix": {
-    "a": 2.51811218261719,
-    "b": 0,
-    "c": 0,
-    "d": 2.51811218261719,
-    "tx": -1686.05,
-    "ty": -445.45
-  },
   "fillUsed": {
     "type": "solid",
     "index": 1,
     "fillKind": "linear-gradient",
     "color": "#B0D1F4",
     "alpha": 1
-  },
-  "transparency": {
-    "backgroundTransparent": true,
-    "fillOpacity": 1
   },
   "securityInvariants": {
     "actionScriptDetected": false,
@@ -58,23 +45,8 @@
     "networkAccess": false,
     "projectMutation": false
   },
-  "path": {
-    "svg": "M 645.0500 170.9000 Q 646.3500 171.2000 647.6000 171.6500 L 648.9000 172.2000 Q 649.2500 172.3500 649.6500 172.6500 L 650.6500 173.4000 M 623.6000 162.0000 Q 624.1000 161.8000 624.5000 161.3500 Q 625.0500 160.6000 625.5000 160.4500 Q 629.4000 163.0500 635.4000 164.3000 Q 637.8500 164.8000 640.8000 165.3500 Q 642.2500 165.6500 643.8500 165.9000 Q 647.0500 166.5500 650.7000 167.1000 Q 651.5500 167.3…(truncated)",
-    "commandTypes": {
-      "M": 855,
-      "Q": 599,
-      "L": 17,
-      "Z": 236,
-      "C": 651
-    }
-  },
-  "wallClockMs": 49,
-  "budget": {
-    "maxSourceBytes": 268435456,
-    "maxXmlBytes": 33554432,
-    "maxOutputWidth": 4096,
-    "maxOutputHeight": 4096,
-    "maxDecodedPixels": 16777216,
-    "wallClockMs": 30000
+  "transparency": {
+    "backgroundTransparent": true,
+    "fillOpacity": 1
   }
 }

@@ -25,7 +25,8 @@ const crypto = require('node:crypto');
 const { execFileSync, spawnSync } = require('node:child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'issue-284-r0');
+const EVIDENCE_DIR = process.env.FLA_R0_EVIDENCE_DIR
+  || 'D:\\PandaStage-Acceptance\\fla-v2-r0';
 const FLA_INPUT = process.env.FLA_R0_INPUT || 'D:\\表情合集\\剑.fla';
 const EXTRACT = path.join(REPO_ROOT, 'scripts', 'fla-r0-spike-extract.cjs');
 const RASTERIZE = path.join(REPO_ROOT, 'scripts', 'fla-r0-spike-rasterize.cjs');
@@ -34,6 +35,7 @@ const ELECTRON = path.join(REPO_ROOT, 'node_modules', '.bin', 'electron.cmd');
 const RUNS = 3;
 const SVG_OUT = path.join(EVIDENCE_DIR, 'r0-render-sword.svg');
 const PNG_OUT = path.join(EVIDENCE_DIR, 'r0-render-sword.png');
+const DETERMINISM_JSON = path.join(EVIDENCE_DIR, 'r0-determinism.json');
 
 function sha256(buf) { return crypto.createHash('sha256').update(buf).digest('hex').toUpperCase(); }
 
