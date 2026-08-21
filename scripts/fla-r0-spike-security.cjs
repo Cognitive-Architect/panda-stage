@@ -164,7 +164,7 @@ async function main() {
     checks,
     conclusion: {
       allPassed,
-      blockingFailures: Object.entries(checks).filter(([k, v]) => v.passed !== 'YES').map(([k]) => k),
+      blockingFailures: Object.entries(checks).filter(([, v]) => v.passed !== 'YES').map(([k]) => k),
     },
   };
   fs.writeFileSync(path.join(EVIDENCE_DIR, 'r0-security.json'), JSON.stringify(summary, null, 2));

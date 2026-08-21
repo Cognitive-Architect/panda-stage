@@ -1,20 +1,24 @@
 /*
  * FLA V2-R0 spike — determinism probe (3x run, compare).
  *
- * Runs scripts/fla-r0-spike-extract.cjs three times back-to-back on the
- * same FLA, and compares:
+ * Runs scripts/fla-r0-spike-extract.cjs + scripts/fla-r0-spike-rasterize.cjs
+ * three times back-to-back on the same FLA, and compares:
  *   - the source SHA-256 (must be unchanged on every run)
  *   - the SVG byte length and SHA-256
- *   - the rendered PNG byte length and SHA-256
+ *   - the rendered PNG byte length, SHA-256, and dimensions
  *
  * Per Issue #284 R0-E:
  *   - run the same case at least 3 times
- *   - compare dimensions and decoded pixel content
+ *   - compare dimensions and PNG byte content
  *   - compare output byte hash when the encoder produces stable metadata
- *   - if byte hashes differ but decoded pixels are identical, record that
- *     distinction honestly
- *   - if decoded pixels differ, classify the nondeterminism and stop
- *     pretending the path is deterministic
+ *   - if byte hashes differ between runs, classify the nondeterminism
+ *     and stop pretending the path is deterministic
+ *
+ * Note: this probe compares raw PNG bytes (via SHA-256) and PNG header
+ * dimensions only. It does not decode the PNG IDAT stream into RGBA
+ * pixels; a stronger pixel-by-pixel comparison would require a PNG
+ * decoder dependency (pngjs / sharp) and is out of R0 scope per the
+ * 剑.fla sample's small/zero-raster character.
  */
 
 'use strict';
@@ -35,14 +39,8 @@ const ELECTRON = path.join(REPO_ROOT, 'node_modules', '.bin', 'electron.cmd');
 const RUNS = 3;
 const SVG_OUT = path.join(EVIDENCE_DIR, 'r0-render-sword.svg');
 const PNG_OUT = path.join(EVIDENCE_DIR, 'r0-render-sword.png');
-const DETERMINISM_JSON = path.join(EVIDENCE_DIR, 'r0-determinism.json');
 
 function sha256(buf) { return crypto.createHash('sha256').update(buf).digest('hex').toUpperCase(); }
-
-function readJsonIfPresent(p) {
-  if (!fs.existsSync(p)) return null;
-  return JSON.parse(fs.readFileSync(p, 'utf-8'));
-}
 
 function runExtract() {
   const t0 = Date.now();
@@ -78,17 +76,6 @@ function pngDimensions(buf) {
   const width = buf.readUInt32BE(16);
   const height = buf.readUInt32BE(20);
   return { width, height };
-}
-
-function pixelsEqualish(a, b) {
-  // Pixel-byte comparison after decoding both PNGs.
-  // Without a full PNG decoder in Node, we approximate by comparing
-  // the IDAT-compressed bytes: different IDAT ⇒ different pixels.
-  // Stronger comparison would require pngjs / sharp — neither is in deps.
-  // For R0 determinism, byte-hash equality is a sufficient upper bound.
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
 }
 
 async function main() {
@@ -128,9 +115,8 @@ async function main() {
     r.pngDimensions.height === first.pngDimensions.height
   );
 
-  // Pixel-by-pixel: decode each PNG via Electron/canvas to RGBA, then compare.
-  // We compare pixel hash via a second-stage probe script (we avoid the
-  // cost of bundling pngjs for R0). The byte hash is the primary signal.
+  // Compare across runs using byte hashes + PNG header dimensions
+  // (no IDAT-to-RGBA decode here; see file header for scope notes).
 
   const summary = {
     baseline: { source: FLA_INPUT, sourceSha256: sourceHash },

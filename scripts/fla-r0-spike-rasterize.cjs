@@ -35,7 +35,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const REPO_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_EVIDENCE_DIR = process.env.FLA_R0_EVIDENCE_DIR
   || 'D:\\PandaStage-Acceptance\\fla-v2-r0';
 const SVG_IN = process.env.FLA_R0_SVG || path.join(DEFAULT_EVIDENCE_DIR, 'r0-render-sword.svg');
@@ -142,7 +141,6 @@ async function rasterize() {
   // contextIsolation means the preload's window is a different world.
   // The main process executeJavaScript runs in the page main world,
   // where r0RenderImpl is defined.
-  const callScript = `window.r0RenderImpl(${JSON.stringify(svgText)}, ${EXPECTED_WIDTH}, ${EXPECTED_HEIGHT})`;
   const deadline = Date.now() + 30_000;
   let renderResult = null;
   let lastError = null;

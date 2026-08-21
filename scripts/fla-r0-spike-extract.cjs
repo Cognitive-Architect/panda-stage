@@ -101,7 +101,7 @@ function decodeCoord(value) {
   if (value.startsWith('#')) {
     const hex = value.substring(1);
     const dotIndex = hex.indexOf('.');
-    let intHex = '';
+    let intHex;
     let fracHex = null;
     if (dotIndex !== -1) {
       intHex = hex.substring(0, dotIndex);
@@ -468,19 +468,6 @@ function applyMatrixToPoint(m, x, y) {
   // Panda's matrix: tx/ty are translation in PIXELS (after decoder already divided by 20).
   // SVG: matrix(a b c d e f) → x' = a*x + c*y + e, y' = b*x + d*y + f
   return { x: m.a * x + m.c * y + m.tx, y: m.b * x + m.d * y + m.ty };
-}
-
-function composeMatrix(parent, child) {
-  if (!parent) return child || null;
-  if (!child) return parent;
-  return {
-    a: parent.a * child.a,
-    b: parent.a * child.b,
-    c: parent.c * child.a + child.c,
-    d: parent.c * child.b + child.d,
-    tx: parent.a * child.tx + parent.c * child.ty + parent.tx,
-    ty: parent.b * child.tx + parent.d * child.ty + parent.ty,
-  };
 }
 
 function pathBoundingBoxAfterMatrix(commands, m) {
