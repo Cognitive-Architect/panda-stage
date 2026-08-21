@@ -16,7 +16,7 @@
 ```text
 baseline_main: 3c47a4ee8af07e834338b223fcb3260a4c6dddbc
 integration_pr: <filled when Draft PR is opened; see "next_gate">
-stage_final_commit: <see commit SHA after `git commit`; matches the SHA below>
+stage_final_commit: 1df6a678627a6a61090d432904c54b0c3551855a
 R0_conclusion: R0_RENDER_FEASIBLE_WITH_LIMITS
 
 renderer_path:
