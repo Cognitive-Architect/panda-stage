@@ -62,6 +62,11 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
   // E: the single in-flight raster job identity. Must equal the pending
   // map key; a different request id replaces it via forced window teardown.
   private activeRequestId: string | null = null;
+  // Owner of the current hidden window across its full startup lifecycle
+  // (spawning/loading/READY-wait), before the raster `pending` entry is
+  // registered. Lets cancel/supersede/close settle the request even before
+  // READY, and reject the outstanding ensureWindow()/READY wait.
+  private owner: { requestId: string; rejectStartup: (error: Error) => void } | null = null;
   // Set once close() is called; forces any in-flight ensureWindow() to
   // reject immediately instead of hanging on the ready handshake.
   private disposed = false;
@@ -78,11 +83,8 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     if (this.disposed) {
       throw new Error('Snapshot rasterizer closed');
     }
-    // E: enforce a single in-flight raster job. If a different request is
-    // already pending, forcibly tear down its hidden window so the new
-    // request gets a fresh, dedicated sandboxed renderer.
-    const window = await this.ensureWindow(input.requestId);
     const requestId = input.requestId;
+    const window = await this.ensureWindow(requestId);
     const payload = { requestId, svg: input.svg };
     const promise = new Promise<FlaStaticSnapshotRasterizeOutput>((resolve, reject) => {
       this.pending.set(requestId, {
@@ -123,6 +125,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     if (!pending) return;
     this.pending.delete(requestId);
     if (this.activeRequestId === requestId) this.activeRequestId = null;
+    if (this.owner && this.owner.requestId === requestId) this.owner = null;
     clearTimeout(pending.wallTimer);
     if (
       !Array.isArray(payload.png) ||
@@ -152,6 +155,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     if (!pending) return;
     this.pending.delete(requestId);
     if (this.activeRequestId === requestId) this.activeRequestId = null;
+    if (this.owner && this.owner.requestId === requestId) this.owner = null;
     clearTimeout(pending.wallTimer);
     pending.reject(new Error(payload.message ?? 'Snapshot rasterization failed'));
   }
@@ -167,6 +171,15 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
    * properties, not relaxed).
    */
   cancel(requestId: string): boolean {
+    // Startup-phase cancellation: the request owns the window but has not
+    // yet registered a raster `pending` entry (still spawning / READY-wait).
+    if (this.owner && this.owner.requestId === requestId) {
+      const { rejectStartup } = this.owner;
+      this.owner = null;
+      this.destroyWindow();
+      rejectStartup(new Error('Snapshot rasterization cancelled'));
+      return true;
+    }
     const pending = this.pending.get(requestId);
     if (!pending) return false;
     this.pending.delete(requestId);
@@ -181,30 +194,30 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
 
   close(): void {
     this.disposed = true;
+    // Settle any startup owner whose ensureWindow()/READY wait is pending.
+    if (this.owner) {
+      const { rejectStartup } = this.owner;
+      this.owner = null;
+      rejectStartup(new Error('Snapshot rasterizer closed'));
+    }
     this.settlePendingError(new Error('Snapshot rasterizer closed'));
     this.destroyWindow();
   }
 
   private async ensureWindow(requestId: string): Promise<BrowserWindow> {
     // E: a real rasterizer can only run one job at a time. If a different
-    // request is already in flight, tear down its hidden window first so
-    // the new request owns a fresh sandboxed renderer (old pending entry is
-    // settled as cancelled by the caller path; here we just reclaim the
-    // window). This prevents the `pending` map from becoming an unbounded
-    // set of actual hidden-renderer jobs.
+    // request is already owned (startup or raster), tear it down first so
+    // the new request owns a fresh sandboxed renderer. The old request is
+    // settled as superseded via its owner/pending entry.
     if (this.activeRequestId && this.activeRequestId !== requestId) {
-      const oldPending = this.pending.get(this.activeRequestId);
-      if (oldPending) {
-        this.pending.delete(this.activeRequestId);
-        clearTimeout(oldPending.wallTimer);
-        oldPending.reject(new Error('Snapshot rasterization superseded'));
-      }
-      this.activeRequestId = null;
-      this.destroyWindow();
+      this.teardownActive(new Error('Snapshot rasterization superseded'));
+    } else if (this.owner && this.owner.requestId !== requestId) {
+      this.teardownActive(new Error('Snapshot rasterization superseded'));
     }
 
     const existing = this.getWindow();
     if (existing && this.ready) {
+      this.owner = { requestId, rejectStartup: () => {} };
       this.activeRequestId = requestId;
       return existing;
     }
@@ -258,11 +271,17 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       }
     });
 
+    // The request owns the window from the start of startup. cancel() /
+    // supersede / close can settle it before READY via this resolver, which
+    // rejects the await below. Clearing the owner after READY handoff is
+    // done by markReady/ed/Error or the post-READY cancel path.
     const readyPromise = new Promise<void>((resolve, reject) => {
+      this.owner = { requestId, rejectStartup: reject };
       this.readyResolve = resolve;
       this.readyTimer = setTimeout(() => {
-        reject(new Error('Snapshot renderer ready handshake timed out'));
+        this.owner = null;
         this.readyTimer = null;
+        reject(new Error('Snapshot renderer ready handshake timed out'));
       }, this.timing.readyTimeoutMs);
     });
 
@@ -276,12 +295,38 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       // the handshake forever.
       if (this.disposed) throw new Error('Snapshot rasterizer closed');
       await readyPromise;
+      // Handoff complete: the post-READY cancel path uses `pending`.
+      this.owner = null;
       this.activeRequestId = requestId;
       return window;
     } catch (error) {
-      this.destroyWindow();
+      this.owner = null;
+      // Only reclaim the window this ensureWindow() actually created, so a
+      // competing request that has since taken over `this.window` is not
+      // torn down by this failure path (cold-start supersede race).
+      if (this.window === window) this.destroyWindow();
       throw error instanceof Error ? error : new Error(String(error));
     }
+  }
+
+  /** Settle and tear down the current owner request (startup or raster). */
+  private teardownActive(error: Error): void {
+    if (this.owner && this.owner.requestId) {
+      const { rejectStartup } = this.owner;
+      this.owner = null;
+      rejectStartup(error);
+    }
+    const oldPendingId = this.activeRequestId;
+    if (oldPendingId) {
+      const oldPending = this.pending.get(oldPendingId);
+      if (oldPending) {
+        this.pending.delete(oldPendingId);
+        clearTimeout(oldPending.wallTimer);
+        oldPending.reject(error);
+      }
+    }
+    this.activeRequestId = null;
+    this.destroyWindow();
   }
 
   private getWindow(): BrowserWindow | null {
@@ -290,6 +335,11 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
 
   /** Reject every pending raster request with the given error (crash path). */
   private settlePendingError(error: Error): void {
+    if (this.owner) {
+      const { rejectStartup } = this.owner;
+      this.owner = null;
+      rejectStartup(error);
+    }
     for (const pending of this.pending.values()) {
       clearTimeout(pending.wallTimer);
       pending.reject(error);
@@ -303,6 +353,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     this.window = null;
     this.ready = false;
     this.activeRequestId = null;
+    this.owner = null;
     if (this.readyTimer) clearTimeout(this.readyTimer);
     this.readyTimer = null;
     this.readyResolve = null;

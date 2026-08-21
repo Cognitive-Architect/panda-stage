@@ -264,3 +264,75 @@ describe('FlaStaticSnapshotWindowManager — crash / teardown cleanup (Correctiv
     await expect(promise).rejects.toThrow(/closed/i);
   });
 });
+
+describe('FlaStaticSnapshotWindowManager — cold-start cancellation (Issue #290)', () => {
+  afterEach(reset);
+
+  it('cancel-before-READY settles A, destroys its window, and never sends raster IPC', async () => {
+    const mgr = manager();
+    const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const window = latestWindow();
+    // A is still waiting for READY; do NOT call markReady.
+    expect(window.isDestroyed()).toBe(false);
+    expect(mgr.cancel(REQUEST_A)).toBe(true);
+    // Window is torn down and the startup promise rejects promptly.
+    expect(window.isDestroyed()).toBe(true);
+    await expect(promise).rejects.toThrow(/cancelled/i);
+    // No raster IPC was ever dispatched for the cancelled startup.
+    expect(window.webContents.send).not.toHaveBeenCalled();
+    mgr.close();
+  });
+
+  it('supersede-before-READY settles A and lets only B proceed to raster IPC', async () => {
+    const mgr = manager();
+    const promiseA = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const windowA = latestWindow();
+    // B arrives while A is still in the READY handshake.
+    const promiseB = mgr.rasterize({ requestId: REQUEST_B, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const windowB = latestWindow();
+    // A's startup window is destroyed/retired; no unresolved startup promise.
+    expect(windowA.isDestroyed()).toBe(true);
+    expect(windowB).not.toBe(windowA);
+    await expect(promiseA).rejects.toThrow(/superseded/i);
+    // Only B proceeds to READY + raster IPC.
+    makeReady(windowB, mgr);
+    await flush();
+    expect(windowB.webContents.send).toHaveBeenCalledTimes(1);
+    const payload = windowB.webContents.send.mock.calls[0]![1] as { requestId: string };
+    expect(payload.requestId).toBe(REQUEST_B);
+    mgr.markResult(windowB.webContents.id, {
+      requestId: REQUEST_B,
+      png: Array.from(new Uint8Array([4])),
+      width: 8,
+      height: 8,
+    });
+    const out = await promiseB;
+    expect(out.width).toBe(8);
+    mgr.close();
+  });
+
+  it('close-before-READY settles the startup request without a hung handshake', async () => {
+    const mgr = manager();
+    const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    latestWindow();
+    // No markReady; close() during startup must settle the request.
+    mgr.close();
+    await expect(promise).rejects.toThrow(/closed/i);
+  });
+
+  it('a late RESULT after cancel-before-READY is ignored', async () => {
+    const mgr = manager();
+    const promise = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 });
+    const window = latestWindow();
+    expect(mgr.cancel(REQUEST_A)).toBe(true);
+    // A stale renderer RESULT must not resolve the rejected startup promise.
+    mgr.markResult(window.webContents.id, {
+      requestId: REQUEST_A,
+      png: Array.from(new Uint8Array([9])),
+      width: 8,
+      height: 8,
+    });
+    await expect(promise).rejects.toThrow(/cancelled/i);
+    mgr.close();
+  });
+});
