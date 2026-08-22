@@ -68,7 +68,7 @@
  *     R2 does NOT add a parallel renderer.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   FlaFrameSequenceErrorCode,
   FlaFrameSequenceItem,
@@ -143,6 +143,45 @@ interface SequenceInFlightItem {
   receivedAt: number;
 }
 
+// ---- R2-D acceptance store ----
+//
+// Mirrors the R1 AcceptedPreview / FlaConfirmedSnapshotPreview split:
+//   - latestAcceptedSequence: per-session pointer for the
+//     STALE_SEQUENCE guard consumed by the R2-G commit service.
+//   - confirmedSequences: per-requestId byte store for the R2-G
+//     commit service to read each frame's PNG without re-rasterizing.
+//
+// On a new accepted sequence we drop any previously confirmed
+// frames for the same session (releaseConfirmedForSessionExcept
+// in the R1 equivalent) so Main-owned temporary PNG state stays
+// bounded to the most recent sequence. The release is invoked
+// either by a fresh successful sequence for the same session, or
+// by invalidateSequenceSession (called by the UI on close /
+// cancel / range change).
+
+export interface ConfirmedSequenceFrame {
+  frameIndex: number;
+  sequenceOrdinal: number;
+  pngBytes: Uint8Array;
+  sha256: string;
+  width: number;
+  height: number;
+  pixelCount: number;
+  byteLength: number;
+  frameWallClockMs: number;
+  receivedAt: number;
+}
+
+export interface AcceptedSequence {
+  requestId: string;
+  sessionId: string;
+  range: FlaFrameSequenceRange;
+  items: ConfirmedSequenceFrame[];
+  totalPixelCount: number;
+  sequenceTotalMs: number;
+  acceptedAt: number;
+}
+
 // ---- Failure helpers ----
 
 function makeError(
@@ -163,6 +202,12 @@ export class FlaFrameSequenceService {
   // Per-session latest-request-wins: at most one in-flight sequence
   // per sessionId. Starting a new one supersedes the previous.
   private readonly inFlight = new Map<string, SequenceInFlight>();
+  // R2-D: per-session latest accepted sequence (STALE_SEQUENCE
+  // guard consumed by R2-G commit service).
+  private readonly latestAccepted = new Map<string, AcceptedSequence>();
+  // R2-D: per-requestId confirmed frame store (R2-G commit
+  // service reads PNG bytes from here).
+  private readonly confirmedSequences = new Map<string, ConfirmedSequenceFrame[]>();
   private closed = false;
 
   constructor(options: FlaFrameSequenceServiceOptions) {
@@ -372,6 +417,8 @@ export class FlaFrameSequenceService {
       errors.push([sequence, 'Sequence service closed']);
     }
     this.inFlight.clear();
+    this.latestAccepted.clear();
+    this.confirmedSequences.clear();
     for (const [sequence, message] of errors) {
       this.settleInFlightAsFailed(sequence, 'RENDER_FAILED', message);
     }
@@ -383,6 +430,11 @@ export class FlaFrameSequenceService {
     const s = this.inFlight.get(sessionId);
     if (!s) return null;
     return { sequenceRequestId: s.sequenceRequestId, currentOrdinal: s.currentOrdinal, itemCount: s.items.length };
+  }
+  latestAcceptedFor(sessionId: string): { requestId: string; itemCount: number } | null {
+    const a = this.latestAccepted.get(sessionId);
+    if (!a) return null;
+    return { requestId: a.requestId, itemCount: a.items.length };
   }
 
   // ---- Internal settlement helpers ----
@@ -414,21 +466,40 @@ export class FlaFrameSequenceService {
     // R2-C: every completed item is wrapped with stable per-frame
     // identity. The R1 preview success shape is preserved
     // verbatim (R2 does not invent a new preview shape).
-    const items: FlaFrameSequenceItem[] = sequence.items.map((it) => {
+    // R2-D: at the same time, build the ConfirmedSequenceFrame list
+    // (with sha256EachFrame) and pin it under
+    // latestAccepted[sessionId] / confirmedSequences[requestId] so
+    // the R2-G commit service can (a) verify confirmedSequenceRequestId
+    // is still the latest accepted sequence and (b) read the PNG
+    // bytes for atomic commit.
+    const confirmedItems: ConfirmedSequenceFrame[] = sequence.items.map((it) => {
+      const sha256 = createHash('sha256')
+        .update(Buffer.from(it.rasterOutput.pngBytes))
+        .digest('hex');
+      return {
+        frameIndex: it.frameIndex,
+        sequenceOrdinal: it.sequenceOrdinal,
+        pngBytes: it.rasterOutput.pngBytes,
+        sha256,
+        width: it.rasterOutput.width,
+        height: it.rasterOutput.height,
+        pixelCount: it.rasterOutput.pixelCount,
+        byteLength: it.rasterOutput.pngBytes.byteLength,
+        frameWallClockMs: it.frameWallClockMs,
+        receivedAt: it.receivedAt,
+      };
+    });
+    const items: FlaFrameSequenceItem[] = sequence.items.map((it, idx) => {
+      const confirmed = confirmedItems[idx];
+      if (!confirmed) {
+        throw new Error('Settled sequence items and confirmed frames out of sync');
+      }
       const preview = {
         ok: true as const,
-        // R2-C: the R1 preview response carries bytes, width, height,
-        // pixelCount. The R2 contract's FlaStaticSnapshotPreviewSuccess
-        // requires more fields (requestId, targetRenderTargetId,
-        // targetSelectedFrameIndex, sha256, wallClockMs,
-        // isFirstPreviewForSession, startedAt). The R1 rasterizer
-        // owns those; here we only fill the per-frame subset we have
-        // a proof of. sha256 is left empty for now; the sequence
-        // commit path (R2-G) computes it from the encoded bytes.
         requestId: `${sequence.sequenceRequestId}/frame-${it.sequenceOrdinal}`,
         targetRenderTargetId: '', // Filled by the R2 commit path
         targetSelectedFrameIndex: it.frameIndex,
-        sha256: '',
+        sha256: confirmed.sha256,
         wallClockMs: it.frameWallClockMs,
         isFirstPreviewForSession: it.sequenceOrdinal === 0,
         startedAt: new Date(it.receivedAt).toISOString(),
@@ -452,7 +523,84 @@ export class FlaFrameSequenceService {
       cancelledFrames: 0,
       totalPixelCount: sequence.cumulativePixelCount,
     };
+    // R2-D: drop any previously confirmed sequence for the same
+    // session before pinning the new one. Mirrors the R1
+    // releaseConfirmedForSessionExcept behavior; the Main-owned
+    // PNG buffers are kept bounded to the most recent sequence.
+    this.releaseConfirmedForSessionExcept(sequence.sessionId, sequence.sequenceRequestId);
+    this.confirmedSequences.set(sequence.sequenceRequestId, confirmedItems);
+    this.latestAccepted.set(sequence.sessionId, {
+      requestId: sequence.sequenceRequestId,
+      sessionId: sequence.sessionId,
+      // range is intentionally a copy of the in-flight range so
+      // commit can verify the request range matches without
+      // re-parsing the in-flight state.
+      range: {
+        renderTargetId: sequence.items[0]
+          ? success.items[0]?.preview.targetRenderTargetId ?? ''
+          : '',
+        startFrameIndex: sequence.items[0]?.frameIndex ?? 0,
+        endFrameIndex: sequence.items[sequence.items.length - 1]?.frameIndex ?? 0,
+      },
+      items: confirmedItems,
+      totalPixelCount: sequence.cumulativePixelCount,
+      sequenceTotalMs: success.sequenceTotalMs,
+      acceptedAt: this.now(),
+    });
     this.inFlight.delete(sequence.sessionId);
     sequence.resolve(success);
+  }
+
+  // ---- R2-D acceptance store (R2-G commit service consumes) ----
+
+  /**
+   * R2-D STALE_SEQUENCE guard. True only when requestId is the
+   * latest accepted sequence for its session. Used by the R2-G
+   * commit service to reject commits that pin a superseded
+   * sequence.
+   */
+  isLatestAcceptedSequence(sessionId: string, requestId: string): boolean {
+    const latest = this.latestAccepted.get(sessionId);
+    return Boolean(latest && latest.requestId === requestId);
+  }
+
+  /**
+   * R2-D: returns the confirmed frame list for a sequence
+   * requestId, or null if the sequence has been released or
+   * superseded. R2-G reads the PNG bytes from here to do the
+   * atomic file commit without re-rasterizing.
+   */
+  getConfirmedSequence(requestId: string): ConfirmedSequenceFrame[] | null {
+    return this.confirmedSequences.get(requestId) ?? null;
+  }
+
+  /** R2-D: drop the per-requestId confirmed frame list. Called by
+   * R2-G after a successful commit (mirrors R1 releasePreview). */
+  releaseSequence(requestId: string): void {
+    this.confirmedSequences.delete(requestId);
+  }
+
+  /**
+   * R2-D: invalidate every confirmed sequence for a session. The
+   * UI calls this on close / cancel / target / range change so no
+   * stale previews are commit-eligible.
+   */
+  invalidateSequenceSession(sessionId: string): void {
+    const previous = this.latestAccepted.get(sessionId);
+    if (previous) {
+      this.confirmedSequences.delete(previous.requestId);
+    }
+    this.latestAccepted.delete(sessionId);
+  }
+
+  private releaseConfirmedForSessionExcept(sessionId: string, exceptRequestId: string): void {
+    // If a previous sequence was pinned for this session, drop
+    // its frame bytes now so the Main-owned PNG buffers stay
+    // bounded to the most recent sequence. The new sequence is
+    // pinned by the caller immediately after this returns.
+    const previous = this.latestAccepted.get(sessionId);
+    if (previous && previous.requestId !== exceptRequestId) {
+      this.confirmedSequences.delete(previous.requestId);
+    }
   }
 }

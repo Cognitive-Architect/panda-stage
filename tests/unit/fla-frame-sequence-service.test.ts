@@ -424,3 +424,103 @@ describe('R2-C sequence service: diagnostics', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('R2-D sequence service: acceptance store (R2-G commit input)', () => {
+  it('pins the latest accepted sequence on success and exposes sha256 per frame', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const r = await service.renderSequence(
+      SESSION_ID,
+      makeRange(0, 1),
+      frames(2),
+      { sequenceRequestId: SEQ_REQ },
+    );
+    expect(r.ok).toBe(true);
+    expect(service.isLatestAcceptedSequence(SESSION_ID, SEQ_REQ)).toBe(true);
+    const confirmed = service.getConfirmedSequence(SEQ_REQ);
+    expect(confirmed).not.toBeNull();
+    expect(confirmed).toHaveLength(2);
+    // sha256 is a 64-char hex string per confirmed frame.
+    expect(confirmed?.[0]?.sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(confirmed?.[1]?.sha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(confirmed?.[0]?.byteLength).toBe(8);
+  });
+
+  it('STALE_SEQUENCE: a new accepted sequence supersedes the previous and drops its confirmed bytes', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const SEQ_REQ_1 = '00000000-0000-4000-8000-0000000000a1';
+    const SEQ_REQ_2 = '00000000-0000-4000-8000-0000000000a2';
+    const r1 = await service.renderSequence(
+      SESSION_ID,
+      makeRange(0, 0),
+      frames(1),
+      { sequenceRequestId: SEQ_REQ_1 },
+    );
+    expect(r1.ok).toBe(true);
+    expect(service.isLatestAcceptedSequence(SESSION_ID, SEQ_REQ_1)).toBe(true);
+    // Same session, second sequence wins.
+    const r2 = await service.renderSequence(
+      SESSION_ID,
+      makeRange(0, 1),
+      frames(2),
+      { sequenceRequestId: SEQ_REQ_2 },
+    );
+    expect(r2.ok).toBe(true);
+    expect(service.isLatestAcceptedSequence(SESSION_ID, SEQ_REQ_2)).toBe(true);
+    expect(service.isLatestAcceptedSequence(SESSION_ID, SEQ_REQ_1)).toBe(false);
+    // The previous sequence's confirmed bytes are dropped so Main-owned
+    // PNG buffers stay bounded to the most recent sequence.
+    expect(service.getConfirmedSequence(SEQ_REQ_1)).toBeNull();
+    expect(service.getConfirmedSequence(SEQ_REQ_2)).toHaveLength(2);
+  });
+
+  it('releaseSequence() drops the confirmed frame list while leaving latestAccepted intact', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const r = await service.renderSequence(
+      SESSION_ID,
+      makeRange(0, 0),
+      frames(1),
+      { sequenceRequestId: SEQ_REQ },
+    );
+    expect(r.ok).toBe(true);
+    expect(service.getConfirmedSequence(SEQ_REQ)).toHaveLength(1);
+    service.releaseSequence(SEQ_REQ);
+    expect(service.getConfirmedSequence(SEQ_REQ)).toBeNull();
+    // latestAccepted is the STALE_SEQUENCE guard; releaseSequence
+    // does not touch it (mirror of R1 releasePreview).
+    expect(service.isLatestAcceptedSequence(SESSION_ID, SEQ_REQ)).toBe(true);
+  });
+
+  it('invalidateSequenceSession() drops both latestAccepted and confirmed bytes for the session', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const r = await service.renderSequence(
+      SESSION_ID,
+      makeRange(0, 0),
+      frames(1),
+      { sequenceRequestId: SEQ_REQ },
+    );
+    expect(r.ok).toBe(true);
+    service.invalidateSequenceSession(SESSION_ID);
+    expect(service.isLatestAcceptedSequence(SESSION_ID, SEQ_REQ)).toBe(false);
+    expect(service.getConfirmedSequence(SEQ_REQ)).toBeNull();
+  });
+
+  it('close() clears acceptance and releases any leftover confirmed bytes', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const r = await service.renderSequence(
+      SESSION_ID,
+      makeRange(0, 0),
+      frames(1),
+      { sequenceRequestId: SEQ_REQ },
+    );
+    expect(r.ok).toBe(true);
+    service.close();
+    expect(service.isClosed).toBe(true);
+    expect(service.isLatestAcceptedSequence(SESSION_ID, SEQ_REQ)).toBe(false);
+    expect(service.getConfirmedSequence(SEQ_REQ)).toBeNull();
+  });
+});
