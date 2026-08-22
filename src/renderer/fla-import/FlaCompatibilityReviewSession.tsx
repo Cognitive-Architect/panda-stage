@@ -33,6 +33,7 @@ import {
   type FlaInspectionOperation,
 } from './fla-inspection-lifecycle';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
+import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
 
 interface FlaCompatibilityReviewSessionProps {
   inspection: FlaInspectionOperation;
@@ -41,6 +42,7 @@ interface FlaCompatibilityReviewSessionProps {
   onIntent?: (intent: FlaRasterSelectionIntent) => void;
   onCommit?: (response: FlaAssetCommitResponse) => void;
   onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
+  onSequenceImported?: (response: unknown) => void;
 }
 
 type SessionPhase =
@@ -58,6 +60,7 @@ export function FlaCompatibilityReviewSession({
   onIntent,
   onCommit,
   onSnapshotImported,
+  onSequenceImported,
 }: FlaCompatibilityReviewSessionProps): React.JSX.Element {
   const [phase, setPhase] = useState<SessionPhase>('inspecting');
   const [response, setResponse] = useState<FlaInspectionResponse | null>(null);
@@ -467,6 +470,13 @@ export function FlaCompatibilityReviewSession({
                 source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
                 snapshot={snapshot}
                 onImported={(response) => onSnapshotImported?.(response)}
+                onClose={() => onClose()}
+              />
+              <FlaFrameSequenceReview
+                sessionId={sessionId}
+                source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+                snapshot={snapshot}
+                onImported={(response) => onSequenceImported?.(response)}
                 onClose={() => onClose()}
               />
             </div>

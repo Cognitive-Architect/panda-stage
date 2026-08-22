@@ -80,9 +80,13 @@ function makeErrorResponse(
   requestId: string,
   completedFrameCount: number,
 ): FlaFrameSequenceResponse {
+  // The shared error contract caps message at 1000 chars. A raw ZodError
+  // string can exceed that and would make THIS error response itself
+  // invalid (escaping the Panda-owned response contract). Truncate safely.
+  const safe = message.length > 1000 ? `${message.slice(0, 997)}...` : message;
   return {
     ok: false,
-    error: { code, message, requestId, completedFrameCount },
+    error: { code, message: safe, requestId, completedFrameCount },
   };
 }
 
@@ -198,12 +202,15 @@ export function registerFlaFrameSequenceIpcHandlers(
     } catch (error) {
       // R2-G: an invalid request is the renderer's fault; return a
       // well-formed R2 commit error response rather than letting Zod
-      // throw across the IPC boundary.
+      // throw across the IPC boundary. The shared commit error contract
+      // caps message at 1000 chars, so truncate a long ZodError string.
+      const raw = `Invalid R2 frame sequence commit request: ${String(error)}`;
+      const message = raw.length > 1000 ? `${raw.slice(0, 997)}...` : raw;
       return FlaFrameSequenceCommitResponseSchema.parse({
         ok: false,
         error: {
           code: 'INVALID_REQUEST',
-          message: `Invalid R2 frame sequence commit request: ${String(error)}`,
+          message,
           projectRoot: '(unknown project)',
         },
       });

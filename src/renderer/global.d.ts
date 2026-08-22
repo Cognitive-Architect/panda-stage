@@ -91,6 +91,14 @@ import type {
   FlaStaticSnapshotPreviewRequest,
   FlaStaticSnapshotPreviewResponse,
 } from '../shared/fla-static-snapshot-api';
+import type {
+  FlaFrameSequenceCancelRequest,
+  FlaFrameSequenceCancelResponse,
+  FlaFrameSequenceCommitRequest,
+  FlaFrameSequenceCommitResponse,
+  FlaFrameSequenceRequest,
+  FlaFrameSequenceResponse,
+} from '../shared/fla-frame-sequence-api';
 
 declare global {
   interface Window {
@@ -209,6 +217,15 @@ declare global {
         staticSnapshotCancel: (
           request: FlaStaticSnapshotCancelRequest,
         ) => Promise<FlaStaticSnapshotCancelResponse>;
+        frameSequenceRender: (
+          request: FlaFrameSequenceRequest,
+        ) => Promise<FlaFrameSequenceResponse>;
+        frameSequenceCancel: (
+          request: FlaFrameSequenceCancelRequest,
+        ) => Promise<FlaFrameSequenceCancelResponse>;
+        frameSequenceCommit: (
+          request: FlaFrameSequenceCommitRequest,
+        ) => Promise<FlaFrameSequenceCommitResponse>;
       };
     };
     pandaStageFlaParser: {
