@@ -72,6 +72,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type {
   FlaFrameSequenceErrorCode,
   FlaFrameSequenceItem,
+  FlaFrameSequenceProgress,
   FlaFrameSequenceRange,
   FlaFrameSequenceResponse,
   FlaFrameSequenceSuccess,
@@ -117,6 +118,8 @@ export interface FlaFrameSequenceServiceOptions {
 interface SequenceInFlight {
   readonly sequenceRequestId: string;
   readonly sessionId: string;
+  /** Total frame count for this request (range end - start + 1). */
+  readonly totalFrames: number;
   /** Current frame ordinal (0-based). -1 means no frame has started yet. */
   currentOrdinal: number;
   /** Set true when a cancel or supersede has been issued. */
@@ -209,6 +212,11 @@ export class FlaFrameSequenceService {
   // service reads PNG bytes from here).
   private readonly confirmedSequences = new Map<string, ConfirmedSequenceFrame[]>();
   private closed = false;
+  // R2-B (Corrective B): typed progress subscribers. Mirrors the
+  // ExportService subscribe model. Subscribers receive progress only
+  // for the requestId they are actively watching (the Renderer filters
+  // by requestId); the service emits after each frame completes.
+  private readonly progressSubscribers = new Set<(progress: FlaFrameSequenceProgress) => void>();
 
   constructor(options: FlaFrameSequenceServiceOptions) {
     this.rasterizer = options.rasterizer;
@@ -264,6 +272,7 @@ export class FlaFrameSequenceService {
     const sequence: SequenceInFlight = {
       sequenceRequestId: requestId,
       sessionId,
+      totalFrames,
       currentOrdinal: -1,
       cancelled: false,
       currentFrameRequestId: null,
@@ -375,6 +384,17 @@ export class FlaFrameSequenceService {
         };
         sequence.items.push(item);
         sequence.currentFrameRequestId = null;
+        // R2-B (Corrective B): emit monotonic progress for the current
+        // request. completedFrameCount = number of frames done so far.
+        this.emitProgress({
+          format: 'fla-frame-sequence-progress',
+          version: 1,
+          sessionId: sequence.sessionId,
+          requestId: sequence.sequenceRequestId,
+          completedFrameCount: sequence.items.length,
+          totalFrameCount: sequence.totalFrames,
+          currentFrameIndex: frame.frameIndex,
+        });
       }
     } catch (error) {
       this.settleInFlightAsFailed(sequence, 'RENDER_FAILED', `Frame source iteration error: ${String(error)}`);
@@ -421,6 +441,33 @@ export class FlaFrameSequenceService {
     this.confirmedSequences.clear();
     for (const [sequence, message] of errors) {
       this.settleInFlightAsFailed(sequence, 'RENDER_FAILED', message);
+    }
+  }
+
+  // ---- R2-B real progress (Corrective B) ----
+  //
+  // Subscribe to typed per-frame progress. Returns an unsubscribe
+  // function. The service emits one progress event per completed frame
+  // (monotonic completedFrameCount) so the Renderer can show live
+  // "k / N" without polling. Stale-request discrimination is the
+  // Renderer's job (it only listens while its active requestId matches).
+
+  subscribe(
+    callback: (progress: FlaFrameSequenceProgress) => void,
+  ): () => void {
+    this.progressSubscribers.add(callback);
+    return () => {
+      this.progressSubscribers.delete(callback);
+    };
+  }
+
+  private emitProgress(progress: FlaFrameSequenceProgress): void {
+    for (const subscriber of this.progressSubscribers) {
+      try {
+        subscriber(progress);
+      } catch {
+        /* a misbehaving subscriber must not break the sequence */
+      }
     }
   }
 

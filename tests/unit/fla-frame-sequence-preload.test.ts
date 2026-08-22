@@ -51,6 +51,7 @@ const pandaStage = preloadMocks.exposed.pandaStage as {
     frameSequenceRender: (r: unknown) => Promise<unknown>;
     frameSequenceCancel: (r: unknown) => Promise<unknown>;
     frameSequenceCommit: (r: unknown) => Promise<unknown>;
+    frameSequenceProgressSubscribe: (cb: (p: unknown) => void) => () => void;
   };
 };
 
@@ -121,6 +122,41 @@ describe('R2-H.1 preload frame sequence surface', () => {
     const render = pandaStage.fla.frameSequenceRender;
     const src = render.toString();
     expect(src).not.toContain('ipcRenderer.send');
+    expect(src).not.toContain('contextBridge');
+    expect(src).not.toContain('require(');
+    expect(src).not.toContain('process.');
+  });
+
+  it('frameSequenceProgressSubscribe uses the narrow progress channel and returns an unsubscribe', () => {
+    const unsub = pandaStage.fla.frameSequenceProgressSubscribe(() => {});
+    expect(typeof unsub).toBe('function');
+    expect(preloadMocks.on).toHaveBeenCalledWith(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, expect.any(Function));
+    // unsubscribe removes the listener from the dedicated channel only.
+    unsub();
+    expect(preloadMocks.removeListener).toHaveBeenCalledWith(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, expect.any(Function));
+  });
+
+  it('progress subscriber parses the raw payload through the strict progress schema', () => {
+    pandaStage.fla.frameSequenceProgressSubscribe(() => {});
+    const listener = preloadMocks.on.mock.calls.find(
+      (c) => c[0] === IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS,
+    )?.[1] as ((_e: unknown, raw: unknown) => void) | undefined;
+    expect(listener).toBeTypeOf('function');
+    const good = {
+      format: 'fla-frame-sequence-progress',
+      version: 1,
+      sessionId: '00000000-0000-4000-8000-000000000001',
+      requestId: '11111111-1111-4111-8111-111111111111',
+      completedFrameCount: 2,
+      totalFrameCount: 5,
+    };
+    expect(() => listener?.(null, good)).not.toThrow();
+    // An unknown format must be rejected by the strict schema (no silent passthrough).
+    expect(() => listener?.(null, { format: 'wrong', version: 1, sessionId: '00000000-0000-4000-8000-000000000001', requestId: '11111111-1111-4111-8111-111111111111', completedFrameCount: 1, totalFrameCount: 1 })).toThrow();
+  });
+
+  it('frameSequenceProgressSubscribe does not expose raw Electron primitives', () => {
+    const src = pandaStage.fla.frameSequenceProgressSubscribe.toString();
     expect(src).not.toContain('contextBridge');
     expect(src).not.toContain('require(');
     expect(src).not.toContain('process.');

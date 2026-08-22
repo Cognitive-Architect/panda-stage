@@ -387,6 +387,37 @@ export const FlaFrameSequenceCommitResponseSchema = z.union([
 ]);
 
 // ---- R2-D cancel request (latest-request-wins) ----
+// ---- R2-B real sequence progress (Corrective B) ----
+//
+// Main-owned sequence service emits typed progress for the current
+// request/session while a render is in flight. The Renderer subscribes
+// only while the matching request is active; stale-request progress is
+// ignored. This is the smallest safe progress channel: no raw Electron
+// primitive is exposed to the Renderer, no arbitrary event subscription,
+// no polling loop, and progress can never mutate the Project.
+export const FlaFrameSequenceProgressSchema = z
+  .object({
+    format: z.literal('fla-frame-sequence-progress'),
+    version: z.literal(1),
+    sessionId: z.uuid(),
+    // Stable per-sequence requestId. The Renderer ignores any progress
+    // whose requestId does not match the active request.
+    requestId: z.uuid(),
+    // Monotonic completion count for THIS request.
+    completedFrameCount: z.number().int().nonnegative().max(FLA_FRAME_SEQUENCE_LIMITS.MAX_SEQUENCE_FRAMES),
+    // Total frame count for THIS request (range end - start + 1).
+    totalFrameCount: z.number().int().positive().max(FLA_FRAME_SEQUENCE_LIMITS.MAX_SEQUENCE_FRAMES),
+    // Optional current frame ordinal (0-based), for finer display.
+    currentFrameIndex: z.number().int().nonnegative().max(FLA_FRAME_SEQUENCE_LIMITS.MAX_SEQUENCE_FRAMES).optional(),
+  })
+  .strict()
+  // The completed count can never exceed the total for the request.
+  .refine(
+    (p) => p.completedFrameCount <= p.totalFrameCount,
+    'completedFrameCount must not exceed totalFrameCount',
+  );
+
+// ---- R2-D cancel request (latest-request-wins) ----
 export const FlaFrameSequenceCancelRequestSchema = z
   .object({
     format: z.literal('fla-frame-sequence-cancel'),
@@ -428,3 +459,4 @@ export type FlaFrameSequenceCommitError = z.infer<typeof FlaFrameSequenceCommitE
 export type FlaFrameSequenceCommitResponse = z.infer<typeof FlaFrameSequenceCommitResponseSchema>;
 export type FlaFrameSequenceCancelRequest = z.infer<typeof FlaFrameSequenceCancelRequestSchema>;
 export type FlaFrameSequenceCancelResponse = z.infer<typeof FlaFrameSequenceCancelResponseSchema>;
+export type FlaFrameSequenceProgress = z.infer<typeof FlaFrameSequenceProgressSchema>;

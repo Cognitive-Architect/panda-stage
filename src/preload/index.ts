@@ -124,10 +124,12 @@ import {
   FlaFrameSequenceCancelResponseSchema,
   FlaFrameSequenceCommitRequestSchema,
   FlaFrameSequenceCommitResponseSchema,
+  FlaFrameSequenceProgressSchema,
   FlaFrameSequenceRequestSchema,
   FlaFrameSequenceResponseSchema,
   type FlaFrameSequenceCancelRequest,
   type FlaFrameSequenceCommitRequest,
+  type FlaFrameSequenceProgress,
   type FlaFrameSequenceRequest,
 } from '../shared/fla-frame-sequence-api';
 
@@ -517,6 +519,19 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaFrameSequenceCommitResponseSchema.parse(response);
+    },
+    // R2-B (Corrective B): narrow typed progress subscription. The
+    // Renderer receives only the Panda-owned R2 progress contract; the
+    // raw ipcRenderer.on primitive is never exposed to the Renderer.
+    frameSequenceProgressSubscribe: (
+      callback: (progress: FlaFrameSequenceProgress) => void,
+    ): Unsubscribe => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        rawProgress: unknown,
+      ) => callback(FlaFrameSequenceProgressSchema.parse(rawProgress));
+      ipcRenderer.on(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, listener);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, listener);
     },
   }),
 });

@@ -524,3 +524,128 @@ describe('R2-D sequence service: acceptance store (R2-G commit input)', () => {
     expect(service.getConfirmedSequence(SEQ_REQ)).toBeNull();
   });
 });
+
+describe('R2-B real per-frame progress (Corrective #296)', () => {
+  it('emits one monotonic progress event per completed frame with the active requestId', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const events: number[] = [];
+    const unsub = service.subscribe((p) => {
+      events.push(p.completedFrameCount);
+    });
+    const N = 5;
+    const r = await service.renderSequence(SESSION_ID, makeRange(0, N - 1), frames(N));
+    unsub();
+    expect(r.ok).toBe(true);
+    // 1 event per frame, strictly monotonic 1..N.
+    expect(events).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('progress totalFrameCount equals the requested range frame count', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    let lastTotal = 0;
+    const unsub = service.subscribe((p) => {
+      lastTotal = p.totalFrameCount;
+    });
+    await service.renderSequence(SESSION_ID, makeRange(3, 6), frames(4), { sequenceRequestId: SEQ_REQ });
+    unsub();
+    expect(lastTotal).toBe(4);
+  });
+
+  it('progress never reports more completed frames than the total', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    let maxSeen = 0;
+    let maxTotal = 0;
+    const unsub = service.subscribe((p) => {
+      expect(p.completedFrameCount <= p.totalFrameCount).toBe(true);
+      maxSeen = Math.max(maxSeen, p.completedFrameCount);
+      maxTotal = Math.max(maxTotal, p.totalFrameCount);
+    });
+    await service.renderSequence(SESSION_ID, makeRange(0, 2), frames(3));
+    unsub();
+    expect(maxSeen).toBe(3);
+    expect(maxTotal).toBe(3);
+  });
+
+  it('unsubscribe stops further progress delivery (no leak)', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const events: number[] = [];
+    // Subscribe, then drop the subscription after the first frame so no
+    // later frame progress is delivered even though the sequence still
+    // runs to completion.
+    const unsub = service.subscribe((p) => {
+      events.push(p.completedFrameCount);
+      if (p.completedFrameCount === 1) unsub();
+    });
+    const r = await service.renderSequence(SESSION_ID, makeRange(0, 4), frames(5));
+    // The sequence still completed all 5 frames...
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.items).toHaveLength(5);
+    // ...but only the first progress event was delivered.
+    expect(events).toEqual([1]);
+  });
+
+  it('stale-request progress cannot overwrite the current request (latest-request-wins)', async () => {
+    const rasterizer = new FakeRasterizer();
+    rasterizer.autoResolve = false;
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const reqA = '00000000-0000-4000-8000-0000000000a1';
+    const reqB = '00000000-0000-4000-8000-0000000000b2';
+    const events: Array<{ requestId: string; completed: number }> = [];
+    const unsub = service.subscribe((p) => events.push({ requestId: p.requestId, completed: p.completedFrameCount }));
+    const pA = service.renderSequence(SESSION_ID, makeRange(0, 2), frames(3), { sequenceRequestId: reqA });
+    await flush(4);
+    // Supersede with reqB before A finishes.
+    const pB = service.renderSequence(SESSION_ID, makeRange(0, 1), frames(2), { sequenceRequestId: reqB });
+    await flush(4);
+    rasterizer.release(`${reqB}/frame-0`);
+    await flush(4);
+    rasterizer.release(`${reqB}/frame-1`);
+    const rB = await pB;
+    const rA = await pA;
+    unsub();
+    expect(rB.ok).toBe(true);
+    expect(rA.ok).toBe(false);
+    if (!rA.ok) expect(rA.error.code).toBe('SEQUENCE_CANCELLED');
+    // After supersede, only reqB progress is emitted (the consumer
+    // would ignore reqA anyway, but the service must not emit for A).
+    expect(events.every((e) => e.requestId === reqB)).toBe(true);
+  });
+
+  it('cancel removes/ignores further progress for the cancelled request', async () => {
+    const rasterizer = new FakeRasterizer();
+    rasterizer.autoResolve = false;
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const events: number[] = [];
+    const unsub = service.subscribe((p) => events.push(p.completedFrameCount));
+    const p = service.renderSequence(SESSION_ID, makeRange(0, 3), frames(4), { sequenceRequestId: SEQ_REQ });
+    await flush(4);
+    const accepted = service.cancel(SESSION_ID);
+    unsub();
+    const r = await p;
+    expect(accepted).toBe(true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('SEQUENCE_CANCELLED');
+    // No progress after cancel.
+    expect(events).toEqual([]);
+  });
+
+  it('completion settles progress cleanly with final count equal to total', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const last = { completed: -1, total: -1 };
+    const unsub = service.subscribe((p) => {
+      last.completed = p.completedFrameCount;
+      last.total = p.totalFrameCount;
+    });
+    const r = await service.renderSequence(SESSION_ID, makeRange(0, 2), frames(3));
+    unsub();
+    expect(r.ok).toBe(true);
+    expect(last.completed).toBe(3);
+    expect(last.total).toBe(3);
+    if (r.ok) expect(r.items).toHaveLength(3);
+  });
+});

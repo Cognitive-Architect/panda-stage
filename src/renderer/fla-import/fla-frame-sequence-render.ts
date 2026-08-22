@@ -15,6 +15,7 @@ import type {
   FlaFrameSequenceCancelResponse,
   FlaFrameSequenceCommitRequest,
   FlaFrameSequenceCommitResponse,
+  FlaFrameSequenceProgress,
   FlaFrameSequenceRequest,
   FlaFrameSequenceResponse,
 } from '../../shared/fla-frame-sequence-api';
@@ -23,10 +24,12 @@ export interface FlaFrameSequenceClient {
   render(request: FlaFrameSequenceRequest): Promise<FlaFrameSequenceResponse>;
   cancel(request: FlaFrameSequenceCancelRequest): Promise<FlaFrameSequenceCancelResponse>;
   commit(request: FlaFrameSequenceCommitRequest): Promise<FlaFrameSequenceCommitResponse>;
+  progressSubscribe(callback: (progress: FlaFrameSequenceProgress) => void): () => void;
 }
 
 export const flaFrameSequenceClient: FlaFrameSequenceClient = {
   render: (request) => window.pandaStage.fla.frameSequenceRender(request),
   cancel: (request) => window.pandaStage.fla.frameSequenceCancel(request),
   commit: (request) => window.pandaStage.fla.frameSequenceCommit(request),
+  progressSubscribe: (callback) => window.pandaStage.fla.frameSequenceProgressSubscribe(callback),
 };

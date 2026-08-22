@@ -68,6 +68,7 @@ export const IPC_CHANNELS = Object.freeze({
   FLA_FRAME_SEQUENCE_RENDER: 'fla:frame-sequence-render',
   FLA_FRAME_SEQUENCE_CANCEL: 'fla:frame-sequence-cancel',
   FLA_FRAME_SEQUENCE_COMMIT: 'fla:frame-sequence-commit',
+  FLA_FRAME_SEQUENCE_PROGRESS: 'fla:frame-sequence-progress',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

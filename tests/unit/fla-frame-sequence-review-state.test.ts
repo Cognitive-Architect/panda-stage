@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRange,
+  intentChangeReset,
   isCommitEligible,
   isCurrentResponse,
+  isStaleAgainstIntent,
   MAX_SEQUENCE_FRAMES,
   postCommitSequenceState,
   rerenderReset,
   validateRange,
 } from '../../src/renderer/fla-import/fla-frame-sequence-review-state';
+import {
+  FlaFrameSequenceProgressSchema,
+} from '../../src/shared/fla-frame-sequence-api';
 
 const targetFrameCount = 12;
 
@@ -108,5 +113,102 @@ describe('R2-H.2 re-render / post-commit lifecycle (Corrective C)', () => {
     const next = postCommitSequenceState();
     expect(next.phase).toBe('committed');
     expect(next.commitEligible).toBe(false);
+  });
+});
+
+const target = 'fla-render-target-aa';
+
+describe('R2-H.2 Problem A: range/target change invalidates prior sequence (#296)', () => {
+  const renderedRange = { renderTargetId: target, startFrameIndex: 0, endFrameIndex: 1 };
+
+  it('intentChangeReset clears success, progress, commit response, and returns to selecting', () => {
+    const reset = intentChangeReset();
+    expect(reset.phase).toBe('selecting');
+    expect(reset.success).toBeNull();
+    expect(reset.completedFrameCount).toBe(0);
+    expect(reset.commitResponse).toBeNull();
+  });
+
+  it('a successful range A becomes stale when start frame changes', () => {
+    expect(isStaleAgainstIntent(renderedRange, { renderTargetId: target, startFrameIndex: 3, endFrameIndex: 1 })).toBe(true);
+  });
+
+  it('a successful range A becomes stale when end frame changes', () => {
+    expect(isStaleAgainstIntent(renderedRange, { renderTargetId: target, startFrameIndex: 0, endFrameIndex: 5 })).toBe(true);
+  });
+
+  it('a successful range A becomes stale when target changes', () => {
+    expect(isStaleAgainstIntent(renderedRange, { renderTargetId: 'fla-render-target-bb', startFrameIndex: 0, endFrameIndex: 1 })).toBe(true);
+  });
+
+  it('the displayed intent exactly matching the rendered range is NOT stale', () => {
+    expect(isStaleAgainstIntent(renderedRange, { renderTargetId: target, startFrameIndex: 0, endFrameIndex: 1 })).toBe(false);
+  });
+
+  it('a null accepted sequence is always stale (no commit candidate)', () => {
+    expect(isStaleAgainstIntent(null, { renderTargetId: target, startFrameIndex: 0, endFrameIndex: 1 })).toBe(true);
+  });
+
+  it('a stale accepted sequence is not commit-eligible even if still latest accepted', () => {
+    const staleSuccess = {
+      ok: true as const,
+      requestId: 'rid',
+      renderTargetId: target,
+      items: [{} as never, {} as never],
+      sequenceTotalMs: 0,
+      cancelledFrames: 0,
+      totalPixelCount: 0,
+    };
+    // The accept guard alone would pass (it is still the latest
+    // accepted sequence)...
+    expect(isCommitEligible(staleSuccess, true)).toBe(true);
+    // ...but the displayed intent no longer matches the rendered range,
+    // so the combined gate (accept && not stale) must reject.
+    const stale = isStaleAgainstIntent(
+      { renderTargetId: target, startFrameIndex: 0, endFrameIndex: 1 },
+      { renderTargetId: target, startFrameIndex: 2, endFrameIndex: 1 },
+    );
+    expect(stale).toBe(true);
+    expect(isCommitEligible(staleSuccess, true) && !stale).toBe(false);
+  });
+});
+
+describe('R2-H.2 Problem B: real per-frame progress contract (#296)', () => {
+  it('progress payload includes stable request identity + completed/total counts', () => {
+    const p = {
+      format: 'fla-frame-sequence-progress',
+      version: 1,
+      sessionId: '00000000-0000-4000-8000-000000000001',
+      requestId: '11111111-1111-4111-8111-111111111111',
+      completedFrameCount: 3,
+      totalFrameCount: 12,
+      currentFrameIndex: 2,
+    };
+    expect(FlaFrameSequenceProgressSchema.safeParse(p).success).toBe(true);
+  });
+
+  it('progress completedFrameCount can never exceed totalFrameCount', () => {
+    const bad = {
+      format: 'fla-frame-sequence-progress',
+      version: 1,
+      sessionId: '00000000-0000-4000-8000-000000000001',
+      requestId: '11111111-1111-4111-8111-111111111111',
+      completedFrameCount: 13,
+      totalFrameCount: 12,
+    };
+    expect(FlaFrameSequenceProgressSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('progress strict schema rejects unknown fields', () => {
+    const extra = {
+      format: 'fla-frame-sequence-progress',
+      version: 1,
+      sessionId: '00000000-0000-4000-8000-000000000001',
+      requestId: '11111111-1111-4111-8111-111111111111',
+      completedFrameCount: 1,
+      totalFrameCount: 4,
+      injected: 'no',
+    };
+    expect(FlaFrameSequenceProgressSchema.safeParse(extra).success).toBe(false);
   });
 });

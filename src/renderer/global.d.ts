@@ -96,6 +96,7 @@ import type {
   FlaFrameSequenceCancelResponse,
   FlaFrameSequenceCommitRequest,
   FlaFrameSequenceCommitResponse,
+  FlaFrameSequenceProgress,
   FlaFrameSequenceRequest,
   FlaFrameSequenceResponse,
 } from '../shared/fla-frame-sequence-api';
@@ -226,6 +227,9 @@ declare global {
         frameSequenceCommit: (
           request: FlaFrameSequenceCommitRequest,
         ) => Promise<FlaFrameSequenceCommitResponse>;
+        frameSequenceProgressSubscribe: (
+          callback: (progress: FlaFrameSequenceProgress) => void,
+        ) => () => void;
       };
     };
     pandaStageFlaParser: {

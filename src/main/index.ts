@@ -415,6 +415,15 @@ async function initialize(): Promise<void> {
   flaFrameSequenceService = new FlaFrameSequenceService({
     rasterizer: flaSnapshotWindowManager,
   });
+  // R2-B (Corrective B): forward typed per-frame progress to the
+  // renderer over the dedicated narrow channel. Progress can never
+  // mutate the Project; only the active request's subscriber listens.
+  flaFrameSequenceService.subscribe((progress) => {
+    const window = mainWindow;
+    if (window && !window.isDestroyed()) {
+      window.webContents.send(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, progress);
+    }
+  });
   flaFrameSequenceCommitService = new FlaFrameSequenceCommitService({
     projectService,
     getCurrentProjectSnapshot: (projectRoot) =>

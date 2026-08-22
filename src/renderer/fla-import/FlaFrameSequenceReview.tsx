@@ -35,6 +35,7 @@ import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
 import { flaFrameSequenceClient } from './fla-frame-sequence-render';
 import {
   buildRange,
+  intentChangeReset,
   isCommitEligible,
   isCurrentResponse,
   MAX_SEQUENCE_FRAMES,
@@ -85,6 +86,11 @@ export function FlaFrameSequenceReview({
   const activeRequestIdRef = useRef<string | null>(null);
   const acceptedRequestIdRef = useRef<string | null>(null);
   const latestSequenceRef = useRef<FlaFrameSequenceSuccess | null>(null);
+  // Problem B (Corrective #296): active progress subscription handle.
+  // Subscribed only while a request is in flight; removed on
+  // cancel / re-render / completion / unmount. No raw Electron event
+  // API is touched by the component — only the typed client.
+  const progressUnsubRef = useRef<(() => void) | null>(null);
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
@@ -138,23 +144,51 @@ export function FlaFrameSequenceReview({
 
   // Changing target invalidates any prior sequence state (Corrective C).
   useEffect(() => {
+    const reset = intentChangeReset();
     activeRequestIdRef.current = null;
     acceptedRequestIdRef.current = null;
     latestSequenceRef.current = null;
-    setSuccess(null);
-    setCompletedFrameCount(0);
+    setSuccess(reset.success);
+    setCompletedFrameCount(reset.completedFrameCount);
     setPreviewUrls((current) => {
       for (const url of current) URL.revokeObjectURL(url);
       return [];
     });
-    setCommitResponse(null);
-    setPhase((current) => (current === 'rendering' || current === 'committing' ? 'selecting' : current));
+    setCommitResponse(reset.commitResponse);
+    setPhase((current) => (current === 'rendering' || current === 'committing' ? reset.phase : current));
     void flaFrameSequenceClient.cancel({ format: 'fla-frame-sequence-cancel', version: 1, sessionId });
   }, [selectedTargetId, sessionId]);
 
+  // Problem A (Corrective #296): changing the selected render intent
+  // (start/end frame) MUST immediately invalidate the prior accepted
+  // sequence. The UI must never commit an old rendered range while
+  // displaying a different range. We force the prior sequence into a
+  // non-commit-eligible state and require an explicit re-render.
+  useEffect(() => {
+    // Skip until a render has produced an accepted sequence or a stale
+    // candidate exists (the initial mount / catalog load path is
+    // handled by the target-change effect above).
+    if (!acceptedRequestIdRef.current && !success) return;
+    const reset = intentChangeReset();
+    activeRequestIdRef.current = null;
+    acceptedRequestIdRef.current = null;
+    latestSequenceRef.current = null;
+    setSuccess(reset.success);
+    setCompletedFrameCount(reset.completedFrameCount);
+    setPreviewUrls((current) => {
+      for (const url of current) URL.revokeObjectURL(url);
+      return [];
+    });
+    setCommitResponse(reset.commitResponse);
+    setPhase((current) => (current === 'rendering' || current === 'committing' ? reset.phase : current));
+  }, [startFrameIndex, endFrameIndex]);
+
   // Cancel / invalidate any in-flight sequence on unmount (Corrective C).
+  // Problem B: also remove the progress subscription to avoid leaks.
   useEffect(() => {
     return () => {
+      progressUnsubRef.current?.();
+      progressUnsubRef.current = null;
       void flaFrameSequenceClient.cancel({ format: 'fla-frame-sequence-cancel', version: 1, sessionId });
     };
   }, [sessionId]);
@@ -187,6 +221,16 @@ export function FlaFrameSequenceReview({
     setErrorMessage('');
     setCommitResponse(null);
     setCompletedFrameCount(0);
+    // Problem B: subscribe to live progress for THIS request only.
+    // Stale-request progress is ignored; the subscription is removed
+    // on completion / cancel / re-render / unmount.
+    progressUnsubRef.current?.();
+    progressUnsubRef.current = flaFrameSequenceClient.progressSubscribe((progress) => {
+      // Ignore progress for any request other than the active one.
+      if (progress.requestId !== activeRequestIdRef.current) return;
+      // Monotonic: never let a late/duplicate update lower the count.
+      setCompletedFrameCount((current) => Math.max(current, progress.completedFrameCount));
+    });
     try {
       const response: FlaFrameSequenceResponse = await flaFrameSequenceClient.render({
         format: 'fla-frame-sequence-render',
@@ -198,6 +242,9 @@ export function FlaFrameSequenceReview({
       // Corrective C: a stale / late result can never overwrite the current
       // request or become commit-eligible.
       if (!isCurrentResponse(activeRequestIdRef.current, response)) return;
+      // Problem B: the request has settled — stop listening.
+      progressUnsubRef.current?.();
+      progressUnsubRef.current = null;
       if (response.ok) {
         const urls = buildPreviewUrls(response);
         setSuccess(response);
@@ -212,6 +259,9 @@ export function FlaFrameSequenceReview({
       }
     } catch (error) {
       if (!isCurrentResponse(activeRequestIdRef.current, { ok: false, error: { code: 'RENDER_FAILED', message: '', requestId } })) return;
+      // Problem B: settle the subscription on transport error.
+      progressUnsubRef.current?.();
+      progressUnsubRef.current = null;
       setErrorMessage(error instanceof Error ? error.message : '序列渲染失败。');
       setPhase('error');
     }
@@ -219,6 +269,9 @@ export function FlaFrameSequenceReview({
 
   const cancelSequence = async (): Promise<void> => {
     if (phase !== 'rendering') return;
+    // Problem B: stop listening before flipping phase.
+    progressUnsubRef.current?.();
+    progressUnsubRef.current = null;
     try {
       await flaFrameSequenceClient.cancel({ format: 'fla-frame-sequence-cancel', version: 1, sessionId });
     } catch {
@@ -230,6 +283,9 @@ export function FlaFrameSequenceReview({
 
   const rerenderSequence = async (): Promise<void> => {
     // Corrective C: re-render invalidates the prior commit candidate.
+    // Problem B: drop the old progress subscription before starting new.
+    progressUnsubRef.current?.();
+    progressUnsubRef.current = null;
     const reset = rerenderReset();
     setPhase(reset.phase);
     acceptedRequestIdRef.current = null;

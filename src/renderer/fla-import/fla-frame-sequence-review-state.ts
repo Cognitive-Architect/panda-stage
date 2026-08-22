@@ -140,3 +140,41 @@ export function postCommitSequenceState(): { phase: SequencePhase; commitEligibl
 export function rerenderReset(): { phase: SequencePhase; commitEligible: boolean; commitResponse: null } {
   return { phase: 'rendering', commitEligible: false, commitResponse: null };
 }
+
+/**
+ * Problem A (Corrective #296): a semantic change to the selected render
+ * intent (start/end frame / target) MUST immediately invalidate the prior
+ * accepted sequence. This is the pure decision the component applies when
+ * any of those inputs change. Returns the cleared commit state so the UI
+ * can never commit an old rendered range while displaying a new range.
+ */
+export function intentChangeReset(): {
+  phase: 'selecting' | SequencePhase;
+  success: null;
+  completedFrameCount: number;
+  commitResponse: null;
+} {
+  return { phase: 'selecting', success: null, completedFrameCount: 0, commitResponse: null };
+}
+
+/**
+ * Problem A (Corrective #296): decide whether the current accepted
+ * sequence is stale relative to the displayed intent. The accepted
+ * sequence is the only commit-eligible one; if its rendered range no
+ * longer matches the displayed inputs, it is not commit-eligible.
+ *
+ * `renderedRange` is the range the accepted sequence actually produced
+ * (derived from success.items). `displayedRange` is the user's current
+ * selection. They must match exactly for commit eligibility to hold.
+ */
+export function isStaleAgainstIntent(
+  renderedRange: { renderTargetId: string; startFrameIndex: number; endFrameIndex: number } | null,
+  displayedRange: { renderTargetId: string; startFrameIndex: number; endFrameIndex: number },
+): boolean {
+  if (!renderedRange) return true;
+  return (
+    renderedRange.renderTargetId !== displayedRange.renderTargetId ||
+    renderedRange.startFrameIndex !== displayedRange.startFrameIndex ||
+    renderedRange.endFrameIndex !== displayedRange.endFrameIndex
+  );
+}
