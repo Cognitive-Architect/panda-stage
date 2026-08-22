@@ -46,6 +46,29 @@ export const IPC_CHANNELS = Object.freeze({
   FLA_WORKER_PROGRESS: 'fla:worker-progress',
   FLA_WORKER_RESULT: 'fla:worker-result',
   FLA_WORKER_ERROR: 'fla:worker-error',
+  // V2-R1 Static Snapshot (Issue #287).  Preview/commit/cancel reuse the
+  // same trusted-sender boundary as the V1/V1.5 FLA IPC.  The renderer only
+  // ever sends serialized R1 contract objects; the sandboxed rasterizer
+  // never sees the FLA source bytes, only the Main-built SVG.
+  FLA_SNAPSHOT_CATALOG: 'fla:snapshot-catalog',
+  FLA_SNAPSHOT_PREVIEW: 'fla:snapshot-preview',
+  FLA_SNAPSHOT_COMMIT: 'fla:snapshot-commit',
+  FLA_SNAPSHOT_CANCEL: 'fla:snapshot-cancel',
+  FLA_SNAPSHOT_RENDERER_READY: 'fla:snapshot-renderer-ready',
+  FLA_SNAPSHOT_RENDER: 'fla:snapshot-render',
+  FLA_SNAPSHOT_RENDER_CANCEL: 'fla:snapshot-render-cancel',
+  FLA_SNAPSHOT_RENDER_RESULT: 'fla:snapshot-render-result',
+  FLA_SNAPSHOT_RENDER_ERROR: 'fla:snapshot-render-error',
+  // V2-R2 Frame Sequence (Issue #294).  Bounded contiguous frame range
+  // preview, per-session cancel, and N-frame ImageAsset commit.  The
+  // renderer only sends serialized R2 contract objects (the FLA source
+  // bytes never cross this boundary).  Reuses the V2-R1 sandboxed
+  // rasterizer for every per-frame raster, so the rasterizer security
+  // boundary is unchanged from R1.
+  FLA_FRAME_SEQUENCE_RENDER: 'fla:frame-sequence-render',
+  FLA_FRAME_SEQUENCE_CANCEL: 'fla:frame-sequence-cancel',
+  FLA_FRAME_SEQUENCE_COMMIT: 'fla:frame-sequence-commit',
+  FLA_FRAME_SEQUENCE_PROGRESS: 'fla:frame-sequence-progress',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

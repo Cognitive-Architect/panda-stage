@@ -34,6 +34,15 @@ import { ProjectService, ProjectServiceError, type ProjectTransaction } from './
 export interface FlaAssetCommitSession {
   sessionId: string;
   ir: AnimationImportIR;
+  /**
+   * Raw, process-owned FLA source bytes. Retained so V2-R1 static-snapshot
+   * rendering can reuse the inspection session without re-reading the file
+   * from disk (the renderer never receives these; only the Main-built SVG).
+   * Optional for backward compatibility with V1/V1.5 commit callers that do
+   * not need the bytes; R1's source lookup treats a missing value as "no
+   * renderable source".
+   */
+  sourceBytes?: Uint8Array;
 }
 
 export interface FlaAssetCommitProjectSnapshot {

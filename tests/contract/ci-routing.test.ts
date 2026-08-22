@@ -223,6 +223,80 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual(expect.arrayContaining(unrelatedPaths));
   });
 
+  it.each([
+    'docs/evidence/issue-284-r0/r0-extract.json',
+    'docs/evidence/issue-284-r0/r0-render-sword.png',
+    'docs/evidence/issue-284-r0/r0-render-sword.svg',
+  ])('routes V2-R0 evidence path %s into the fla-import targeted route (#286)', (file) => {
+    const result = draft([change(file)]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.areas).not.toContain('unknown');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps the V2-R0 corrective registered evidence paths together on the targeted tier when all are status M', () => {
+    // Three M-only changes all route to fla-import on the targeted tier.
+    // (PR #285 actually has M on r0-extract.json and D on the two visual
+    //  files; the D-promotion-to-focused case is covered by a separate
+    //  test below.)
+    const result = draft([
+      change('docs/evidence/issue-284-r0/r0-extract.json', 'M'),
+      change('docs/evidence/issue-284-r0/r0-render-sword.png', 'M'),
+      change('docs/evidence/issue-284-r0/r0-render-sword.svg', 'M'),
+    ]);
+    expect(result.tier).toBe('targeted');
+    expect(result.areas).toEqual(['fla-import']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('promotes the V2-R0 D-status deleted visuals to focused (correct unsafe-status policy)', () => {
+    // r0-render-sword.png and r0-render-sword.svg are git rm-d in PR #285.
+    // Status "D" is not in the safe [A, M] set, so the classifier is
+    // required to upgrade to "focused" so a safety pass runs even when
+    // the route is targeted. This is the existing RH-07 unsafe-status
+    // contract; the V2-R0 corrective must NOT bypass it.
+    const result = draft([
+      change('docs/evidence/issue-284-r0/r0-render-sword.png', 'D'),
+      change('docs/evidence/issue-284-r0/r0-render-sword.svg', 'D'),
+    ]);
+    expect(result.tier).toBe('focused');
+    expect(result.areas).toEqual(['fla-import', 'structural-change']);
+    expect(result.matchedRouteIds).toEqual(['fla-import']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('does not let the V2-R0 registration absorb still-future evidence paths (fail-closed)', () => {
+    // The V2-R0 corrective registers exactly 3 paths. Any new docs/evidence/
+    // issue-NNN-M/... path must still fail-closed so the future-state
+    // evidence inventory must be declared explicitly.
+    const futurePaths = [
+      'docs/evidence/issue-300-r0/r0-extract.json',
+      'docs/evidence/issue-300-r0/r0-render.png',
+      'docs/evidence/issue-300-r0/r0-render.svg',
+    ];
+    const result = draft(futurePaths.map((p) => change(p, 'A')));
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(expect.arrayContaining(futurePaths));
+  });
+
+  it('does not let the V2-R0 registration absorb arbitrary docs/evidence/ paths (fail-closed)', () => {
+    // The V2-R0 corrective registers exactly 3 specific paths under
+    // docs/evidence/issue-284-r0/. No docs/**, docs/evidence/**, or
+    // **/evidence/** catch-all is allowed; unrelated docs/evidence/
+    // paths must still fail-closed.
+    const unrelatedPaths = [
+      'docs/evidence/issue-300-future/r0-extract.json',
+      'docs/evidence/issue-301-other/r0-render.png',
+      'docs/research/other-artifact.json',
+    ];
+    const result = draft(unrelatedPaths.map((p) => change(p, 'A')));
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(expect.arrayContaining(unrelatedPaths));
+  });
+
   it.each(['D', 'R', 'C'])('routes %s structural changes to focused safety checks', (status) => {
     const paths = ['R', 'C'].includes(status)
       ? ['src/renderer/features/dialogue/Old.tsx', 'src/renderer/features/dialogue/New.tsx']

@@ -73,7 +73,7 @@
     "dist": "pnpm build && node scripts/build-distribution.cjs",
     "build": "pnpm typecheck && pnpm build:renderer && pnpm build:electron",
     "build:renderer": "vite build",
-    "build:electron": "tsc -p tsconfig.electron.json && cross-env PRELOAD_ENTRY=index vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=hidden vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=fla-parser vite build --config vite.preload.config.ts"
+    "build:electron": "tsc -p tsconfig.electron.json && cross-env PRELOAD_ENTRY=index vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=hidden vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=fla-parser vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=fla-static-snapshot vite build --config vite.preload.config.ts"
   },
   "dependencies": {
     "jszip": "3.10.1",

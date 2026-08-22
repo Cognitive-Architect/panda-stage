@@ -27,6 +27,7 @@ import {
 } from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
 import { applyFlaAssetCommitResponse } from './applyFlaAssetCommitResponse';
+import { applyFlaStaticSnapshotCommitResponse } from './applyFlaStaticSnapshotCommitResponse';
 import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
 import {
   FlaInspectionLifecycle,
@@ -366,6 +367,13 @@ export function AssetLibrary({
           onClose={closeFlaReview}
           onCommit={(response) => {
             const outcome = applyFlaAssetCommitResponse(
+              response,
+              editorProjectStore,
+            );
+            setStatus(outcome.status);
+          }}
+          onSnapshotImported={(response) => {
+            const outcome = applyFlaStaticSnapshotCommitResponse(
               response,
               editorProjectStore,
             );
