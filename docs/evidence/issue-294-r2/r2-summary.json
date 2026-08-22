@@ -1,0 +1,86 @@
+{
+  "issue": "#294 (V2-R2 bounded frame sequence)",
+  "scope": "Render one bounded contiguous frame range in deterministic order, then commit the produced PNGs as ordinary Panda ImageAssets transactionally. R2 is a strict superset of the R1 single-frame product path; it does not introduce a parallel snapshot contract and it does not add a parallel renderer.",
+  "stages": {
+    "R2-A": {
+      "title": "frame sequence API contract",
+      "commit": "ce5a497",
+      "files": [
+        "src/shared/fla-frame-sequence-api.ts"
+      ],
+      "tests": 37,
+      "ci": "Draft CI #514 PASS"
+    },
+    "R2-C": {
+      "title": "Main-side sequence service (orchestrator + budget + supersede + cancel)",
+      "commit": "755a4f1",
+      "files": [
+        "src/main/services/fla-frame-sequence-service.ts"
+      ],
+      "tests": 14,
+      "ci": "Draft CI on 755a4f1 PASS"
+    },
+    "R2-D.1": {
+      "title": "accepted-sequence tracker (STALE_SEQUENCE plumbing)",
+      "commit": "4af25e6",
+      "files": [
+        "src/main/services/fla-frame-sequence-service.ts"
+      ],
+      "tests": 5,
+      "ci": "Draft CI on 4af25e6 PASS"
+    },
+    "R2-G": {
+      "title": "frame sequence commit service + R2-D end-to-end stale guard",
+      "commit": "4b39e97",
+      "files": [
+        "src/main/services/FlaFrameSequenceCommitService.ts"
+      ],
+      "tests": 9,
+      "ci": "Draft CI on 4b39e97 (in flight at this writing; prior R2-C / R2-D.1 commits all PASS)"
+    }
+  },
+  "budgets": {
+    "maxSequenceFrames": 24,
+    "maxFrameWidth": 4096,
+    "maxFrameHeight": 4096,
+    "maxFramePixels": 16777216,
+    "maxSequenceTotalPixels": 402653184,
+    "maxSequenceEncodedBytes": 1610612736,
+    "perFrameTimeoutMs": 30000,
+    "sequenceTimeoutMs": 720000,
+    "maxActualRasterConcurrency": 1
+  },
+  "invariants": {
+    "R2-B_concurrency": "maxActualRasterConcurrency = 1 by design and by enforcement; serial for-await over the frame source plus the R1 rasterizer's own single-job-at-a-time invariant",
+    "R2-B_cumulative_pixels": "402,653,184 cumulative pixel cap (24 frames * 16,777,216 = 24 * 4,096^2); unreachable in the per-frame ≤16,777,216 path, retained as the belt-and-suspenders safety net for the sequence service",
+    "R2-B_cumulative_bytes": "1.5 GiB cumulative encoded-bytes cap (24 * 64 MiB); a real R1 rasterizer per-frame cap of 64 MiB makes normal 24-frame load 1.5 GiB at the wall",
+    "R2-B_sequence_wall": "12 min cumulative wall cap (24 * 30,000 ms)",
+    "R2-D_latest_request_wins": "starting a new sequence for the same sessionId supersedes the previous one; the previous renderSequence() promise resolves with ok:false, code:SEQUENCE_CANCELLED, completedFrameCount",
+    "R2-D_stale_sequence": "R2-G commit rejects any non-latest confirmedSequenceRequestId (and any confirmed bytes that have been released, and any per-frame sha256/width/height/byteLength echo that does not match the acceptance store) with STALE_SEQUENCE before any file write",
+    "R2-E_no_renderer_png_buffer": "the Renderer never accumulates the per-frame PNGs; Main owns the per-sequence byte store briefly and releases it after a successful commit or an invalidateSequenceSession",
+    "R2-G_single_revision": "all N new ImageAssets commit in one Project revision + 1 via a single transaction.save; a failed batch rolls back atomically (no half-written asset file, no half-written project.json)",
+    "R2-G_dedup": "per-frame sha256 dedup against current.project.assets; reused assets skip file write, new assets write via writeFlaCommitTemporary + finalizeFlaCommitTemporary (atomic hard-link)"
+  },
+  "securityBoundary": {
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false,
+    "noActionScriptExecution": true,
+    "rendererReceivesFlaSource": false,
+    "rendererReceivesPngBuffer": "only via the single handoff at the R2-G commit boundary; never accumulated",
+    "r2DoesNotAddParallelRenderer": true
+  },
+  "testCounts": {
+    "R2-A_contract_tests": 37,
+    "R2-C_service_tests": 14,
+    "R2-D_acceptance_tests": 5,
+    "R2-G_commit_tests": 9,
+    "r2TotalNew": 65,
+    "r2TotalUnitSuiteAfter": 1106,
+    "r2TotalIntegrationSuiteAfter": 169
+  },
+  "outstandingR2Work": {
+    "R2-H_UX": "renderer-side multi-frame preview UI (range slider, preview grid, re-render / cancel / import buttons). Renderer-side work belongs in a real Windows Electron acceptance run; deferred to the V2-R2 acceptance phase. The R2-C / R2-G services are wired and tested; the UX surfaces consume the existing R2 contracts (FlaFrameSequenceRequest / FlaFrameSequenceCommitRequest) and do not require new contract changes.",
+    "R2_real_acceptance": "user-driven Windows Electron run with the real 剑.fla sample at D:\\表情合集\\剑.fla (sha256 E773508C...4377). The R0 spike evidence is at D:\\PandaStage-Acceptance\\fla-v2-r0\\ LOCAL_ONLY; the R2 acceptance evidence (sequence per-frame PNGs + import success / cancel / supersede state) will land at D:\\PandaStage-Acceptance\\fla-v2-r2\\ per the same evidence-hygiene rule as R0 (#286)."
+  }
+}
