@@ -56,7 +56,7 @@ export const FlaRenderTargetKindSchema = z.enum([
   'unknown',         // explicitly distinguishable from supported
 ]);
 
-const FlaRenderTargetIdSchema = z.string().regex(
+export const FlaRenderTargetIdSchema = z.string().regex(
   /^fla-render-target-[a-z0-9-]{8,160}$/u,
 );
 
