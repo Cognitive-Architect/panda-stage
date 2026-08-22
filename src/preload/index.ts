@@ -119,6 +119,17 @@ import {
   type FlaStaticSnapshotCommitRequest,
   type FlaStaticSnapshotPreviewRequest,
 } from '../shared/fla-static-snapshot-api';
+import {
+  FlaFrameSequenceCancelRequestSchema,
+  FlaFrameSequenceCancelResponseSchema,
+  FlaFrameSequenceCommitRequestSchema,
+  FlaFrameSequenceCommitResponseSchema,
+  FlaFrameSequenceRequestSchema,
+  FlaFrameSequenceResponseSchema,
+  type FlaFrameSequenceCancelRequest,
+  type FlaFrameSequenceCommitRequest,
+  type FlaFrameSequenceRequest,
+} from '../shared/fla-frame-sequence-api';
 
 type Unsubscribe = () => void;
 
@@ -477,6 +488,35 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaStaticSnapshotCancelResponseSchema.parse(response);
+    },
+    // V2-R2 Frame Sequence (Issue #294).  Bounded contiguous frame range
+    // preview, per-session cancel, and N-frame ImageAsset commit.  The
+    // renderer only sends serialized R2 contract objects; the per-frame
+    // PNG bytes stay on the Main side of the process boundary (R2-E
+    // invariant — no Renderer PNG accumulation).
+    frameSequenceRender: async (rawRequest: FlaFrameSequenceRequest) => {
+      const request = FlaFrameSequenceRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_FRAME_SEQUENCE_RENDER,
+        request,
+      );
+      return FlaFrameSequenceResponseSchema.parse(response);
+    },
+    frameSequenceCancel: async (rawRequest: FlaFrameSequenceCancelRequest) => {
+      const request = FlaFrameSequenceCancelRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_FRAME_SEQUENCE_CANCEL,
+        request,
+      );
+      return FlaFrameSequenceCancelResponseSchema.parse(response);
+    },
+    frameSequenceCommit: async (rawRequest: FlaFrameSequenceCommitRequest) => {
+      const request = FlaFrameSequenceCommitRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_FRAME_SEQUENCE_COMMIT,
+        request,
+      );
+      return FlaFrameSequenceCommitResponseSchema.parse(response);
     },
   }),
 });

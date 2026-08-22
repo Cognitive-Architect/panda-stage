@@ -59,6 +59,15 @@ export const IPC_CHANNELS = Object.freeze({
   FLA_SNAPSHOT_RENDER_CANCEL: 'fla:snapshot-render-cancel',
   FLA_SNAPSHOT_RENDER_RESULT: 'fla:snapshot-render-result',
   FLA_SNAPSHOT_RENDER_ERROR: 'fla:snapshot-render-error',
+  // V2-R2 Frame Sequence (Issue #294).  Bounded contiguous frame range
+  // preview, per-session cancel, and N-frame ImageAsset commit.  The
+  // renderer only sends serialized R2 contract objects (the FLA source
+  // bytes never cross this boundary).  Reuses the V2-R1 sandboxed
+  // rasterizer for every per-frame raster, so the rasterizer security
+  // boundary is unchanged from R1.
+  FLA_FRAME_SEQUENCE_RENDER: 'fla:frame-sequence-render',
+  FLA_FRAME_SEQUENCE_CANCEL: 'fla:frame-sequence-cancel',
+  FLA_FRAME_SEQUENCE_COMMIT: 'fla:frame-sequence-commit',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

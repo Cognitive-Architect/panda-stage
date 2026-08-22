@@ -55,6 +55,9 @@ import { FlaStaticSnapshotRenderSession } from './services/fla-static-snapshot-r
 import { FlaStaticSnapshotWindowManager } from './services/fla-static-snapshot-window-manager';
 import { FlaStaticSnapshotCommitService } from './services/FlaStaticSnapshotCommitService';
 import { registerFlaStaticSnapshotIpcHandlers } from './ipc/register-fla-static-snapshot-ipc-handlers';
+import { FlaFrameSequenceService } from './services/fla-frame-sequence-service';
+import { FlaFrameSequenceCommitService } from './services/FlaFrameSequenceCommitService';
+import { registerFlaFrameSequenceIpcHandlers } from './ipc/register-fla-frame-sequence-ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -73,6 +76,9 @@ let flaAssetCommitService: FlaAssetCommitService | null = null;
 let flaSnapshotRenderSession: FlaStaticSnapshotRenderSession | null = null;
 let flaSnapshotCommitService: FlaStaticSnapshotCommitService | null = null;
 let removeFlaSnapshotIpcHandlers: (() => void) | null = null;
+let flaFrameSequenceService: FlaFrameSequenceService | null = null;
+let flaFrameSequenceCommitService: FlaFrameSequenceCommitService | null = null;
+let removeFlaFrameSequenceIpcHandlers: (() => void) | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
 let rendererCloseSynchronizer: RendererCloseSynchronizer | null = null;
@@ -401,6 +407,42 @@ async function initialize(): Promise<void> {
     commitService: flaSnapshotCommitService,
     windowManager: flaSnapshotWindowManager,
   });
+
+  // V2-R2 Frame Sequence (Issue #294 R2-C / R2-D / R2-G / R2-F).
+  // R2 does NOT introduce a parallel renderer; it reuses the R1
+  // rasterizer for every per-frame raster and the R1 source bytes
+  // already retained by FlaImportService for the inspection session.
+  flaFrameSequenceService = new FlaFrameSequenceService({
+    rasterizer: flaSnapshotWindowManager,
+  });
+  flaFrameSequenceCommitService = new FlaFrameSequenceCommitService({
+    projectService,
+    getCurrentProjectSnapshot: (projectRoot) =>
+      autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    sequenceStore: {
+      isLatestAcceptedSequence: (sessionId, requestId) =>
+        flaFrameSequenceService?.isLatestAcceptedSequence(sessionId, requestId) ?? false,
+      getConfirmedSequence: (requestId) =>
+        flaFrameSequenceService?.getConfirmedSequence(requestId) ?? null,
+      releaseSequence: (requestId) =>
+        flaFrameSequenceService?.releaseSequence(requestId),
+    },
+  });
+  removeFlaFrameSequenceIpcHandlers = registerFlaFrameSequenceIpcHandlers({
+    getMainWindow: () => mainWindow,
+    sequenceService: flaFrameSequenceService,
+    commitService: flaFrameSequenceCommitService,
+    sourceLookup: {
+      getSource: (sessionId) => {
+        const session = flaImportService.getSession(sessionId);
+        if (!session) return null;
+        const { sourceBytes } = session;
+        const { basename, sha256 } = session.ir.source;
+        if (!sourceBytes || !basename || !sha256) return null;
+        return { bytes: sourceBytes, basename, sha256 };
+      },
+    },
+  });
   unsavedCloseController = new UnsavedCloseController({
     getDirtyProject: () =>
       autosaveService?.getDirtyProjectSnapshot() ?? null,
@@ -548,6 +590,14 @@ app.on('will-quit', () => {
   flaSnapshotRenderSession?.close();
   flaSnapshotRenderSession = null;
   flaSnapshotCommitService = null;
+  // V2-R2 Frame Sequence: tear down the IPC handlers, settle any
+  // in-flight sequence as RENDER_FAILED, then drop the service
+  // references so the next launch starts clean.
+  removeFlaFrameSequenceIpcHandlers?.();
+  removeFlaFrameSequenceIpcHandlers = null;
+  flaFrameSequenceService?.close();
+  flaFrameSequenceService = null;
+  flaFrameSequenceCommitService = null;
   removeNativeCloseSyncListener?.();
   removeNativeCloseSyncListener = null;
   rendererCloseSynchronizer?.dispose();
