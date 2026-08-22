@@ -60,6 +60,7 @@ export function registerFlaStaticSnapshotIpcHandlers(
       });
     }
     return FlaRenderableTargetCatalogResponseSchema.parse({
+      ok: true,
       sessionId: parsed.sessionId,
       entries: result.entries,
       summary: result.summary,
