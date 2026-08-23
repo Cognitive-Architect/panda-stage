@@ -21,6 +21,8 @@
     "assets:generate-day16-fixtures": "node scripts/generate-day16-fixtures.cjs",
     "assets:generate-demo-project-fixtures": "node scripts/generate-demo-project-fixtures.cjs",
     "evidence:screenshot": "electron scripts/capture-bootstrap.cjs",
+    "research:fla-v1-5-c1": "node scripts/fla-c1-recovery-evidence.cjs",
+    "research:fla-v1-5-c1-electron": "pnpm build && electron scripts/fla-c1-electron-parser.cjs",
     "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",
     "verify:day04": "pnpm build && electron scripts/verify-day04.cjs",
     "verify:day05": "pnpm build && electron scripts/verify-day05.cjs",
