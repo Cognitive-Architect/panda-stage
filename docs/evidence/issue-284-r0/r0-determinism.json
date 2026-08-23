@@ -1,0 +1,60 @@
+{
+  "baseline": {
+    "source": "D:\\表情合集\\剑.fla",
+    "sourceSha256": "E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377"
+  },
+  "runs": [
+    {
+      "runIndex": 1,
+      "extractElapsedMs": 1099,
+      "rasterizeElapsedMs": 6368,
+      "sourceHash": "E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377",
+      "sourceHashUnchanged": true,
+      "svgByteLength": 77705,
+      "svgSha256": "92ADC3637AB7C2DFE0A5BE0B151868F78A13ABD6C30A089DECBBB397A6C590D4",
+      "pngByteLength": 172252,
+      "pngSha256": "25762D38115B7509A142A35231F1745BBEB446132060CE58321144D613B0A55A",
+      "pngDimensions": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    {
+      "runIndex": 2,
+      "extractElapsedMs": 254,
+      "rasterizeElapsedMs": 629,
+      "sourceHash": "E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377",
+      "sourceHashUnchanged": true,
+      "svgByteLength": 77705,
+      "svgSha256": "92ADC3637AB7C2DFE0A5BE0B151868F78A13ABD6C30A089DECBBB397A6C590D4",
+      "pngByteLength": 172252,
+      "pngSha256": "25762D38115B7509A142A35231F1745BBEB446132060CE58321144D613B0A55A",
+      "pngDimensions": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    {
+      "runIndex": 3,
+      "extractElapsedMs": 180,
+      "rasterizeElapsedMs": 585,
+      "sourceHash": "E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377",
+      "sourceHashUnchanged": true,
+      "svgByteLength": 77705,
+      "svgSha256": "92ADC3637AB7C2DFE0A5BE0B151868F78A13ABD6C30A089DECBBB397A6C590D4",
+      "pngByteLength": 172252,
+      "pngSha256": "25762D38115B7509A142A35231F1745BBEB446132060CE58321144D613B0A55A",
+      "pngDimensions": {
+        "width": 1920,
+        "height": 1080
+      }
+    }
+  ],
+  "determinism": {
+    "allSvgBytesEqual": true,
+    "allPngBytesEqual": true,
+    "allSourceUnchanged": true,
+    "pngDimensionsConsistent": true,
+    "conclusion": "R0_DETERMINISTIC_BYTE_EQUAL"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "source": {
+    "path": "D:\\表情合集\\剑.fla",
+    "byteLength": 32997,
+    "sha256": "E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377"
+  },
+  "extract": {
+    "elapsedMs": 197,
+    "heapUsedBeforeMB": 5.45,
+    "heapUsedAfterMB": 5.52,
+    "heapDeltaMB": 0.07,
+    "totalCommands": 2358,
+    "edgeCount": 842
+  },
+  "rasterize": {
+    "elapsedMs": 582,
+    "heapUsedBeforeMB": 5.53,
+    "heapUsedAfterMB": 5.58,
+    "heapDeltaMB": 0.05,
+    "svgByteLength": 77705,
+    "pngByteLength": 172252,
+    "pngSha256": "25762D38115B7509A142A35231F1745BBEB446132060CE58321144D613B0A55A",
+    "pngDimensions": {
+      "width": 1920,
+      "height": 1080
+    },
+    "pngPixelCount": 2073600
+  },
+  "totals": {
+    "elapsedMs": 779,
+    "peakHeapMB": 5.58
+  },
+  "budget": {
+    "maxSourceBytes": 268435456,
+    "maxXmlBytes": 33554432,
+    "maxOutputWidth": 4096,
+    "maxOutputHeight": 4096,
+    "maxDecodedPixels": 16777216,
+    "wallClockMs": 30000
+  },
+  "budgetCheck": {
+    "sourceWithinMax": true,
+    "outputWithinMaxWidth": true,
+    "outputWithinMaxHeight": true,
+    "outputWithinMaxPixels": true,
+    "totalWithinWallClock": true
+  },
+  "conclusion": {
+    "withinBudget": true
+  }
+}

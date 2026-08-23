@@ -1,0 +1,74 @@
+<!doctype html>
+<!--
+  FLA V2-R0 spike (corrective) — sandboxed renderer page.
+
+  Security boundary:
+    - CSP forbids remote connect, script, and any non-data resource.
+    - The page main world is the only place that can touch the canvas.
+    - performance.memory is read here (Chromium-only API).
+
+  This page is loaded by the BrowserWindow created in
+  scripts/fla-r0-spike-rasterize.cjs under
+    sandbox: true, contextIsolation: true, nodeIntegration: false.
+  The page is small and static; it contains no external network call,
+  no eval, no Function, and no fs access.
+-->
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src data:; connect-src 'none';">
+    <title>FLA V2-R0 renderer (sandboxed)</title>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script>
+      // R0 renderer: draw an SVG into a 1920x1080 canvas and report
+      // the PNG data URL plus the renderer's Chromium memory
+      // (performance.memory). No external resources, no eval, no
+      // Function, no fs.
+      (function () {
+        function utf8ToBase64(s) {
+          var bytes = new TextEncoder().encode(s);
+          var bin = '';
+          for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+          return btoa(bin);
+        }
+
+        window.r0RenderImpl = async function r0RenderImpl(svgText, width, height) {
+          var c = document.getElementById('c');
+          c.width = width; c.height = height;
+          var ctx = c.getContext('2d', { willReadFrequently: true });
+          ctx.clearRect(0, 0, width, height);
+          var dataUrl = 'data:image/svg+xml;base64,' + utf8ToBase64(svgText);
+          var img = new Image();
+          await new Promise(function (resolve, reject) {
+            img.onload = resolve;
+            img.onerror = function () { reject(new Error('image load failed')); };
+            img.src = dataUrl;
+          });
+          ctx.drawImage(img, 0, 0, width, height);
+          var pngDataUrl = c.toDataURL('image/png');
+
+          var memory = null;
+          try {
+            if (performance && performance.memory) {
+              memory = {
+                measured: true,
+                method: 'performance.memory (Chromium-only)',
+                usedJSHeapSize: performance.memory.usedJSHeapSize,
+                totalJSHeapSize: performance.memory.totalJSHeapSize,
+                jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
+              };
+            } else {
+              memory = { measured: false, reason: 'performance.memory not available in this Chromium build' };
+            }
+          } catch (e) {
+            memory = { measured: false, reason: 'performance.memory threw: ' + String(e) };
+          }
+
+          return { dataUrl: pngDataUrl, width: width, height: height, memory: memory };
+        };
+      })();
+    </script>
+  </body>
+</html>

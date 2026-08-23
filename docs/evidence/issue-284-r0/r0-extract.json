@@ -1,0 +1,52 @@
+{
+  "source": {
+    "sha256": "E773508C4079C4FA8235043B69A0F5415BCC1596A3ED345A4C6652B48CE54377",
+    "byteLength": 32997,
+    "sha256MatchesManifest": true,
+    "note": "private path omitted from tracked repo per Issue #286"
+  },
+  "output": {
+    "svgSha256": "92ADC3637AB7C2DFE0A5BE0B151868F78A13ABD6C30A089DECBBB397A6C590D4",
+    "svgByteLength": 77705,
+    "png": {
+      "status": "pending rasterization"
+    },
+    "pngSha256": null,
+    "pngByteLength": null,
+    "width": 1920,
+    "height": 1080,
+    "pixelCount": 2073600,
+    "visualPath": "LOCAL_ONLY (not committed; see D:\\PandaStage-Acceptance\\fla-v2-r0\\)"
+  },
+  "selected": {
+    "symbolName": "素材来自-cilisucai.com13/素材来自-cilisucai.com63",
+    "timelineIndex": 0,
+    "layerIndex": 0,
+    "frameIndex": 0,
+    "groupIndex": 0,
+    "shapeIndex": 0,
+    "selectedIdentity": "LIBRARY/<素材来自-cilisucai.com13/素材来自-cilisucai.com63>, DOMTimeline[0], DOMLayer[0], DOMFrame[0], DOMGroup[0], DOMShape[0]",
+    "edgeCount": 842,
+    "edgesUsingCubics": 651,
+    "edgesUsingEdges": 191,
+    "totalCommands": 2358
+  },
+  "fillUsed": {
+    "type": "solid",
+    "index": 1,
+    "fillKind": "linear-gradient",
+    "color": "#B0D1F4",
+    "alpha": 1
+  },
+  "securityInvariants": {
+    "actionScriptDetected": false,
+    "actionScriptExecuted": false,
+    "sourceRewritten": false,
+    "networkAccess": false,
+    "projectMutation": false
+  },
+  "transparency": {
+    "backgroundTransparent": true,
+    "fillOpacity": 1
+  }
+}
