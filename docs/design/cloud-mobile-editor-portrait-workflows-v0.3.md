@@ -1,8 +1,11 @@
 # Panda Stage 云电脑手机竖屏工作区与流程蓝图 v0.3
 
-> 状态：设计存档 / 非生产实现  
-> 日期：2026-08-24  
-> 目标环境：阿里无影云电脑串流至 Redmi K60 Ultra，竖屏触控使用  
+> 状态：设计存档 / 非生产实现
+>
+> 日期：2026-08-24
+>
+> 目标环境：阿里无影云电脑串流至 Redmi K60 Ultra，竖屏触控使用
+>
 > 关联设计：`cloud-mobile-editor-layout-v0.1.md`、`cloud-mobile-editor-interaction-blueprints-v0.2.md`
 
 ## 1. 背景与目标
