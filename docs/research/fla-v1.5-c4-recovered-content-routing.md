@@ -84,6 +84,10 @@ beside the approved sources.
 - lint: PASS
 - build: PASS
 - C4 real Electron metadata gate: A-E PASS (automation only)
+- Draft PR: #305, Open/Draft/Unmerged
+- exact-head Draft CI at `5b67e352680837c9dc97fbd876e244929931d681`:
+  run `32636342370`; Classify PASS; CI policy self-test PASS; Final CI result
+  PASS; non-applicable Draft-policy quality jobs SKIPPED
 - known pre-existing integration diagnostic: repeated
   `asset-thumbnail:read` unregistered-handler messages; tests still passed
 

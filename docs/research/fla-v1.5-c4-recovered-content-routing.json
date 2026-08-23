@@ -72,7 +72,15 @@
     "typecheck": "PASS",
     "lint": "PASS",
     "build": "PASS",
-    "exactHeadDraftCi": "PENDING until C4 branch is pushed and Draft PR is created",
+    "draftPr": 305,
+    "exactHeadDraftCi": {
+      "head": "5b67e352680837c9dc97fbd876e244929931d681",
+      "runId": 32636342370,
+      "classify": "PASS",
+      "ciPolicySelfTest": "PASS",
+      "finalCiResult": "PASS",
+      "otherDraftPolicyJobs": "SKIPPED"
+    },
     "maintainerHumanAcceptance": "PENDING"
   },
   "scope": {
