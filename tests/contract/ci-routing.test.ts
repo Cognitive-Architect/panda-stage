@@ -67,6 +67,16 @@ describe('RH-07 FAST Draft policy', () => {
     expect(draft([change('docs/ci-routing.md')]).tier).toBe('docs');
   });
 
+  it('routes approved cloud-mobile editor blueprint images without opening a broad docs binary path', () => {
+    const result = draft([
+      change('docs/design/cloud-mobile-editor-subtitle-edit-v0.2.jpg', 'A'),
+    ]);
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.areas).toEqual(['design-archive-assets']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it.each([
     '.github/workflows/ci.yml',
     'scripts/ci-routing.cjs',

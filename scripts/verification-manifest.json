@@ -76,6 +76,20 @@
         "notes": "CI mechanics, build configuration, shared fixtures, and non-verifier scripts remain conservative Full risk."
       },
       {
+        "id": "design-archive-assets",
+        "sourcePatterns": [
+          "docs/design/cloud-mobile-editor-*.jpg"
+        ],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "design",
+        "notes": "Versioned cloud-mobile editor blueprint images are repository design assets rather than Markdown. Draft changes run CI policy self-tests; unrelated binary documentation paths remain fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",
