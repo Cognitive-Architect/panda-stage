@@ -1,7 +1,9 @@
 # FLA V1.5-C4 recovered content routing
 
-Issue: #304  
-Execution date: 2026-08-23  
+Issue: #304
+
+Execution date: 2026-08-23
+
 Live `main` at start: `3c47a4ee8af07e834338b223fcb3260a4c6dddbc`
 
 ## Integration topology
