@@ -5,6 +5,7 @@
     "moduleResolution": "Node",
     "lib": ["ES2022"],
     "types": ["node"],
+    "allowJs": true,
     "rootDir": "src",
     "outDir": "dist-electron",
     "strict": true,
@@ -19,6 +20,7 @@
   "include": [
     "src/domain/**/*.ts",
     "src/main/**/*.ts",
+    "src/main/services/fla-recovery-classifier.js",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts"
   ]

@@ -401,6 +401,15 @@ export function FlaCompatibilityReviewSession({
           <p className="fla-review-readonly-note">
             这是导入前预览。确认选择只会记录本次选择；点击“导入”后才会创建项目素材。
           </p>
+          {response?.ok === true && response.trace?.recoveryApplied ? (
+            <output
+              className="fla-review-recovery-notice"
+              data-testid="fla-review-recovery-notice"
+              role="status"
+            >
+              Panda 已处理一个兼容性问题；原 FLA 文件没有被修改。
+            </output>
+          ) : null}
 
           <dl className="fla-review-summary" data-testid="fla-review-summary">
             <div><dt>源文件</dt><dd>{ir.source.basename}</dd></div>

@@ -32,6 +32,14 @@ export interface FlaPreflightResult {
   containsActionScript: boolean;
 }
 
+export interface FlaSourceBytes {
+  sourcePath: string;
+  basename: string;
+  byteLength: number;
+  sha256: string;
+  bytes: Uint8Array;
+}
+
 export class FlaPreflightError extends Error {
   readonly code: FlaImportErrorCode;
 
@@ -393,6 +401,19 @@ export async function preflightFlaSource(
   sourcePath: string,
   signal?: AbortSignal,
 ): Promise<FlaPreflightResult> {
+  const source = await readFlaSourceBytes(sourcePath, signal);
+  return preflightFlaBytes(source.bytes, source.basename, source.sourcePath);
+}
+
+/**
+ * Read a bounded source once so Main can first run the existing strict
+ * preflight and, only after a strict rejection, inspect the same immutable
+ * bytes with the C2 classifier.  No copy is written beside the source.
+ */
+export async function readFlaSourceBytes(
+  sourcePath: string,
+  signal?: AbortSignal,
+): Promise<FlaSourceBytes> {
   let stat;
   try {
     stat = await fs.stat(sourcePath);
@@ -415,5 +436,12 @@ export async function preflightFlaSource(
     }
     fail('UNSUPPORTED_FLA_CONTAINER', `The selected FLA source is not readable: ${String(error)}`);
   }
-  return preflightFlaBytes(bytes, basename(sourcePath), sourcePath);
+  const ownedBytes = Uint8Array.from(bytes);
+  return {
+    sourcePath,
+    basename: basename(sourcePath),
+    byteLength: ownedBytes.byteLength,
+    sha256: sha256(ownedBytes),
+    bytes: ownedBytes,
+  };
 }

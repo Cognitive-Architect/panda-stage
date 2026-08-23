@@ -296,7 +296,7 @@
       }
     ]
   },
-  "count": 49,
+  "count": 50,
   "gates": [
     {
       "id": "assets",
@@ -357,6 +357,18 @@
       "owner": "fla-import",
       "supersedes": null,
       "notes": "Focused built-Electron all-158 stress acceptance for the final FLA V1 candidate; records STRESS_PASS, STRESS_DEFERRED_WITH_REASON, or STRESS_FAILED_WITH_BOUNDED_RESULT separately from the core correctness gate."
+    },
+    {
+      "id": "fla-v1-5-c3",
+      "script": "verify:fla-v1-5-c3",
+      "suite": "fla-v1-5-c3",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Real Windows/Electron C3 compatibility-recovery conformance; run with an approved --root corpus and external --out receipt."
     },
     {
       "id": "canvas",

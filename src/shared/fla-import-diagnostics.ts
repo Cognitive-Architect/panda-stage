@@ -74,3 +74,23 @@ export function flaZeroRasterDiagnostic(ir: AnimationImportIR): FlaDiagnostic[] 
     },
   ];
 }
+
+/**
+ * Safe, beginner-facing copy for a C3 classifier rejection or a failed
+ * post-normalization strict validation. Reason codes remain developer detail;
+ * the copy never suggests that Panda repaired or rewrote the source.
+ */
+export function flaRecoveryFailureDiagnostics(
+  reasonCodes: readonly string[] = [],
+): FlaDiagnostic[] {
+  return [
+    {
+      category: 'archive-malformed',
+      userMessage:
+        '这个 FLA 的文件结构存在 Panda 目前无法安全处理的兼容性问题，原文件没有被修改。',
+      ...(reasonCodes.length > 0
+        ? { developerNote: reasonCodes.slice(0, 8).join(', ') }
+        : {}),
+    },
+  ];
+}

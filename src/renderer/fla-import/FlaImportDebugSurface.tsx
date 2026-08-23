@@ -78,6 +78,11 @@ export function FlaImportDebugSurface(): React.JSX.Element {
           {`${summary.source.basename} · ${summary.document.width}×${summary.document.height} @ ${summary.document.frameRate}fps · ${summary.media.length} media · ${summary.summary.placedInstanceCount} placed · ${summary.summary.libraryOnlyMediaCount} library-only · parser ${summary.source.parser.commit}`}
         </output>
       ) : null}
+      {response?.trace ? (
+        <output data-testid="fla-inspection-trace">
+          {`${response.trace.ingestMode} · recoveryApplied=${response.trace.recoveryApplied ? 'true' : 'false'} · classifier=${response.trace.classifierState} · postStrict=${response.trace.postNormalizationStrictResult} · parser=${response.trace.parserResult}`}
+        </output>
+      ) : null}
     </section>
   );
 }
