@@ -34,6 +34,7 @@ import {
 } from './fla-inspection-lifecycle';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
 import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
+import { routeFlaInspection } from './fla-content-route';
 
 interface FlaCompatibilityReviewSessionProps {
   inspection: FlaInspectionOperation;
@@ -104,6 +105,7 @@ export function FlaCompatibilityReviewSession({
   }, [inspection]);
 
   const ir = response?.ok ? response.ir : null;
+  const contentRoute = response ? routeFlaInspection(response) : 'blocked';
   const reviewItems = useMemo(
     () => (ir ? reviewMedia(ir, snapshot?.project.assets ?? []) : []),
     [ir, snapshot],
@@ -466,7 +468,7 @@ export function FlaCompatibilityReviewSession({
             ) : null}
           </section>
 
-          {ir.media.length === 0 ? (
+          {contentRoute === 'v2r-target-discovery' ? (
             <div
               className="fla-review-zero-raster"
               data-testid="fla-review-zero-raster"

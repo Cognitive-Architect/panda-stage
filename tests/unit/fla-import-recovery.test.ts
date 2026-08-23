@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { FlaWorkerStartRequest, AnimationImportIR } from '../../src/shared/fla-import-api';
 import { FlaImportService } from '../../src/main/services/FlaImportService';
 import type { FlaParserWindowManager } from '../../src/main/windows/fla-parser-window-manager';
+import { routeFlaInspection } from '../../src/renderer/fla-import/fla-content-route';
 
 const require = createRequire(import.meta.url);
 const { buildNegativeFixtures } = require('../../scripts/fla-c2-safe-recovery-envelope.cjs') as {
@@ -215,6 +216,7 @@ describe('FLA C3 production recovery entry path', () => {
       expect(trace?.classifierState, fixture.id).not.toBe('RECOVERY_CANDIDATE');
       expect(trace?.recoveryApplied, fixture.id).not.toBe(true);
       expect(inspect, fixture.id).not.toHaveBeenCalled();
+      expect(routeFlaInspection(response), fixture.id).toBe('blocked');
     }
   });
 });
