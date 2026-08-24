@@ -4,7 +4,9 @@
 >
 > 日期：2026-08-24
 >
-> 实施基线：[`main@3c47a4ee8af07e834338b223fcb3260a4c6dddbc`](https://github.com/Cognitive-Architect/panda-stage/commit/3c47a4ee8af07e834338b223fcb3260a4c6dddbc)
+> 当前实施基线：[`main@24b412881f28df926f262975682924d5d1faec28`](https://github.com/Cognitive-Architect/panda-stage/commit/24b412881f28df926f262975682924d5d1faec28)，来自已合并 PR #314。
+>
+> 原规划快照：[`main@3c47a4ee8af07e834338b223fcb3260a4c6dddbc`](https://github.com/Cognitive-Architect/panda-stage/commit/3c47a4ee8af07e834338b223fcb3260a4c6dddbc)，仅作为本文首次编写时的历史坐标保留。
 >
 > 设计来源：[`PR #306`](https://github.com/Cognitive-Architect/panda-stage/pull/306) `@31718ada6e7a7e531b1ef86d8f7ee1b61902e42e`
 >
@@ -14,15 +16,16 @@
 
 ## 1. 背景与目标
 
-PR #306 已归档 Panda Stage 云电脑手机编辑器的横屏、竖屏、左右栏、字幕和 FLA 概念蓝图。当前产品实现则存在一条明确的集成边界：
+PR #306 已归档 Panda Stage 云电脑手机编辑器的横屏、竖屏、左右栏、字幕和 FLA 概念蓝图。当前产品实现存在一条新的集成边界：
 
-- `main` 已拥有 Day26 的 Timeline / BottomWorkspace / 窄屏 Inspector 基础、Day27 的 Dialogue authoring、Day28 的 Dialogue timing / Subtitle track，以及 PR #274 的 FLA V1.5；
-- Day29 Dialogue Audio / Mouth / Product Preview 仍位于 PR #233；
-- FLA V2-R 单帧 / 帧序列仍位于 PR #285；
-- FLA V1.5-C compatibility recovery 仍位于并行 Draft 链；
+- `main@24b4128…` 已拥有 Day26 的 Timeline / BottomWorkspace / 窄屏 Inspector 基础、Day27 的 Dialogue authoring、Day28 的 Dialogue timing / Subtitle track、PR #274 的 FLA V1.5，以及 PR #314 集成的 V1.5-C compatibility recovery 与 V2-R0/R1/R2；
+- Day29 Dialogue Audio / Mouth / Product Preview 仍位于 PR #233，Open / Draft / Unmerged；
+- 历史 PR #285、#299、#301、#303、#305、#310、#312 等 FLA 阶段线已被 #314 的集成历史覆盖或行政收口，不再作为当前 `main` 外的并行产品能力阻塞；
+- V2-R2 的 canonical 结论为 `R2_FRAME_SEQUENCE_PASS_WITH_LIMITS`，不再是 BLOCKED；
+- R3 Product Workflow 仍 `NOT STARTED / NOT AUTHORIZED`，V2-S semantic import 仍 DEFERRED；
 - PR #306 是设计归档，不是已交付生产界面。
 
-因此本规格不把整套 UI 重构写成一个巨型 Issue，也不把未合并 Draft 当作 `main` 已有能力。目标是先交付六个可以从当前 `main` 安全起步、能独立验收、并为后续字幕 / 素材 / FLA 集成降低冲突的基础 Issue。
+因此本规格不把整套 UI 重构写成一个巨型 Issue，也不把未合并 Draft 当作 `main` 已有能力。目标仍然是先交付六个可以从当前 `main` 安全起步、能独立验收、并为后续字幕 / 素材 / FLA 产品表面降低冲突的基础 Issue。
 
 ## 2. 设计事实来源
 
@@ -48,13 +51,12 @@ PR #306 已归档 Panda Stage 云电脑手机编辑器的横屏、竖屏、左�
 
 | 线路 | 当前状态 | 对本批 UI 的影响 |
 | --- | --- | --- |
-| `main` | `3c47a4ee…`，PR #274 已合并 | 六个 Main-ready Issue 的唯一代码起点 |
-| [PR #233](https://github.com/Cognitive-Architect/panda-stage/pull/233) | Open / Draft / Unmerged / non-mergeable | 修改 Asset Library、Dialogue Inspector、Product Preview、StageRenderer 和全局 styles；完整素材 / 字幕 / 预览 UI 暂缓 |
-| [PR #285](https://github.com/Cognitive-Architect/panda-stage/pull/285) | Open / Draft / Unmerged | 修改 AssetLibrary、FLA review、Main / Preload / IPC；FLA 单帧和帧序列 UI 暂缓 |
-| [PR #303](https://github.com/Cognitive-Architect/panda-stage/pull/303) | Open / Draft / Unmerged | 修改 FlaCompatibilityReviewSession 与 FLA service；实际 FLA 工作间接线暂缓 |
+| `main` | `24b4128…`，PR #314 已合并 | 六个 Main-ready Issue 的当前代码起点；每票开工仍须重新获取 live SHA |
+| [PR #233](https://github.com/Cognitive-Architect/panda-stage/pull/233) | Open / Draft / Unmerged / non-mergeable | 修改 Asset Library、Dialogue Inspector、Product Preview、StageRenderer 和全局 styles；完整素材 / 字幕 / 预览 UI 仍需避让 |
+| [PR #314](https://github.com/Cognitive-Architect/panda-stage/pull/314) | Merged | V1.5-C + V2-R0/R1/R2 已进入 `main`；不再作为并行冲突线，但其现有 FLA owner 必须复用 |
 | [PR #306](https://github.com/Cognitive-Architect/panda-stage/pull/306) | Open / Draft / design archive | 作为设计来源引用；实施代码不得从该文档分支堆叠 |
 
-已知高冲突文件包括：
+当前活跃并行线 #233 的已知高冲突文件包括：
 
 ```text
 src/renderer/styles.css
@@ -62,10 +64,11 @@ src/renderer/features/assets/AssetLibrary.tsx
 src/renderer/features/dialogue/DialogueInspector.tsx
 src/renderer/shell/ProductPreviewOverlay.tsx
 src/renderer/stage/StageRenderer.tsx
-src/renderer/fla-import/FlaCompatibilityReviewSession.tsx
 ```
 
-本批 Issue 必须通过“新增基础层、复用唯一 owner、限制业务接线”的方式绕开这些并行线，不能靠复制第二套组件来躲冲突。
+`src/renderer/fla-import/FlaCompatibilityReviewSession.tsx` 等 FLA owner 现在属于已进入 `main` 的正式基线，不再因 #285/#303 并行 Draft 而暂缓；后续 FLA UI 必须在当前 owner 上继续，而不是复制第二套 review/workflow。
+
+本批 Issue 必须通过“新增基础层、复用唯一 owner、限制业务接线”的方式绕开活跃并行线，不能靠复制第二套组件来躲冲突。
 
 ## 4. 六个 Issue 的关系
 
@@ -133,7 +136,7 @@ EditorProjectStore = Project / dirty / revision 唯一 renderer owner
 2. `styles.css` 只增加最小、稳定的入口；
 3. 新布局使用明确的作用域类名，避免无界全局选择器；
 4. 不为了“干净”重排无关旧规则；
-5. 等并行 PR 落地后再单独决定是否做旧 CSS 收口。
+5. 等活跃并行 PR 落地后再单独决定是否做旧 CSS 收口。
 
 ### 5.5 临时发布控制
 
@@ -201,7 +204,8 @@ PR #306 的图片使用目标手机物理分辨率和概念尺寸表达布局，
   - HistoryControls；
 - 建立 `wide → narrow → wide` 与 `landscape → portrait → landscape` 的基线步骤；
 - 建立 `Project / dirty / revision / History` 前后对照模板；
-- 记录 PR #233、#285、#303 的当前重叠文件，作为后续实施前重新审计清单。
+- 记录当前 Open 产品 PR（至少 #233）的重叠文件，作为后续实施前重新审计清单；
+- 记录 #314 已合并为当前 FLA 基线，#285/#303 等历史线不再作为 active parallel blocker。
 
 ## Out of scope
 
@@ -464,7 +468,7 @@ tests/contract/dom-selectors*.test.ts
 
 - 前置依赖：UI-M0、UI-M1；
 - 阻塞：UI-M3、UI-M4、UI-M5；
-- PR #233 / #285 无需先合并，但实施前必须重新检查 `EditorShell` / `styles.css` 重叠。
+- PR #233 无需先合并，但实施前必须重新检查 `EditorShell` / `styles.css` 重叠；FLA V2-R 已通过 #314 进入 `main`，不再等待 #285。
 
 ---
 
@@ -476,7 +480,7 @@ tests/contract/dom-selectors*.test.ts
 
 ## 问题背景
 
-Canvas 是编辑器的主任务面，Shot 是决定当前上下文的高频集合。它们可以完全基于当前 `main` 的 CanvasStage、shotStore 和 Shot 能力实施，不需要等待 Day29、FLA V2-R 或素材库并行线。
+Canvas 是编辑器的主任务面，Shot 是决定当前上下文的高频集合。它们可以完全基于当前 `main` 的 CanvasStage、shotStore 和 Shot 能力实施，不需要等待 Day29；FLA V2-R 已在当前 `main`，也不是本票的前置依赖。
 
 ## 目标结果
 
@@ -558,7 +562,7 @@ Store / domain 文件默认不在范围内。若发现当前 main 存在阻断�
 - [ ] Canvas 单 owner 和重测合同通过；
 - [ ] touch 工具命中区达标；
 - [ ] Shot mutation / History 语义未改变；
-- [ ] Asset / Dialogue / FLA 并行线未被越界修改；
+- [ ] Asset / Dialogue / FLA owner 边界未被越界修改；
 - [ ] 真实无影横竖屏验收通过；
 - [ ] `UI_M3_CANVAS_SHOT_PASS = true`。
 
@@ -566,7 +570,7 @@ Store / domain 文件默认不在范围内。若发现当前 main 存在阻断�
 
 - 前置依赖：UI-M2；
 - 可与 UI-M4、UI-M5 并行；
-- 不阻塞于 PR #233 / #285，但必须避开 StageRenderer / AssetLibrary 的并行修改。
+- 不阻塞于 PR #233；但必须避开 #233 对 StageRenderer / AssetLibrary 的并行修改。FLA V2-R 已经属于 live base。
 
 ---
 
@@ -776,20 +780,27 @@ Dialogue domain / store 默认不在范围内；若现有 timing 行为阻断布
 
 ---
 
-## 6. 暂缓但应保留在总控中的后续 Issue
+## 6. 后续 Issue：仍暂缓与已解锁项
 
-以下内容已有 PR #306 蓝图，但不属于当前 Main-ready 六票：
+以下内容已有 PR #306 蓝图，但不属于当前 Main-ready 六票。#314 合并后，FLA 相关项目需要从“等待能力集成”重新分类为“能力已在 live base、可另行开票”，但不能因此自动扩张为 R3 或 V2-S。
 
-| 后续方向 | 当前阻塞 | 解除条件 |
+| 后续方向 | 当前状态 | 下一门禁 |
 | --- | --- | --- |
-| 素材工作区完整重构 | PR #233 / #285 同时修改 AssetLibrary | 相关分支集成到 live base，并重新审计文件重叠 |
-| 字幕正常编辑、待安排、批量粘贴完整视觉 | PR #233 修改 DialogueInspector / store / Preview / styles | Day29 集成路线确定；保留 Dialogue / AudioClip 独立 timing |
-| FLA 全屏工作间与直接图片 / 安全阻断 | PR #303 / #285 修改同一 FLA review | C3/C4/V2-R live topology 收敛；复用一个 FlaCompatibilityReviewSession |
-| FLA 单帧 / 帧序列 | PR #285 与 Issue #294 人工门禁 | 能力进入目标 base；帧序列仍按实验态和预算约束呈现 |
-| 完整五键 transport / audio track | 当前 main 无权威 master clock / audio transport | 对应能力合并，并明确单时钟 owner |
+| 素材工作区完整重构 | 仍受 PR #233 对 AssetLibrary 的并行修改影响 | Day29 集成路线收敛，并重新审计 live main / #233 文件重叠 |
+| 字幕正常编辑、待安排、批量粘贴完整视觉 | PR #233 仍修改 DialogueInspector / store / Preview / styles | Day29 集成路线确定；继续保留 Dialogue / AudioClip 独立 timing |
+| FLA 全屏工作间与直接图片 / 安全阻断 | V1.5-C + V2-R0/R1/R2 已通过 #314 进入 `main`；旧 #303/#285 阻塞已解除 | UI-M0/M1/M2 后可单独建立响应式 FLA review/workspace Issue；复用唯一 FlaCompatibilityReviewSession，不隐式启动 R3 |
+| FLA 单帧 / 帧序列响应式呈现 | R1/R2 能力已在 `main`；R2 canonical=`PASS_WITH_LIMITS` | 可另开 UI 适配票，保持当前帧范围/预算/显式 commit 与保真度限制；不得把它包装成完整 Animate 支持 |
+| 完整五键 transport / audio track | 当前 `main` 仍无 Day29 权威 master clock / audio transport | 对应能力合并，并明确单时钟 owner |
 | 最终云电脑真机收口 | 依赖所有目标工作区 | 横竖屏功能集完成后执行总体验收，不用自动截图替代真人 |
 
-暂缓不等于取消。它表示这些设计已归档，但生产实现必须等待权威能力与集成基线就绪。
+重新分类不等于授权。尤其：
+
+```text
+R3 Product Workflow = NOT STARTED / NOT AUTHORIZED
+V2-S semantic import = DEFERRED / NOT AUTHORIZED
+```
+
+FLA 当前只允许后续 UI 票围绕已经合入 `main` 的 bounded recovery、direct raster、static snapshot、frame sequence 能力做响应式和产品表面适配；任何新的持久化语义、Asset Library 总工作流或 Animate 语义编辑都必须单独授权。
 
 ## 7. 每个实施 PR 的统一交付格式
 
@@ -823,7 +834,7 @@ PR 描述必须区分：
 
 - 为做响应式布局需要复制第二个 Canvas / Inspector / Timeline / Store；
 - UI state 开始进入 Project、dirty、revision 或 History；
-- 必须重写 PR #233 / #285 / #303 的并行历史；
+- 必须重写/绕过当前活跃并行 PR #233，或复制 #314 已经进入 `main` 的 FLA owner 来“躲冲突”；
 - 一个 Issue 同时改动 Editor shell、Dialogue 语义、FLA security 和 Project schema；
 - 设计稿中的能力在当前 main 不存在，却被实现为没有权威行为的假按钮；
 - 为通过 CI 而降低 unknown-route、security、IPC 或 acceptance gate；
@@ -840,8 +851,19 @@ cloud_mobile_ui_main_ready:
 
   implementation_baseline:
     branch: main
-    sha_at_planning: 3c47a4ee8af07e834338b223fcb3260a4c6dddbc
+    original_planning_sha: 3c47a4ee8af07e834338b223fcb3260a4c6dddbc
+    live_sha_at_refresh: 24b412881f28df926f262975682924d5d1faec28
+    source_merge_pr: 314
     re_fetch_before_each_issue: true
+
+  fla_capability_in_live_main:
+    v1_5_c: MERGED_WITH_LIMITS
+    r0_renderer_feasibility: ACCEPTED_WITH_LIMITS
+    r1_static_snapshot: ACCEPTED_WITH_LIMITS
+    r2_frame_sequence: R2_FRAME_SEQUENCE_PASS_WITH_LIMITS
+    r2_blocked: false
+    r3_product_workflow: NOT_STARTED_NOT_AUTHORIZED
+    v2_s_semantic_import: DEFERRED_NOT_AUTHORIZED
 
   ready_now:
     - UI-M0 baseline_and_viewport_contract
@@ -851,13 +873,20 @@ cloud_mobile_ui_main_ready:
     - UI-M4_single_inspector_and_portrait_sheet
     - UI-M5_timeline_and_bottom_workspace
 
-  blocked_until_integration:
+  still_dependency_sensitive:
     - asset_workspace_full_redesign
     - subtitle_audio_preview_workflow
-    - fla_fullscreen_product_workflow
-    - fla_static_snapshot_and_frame_sequence
     - complete_transport_and_audio_track
     - final_end_to_end_cloud_device_acceptance
+
+  unblocked_from_old_fla_dependencies_but_separate_issue_required:
+    - fla_responsive_review_workspace
+    - fla_static_snapshot_responsive_ui
+    - fla_frame_sequence_responsive_ui
+
+  requires_explicit_future_authorization:
+    - R3_product_workflow
+    - V2_S_semantic_import
 
   implementation_order:
     - UI-M0
