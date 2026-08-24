@@ -33,6 +33,7 @@ import type {
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
 import { flaFrameSequenceClient } from './fla-frame-sequence-render';
+import { formatFlaFrameSequenceCommitResult } from './formatFlaFrameSequenceCommitResult';
 import {
   buildRange,
   intentChangeReset,
@@ -497,7 +498,7 @@ export function FlaFrameSequenceReview({
 
       {phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed' ? (
         <p data-testid="fla-frame-sequence-committed">
-          已导入 {commitResponse.result.summary.importedCount} 帧为普通图片素材。
+          {formatFlaFrameSequenceCommitResult(commitResponse)}
         </p>
       ) : null}
 
