@@ -25,20 +25,23 @@ async function buildSyntheticFla(
   options: {
     includeLibrary?: boolean;
     symbolName?: string;
+    symbolNames?: string[];
+    graphicFrameCount?: number;
     includeSceneShape?: boolean;
   } = {},
 ): Promise<Uint8Array> {
   const includeLibrary = options.includeLibrary ?? true;
-  const symbolName = options.symbolName ?? 'synthetic-symbol';
+  const symbolNames = options.symbolNames ?? [options.symbolName ?? 'synthetic-symbol'];
+  const graphicFrameCount = options.graphicFrameCount ?? 1;
   const includeSceneShape = options.includeSceneShape ?? true;
   const zip = new JSZip();
 
   // Main scene: contains a DOMTimeline that places the graphic symbol.
   const sceneBody = includeLibrary
     ? `<elements>
-        <DOMSymbolInstance libraryItemName="${symbolName}">
+        ${symbolNames.map((name) => `<DOMSymbolInstance libraryItemName="${name}">
           <matrix a="1" d="1" tx="0" ty="0"/>
-        </DOMSymbolInstance>
+        </DOMSymbolInstance>`).join('\n        ')}
       </elements>`
     : (includeSceneShape
         ? `<elements>
@@ -71,14 +74,8 @@ async function buildSyntheticFla(
   zip.file('DOMDocument.xml', docXml);
 
   if (includeLibrary) {
-    const libXml = `<?xml version="1.0" encoding="UTF-8"?>
-<DOMSymbolItem xmlns="http://ns.adobe.com/xfl/2008/" name="${symbolName}" symbolType="graphic">
-  <timeline>
-    <DOMTimeline name="symbolTimeline">
-      <layers>
-        <DOMLayer name="symbolLayer">
-          <frames>
-            <DOMFrame index="0">
+    for (const currentSymbolName of symbolNames) {
+      const frames = Array.from({ length: graphicFrameCount }, (_, frameIndex) => `<DOMFrame index="${frameIndex}">
               <DOMGroup>
                 <matrix><Matrix a="2" d="2" tx="10" ty="20"/></matrix>
                 <members>
@@ -94,14 +91,23 @@ async function buildSyntheticFla(
                   </DOMShape>
                 </members>
               </DOMGroup>
-            </DOMFrame>
+            </DOMFrame>`).join('\n            ');
+      const libXml = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem xmlns="http://ns.adobe.com/xfl/2008/" name="${currentSymbolName}" symbolType="graphic">
+  <timeline>
+    <DOMTimeline name="symbolTimeline">
+      <layers>
+        <DOMLayer name="symbolLayer">
+          <frames>
+            ${frames}
           </frames>
         </DOMLayer>
       </layers>
     </DOMTimeline>
   </timeline>
 </DOMSymbolItem>`;
-    zip.file(`LIBRARY/${symbolName}.xml`, libXml);
+      zip.file(`LIBRARY/${currentSymbolName}.xml`, libXml);
+    }
   }
 
   return await zip.generateAsync({ type: 'uint8array' });
@@ -125,6 +131,58 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(graphic.target.userLabel).toBe('sword');
     expect(graphic.target.frameCount).toBe(1);
     expect(graphic.previewSupported).toBe(true);
+  });
+
+  it('keeps logical target ids stable across repeated catalog builds', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolNames: ['sword', 'shield'],
+      includeSceneShape: false,
+    });
+    const first = await buildRenderableTargetCatalog(bytes);
+    const second = await buildRenderableTargetCatalog(bytes);
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+
+    expect(first.entries.map((entry) => entry.target.userLabel)).toEqual(
+      second.entries.map((entry) => entry.target.userLabel),
+    );
+    expect(first.entries.map((entry) => entry.target.renderTargetId)).toEqual(
+      second.entries.map((entry) => entry.target.renderTargetId),
+    );
+  });
+
+  it('keeps distinct logical targets on distinct stable ids', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolNames: ['sword', 'shield'],
+      includeSceneShape: false,
+    });
+    const result = await buildRenderableTargetCatalog(bytes);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const graphicTargets = result.entries
+      .filter((entry) => entry.target.kind === 'graphic-symbol')
+      .map((entry) => entry.target);
+    expect(graphicTargets).toHaveLength(2);
+    expect(graphicTargets[0]?.userLabel).not.toBe(graphicTargets[1]?.userLabel);
+    expect(graphicTargets[0]?.renderTargetId).not.toBe(graphicTargets[1]?.renderTargetId);
+    expect(new Set(graphicTargets.map((target) => target.renderTargetId)).size).toBe(2);
+  });
+
+  it('reports a multi-frame graphic target for the R2 bridge fixture', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'multi-frame',
+      graphicFrameCount: 2,
+      includeSceneShape: false,
+    });
+    const result = await buildRenderableTargetCatalog(bytes);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0]?.target.frameCount).toBe(2);
   });
 
   it('discovers the main scene target with kind=scene and frameCount=1', async () => {

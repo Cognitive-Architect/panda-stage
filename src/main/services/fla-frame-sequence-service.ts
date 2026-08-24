@@ -118,6 +118,8 @@ export interface FlaFrameSequenceServiceOptions {
 interface SequenceInFlight {
   readonly sequenceRequestId: string;
   readonly sessionId: string;
+  /** Stable Panda-owned target identity echoed by the R2 success contract. */
+  readonly renderTargetId: string;
   /** Total frame count for this request (range end - start + 1). */
   readonly totalFrames: number;
   /** Current frame ordinal (0-based). -1 means no frame has started yet. */
@@ -272,6 +274,7 @@ export class FlaFrameSequenceService {
     const sequence: SequenceInFlight = {
       sequenceRequestId: requestId,
       sessionId,
+      renderTargetId: range.renderTargetId,
       totalFrames,
       currentOrdinal: -1,
       cancelled: false,
@@ -543,8 +546,11 @@ export class FlaFrameSequenceService {
       }
       const preview = {
         ok: true as const,
-        requestId: `${sequence.sequenceRequestId}/frame-${it.sequenceOrdinal}`,
-        targetRenderTargetId: '', // Filled by the R2 commit path
+        // The rasterizer needs its internal request id for cancellation, but
+        // the public R1 preview contract requires a UUID. Keep those
+        // identities separate at the process boundary.
+        requestId: randomUUID(),
+        targetRenderTargetId: sequence.renderTargetId,
         targetSelectedFrameIndex: it.frameIndex,
         sha256: confirmed.sha256,
         wallClockMs: it.frameWallClockMs,
@@ -564,7 +570,7 @@ export class FlaFrameSequenceService {
     const success: FlaFrameSequenceSuccess = {
       ok: true,
       requestId: sequence.sequenceRequestId,
-      renderTargetId: '', // Set by the caller / commit path
+      renderTargetId: sequence.renderTargetId,
       items,
       sequenceTotalMs: this.now() - sequence.startedAt,
       cancelledFrames: 0,
@@ -583,9 +589,7 @@ export class FlaFrameSequenceService {
       // commit can verify the request range matches without
       // re-parsing the in-flight state.
       range: {
-        renderTargetId: sequence.items[0]
-          ? success.items[0]?.preview.targetRenderTargetId ?? ''
-          : '',
+        renderTargetId: sequence.renderTargetId,
         startFrameIndex: sequence.items[0]?.frameIndex ?? 0,
         endFrameIndex: sequence.items[sequence.items.length - 1]?.frameIndex ?? 0,
       },

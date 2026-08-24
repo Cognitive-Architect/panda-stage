@@ -32,6 +32,8 @@ import {
 } from '../../src/shared/fla-frame-sequence-api';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import type { FlaStaticSnapshotSource } from '../../src/main/services/fla-static-snapshot-render-session';
+import { buildRenderableTargetCatalog } from '../../src/main/services/fla-static-snapshot-svg-builder';
+import { buildMultiFrameGraphicFla } from '../helpers/fla-render-fixture';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject, type Project } from '../../src/domain';
 import { ProjectSchema } from '../../src/domain';
@@ -189,6 +191,42 @@ describe('R2-H.1 frame sequence render IPC', () => {
     const response = await handler(IPC_CHANNELS.FLA_FRAME_SEQUENCE_RENDER)(event(), validRenderRequest);
     expect(response).toMatchObject({ ok: false, error: { code: 'RENDER_FAILED' } });
     expect(FlaFrameSequenceResponseSchema.safeParse(response).success).toBe(true);
+  });
+
+  it('uses a real catalog target id in the default R2 frame-source bridge', async () => {
+    const bytes = await buildMultiFrameGraphicFla();
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const target = catalog.entries.find((entry) => entry.target.frameCount >= 2)?.target;
+    expect(target).toBeDefined();
+    if (!target) return;
+
+    const collected: Array<{ frameIndex: number; svg: string }> = [];
+    const mocks = makeMocks();
+    mocks.sourceLookup.getSource = vi.fn((): FlaStaticSnapshotSource => ({
+      bytes,
+      basename: 'r2-multi-frame-fixture.fla',
+      sha256: 'b'.repeat(64),
+    }));
+    mocks.sequenceService.renderSequence.mockImplementation(async (
+      _session: string,
+      _requestedRange: FlaFrameSequenceRange,
+      sourceIterable: AsyncIterable<{ frameIndex: number; svg: string }>,
+    ) => {
+      for await (const frame of sourceIterable) collected.push(frame);
+      return { ...successResponse, renderTargetId: target.renderTargetId };
+    });
+    register(mocks);
+
+    const response = await handler(IPC_CHANNELS.FLA_FRAME_SEQUENCE_RENDER)(event(), {
+      ...validRenderRequest,
+      range: { renderTargetId: target.renderTargetId, startFrameIndex: 0, endFrameIndex: 1 },
+    });
+
+    expect(response).toMatchObject({ ok: true, renderTargetId: target.renderTargetId });
+    expect(collected.map((frame) => frame.frameIndex)).toEqual([0, 1]);
+    expect(collected.every((frame) => frame.svg.includes('<path'))).toBe(true);
   });
 
   it('rejects an untrusted sender without invoking the service', async () => {

@@ -5,6 +5,7 @@ import {
 } from '../../src/main/services/fla-frame-sequence-service';
 import {
   FLA_FRAME_SEQUENCE_LIMITS,
+  FlaFrameSequenceResponseSchema,
   type FlaFrameSequenceRange,
 } from '../../src/shared/fla-frame-sequence-api';
 import type {
@@ -132,6 +133,24 @@ const SEQ_REQ = '00000000-0000-4000-8000-0000000000aa';
 // ---- Tests ----
 
 describe('R2-C sequence service: deterministic sequential rendering', () => {
+  it('returns a schema-valid success with the selected target identity', async () => {
+    const rasterizer = new FakeRasterizer();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const range = makeRange(0, 1);
+    const result = await service.renderSequence(SESSION_ID, range, frames(2), { sequenceRequestId: SEQ_REQ });
+
+    expect(FlaFrameSequenceResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.renderTargetId).toBe(range.renderTargetId);
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((item) => item.preview.targetRenderTargetId)).toEqual([
+      range.renderTargetId,
+      range.renderTargetId,
+    ]);
+    expect(result.items.every((item) => /^[0-9a-f-]{36}$/u.test(item.preview.requestId))).toBe(true);
+  });
+
   it('renders frames in ascending frameIndex order', async () => {
     const rasterizer = new FakeRasterizer();
     const order: string[] = [];

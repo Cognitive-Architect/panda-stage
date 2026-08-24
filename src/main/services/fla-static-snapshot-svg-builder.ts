@@ -594,10 +594,23 @@ function stageSize(docXml: string): { width: number; height: number } {
 }
 
 // ---- Renderable target discovery ----
-function uuid(): string {
-  // crypto.randomUUID is available in Node 19+. This keeps us
-  // off jszip's transitive dep and matches the contract's UUID v4.
-  return crypto.randomUUID();
+/**
+ * R2 corrective (#309): catalog discovery and frame-source assembly can run
+ * at different times, so an id generated during one build cannot be used as
+ * the identity of the same logical target during a later build. Derive the
+ * Panda-owned id from the accepted source bytes plus a stable logical target
+ * key instead. The source bytes keep equal labels from different FLA sources
+ * apart; the logical key keeps distinct targets in one source apart without
+ * making the UI label the identity.
+ */
+function stableRenderTargetId(bytes: Uint8Array, logicalTargetKey: string): string {
+  const digest = crypto
+    .createHash('sha256')
+    .update(bytes)
+    .update('\u0000', 'utf8')
+    .update(logicalTargetKey, 'utf8')
+    .digest('hex');
+  return `fla-render-target-${digest}`;
 }
 
 function findGraphicSymbolShape(libraryXml: string): { shapeBlock: string; matrix: Matrix2D | null; symbolName: string; graphicFrameCount: number } | null {
@@ -665,7 +678,10 @@ export async function buildRenderableTargetCatalog(bytes: Uint8Array): Promise<B
   for (const lib of libraryXmlEntries) {
     const found = findGraphicSymbolShape(lib.xml);
     if (!found) continue;
-    const renderTargetId = `fla-render-target-${uuid().replace(/-/g, '').slice(0, 32)}`;
+    const renderTargetId = stableRenderTargetId(
+      bytes,
+      `graphic-symbol\u0000${lib.name}\u0000${found.symbolName}`,
+    );
     const target: FlaRenderTarget = {
       renderTargetId,
       kind: 'graphic-symbol',
@@ -680,7 +696,7 @@ export async function buildRenderableTargetCatalog(bytes: Uint8Array): Promise<B
   // 2. main scene timeline (single scene, frame 0+)
   const sceneShape = findSceneTimelineFrameShape(docXml, 0);
   if (sceneShape) {
-    const renderTargetId = `fla-render-target-${uuid().replace(/-/g, '').slice(0, 32)}`;
+    const renderTargetId = stableRenderTargetId(bytes, 'scene\u0000timeline\u00000');
     const target: FlaRenderTarget = {
       renderTargetId,
       kind: 'scene',
