@@ -94,6 +94,10 @@ const defaultBuildFrameSource = async function* buildFrameSource(
   source: FlaStaticSnapshotSource,
   range: FlaFrameSequenceRange,
 ): AsyncIterable<SequenceFrameInput> {
+  // #309: this deliberately rebuilds the Main-owned catalog from the
+  // session bytes. Catalog discovery and R2 rendering are separate calls;
+  // the builder must therefore return the same Panda-owned target identity
+  // for the selected logical target on both calls.
   const catalog = await buildRenderableTargetCatalog(source.bytes);
   if (!catalog.ok) {
     // R2-F: a catalog failure aborts the whole sequence (we cannot
