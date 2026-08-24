@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
+import { Button, PanelSurface } from '../ui';
 
 export type CompactProjectSaveState =
   | 'saved'
@@ -71,14 +72,15 @@ export function CompactProjectBar({
     saveState === 'saved' ? 'clean-state' : 'dirty-state';
 
   return (
-    <section
+    <PanelSurface
       aria-label="当前项目状态"
       className="compact-project-bar"
       data-save-state={saveState}
       data-testid="compact-project-bar"
     >
       <div className="compact-project-identity">
-        <button
+        <Button
+          variant="secondary"
           className="compact-project-center-button task4-hit-target"
           data-task4-core="project-center"
           data-testid="open-project-center"
@@ -87,7 +89,7 @@ export function CompactProjectBar({
           type="button"
         >
           项目中心
-        </button>
+        </Button>
         <div className="compact-project-details">
           <span className="eyebrow">当前项目</span>
           <strong
@@ -123,7 +125,8 @@ export function CompactProjectBar({
         >
           {status}
         </output>
-        <button
+        <Button
+          variant="primary"
           aria-label="保存整个项目"
           className="editor-save-button"
           data-task4-core="save-project"
@@ -133,9 +136,10 @@ export function CompactProjectBar({
           type="button"
         >
           保存
-        </button>
+        </Button>
         <div className="compact-project-menu-wrap" ref={menuRef}>
-          <button
+          <Button
+            variant="secondary"
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             className="compact-project-more-button task4-hit-target"
@@ -146,7 +150,7 @@ export function CompactProjectBar({
             type="button"
           >
             更多 <span aria-hidden="true">⋯</span>
-          </button>
+          </Button>
           {menuOpen ? (
             <div
               aria-label="项目操作"
@@ -154,7 +158,8 @@ export function CompactProjectBar({
               data-testid="compact-project-menu"
               role="menu"
             >
-              <button
+              <Button
+                variant="secondary"
                 className="task4-hit-target"
                 data-task4-core="menu-project-center"
                 data-testid="menu-open-project-center"
@@ -166,8 +171,9 @@ export function CompactProjectBar({
                 type="button"
               >
                 打开项目中心
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
                 className="task4-hit-target"
                 data-task4-core="menu-open-folder"
                 data-testid="menu-open-project-folder"
@@ -179,8 +185,9 @@ export function CompactProjectBar({
                 type="button"
               >
                 打开项目文件夹
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
                 className="task4-hit-target"
                 data-task4-core="product-preview"
                 data-testid="menu-open-product-preview"
@@ -193,8 +200,9 @@ export function CompactProjectBar({
                 type="button"
               >
                 产品预览
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
                 className="task4-hit-target"
                 data-task4-core="close-project"
                 data-testid="menu-close-project"
@@ -207,11 +215,11 @@ export function CompactProjectBar({
                 type="button"
               >
                 关闭当前项目
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>
       </div>
-    </section>
+    </PanelSurface>
   );
 }

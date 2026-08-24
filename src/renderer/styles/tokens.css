@@ -1,0 +1,50 @@
+:root {
+  /* Surfaces: keep the dark editor hierarchy explicit for future consumers. */
+  --ui-color-surface-app: #0b100e;
+  --ui-color-surface-work: #141c18;
+  --ui-color-surface-panel: #112318;
+  --ui-color-surface-overlay: #142019;
+  --ui-color-border: rgb(127 199 148 / 28%);
+  --ui-color-separator: rgb(154 216 172 / 24%);
+
+  /* Text. */
+  --ui-color-text-primary: #eef6f0;
+  --ui-color-text-secondary: #aebfb4;
+  --ui-color-text-muted: #84958b;
+
+  /* Semantic actions and state. */
+  --ui-color-action-primary: #1d4d31;
+  --ui-color-action-hover: #28663f;
+  --ui-color-action-pressed: #164026;
+  --ui-color-action-warning: #a36d19;
+  --ui-color-action-danger: #7c2e25;
+  --ui-color-focus-ring: rgb(149 224 172 / 80%);
+  --ui-color-disabled-surface: #142019;
+  --ui-color-disabled-text: #84958b;
+  --ui-color-selected-surface: rgb(65 145 87 / 34%);
+  --ui-color-selected-border: #7fc794;
+
+  /* Converged spacing scale. */
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 24px;
+
+  /* Radius scale. */
+  --ui-radius-small: 6px;
+  --ui-radius-medium: 10px;
+  --ui-radius-large: 14px;
+  --ui-radius-pill: 999px;
+
+  /* Small semantic type scale; values remain readable at the target path. */
+  --ui-font-body: 14px/1.45 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --ui-font-secondary: 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --ui-font-section-heading: 16px/1.3 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --ui-font-eyebrow: 11px/1.2 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+
+  /* Shared hit-target contracts. */
+  --ui-touch-icon: 44px;
+  --ui-touch-regular: 48px;
+  --ui-touch-emphasized: 56px;
+}
