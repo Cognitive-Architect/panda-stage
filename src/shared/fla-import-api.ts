@@ -231,6 +231,38 @@ export const FlaImportErrorSchema = z
   })
   .strict();
 
+export const FlaRecoveryClassifierStateSchema = z.enum([
+  'STRICT_VALID',
+  'RECOVERY_CANDIDATE',
+  'REJECT',
+  'AMBIGUOUS',
+]);
+
+/**
+ * Ephemeral Main-owned inspection facts.  This is deliberately not Project
+ * data and contains no archive offsets or source bytes.  It lets the product
+ * and acceptance receipts distinguish strict inspection, recovery, validation
+ * and parser outcomes without exposing the classifier's low-level measurements.
+ */
+export const FlaInspectionTraceSchema = z
+  .object({
+    ingestMode: z.enum(['strict', 'compatibility-recovered']),
+    recoveryApplied: z.boolean(),
+    originalStrictResult: z.enum(['pass', 'reject']),
+    classifierState: FlaRecoveryClassifierStateSchema,
+    recoveryAttempted: z.boolean(),
+    postNormalizationStrictResult: z.enum(['not-run', 'pass', 'fail']),
+    parserResult: z.enum(['not-run', 'success', 'failure']),
+    originalSourceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    originalSourceByteLength: z.number().int().nonnegative().max(FLA_IMPORT_LIMITS.maxSourceBytes),
+    classifierReasonCodes: z
+      .array(z.string().regex(/^[A-Z0-9_]+$/u).max(120))
+      .max(16)
+      .optional(),
+    recoveryReasonCode: z.string().regex(/^[A-Z0-9_]+$/u).max(120).optional(),
+  })
+  .strict();
+
 /**
  * V1.5-A diagnostic category.  Three user-distinguishable states keep the
  * fail-closed V1 behavior while making rejections / empty results explainable:
@@ -265,6 +297,7 @@ export const FlaInspectionResponseSchema = z.discriminatedUnion('ok', [
       sessionId: z.uuid(),
       ir: AnimationImportIRSchema,
       diagnostics: z.array(FlaDiagnosticSchema).max(16).optional(),
+      trace: FlaInspectionTraceSchema.optional(),
     })
     .strict(),
   z
@@ -272,6 +305,7 @@ export const FlaInspectionResponseSchema = z.discriminatedUnion('ok', [
       ok: z.literal(false),
       error: FlaImportErrorSchema,
       diagnostics: z.array(FlaDiagnosticSchema).max(16).optional(),
+      trace: FlaInspectionTraceSchema.optional(),
     })
     .strict(),
 ]);
@@ -366,6 +400,8 @@ export const FlaWorkerErrorSchema = z
   .strict();
 
 export type FlaImportErrorCode = z.infer<typeof FlaImportErrorCodeSchema>;
+export type FlaRecoveryClassifierState = z.infer<typeof FlaRecoveryClassifierStateSchema>;
+export type FlaInspectionTrace = z.infer<typeof FlaInspectionTraceSchema>;
 export type AnimationImportIR = z.infer<typeof AnimationImportIRSchema>;
 export type FlaInspectionResponse = z.infer<typeof FlaInspectionResponseSchema>;
 export type FlaInspectRequest = z.infer<typeof FlaInspectRequestSchema>;

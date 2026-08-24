@@ -81,6 +81,25 @@ import type {
   FlaAssetCommitRequest,
   FlaAssetCommitResponse,
 } from '../shared/fla-asset-commit-api';
+import type {
+  FlaRenderableTargetCatalogRequest,
+  FlaRenderableTargetCatalogResponse,
+  FlaStaticSnapshotCancelRequest,
+  FlaStaticSnapshotCancelResponse,
+  FlaStaticSnapshotCommitRequest,
+  FlaStaticSnapshotCommitResponse,
+  FlaStaticSnapshotPreviewRequest,
+  FlaStaticSnapshotPreviewResponse,
+} from '../shared/fla-static-snapshot-api';
+import type {
+  FlaFrameSequenceCancelRequest,
+  FlaFrameSequenceCancelResponse,
+  FlaFrameSequenceCommitRequest,
+  FlaFrameSequenceCommitResponse,
+  FlaFrameSequenceProgress,
+  FlaFrameSequenceRequest,
+  FlaFrameSequenceResponse,
+} from '../shared/fla-frame-sequence-api';
 
 declare global {
   interface Window {
@@ -187,6 +206,30 @@ declare global {
         commitSelected: (
           request: FlaAssetCommitRequest,
         ) => Promise<FlaAssetCommitResponse>;
+        staticSnapshotCatalog: (
+          request: FlaRenderableTargetCatalogRequest,
+        ) => Promise<FlaRenderableTargetCatalogResponse>;
+        staticSnapshotPreview: (
+          request: FlaStaticSnapshotPreviewRequest,
+        ) => Promise<FlaStaticSnapshotPreviewResponse>;
+        staticSnapshotCommit: (
+          request: FlaStaticSnapshotCommitRequest,
+        ) => Promise<FlaStaticSnapshotCommitResponse>;
+        staticSnapshotCancel: (
+          request: FlaStaticSnapshotCancelRequest,
+        ) => Promise<FlaStaticSnapshotCancelResponse>;
+        frameSequenceRender: (
+          request: FlaFrameSequenceRequest,
+        ) => Promise<FlaFrameSequenceResponse>;
+        frameSequenceCancel: (
+          request: FlaFrameSequenceCancelRequest,
+        ) => Promise<FlaFrameSequenceCancelResponse>;
+        frameSequenceCommit: (
+          request: FlaFrameSequenceCommitRequest,
+        ) => Promise<FlaFrameSequenceCommitResponse>;
+        frameSequenceProgressSubscribe: (
+          callback: (progress: FlaFrameSequenceProgress) => void,
+        ) => () => void;
       };
     };
     pandaStageFlaParser: {

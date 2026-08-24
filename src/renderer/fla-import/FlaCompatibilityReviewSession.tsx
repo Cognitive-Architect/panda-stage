@@ -16,6 +16,8 @@ import type {
   FlaStructuralSummary,
 } from '../../shared/fla-import-api';
 import type { FlaAssetCommitResponse } from '../../shared/fla-asset-commit-api';
+import type { FlaStaticSnapshotCommitResponse } from '../../shared/fla-static-snapshot-api';
+import type { FlaFrameSequenceCommitResponse } from '../../shared/fla-frame-sequence-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import {
   compatibilityCounts,
@@ -31,6 +33,9 @@ import {
   subscribeToFlaInspection,
   type FlaInspectionOperation,
 } from './fla-inspection-lifecycle';
+import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
+import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
+import { routeFlaInspection } from './fla-content-route';
 
 interface FlaCompatibilityReviewSessionProps {
   inspection: FlaInspectionOperation;
@@ -38,6 +43,8 @@ interface FlaCompatibilityReviewSessionProps {
   onClose: () => void;
   onIntent?: (intent: FlaRasterSelectionIntent) => void;
   onCommit?: (response: FlaAssetCommitResponse) => void;
+  onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
+  onSequenceImported?: (response: FlaFrameSequenceCommitResponse) => void;
 }
 
 type SessionPhase =
@@ -54,6 +61,8 @@ export function FlaCompatibilityReviewSession({
   onClose,
   onIntent,
   onCommit,
+  onSnapshotImported,
+  onSequenceImported,
 }: FlaCompatibilityReviewSessionProps): React.JSX.Element {
   const [phase, setPhase] = useState<SessionPhase>('inspecting');
   const [response, setResponse] = useState<FlaInspectionResponse | null>(null);
@@ -97,6 +106,7 @@ export function FlaCompatibilityReviewSession({
   }, [inspection]);
 
   const ir = response?.ok ? response.ir : null;
+  const contentRoute = response ? routeFlaInspection(response) : 'blocked';
   const reviewItems = useMemo(
     () => (ir ? reviewMedia(ir, snapshot?.project.assets ?? []) : []),
     [ir, snapshot],
@@ -401,6 +411,15 @@ export function FlaCompatibilityReviewSession({
           <p className="fla-review-readonly-note">
             这是导入前预览。确认选择只会记录本次选择；点击“导入”后才会创建项目素材。
           </p>
+          {response?.ok === true && response.trace?.recoveryApplied ? (
+            <output
+              className="fla-review-recovery-notice"
+              data-testid="fla-review-recovery-notice"
+              role="status"
+            >
+              Panda 已处理一个兼容性问题；原 FLA 文件没有被修改。
+            </output>
+          ) : null}
 
           <dl className="fla-review-summary" data-testid="fla-review-summary">
             <div><dt>源文件</dt><dd>{ir.source.basename}</dd></div>
@@ -450,7 +469,7 @@ export function FlaCompatibilityReviewSession({
             ) : null}
           </section>
 
-          {ir.media.length === 0 ? (
+          {contentRoute === 'v2r-target-discovery' ? (
             <div
               className="fla-review-zero-raster"
               data-testid="fla-review-zero-raster"
@@ -458,6 +477,20 @@ export function FlaCompatibilityReviewSession({
             >
               {flaZeroRasterUserMessage(response, ir.structure) ??
                 '文件已成功读取，但没有找到可直接导入的位图素材。'}
+              <FlaStaticSnapshotReview
+                sessionId={sessionId}
+                source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+                snapshot={snapshot}
+                onImported={(response) => onSnapshotImported?.(response)}
+                onClose={() => onClose()}
+              />
+              <FlaFrameSequenceReview
+                sessionId={sessionId}
+                source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+                snapshot={snapshot}
+                onImported={(response) => onSequenceImported?.(response)}
+                onClose={() => onClose()}
+              />
             </div>
           ) : (
             <div

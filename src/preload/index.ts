@@ -105,6 +105,33 @@ import {
   FlaAssetCommitResponseSchema,
   type FlaAssetCommitRequest,
 } from '../shared/fla-asset-commit-api';
+import {
+  FlaRenderableTargetCatalogRequestSchema,
+  FlaRenderableTargetCatalogResponseSchema,
+  FlaStaticSnapshotCancelRequestSchema,
+  FlaStaticSnapshotCancelResponseSchema,
+  FlaStaticSnapshotCommitRequestSchema,
+  FlaStaticSnapshotCommitResponseSchema,
+  FlaStaticSnapshotPreviewRequestSchema,
+  FlaStaticSnapshotPreviewResponseSchema,
+  type FlaRenderableTargetCatalogRequest,
+  type FlaStaticSnapshotCancelRequest,
+  type FlaStaticSnapshotCommitRequest,
+  type FlaStaticSnapshotPreviewRequest,
+} from '../shared/fla-static-snapshot-api';
+import {
+  FlaFrameSequenceCancelRequestSchema,
+  FlaFrameSequenceCancelResponseSchema,
+  FlaFrameSequenceCommitRequestSchema,
+  FlaFrameSequenceCommitResponseSchema,
+  FlaFrameSequenceProgressSchema,
+  FlaFrameSequenceRequestSchema,
+  FlaFrameSequenceResponseSchema,
+  type FlaFrameSequenceCancelRequest,
+  type FlaFrameSequenceCommitRequest,
+  type FlaFrameSequenceProgress,
+  type FlaFrameSequenceRequest,
+} from '../shared/fla-frame-sequence-api';
 
 type Unsubscribe = () => void;
 
@@ -431,6 +458,80 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaAssetCommitResponseSchema.parse(response);
+    },
+    staticSnapshotCatalog: async (rawRequest: FlaRenderableTargetCatalogRequest) => {
+      const request = FlaRenderableTargetCatalogRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_SNAPSHOT_CATALOG,
+        request,
+      );
+      return FlaRenderableTargetCatalogResponseSchema.parse(response);
+    },
+    staticSnapshotPreview: async (rawRequest: FlaStaticSnapshotPreviewRequest) => {
+      const request = FlaStaticSnapshotPreviewRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_SNAPSHOT_PREVIEW,
+        request,
+      );
+      return FlaStaticSnapshotPreviewResponseSchema.parse(response);
+    },
+    staticSnapshotCommit: async (rawRequest: FlaStaticSnapshotCommitRequest) => {
+      const request = FlaStaticSnapshotCommitRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_SNAPSHOT_COMMIT,
+        request,
+      );
+      return FlaStaticSnapshotCommitResponseSchema.parse(response);
+    },
+    staticSnapshotCancel: async (rawRequest: FlaStaticSnapshotCancelRequest) => {
+      const request = FlaStaticSnapshotCancelRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_SNAPSHOT_CANCEL,
+        request,
+      );
+      return FlaStaticSnapshotCancelResponseSchema.parse(response);
+    },
+    // V2-R2 Frame Sequence (Issue #294).  Bounded contiguous frame range
+    // preview, per-session cancel, and N-frame ImageAsset commit.  The
+    // renderer only sends serialized R2 contract objects; the per-frame
+    // PNG bytes stay on the Main side of the process boundary (R2-E
+    // invariant — no Renderer PNG accumulation).
+    frameSequenceRender: async (rawRequest: FlaFrameSequenceRequest) => {
+      const request = FlaFrameSequenceRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_FRAME_SEQUENCE_RENDER,
+        request,
+      );
+      return FlaFrameSequenceResponseSchema.parse(response);
+    },
+    frameSequenceCancel: async (rawRequest: FlaFrameSequenceCancelRequest) => {
+      const request = FlaFrameSequenceCancelRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_FRAME_SEQUENCE_CANCEL,
+        request,
+      );
+      return FlaFrameSequenceCancelResponseSchema.parse(response);
+    },
+    frameSequenceCommit: async (rawRequest: FlaFrameSequenceCommitRequest) => {
+      const request = FlaFrameSequenceCommitRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_FRAME_SEQUENCE_COMMIT,
+        request,
+      );
+      return FlaFrameSequenceCommitResponseSchema.parse(response);
+    },
+    // R2-B (Corrective B): narrow typed progress subscription. The
+    // Renderer receives only the Panda-owned R2 progress contract; the
+    // raw ipcRenderer.on primitive is never exposed to the Renderer.
+    frameSequenceProgressSubscribe: (
+      callback: (progress: FlaFrameSequenceProgress) => void,
+    ): Unsubscribe => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        rawProgress: unknown,
+      ) => callback(FlaFrameSequenceProgressSchema.parse(rawProgress));
+      ipcRenderer.on(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, listener);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, listener);
     },
   }),
 });

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "fla-v1.5-c4-recovered-content-routing/1",
+  "issue": 304,
+  "executionDate": "2026-08-23",
+  "liveMainAtStart": "3c47a4ee8af07e834338b223fcb3260a4c6dddbc",
+  "integration": {
+    "strategy": "history-preserving non-destructive merge on a new C4-only branch",
+    "mergeBase": "3c47a4ee8af07e834338b223fcb3260a4c6dddbc",
+    "c3Head": "dc3126ad2b6c85b4ffff45d13c8f187a47b63b4f",
+    "v2rHead": "a111649df2615e8140e51eada17861fef0f6b403",
+    "integrationMerge": "c467f0eaf4f1f4c9ef4aa331b880a757846d2b45",
+    "branch": "agent/fla-v1-5-c4-recovered-content-routing",
+    "conflicts": [
+      {
+        "path": "scripts/verification-manifest.json",
+        "resolution": "retained exact C3 evidence routing and all V2-R renderer/evidence/test routing"
+      }
+    ],
+    "pr303HistoryRewritten": false,
+    "pr285HistoryRewritten": false
+  },
+  "routingPolicy": {
+    "failedInspection": "blocked",
+    "successfulRaster": "v1-raster-review",
+    "successfulZeroRaster": "v2r-target-discovery",
+    "usesRecoveryFlag": false,
+    "usesStructuralFrameCount": false,
+    "usesFilenameOrHash": false,
+    "v2rTargetTruthSource": "existing V2-R catalog/builder"
+  },
+  "automatedElectron": {
+    "receiptLocation": "LOCAL_ONLY:D:\\PandaStage-Acceptance\\issue304-c4-20260823-1913\\c4-routing-receipt.json",
+    "strictRaster": {
+      "alias": "strict-raster",
+      "sha256": "84682edcd49b8fcc072ae740188677bae9d7d0fd603b8bed51a7ac4ddeb3119f",
+      "recoveryApplied": false,
+      "mediaCount": 158,
+      "route": "v1-raster-review"
+    },
+    "recoveredRaster": {
+      "alias": "recovered-raster",
+      "sha256": "d7d92d3f38eaf3fbac812f991b1a9e7239480afaafb4bddf7e62a374355ebc59",
+      "recoveryApplied": true,
+      "mediaCount": 128,
+      "route": "v1-raster-review"
+    },
+    "recoveredStructureFirst": {
+      "alias": "recovered-structure-first",
+      "sha256": "79f2cf9895997226512e3f2d59c288f183bcd7497a9c4d96112b03fdd7e98098",
+      "recoveryApplied": true,
+      "mediaCount": 0,
+      "route": "v2r-target-discovery",
+      "targetCount": 25,
+      "targetKinds": ["graphic-symbol"],
+      "frameCounts": [1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 7, 6, 5, 2, 1, 4, 1, 1, 10]
+    },
+    "syntheticNoTarget": {
+      "route": "v2r-target-discovery",
+      "targetCount": 0,
+      "fixtureStorage": "external acceptance directory"
+    },
+    "repeatRoutesDeterministic": true,
+    "originalFilesModified": false,
+    "sourceDirectoryArtifacts": "NONE",
+    "projectMutationBeforeConfirm": "NONE",
+    "privateVisualBytesInGit": false
+  },
+  "quality": {
+    "focusedTests": "41/41 PASS",
+    "unit": "145 files / 1176 tests PASS",
+    "integration": "29 files / 169 tests PASS with explicit 30000ms test timeout",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS",
+    "draftPr": 305,
+    "exactHeadDraftCi": {
+      "head": "5b67e352680837c9dc97fbd876e244929931d681",
+      "runId": 32636342370,
+      "classify": "PASS",
+      "ciPolicySelfTest": "PASS",
+      "finalCiResult": "PASS",
+      "otherDraftPolicyJobs": "SKIPPED"
+    },
+    "maintainerHumanAcceptance": "PENDING"
+  },
+  "scope": {
+    "r2HumanAcceptanceRestarted": false,
+    "r3Started": false,
+    "v2sStarted": false
+  },
+  "conclusion": "C4_RECOVERED_CONTENT_ROUTING_PASS_WITH_LIMITS",
+  "remainingLimits": [
+    "maintainer Windows/Electron Gates A-E pending",
+    "bounded recovered-V1 asset Save/Close/Reopen not yet exercised by maintainer"
+  ]
+}

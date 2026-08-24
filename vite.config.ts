@@ -13,6 +13,7 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index.html'),
         hidden: path.resolve(__dirname, 'hidden.html'),
         flaParser: path.resolve(__dirname, 'fla-parser.html'),
+        flaStaticSnapshot: path.resolve(__dirname, 'fla-static-snapshot.html'),
       },
     },
   },
