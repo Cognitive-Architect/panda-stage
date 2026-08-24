@@ -17,6 +17,7 @@ import type {
 } from '../../shared/fla-import-api';
 import type { FlaAssetCommitResponse } from '../../shared/fla-asset-commit-api';
 import type { FlaStaticSnapshotCommitResponse } from '../../shared/fla-static-snapshot-api';
+import type { FlaFrameSequenceCommitResponse } from '../../shared/fla-frame-sequence-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import {
   compatibilityCounts,
@@ -43,7 +44,7 @@ interface FlaCompatibilityReviewSessionProps {
   onIntent?: (intent: FlaRasterSelectionIntent) => void;
   onCommit?: (response: FlaAssetCommitResponse) => void;
   onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
-  onSequenceImported?: (response: unknown) => void;
+  onSequenceImported?: (response: FlaFrameSequenceCommitResponse) => void;
 }
 
 type SessionPhase =

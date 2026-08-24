@@ -27,11 +27,22 @@ describe('R2-H.2 is mounted in the compatibility review (zero-raster path)', () 
     'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
     'utf8',
   );
+  const assetLibrary = readFileSync(
+    'src/renderer/features/assets/AssetLibrary.tsx',
+    'utf8',
+  );
   it('renders the frame sequence review alongside the R1 snapshot review', () => {
     expect(session).toContain('FlaFrameSequenceReview');
     expect(session).toContain('FlaStaticSnapshotReview');
+    expect(session).toContain('FlaFrameSequenceCommitResponse');
     // Both are rendered inside the zero-raster branch.
     expect(session).toContain('onImported={(response) => onSequenceImported?.(response)}');
+  });
+
+  it('wires a successful sequence commit into the AssetLibrary store bridge', () => {
+    expect(assetLibrary).toContain('applyFlaFrameSequenceCommitResponse');
+    expect(assetLibrary).toContain('onSequenceImported={(response) => {');
+    expect(assetLibrary).toContain('setStatus(outcome.status);');
   });
 });
 
