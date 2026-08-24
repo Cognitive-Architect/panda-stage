@@ -126,4 +126,28 @@ describe('Issue #315 UI-M0 ownership and non-mutation contracts', () => {
     expect(harness).not.toContain('src/renderer/');
     expect(harness).not.toMatch(/readFileSync\([^\n]*project\.json/u);
   });
+
+  it('keeps the Wuying/Redmi target sampler explicit and non-synthetic', () => {
+    const harness = readSource('scripts/issue315-ui-m0-electron-acceptance.cjs');
+    const manualStart = harness.indexOf('async function runManualTarget');
+    const manualEnd = harness.indexOf('async function openFixture');
+    const manualSection = harness.slice(manualStart, manualEnd);
+
+    expect(harness).toContain("MANUAL_TARGET_PROFILE = 'wuying-redmi-manual'");
+    expect(harness).toContain('landscape-before-keyboard');
+    expect(harness).toContain('portrait-keyboard-visible');
+    expect(harness).toContain('portrait-keyboard-dismissed');
+    expect(harness).toContain('landscape-round-trip');
+    expect(harness).toContain('pointer-touch');
+    expect(harness).toContain('keyboard_before_innerHeight');
+    expect(harness).toContain('keyboard_visible_innerHeight');
+    expect(harness).toContain('keyboard_after_innerHeight');
+    expect(harness).toContain('cloudClientScaleObservation');
+    expect(harness).toContain('maintainer-observed Wuying client UI');
+    expect(harness).toContain('repository: repositoryEvidence()');
+    expect(harness).toContain('sourceRefs: sourceReferences()');
+    expect(harness).toContain('syntheticViewportResize: false');
+    expect(manualSection).not.toContain('resizeContent(');
+    expect(manualSection).not.toContain('sendInputEvent');
+  });
 });

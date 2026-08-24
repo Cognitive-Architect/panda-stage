@@ -7,6 +7,10 @@ const {
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const readline = require('node:readline');
+
+const SIMULATED_LOCAL_PROFILE = 'simulated-local';
+const MANUAL_TARGET_PROFILE = 'wuying-redmi-manual';
 
 // Issue #315 UI-M0: deterministic, real-Windows-Electron evidence for the
 // current editor baseline. This harness is deliberately outside production
@@ -37,6 +41,8 @@ function parseArgs(argv) {
     profile: 'simulated-local',
     width: 1280,
     height: 720,
+    widthProvided: false,
+    heightProvided: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -44,11 +50,16 @@ function parseArgs(argv) {
     else if (value === '--out') args.out = argv[++index];
     else if (value === '--user-data') args.userData = argv[++index];
     else if (value === '--profile') args.profile = argv[++index];
-    else if (value === '--width') args.width = Number(argv[++index]);
-    else if (value === '--height') args.height = Number(argv[++index]);
+    else if (value === '--width') {
+      args.width = Number(argv[++index]);
+      args.widthProvided = true;
+    } else if (value === '--height') {
+      args.height = Number(argv[++index]);
+      args.heightProvided = true;
+    }
     else if (value === '--help') {
       process.stdout.write(
-        'Usage: electron scripts/issue315-ui-m0-electron-acceptance.cjs [--acceptance-root <dir>] [--out <receipt>] [--user-data <dir>] [--profile <name>] [--width <css-px>] [--height <css-px>]\n',
+        'Usage: electron scripts/issue315-ui-m0-electron-acceptance.cjs [--acceptance-root <dir>] [--out <receipt>] [--user-data <dir>] [--profile simulated-local|wuying-redmi-manual] [--width <css-px>] [--height <css-px>]\n',
       );
       process.exit(0);
     } else {
@@ -61,13 +72,40 @@ function parseArgs(argv) {
   if (!Number.isInteger(args.height) || args.height < 560) {
     throw new Error('--height must be an integer >= the production minHeight (560).');
   }
+  if (
+    args.profile === MANUAL_TARGET_PROFILE &&
+    (args.widthProvided || args.heightProvided)
+  ) {
+    throw new Error(
+      '--width/--height are not allowed with --profile wuying-redmi-manual; target mode never synthesizes a viewport.',
+    );
+  }
+  if (![SIMULATED_LOCAL_PROFILE, MANUAL_TARGET_PROFILE].includes(args.profile)) {
+    throw new Error(
+      `--profile must be ${SIMULATED_LOCAL_PROFILE} or ${MANUAL_TARGET_PROFILE}.`,
+    );
+  }
   return args;
 }
 
-const args = parseArgs(process.argv.slice(2));
+let args;
+try {
+  args = parseArgs(process.argv.slice(2));
+} catch (error) {
+  process.stderr.write(
+    `${error instanceof Error ? error.message : String(error)}\n`,
+  );
+  process.exit(1);
+}
 const acceptanceRoot = path.resolve(args.acceptanceRoot);
 const outputPath = path.resolve(
-  args.out ?? path.join(acceptanceRoot, 'ui-m0-electron-receipt.json'),
+  args.out ??
+    path.join(
+      acceptanceRoot,
+      args.profile === MANUAL_TARGET_PROFILE
+        ? 'wuying-redmi-target-receipt.json'
+        : 'ui-m0-electron-receipt.json',
+    ),
 );
 const userData = path.resolve(
   args.userData ?? path.join(acceptanceRoot, 'user-data'),
@@ -334,6 +372,433 @@ function displayMeasurement() {
   };
 }
 
+function repositoryEvidence() {
+  const gitValue = (command) => {
+    try {
+      return execFileSync('git', command, {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+      }).trim();
+    } catch {
+      return null;
+    }
+  };
+  return {
+    branch: gitValue(['branch', '--show-current']),
+    head: gitValue(['rev-parse', 'HEAD']),
+    mergeBaseWithOriginMain: gitValue([
+      'merge-base',
+      'HEAD',
+      'origin/main',
+    ]),
+  };
+}
+
+function sourceReferences() {
+  return {
+    issue315: 315,
+    pr316: 316,
+    designPr: 306,
+    designHead: '31718ada6e7a7e531b1ef86d8f7ee1b61902e42e',
+    planPr: 307,
+    planHead: 'a6dd9c5107af6aa7da9f3e7f061988979d638343',
+    overlapPr: 233,
+    overlapHeadFetched: 'd7185eb2af3234405bbe5150522bc6a0928cb092',
+  };
+}
+
+function projectStateForReceipt(state) {
+  return {
+    projectName: state.projectName,
+    projectRootObserved: Boolean(state.projectRoot),
+    revision: state.revision,
+    dirty: state.dirty,
+    saveState: state.saveState,
+    historyUndo: state.historyUndo,
+    historyRedo: state.historyRedo,
+    historyDepth: state.historyDepth,
+  };
+}
+
+function editorSampleForReceipt(sample) {
+  return {
+    viewport: sample.viewport,
+    pointerMode: sample.pointerMode,
+    page: sample.page,
+    shellState: sample.shellState,
+    owners: sample.owners,
+    boxes: sample.boxes,
+    scroll: sample.scroll,
+    projectState: projectStateForReceipt(sample.projectState),
+    textInputs: sample.textInputs,
+  };
+}
+
+async function installPointerObserver(window) {
+  await window.webContents.executeJavaScript(`(() => {
+    const key = '__issue315UiM0TargetSampler';
+    if (window[key]?.installed) return { installed: true, reused: true };
+    const eventNames = [
+      'pointerdown',
+      'pointermove',
+      'pointerup',
+      'mousedown',
+      'mousemove',
+      'mouseup',
+      'touchstart',
+      'touchmove',
+      'touchend',
+    ];
+    const state = {
+      installed: true,
+      events: [],
+      totals: Object.fromEntries(eventNames.map((name) => [name, 0])),
+      droppedEventCount: 0,
+    };
+    const listenerFor = (type) => (event) => {
+      state.totals[type] += 1;
+      if (state.events.length >= 256) {
+        state.droppedEventCount += 1;
+        return;
+      }
+      state.events.push({
+        type,
+        isTrusted: event.isTrusted === true,
+        pointerType: typeof event.pointerType === 'string' ? event.pointerType : null,
+        button: Number.isInteger(event.button) ? event.button : null,
+        buttons: Number.isInteger(event.buttons) ? event.buttons : null,
+        clientX: Number.isFinite(event.clientX) ? Math.round(event.clientX * 100) / 100 : null,
+        clientY: Number.isFinite(event.clientY) ? Math.round(event.clientY * 100) / 100 : null,
+        touchCount: event.touches
+          ? event.touches.length
+          : event.changedTouches
+            ? event.changedTouches.length
+            : null,
+      });
+    };
+    for (const type of eventNames) {
+      window.addEventListener(type, listenerFor(type), { capture: true, passive: true });
+    }
+    state.drain = () => {
+      const result = {
+        events: state.events.splice(0),
+        totals: { ...state.totals },
+        droppedEventCount: state.droppedEventCount,
+      };
+      state.droppedEventCount = 0;
+      return result;
+    };
+    window[key] = state;
+    return { installed: true, reused: false };
+  })()`);
+}
+
+async function drainPointerObserver(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const state = window.__issue315UiM0TargetSampler;
+    if (!state?.installed || typeof state.drain !== 'function') {
+      return { events: [], totals: null, droppedEventCount: 0, status: 'UNAVAILABLE' };
+    }
+    return { ...state.drain(), status: 'AVAILABLE' };
+  })()`);
+}
+
+function createManualPrompt() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(
+      'The wuying-redmi-manual profile requires an interactive terminal; rerun it from a visible PowerShell or Command Prompt window.',
+    );
+  }
+  const interfaceInstance = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  let closed = false;
+  return {
+    question(message) {
+      return new Promise((resolve) => {
+        interfaceInstance.question(`\n${message}\n> `, resolve);
+      });
+    },
+    close() {
+      if (!closed) {
+        closed = true;
+        interfaceInstance.close();
+      }
+    },
+  };
+}
+
+function observationStatus(answer) {
+  const normalized = answer.trim().toLowerCase();
+  return ['unobservable', 'unmeasurable', 'skip', 'n/a'].includes(normalized)
+    ? 'UNOBSERVABLE'
+    : 'MEASURED';
+}
+
+function keyboardViewport(record) {
+  if (!record || record.status !== 'MEASURED') return null;
+  const viewport = record.sample.viewport;
+  return {
+    innerHeight: viewport.windowInnerCssPx.height,
+    visualViewportHeight: viewport.visualViewportCssPx?.height ?? null,
+    outerHeight: viewport.outerCssPx.height,
+  };
+}
+
+function keyboardEvidence(records) {
+  const byName = new Map(records.map((record) => [record.name, record]));
+  const before = keyboardViewport(byName.get('landscape-before-keyboard'));
+  const visible = keyboardViewport(byName.get('portrait-keyboard-visible'));
+  const after = keyboardViewport(byName.get('portrait-keyboard-dismissed'));
+  const status = before && visible && after ? 'MEASURED' : 'UNOBSERVABLE';
+  return {
+    status,
+    before,
+    visible,
+    after,
+    keyboard_before_innerHeight: before?.innerHeight ?? null,
+    keyboard_visible_innerHeight: visible?.innerHeight ?? null,
+    keyboard_after_innerHeight: after?.innerHeight ?? null,
+    keyboard_usable_height_delta:
+      before && visible ? before.innerHeight - visible.innerHeight : null,
+    keyboard_dismissed_height_delta:
+      before && after ? after.innerHeight - before.innerHeight : null,
+  };
+}
+
+function pointerTouchEvidence(records) {
+  const record = records.find((candidate) => candidate.name === 'pointer-touch');
+  if (!record || record.status !== 'MEASURED') {
+    return {
+      status: 'UNOBSERVABLE',
+      checkpoint: 'pointer-touch',
+      eventCount: 0,
+      eventTypes: [],
+      pointerTypes: [],
+      trustedEventCount: 0,
+      totals: null,
+      droppedEventCount: 0,
+      requirement: 'one maintainer tap plus one short drag',
+    };
+  }
+  const events = record?.pointerEvents?.events ?? [];
+  const eventTypes = [...new Set(events.map((event) => event.type))];
+  const pointerTypes = [
+    ...new Set(
+      events
+        .map((event) => event.pointerType)
+        .filter((pointerType) => typeof pointerType === 'string'),
+    ),
+  ];
+  const hasDown = eventTypes.some((type) =>
+    ['pointerdown', 'mousedown', 'touchstart'].includes(type),
+  );
+  const hasMove = eventTypes.some((type) =>
+    ['pointermove', 'mousemove', 'touchmove'].includes(type),
+  );
+  const hasUp = eventTypes.some((type) =>
+    ['pointerup', 'mouseup', 'touchend'].includes(type),
+  );
+  return {
+    status: hasDown && hasMove && hasUp ? 'PASS' : events.length ? 'PARTIAL' : 'UNOBSERVABLE',
+    checkpoint: 'pointer-touch',
+    eventCount: events.length,
+    eventTypes,
+    pointerTypes,
+    trustedEventCount: events.filter((event) => event.isTrusted).length,
+    totals: record?.pointerEvents?.totals ?? null,
+    droppedEventCount: record?.pointerEvents?.droppedEventCount ?? 0,
+    requirement: 'one maintainer tap plus one short drag',
+  };
+}
+
+function cloudClientScaleObservation(answer) {
+  const observedMode = answer.trim();
+  if (!observedMode) {
+    return {
+      numeric: null,
+      observedMode: null,
+      source: 'maintainer-observed Wuying client UI',
+      status: 'UNOBSERVABLE',
+    };
+  }
+  return {
+    numeric: null,
+    observedMode,
+    source: 'maintainer-observed Wuying client UI',
+    status: 'MANUALLY_OBSERVED',
+  };
+}
+
+function manualCheckpointReceipt(record) {
+  const measured = record.status === 'MEASURED';
+  return {
+    name: record.name,
+    status: record.status,
+    recordedAt: record.recordedAt,
+    renderer: measured ? editorSampleForReceipt(record.sample) : null,
+    display: measured ? record.display : null,
+    pointerEvents: measured
+      ? record.pointerEvents
+      : {
+          status: 'UNOBSERVABLE',
+          events: [],
+          totals: null,
+          droppedEventCount: 0,
+        },
+  };
+}
+
+async function recordManualCheckpoint({
+  window,
+  prompt,
+  name,
+  instruction,
+  baselineSample,
+}) {
+  const answer = await prompt.question(
+    `[${name}] ${instruction}\nPress Enter only after the target state is stable. Type "unobservable" if this checkpoint cannot be truthfully measured.`,
+  );
+  await delay(500);
+  const status = observationStatus(answer);
+  const sample = await measure(window);
+  assertEditorSurface(sample, `manual checkpoint ${name}`);
+  if (baselineSample) {
+    assertStableProjectState(sample, baselineSample, `manual checkpoint ${name}`);
+  }
+  return {
+    name,
+    status,
+    recordedAt: new Date().toISOString(),
+    sample,
+    display: displayMeasurement(),
+    pointerEvents: await drainPointerObserver(window),
+  };
+}
+
+async function runManualTarget(window) {
+  const prompt = createManualPrompt();
+  try {
+    currentStage = 'manual-target-visible';
+    window.show();
+    window.focus();
+    await waitForDom(
+      window,
+      `document.querySelector('[data-editor-page="editor"]')`,
+      'The manual target editor did not render.',
+    );
+    await installPointerObserver(window);
+
+    const definitions = [
+      {
+        name: 'landscape-before-keyboard',
+        instruction: 'Hold the Redmi/Wuying path in landscape with the soft keyboard hidden.',
+      },
+      {
+        name: 'portrait-before-keyboard',
+        instruction: 'Rotate the Redmi/Wuying path to portrait with the soft keyboard hidden.',
+      },
+      {
+        name: 'portrait-keyboard-visible',
+        instruction: 'Focus an existing editor text input and show the Redmi soft keyboard while remaining in portrait.',
+      },
+      {
+        name: 'portrait-keyboard-dismissed',
+        instruction: 'Dismiss the Redmi soft keyboard while remaining in portrait.',
+      },
+      {
+        name: 'landscape-round-trip',
+        instruction: 'Rotate back to landscape and wait for the editor to settle.',
+      },
+      {
+        name: 'pointer-touch',
+        instruction: 'Tap once, then perform one short drag on the existing editor surface.',
+      },
+    ];
+    const records = [];
+    let baselineSample = null;
+    for (const definition of definitions) {
+      currentStage = `manual-${definition.name}`;
+      const record = await recordManualCheckpoint({
+        window,
+        prompt,
+        ...definition,
+        baselineSample,
+      });
+      baselineSample ??= record.sample;
+      records.push(record);
+    }
+
+    currentStage = 'manual-wuying-scale';
+    const scaleAnswer = await prompt.question(
+      'Enter the literal Wuying client display mode visible to the maintainer (for example fit-to-screen, 100%, original-size, or not exposed). Leave blank only if it is unobservable; do not guess a numeric value.',
+    );
+    const cloudClientScale = cloudClientScaleObservation(scaleAnswer);
+    const finalSample = await measure(window);
+    assertStableProjectState(finalSample, baselineSample, 'manual final state');
+    const keyboard = keyboardEvidence(records);
+    const pointerTouch = pointerTouchEvidence(records);
+    const pointerRecord = records.find((record) => record.name === 'pointer-touch');
+    const displayRecord = records.find((record) => record.status === 'MEASURED');
+
+    return {
+      issue: 315,
+      samplerIssue: 317,
+      stage: 'UI-M0-target-sampler',
+      schemaVersion: 'panda-stage-ui-m0-wuying-redmi-target/1',
+      generatedAt: new Date().toISOString(),
+      repository: repositoryEvidence(),
+      sourceRefs: sourceReferences(),
+      target: {
+        device: 'Aliyun Wuying -> Redmi K60 Ultra',
+        devicePhysicalPx: displayRecord?.display?.devicePhysicalPx ?? null,
+        windowsScale: displayRecord?.display?.windowsScale ?? null,
+        cloudClientScale,
+        softKeyboardVisible: keyboard.status,
+        pointerMode:
+          pointerRecord?.status === 'MEASURED'
+            ? pointerRecord.sample.pointerMode
+            : null,
+        wuyingRedmiEvidence: 'RECORDED_WITH_LIMITS',
+      },
+      requestedProfile: args.profile,
+      manualTarget: {
+        interaction: 'terminal-enter-checkpoints',
+        syntheticViewportResize: false,
+        checkpoints: records.map(manualCheckpointReceipt),
+        keyboard,
+        pointerTouch,
+        cloudClientScale,
+        finalRenderer: editorSampleForReceipt(finalSample),
+      },
+      fixture: {
+        projectId: project.id,
+        projectName: project.name,
+        projectSnapshotSha256,
+        baselineState: projectStateForReceipt(baselineSample.projectState),
+      },
+      evidenceSeparation: {
+        automatedElectron: 'NOT_RUN_IN_MANUAL_TARGET_PROFILE',
+        localWindowsElectron: 'TARGET_RENDERER_MEASURED',
+        wuyingRedmiHuman: 'RECORDED_WITH_LIMITS',
+      },
+      closeout: {
+        UI_M0_BASELINE_FROZEN: false,
+        productionSourceChanged: false,
+        numericTargetProfile: 'PENDING_MAINTAINER_CLOSEOUT',
+        knownLimits: [
+          'the sampler records the observed Wuying label literally and never invents a numeric scale',
+          'a checkpoint typed as unobservable remains explicitly unavailable even if a renderer value was sampled',
+          'the maintainer must review this exact-head receipt before changing the UI-M0 closeout marker',
+        ],
+      },
+    };
+  } finally {
+    prompt.close();
+  }
+}
+
 async function openFixture(window) {
   await waitForDom(
     window,
@@ -440,6 +905,9 @@ async function run() {
     });
     currentStage = 'open-fixture';
     await openFixture(window);
+    if (args.profile === MANUAL_TARGET_PROFILE) {
+      return await runManualTarget(window);
+    }
     currentStage = 'initial-measure';
     await resizeContent(window, args.width, args.height, 'initial profile');
 
@@ -625,19 +1093,8 @@ async function run() {
       stage: 'UI-M0',
       schemaVersion: 'panda-stage-ui-m0-electron-baseline/1',
       generatedAt: new Date().toISOString(),
-      repository: {
-        branch: (() => { try { return execFileSync('git', ['branch', '--show-current'], { cwd: repositoryRoot, encoding: 'utf8' }).trim(); } catch { return null; } })(),
-        head: (() => { try { return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim(); } catch { return null; } })(),
-        mergeBaseWithOriginMain: (() => { try { return execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: repositoryRoot, encoding: 'utf8' }).trim(); } catch { return null; } })(),
-      },
-      sourceRefs: {
-        designPr: 306,
-        designHead: '31718ada6e7a7e531b1ef86d8f7ee1b61902e42e',
-        planPr: 307,
-        planHead: 'a6dd9c5107af6aa7da9f3e7f061988979d638343',
-        overlapPr: 233,
-        overlapHeadFetched: 'd7185eb2af3234405bbe5150522bc6a0928cb092',
-      },
+      repository: repositoryEvidence(),
+      sourceRefs: sourceReferences(),
       target: {
         device: 'Aliyun Wuying -> Redmi K60 Ultra',
         nominalPhysicalPx: '2712x1220 (orientation-dependent; verify on device)',
