@@ -84,3 +84,24 @@ gate. The maintainer must verify the Issue #320 landscape, portrait,
 round-trip, scroll, touch, and focus checklist before the closeout marker is
 set. Passing M2 does not authorize Ready, Full CI, merge, or a new PR; PR #319
 must remain Draft/Open/Unmerged for the later separately authorized UI stages.
+
+## Issue #321 corrective: explicit Cloud Touch mode
+
+Issue #320 human acceptance exposed that the Auto width heuristic cannot
+identify a phone held in landscape when Wuying keeps the maximized Electron
+window wider than 1100px. The corrective keeps Auto's existing heuristic but
+adds a session-only `Auto | Desktop | Cloud Touch` selector in the existing
+CompactProjectBar `More` menu.
+
+`Desktop` always selects the established desktop composition. `Cloud Touch`
+selects the existing M2 portrait shell when `height > width`, otherwise the
+existing M2 landscape shell. The 1100px seam is not consulted in Cloud Touch.
+The selection is owned by `EditorShell` and is not Project data: it does not
+write `project.json`, dirty/revision, History, current Shot, selection, or
+Timeline/playhead state.
+
+Issue #321 automated coverage adds explicit-mode precedence and wide-window
+Cloud Touch orientation cases. Real Windows Electron plus Wuying/Redmi
+acceptance is still required; this corrective must not set the final
+`UI_M2_ADAPTIVE_SHELL_PASS` marker, mark PR #319 Ready, run the final Full
+gate, merge, or close the remaining Issue #320 human checklist by itself.

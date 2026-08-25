@@ -71,6 +71,8 @@ function renderCompactProjectBar(
       onSaveProject: vi.fn(),
       onOpenProductPreview: vi.fn(),
       onRequestCloseProject: vi.fn(),
+      deviceMode: 'auto',
+      onDeviceModeChange: vi.fn(),
     }),
   );
 }
@@ -636,6 +638,8 @@ describe('EditorShell project session integration', () => {
         onSaveProject: vi.fn(),
         onOpenProductPreview: vi.fn(),
         onRequestCloseProject: vi.fn(),
+        deviceMode: 'auto',
+        onDeviceModeChange: vi.fn(),
       }),
     );
     expect(markup).toMatch(

@@ -45,6 +45,7 @@ import type { ResourceActivity } from './ResourceActivityDock';
 import {
   reconcileEditorWorkspace,
   useEditorShellLayoutMode,
+  type EditorDeviceMode,
   type EditorWorkspace,
 } from './adaptiveEditorShell';
 import { useDebugFlag } from './useDebugFlag';
@@ -425,7 +426,10 @@ export function EditorShell({
   }>({ phase: 'idle', revision: null });
   const [requestedPage, setRequestedPage] =
     useState<EditorShellPage>('project-center');
-  const layoutMode = useEditorShellLayoutMode();
+  // This is presentation/session state only. It never enters Project,
+  // History, autosave, or any cross-process contract.
+  const [deviceMode, setDeviceMode] = useState<EditorDeviceMode>('auto');
+  const layoutMode = useEditorShellLayoutMode(deviceMode);
   const [portraitWorkspace, setPortraitWorkspace] =
     useState<EditorWorkspace>('canvas');
   const [portraitResourceActivity, setPortraitResourceActivity] =
@@ -891,6 +895,7 @@ export function EditorShell({
     <main
       className="app-shell editor-shell"
       data-debug={debug ? 'enabled' : 'disabled'}
+      data-editor-device-mode={deviceMode}
       data-editor-shell-layout={layoutMode}
       data-editor-shell-state={shellState}
       data-editor-shell-region={sessionRegion}
@@ -938,10 +943,12 @@ export function EditorShell({
               onOpenProjectFolder={openProjectFolder}
               onRequestCloseProject={requestCloseProject}
               onSaveProject={saveProject}
+              onDeviceModeChange={setDeviceMode}
               productPreviewOpen={productPreviewOpen}
               projectSnapshot={projectSnapshot}
               saveState={saveState}
               status={status}
+              deviceMode={deviceMode}
             />
             {recoveryCandidate ? (
               <RecoveryCandidateBanner

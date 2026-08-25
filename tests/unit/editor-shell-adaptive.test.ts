@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  EDITOR_DEVICE_MODE_OPTIONS,
   getEditorShellLayoutMode,
   reconcileEditorWorkspace,
   type EditorWorkspace,
@@ -11,7 +12,7 @@ function readSource(path: string): string {
 }
 
 describe('UI-M2 adaptive EditorShell state', () => {
-  it('derives desktop, cloud-mobile landscape, and portrait from content space', () => {
+  it('keeps Auto deterministic and preserves its existing width heuristic', () => {
     expect(getEditorShellLayoutMode({ width: 1_024, height: 720 })).toBe(
       'landscape',
     );
@@ -30,6 +31,56 @@ describe('UI-M2 adaptive EditorShell state', () => {
     expect(getEditorShellLayoutMode({ width: 0, height: 0 })).toBe(
       'landscape',
     );
+
+    expect(
+      getEditorShellLayoutMode({ width: 1_024, height: 720 }, 'auto'),
+    ).toBe(getEditorShellLayoutMode({ width: 1_024, height: 720 }, 'auto'));
+  });
+
+  it('gives explicit Desktop and Cloud Touch modes precedence over Auto', () => {
+    expect(EDITOR_DEVICE_MODE_OPTIONS.map((option) => option.value)).toEqual([
+      'auto',
+      'desktop',
+      'cloud-touch',
+    ]);
+
+    expect(
+      getEditorShellLayoutMode(
+        { width: 720, height: 1_280 },
+        'desktop',
+      ),
+    ).toBe('desktop');
+    expect(
+      getEditorShellLayoutMode(
+        { width: 1_280, height: 720 },
+        'desktop',
+      ),
+    ).toBe('desktop');
+
+    expect(
+      getEditorShellLayoutMode(
+        { width: 1_280, height: 720 },
+        'cloud-touch',
+      ),
+    ).toBe('landscape');
+    expect(
+      getEditorShellLayoutMode(
+        { width: 720, height: 1_280 },
+        'cloud-touch',
+      ),
+    ).toBe('portrait');
+    expect(
+      getEditorShellLayoutMode(
+        { width: 1_101, height: 720 },
+        'cloud-touch',
+      ),
+    ).toBe('landscape');
+    expect(
+      getEditorShellLayoutMode(
+        { width: 1_100, height: 720 },
+        'cloud-touch',
+      ),
+    ).toBe('landscape');
   });
 
   it('preserves a legal workspace through an orientation round-trip', () => {
@@ -50,6 +101,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
 
   it('keeps one production owner and uses hidden slots for portrait focus', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
+    const bar = readSource('src/renderer/shell/CompactProjectBar.tsx');
     const switcher = readSource(
       'src/renderer/shell/AdaptiveWorkspaceSwitcher.tsx',
     );
@@ -66,9 +118,16 @@ describe('UI-M2 adaptive EditorShell state', () => {
     expect(shell.match(/<LeftWorkspace/gu)).toHaveLength(1);
     expect(shell.match(/<BottomWorkspace/gu)).toHaveLength(1);
     expect(shell).toContain("data-shell-mode={layoutMode}");
+    expect(shell).toContain("useState<EditorDeviceMode>('auto')");
+    expect(shell).toContain('data-editor-device-mode={deviceMode}');
+    expect(shell).toContain('onDeviceModeChange={setDeviceMode}');
     expect(shell).toContain('data-active-workspace=');
     expect(shell).toContain('hidden={isPortrait');
     expect(shell).toContain('aria-hidden={');
+    expect(bar).toContain('EDITOR_DEVICE_MODE_OPTIONS');
+    expect(bar).toContain('role="menuitemradio"');
+    expect(bar).toContain('aria-checked={deviceMode === option.value}');
+    expect(bar).toContain('data-testid="editor-device-mode-selector"');
 
     for (const workspace of [
       'Canvas',
@@ -116,6 +175,11 @@ describe('UI-M2 adaptive EditorShell state', () => {
       expect(source).not.toContain('project.json');
       expect(source).not.toContain('window.pandaStage');
     }
+
+    const shell = readSource('src/renderer/shell/EditorShell.tsx');
+    expect(shell).toContain('presentation/session state only');
+    expect(shell).not.toContain('localStorage');
+    expect(shell).not.toContain('sessionStorage');
   });
 
   it('uses one shell-level vertical scroll owner in portrait', () => {
