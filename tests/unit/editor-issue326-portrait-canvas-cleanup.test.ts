@@ -33,6 +33,7 @@ describe('Issue #326 portrait Canvas cleanup', () => {
     expect(canvasWorkspace).toContain('<CanvasStage showHeading={showHeading} />');
     expect(resourceDock).toContain('<ShotManager');
     expect(resourceDock).toContain('hideSectionLabels?: boolean');
+    expect(resourceDock).toContain('hideSectionLabels = false');
     expect(resourceDock).toContain('hideSectionLabels ?');
     expect(resourceDock).toContain('<p className="eyebrow">编辑资源</p>');
     expect(resourceDock).toContain(
