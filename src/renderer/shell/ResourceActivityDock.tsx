@@ -12,6 +12,11 @@ export type ResourceActivity = 'shots' | 'assets' | 'characters';
 export interface ResourceActivityDockProps {
   snapshot: EditorProjectSnapshot;
   auxiliaryContent?: ReactNode;
+  /** Force the existing resource owner into the landscape drawer contract. */
+  compact?: boolean;
+  /** Optional portrait workspace request; the resource owner remains single. */
+  activeActivity?: ResourceActivity;
+  onActiveActivityChange?(activity: ResourceActivity): void;
 }
 
 const ACTIVITIES: readonly {
@@ -28,11 +33,25 @@ export function isNarrowViewport(): boolean {
   return window.matchMedia('(max-width: 1100px)').matches;
 }
 
-export function useNarrowViewport(): boolean {
-  const [narrow, setNarrow] = useState(isNarrowViewport);
+export type NarrowViewportMode = 'auto' | 'compact' | 'expanded';
+
+export function useNarrowViewport(
+  mode: NarrowViewportMode = 'auto',
+): boolean {
+  const [narrow, setNarrow] = useState(() =>
+    mode === 'compact' ? true : mode === 'expanded' ? false : isNarrowViewport(),
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
+    if (mode === 'compact') {
+      setNarrow(true);
+      return undefined;
+    }
+    if (mode === 'expanded') {
+      setNarrow(false);
+      return undefined;
+    }
     const media = window.matchMedia('(max-width: 1100px)');
     const update = (): void => setNarrow(media.matches);
     update();
@@ -42,17 +61,21 @@ export function useNarrowViewport(): boolean {
       media.removeEventListener?.('change', update);
       media.removeListener?.(update);
     };
-  }, []);
+  }, [mode]);
 
-  return narrow;
+  return mode === 'compact' ? true : mode === 'expanded' ? false : narrow;
 }
 
 export function ResourceActivityDock({
   snapshot,
   auxiliaryContent,
+  compact,
+  activeActivity: requestedActivity,
+  onActiveActivityChange,
 }: ResourceActivityDockProps): React.JSX.Element {
-  const [activeActivity, setActiveActivity] =
+  const [internalActivity, setInternalActivity] =
     useState<ResourceActivity>('shots');
+  const activeActivity = requestedActivity ?? internalActivity;
   const [shotView, setShotView] = useState<ShotWorkspaceView>('list');
   const [assetView, setAssetView] =
     useState<AssetWorkspaceView>('browser');
@@ -60,8 +83,10 @@ export function ResourceActivityDock({
     useState<CharacterWorkspaceView>('list');
   const [assetImportRequest, setAssetImportRequest] = useState(0);
   const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
-  const narrow = useNarrowViewport();
-  const [drawerOpen, setDrawerOpen] = useState(() => !isNarrowViewport());
+  const narrow = useNarrowViewport(
+    compact === undefined ? 'auto' : compact ? 'compact' : 'expanded',
+  );
+  const [drawerOpen, setDrawerOpen] = useState(() => !narrow);
 
   useEffect(() => {
     setDrawerOpen(!narrow);
@@ -116,7 +141,8 @@ export function ResourceActivityDock({
       setDrawerOpen(false);
       return;
     }
-    setActiveActivity(activity);
+    setInternalActivity(activity);
+    onActiveActivityChange?.(activity);
     setDrawerOpen(true);
   };
 

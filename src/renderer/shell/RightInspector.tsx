@@ -15,6 +15,7 @@ import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { isNarrowViewport, useNarrowViewport } from './ResourceActivityDock';
+import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 
 // Issue 109's existing Electron receipt measures the right column by this
 // stable selector. Keep the selector as a non-visual alias on the real
@@ -86,7 +87,13 @@ export function getRightInspectorSelection(
   };
 }
 
-export function RightInspector(): React.JSX.Element {
+export interface RightInspectorProps {
+  shellMode?: EditorShellLayoutMode;
+}
+
+export function RightInspector({
+  shellMode,
+}: RightInspectorProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -115,8 +122,16 @@ export function RightInspector(): React.JSX.Element {
 
   // Issue 192: reuse the same narrow seam as the left resource workspace so the
   // two edges collapse symmetrically instead of inventing a second breakpoint.
-  const narrow = useNarrowViewport();
-  const [drawerOpen, setDrawerOpen] = useState(() => !isNarrowViewport());
+  const narrowMode =
+    shellMode === undefined
+      ? 'auto'
+      : shellMode === 'landscape'
+        ? 'compact'
+        : 'expanded';
+  const narrow = useNarrowViewport(narrowMode);
+  const [drawerOpen, setDrawerOpen] = useState(() =>
+    shellMode === undefined ? !isNarrowViewport() : !narrow,
+  );
   const railRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const prevDrawerOpenRef = useRef(drawerOpen);

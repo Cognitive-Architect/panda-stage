@@ -28,6 +28,7 @@ import {
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
 import { BottomWorkspace } from './BottomWorkspace';
 import { CanvasWorkspace } from './CanvasWorkspace';
 import {
@@ -40,6 +41,12 @@ import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
+import type { ResourceActivity } from './ResourceActivityDock';
+import {
+  reconcileEditorWorkspace,
+  useEditorShellLayoutMode,
+  type EditorWorkspace,
+} from './adaptiveEditorShell';
 import { useDebugFlag } from './useDebugFlag';
 import {
   CLOSE_PROJECT_DIRTY_PROMPT,
@@ -418,6 +425,11 @@ export function EditorShell({
   }>({ phase: 'idle', revision: null });
   const [requestedPage, setRequestedPage] =
     useState<EditorShellPage>('project-center');
+  const layoutMode = useEditorShellLayoutMode();
+  const [portraitWorkspace, setPortraitWorkspace] =
+    useState<EditorWorkspace>('canvas');
+  const [portraitResourceActivity, setPortraitResourceActivity] =
+    useState<ResourceActivity>('shots');
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
   const page = getEditorShellPage(requestedPage, projectSnapshot);
@@ -437,6 +449,13 @@ export function EditorShell({
           : 'saved';
   const { debug, gateA } = useDebugFlag();
   const renderProductSurface = shouldRenderProductSurface(gateA);
+  const isPortrait = layoutMode === 'portrait';
+
+  useEffect(() => {
+    setPortraitWorkspace((current) =>
+      reconcileEditorWorkspace(layoutMode, current),
+    );
+  }, [layoutMode]);
 
   useEffect(() => {
     session.activateAutosaveErrors((error) => setStatus(error.message));
@@ -851,10 +870,28 @@ export function EditorShell({
     }
   };
 
+  const selectPortraitWorkspace = (workspace: EditorWorkspace): void => {
+    setPortraitWorkspace(workspace);
+    if (workspace === 'assets') {
+      setPortraitResourceActivity('assets');
+    } else if (workspace === 'shots') {
+      setPortraitResourceActivity('shots');
+    }
+  };
+
+  const handlePortraitResourceActivityChange = (
+    activity: ResourceActivity,
+  ): void => {
+    if (!isPortrait) return;
+    setPortraitResourceActivity(activity);
+    setPortraitWorkspace(activity === 'assets' ? 'assets' : 'shots');
+  };
+
   return (
     <main
       className="app-shell editor-shell"
       data-debug={debug ? 'enabled' : 'disabled'}
+      data-editor-shell-layout={layoutMode}
       data-editor-shell-state={shellState}
       data-editor-shell-region={sessionRegion}
       data-editor-page={page}
@@ -886,7 +923,12 @@ export function EditorShell({
           status={status}
         />
       ) : projectSnapshot ? (
-        <div className="editor-layout" data-testid="editor-layout">
+        <div
+          className="editor-layout"
+          data-active-workspace={portraitWorkspace}
+          data-shell-mode={layoutMode}
+          data-testid="editor-layout"
+        >
           <div className="editor-top-region" data-testid="editor-top-region">
             <CompactProjectBar
               busy={busy}
@@ -909,18 +951,73 @@ export function EditorShell({
                 onRestore={restoreRecovery}
               />
             ) : null}
+            {isPortrait ? (
+              <AdaptiveWorkspaceSwitcher
+                onChange={selectPortraitWorkspace}
+                value={portraitWorkspace}
+              />
+            ) : null}
           </div>
-          <div className="editor-body" data-testid="editor-body">
-            <LeftWorkspace
-              onOpenRecentProject={switchToRecentProject}
-              projectSnapshot={projectSnapshot}
-              recentRefreshToken={recentRefreshToken}
-            />
-            <CanvasWorkspace />
-            <RightInspector />
+          <div
+            className="editor-body"
+            data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
+            data-shell-mode={layoutMode}
+            data-testid="editor-body"
+          >
+            <div
+              aria-hidden={
+                isPortrait &&
+                portraitWorkspace !== 'shots' &&
+                portraitWorkspace !== 'assets'
+              }
+              className="editor-workspace-slot editor-workspace-slot-resources"
+              data-active={
+                !isPortrait ||
+                portraitWorkspace === 'shots' ||
+                portraitWorkspace === 'assets'
+              }
+              data-workspace-owner="resources"
+              hidden={
+                isPortrait &&
+                portraitWorkspace !== 'shots' &&
+                portraitWorkspace !== 'assets'
+              }
+            >
+              <LeftWorkspace
+                activeActivity={
+                  isPortrait ? portraitResourceActivity : undefined
+                }
+                onActiveActivityChange={handlePortraitResourceActivityChange}
+                onOpenRecentProject={switchToRecentProject}
+                projectSnapshot={projectSnapshot}
+                recentRefreshToken={recentRefreshToken}
+                shellMode={layoutMode}
+              />
+            </div>
+            <div
+              aria-hidden={isPortrait && portraitWorkspace !== 'canvas'}
+              className="editor-workspace-slot editor-workspace-slot-canvas"
+              data-active={!isPortrait || portraitWorkspace === 'canvas'}
+              data-workspace-owner="canvas"
+              hidden={isPortrait && portraitWorkspace !== 'canvas'}
+            >
+              <CanvasWorkspace />
+            </div>
+            <div
+              aria-hidden={isPortrait && portraitWorkspace !== 'properties'}
+              className="editor-workspace-slot editor-workspace-slot-properties"
+              data-active={!isPortrait || portraitWorkspace === 'properties'}
+              data-workspace-owner="properties"
+              hidden={isPortrait && portraitWorkspace !== 'properties'}
+            >
+              <RightInspector shellMode={layoutMode} />
+            </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
           </div>
-          <BottomWorkspace />
+          <BottomWorkspace
+            hidden={isPortrait && portraitWorkspace !== 'timeline'}
+            presentation={layoutMode}
+          />
           {productPreviewOpen ? (
             <ProductPreviewOverlay
               onClose={closeProductPreview}
