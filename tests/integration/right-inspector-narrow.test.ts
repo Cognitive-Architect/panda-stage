@@ -46,6 +46,7 @@ describe('Issue 192 Right Inspector compact rail and drawer', () => {
     expect(shell).toContain(
       'compact={isPortrait ? portraitPropertiesVisible : undefined}',
     );
+    expect(shell).toContain('shellMode={layoutMode}');
     expect(shell).not.toContain(
       'compact={isPortrait && portraitPropertiesVisible}',
     );
