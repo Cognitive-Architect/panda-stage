@@ -20,6 +20,8 @@ export interface ResourceActivityDockProps {
   /** Optional portrait workspace request; the resource owner remains single. */
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
+  /** Hide redundant section labels only for the portrait Canvas composition. */
+  hideSectionLabels?: boolean;
 }
 
 const ACTIVITIES: readonly {
@@ -77,6 +79,7 @@ export function ResourceActivityDock({
   onDrawerOpenChange,
   activeActivity: requestedActivity,
   onActiveActivityChange,
+  hideSectionLabels = false,
 }: ResourceActivityDockProps): React.JSX.Element {
   const [internalActivity, setInternalActivity] =
     useState<ResourceActivity>('shots');
@@ -189,8 +192,14 @@ export function ResourceActivityDock({
         <div className="resource-activity-header">
           <div className="resource-activity-heading">
             <div>
-              <p className="eyebrow">编辑资源</p>
-              <h2 id="resource-activity-heading">{activeLabel}工作区</h2>
+              {hideSectionLabels ? (
+                <h2 id="resource-activity-heading">{activeLabel}</h2>
+              ) : (
+                <>
+                  <p className="eyebrow">编辑资源</p>
+                  <h2 id="resource-activity-heading">{activeLabel}工作区</h2>
+                </>
+              )}
             </div>
             <div className="resource-activity-header-actions">
               <button

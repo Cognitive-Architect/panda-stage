@@ -202,7 +202,13 @@ function useCanvasImages(
   return state;
 }
 
-export function CanvasStage(): React.JSX.Element {
+export interface CanvasStageProps {
+  showHeading?: boolean;
+}
+
+export function CanvasStage({
+  showHeading = true,
+}: CanvasStageProps = {}): React.JSX.Element {
   const configureEditorLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
       configureKonvaScenePixelRatio(layer, editorCanvasPixelRatio);
@@ -308,14 +314,20 @@ export function CanvasStage(): React.JSX.Element {
     backgroundSelected && backgroundLayer?.layer.locked === false;
 
   return (
-    <section className="project-canvas" aria-labelledby="canvas-heading">
-      <div className="project-canvas-heading">
-        <div>
-          <p className="eyebrow">画布</p>
-          <h2 id="canvas-heading">镜头画布</h2>
+    <section
+      aria-label={showHeading ? undefined : '画布'}
+      aria-labelledby={showHeading ? 'canvas-heading' : undefined}
+      className="project-canvas"
+    >
+      {showHeading ? (
+        <div className="project-canvas-heading">
+          <div>
+            <p className="eyebrow">画布</p>
+            <h2 id="canvas-heading">镜头画布</h2>
+          </div>
+          <span>{shot ? shot.name : '未选择镜头'}</span>
         </div>
-        <span>{shot ? shot.name : '未选择镜头'}</span>
-      </div>
+      ) : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
         mode={viewport.mode}

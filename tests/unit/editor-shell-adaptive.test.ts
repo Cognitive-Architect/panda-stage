@@ -122,9 +122,11 @@ describe('UI-M2 adaptive EditorShell state', () => {
     expect(shell).toContain('onDeviceModeChange={setDeviceMode}');
     expect(shell).toContain('data-active-workspace=');
     expect(shell).toContain('data-portrait-surface={portraitContextSurface}');
-    expect(shell).toContain('portrait-canvas-context-actions');
-    expect(shell).toContain('data-testid="portrait-open-shots"');
-    expect(shell).toContain('data-testid="portrait-open-properties"');
+    expect(shell).not.toContain('portrait-canvas-context-actions');
+    expect(shell).toContain(
+      "setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none')",
+    );
+    expect(shell).toContain('<CanvasWorkspace showHeading={!isPortrait} />');
     expect(shell).toContain('hidden={isPortrait');
     expect(shell).toContain('aria-hidden={');
     expect(bar).toContain('EDITOR_DEVICE_MODE_OPTIONS');
@@ -133,7 +135,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
     expect(bar).toContain('data-testid="editor-device-mode-selector"');
 
     for (const workspace of [
-      'Canvas',
+      '画布',
       'Assets',
       'Properties',
       'Timeline',

@@ -2,7 +2,7 @@ import { SegmentedTabs } from '../ui';
 import type { EditorWorkspace } from './adaptiveEditorShell';
 
 const WORKSPACE_OPTIONS = [
-  { value: 'canvas', label: 'Canvas' },
+  { value: 'canvas', label: '画布' },
   { value: 'assets', label: 'Assets' },
   { value: 'properties', label: 'Properties' },
   { value: 'timeline', label: 'Timeline' },

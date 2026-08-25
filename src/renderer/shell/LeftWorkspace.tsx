@@ -57,6 +57,7 @@ export function LeftWorkspace({
         }
         key={`resource:${projectSnapshot.projectRoot}`}
         onActiveActivityChange={onActiveActivityChange}
+        hideSectionLabels={shellMode === 'portrait'}
         snapshot={projectSnapshot}
       />
     </aside>

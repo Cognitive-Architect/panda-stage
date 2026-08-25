@@ -72,7 +72,7 @@ export type EditorShellSessionRegion =
   | 'start-screen'
   | 'editor-layout';
 export type EditorShellPage = 'project-center' | 'editor';
-type PortraitCanvasSurface = 'none' | 'shots' | 'properties';
+type PortraitCanvasSurface = 'none' | 'shots';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
@@ -465,9 +465,9 @@ export function EditorShell({
   }, [layoutMode]);
 
   useEffect(() => {
-    if (!isPortrait || portraitWorkspace !== 'canvas') {
-      setPortraitCanvasSurface('none');
-    }
+    setPortraitCanvasSurface(
+      isPortrait && portraitWorkspace === 'canvas' ? 'shots' : 'none',
+    );
   }, [isPortrait, portraitWorkspace]);
 
   useEffect(() => {
@@ -885,20 +885,10 @@ export function EditorShell({
 
   const selectPortraitWorkspace = (workspace: EditorWorkspace): void => {
     setPortraitWorkspace(workspace);
-    setPortraitCanvasSurface('none');
+    setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none');
     if (workspace === 'assets') {
       setPortraitResourceActivity('assets');
     } else if (workspace === 'canvas') {
-      setPortraitResourceActivity('shots');
-    }
-  };
-
-  const openPortraitCanvasSurface = (
-    surface: Exclude<PortraitCanvasSurface, 'none'>,
-  ): void => {
-    setPortraitWorkspace('canvas');
-    setPortraitCanvasSurface(surface);
-    if (surface === 'shots') {
       setPortraitResourceActivity('shots');
     }
   };
@@ -931,9 +921,7 @@ export function EditorShell({
     (portraitWorkspace === 'canvas' && portraitCanvasSurface === 'shots');
   const portraitPropertiesVisible =
     !isPortrait ||
-    portraitWorkspace === 'properties' ||
-    (portraitWorkspace === 'canvas' &&
-      portraitCanvasSurface === 'properties');
+    portraitWorkspace === 'properties';
   const portraitContextSurface =
     isPortrait && portraitWorkspace === 'canvas'
       ? portraitCanvasSurface
@@ -1059,31 +1047,7 @@ export function EditorShell({
               data-workspace-owner="canvas"
               hidden={!portraitCanvasVisible}
             >
-              {isPortrait && portraitWorkspace === 'canvas' ? (
-                <nav
-                  aria-label="画布上下文工作区"
-                  className="portrait-canvas-context-actions"
-                  data-testid="portrait-canvas-context-actions"
-                >
-                  <button
-                    aria-expanded={portraitCanvasSurface === 'shots'}
-                    data-testid="portrait-open-shots"
-                    onClick={() => openPortraitCanvasSurface('shots')}
-                    type="button"
-                  >
-                    镜头
-                  </button>
-                  <button
-                    aria-expanded={portraitCanvasSurface === 'properties'}
-                    data-testid="portrait-open-properties"
-                    onClick={() => openPortraitCanvasSurface('properties')}
-                    type="button"
-                  >
-                    属性
-                  </button>
-                </nav>
-              ) : null}
-              <CanvasWorkspace />
+              <CanvasWorkspace showHeading={!isPortrait} />
             </div>
             <div
               aria-hidden={!portraitPropertiesVisible}

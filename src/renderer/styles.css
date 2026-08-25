@@ -4902,7 +4902,8 @@ h1 {
 .editor-body[data-shell-mode='portrait'][data-active-workspace='canvas'][data-portrait-surface='shots'],
 .editor-body[data-shell-mode='portrait'][data-active-workspace='canvas'][data-portrait-surface='properties'],
 .editor-body[data-shell-mode='portrait'][data-active-workspace='properties'] {
-  grid-template-rows: minmax(220px, 0.9fr) minmax(280px, 1fr);
+  align-content: start;
+  grid-template-rows: max-content max-content;
 }
 
 .editor-layout[data-shell-mode='portrait'] .left-workspace,
@@ -4928,34 +4929,22 @@ h1 {
 .editor-layout[data-shell-mode='portrait']
   > .editor-body
   > .editor-workspace-slot-canvas {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .editor-layout[data-shell-mode='portrait'] .canvas-workspace {
   overflow: visible;
 }
 
-.editor-layout[data-shell-mode='portrait'] .portrait-canvas-context-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 0 0 8px;
+.editor-layout[data-shell-mode='portrait'] .project-canvas {
+  margin: 0;
+  padding: 12px;
+  gap: 10px;
 }
 
-.editor-layout[data-shell-mode='portrait']
-  .portrait-canvas-context-actions button {
-  min-height: 48px;
-  border: 1px solid rgb(127 199 148 / 28%);
-  border-radius: 10px;
-  color: #d8f2df;
-  background: rgb(18 31 23 / 88%);
-}
-
-.editor-layout[data-shell-mode='portrait']
-  .portrait-canvas-context-actions button[aria-expanded='true'] {
-  border-color: #8ed9a2;
-  color: #0a130d;
-  background: #8ed9a2;
+.editor-layout[data-shell-mode='portrait'] .canvas-viewport {
+  height: min(48vh, 480px);
+  min-height: 240px;
 }
 
 .editor-layout[data-shell-mode='portrait'] .resource-activity-dock {
