@@ -14,7 +14,7 @@ describe('Issue #328 portrait Assets cleanup', () => {
     expect(switcher).toContain("{ value: 'assets', label: '素材' }");
     expect(switcher).not.toContain("{ value: 'assets', label: 'Assets' }");
     expect(switcher).toContain("label: '画布'");
-    expect(switcher).toContain("label: 'Properties'");
+    expect(switcher).toContain("label: '属性'");
     expect(switcher).toContain("label: 'Timeline'");
   });
 

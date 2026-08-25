@@ -125,6 +125,8 @@ export function ResourceActivityDock({
   const hideLocalActivityTabs =
     hideSectionLabels &&
     (activeActivity === 'shots' || activeActivity === 'assets');
+  const hidePortraitAssetsChrome =
+    hideSectionLabels && activeActivity === 'assets';
 
   const primaryAction =
     activeActivity === 'shots'
@@ -215,20 +217,22 @@ export function ResourceActivityDock({
               >
                 {primaryAction.label}
               </button>
-              <button
-                aria-label="关闭资源工作区"
-                className="resource-activity-close"
-                data-testid="resource-activity-close"
-                onClick={() => {
-                  if (activeActivity === 'assets') {
-                    setAssetReviewCloseRequest((value) => value + 1);
-                  }
-                  setDrawerOpen(false);
-                }}
-                type="button"
-              >
-                关闭
-              </button>
+              {hidePortraitAssetsChrome ? null : (
+                <button
+                  aria-label="关闭资源工作区"
+                  className="resource-activity-close"
+                  data-testid="resource-activity-close"
+                  onClick={() => {
+                    if (activeActivity === 'assets') {
+                      setAssetReviewCloseRequest((value) => value + 1);
+                    }
+                    setDrawerOpen(false);
+                  }}
+                  type="button"
+                >
+                  关闭
+                </button>
+              )}
             </div>
           </div>
           {hideLocalActivityTabs ? null : (

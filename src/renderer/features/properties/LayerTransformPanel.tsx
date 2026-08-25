@@ -32,6 +32,8 @@ export type CommitTransformDraftResult =
 export interface LayerTransformPanelProps {
   /** The RightInspector owns this identity when the panel is mounted there. */
   backgroundLayerSelected?: boolean;
+  /** Compact portrait presentation keeps the existing draft/commit contract. */
+  compact?: boolean;
 }
 
 export function canRunTransformAction(
@@ -92,6 +94,7 @@ const EMPTY_DRAFT: LayerTransformDraft = {
 
 export function LayerTransformPanel({
   backgroundLayerSelected,
+  compact = false,
 }: LayerTransformPanelProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -115,7 +118,7 @@ export function LayerTransformPanel({
     Boolean(shot && layer && shot.backgroundLayerId === layer.id);
   const [draft, setDraft] = useState<LayerTransformDraft>(EMPTY_DRAFT);
   const [status, setStatus] = useState(
-    '选择普通图层后可编辑中心位置与静态变换。',
+    compact ? '' : '选择普通图层后可编辑中心位置与静态变换。',
   );
   const formRef = useRef<HTMLFormElement>(null);
   const preserveCommitErrorRef = useRef(false);
@@ -139,22 +142,18 @@ export function LayerTransformPanel({
     );
     if (layer) {
       preserveCommitErrorRef.current = false;
-      setStatus(
-        layer.locked
-          ? '图层已锁定；请先解锁再修改。'
-          : 'X/Y 始终表示视觉中心；缩放保持等比。',
-      );
+      setStatus(compact ? '' : layer.locked
+        ? '图层已锁定；请先解锁再修改。'
+        : 'X/Y 始终表示视觉中心；缩放保持等比。');
       if (isBackgroundLayer) {
-        setStatus(
-          layer.locked
-            ? 'Formal background is locked; unlock it before editing.'
-            : 'Formal background is editable; lock it again when finished.',
-        );
+        setStatus(compact ? '' : layer.locked
+          ? 'Formal background is locked; unlock it before editing.'
+          : 'Formal background is editable; lock it again when finished.');
       }
     } else if (!preserveCommitErrorRef.current) {
-      setStatus('选择普通图层后可编辑中心位置与静态变换。');
+      setStatus(compact ? '' : '选择普通图层后可编辑中心位置与静态变换。');
     }
-  }, [isBackgroundLayer, layer]);
+  }, [compact, isBackgroundLayer, layer]);
 
   const updateDraft = (
     key: keyof LayerTransformDraft,
@@ -264,10 +263,11 @@ export function LayerTransformPanel({
     <section
       className="layer-transform-panel"
       data-background-protected={String(isBackgroundLayer)}
+      data-compact={String(compact)}
       data-selected-layer-id={selectedLayerId ?? ''}
       data-testid="layer-transform-panel"
     >
-      <div>
+      <div className="layer-transform-panel-heading">
         <p className="eyebrow">图层变换</p>
         <h3>图层变换</h3>
       </div>
@@ -352,19 +352,25 @@ export function LayerTransformPanel({
           </button>
         </form>
       ) : (
-        <p>未选择普通图层。</p>
+        <p>
+          {compact ? '请在画布中选择一个对象。' : '未选择普通图层。'}
+        </p>
       )}
-      <p data-testid="layer-transform-guidance">
-        {isBackgroundLayer
-          ? layer?.locked
-            ? '正式背景已锁定，请先解锁后再编辑。'
-            : '正式背景可编辑，完成后请重新锁定。'
-          : layer?.locked
-            ? '请先解锁图层，再修改变换。'
-            : layer
-              ? 'X/Y 表示视觉中心，缩放保持等比。'
-              : '请在画布中选择图层以编辑变换。'}
-      </p>
+      {layer || !compact ? (
+        <p data-testid="layer-transform-guidance">
+          {isBackgroundLayer
+            ? layer?.locked
+              ? '正式背景已锁定，请先解锁后再编辑。'
+              : '正式背景可编辑，完成后请重新锁定。'
+            : layer?.locked
+              ? '请先解锁图层，再修改变换。'
+              : layer
+                ? compact
+                  ? 'X/Y 是视觉中心；离开字段或提交即可保存。'
+                  : 'X/Y 表示视觉中心，缩放保持等比。'
+                : '请在画布中选择图层以编辑变换。'}
+        </p>
+      ) : null}
       <output data-testid="layer-transform-status">{status}</output>
     </section>
   );

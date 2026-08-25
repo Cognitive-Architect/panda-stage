@@ -137,7 +137,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
     for (const workspace of [
       '画布',
       '素材',
-      'Properties',
+      '属性',
       'Timeline',
     ]) {
       expect(switcher).toContain(`label: '${workspace}'`);
