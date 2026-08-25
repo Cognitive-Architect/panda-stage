@@ -32,16 +32,21 @@ export function normalizeManualDialogueTiming(
   };
 }
 
+export type DialogueInspectorPresentation = 'inspector' | 'timeline';
+
 /**
- * The existing single RightInspector owner, extended only with Day28 timing.
- * Text still commits on blur; timing and Untimed arrangement are explicit,
- * one-command actions.
+ * The existing dialogue editor owner, extended only with a presentation seam
+ * for the portrait Timeline. Text still commits on blur; timing and Untimed
+ * arrangement remain explicit, one-command actions.
  */
 export function DialogueInspector({
   dialogueId,
+  presentation = 'inspector',
 }: {
   dialogueId: string;
+  presentation?: DialogueInspectorPresentation;
 }): React.JSX.Element {
+  const timelinePresentation = presentation === 'timeline';
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -78,7 +83,14 @@ export function DialogueInspector({
   }, [dialogue?.id, dialogue?.text, dialogue?.startMs, dialogue?.endMs]);
 
   if (!shot || !dialogue) {
-    return (
+    return timelinePresentation ? (
+      <div
+        className="timeline-subtitle-editor-empty"
+        data-testid="timeline-subtitle-editor-empty"
+      >
+        请选择时间轴中的字幕片段。
+      </div>
+    ) : (
       <div className="right-inspector-heading">
         <div>
           <p className="eyebrow">右侧检查器</p>
@@ -151,26 +163,50 @@ export function DialogueInspector({
 
   return (
     <>
-      <div className="right-inspector-heading">
-        <div>
-          <p className="eyebrow">右侧检查器</p>
-          <h2 id="right-inspector-heading">对白检查器</h2>
+      {!timelinePresentation ? (
+        <div className="right-inspector-heading">
+          <div>
+            <p className="eyebrow">右侧检查器</p>
+            <h2 id="right-inspector-heading">对白检查器</h2>
+          </div>
+          <span>当前镜头</span>
         </div>
-        <span>当前镜头</span>
-      </div>
+      ) : null}
       <section
         aria-live="polite"
-        className="right-inspector-selection"
+        className={
+          timelinePresentation
+            ? 'timeline-subtitle-selection'
+            : 'right-inspector-selection'
+        }
         data-selection-state="dialogue"
         data-testid="right-inspector-selection"
       >
-        <p className="eyebrow">当前选择</p>
-        <strong>{character?.name ?? '未知角色'}</strong>
-        <span data-testid="right-inspector-selection-message">
-          已选择对白：{character?.name ?? dialogue.characterId}
-        </span>
+        {timelinePresentation ? (
+          <>
+            <strong>{character?.name ?? '未知角色'}</strong>
+            <span data-testid="right-inspector-selection-message">
+              {timed
+                ? `已定时 · ${dialogue.startMs}–${dialogue.endMs}ms`
+                : '未定时字幕'}
+            </span>
+          </>
+        ) : (
+          <>
+            <p className="eyebrow">当前选择</p>
+            <strong>{character?.name ?? '未知角色'}</strong>
+            <span data-testid="right-inspector-selection-message">
+              已选择对白：{character?.name ?? dialogue.characterId}
+            </span>
+          </>
+        )}
       </section>
-      <div className="dialogue-inspector" data-testid="dialogue-inspector">
+      <div
+        className={`dialogue-inspector${
+          timelinePresentation ? ' dialogue-inspector-timeline' : ''
+        }`}
+        data-testid="dialogue-inspector"
+      >
         <label className="dialogue-field">
           <span>角色（说话人）</span>
           <select

@@ -15,7 +15,7 @@ describe('Issue #328 portrait Assets cleanup', () => {
     expect(switcher).not.toContain("{ value: 'assets', label: 'Assets' }");
     expect(switcher).toContain("label: '画布'");
     expect(switcher).toContain("label: '属性'");
-    expect(switcher).toContain("label: 'Timeline'");
+    expect(switcher).toContain("label: '时间轴'");
   });
 
   it('keeps one ResourceActivityDock and routes portrait Assets through its owners', () => {

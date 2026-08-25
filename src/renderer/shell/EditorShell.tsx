@@ -914,7 +914,8 @@ export function EditorShell({
   const portraitCanvasVisible =
     !isPortrait ||
     portraitWorkspace === 'canvas' ||
-    portraitWorkspace === 'properties';
+    portraitWorkspace === 'properties' ||
+    portraitWorkspace === 'timeline';
   const portraitResourcesVisible =
     !isPortrait ||
     portraitWorkspace === 'assets' ||
@@ -927,6 +928,8 @@ export function EditorShell({
       ? portraitCanvasSurface
       : isPortrait && portraitWorkspace === 'properties'
         ? 'properties'
+        : isPortrait && portraitWorkspace === 'timeline'
+          ? 'timeline'
         : 'none';
 
   return (
@@ -1058,6 +1061,9 @@ export function EditorShell({
             >
               <RightInspector
                 compact={isPortrait ? portraitPropertiesVisible : undefined}
+                dialogueSelectionVisible={
+                  !isPortrait || portraitWorkspace !== 'timeline'
+                }
                 drawerOpen={
                   isPortrait && portraitPropertiesVisible ? true : undefined
                 }

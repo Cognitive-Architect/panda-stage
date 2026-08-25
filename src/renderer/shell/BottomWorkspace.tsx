@@ -35,7 +35,7 @@ export function BottomWorkspace({
       data-timeline-expanded={expanded ? 'true' : 'false'}
       hidden={hidden}
     >
-      <TimelineDock />
+      <TimelineDock presentation={presentation} />
       <HistoryControls />
     </section>
   );

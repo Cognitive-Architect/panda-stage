@@ -14,7 +14,7 @@ describe('Issue #329 portrait Properties first pass', () => {
     expect(switcher).toContain("{ value: 'properties', label: '属性' }");
     expect(switcher).toContain("{ value: 'canvas', label: '画布' }");
     expect(switcher).toContain("{ value: 'assets', label: '素材' }");
-    expect(switcher).toContain("{ value: 'timeline', label: 'Timeline' }");
+    expect(switcher).toContain("{ value: 'timeline', label: '时间轴' }");
     expect(switcher).not.toContain("label: 'Properties'");
   });
 

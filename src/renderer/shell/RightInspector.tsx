@@ -181,6 +181,8 @@ export interface RightInspectorProps {
   shellMode?: EditorShellLayoutMode;
   /** Optional compact presentation for a portrait Canvas-context sheet. */
   compact?: boolean;
+  /** Keep the single dialogue inspector out of the hidden Timeline slot. */
+  dialogueSelectionVisible?: boolean;
   /** Optional controlled drawer state for a portrait Canvas-context sheet. */
   drawerOpen?: boolean;
   onDrawerOpenChange?(open: boolean): void;
@@ -189,6 +191,7 @@ export interface RightInspectorProps {
 export function RightInspector({
   shellMode,
   compact,
+  dialogueSelectionVisible = true,
   drawerOpen: requestedDrawerOpen,
   onDrawerOpenChange,
 }: RightInspectorProps = {}): React.JSX.Element {
@@ -389,7 +392,7 @@ export function RightInspector({
   // A selected dialogue takes over the single inspector surface; the
   // layer/background body is shown otherwise. The two selections are mutually
   // exclusive (selecting one clears the other), so at most one is active.
-  const inspectorContent = selectedDialogueId ? (
+  const inspectorContent = selectedDialogueId && dialogueSelectionVisible ? (
     <>
       {inspectorHeading}
       <DialogueInspector dialogueId={selectedDialogueId} />

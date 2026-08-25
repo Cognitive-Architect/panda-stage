@@ -19,6 +19,12 @@ import { DialogueSheet } from '../dialogue/DialogueSheet';
 import { DialogueClip } from './DialogueClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 
+const TIMELINE_LANE_LABEL_WIDTH = 82;
+
+export interface TimelineDockProps {
+  presentation?: 'desktop' | 'landscape' | 'portrait';
+}
+
 /**
  * The only product Timeline surface for Day 26. It renders the current shot's
  * `0 → durationMs` range with a mm:ss.mmm readout and a seekable playhead.
@@ -27,7 +33,9 @@ import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
  * `timelineUiStore`; the project snapshot, dirty flag, revision and History
  * are never touched.
  */
-export function TimelineDock(): React.JSX.Element {
+export function TimelineDock({
+  presentation = 'landscape',
+}: TimelineDockProps = {}): React.JSX.Element {
   const currentShotId = useSyncExternalStore(
     shotStore.subscribe,
     shotStore.getCurrentShotId,
@@ -50,6 +58,11 @@ export function TimelineDock(): React.JSX.Element {
     ? snapshot?.project.shots.find((candidate) => candidate.id === currentShotId) ?? null
     : null;
   const characters = snapshot?.project.characters ?? [];
+  const audioClips = shot?.audioClips ?? [];
+
+  const audioClipName = (assetId: string, clipName: string): string =>
+    snapshot?.project.assets.find((asset) => asset.id === assetId)?.name ??
+    clipName;
 
   // Whether a seekable ruler is actually mounted. The ruler only renders when
   // the Timeline is expanded AND a real shot is active, so `hasShot` flips
@@ -130,6 +143,7 @@ export function TimelineDock(): React.JSX.Element {
       className="timeline-dock"
       data-expanded={ui.expanded ? 'true' : 'false'}
       data-has-shot={hasShot ? 'true' : 'false'}
+      data-presentation={presentation}
       data-testid="timeline-dock"
     >
       <header className="timeline-header">
@@ -183,7 +197,9 @@ export function TimelineDock(): React.JSX.Element {
             <div
               className="timeline-ruler-track"
               ref={trackRef}
-              style={{ width: `${trackWidth}px` }}
+              style={{
+                width: `${trackWidth + TIMELINE_LANE_LABEL_WIDTH}px`,
+              }}
               data-duration={durationMs}
               data-testid="timeline-ruler-track"
               onPointerDown={handlePointerDown}
@@ -195,36 +211,93 @@ export function TimelineDock(): React.JSX.Element {
                   key={tick.timeMs}
                   className="timeline-tick"
                   data-testid="timeline-tick"
-                  style={{ left: `${tick.px}px` }}
+                  style={{
+                    left: `${TIMELINE_LANE_LABEL_WIDTH + tick.px}px`,
+                  }}
                 >
                   <span className="timeline-tick-label">{tick.label}</span>
                 </div>
               ))}
-              <div
-                className="dialogue-track"
-                data-testid="dialogue-track"
-              >
-                {shot?.dialogues.map((dialogue) => (
-                    <DialogueClip
-                      characterName={
-                        characters.find(
-                          (character) => character.id === dialogue.characterId,
-                        )?.name ?? dialogue.characterId
-                      }
-                      dialogue={dialogue}
-                      durationMs={durationMs}
-                      key={dialogue.id}
-                      pixelsPerMs={pixelsPerMs}
-                      projectRoot={snapshot?.projectRoot ?? ''}
-                      selected={dialogue.id === selectedDialogueId}
-                      shotId={shot.id}
-                    />
-                  ))}
+              <div className="timeline-lanes" data-testid="timeline-lanes">
+                <div
+                  className="timeline-lane timeline-subtitle-lane"
+                  data-testid="timeline-subtitle-track"
+                >
+                  <span className="timeline-lane-label">字幕</span>
+                  <div
+                    className="timeline-lane-content"
+                    style={{ width: `${trackWidth}px` }}
+                  >
+                    <div
+                      className="dialogue-track"
+                      data-testid="dialogue-track"
+                    >
+                      {shot?.dialogues.map((dialogue) => (
+                        <DialogueClip
+                          characterName={
+                            characters.find(
+                              (character) =>
+                                character.id === dialogue.characterId,
+                            )?.name ?? dialogue.characterId
+                          }
+                          dialogue={dialogue}
+                          durationMs={durationMs}
+                          key={dialogue.id}
+                          pixelsPerMs={pixelsPerMs}
+                          projectRoot={snapshot?.projectRoot ?? ''}
+                          selected={dialogue.id === selectedDialogueId}
+                          shotId={shot.id}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className="timeline-lane timeline-audio-lane"
+                  data-testid="timeline-audio-track"
+                >
+                  <span className="timeline-lane-label">音频</span>
+                  <div
+                    className="timeline-lane-content"
+                    style={{ width: `${trackWidth}px` }}
+                  >
+                    {audioClips.map((clip) => (
+                      <div
+                        aria-label={`音频：${audioClipName(clip.assetId, clip.name)}`}
+                        className="timeline-audio-clip"
+                        data-audio-clip-id={clip.id}
+                        data-testid="timeline-audio-clip"
+                        key={clip.id}
+                        style={{
+                          left: `${timeToPx(clip.startMs, pixelsPerMs)}px`,
+                          width: `${Math.max(
+                            8,
+                            timeToPx(clip.endMs - clip.startMs, pixelsPerMs),
+                          )}px`,
+                        }}
+                      >
+                        <span>
+                          {audioClipName(clip.assetId, clip.name)}
+                        </span>
+                      </div>
+                    ))}
+                    {audioClips.length === 0 ? (
+                      <span
+                        className="timeline-audio-empty"
+                        data-testid="timeline-audio-empty"
+                      >
+                        暂无音频片段
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               </div>
               <div
                 className="timeline-playhead"
                 data-testid="timeline-playhead"
-                style={{ left: `${playheadPx}px` }}
+                style={{
+                  left: `${TIMELINE_LANE_LABEL_WIDTH + playheadPx}px`,
+                }}
                 data-current-time={ui.currentTimeMs}
               >
                 <span className="timeline-playhead-handle" />

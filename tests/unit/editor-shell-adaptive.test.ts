@@ -138,7 +138,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
       '画布',
       '素材',
       '属性',
-      'Timeline',
+      '时间轴',
     ]) {
       expect(switcher).toContain(`label: '${workspace}'`);
     }
@@ -206,7 +206,10 @@ describe('UI-M2 adaptive EditorShell state', () => {
       /\.editor-layout\[data-shell-mode='portrait'\]\s+>\s+\.bottom-workspace\[data-presentation='portrait'\]\s*\{[\s\S]*?overflow-y:\s*auto;/u,
     );
     expect(styles).toMatch(
-      /\.editor-body\[data-shell-mode='portrait'\]\[data-active-workspace='timeline'\]\s*\{[\s\S]*?visibility:\s*hidden;[\s\S]*?pointer-events:\s*none;/u,
+      /\.editor-layout\[data-shell-mode='portrait'\]\[data-active-workspace='timeline'\]\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.editor-body\[data-shell-mode='portrait'\]\[data-active-workspace='timeline'\]\s*\{[\s\S]*?visibility:\s*visible;[\s\S]*?pointer-events:\s*auto;/u,
     );
     expect(styles).toContain(
       "grid-template-columns: repeat(4, minmax(88px, 1fr));",
