@@ -30,12 +30,15 @@ export interface CharacterManagerProps {
   snapshot: EditorProjectSnapshot | null;
   view?: CharacterWorkspaceView;
   onViewChange?: (view: CharacterWorkspaceView) => void;
+  /** Keep the landscape drawer's active label as the visible identity. */
+  hideHeading?: boolean;
 }
 
 export function CharacterManager({
   snapshot,
   view = 'legacy',
   onViewChange = () => undefined,
+  hideHeading = false,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] =
@@ -156,7 +159,13 @@ export function CharacterManager({
       aria-labelledby="character-manager-heading"
       data-testid="character-manager"
     >
-      <div className="character-manager-heading">
+      <div
+        className={
+          hideHeading
+            ? 'character-manager-heading character-manager-heading-visually-hidden'
+            : 'character-manager-heading'
+        }
+      >
         <div>
           <p className="eyebrow">角色定义</p>
           <h2 id="character-manager-heading">角色与表情</h2>
@@ -179,6 +188,7 @@ export function CharacterManager({
             onCreate={createCharacter}
             onSelect={setSelectedCharacterId}
             selectedCharacterId={selectedCharacterId}
+            showHeading={!hideHeading}
           />
         ) : view === 'list' ? (
           <CharacterList
@@ -192,6 +202,7 @@ export function CharacterManager({
               onViewChange('detail');
             }}
             selectedCharacterId={selectedCharacterId}
+            showHeading={view !== 'list' || !hideHeading}
           />
         ) : view === 'create' ? (
           <CharacterList
@@ -203,6 +214,7 @@ export function CharacterManager({
             onCreate={createCharacter}
             onSelect={setSelectedCharacterId}
             selectedCharacterId={selectedCharacterId}
+            showHeading={!hideHeading}
           />
         ) : null}
         {view === 'legacy' || view === 'detail' || view === 'expression' ? (

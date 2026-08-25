@@ -6119,3 +6119,576 @@ h1 {
   height: min(40vh, 420px);
   min-height: 320px;
 }
+
+/* Issue #331: keep the landscape resource rail persistent and let the same
+   production owners open as a focused drawer. The drawer is the only
+   scrolling surface in this presentation; portrait selectors above remain
+   untouched. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape {
+  gap: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail {
+  position: absolute;
+  z-index: 34;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 56px;
+  height: min(100%, 360px);
+  padding: 0;
+  grid-template-rows: repeat(3, minmax(72px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  button {
+  display: grid;
+  width: 52px;
+  min-height: 72px;
+  padding: 10px 4px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: 12px;
+  color: #a9c5b0;
+  background: #142019;
+  place-items: center;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  button:hover:not(:disabled),
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  button.resource-activity-rail-active {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #07110a;
+  background: var(--ui-color-action-primary, #8ed9a2);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  button:focus-visible {
+  outline: 3px solid rgb(149 224 172 / 42%);
+  outline-offset: 2px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  strong {
+  font-size: 12px;
+  line-height: 1.1;
+  writing-mode: vertical-rl;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-surface {
+  left: 64px;
+  display: block;
+  width: min(360px, calc(100vw - 80px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-header {
+  position: sticky;
+  padding: 12px;
+  background: #122018;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-heading
+  h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-header-actions {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-primary-action {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-close {
+  display: inline-grid;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-size: 0;
+  place-items: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-close::before {
+  content: '×';
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-tabs {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-body {
+  display: block;
+  overflow: visible;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-panel
+  > .shot-manager,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-panel
+  > .asset-library,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-panel
+  > .character-manager {
+  padding: 0 12px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-manager-heading,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-heading,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-heading,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-manager-heading,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Shot drawer: keep the existing list/selection/reorder owner and leave the
+   full selected-shot editor out of the first-glance landscape surface. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-workspace {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list
+  ol {
+  max-height: none;
+  padding: 0;
+  overflow: visible;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button {
+  min-height: 76px;
+  padding: 8px;
+  border-radius: 12px;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-thumbnail-placeholder {
+  min-height: 58px;
+  height: 58px;
+  padding: 5px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button
+  strong {
+  font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button
+  small {
+  font-size: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-drag-handle {
+  display: grid;
+  min-width: 26px;
+  min-height: 44px;
+  place-items: center;
+  font-size: 18px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-view,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-form {
+  min-height: 0;
+}
+
+/* Assets drawer: use the existing import, filter, search and selection owners
+   with a small two-column grid that fits the narrow overlay. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library {
+  padding: 0 12px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact {
+  padding: 0;
+  margin: 0 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions {
+  display: block;
+  min-height: 48px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions
+  button {
+  width: 100%;
+  min-height: 48px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions
+  > span,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-drop {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-browser {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search {
+  display: grid;
+  margin-bottom: 8px;
+  gap: 5px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search
+  > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search
+  input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs {
+  display: grid;
+  width: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  overflow: visible;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs
+  button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 2px;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs
+  button
+  strong {
+  min-width: 0;
+  padding: 0;
+  font-size: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-content,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-grid {
+  display: block;
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-grid {
+  display: grid;
+  max-height: none;
+  padding: 10px 0 4px;
+  overflow: visible;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card {
+  min-height: 0;
+  padding: 0 0 8px;
+  border-radius: 10px;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-preview {
+  border-radius: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card
+  > strong,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card
+  > span {
+  margin-inline: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card
+  > strong {
+  font-size: 11px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card
+  > span {
+  font-size: 9px;
+}
+
+/* Characters drawer: the existing list owner is intentionally thin; keep it
+   readable and expose only the existing create route. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-manager {
+  padding: 0 12px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-workspace {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items {
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items
+  button {
+  min-height: 60px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items
+  button {
+  text-align: left;
+}
+
+/* Recovery/recent-project and compatibility owners remain reachable without
+   competing with the active resource list on first glance. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-secondary-tools {
+  margin: 0 12px 12px;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 10px;
+  background: rgb(8 14 10 / 45%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-secondary-tools
+  > summary {
+  min-height: 44px;
+  padding: 11px 12px;
+  color: #b9efc8;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-secondary-tools[open]
+  > .resource-activity-auxiliary {
+  padding: 8px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}

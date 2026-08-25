@@ -14,6 +14,7 @@ export interface CharacterListProps {
   onSelect: (characterId: string) => void;
   mode?: CharacterListMode;
   onBack?: () => void;
+  showHeading?: boolean;
 }
 
 export type CharacterListMode = 'legacy' | 'list' | 'create';
@@ -27,6 +28,7 @@ export function CharacterList({
   onSelect,
   mode = 'legacy',
   onBack = () => undefined,
+  showHeading = true,
 }: CharacterListProps): React.JSX.Element {
   const [name, setName] = useState('新角色');
   const [normalAssetId, setNormalAssetId] = useState(
@@ -48,6 +50,7 @@ export function CharacterList({
 
   return (
     <aside
+      aria-label={showHeading ? undefined : '角色列表'}
       className={`character-list character-list-${mode}`}
       data-testid={
         mode === 'list'
@@ -57,7 +60,13 @@ export function CharacterList({
             : 'character-legacy-view'
       }
     >
-      <div className="character-list-heading">
+      <div
+        className={
+          showHeading
+            ? 'character-list-heading'
+            : 'character-list-heading character-list-heading-visually-hidden'
+        }
+      >
         <div>
           <p className="eyebrow">角色资源</p>
           <strong>{mode === 'create' ? '新建角色' : '角色列表'}</strong>

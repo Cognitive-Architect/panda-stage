@@ -9,11 +9,15 @@ import type { ShotWorkspaceView } from '../features/shots/ShotManager';
 
 export type ResourceActivity = 'shots' | 'assets' | 'characters';
 
+export type ResourceActivityPresentation = 'default' | 'landscape';
+
 export interface ResourceActivityDockProps {
   snapshot: EditorProjectSnapshot;
   auxiliaryContent?: ReactNode;
   /** Force the existing resource owner into the landscape drawer contract. */
   compact?: boolean;
+  /** Re-slot the same owners into the persistent landscape rail + drawer. */
+  presentation?: ResourceActivityPresentation;
   /** Optional controlled drawer state for a portrait Canvas-context surface. */
   drawerOpen?: boolean;
   onDrawerOpenChange?(open: boolean): void;
@@ -75,12 +79,14 @@ export function ResourceActivityDock({
   snapshot,
   auxiliaryContent,
   compact,
+  presentation = 'default',
   drawerOpen: requestedDrawerOpen,
   onDrawerOpenChange,
   activeActivity: requestedActivity,
   onActiveActivityChange,
   hideSectionLabels = false,
 }: ResourceActivityDockProps): React.JSX.Element {
+  const landscapePresentation = presentation === 'landscape';
   const [internalActivity, setInternalActivity] =
     useState<ResourceActivity>('shots');
   const activeActivity = requestedActivity ?? internalActivity;
@@ -123,8 +129,9 @@ export function ResourceActivityDock({
     ACTIVITIES.find((activity) => activity.id === activeActivity)?.label ??
     '资源';
   const hideLocalActivityTabs =
-    hideSectionLabels &&
-    (activeActivity === 'shots' || activeActivity === 'assets');
+    landscapePresentation ||
+    (hideSectionLabels &&
+      (activeActivity === 'shots' || activeActivity === 'assets'));
   const hidePortraitAssetsChrome =
     hideSectionLabels && activeActivity === 'assets';
 
@@ -160,7 +167,7 @@ export function ResourceActivityDock({
             };
 
   const selectActivity = (activity: ResourceActivity): void => {
-    if (narrow && activity === activeActivity) {
+    if (narrow && drawerOpen && activity === activeActivity) {
       setDrawerOpen(false);
       return;
     }
@@ -172,24 +179,52 @@ export function ResourceActivityDock({
   return (
     <section
       aria-labelledby="resource-activity-heading"
-      className={`resource-activity-dock${drawerOpen ? ' resource-activity-dock-open' : ''}`}
+      className={`resource-activity-dock${drawerOpen ? ' resource-activity-dock-open' : ''}${landscapePresentation ? ' resource-activity-dock-landscape' : ''}`}
       data-resource-drawer-open={drawerOpen}
       data-resource-mode={narrow ? 'narrow' : 'wide'}
+      data-resource-presentation={presentation}
       data-active-activity={activeActivity}
       data-testid="resource-activity-dock"
     >
-      <button
-        aria-controls="resource-activity-drawer"
-        aria-expanded={drawerOpen}
-        aria-label={drawerOpen ? '收起资源工作区' : '打开资源工作区'}
-        className="resource-workspace-handle"
-        data-testid="resource-workspace-handle"
-        onClick={() => setDrawerOpen(!drawerOpen)}
-        type="button"
-      >
-        <span>{drawerOpen ? '‹' : '›'}</span>
-        <strong>资源</strong>
-      </button>
+      {landscapePresentation ? (
+        <nav
+          aria-label="资源类型"
+          className="resource-activity-rail"
+          data-testid="resource-activity-rail"
+        >
+          {ACTIVITIES.map((activity) => {
+            const active = activity.id === activeActivity;
+            return (
+              <button
+                aria-controls="resource-activity-drawer"
+                aria-expanded={active && drawerOpen}
+                aria-label={`${active && drawerOpen ? '关闭' : '打开'}${activity.label}抽屉`}
+                aria-pressed={active}
+                className={active ? 'resource-activity-rail-active' : ''}
+                data-activity={activity.id}
+                data-testid={`resource-activity-rail-${activity.id}`}
+                onClick={() => selectActivity(activity.id)}
+                type="button"
+              >
+                <strong>{activity.label}</strong>
+              </button>
+            );
+          })}
+        </nav>
+      ) : (
+        <button
+          aria-controls="resource-activity-drawer"
+          aria-expanded={drawerOpen}
+          aria-label={drawerOpen ? '收起资源工作区' : '打开资源工作区'}
+          className="resource-workspace-handle"
+          data-testid="resource-workspace-handle"
+          onClick={() => setDrawerOpen(!drawerOpen)}
+          type="button"
+        >
+          <span>{drawerOpen ? '‹' : '›'}</span>
+          <strong>资源</strong>
+        </button>
+      )}
       <div
         className="resource-activity-surface"
         data-testid="resource-activity-drawer"
@@ -198,7 +233,7 @@ export function ResourceActivityDock({
         <div className="resource-activity-header">
           <div className="resource-activity-heading">
             <div>
-              {hideSectionLabels ? (
+              {hideSectionLabels || landscapePresentation ? (
                 <h2 id="resource-activity-heading">{activeLabel}</h2>
               ) : (
                 <>
@@ -230,7 +265,7 @@ export function ResourceActivityDock({
                   }}
                   type="button"
                 >
-                  关闭
+                  {landscapePresentation ? '×' : '关闭'}
                 </button>
               )}
             </div>
@@ -280,6 +315,9 @@ export function ResourceActivityDock({
               <ShotManager
                 hideHeading={hideLocalActivityTabs}
                 onViewChange={setShotView}
+                presentation={
+                  landscapePresentation ? 'landscape' : 'default'
+                }
                 snapshot={snapshot}
                 view={shotView}
               />
@@ -294,6 +332,7 @@ export function ResourceActivityDock({
               />
             ) : (
               <CharacterManager
+                hideHeading={landscapePresentation}
                 onViewChange={setCharacterView}
                 snapshot={snapshot}
                 view={characterView}
@@ -301,9 +340,18 @@ export function ResourceActivityDock({
             )}
           </div>
           {auxiliaryContent ? (
-            <div className="resource-activity-auxiliary">
-              {auxiliaryContent}
-            </div>
+            landscapePresentation ? (
+              <details className="resource-activity-secondary-tools">
+                <summary>其他项目工具</summary>
+                <div className="resource-activity-auxiliary">
+                  {auxiliaryContent}
+                </div>
+              </details>
+            ) : (
+              <div className="resource-activity-auxiliary">
+                {auxiliaryContent}
+              </div>
+            )
           ) : null}
         </div>
       </div>

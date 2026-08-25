@@ -34,7 +34,7 @@ describe('Issue #326 portrait Canvas cleanup', () => {
     expect(resourceDock).toContain('<ShotManager');
     expect(resourceDock).toContain('hideSectionLabels?: boolean');
     expect(resourceDock).toContain('hideSectionLabels = false');
-    expect(resourceDock).toContain('hideSectionLabels ?');
+    expect(resourceDock).toContain('hideSectionLabels || landscapePresentation ?');
     expect(resourceDock).toContain('<p className="eyebrow">编辑资源</p>');
     expect(resourceDock).toContain(
       '<h2 id="resource-activity-heading">{activeLabel}工作区</h2>',

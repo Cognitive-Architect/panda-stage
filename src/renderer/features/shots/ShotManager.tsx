@@ -12,6 +12,7 @@ import { ShotEditor } from './ShotEditor';
 import { nextAvailableShotName, ShotList } from './ShotList';
 
 export type ShotWorkspaceView = 'list' | 'create';
+export type ShotManagerPresentation = 'default' | 'landscape';
 
 export interface ShotManagerProps {
   snapshot: EditorProjectSnapshot | null;
@@ -19,6 +20,8 @@ export interface ShotManagerProps {
   onViewChange?: (view: ShotWorkspaceView) => void;
   /** Portrait shell keeps the dock's concise 镜头 heading as the visible identity. */
   hideHeading?: boolean;
+  /** Keep the landscape drawer focused on the existing Shot list owner. */
+  presentation?: ShotManagerPresentation;
 }
 
 export function ShotManager({
@@ -26,6 +29,7 @@ export function ShotManager({
   view = 'list',
   onViewChange = () => undefined,
   hideHeading = false,
+  presentation = 'default',
 }: ShotManagerProps): React.JSX.Element {
   const selectedShotId = useSyncExternalStore(
     shotStore.subscribe,
@@ -138,50 +142,52 @@ export function ShotManager({
             showCreateForm={false}
             shots={project?.shots ?? []}
           />
-          <ShotEditor
-            disabled={!snapshot}
-            index={selectedIndex}
-            key={selectedShot?.id ?? 'empty'}
-            onDuplicate={() => {
-              if (!selectedShot) return;
-              mutate(
-                () => shotStore.duplicate(selectedShot.id),
-                `镜头“${selectedShot.name}”已复制，所有子实体 ID 已重建。`,
-              );
-            }}
-            onRemove={() => {
-              if (
-                !selectedShot ||
-                !window.confirm(
-                  `确认移除镜头“${selectedShot.name}”？项目素材和角色不会被删除。`,
-                )
-              ) {
-                return;
-              }
-              const next = mutate(
-                () => shotStore.remove(selectedShot.id),
-                `镜头“${selectedShot.name}”已移除。`,
-              );
-              if (next?.shots.length === 0) {
-                setStatus('最后一个镜头已移除；请创建新镜头继续。项目尚未保存。');
-              }
-            }}
-            onRename={(name) => {
-              if (!selectedShot) return;
-              mutate(
-                () => shotStore.rename(selectedShot.id, name),
-                '镜头名称已更新。',
-              );
-            }}
-            onSetDuration={(durationMs) => {
-              if (!selectedShot) return;
-              mutate(
-                () => shotStore.setDuration(selectedShot.id, durationMs),
-                `镜头时长已更新为 ${durationMs}ms。`,
-              );
-            }}
-            shot={selectedShot}
-          />
+          {presentation === 'landscape' ? null : (
+            <ShotEditor
+              disabled={!snapshot}
+              index={selectedIndex}
+              key={selectedShot?.id ?? 'empty'}
+              onDuplicate={() => {
+                if (!selectedShot) return;
+                mutate(
+                  () => shotStore.duplicate(selectedShot.id),
+                  `镜头“${selectedShot.name}”已复制，所有子实体 ID 已重建。`,
+                );
+              }}
+              onRemove={() => {
+                if (
+                  !selectedShot ||
+                  !window.confirm(
+                    `确认移除镜头“${selectedShot.name}”？项目素材和角色不会被删除。`,
+                  )
+                ) {
+                  return;
+                }
+                const next = mutate(
+                  () => shotStore.remove(selectedShot.id),
+                  `镜头“${selectedShot.name}”已移除。`,
+                );
+                if (next?.shots.length === 0) {
+                  setStatus('最后一个镜头已移除；请创建新镜头继续。项目尚未保存。');
+                }
+              }}
+              onRename={(name) => {
+                if (!selectedShot) return;
+                mutate(
+                  () => shotStore.rename(selectedShot.id, name),
+                  '镜头名称已更新。',
+                );
+              }}
+              onSetDuration={(durationMs) => {
+                if (!selectedShot) return;
+                mutate(
+                  () => shotStore.setDuration(selectedShot.id, durationMs),
+                  `镜头时长已更新为 ${durationMs}ms。`,
+                );
+              }}
+              shot={selectedShot}
+            />
+          )}
         </div>
       )}
       <output className="shot-manager-status">{status}</output>
