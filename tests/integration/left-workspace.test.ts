@@ -390,6 +390,8 @@ async function switchActivity(window, activity) {
     window,
     '[data-testid="resource-activity-tabs"] button[data-activity="' +
       activity +
+      '"], [data-testid="resource-activity-rail"] button[data-activity="' +
+      activity +
       '"]',
   );
   await waitForActivity(window, activity);
