@@ -11,12 +11,21 @@ function readSource(path: string): string {
 }
 
 describe('UI-M2 adaptive EditorShell state', () => {
-  it('derives landscape and portrait from available content space', () => {
+  it('derives desktop, cloud-mobile landscape, and portrait from content space', () => {
+    expect(getEditorShellLayoutMode({ width: 1_024, height: 720 })).toBe(
+      'landscape',
+    );
+    expect(getEditorShellLayoutMode({ width: 1_280, height: 720 })).toBe(
+      'desktop',
+    );
+    expect(getEditorShellLayoutMode({ width: 1_100, height: 720 })).toBe(
+      'landscape',
+    );
+    expect(getEditorShellLayoutMode({ width: 1_101, height: 720 })).toBe(
+      'desktop',
+    );
     expect(getEditorShellLayoutMode({ width: 1_220, height: 2_712 })).toBe(
       'portrait',
-    );
-    expect(getEditorShellLayoutMode({ width: 2_712, height: 1_220 })).toBe(
-      'landscape',
     );
     expect(getEditorShellLayoutMode({ width: 0, height: 0 })).toBe(
       'landscape',
@@ -83,6 +92,9 @@ describe('UI-M2 adaptive EditorShell state', () => {
 
     expect(styles).toContain(
       ".editor-layout[data-shell-mode='landscape']",
+    );
+    expect(styles).toMatch(
+      /\.editor-workspace-slot\s*\{[\s\S]*?display:\s*grid;/u,
     );
     expect(styles).toContain(".editor-layout[data-shell-mode='portrait']");
     expect(styles).toContain(".editor-workspace-slot[hidden]");

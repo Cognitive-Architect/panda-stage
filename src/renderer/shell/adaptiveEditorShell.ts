@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export type EditorShellLayoutMode = 'landscape' | 'portrait';
+export type EditorShellLayoutMode = 'desktop' | 'landscape' | 'portrait';
 
 export type EditorWorkspace =
   | 'canvas'
@@ -23,9 +23,18 @@ export const EDITOR_WORKSPACES: readonly EditorWorkspace[] = [
 ];
 
 /**
+ * The existing ResourceActivityDock/RightInspector responsive seam. Viewports
+ * above this boundary remain on the established desktop composition; the
+ * cloud-mobile landscape shell owns the narrow side-rail composition below it.
+ */
+export const CLOUD_MOBILE_MAX_WIDTH = 1100;
+
+/**
  * The shell follows the available content space rather than persisting a
- * device/orientation preference. A square viewport is treated as landscape so
- * the canvas-first composition remains the conservative fallback.
+ * device/orientation preference. Portrait takes precedence over width. The
+ * existing 1100px seam identifies the cloud-mobile landscape path; wider
+ * landscape viewports retain the established desktop composition so the M2
+ * shell does not change legacy wide-editor behavior.
  */
 export function getEditorShellLayoutMode(
   viewport: EditorViewportSize,
@@ -34,7 +43,8 @@ export function getEditorShellLayoutMode(
   const height = Number.isFinite(viewport.height)
     ? Math.max(0, viewport.height)
     : 0;
-  return height > width ? 'portrait' : 'landscape';
+  if (height > width) return 'portrait';
+  return width <= CLOUD_MOBILE_MAX_WIDTH ? 'landscape' : 'desktop';
 }
 
 export function reconcileEditorWorkspace(

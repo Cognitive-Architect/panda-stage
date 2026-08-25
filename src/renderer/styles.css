@@ -4584,6 +4584,7 @@ h1 {
  * surfaces are re-slotted for the two cloud-mobile compositions.
  */
 .editor-workspace-slot {
+  display: grid;
   min-width: 0;
   min-height: 0;
 }

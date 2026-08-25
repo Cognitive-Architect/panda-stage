@@ -7,7 +7,14 @@ editor shell or a second visual/control system.
 
 ## Composition
 
-The responsive mode is session-only and derived from the available viewport:
+The responsive mode is session-only and derived from the available viewport.
+The existing 1100px responsive seam is preserved as the cloud-mobile boundary:
+portrait takes precedence when height exceeds width, narrow landscape enters the
+M2 composition, and wider landscape remains the established desktop baseline.
+This third baseline mode is not a second shell; it prevents the adaptive stage
+from changing the existing wide-editor contract used by legacy Electron gates.
+
+For the cloud-mobile compositions:
 
 - landscape keeps `CompactProjectBar`, a lightweight left resource rail, the
   same `CanvasWorkspace` as the dominant center, an on-demand resource drawer,
