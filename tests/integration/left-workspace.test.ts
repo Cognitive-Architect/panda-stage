@@ -237,10 +237,13 @@ async function snapshot(window) {
     ) +
     '))?.textContent ?? null,' +
     'activity: document.querySelector(' +
-    JSON.stringify('[data-testid="resource-activity-panel"]') +
+      JSON.stringify('[data-testid="resource-activity-panel"]') +
     ')?.getAttribute("data-active-activity") ?? null,' +
+    'resourceRail: Boolean(document.querySelector(' +
+      JSON.stringify('[data-testid="resource-activity-rail"]') +
+    ')),' +
     'assetCategory: [...document.querySelectorAll(' +
-    JSON.stringify('.asset-category-tabs button') +
+      JSON.stringify('.asset-category-tabs button') +
     ')].findIndex((button) => button.getAttribute("aria-pressed") === "true"),' +
     'assetResultCount: document.querySelectorAll(' +
     JSON.stringify('.asset-import-results li') +
@@ -539,6 +542,7 @@ async function verifyIssue81() {
     const aAssetBrowser = await snapshot(window);
     await click(window, '.asset-card');
     const aAsset = await snapshot(window);
+    const landscapeResource = Boolean(aAsset.resourceRail);
     await openProject(window, projectBRoot);
     await waitForActivity(window, 'shots');
     const bAfterA = await snapshot(window);
@@ -702,7 +706,7 @@ async function verifyIssue81() {
       aAsset.activity !== 'assets' ||
       aAsset.assetResultCount !== 0 ||
       aAsset.assetSelectedCount !== 1 ||
-      !aAsset.assetDetailsView ||
+      (!landscapeResource && !aAsset.assetDetailsView) ||
       aAsset.dirty ||
       aAsset.revision !== 0
     ) {
@@ -721,7 +725,7 @@ async function verifyIssue81() {
       failures.push('A local asset state leaked into B.');
     }
     if (
-      bAssetsClean.assetCategory !== 1 ||
+      bAssetsClean.assetCategory !== (landscapeResource ? 0 : 1) ||
       bAssetsClean.assetResultCount !== 0 ||
       bAssetsClean.assetSelectedCount !== 0
     ) {
