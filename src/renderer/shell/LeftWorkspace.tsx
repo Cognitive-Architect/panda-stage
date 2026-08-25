@@ -9,6 +9,8 @@ export interface LeftWorkspaceProps {
   projectSnapshot: EditorProjectSnapshot;
   recentRefreshToken: number;
   shellMode?: EditorShellLayoutMode;
+  drawerOpen?: boolean;
+  onDrawerOpenChange?(open: boolean): void;
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
   onOpenRecentProject(
@@ -21,6 +23,8 @@ export function LeftWorkspace({
   projectSnapshot,
   recentRefreshToken,
   shellMode,
+  drawerOpen,
+  onDrawerOpenChange,
   activeActivity,
   onActiveActivityChange,
   onOpenRecentProject,
@@ -46,6 +50,8 @@ export function LeftWorkspace({
           </>
         }
         activeActivity={activeActivity}
+        drawerOpen={drawerOpen}
+        onDrawerOpenChange={onDrawerOpenChange}
         compact={
           shellMode === undefined ? undefined : shellMode === 'landscape'
         }

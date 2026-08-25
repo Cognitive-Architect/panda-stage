@@ -3,7 +3,6 @@ import type { EditorWorkspace } from './adaptiveEditorShell';
 
 const WORKSPACE_OPTIONS = [
   { value: 'canvas', label: 'Canvas' },
-  { value: 'shots', label: 'Shots' },
   { value: 'assets', label: 'Assets' },
   { value: 'properties', label: 'Properties' },
   { value: 'timeline', label: 'Timeline' },

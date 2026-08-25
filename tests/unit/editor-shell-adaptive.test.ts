@@ -86,7 +86,6 @@ describe('UI-M2 adaptive EditorShell state', () => {
   it('preserves a legal workspace through an orientation round-trip', () => {
     const workspaces: readonly EditorWorkspace[] = [
       'canvas',
-      'shots',
       'assets',
       'properties',
       'timeline',
@@ -122,6 +121,10 @@ describe('UI-M2 adaptive EditorShell state', () => {
     expect(shell).toContain('data-editor-device-mode={deviceMode}');
     expect(shell).toContain('onDeviceModeChange={setDeviceMode}');
     expect(shell).toContain('data-active-workspace=');
+    expect(shell).toContain('data-portrait-surface={portraitContextSurface}');
+    expect(shell).toContain('portrait-canvas-context-actions');
+    expect(shell).toContain('data-testid="portrait-open-shots"');
+    expect(shell).toContain('data-testid="portrait-open-properties"');
     expect(shell).toContain('hidden={isPortrait');
     expect(shell).toContain('aria-hidden={');
     expect(bar).toContain('EDITOR_DEVICE_MODE_OPTIONS');
@@ -131,13 +134,14 @@ describe('UI-M2 adaptive EditorShell state', () => {
 
     for (const workspace of [
       'Canvas',
-      'Shots',
       'Assets',
       'Properties',
       'Timeline',
     ]) {
       expect(switcher).toContain(`label: '${workspace}'`);
     }
+    expect(switcher).not.toContain("label: 'Shots'");
+    expect(adaptive).not.toContain("'shots' |");
     expect(switcher).toContain('<SegmentedTabs');
     expect(readSource('src/renderer/ui/SegmentedTabs.tsx')).toContain(
       'role="tablist"',
@@ -145,8 +149,10 @@ describe('UI-M2 adaptive EditorShell state', () => {
     expect(adaptive).toContain('useSyncExternalStore');
 
     expect(left).toContain('shellMode?: EditorShellLayoutMode');
+    expect(left).toContain('drawerOpen?: boolean');
     expect(left).toContain('onActiveActivityChange');
     expect(inspector).toContain('shellMode?: EditorShellLayoutMode');
+    expect(inspector).toContain('compact?: boolean');
     expect(bottom).toContain('data-presentation={presentation}');
 
     expect(styles).toContain(
@@ -196,6 +202,12 @@ describe('UI-M2 adaptive EditorShell state', () => {
     );
     expect(styles).toMatch(
       /\.editor-layout\[data-shell-mode='portrait'\]\s+>\s+\.bottom-workspace\[data-presentation='portrait'\]\s*\{[\s\S]*?overflow-y:\s*auto;/u,
+    );
+    expect(styles).toMatch(
+      /\.editor-body\[data-shell-mode='portrait'\]\[data-active-workspace='timeline'\]\s*\{[\s\S]*?visibility:\s*hidden;[\s\S]*?pointer-events:\s*none;/u,
+    );
+    expect(styles).toContain(
+      "grid-template-columns: repeat(4, minmax(88px, 1fr));",
     );
   });
 });

@@ -14,6 +14,9 @@ export interface ResourceActivityDockProps {
   auxiliaryContent?: ReactNode;
   /** Force the existing resource owner into the landscape drawer contract. */
   compact?: boolean;
+  /** Optional controlled drawer state for a portrait Canvas-context surface. */
+  drawerOpen?: boolean;
+  onDrawerOpenChange?(open: boolean): void;
   /** Optional portrait workspace request; the resource owner remains single. */
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
@@ -70,6 +73,8 @@ export function ResourceActivityDock({
   snapshot,
   auxiliaryContent,
   compact,
+  drawerOpen: requestedDrawerOpen,
+  onDrawerOpenChange,
   activeActivity: requestedActivity,
   onActiveActivityChange,
 }: ResourceActivityDockProps): React.JSX.Element {
@@ -86,11 +91,21 @@ export function ResourceActivityDock({
   const narrow = useNarrowViewport(
     compact === undefined ? 'auto' : compact ? 'compact' : 'expanded',
   );
-  const [drawerOpen, setDrawerOpen] = useState(() => !narrow);
+  const [internalDrawerOpen, setInternalDrawerOpen] = useState(() => !narrow);
+  const drawerOpen = requestedDrawerOpen ?? internalDrawerOpen;
+
+  const setDrawerOpen = (open: boolean): void => {
+    if (requestedDrawerOpen === undefined) {
+      setInternalDrawerOpen(open);
+    }
+    onDrawerOpenChange?.(open);
+  };
 
   useEffect(() => {
-    setDrawerOpen(!narrow);
-  }, [narrow]);
+    if (requestedDrawerOpen === undefined) {
+      setInternalDrawerOpen(!narrow);
+    }
+  }, [narrow, requestedDrawerOpen]);
 
   useEffect(() => {
     if (!narrow) return undefined;
@@ -160,7 +175,7 @@ export function ResourceActivityDock({
         aria-label={drawerOpen ? '收起资源工作区' : '打开资源工作区'}
         className="resource-workspace-handle"
         data-testid="resource-workspace-handle"
-        onClick={() => setDrawerOpen((open) => !open)}
+        onClick={() => setDrawerOpen(!drawerOpen)}
         type="button"
       >
         <span>{drawerOpen ? '‹' : '›'}</span>

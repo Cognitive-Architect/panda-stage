@@ -15,7 +15,6 @@ export const EDITOR_DEVICE_MODE_OPTIONS = [
 
 export type EditorWorkspace =
   | 'canvas'
-  | 'shots'
   | 'assets'
   | 'properties'
   | 'timeline';
@@ -27,7 +26,6 @@ export interface EditorViewportSize {
 
 export const EDITOR_WORKSPACES: readonly EditorWorkspace[] = [
   'canvas',
-  'shots',
   'assets',
   'properties',
   'timeline',
@@ -68,9 +66,10 @@ export function reconcileEditorWorkspace(
   _layoutMode: EditorShellLayoutMode,
   workspace: EditorWorkspace,
 ): EditorWorkspace {
-  // All five workspaces are legal in both compositions. Keeping the selected
-  // value across an orientation round-trip preserves session context without
-  // creating a second project/session owner.
+  // The four canonical portrait workspaces are legal in both compositions.
+  // Keeping the selected value across an orientation round-trip preserves
+  // session context without creating a second project/session owner. Shot
+  // management is a Canvas-context surface, not a fifth workspace.
   return workspace;
 }
 

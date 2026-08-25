@@ -89,10 +89,18 @@ export function getRightInspectorSelection(
 
 export interface RightInspectorProps {
   shellMode?: EditorShellLayoutMode;
+  /** Optional compact presentation for a portrait Canvas-context sheet. */
+  compact?: boolean;
+  /** Optional controlled drawer state for a portrait Canvas-context sheet. */
+  drawerOpen?: boolean;
+  onDrawerOpenChange?(open: boolean): void;
 }
 
 export function RightInspector({
   shellMode,
+  compact,
+  drawerOpen: requestedDrawerOpen,
+  onDrawerOpenChange,
 }: RightInspectorProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -123,22 +131,37 @@ export function RightInspector({
   // Issue 192: reuse the same narrow seam as the left resource workspace so the
   // two edges collapse symmetrically instead of inventing a second breakpoint.
   const narrowMode =
-    shellMode === undefined
-      ? 'auto'
-      : shellMode === 'landscape'
+    compact === undefined
+      ? shellMode === undefined
+        ? 'auto'
+        : shellMode === 'landscape'
+          ? 'compact'
+          : 'expanded'
+      : compact
         ? 'compact'
         : 'expanded';
   const narrow = useNarrowViewport(narrowMode);
-  const [drawerOpen, setDrawerOpen] = useState(() =>
+  const [internalDrawerOpen, setInternalDrawerOpen] = useState(() =>
     shellMode === undefined ? !isNarrowViewport() : !narrow,
   );
+  const drawerOpen = requestedDrawerOpen ?? internalDrawerOpen;
+
+  const setDrawerOpen = (open: boolean): void => {
+    if (requestedDrawerOpen === undefined) {
+      setInternalDrawerOpen(open);
+    }
+    onDrawerOpenChange?.(open);
+  };
+
   const railRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const prevDrawerOpenRef = useRef(drawerOpen);
 
   useEffect(() => {
-    setDrawerOpen(!narrow);
-  }, [narrow]);
+    if (requestedDrawerOpen === undefined) {
+      setInternalDrawerOpen(!narrow);
+    }
+  }, [narrow, requestedDrawerOpen]);
 
   useEffect(() => {
     if (!narrow) return undefined;
@@ -229,7 +252,7 @@ export function RightInspector({
         aria-label={drawerOpen ? `收起${inspectorModeLabel}` : `打开${inspectorModeLabel}`}
         className="inspector-rail-handle"
         data-testid="inspector-rail-handle"
-        onClick={() => setDrawerOpen((open) => !open)}
+        onClick={() => setDrawerOpen(!drawerOpen)}
         type="button"
       >
         <span>{drawerOpen ? '›' : '‹'}</span>

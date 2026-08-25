@@ -72,6 +72,7 @@ export type EditorShellSessionRegion =
   | 'start-screen'
   | 'editor-layout';
 export type EditorShellPage = 'project-center' | 'editor';
+type PortraitCanvasSurface = 'none' | 'shots' | 'properties';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
@@ -434,6 +435,8 @@ export function EditorShell({
     useState<EditorWorkspace>('canvas');
   const [portraitResourceActivity, setPortraitResourceActivity] =
     useState<ResourceActivity>('shots');
+  const [portraitCanvasSurface, setPortraitCanvasSurface] =
+    useState<PortraitCanvasSurface>('none');
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
   const page = getEditorShellPage(requestedPage, projectSnapshot);
@@ -460,6 +463,12 @@ export function EditorShell({
       reconcileEditorWorkspace(layoutMode, current),
     );
   }, [layoutMode]);
+
+  useEffect(() => {
+    if (!isPortrait || portraitWorkspace !== 'canvas') {
+      setPortraitCanvasSurface('none');
+    }
+  }, [isPortrait, portraitWorkspace]);
 
   useEffect(() => {
     session.activateAutosaveErrors((error) => setStatus(error.message));
@@ -876,11 +885,26 @@ export function EditorShell({
 
   const selectPortraitWorkspace = (workspace: EditorWorkspace): void => {
     setPortraitWorkspace(workspace);
+    setPortraitCanvasSurface('none');
     if (workspace === 'assets') {
       setPortraitResourceActivity('assets');
-    } else if (workspace === 'shots') {
+    } else if (workspace === 'canvas') {
       setPortraitResourceActivity('shots');
     }
+  };
+
+  const openPortraitCanvasSurface = (
+    surface: Exclude<PortraitCanvasSurface, 'none'>,
+  ): void => {
+    setPortraitWorkspace('canvas');
+    setPortraitCanvasSurface(surface);
+    if (surface === 'shots') {
+      setPortraitResourceActivity('shots');
+    }
+  };
+
+  const closePortraitCanvasSurface = (): void => {
+    setPortraitCanvasSurface('none');
   };
 
   const handlePortraitResourceActivityChange = (
@@ -888,8 +912,34 @@ export function EditorShell({
   ): void => {
     if (!isPortrait) return;
     setPortraitResourceActivity(activity);
-    setPortraitWorkspace(activity === 'assets' ? 'assets' : 'shots');
+    if (activity === 'assets') {
+      setPortraitWorkspace('assets');
+      setPortraitCanvasSurface('none');
+    } else {
+      setPortraitWorkspace('canvas');
+      setPortraitCanvasSurface('shots');
+    }
   };
+
+  const portraitCanvasVisible =
+    !isPortrait ||
+    portraitWorkspace === 'canvas' ||
+    portraitWorkspace === 'properties';
+  const portraitResourcesVisible =
+    !isPortrait ||
+    portraitWorkspace === 'assets' ||
+    (portraitWorkspace === 'canvas' && portraitCanvasSurface === 'shots');
+  const portraitPropertiesVisible =
+    !isPortrait ||
+    portraitWorkspace === 'properties' ||
+    (portraitWorkspace === 'canvas' &&
+      portraitCanvasSurface === 'properties');
+  const portraitContextSurface =
+    isPortrait && portraitWorkspace === 'canvas'
+      ? portraitCanvasSurface
+      : isPortrait && portraitWorkspace === 'properties'
+        ? 'properties'
+        : 'none';
 
   return (
     <main
@@ -968,32 +1018,33 @@ export function EditorShell({
           <div
             className="editor-body"
             data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
+            data-portrait-surface={portraitContextSurface}
             data-shell-mode={layoutMode}
             data-testid="editor-body"
           >
             <div
-              aria-hidden={
-                isPortrait &&
-                portraitWorkspace !== 'shots' &&
-                portraitWorkspace !== 'assets'
-              }
+              aria-hidden={!portraitResourcesVisible}
               className="editor-workspace-slot editor-workspace-slot-resources"
-              data-active={
-                !isPortrait ||
-                portraitWorkspace === 'shots' ||
-                portraitWorkspace === 'assets'
-              }
+              data-active={portraitResourcesVisible}
               data-workspace-owner="resources"
-              hidden={
-                isPortrait &&
-                portraitWorkspace !== 'shots' &&
-                portraitWorkspace !== 'assets'
-              }
+              hidden={!portraitResourcesVisible}
             >
               <LeftWorkspace
                 activeActivity={
                   isPortrait ? portraitResourceActivity : undefined
                 }
+                drawerOpen={
+                  isPortrait && portraitResourcesVisible ? true : undefined
+                }
+                onDrawerOpenChange={(open) => {
+                  if (!isPortrait || open) return;
+                  if (portraitWorkspace === 'assets') {
+                    setPortraitWorkspace('canvas');
+                    setPortraitResourceActivity('shots');
+                  } else {
+                    closePortraitCanvasSurface();
+                  }
+                }}
                 onActiveActivityChange={handlePortraitResourceActivityChange}
                 onOpenRecentProject={switchToRecentProject}
                 projectSnapshot={projectSnapshot}
@@ -1002,22 +1053,60 @@ export function EditorShell({
               />
             </div>
             <div
-              aria-hidden={isPortrait && portraitWorkspace !== 'canvas'}
+              aria-hidden={!portraitCanvasVisible}
               className="editor-workspace-slot editor-workspace-slot-canvas"
-              data-active={!isPortrait || portraitWorkspace === 'canvas'}
+              data-active={portraitCanvasVisible}
               data-workspace-owner="canvas"
-              hidden={isPortrait && portraitWorkspace !== 'canvas'}
+              hidden={!portraitCanvasVisible}
             >
+              {isPortrait && portraitWorkspace === 'canvas' ? (
+                <nav
+                  aria-label="画布上下文工作区"
+                  className="portrait-canvas-context-actions"
+                  data-testid="portrait-canvas-context-actions"
+                >
+                  <button
+                    aria-expanded={portraitCanvasSurface === 'shots'}
+                    data-testid="portrait-open-shots"
+                    onClick={() => openPortraitCanvasSurface('shots')}
+                    type="button"
+                  >
+                    镜头
+                  </button>
+                  <button
+                    aria-expanded={portraitCanvasSurface === 'properties'}
+                    data-testid="portrait-open-properties"
+                    onClick={() => openPortraitCanvasSurface('properties')}
+                    type="button"
+                  >
+                    属性
+                  </button>
+                </nav>
+              ) : null}
               <CanvasWorkspace />
             </div>
             <div
-              aria-hidden={isPortrait && portraitWorkspace !== 'properties'}
+              aria-hidden={!portraitPropertiesVisible}
               className="editor-workspace-slot editor-workspace-slot-properties"
-              data-active={!isPortrait || portraitWorkspace === 'properties'}
+              data-active={portraitPropertiesVisible}
               data-workspace-owner="properties"
-              hidden={isPortrait && portraitWorkspace !== 'properties'}
+              hidden={!portraitPropertiesVisible}
             >
-              <RightInspector shellMode={layoutMode} />
+              <RightInspector
+                compact={isPortrait && portraitPropertiesVisible}
+                drawerOpen={
+                  isPortrait && portraitPropertiesVisible ? true : undefined
+                }
+                onDrawerOpenChange={(open) => {
+                  if (!isPortrait || open) return;
+                  if (portraitWorkspace === 'properties') {
+                    setPortraitWorkspace('canvas');
+                  } else {
+                    closePortraitCanvasSurface();
+                  }
+                }}
+                shellMode={layoutMode}
+              />
             </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
           </div>
