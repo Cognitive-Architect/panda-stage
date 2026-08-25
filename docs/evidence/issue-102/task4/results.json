@@ -30,6 +30,7 @@
       "editorBody": null,
       "canvas": null,
       "inspector": null,
+      "inspectorRail": null,
       "bottom": null,
       "bottomMetrics": null,
       "historyMetrics": null,
@@ -155,33 +156,34 @@
         "left": 12,
         "top": 78,
         "right": 1268,
-        "bottom": 646,
+        "bottom": 530,
         "width": 1256,
-        "height": 568
+        "height": 452
       },
       "canvas": {
         "left": 382,
         "top": 78,
         "right": 978,
-        "bottom": 646,
+        "bottom": 530,
         "width": 596,
-        "height": 568
+        "height": 452
       },
       "inspector": {
         "left": 988.67,
         "top": 78.67,
         "right": 1252,
-        "bottom": 645.33,
+        "bottom": 529.33,
         "width": 263.33,
-        "height": 566.67
+        "height": 450.67
       },
+      "inspectorRail": null,
       "bottom": {
         "left": 12,
-        "top": 656,
+        "top": 540,
         "right": 1268,
         "bottom": 708,
         "width": 1256,
-        "height": 52
+        "height": 168
       },
       "bottomMetrics": {
         "overflow": "hidden",
@@ -189,8 +191,8 @@
         "overflowY": "hidden",
         "clientWidth": 1255,
         "scrollWidth": 1255,
-        "clientHeight": 51,
-        "scrollHeight": 51
+        "clientHeight": 167,
+        "scrollHeight": 167
       },
       "historyMetrics": {
         "overflow": "visible",
@@ -230,27 +232,27 @@
       "coreButtons": [
         {
           "id": "project-center",
-          "width": 85.33,
+          "width": 81.33,
           "height": 44,
           "left": 22.67,
-          "right": 108,
+          "right": 104,
           "bottom": 62,
           "disabled": false
         },
         {
           "id": "save-project",
-          "width": 53.33,
+          "width": 49.33,
           "height": 44,
-          "left": 1122.22,
-          "right": 1175.55,
+          "left": 1132.53,
+          "right": 1181.86,
           "bottom": 62,
           "disabled": true
         },
         {
           "id": "more-menu",
-          "width": 71.78,
+          "width": 65.47,
           "height": 44,
-          "left": 1185.55,
+          "left": 1191.86,
           "right": 1257.33,
           "bottom": 62,
           "disabled": false
@@ -316,33 +318,34 @@
         "left": 12,
         "top": 78,
         "right": 1268,
-        "bottom": 646,
+        "bottom": 530,
         "width": 1256,
-        "height": 568
+        "height": 452
       },
       "canvas": {
         "left": 382,
         "top": 78,
         "right": 978,
-        "bottom": 646,
+        "bottom": 530,
         "width": 596,
-        "height": 568
+        "height": 452
       },
       "inspector": {
         "left": 988.67,
         "top": 78.67,
         "right": 1252,
-        "bottom": 645.33,
+        "bottom": 529.33,
         "width": 263.33,
-        "height": 566.67
+        "height": 450.67
       },
+      "inspectorRail": null,
       "bottom": {
         "left": 12,
-        "top": 656,
+        "top": 540,
         "right": 1268,
         "bottom": 708,
         "width": 1256,
-        "height": 52
+        "height": 168
       },
       "bottomMetrics": {
         "overflow": "hidden",
@@ -350,8 +353,8 @@
         "overflowY": "hidden",
         "clientWidth": 1255,
         "scrollWidth": 1255,
-        "clientHeight": 51,
-        "scrollHeight": 51
+        "clientHeight": 167,
+        "scrollHeight": 167
       },
       "historyMetrics": {
         "overflow": "visible",
@@ -366,9 +369,9 @@
         "left": 1067.33,
         "top": 68,
         "right": 1257.33,
-        "bottom": 269.33,
+        "bottom": 438,
         "width": 190,
-        "height": 201.33
+        "height": 370
       },
       "projectCenter": null,
       "recentList": {
@@ -398,27 +401,27 @@
       "coreButtons": [
         {
           "id": "project-center",
-          "width": 85.33,
+          "width": 81.33,
           "height": 44,
           "left": 22.67,
-          "right": 108,
+          "right": 104,
           "bottom": 62,
           "disabled": false
         },
         {
           "id": "save-project",
-          "width": 53.33,
+          "width": 49.33,
           "height": 44,
-          "left": 1122.22,
-          "right": 1175.55,
+          "left": 1132.53,
+          "right": 1181.86,
           "bottom": 62,
           "disabled": true
         },
         {
           "id": "more-menu",
-          "width": 71.78,
+          "width": 65.47,
           "height": 44,
-          "left": 1185.55,
+          "left": 1191.86,
           "right": 1257.33,
           "bottom": 62,
           "disabled": false
@@ -456,7 +459,7 @@
           "height": 44,
           "left": 1074,
           "right": 1250.67,
-          "bottom": 262.67,
+          "bottom": 431.33,
           "disabled": false
         },
         {
@@ -520,33 +523,41 @@
         "left": 8,
         "top": 72,
         "right": 1016,
-        "bottom": 652,
+        "bottom": 536,
         "width": 1008,
-        "height": 580
+        "height": 464
       },
       "canvas": {
         "left": 72,
         "top": 72,
-        "right": 768,
-        "bottom": 652,
-        "width": 696,
-        "height": 580
+        "right": 952,
+        "bottom": 536,
+        "width": 880,
+        "height": 464
       },
       "inspector": {
-        "left": 776.67,
-        "top": 72.67,
-        "right": 1000,
-        "bottom": 651.33,
-        "width": 223.33,
-        "height": 578.67
+        "left": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "inspectorRail": {
+        "left": 964,
+        "top": 72,
+        "right": 1016,
+        "bottom": 536,
+        "width": 52,
+        "height": 464
       },
       "bottom": {
         "left": 8,
-        "top": 660,
+        "top": 544,
         "right": 1016,
         "bottom": 712,
         "width": 1008,
-        "height": 52
+        "height": 168
       },
       "bottomMetrics": {
         "overflow": "hidden",
@@ -554,8 +565,8 @@
         "overflowY": "hidden",
         "clientWidth": 1007,
         "scrollWidth": 1007,
-        "clientHeight": 51,
-        "scrollHeight": 51
+        "clientHeight": 167,
+        "scrollHeight": 167
       },
       "historyMetrics": {
         "overflow": "visible",
@@ -595,27 +606,27 @@
       "coreButtons": [
         {
           "id": "project-center",
-          "width": 85.33,
+          "width": 81.33,
           "height": 44,
           "left": 18.67,
-          "right": 104,
+          "right": 100,
           "bottom": 58,
           "disabled": false
         },
         {
           "id": "save-project",
-          "width": 53.33,
+          "width": 49.33,
           "height": 44,
-          "left": 870.22,
-          "right": 923.55,
+          "left": 880.53,
+          "right": 929.86,
           "bottom": 58,
           "disabled": true
         },
         {
           "id": "more-menu",
-          "width": 71.78,
+          "width": 65.47,
           "height": 44,
-          "left": 933.55,
+          "left": 939.86,
           "right": 1005.33,
           "bottom": 58,
           "disabled": false
@@ -645,33 +656,41 @@
         "left": 8,
         "top": 72,
         "right": 1016,
-        "bottom": 652,
+        "bottom": 536,
         "width": 1008,
-        "height": 580
+        "height": 464
       },
       "canvas": {
         "left": 72,
         "top": 72,
-        "right": 768,
-        "bottom": 652,
-        "width": 696,
-        "height": 580
+        "right": 952,
+        "bottom": 536,
+        "width": 880,
+        "height": 464
       },
       "inspector": {
-        "left": 776.67,
-        "top": 72.67,
-        "right": 1000,
-        "bottom": 651.33,
-        "width": 223.33,
-        "height": 578.67
+        "left": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "inspectorRail": {
+        "left": 964,
+        "top": 72,
+        "right": 1016,
+        "bottom": 536,
+        "width": 52,
+        "height": 464
       },
       "bottom": {
         "left": 8,
-        "top": 660,
+        "top": 544,
         "right": 1016,
         "bottom": 712,
         "width": 1008,
-        "height": 52
+        "height": 168
       },
       "bottomMetrics": {
         "overflow": "hidden",
@@ -679,8 +698,8 @@
         "overflowY": "hidden",
         "clientWidth": 1007,
         "scrollWidth": 1007,
-        "clientHeight": 51,
-        "scrollHeight": 51
+        "clientHeight": 167,
+        "scrollHeight": 167
       },
       "historyMetrics": {
         "overflow": "visible",
@@ -695,9 +714,9 @@
         "left": 815.33,
         "top": 64,
         "right": 1005.33,
-        "bottom": 265.33,
+        "bottom": 434,
         "width": 190,
-        "height": 201.33
+        "height": 370
       },
       "projectCenter": null,
       "recentList": {
@@ -727,27 +746,27 @@
       "coreButtons": [
         {
           "id": "project-center",
-          "width": 85.33,
+          "width": 81.33,
           "height": 44,
           "left": 18.67,
-          "right": 104,
+          "right": 100,
           "bottom": 58,
           "disabled": false
         },
         {
           "id": "save-project",
-          "width": 53.33,
+          "width": 49.33,
           "height": 44,
-          "left": 870.22,
-          "right": 923.55,
+          "left": 880.53,
+          "right": 929.86,
           "bottom": 58,
           "disabled": true
         },
         {
           "id": "more-menu",
-          "width": 71.78,
+          "width": 65.47,
           "height": 44,
-          "left": 933.55,
+          "left": 939.86,
           "right": 1005.33,
           "bottom": 58,
           "disabled": false
@@ -785,7 +804,7 @@
           "height": 44,
           "left": 822,
           "right": 998.67,
-          "bottom": 258.67,
+          "bottom": 427.33,
           "disabled": false
         }
       ]
@@ -805,6 +824,7 @@
       "editorBody": null,
       "canvas": null,
       "inspector": null,
+      "inspectorRail": null,
       "bottom": null,
       "bottomMetrics": null,
       "historyMetrics": null,
@@ -939,33 +959,41 @@
         "left": 8,
         "top": 72,
         "right": 792,
-        "bottom": 652,
+        "bottom": 536,
         "width": 784,
-        "height": 580
+        "height": 464
       },
       "canvas": {
         "left": 72,
         "top": 72,
-        "right": 544,
-        "bottom": 652,
-        "width": 472,
-        "height": 580
+        "right": 728,
+        "bottom": 536,
+        "width": 656,
+        "height": 464
       },
       "inspector": {
-        "left": 552.67,
-        "top": 72.67,
-        "right": 776,
-        "bottom": 651.33,
-        "width": 223.33,
-        "height": 578.67
+        "left": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "inspectorRail": {
+        "left": 740,
+        "top": 72,
+        "right": 792,
+        "bottom": 536,
+        "width": 52,
+        "height": 464
       },
       "bottom": {
         "left": 8,
-        "top": 660,
+        "top": 544,
         "right": 792,
         "bottom": 712,
         "width": 784,
-        "height": 52
+        "height": 168
       },
       "bottomMetrics": {
         "overflow": "hidden",
@@ -973,8 +1001,8 @@
         "overflowY": "hidden",
         "clientWidth": 783,
         "scrollWidth": 783,
-        "clientHeight": 51,
-        "scrollHeight": 51
+        "clientHeight": 167,
+        "scrollHeight": 167
       },
       "historyMetrics": {
         "overflow": "visible",
@@ -1014,27 +1042,27 @@
       "coreButtons": [
         {
           "id": "project-center",
-          "width": 85.33,
+          "width": 81.33,
           "height": 44,
           "left": 18.67,
-          "right": 104,
+          "right": 100,
           "bottom": 58,
           "disabled": false
         },
         {
           "id": "save-project",
-          "width": 53.33,
+          "width": 49.33,
           "height": 44,
-          "left": 646.22,
-          "right": 699.55,
+          "left": 656.53,
+          "right": 705.86,
           "bottom": 58,
           "disabled": true
         },
         {
           "id": "more-menu",
-          "width": 71.78,
+          "width": 65.47,
           "height": 44,
-          "left": 709.55,
+          "left": 715.86,
           "right": 781.33,
           "bottom": 58,
           "disabled": false
@@ -1064,33 +1092,41 @@
         "left": 8,
         "top": 72,
         "right": 792,
-        "bottom": 492,
+        "bottom": 376,
         "width": 784,
-        "height": 420
+        "height": 304
       },
       "canvas": {
         "left": 72,
         "top": 72,
-        "right": 544,
-        "bottom": 492,
-        "width": 472,
-        "height": 420
+        "right": 728,
+        "bottom": 376,
+        "width": 656,
+        "height": 304
       },
       "inspector": {
-        "left": 552.67,
-        "top": 72.67,
-        "right": 776,
-        "bottom": 491.33,
-        "width": 223.33,
-        "height": 418.67
+        "left": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "inspectorRail": {
+        "left": 740,
+        "top": 72,
+        "right": 792,
+        "bottom": 376,
+        "width": 52,
+        "height": 304
       },
       "bottom": {
         "left": 8,
-        "top": 500,
+        "top": 384,
         "right": 792,
         "bottom": 552,
         "width": 784,
-        "height": 52
+        "height": 168
       },
       "bottomMetrics": {
         "overflow": "hidden",
@@ -1098,8 +1134,8 @@
         "overflowY": "hidden",
         "clientWidth": 783,
         "scrollWidth": 783,
-        "clientHeight": 51,
-        "scrollHeight": 51
+        "clientHeight": 167,
+        "scrollHeight": 167
       },
       "historyMetrics": {
         "overflow": "visible",
@@ -1139,27 +1175,27 @@
       "coreButtons": [
         {
           "id": "project-center",
-          "width": 85.33,
+          "width": 81.33,
           "height": 44,
           "left": 18.67,
-          "right": 104,
+          "right": 100,
           "bottom": 58,
           "disabled": false
         },
         {
           "id": "save-project",
-          "width": 53.33,
+          "width": 49.33,
           "height": 44,
-          "left": 646.22,
-          "right": 699.55,
+          "left": 656.53,
+          "right": 705.86,
           "bottom": 58,
           "disabled": true
         },
         {
           "id": "more-menu",
-          "width": 71.78,
+          "width": 65.47,
           "height": 44,
-          "left": 709.55,
+          "left": 715.86,
           "right": 781.33,
           "bottom": 58,
           "disabled": false
@@ -1178,6 +1214,6 @@
     "editorMinimumHeight": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4\\task4-editor-minimum-height.png"
   },
   "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task4",
-  "repositoryEvidenceRoot": "D:\\panda-stage-main\\docs\\evidence\\issue-102\\task4",
+  "repositoryEvidenceRoot": "D:\\panda-issue318-ui-m1\\docs\\evidence\\issue-102\\task4",
   "error": null
 }

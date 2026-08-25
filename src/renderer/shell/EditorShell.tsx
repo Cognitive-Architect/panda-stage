@@ -1093,7 +1093,7 @@ export function EditorShell({
               hidden={!portraitPropertiesVisible}
             >
               <RightInspector
-                compact={isPortrait && portraitPropertiesVisible}
+                compact={isPortrait ? portraitPropertiesVisible : undefined}
                 drawerOpen={
                   isPortrait && portraitPropertiesVisible ? true : undefined
                 }

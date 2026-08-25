@@ -5,6 +5,7 @@ const inspector = readFileSync(
   'src/renderer/shell/RightInspector.tsx',
   'utf8',
 );
+const shell = readFileSync('src/renderer/shell/EditorShell.tsx', 'utf8');
 const dock = readFileSync('src/renderer/shell/ResourceActivityDock.tsx', 'utf8');
 const styles = readFileSync('src/renderer/styles.css', 'utf8');
 
@@ -38,6 +39,15 @@ describe('Issue 192 Right Inspector compact rail and drawer', () => {
   it('collapses the right column symmetrically with the left in the 1100px seam', () => {
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*1100px\)\s*\{[\s\S]*?\.editor-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(52px,\s*56px\)\s*minmax\(0,\s*1fr\)\s*minmax\(52px,\s*56px\);/u,
+    );
+  });
+
+  it('lets the landscape shell select the compact inspector rail', () => {
+    expect(shell).toContain(
+      'compact={isPortrait ? portraitPropertiesVisible : undefined}',
+    );
+    expect(shell).not.toContain(
+      'compact={isPortrait && portraitPropertiesVisible}',
     );
   });
 
