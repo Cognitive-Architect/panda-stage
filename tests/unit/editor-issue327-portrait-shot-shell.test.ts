@@ -33,7 +33,7 @@ describe('Issue #327 portrait shell and Shot header cleanup', () => {
   });
 
   it('scopes flatter framing and Shot CTA treatment to Cloud Touch portrait', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = source('src/renderer/styles.css').replaceAll('\r\n', '\n');
     const scope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
 
