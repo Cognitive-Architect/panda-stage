@@ -397,13 +397,31 @@ async function switchActivity(window, activity) {
   await waitForActivity(window, activity);
 }
 
-async function applyShotName(window, name) {
-  await setInput(
-    window,
-    '.shot-fields label:nth-of-type(1) input',
-    name,
+async function makeProjectDirty(window, name) {
+  const hasShotEditor = await window.webContents.executeJavaScript(
+    'Boolean(document.querySelector(".shot-fields label:nth-of-type(1) input"))',
   );
-  await click(window, '.shot-fields label:nth-of-type(1) button');
+  if (hasShotEditor) {
+    await setInput(
+      window,
+      '.shot-fields label:nth-of-type(1) input',
+      name,
+    );
+    await click(window, '.shot-fields label:nth-of-type(1) button');
+  } else {
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitFor(
+      window,
+      'document.querySelector("[data-testid=\\"shot-create-view\\"]")',
+      'Shot create subview did not open while preparing a dirty project.',
+    );
+    await setInput(
+      window,
+      '.shot-create-form label:nth-of-type(1) input',
+      name,
+    );
+    await click(window, '.shot-create-form button[type="submit"]');
+  }
   await waitFor(
     window,
     'Boolean(document.querySelector(".dirty-state"))',
@@ -628,7 +646,7 @@ async function verifyIssue81() {
     const aFinalAfterTabs = await snapshot(window);
 
     // T7: the existing Dirty Guard still has cancel, discard, and save paths.
-    await applyShotName(window, 'A dirty cancel branch');
+    await makeProjectDirty(window, 'A dirty cancel branch');
     await requestProjectSwitch(window, projectBRoot);
     await waitFor(
       window,
@@ -650,7 +668,7 @@ async function verifyIssue81() {
     await openProject(window, projectBRoot);
     const discardedSwitch = await snapshot(window);
     await openProject(window, projectARoot);
-    await applyShotName(window, 'A dirty save branch');
+    await makeProjectDirty(window, 'A dirty save branch');
     await openProject(window, projectBRoot);
     const savedSwitch = await snapshot(window);
 
