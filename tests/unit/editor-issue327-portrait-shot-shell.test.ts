@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 function source(path: string): string {
-  return readFileSync(path, 'utf8');
+  return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 
 describe('Issue #327 portrait shell and Shot header cleanup', () => {
@@ -33,7 +33,7 @@ describe('Issue #327 portrait shell and Shot header cleanup', () => {
   });
 
   it('scopes flatter framing and Shot CTA treatment to Cloud Touch portrait', () => {
-    const styles = source('src/renderer/styles.css').replaceAll('\r\n', '\n');
+    const styles = source('src/renderer/styles.css');
     const scope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
 
