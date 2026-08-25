@@ -5032,3 +5032,143 @@ h1 {
   > .bottom-workspace[data-presentation='portrait'][hidden] {
   display: none !important;
 }
+
+/* Issue #327: Cloud Touch portrait uses hierarchy and selected state instead
+   of stacking a project card, a switcher card, and four item cards. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar {
+  height: 56px;
+  max-height: 56px;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-portrait-workspace-switcher {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-portrait-workspace-tabs {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-portrait-workspace-tabs
+  .ui-segmented-tabs__item {
+  min-height: 48px;
+  border: 0;
+  border-radius: 0;
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-portrait-workspace-tabs
+  .ui-segmented-tabs__item:hover:not(:disabled) {
+  background: rgb(65 145 87 / 16%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-portrait-workspace-tabs
+  .ui-segmented-tabs__item--selected {
+  border: 0;
+  border-bottom: 3px solid var(--ui-color-selected-border);
+  border-radius: 0;
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+}
+
+/* The dock already owns the concise 镜头 identity in this surface. Keep the
+   existing headings in the accessibility tree while removing visual repeats. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager-heading,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-list-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .resource-activity-header {
+  padding: 14px 16px 12px;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .resource-activity-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .resource-activity-header-actions {
+  display: contents;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .resource-activity-primary-action {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  min-height: 48px;
+  border-color: var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-action-primary);
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .resource-activity-close {
+  grid-column: 2;
+  grid-row: 1;
+  width: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager {
+  padding: 0 16px 16px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .resource-activity-body {
+  padding-bottom: 0;
+}

@@ -17,12 +17,15 @@ export interface ShotManagerProps {
   snapshot: EditorProjectSnapshot | null;
   view?: ShotWorkspaceView;
   onViewChange?: (view: ShotWorkspaceView) => void;
+  /** Portrait shell keeps the dock's concise 镜头 heading as the visible identity. */
+  hideHeading?: boolean;
 }
 
 export function ShotManager({
   snapshot,
   view = 'list',
   onViewChange = () => undefined,
+  hideHeading = false,
 }: ShotManagerProps): React.JSX.Element {
   const selectedShotId = useSyncExternalStore(
     shotStore.subscribe,
@@ -70,10 +73,17 @@ export function ShotManager({
   return (
     <section
       className="shot-manager"
+      aria-label={hideHeading ? '镜头' : undefined}
       aria-labelledby="shot-manager-heading"
       data-testid="shot-manager"
     >
-      <div className="shot-manager-heading">
+      <div
+        className={
+          hideHeading
+            ? 'shot-manager-heading shot-manager-heading-visually-hidden'
+            : 'shot-manager-heading'
+        }
+      >
         <div>
           <p className="eyebrow">镜头编排</p>
           <h2 id="shot-manager-heading">镜头管理</h2>
@@ -124,6 +134,7 @@ export function ShotManager({
             }}
             onSelect={(shotId) => shotStore.select(shotId)}
             selectedShotId={effectiveSelectedId}
+            showHeading={!hideHeading}
             showCreateForm={false}
             shots={project?.shots ?? []}
           />

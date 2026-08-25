@@ -122,6 +122,8 @@ export function ResourceActivityDock({
   const activeLabel =
     ACTIVITIES.find((activity) => activity.id === activeActivity)?.label ??
     '资源';
+  const hideLocalActivityTabs =
+    hideSectionLabels && activeActivity === 'shots';
 
   const primaryAction =
     activeActivity === 'shots'
@@ -170,6 +172,7 @@ export function ResourceActivityDock({
       className={`resource-activity-dock${drawerOpen ? ' resource-activity-dock-open' : ''}`}
       data-resource-drawer-open={drawerOpen}
       data-resource-mode={narrow ? 'narrow' : 'wide'}
+      data-active-activity={activeActivity}
       data-testid="resource-activity-dock"
     >
       <button
@@ -227,29 +230,31 @@ export function ResourceActivityDock({
               </button>
             </div>
           </div>
-          <nav
-            aria-label="编辑资源活动"
-            className="resource-activity-tabs"
-            data-testid="resource-activity-tabs"
-          >
-            {ACTIVITIES.map((activity) => (
-              <button
-                aria-controls="resource-activity-panel"
-                aria-pressed={activeActivity === activity.id}
-                className={
-                  activeActivity === activity.id
-                    ? 'resource-activity-tab-active'
-                    : ''
-                }
-                data-activity={activity.id}
-                key={activity.id}
-                onClick={() => selectActivity(activity.id)}
-                type="button"
-              >
-                {activity.label}
-              </button>
-            ))}
-          </nav>
+          {hideLocalActivityTabs ? null : (
+            <nav
+              aria-label="编辑资源活动"
+              className="resource-activity-tabs"
+              data-testid="resource-activity-tabs"
+            >
+              {ACTIVITIES.map((activity) => (
+                <button
+                  aria-controls="resource-activity-panel"
+                  aria-pressed={activeActivity === activity.id}
+                  className={
+                    activeActivity === activity.id
+                      ? 'resource-activity-tab-active'
+                      : ''
+                  }
+                  data-activity={activity.id}
+                  key={activity.id}
+                  onClick={() => selectActivity(activity.id)}
+                  type="button"
+                >
+                  {activity.label}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
         <div className="resource-activity-body">
           <div
@@ -268,6 +273,7 @@ export function ResourceActivityDock({
           >
             {activeActivity === 'shots' ? (
               <ShotManager
+                hideHeading={hideLocalActivityTabs}
                 onViewChange={setShotView}
                 snapshot={snapshot}
                 view={shotView}
