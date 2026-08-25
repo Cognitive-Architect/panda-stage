@@ -16,6 +16,7 @@ export interface AssetGridProps {
   onDragEnd: () => void;
   onRebuildThumbnail: (assetId: string) => void;
   onThumbnailError: (assetId: string) => void;
+  emptyMessage?: string;
 }
 
 export function AssetGrid({
@@ -28,13 +29,18 @@ export function AssetGrid({
   onDragEnd,
   onRebuildThumbnail,
   onThumbnailError,
+  emptyMessage,
 }: AssetGridProps): React.JSX.Element {
   if (entries.length === 0) {
     return (
       <div className="asset-library-empty">
         <span aria-hidden="true">＋</span>
-        <strong>这个分类还没有素材</strong>
-        <p>使用上方导入入口选择文件，或直接拖入 PNG、JPG、MP3、WAV。</p>
+        <strong>{emptyMessage ?? '这个分类还没有素材'}</strong>
+        <p>
+          {emptyMessage
+            ? '清除搜索或换一个分类试试。'
+            : '使用上方导入入口选择文件，或直接拖入 PNG、JPG、MP3、WAV。'}
+        </p>
       </div>
     );
   }

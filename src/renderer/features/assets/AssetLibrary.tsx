@@ -12,9 +12,11 @@ import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import {
   ASSET_LIBRARY_CATEGORIES,
-  assetCategoryCounts,
+  ASSET_LIBRARY_FILTERS,
+  assetLibraryFilterCounts,
+  filterAssetLibraryEntries,
   selectAssetLibraryEntries,
-  type AssetLibraryCategory,
+  type AssetLibraryFilter,
 } from '../../stores/assetLibrarySelectors';
 import { applyAssetDeleteResponse } from './applyAssetDeleteResponse';
 import { applyAssetMetadataResponse } from './applyAssetMetadataResponse';
@@ -43,6 +45,7 @@ export interface AssetLibraryProps {
   onViewChange?: (view: AssetWorkspaceView) => void;
   importRequestToken?: number;
   closeRequestToken?: number;
+  hideHeading?: boolean;
 }
 
 export function AssetLibrary({
@@ -51,9 +54,12 @@ export function AssetLibrary({
   onViewChange = () => undefined,
   importRequestToken,
   closeRequestToken,
+  hideHeading = false,
 }: AssetLibraryProps): React.JSX.Element {
-  const [category, setCategory] =
-    useState<AssetLibraryCategory>('background');
+  const [category, setCategory] = useState<AssetLibraryFilter>(() =>
+    hideHeading ? 'all' : 'background',
+  );
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedAssetId, setSelectedAssetId] =
     useState<string | null>(null);
   const [draggingAssetId, setDraggingAssetId] =
@@ -108,9 +114,16 @@ export function AssetLibrary({
   const counts = useMemo(
     () =>
       snapshot
-        ? assetCategoryCounts(snapshot.project)
-        : { character: 0, background: 0, audio: 0 },
+        ? assetLibraryFilterCounts(snapshot.project)
+        : { all: 0, character: 0, background: 0, audio: 0 },
     [snapshot],
+  );
+  const filterOptions = hideHeading
+    ? ASSET_LIBRARY_FILTERS
+    : ASSET_LIBRARY_CATEGORIES;
+  const visibleEntries = useMemo(
+    () => filterAssetLibraryEntries(entries, searchQuery),
+    [entries, searchQuery],
   );
   const selectedAsset = useMemo(
     () =>
@@ -134,14 +147,12 @@ export function AssetLibrary({
   useEffect(() => {
     if (
       selectedAssetId &&
-      !snapshot?.project.assets.some(
-        (asset) => asset.id === selectedAssetId,
-      )
+      !visibleEntries.some((entry) => entry.asset.id === selectedAssetId)
     ) {
       setSelectedAssetId(null);
       setAuthoritativeReferences([]);
     }
-  }, [selectedAssetId, snapshot]);
+  }, [selectedAssetId, visibleEntries]);
 
   useEffect(() => {
     let active = true;
@@ -192,7 +203,10 @@ export function AssetLibrary({
   const selectAsset = (assetId: string): void => {
     setSelectedAssetId(assetId);
     setAuthoritativeReferences([]);
-    onViewChange('details');
+    // Portrait keeps the selected card in the two-column browser so the
+    // lightweight selected state remains visible; the existing details route
+    // remains unchanged for the established non-portrait workspace.
+    if (!hideHeading) onViewChange('details');
   };
 
   const rebuildThumbnail = async (assetId: string): Promise<void> => {
@@ -306,14 +320,35 @@ export function AssetLibrary({
     if (view !== 'browser' && flaReviewOpen) closeFlaReview();
   }, [closeFlaReview, flaReviewOpen, view]);
 
+  const previousHideHeading = useRef(hideHeading);
+  useEffect(() => {
+    const previousPortraitAssets = previousHideHeading.current;
+    previousHideHeading.current = hideHeading;
+    if (previousPortraitAssets === hideHeading || hideHeading) return;
+
+    setSearchQuery('');
+    setCategory((current) => current === 'all' ? 'background' : current);
+  }, [hideHeading]);
+
   const previousProjectRoot = useRef(snapshot?.projectRoot);
   useEffect(() => {
     const previousProject = previousProjectRoot.current;
     previousProjectRoot.current = snapshot?.projectRoot;
+    if (previousProject !== snapshot?.projectRoot) {
+      setCategory(hideHeading ? 'all' : 'background');
+      setSearchQuery('');
+      setSelectedAssetId(null);
+      setAuthoritativeReferences([]);
+    }
     if (previousProject !== snapshot?.projectRoot && flaReviewOpen) {
       closeFlaReview();
     }
-  }, [closeFlaReview, flaReviewOpen, snapshot?.projectRoot]);
+  }, [
+    closeFlaReview,
+    flaReviewOpen,
+    hideHeading,
+    snapshot?.projectRoot,
+  ]);
 
   return (
     <section
@@ -351,7 +386,12 @@ export function AssetLibrary({
         setDragOver(false);
       }}
     >
-      <div className="asset-library-heading">
+      <div
+        className={[
+          'asset-library-heading',
+          hideHeading ? 'asset-library-heading-visually-hidden' : '',
+        ].filter(Boolean).join(' ')}
+      >
         <div>
           <p className="eyebrow">项目素材</p>
           <h2 id="asset-library-heading">项目素材库</h2>
@@ -393,6 +433,7 @@ export function AssetLibrary({
       ) : (
         <>
           <AssetImportPanel
+            compact={hideHeading}
             importRequestToken={importRequestToken}
             onImportFla={openFlaReview}
             snapshot={snapshot}
@@ -401,8 +442,23 @@ export function AssetLibrary({
             className="asset-library-browser"
             data-testid="asset-browser-view"
           >
+            {hideHeading ? (
+              <div className="asset-library-search">
+                <label htmlFor="asset-library-search-input">
+                  搜索素材
+                </label>
+                <input
+                  aria-label="搜索素材"
+                  id="asset-library-search-input"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="搜索素材"
+                  type="search"
+                  value={searchQuery}
+                />
+              </div>
+            ) : null}
             <nav aria-label="素材分类" className="asset-category-tabs">
-              {ASSET_LIBRARY_CATEGORIES.map((item) => (
+              {filterOptions.map((item) => (
                 <button
                   aria-pressed={category === item.id}
                   className={
@@ -426,7 +482,6 @@ export function AssetLibrary({
             <div className="asset-library-content">
               <AssetGrid
                 draggingAssetId={draggingAssetId}
-                entries={entries}
                 onDragEnd={() => {
                   setDraggingAssetId(null);
                   setDragOver(false);
@@ -455,8 +510,12 @@ export function AssetLibrary({
                         },
                   );
                 }}
+                emptyMessage={
+                  searchQuery.trim() ? '没有匹配的素材' : undefined
+                }
                 selectedAssetId={selectedAssetId}
                 thumbnails={thumbnails}
+                entries={visibleEntries}
               />
             </div>
           </div>

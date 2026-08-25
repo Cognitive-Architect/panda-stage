@@ -11,6 +11,7 @@ export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
   importRequestToken?: number;
   onImportFla: () => void;
+  compact?: boolean;
 }
 
 function resultClass(result: AssetImportResult): string {
@@ -21,12 +22,17 @@ export function AssetImportPanel({
   snapshot,
   importRequestToken,
   onImportFla,
+  compact = false,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
-    '打开项目后，可把 PNG、JPG、MP3 或 WAV 安全复制到项目中。',
+    compact ? '' : '打开项目后，可把 PNG、JPG、MP3 或 WAV 安全复制到项目中。',
   );
   const [results, setResults] = useState<AssetImportResult[]>([]);
+
+  useEffect(() => {
+    if (compact) setStatus('');
+  }, [compact]);
 
   const applyResponse = useCallback(
     (response: Awaited<
@@ -104,7 +110,10 @@ export function AssetImportPanel({
 
   return (
     <section
-      className="asset-import-panel"
+      className={[
+        'asset-import-panel',
+        compact ? 'asset-import-panel-compact' : '',
+      ].filter(Boolean).join(' ')}
       aria-labelledby="asset-import-heading"
       {...dropHandlers}
     >
@@ -128,7 +137,9 @@ export function AssetImportPanel({
       </div>
       <p className="asset-import-drop">
         {snapshot
-          ? '也可以把素材文件拖到这里导入项目。'
+          ? compact
+            ? '也可直接拖入 PNG、JPG、MP3 或 WAV'
+            : '也可以把素材文件拖到这里导入项目。'
           : '请先打开一个 .pandastage 项目。'}
       </p>
       {results.length > 0 ? (
@@ -144,7 +155,9 @@ export function AssetImportPanel({
           ))}
         </ul>
       ) : null}
-      <output className="asset-import-status">{status}</output>
+      {status ? (
+        <output className="asset-import-status">{status}</output>
+      ) : null}
     </section>
   );
 }

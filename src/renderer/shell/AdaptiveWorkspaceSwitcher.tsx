@@ -3,7 +3,7 @@ import type { EditorWorkspace } from './adaptiveEditorShell';
 
 const WORKSPACE_OPTIONS = [
   { value: 'canvas', label: '画布' },
-  { value: 'assets', label: 'Assets' },
+  { value: 'assets', label: '素材' },
   { value: 'properties', label: 'Properties' },
   { value: 'timeline', label: 'Timeline' },
 ] as const satisfies readonly { value: EditorWorkspace; label: string }[];

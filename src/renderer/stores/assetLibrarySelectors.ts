@@ -9,6 +9,8 @@ export type AssetLibraryCategory =
   | 'background'
   | 'audio';
 
+export type AssetLibraryFilter = 'all' | AssetLibraryCategory;
+
 export interface AssetLibraryEntry {
   id: string;
   asset: Asset;
@@ -23,6 +25,14 @@ export const ASSET_LIBRARY_CATEGORIES = [
   { id: 'audio', label: '音频' },
 ] as const satisfies readonly {
   id: AssetLibraryCategory;
+  label: string;
+}[];
+
+export const ASSET_LIBRARY_FILTERS = [
+  { id: 'all', label: '全部' },
+  ...ASSET_LIBRARY_CATEGORIES,
+] as const satisfies readonly {
+  id: AssetLibraryFilter;
   label: string;
 }[];
 
@@ -45,12 +55,12 @@ export function assetCategory(
 
 export function selectAssetLibraryEntries(
   project: Project,
-  category: AssetLibraryCategory,
+  category: AssetLibraryFilter,
 ): AssetLibraryEntry[] {
   const entries: AssetLibraryEntry[] = [];
   for (const asset of project.assets) {
     const resolvedCategory = assetCategory(project, asset);
-    if (resolvedCategory !== category) continue;
+    if (category !== 'all' && resolvedCategory !== category) continue;
     if (resolvedCategory === 'audio') {
       entries.push({
         id: `audio:${asset.id}`,
@@ -137,4 +147,32 @@ export function assetCategoryCounts(
     background: selectAssetLibraryEntries(project, 'background').length,
     audio: selectAssetLibraryEntries(project, 'audio').length,
   };
+}
+
+export function assetLibraryFilterCounts(
+  project: Project,
+): Record<AssetLibraryFilter, number> {
+  const entries = selectAssetLibraryEntries(project, 'all');
+  return {
+    all: entries.length,
+    character: entries.filter((entry) => entry.category === 'character')
+      .length,
+    background: entries.filter((entry) => entry.category === 'background')
+      .length,
+    audio: entries.filter((entry) => entry.category === 'audio').length,
+  };
+}
+
+export function filterAssetLibraryEntries(
+  entries: readonly AssetLibraryEntry[],
+  query: string,
+): AssetLibraryEntry[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
+  if (!normalizedQuery) return [...entries];
+
+  return entries.filter((entry) =>
+    [entry.asset.name, entry.contextLabel].some((value) =>
+      value.toLocaleLowerCase('zh-CN').includes(normalizedQuery),
+    ),
+  );
 }

@@ -12,9 +12,8 @@ describe('Issue #327 portrait shell and Shot header cleanup', () => {
       'src/renderer/features/shots/ShotManager.tsx',
     );
 
-    expect(dock).toContain(
-      "const hideLocalActivityTabs =\n    hideSectionLabels && activeActivity === 'shots';",
-    );
+    expect(dock).toContain('const hideLocalActivityTabs =');
+    expect(dock).toContain("activeActivity === 'shots'");
     expect(dock).toContain('{hideLocalActivityTabs ? null : (');
     expect(dock).toContain('data-active-activity={activeActivity}');
     expect(dock).toContain('hideHeading={hideLocalActivityTabs}');

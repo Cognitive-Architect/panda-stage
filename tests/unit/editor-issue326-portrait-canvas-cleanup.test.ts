@@ -13,7 +13,7 @@ describe('Issue #326 portrait Canvas cleanup', () => {
 
     expect(switcher).toContain("{ value: 'canvas', label: '画布' }");
     expect(switcher).not.toContain("{ value: 'canvas', label: 'Canvas' }");
-    for (const label of ['Assets', 'Properties', 'Timeline']) {
+    for (const label of ['素材', 'Properties', 'Timeline']) {
       expect(switcher).toContain(`label: '${label}'`);
     }
   });

@@ -136,7 +136,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
 
     for (const workspace of [
       '画布',
-      'Assets',
+      '素材',
       'Properties',
       'Timeline',
     ]) {

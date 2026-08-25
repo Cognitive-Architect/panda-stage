@@ -20,7 +20,7 @@ export interface ResourceActivityDockProps {
   /** Optional portrait workspace request; the resource owner remains single. */
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
-  /** Hide redundant section labels only for the portrait Canvas composition. */
+  /** Hide redundant section labels only for portrait resource surfaces. */
   hideSectionLabels?: boolean;
 }
 
@@ -123,7 +123,8 @@ export function ResourceActivityDock({
     ACTIVITIES.find((activity) => activity.id === activeActivity)?.label ??
     '资源';
   const hideLocalActivityTabs =
-    hideSectionLabels && activeActivity === 'shots';
+    hideSectionLabels &&
+    (activeActivity === 'shots' || activeActivity === 'assets');
 
   const primaryAction =
     activeActivity === 'shots'
@@ -281,6 +282,7 @@ export function ResourceActivityDock({
             ) : activeActivity === 'assets' ? (
               <AssetLibrary
                 closeRequestToken={assetReviewCloseRequest}
+                hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}
                 onViewChange={setAssetView}
                 snapshot={snapshot}
