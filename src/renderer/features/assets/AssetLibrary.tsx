@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ChevronDown, Search, X } from 'lucide-react';
 import {
   scanAssetReferences,
 } from '../../../domain';
@@ -32,6 +33,7 @@ import { applyFlaAssetCommitResponse } from './applyFlaAssetCommitResponse';
 import { applyFlaFrameSequenceCommitResponse } from './applyFlaFrameSequenceCommitResponse';
 import { applyFlaStaticSnapshotCommitResponse } from './applyFlaStaticSnapshotCommitResponse';
 import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
+import { DecorativeIcon } from '../../ui';
 import {
   FlaInspectionLifecycle,
   type FlaInspectionOperation,
@@ -47,8 +49,10 @@ export interface AssetLibraryProps {
   view?: AssetWorkspaceView;
   onViewChange?: (view: AssetWorkspaceView) => void;
   importRequestToken?: number;
+  flaReviewRequestToken?: number;
   closeRequestToken?: number;
   hideHeading?: boolean;
+  showFlaAction?: boolean;
 }
 
 export function AssetLibrary({
@@ -56,8 +60,10 @@ export function AssetLibrary({
   view = 'browser',
   onViewChange = () => undefined,
   importRequestToken,
+  flaReviewRequestToken,
   closeRequestToken,
   hideHeading = false,
+  showFlaAction = true,
 }: AssetLibraryProps): React.JSX.Element {
   const [category, setCategory] = useState<AssetLibraryFilter>(() =>
     hideHeading ? 'all' : 'background',
@@ -65,6 +71,7 @@ export function AssetLibrary({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAssetId, setSelectedAssetId] =
     useState<string | null>(null);
+  const [selectedDetailsOpen, setSelectedDetailsOpen] = useState(false);
   const [draggingAssetId, setDraggingAssetId] =
     useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -82,6 +89,7 @@ export function AssetLibrary({
     useState<FlaInspectionOperation | null>(null);
   const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
   const lastCloseRequest = useRef(closeRequestToken ?? 0);
+  const lastFlaReviewRequest = useRef(flaReviewRequestToken ?? 0);
 
   const closeFlaReview = useCallback((): void => {
     setFlaReviewOpen(false);
@@ -153,6 +161,7 @@ export function AssetLibrary({
       !visibleEntries.some((entry) => entry.asset.id === selectedAssetId)
     ) {
       setSelectedAssetId(null);
+      setSelectedDetailsOpen(false);
       setAuthoritativeReferences([]);
     }
   }, [selectedAssetId, visibleEntries]);
@@ -205,6 +214,7 @@ export function AssetLibrary({
 
   const selectAsset = (assetId: string): void => {
     setSelectedAssetId(assetId);
+    setSelectedDetailsOpen(true);
     setAuthoritativeReferences([]);
     // Portrait keeps the selected card in the two-column browser so the
     // lightweight selected state remains visible; the existing details route
@@ -295,7 +305,10 @@ export function AssetLibrary({
       );
       setAuthoritativeReferences(outcome.references);
       setStatus(outcome.status);
-      if (outcome.applied) setSelectedAssetId(null);
+      if (outcome.applied) {
+        setSelectedAssetId(null);
+        setSelectedDetailsOpen(false);
+      }
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : '素材删除失败。',
@@ -318,6 +331,17 @@ export function AssetLibrary({
     setFlaInspection(lifecycle.start());
     setFlaReviewOpen(true);
   };
+
+  useEffect(() => {
+    if (
+      flaReviewRequestToken === undefined ||
+      flaReviewRequestToken === lastFlaReviewRequest.current
+    ) {
+      return;
+    }
+    lastFlaReviewRequest.current = flaReviewRequestToken;
+    openFlaReview();
+  }, [flaReviewRequestToken, openFlaReview]);
 
   useEffect(() => {
     if (view !== 'browser' && flaReviewOpen) closeFlaReview();
@@ -350,6 +374,7 @@ export function AssetLibrary({
       setCategory(hideHeading ? 'all' : 'background');
       setSearchQuery('');
       setSelectedAssetId(null);
+      setSelectedDetailsOpen(false);
       setAuthoritativeReferences([]);
     }
     if (previousProject !== snapshot?.projectRoot && flaReviewOpen) {
@@ -446,6 +471,7 @@ export function AssetLibrary({
         <>
           <AssetImportPanel
             compact={hideHeading}
+            showFlaAction={showFlaAction}
             importRequestToken={importRequestToken}
             onImportFla={openFlaReview}
             snapshot={snapshot}
@@ -459,14 +485,33 @@ export function AssetLibrary({
                 <label htmlFor="asset-library-search-input">
                   搜索素材
                 </label>
-                <input
-                  aria-label="搜索素材"
-                  id="asset-library-search-input"
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="搜索素材"
-                  type="search"
-                  value={searchQuery}
-                />
+                <div className="asset-library-search-control">
+                  <DecorativeIcon
+                    className="asset-library-search-icon"
+                    icon={Search}
+                    size={18}
+                  />
+                  <input
+                    aria-label="搜索素材"
+                    id="asset-library-search-input"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="搜索素材"
+                    type="search"
+                    value={searchQuery}
+                  />
+                  {searchQuery ? (
+                    <button
+                      aria-label="清除搜索"
+                      className="asset-library-search-clear"
+                      data-testid="asset-library-search-clear"
+                      onClick={() => setSearchQuery('')}
+                      title="清除搜索"
+                      type="button"
+                    >
+                      <DecorativeIcon icon={X} size={18} />
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ) : null}
             <nav aria-label="素材分类" className="asset-category-tabs">
@@ -482,6 +527,7 @@ export function AssetLibrary({
                   onClick={() => {
                     setCategory(item.id);
                     setSelectedAssetId(null);
+                    setSelectedDetailsOpen(false);
                     setAuthoritativeReferences([]);
                   }}
                   type="button"
@@ -529,6 +575,39 @@ export function AssetLibrary({
                 thumbnails={thumbnails}
                 entries={visibleEntries}
               />
+              {hideHeading && selectedAsset ? (
+                <details
+                  className="asset-selected-summary"
+                  data-selected-asset-id={selectedAsset.id}
+                  data-testid="asset-selected-summary"
+                  onToggle={(event) =>
+                    setSelectedDetailsOpen(event.currentTarget.open)
+                  }
+                  open={selectedDetailsOpen}
+                >
+                  <summary data-testid="asset-selected-summary-toggle">
+                    <span>当前选中</span>
+                    <span aria-hidden="true">·</span>
+                    <strong title={selectedAsset.name}>
+                      {selectedAsset.name}
+                    </strong>
+                    <DecorativeIcon
+                      className="asset-selected-summary-icon"
+                      icon={ChevronDown}
+                      size={18}
+                    />
+                  </summary>
+                  <div className="asset-selected-summary-body">
+                    <AssetDetails
+                      asset={selectedAsset}
+                      busy={busy}
+                      onDelete={() => void deleteSelected()}
+                      references={references}
+                      thumbnail={thumbnails[selectedAsset.id]}
+                    />
+                  </div>
+                </details>
+              ) : null}
             </div>
           </div>
         </>

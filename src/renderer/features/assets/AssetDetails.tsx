@@ -1,5 +1,10 @@
 import type { Asset } from '../../../domain';
-import type { ThumbnailState } from './AssetCard';
+import { Image, ImageOff, Music2 } from 'lucide-react';
+import { DecorativeIcon } from '../../ui';
+import {
+  formatAssetDuration,
+  type ThumbnailState,
+} from './AssetCard';
 
 export interface AssetDetailsProps {
   asset: Asset | null;
@@ -13,9 +18,51 @@ function dimensions(asset: Asset): string {
   if (asset.kind === 'image') {
     return `${asset.width} × ${asset.height} px`;
   }
-  return asset.durationMs === undefined
-    ? '等待时长元数据'
-    : `${(asset.durationMs / 1_000).toFixed(2)} 秒`;
+  return formatAssetDuration(asset.durationMs);
+}
+
+function preview(asset: Asset, thumbnail?: ThumbnailState): React.JSX.Element {
+  if (asset.kind === 'audio') {
+    return (
+      <div className="asset-details-preview asset-details-preview-audio">
+        <DecorativeIcon
+          className="asset-details-preview-icon"
+          icon={Music2}
+          size={30}
+        />
+        <span>音频素材</span>
+      </div>
+    );
+  }
+
+  const status = thumbnail?.status ?? 'loading';
+  if (thumbnail?.status === 'ready') {
+    return (
+      <div className="asset-details-preview">
+        <img alt="" src={thumbnail.dataUrl} />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="asset-details-preview asset-details-preview-placeholder"
+      data-thumbnail-status={status}
+    >
+      <DecorativeIcon
+        className="asset-details-preview-icon"
+        icon={status === 'missing' ? ImageOff : Image}
+        size={28}
+      />
+      <span>
+        {status === 'loading'
+          ? '加载缩略图'
+          : thumbnail?.status === 'missing' && thumbnail.reason === 'source'
+            ? '源文件缺失'
+            : '缩略图缺失'}
+      </span>
+    </div>
+  );
 }
 
 export function AssetDetails({
@@ -34,15 +81,18 @@ export function AssetDetails({
     );
   }
   const sourceStatus =
-    thumbnail?.status === 'missing' && thumbnail.reason === 'source'
-      ? 'missing'
-      : thumbnail?.status === 'ready' ||
-          (thumbnail?.status === 'missing' &&
-            thumbnail.reason === 'cache')
-        ? 'present'
-        : 'checking';
+    asset.kind === 'audio'
+      ? 'unknown'
+      : thumbnail?.status === 'missing' && thumbnail.reason === 'source'
+        ? 'missing'
+        : thumbnail?.status === 'ready' ||
+            (thumbnail?.status === 'missing' &&
+              thumbnail.reason === 'cache')
+          ? 'present'
+          : 'checking';
   return (
     <aside className="asset-details">
+      {preview(asset, thumbnail)}
       <div>
         <p className="eyebrow">已选素材</p>
         <h3>{asset.name}</h3>
@@ -67,7 +117,9 @@ export function AssetDetails({
               ? '源文件缺失，无法读取或重建缩略图'
               : sourceStatus === 'present'
                 ? '源文件存在'
-                : '正在检查源文件'}
+                : asset.kind === 'audio'
+                  ? '尚未读取源文件状态'
+                  : '正在检查源文件'}
           </dd>
         </div>
       </dl>

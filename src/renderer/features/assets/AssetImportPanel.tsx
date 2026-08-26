@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FileArchive } from 'lucide-react';
 import type {
   AssetImportResult,
 } from '../../../shared/asset-import-api';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { DecorativeIcon } from '../../ui';
 import { applyAssetImportResponse } from './applyAssetImportResponse';
 import { useAssetDrop } from './useAssetDrop';
 
@@ -12,6 +14,7 @@ export interface AssetImportPanelProps {
   importRequestToken?: number;
   onImportFla: () => void;
   compact?: boolean;
+  showFlaAction?: boolean;
 }
 
 function resultClass(result: AssetImportResult): string {
@@ -23,6 +26,7 @@ export function AssetImportPanel({
   importRequestToken,
   onImportFla,
   compact = false,
+  showFlaAction = true,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
@@ -124,17 +128,21 @@ export function AssetImportPanel({
         </div>
         <span className="asset-import-header-note">使用工作区顶部“导入素材”</span>
       </div>
-      <div className="asset-import-actions">
-        <button
-          data-testid="asset-import-fla"
-          disabled={snapshot === null || busy}
-          onClick={onImportFla}
-          type="button"
-        >
-          导入 FLA
-        </button>
-        <span>打开 FLA 后可先预览并选择需要的素材，确认导入前不会修改项目。</span>
-      </div>
+      {showFlaAction ? (
+        <div className="asset-import-actions">
+          <button
+            className="asset-import-fla-button"
+            data-testid="asset-import-fla"
+            disabled={snapshot === null || busy}
+            onClick={onImportFla}
+            type="button"
+          >
+            <DecorativeIcon icon={FileArchive} size={18} />
+            <span>导入 FLA</span>
+          </button>
+          <span>打开 FLA 后可先预览并选择需要的素材，确认导入前不会修改项目。</span>
+        </div>
+      ) : null}
       <p className="asset-import-drop">
         {snapshot
           ? compact

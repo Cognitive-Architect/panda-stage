@@ -6,6 +6,8 @@ import type {
   AssetLibraryCategory,
 } from '../../stores/assetLibrarySelectors';
 import type { AssetThumbnailReadResponse } from '../../../shared/asset-thumbnail-api';
+import { Image, ImageOff, Music2 } from 'lucide-react';
+import { DecorativeIcon } from '../../ui';
 import { writeAssetDropPayload } from './AssetDropPayload';
 
 export type ThumbnailMissingReason = 'cache' | 'source' | 'error';
@@ -19,6 +21,17 @@ export type ThumbnailState =
       relativePath?: string;
     }
   | { status: 'ready'; dataUrl: string };
+
+export function formatAssetDuration(durationMs: number | undefined): string {
+  if (durationMs === undefined) return '时长未知';
+  if (durationMs < 60_000) {
+    return `${(durationMs / 1_000).toFixed(2)} 秒`;
+  }
+  const totalSeconds = Math.round(durationMs / 1_000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
 
 export function thumbnailStateFromResponse(
   response: AssetThumbnailReadResponse,
@@ -80,10 +93,17 @@ export function AssetCard({
         (thumbnail.status === 'missing' && thumbnail.reason === 'cache')
       ? 'present'
       : 'unknown';
-  const contextClassName =
-    category === 'background' || category === 'audio'
-      ? 'asset-card-context-low-value'
-      : undefined;
+  const typeLabel =
+    category === 'character'
+      ? '角色'
+      : category === 'background'
+        ? '背景'
+        : '音频';
+  const metadata = image
+    ? `${asset.width} × ${asset.height} px`
+    : asset.durationMs === undefined
+      ? '时长未知'
+      : formatAssetDuration(asset.durationMs);
   return (
     <article
       className={[
@@ -106,10 +126,14 @@ export function AssetCard({
           onSelect(asset.id);
         }
       }}
+      aria-pressed={selected}
       role="button"
       tabIndex={0}
     >
-      <div className="asset-card-preview">
+      <div
+        className="asset-card-preview"
+        data-media-kind={asset.kind}
+      >
         {image && thumbnail.status === 'ready' ? (
           <img
             alt=""
@@ -118,28 +142,28 @@ export function AssetCard({
             onError={() => onThumbnailError(asset.id)}
             src={thumbnail.dataUrl}
           />
-        ) : (
+        ) : image ? (
           <div
             className="asset-thumbnail-placeholder"
             data-thumbnail-status={thumbnail.status}
             data-thumbnail-source-status={sourceStatus}
           >
-            <span aria-hidden="true">
-              {image ? '▧' : '♫'}
-            </span>
+            <DecorativeIcon
+              className="asset-thumbnail-icon"
+              icon={thumbnail.status === 'missing' ? ImageOff : Image}
+              size={24}
+            />
             <small>
-              {image
-                ? thumbnail.status === 'loading'
-                  ? '加载缩略图'
-                  : sourceMissing
-                    ? '源文件缺失，无法重建缩略图'
-                    : '缩略图缺失'
-                : '音频素材'}
+              {thumbnail.status === 'loading'
+                ? '加载缩略图'
+                : sourceMissing
+                  ? '源文件缺失，无法重建缩略图'
+                  : '缩略图缺失'}
             </small>
             {sourceMissing && thumbnail.relativePath ? (
               <code>{thumbnail.relativePath}</code>
             ) : null}
-            {image && thumbnail.status === 'missing' && !sourceMissing ? (
+            {thumbnail.status === 'missing' && !sourceMissing ? (
               <button
                 onClick={(event) => {
                   event.stopPropagation();
@@ -151,10 +175,30 @@ export function AssetCard({
               </button>
             ) : null}
           </div>
+        ) : (
+          <div className="asset-card-audio-placeholder">
+            <DecorativeIcon
+              className="asset-card-audio-icon"
+              icon={Music2}
+              size={30}
+            />
+            <span>音频素材</span>
+          </div>
         )}
       </div>
-      <strong title={asset.name}>{asset.name}</strong>
-      <span className={contextClassName}>{contextLabel}</span>
+      <span
+        className={`asset-card-type-badge asset-card-type-badge-${category}`}
+        data-asset-type={category}
+      >
+        {typeLabel}
+      </span>
+      <div className="asset-card-copy">
+        <strong className="asset-card-name" title={asset.name}>
+          {asset.name}
+        </strong>
+        <span className="asset-card-context">{contextLabel}</span>
+        <span className="asset-card-metadata">{metadata}</span>
+      </div>
     </article>
   );
 }

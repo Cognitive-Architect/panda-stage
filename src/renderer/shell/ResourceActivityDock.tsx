@@ -9,7 +9,7 @@ import type {
   ShotEditorPresentation,
   ShotWorkspaceView,
 } from '../features/shots/ShotManager';
-import { CirclePlus } from 'lucide-react';
+import { CirclePlus, FileArchive, Upload } from 'lucide-react';
 import { DecorativeIcon } from '../ui';
 
 export type ResourceActivity = 'shots' | 'assets' | 'characters';
@@ -101,6 +101,7 @@ export function ResourceActivityDock({
   const [characterView, setCharacterView] =
     useState<CharacterWorkspaceView>('list');
   const [assetImportRequest, setAssetImportRequest] = useState(0);
+  const [assetFlaReviewRequest, setAssetFlaReviewRequest] = useState(0);
   const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
   const narrow = useNarrowViewport(
     compact === undefined ? 'auto' : compact ? 'compact' : 'expanded',
@@ -139,6 +140,8 @@ export function ResourceActivityDock({
       (activeActivity === 'shots' || activeActivity === 'assets'));
   const hidePortraitAssetsChrome =
     hideSectionLabels && activeActivity === 'assets';
+  const showPortraitAssetActionGroup =
+    hidePortraitAssetsChrome && assetView === 'browser';
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
@@ -260,6 +263,9 @@ export function ResourceActivityDock({
               <button
                 className="resource-activity-primary-action"
                 data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
+                data-resource-action-layout={
+                  showPortraitAssetActionGroup ? 'asset-browser' : undefined
+                }
                 data-testid="resource-primary-action"
                 onClick={primaryAction.onClick}
                 type="button"
@@ -267,8 +273,26 @@ export function ResourceActivityDock({
                 {activeActivity === 'shots' && shotView !== 'create' ? (
                   <DecorativeIcon icon={CirclePlus} size={18} />
                 ) : null}
+                {activeActivity === 'assets' && assetView === 'browser' ? (
+                  <DecorativeIcon icon={Upload} size={18} />
+                ) : null}
                 <span>{primaryAction.label}</span>
               </button>
+              {showPortraitAssetActionGroup ? (
+                <button
+                  aria-label="导入 FLA"
+                  className="resource-activity-fla-action"
+                  data-resource-action="assets-import-fla"
+                  data-testid="resource-asset-import-fla"
+                  onClick={() =>
+                    setAssetFlaReviewRequest((value) => value + 1)
+                  }
+                  type="button"
+                >
+                  <DecorativeIcon icon={FileArchive} size={18} />
+                  <span>导入 FLA</span>
+                </button>
+              ) : null}
               {hidePortraitAssetsChrome ? null : hidePortraitShotChrome ? null : (
                 <button
                   aria-label="关闭资源工作区"
@@ -342,11 +366,13 @@ export function ResourceActivityDock({
             ) : activeActivity === 'assets' ? (
               <AssetLibrary
                 closeRequestToken={assetReviewCloseRequest}
+                flaReviewRequestToken={assetFlaReviewRequest}
                 hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}
                 onViewChange={setAssetView}
                 snapshot={snapshot}
                 view={assetView}
+                showFlaAction={!hidePortraitAssetsChrome}
               />
             ) : (
               <CharacterManager
