@@ -537,6 +537,53 @@ export function AssetLibrary({
                 </button>
               ))}
             </nav>
+            {hideHeading && selectedAsset ? (
+              <section
+                aria-label="褰撳墠閫変腑绱犳潗"
+                className="asset-selected-inspector"
+                data-selected-asset-id={selectedAsset.id}
+                data-testid="asset-selected-inspector"
+              >
+                <div
+                  className="asset-selected-summary"
+                  data-testid="asset-selected-summary"
+                >
+                  <button
+                    aria-controls={`asset-selected-details-${selectedAsset.id}`}
+                    aria-expanded={selectedDetailsOpen}
+                    data-testid="asset-selected-summary-toggle"
+                    onClick={() => setSelectedDetailsOpen((open) => !open)}
+                    type="button"
+                  >
+                    <span>当前选中</span>
+                    <span aria-hidden="true">·</span>
+                    <strong title={selectedAsset.name}>
+                      {selectedAsset.name}
+                    </strong>
+                    <DecorativeIcon
+                      className="asset-selected-summary-icon"
+                      icon={ChevronDown}
+                      size={18}
+                    />
+                  </button>
+                </div>
+                {selectedDetailsOpen ? (
+                  <div
+                    className="asset-selected-summary-body"
+                    id={`asset-selected-details-${selectedAsset.id}`}
+                  >
+                    <AssetDetails
+                      asset={selectedAsset}
+                      busy={busy}
+                      onDelete={() => void deleteSelected()}
+                      presentation="portrait"
+                      references={references}
+                      thumbnail={thumbnails[selectedAsset.id]}
+                    />
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
             <div className="asset-library-content">
               <AssetGrid
                 draggingAssetId={draggingAssetId}
@@ -575,39 +622,6 @@ export function AssetLibrary({
                 thumbnails={thumbnails}
                 entries={visibleEntries}
               />
-              {hideHeading && selectedAsset ? (
-                <details
-                  className="asset-selected-summary"
-                  data-selected-asset-id={selectedAsset.id}
-                  data-testid="asset-selected-summary"
-                  onToggle={(event) =>
-                    setSelectedDetailsOpen(event.currentTarget.open)
-                  }
-                  open={selectedDetailsOpen}
-                >
-                  <summary data-testid="asset-selected-summary-toggle">
-                    <span>当前选中</span>
-                    <span aria-hidden="true">·</span>
-                    <strong title={selectedAsset.name}>
-                      {selectedAsset.name}
-                    </strong>
-                    <DecorativeIcon
-                      className="asset-selected-summary-icon"
-                      icon={ChevronDown}
-                      size={18}
-                    />
-                  </summary>
-                  <div className="asset-selected-summary-body">
-                    <AssetDetails
-                      asset={selectedAsset}
-                      busy={busy}
-                      onDelete={() => void deleteSelected()}
-                      references={references}
-                      thumbnail={thumbnails[selectedAsset.id]}
-                    />
-                  </div>
-                </details>
-              ) : null}
             </div>
           </div>
         </>

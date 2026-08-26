@@ -12,6 +12,7 @@ export interface AssetDetailsProps {
   busy: boolean;
   onDelete: () => void;
   thumbnail?: ThumbnailState;
+  presentation?: 'default' | 'portrait';
 }
 
 function dimensions(asset: Asset): string {
@@ -71,6 +72,7 @@ export function AssetDetails({
   busy,
   onDelete,
   thumbnail,
+  presentation = 'default',
 }: AssetDetailsProps): React.JSX.Element {
   if (!asset) {
     return (
@@ -91,9 +93,11 @@ export function AssetDetails({
           ? 'present'
           : 'checking';
   return (
-    <aside className="asset-details">
+    <aside
+      className={`asset-details${presentation === 'portrait' ? ' asset-details-portrait' : ''}`}
+    >
       {preview(asset, thumbnail)}
-      <div>
+      <div className="asset-details-heading">
         <p className="eyebrow">已选素材</p>
         <h3>{asset.name}</h3>
       </div>

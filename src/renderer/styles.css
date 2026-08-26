@@ -2425,7 +2425,15 @@ button:disabled {
   height: 28px;
 }
 
+.asset-selected-inspector {
+  min-width: 0;
+  margin-bottom: 8px;
+}
+
 .asset-selected-summary {
+  position: sticky;
+  z-index: 5;
+  top: 0;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--ui-color-separator);
@@ -2433,27 +2441,33 @@ button:disabled {
   background: var(--asset-library-card-surface);
 }
 
-.asset-selected-summary > summary {
+.asset-selected-summary > button {
   display: flex;
+  width: 100%;
   min-width: 0;
   min-height: 48px;
   padding: 10px 12px;
+  border: 0;
   color: var(--ui-color-text-secondary);
+  background: transparent;
   align-items: center;
   gap: 6px;
   cursor: pointer;
+  font: inherit;
   list-style: none;
+  text-align: left;
 }
 
-.asset-selected-summary > summary::-webkit-details-marker {
-  display: none;
-}
-
-.asset-selected-summary > summary:hover {
+.asset-selected-summary > button:hover:not(:disabled) {
   background: rgb(127 199 148 / 8%);
 }
 
-.asset-selected-summary > summary > strong {
+.asset-selected-summary > button:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: -3px;
+}
+
+.asset-selected-summary > button > strong {
   min-width: 0;
   overflow: hidden;
   color: var(--ui-color-text-primary);
@@ -2467,7 +2481,8 @@ button:disabled {
   color: var(--ui-color-text-secondary);
 }
 
-.asset-selected-summary[open] .asset-selected-summary-icon {
+.asset-selected-summary > button[aria-expanded='true']
+  .asset-selected-summary-icon {
   transform: rotate(180deg);
 }
 
@@ -5560,6 +5575,13 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-heading > div {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
   .resource-activity-header-actions {
   display: contents;
 }
@@ -5581,13 +5603,20 @@ h1 {
   .resource-activity-dock[data-active-activity='assets']
   .resource-activity-primary-action[data-resource-action-layout='asset-browser'] {
   grid-column: 1;
+  grid-row: 2;
+  justify-self: stretch;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .resource-activity-fla-action {
   display: inline-flex;
+  grid-column: 2;
+  grid-row: 2;
+  align-self: stretch;
+  justify-self: stretch;
   min-width: 92px;
+  height: 48px;
   min-height: 48px;
   padding: 8px 10px;
   border-color: var(--ui-color-separator);
@@ -5799,23 +5828,24 @@ h1 {
   max-height: none;
   padding: 12px 0 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-card {
-  padding: 0 0 10px;
+  padding: 0 0 8px;
   border-color: var(--ui-color-separator);
   border-radius: var(--ui-radius-medium);
   background: var(--asset-library-card-surface);
   overflow: hidden;
-  gap: 6px;
+  gap: 4px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-card-preview {
+  aspect-ratio: 16 / 10;
   border-radius: 0;
   background: var(--asset-library-preview-surface);
 }
@@ -5823,7 +5853,8 @@ h1 {
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-card-copy {
-  padding: 0 12px 2px;
+  padding: 0 10px 1px;
+  gap: 2px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
@@ -5842,13 +5873,15 @@ h1 {
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-card-context {
-  color: var(--ui-color-text-secondary);
+  display: none;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-card-metadata {
   color: var(--ui-color-text-muted);
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
@@ -5860,21 +5893,119 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
+  .asset-selected-inspector {
+  margin: 0 0 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
   .asset-selected-summary {
-  margin-top: 4px;
+  top: 84px;
+  margin-top: 0;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-selected-summary-body .asset-details-preview {
-  min-height: 112px;
-  max-height: 180px;
+  width: 100%;
+  max-width: 124px;
+  min-height: 96px;
+  height: 96px;
+  max-height: 96px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-selected-summary-body .asset-details {
-  gap: 10px;
+  grid-template-columns: minmax(96px, 124px) minmax(0, 1fr);
+  grid-template-areas:
+    'preview heading'
+    'preview metadata'
+    'references references'
+    'delete delete';
+  align-items: start;
+  gap: 8px 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-selected-summary-body {
+  padding: 10px 12px 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-top: 0;
+  border-radius: 0 0 var(--ui-radius-medium) var(--ui-radius-medium);
+  background: var(--asset-library-card-surface);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-details-preview {
+  grid-area: preview;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-details-heading {
+  min-width: 0;
+  grid-area: heading;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-details-heading .eyebrow {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-details-heading h3 {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait dl {
+  grid-area: metadata;
+  align-self: start;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait dl > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: start;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait dd {
+  min-width: 0;
+  max-width: none;
+  text-align: left;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-reference-warning,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-unreferenced {
+  grid-area: references;
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-delete-button {
+  width: fit-content;
+  min-height: 40px;
+  grid-area: delete;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
