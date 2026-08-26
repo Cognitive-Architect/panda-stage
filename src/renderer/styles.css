@@ -2875,6 +2875,16 @@ button:disabled {
   gap: 8px;
 }
 
+.shot-duration-stepper {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.shot-compact-apply {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .shot-editor-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
