@@ -99,12 +99,20 @@ export function CompactProjectBar({
           项目中心
         </Button>
         <div className="compact-project-details">
+          <span className="eyebrow">当前项目</span>
           <strong
             className="compact-project-name"
             title={projectSnapshot.project.name}
           >
             {projectSnapshot.project.name}
           </strong>
+          <span
+            className="compact-project-path"
+            data-testid="active-project-path"
+            title={projectSnapshot.projectRoot}
+          >
+            <code>{projectSnapshot.projectRoot}</code>
+          </span>
         </div>
       </div>
 

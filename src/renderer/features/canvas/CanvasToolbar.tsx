@@ -57,6 +57,7 @@ export function CanvasToolbar({
         {' · '}
         {(transform.scale * 100).toFixed(1)}%
       </output>
+      <span>逻辑画布 1920 × 1080</span>
       <output data-testid="canvas-pointer-coordinate">
         {point
           ? `x ${point.x.toFixed(1)} · y ${point.y.toFixed(1)}`

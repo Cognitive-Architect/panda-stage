@@ -3,13 +3,9 @@ export interface ApplicationMenuMode {
   gateA: boolean;
 }
 
-/**
- * The Panda Stage product surface no longer exposes Electron's native
- * File/Edit/View/Window menu row. Keep this policy seam so Main Process tests
- * and any future explicit debug-menu decision still have one owner.
- */
-export function shouldExposeDevelopmentMenu(
-  _mode: ApplicationMenuMode,
-): boolean {
-  return false;
+export function shouldExposeDevelopmentMenu({
+  isPackaged,
+  gateA,
+}: ApplicationMenuMode): boolean {
+  return !isPackaged && !gateA;
 }

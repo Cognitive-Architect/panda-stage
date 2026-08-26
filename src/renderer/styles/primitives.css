@@ -177,9 +177,3 @@ button[data-ui-button][data-ui-size='icon'] {
   align-items: center;
   gap: var(--ui-space-2);
 }
-
-/* Issue #334: keep Canvas interaction state as a non-visual contract while
- * removing the low-value helper/status row from the product surface. */
-.canvas-interaction-status {
-  display: none;
-}
