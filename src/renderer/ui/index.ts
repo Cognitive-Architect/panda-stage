@@ -1,4 +1,5 @@
 export { Button, IconButton } from './Button';
+export { DecorativeIcon } from './DecorativeIcon';
 export type { ButtonProps, ButtonVariant, IconButtonProps } from './Button';
 export { Field } from './Field';
 export type { FieldProps } from './Field';

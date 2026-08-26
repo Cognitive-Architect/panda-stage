@@ -164,7 +164,7 @@ export function CompactProjectBar({
         <Button
           variant="primary"
           aria-label="保存整个项目"
-          className="editor-save-button ui-icon-label"
+          className="editor-save-button"
           data-task4-core="save-project"
           data-testid="compact-project-save"
           disabled={saveDisabled}
@@ -179,7 +179,7 @@ export function CompactProjectBar({
             variant="secondary"
             aria-expanded={menuOpen}
             aria-haspopup="menu"
-            className="compact-project-more-button task4-hit-target ui-icon-label"
+            className="compact-project-more-button task4-hit-target"
             data-task4-core="more-menu"
             data-testid="compact-project-more"
             disabled={busy}

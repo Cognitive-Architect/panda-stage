@@ -104,7 +104,7 @@ export function ShotEditor({
         </div>
         <div className="shot-editor-actions">
           <button
-            className="shot-duplicate-button ui-icon-label"
+            className="shot-duplicate-button"
             disabled={disabled}
             onClick={onDuplicate}
             type="button"
@@ -113,7 +113,7 @@ export function ShotEditor({
             <span>复制镜头</span>
           </button>
           <button
-            className="shot-delete-button ui-icon-label"
+            className="shot-delete-button"
             disabled={disabled}
             onClick={onRemove}
             type="button"

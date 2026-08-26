@@ -84,6 +84,17 @@ button[data-ui-button][data-ui-size='icon'] {
   height: 20px;
 }
 
+.editor-save-button,
+.compact-project-more-button,
+.resource-activity-primary-action,
+.shot-duplicate-button,
+.shot-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 .ui-segmented-tabs {
   display: inline-flex;
   max-width: 100%;
