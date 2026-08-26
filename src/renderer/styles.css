@@ -5258,6 +5258,14 @@ h1 {
 /* Issue #328: the portrait Assets page is a single top-level workspace. Keep
    the existing ResourceActivityDock and import owners, but remove the second
    activity switcher and present the library in the v0.3 hierarchy. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets'] {
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .asset-library-heading-visually-hidden,
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .asset-import-panel-compact
@@ -5514,6 +5522,12 @@ h1 {
   .asset-card-selected {
   border: 2px solid var(--ui-color-selected-border);
   box-shadow: 0 0 0 2px rgb(131 211 154 / 18%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card > span.asset-card-context-low-value {
+  display: none;
 }
 
 /* Issue #329: keep the portrait Properties surface product-facing and

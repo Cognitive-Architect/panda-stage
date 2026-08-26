@@ -30,7 +30,9 @@ export const ASSET_LIBRARY_CATEGORIES = [
 
 export const ASSET_LIBRARY_FILTERS = [
   { id: 'all', label: '全部' },
-  ...ASSET_LIBRARY_CATEGORIES,
+  { id: 'character', label: '角色' },
+  { id: 'background', label: '背景' },
+  { id: 'audio', label: '音频' },
 ] as const satisfies readonly {
   id: AssetLibraryFilter;
   label: string;

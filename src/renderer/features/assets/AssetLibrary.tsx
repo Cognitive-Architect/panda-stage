@@ -39,6 +39,9 @@ import {
 
 export type AssetWorkspaceView = 'browser' | 'details';
 
+const DEFAULT_ASSET_LIBRARY_STATUS =
+  '打开项目后即可分类浏览、拖动和安全删除素材。';
+
 export interface AssetLibraryProps {
   snapshot: EditorProjectSnapshot | null;
   view?: AssetWorkspaceView;
@@ -67,7 +70,7 @@ export function AssetLibrary({
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
-    '打开项目后即可分类浏览、拖动和安全删除素材。',
+    hideHeading ? '' : DEFAULT_ASSET_LIBRARY_STATUS,
   );
   const [authoritativeReferences, setAuthoritativeReferences] =
     useState<readonly { label: string; path: string }[]>([]);
@@ -319,6 +322,15 @@ export function AssetLibrary({
   useEffect(() => {
     if (view !== 'browser' && flaReviewOpen) closeFlaReview();
   }, [closeFlaReview, flaReviewOpen, view]);
+
+  // Portrait Assets keeps operation results and errors visible, but does not
+  // reserve a row for the generic steady-state guidance copy.
+  useEffect(() => {
+    if (!hideHeading) return;
+    setStatus((current) =>
+      current === DEFAULT_ASSET_LIBRARY_STATUS ? '' : current,
+    );
+  }, [hideHeading]);
 
   const previousHideHeading = useRef(hideHeading);
   useEffect(() => {

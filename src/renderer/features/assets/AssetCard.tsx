@@ -80,6 +80,10 @@ export function AssetCard({
         (thumbnail.status === 'missing' && thumbnail.reason === 'cache')
       ? 'present'
       : 'unknown';
+  const contextClassName =
+    category === 'background' || category === 'audio'
+      ? 'asset-card-context-low-value'
+      : undefined;
   return (
     <article
       className={[
@@ -150,7 +154,7 @@ export function AssetCard({
         )}
       </div>
       <strong title={asset.name}>{asset.name}</strong>
-      <span>{contextLabel}</span>
+      <span className={contextClassName}>{contextLabel}</span>
     </article>
   );
 }
