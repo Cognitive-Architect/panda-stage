@@ -105,6 +105,13 @@ export function CompactProjectBar({
           >
             {projectSnapshot.project.name}
           </strong>
+          <span
+            className="compact-project-path"
+            data-testid="active-project-path"
+            title={projectSnapshot.projectRoot}
+          >
+            <code>{projectSnapshot.projectRoot}</code>
+          </span>
         </div>
       </div>
 
