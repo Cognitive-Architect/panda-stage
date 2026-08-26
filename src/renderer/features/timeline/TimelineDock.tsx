@@ -162,14 +162,12 @@ export function TimelineDock({
           type="button"
           className="timeline-collapse"
           data-testid="timeline-collapse"
+          data-expanded={ui.expanded ? 'true' : 'false'}
           aria-expanded={ui.expanded}
           aria-label={ui.expanded ? '收起时间轴' : '展开时间轴'}
           title={ui.expanded ? '收起时间轴' : '展开时间轴'}
           onClick={() => timelineUiStore.setExpanded(!ui.expanded)}
         >
-          <span aria-hidden="true" className="timeline-collapse-icon">
-            {ui.expanded ? '⌄' : '›'}
-          </span>
           <span className="timeline-collapse-label">
             {ui.expanded ? '收起时间轴' : '展开时间轴'}
           </span>

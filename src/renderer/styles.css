@@ -7647,11 +7647,18 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .editor-layout[data-active-workspace='timeline']
-  .timeline-collapse-icon {
+  .timeline-collapse::before {
+  content: '⌄';
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse[data-expanded='false']::before {
+  content: '›';
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
