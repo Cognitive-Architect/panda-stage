@@ -5,7 +5,7 @@ import { calculateViewportTransform } from '../../src/domain';
 import { CanvasToolbar } from '../../src/renderer/features/canvas/CanvasToolbar';
 
 describe('canvas components', () => {
-  it('renders explicit fit feedback, logical size, and pointer coordinates', () => {
+  it('renders explicit fit feedback and pointer coordinates', () => {
     const markup = renderToStaticMarkup(
       createElement(CanvasToolbar, {
         mode: 'fit',
@@ -21,7 +21,7 @@ describe('canvas components', () => {
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('适应窗口');
     expect(markup).toContain('41.7%');
-    expect(markup).toContain('逻辑画布 1920 × 1080');
+    expect(markup).not.toContain('逻辑画布 1920 × 1080');
     expect(markup).toContain('x 960.0 · y 540.0');
   });
 

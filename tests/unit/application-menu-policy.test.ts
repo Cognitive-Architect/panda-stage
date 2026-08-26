@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { shouldExposeDevelopmentMenu } from '../../src/main/menu-policy';
 
 describe('application menu policy', () => {
-  it('keeps reload and developer tools available in development', () => {
+  it('hides the native application menu in development acceptance builds', () => {
     expect(
       shouldExposeDevelopmentMenu({
         isPackaged: false,
         gateA: false,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('hides the default development menu in packaged production', () => {

@@ -546,6 +546,7 @@ export function CanvasStage({
       <output
         className="canvas-interaction-status"
         data-testid="canvas-interaction-status"
+        hidden
       >
         {interactionStatus}
       </output>
