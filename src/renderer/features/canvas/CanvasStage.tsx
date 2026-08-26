@@ -204,10 +204,12 @@ function useCanvasImages(
 
 export interface CanvasStageProps {
   showHeading?: boolean;
+  showToolbar?: boolean;
 }
 
 export function CanvasStage({
   showHeading = true,
+  showToolbar = true,
 }: CanvasStageProps = {}): React.JSX.Element {
   const configureEditorLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
@@ -537,12 +539,14 @@ export function CanvasStage({
           </>
         )}
       </CanvasViewport>
-      <CanvasToolbar
-        mode={viewport.mode}
-        onModeChange={(mode) => canvasViewportStore.setMode(mode)}
-        point={viewport.lastStagePoint}
-        transform={toolbarTransform}
-      />
+      {showToolbar ? (
+        <CanvasToolbar
+          mode={viewport.mode}
+          onModeChange={(mode) => canvasViewportStore.setMode(mode)}
+          point={viewport.lastStagePoint}
+          transform={toolbarTransform}
+        />
+      ) : null}
       <output
         className="canvas-interaction-status"
         data-testid="canvas-interaction-status"

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { HistoryControls } from '../features/editor/HistoryControls';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { Button, PanelSurface } from '../ui';
 import {
   EDITOR_DEVICE_MODE_OPTIONS,
   type EditorDeviceMode,
+  type EditorShellLayoutMode,
 } from './adaptiveEditorShell';
 
 export type CompactProjectSaveState =
@@ -26,6 +28,7 @@ export interface CompactProjectBarProps {
   onRequestCloseProject(): void;
   deviceMode: EditorDeviceMode;
   onDeviceModeChange(mode: EditorDeviceMode): void;
+  presentation?: EditorShellLayoutMode;
 }
 
 const SAVE_STATE_LABELS: Record<CompactProjectSaveState, string> = {
@@ -34,6 +37,17 @@ const SAVE_STATE_LABELS: Record<CompactProjectSaveState, string> = {
   saving: '保存中',
   failed: '保存失败',
 };
+
+const PORTRAIT_QUIET_STATUS_MESSAGES = new Set([
+  '项目已打开，暂无未保存更改。',
+  '已从最近项目打开，暂无未保存更改。',
+  '新项目已创建并打开，暂无未保存更改。',
+  '项目中心已打开，当前项目与编辑状态保持不变。',
+  '已返回编辑器，当前镜头与编辑状态保持不变。',
+  '已打开项目文件夹。',
+  '项目已保存。',
+  '已取消关闭，当前项目保持打开。',
+]);
 
 export function CompactProjectBar({
   projectSnapshot,
@@ -49,6 +63,7 @@ export function CompactProjectBar({
   onRequestCloseProject,
   deviceMode,
   onDeviceModeChange,
+  presentation = 'landscape',
 }: CompactProjectBarProps): React.JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -78,26 +93,32 @@ export function CompactProjectBar({
   const saveStateLabel = SAVE_STATE_LABELS[saveState];
   const saveStateSemanticClass =
     saveState === 'saved' ? 'clean-state' : 'dirty-state';
+  const isPortrait = presentation === 'portrait';
+  const showFeedback =
+    !isPortrait || !PORTRAIT_QUIET_STATUS_MESSAGES.has(status);
 
   return (
     <PanelSurface
       aria-label="当前项目状态"
       className="compact-project-bar"
+      data-presentation={presentation}
       data-save-state={saveState}
       data-testid="compact-project-bar"
     >
       <div className="compact-project-identity">
-        <Button
-          variant="secondary"
-          className="compact-project-center-button task4-hit-target"
-          data-task4-core="project-center"
-          data-testid="open-project-center"
-          disabled={busy || closeConfirmOpen}
-          onClick={onOpenProjectCenter}
-          type="button"
-        >
-          项目中心
-        </Button>
+        {!isPortrait ? (
+          <Button
+            variant="secondary"
+            className="compact-project-center-button task4-hit-target"
+            data-task4-core="project-center"
+            data-testid="open-project-center"
+            disabled={busy || closeConfirmOpen}
+            onClick={onOpenProjectCenter}
+            type="button"
+          >
+            项目中心
+          </Button>
+        ) : null}
         <div className="compact-project-details">
           <strong
             className="compact-project-name"
@@ -105,33 +126,40 @@ export function CompactProjectBar({
           >
             {projectSnapshot.project.name}
           </strong>
-          <span
-            className="compact-project-path"
-            data-testid="active-project-path"
-            title={projectSnapshot.projectRoot}
-          >
-            <code>{projectSnapshot.projectRoot}</code>
-          </span>
+          {!isPortrait ? (
+            <span
+              className="compact-project-path"
+              data-testid="active-project-path"
+              title={projectSnapshot.projectRoot}
+            >
+              <code>{projectSnapshot.projectRoot}</code>
+            </span>
+          ) : null}
         </div>
       </div>
 
       <div className="compact-project-controls recovery-status-row">
-        <span
-          aria-live="polite"
-          className={`compact-project-save-state compact-project-save-state-${saveState} ${saveStateSemanticClass}`}
-          data-testid="project-save-state"
-          title={status}
-        >
-          {saveStateLabel}
-        </span>
-        <output
-          aria-live="polite"
-          className="compact-project-feedback"
-          data-testid="editor-action-status"
-          title={status}
-        >
-          {status}
-        </output>
+        {!isPortrait || saveState !== 'saved' ? (
+          <span
+            aria-live="polite"
+            className={`compact-project-save-state compact-project-save-state-${saveState} ${saveStateSemanticClass}`}
+            data-testid="project-save-state"
+            title={status}
+          >
+            {saveStateLabel}
+          </span>
+        ) : null}
+        {showFeedback ? (
+          <output
+            aria-live="polite"
+            className="compact-project-feedback"
+            data-testid="editor-action-status"
+            title={status}
+          >
+            {status}
+          </output>
+        ) : null}
+        {isPortrait ? <HistoryControls presentation="compact" /> : null}
         <Button
           variant="primary"
           aria-label="保存整个项目"

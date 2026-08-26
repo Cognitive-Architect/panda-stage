@@ -4,9 +4,10 @@ import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 
 /**
- * The formal editor bottom owner. Stage 3-C keeps the history surface intact;
- * Day 26 adds the Timeline Shell as a second, UI-only product surface so the
- * bottom region carries both without a second Canvas / Inspector / History.
+ * The formal editor bottom owner. Stage 3-C keeps the history behavior intact;
+ * Day 26 adds the Timeline Shell as a second, UI-only product surface. In
+ * portrait the existing HistoryControls owner is rendered by the top bar,
+ * leaving this region to the Timeline only.
  *
  * Issue #197 mirrors the one existing Timeline expand state
  * (`timelineUiStore.expanded`) onto `data-timeline-expanded` so the bottom
@@ -18,11 +19,13 @@ import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 export interface BottomWorkspaceProps {
   hidden?: boolean;
   presentation?: EditorShellLayoutMode;
+  showHistoryControls?: boolean;
 }
 
 export function BottomWorkspace({
   hidden = false,
   presentation = 'landscape',
+  showHistoryControls = true,
 }: BottomWorkspaceProps = {}): React.JSX.Element {
   const { expanded } = useTimelineUi();
 
@@ -36,7 +39,7 @@ export function BottomWorkspace({
       hidden={hidden}
     >
       <TimelineDock presentation={presentation} />
-      <HistoryControls />
+      {showHistoryControls ? <HistoryControls presentation="bottom" /> : null}
     </section>
   );
 }

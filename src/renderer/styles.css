@@ -8167,3 +8167,98 @@ h1 {
   min-width: 0;
   min-height: 48px;
 }
+
+/* Issue #340: keep the Cloud Touch portrait header quiet and spend its action
+   space on the existing Undo/Redo behavior. The component is moved between
+   the top bar and BottomWorkspace by layout, so this is one compact visual
+   presentation rather than a second History owner. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait'] {
+  height: 56px;
+  max-height: 56px;
+  padding: 4px 8px;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-identity {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-details {
+  min-width: 0;
+  gap: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-controls {
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls-compact {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls-compact
+  .history-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls-compact
+  .history-actions button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 9px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls-compact
+  .history-actions span,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls-compact
+  > output {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-save-state {
+  max-width: 120px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-feedback {
+  max-width: 160px;
+}

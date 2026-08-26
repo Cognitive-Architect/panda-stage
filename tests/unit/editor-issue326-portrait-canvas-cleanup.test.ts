@@ -30,7 +30,9 @@ describe('Issue #326 portrait Canvas cleanup', () => {
     );
     expect(shell).not.toContain('portrait-canvas-context-actions');
     expect(shell).not.toContain('portrait-open-properties');
-    expect(canvasWorkspace).toContain('<CanvasStage showHeading={showHeading} />');
+    expect(canvasWorkspace).toContain(
+      '<CanvasStage showHeading={showHeading} showToolbar={showToolbar} />',
+    );
     expect(resourceDock).toContain('<ShotManager');
     expect(resourceDock).toContain('hideSectionLabels?: boolean');
     expect(resourceDock).toContain('hideSectionLabels = false');

@@ -10,9 +10,19 @@ import {
 } from '../../stores/EditorProjectStore';
 import { useHistoryShortcuts } from './useHistoryShortcuts';
 
-export function HistoryControls(): React.JSX.Element {
+export type HistoryControlsPresentation = 'bottom' | 'compact';
+
+export interface HistoryControlsProps {
+  presentation?: HistoryControlsPresentation;
+}
+
+export function HistoryControls({
+  presentation = 'bottom',
+}: HistoryControlsProps = {}): React.JSX.Element {
+  const compact = presentation === 'compact';
   const history = useSyncExternalStore(
     historyStore.subscribe,
+    historyStore.getSnapshot,
     historyStore.getSnapshot,
   );
   const [status, setStatus] = useState(
@@ -43,18 +53,22 @@ export function HistoryControls(): React.JSX.Element {
 
   return (
     <section
-      className="history-controls"
+      className={`history-controls history-controls-${presentation}`}
       data-history-depth={historyStore.maxDepth}
+      data-history-presentation={presentation}
       data-redo-count={history.redoCount}
       data-testid="history-controls"
       data-undo-count={history.undoCount}
     >
-      <div>
-        <p className="eyebrow">编辑历史</p>
-        <h3>编辑历史</h3>
-      </div>
+      {compact ? null : (
+        <div>
+          <p className="eyebrow">编辑历史</p>
+          <h3>编辑历史</h3>
+        </div>
+      )}
       <div className="history-actions">
         <button
+          aria-label="撤销"
           disabled={history.undoCount === 0}
           onClick={undo}
           title={history.nextUndoLabel ?? '没有可撤销的操作'}
@@ -63,6 +77,7 @@ export function HistoryControls(): React.JSX.Element {
           撤销
         </button>
         <button
+          aria-label="重做"
           disabled={history.redoCount === 0}
           onClick={redo}
           title={history.nextRedoLabel ?? '没有可重做的操作'}
@@ -70,11 +85,13 @@ export function HistoryControls(): React.JSX.Element {
         >
           重做
         </button>
-        <span>
+        <span aria-hidden={compact}>
           {history.undoCount} 可撤销 · {history.redoCount} 可重做
         </span>
       </div>
-      <output data-testid="history-status">{status}</output>
+      <output aria-live="polite" data-testid="history-status">
+        {status}
+      </output>
     </section>
   );
 }

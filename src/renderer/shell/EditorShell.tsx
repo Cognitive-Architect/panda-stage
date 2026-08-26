@@ -931,6 +931,10 @@ export function EditorShell({
         : isPortrait && portraitWorkspace === 'timeline'
           ? 'timeline'
         : 'none';
+  // Keep the CanvasStage mounted as the sole Canvas owner, but expose its
+  // existing toolbar only for the active portrait Canvas workspace.
+  const canvasToolbarVisible =
+    !isPortrait || portraitWorkspace === 'canvas';
 
   return (
     <main
@@ -990,6 +994,7 @@ export function EditorShell({
               saveState={saveState}
               status={status}
               deviceMode={deviceMode}
+              presentation={layoutMode}
             />
             {recoveryCandidate ? (
               <RecoveryCandidateBanner
@@ -1050,7 +1055,10 @@ export function EditorShell({
               data-workspace-owner="canvas"
               hidden={!portraitCanvasVisible}
             >
-              <CanvasWorkspace showHeading={!isPortrait} />
+              <CanvasWorkspace
+                showHeading={!isPortrait}
+                showToolbar={canvasToolbarVisible}
+              />
             </div>
             <div
               aria-hidden={!portraitPropertiesVisible}
@@ -1083,6 +1091,7 @@ export function EditorShell({
           <BottomWorkspace
             hidden={isPortrait && portraitWorkspace !== 'timeline'}
             presentation={layoutMode}
+            showHistoryControls={!isPortrait}
           />
           {productPreviewOpen ? (
             <ProductPreviewOverlay
