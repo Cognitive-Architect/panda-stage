@@ -8203,7 +8203,7 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .compact-project-bar[data-presentation='portrait']
-  .history-controls-compact {
+  .history-controls[data-history-presentation='compact'] {
   display: flex;
   flex: 0 0 auto;
   min-width: 0;
@@ -8217,7 +8217,7 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .compact-project-bar[data-presentation='portrait']
-  .history-controls-compact
+  .history-controls[data-history-presentation='compact']
   .history-actions {
   flex-wrap: nowrap;
   gap: 4px;
@@ -8225,7 +8225,7 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .compact-project-bar[data-presentation='portrait']
-  .history-controls-compact
+  .history-controls[data-history-presentation='compact']
   .history-actions button {
   min-width: 44px;
   min-height: 44px;
@@ -8234,11 +8234,11 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .compact-project-bar[data-presentation='portrait']
-  .history-controls-compact
+  .history-controls[data-history-presentation='compact']
   .history-actions span,
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .compact-project-bar[data-presentation='portrait']
-  .history-controls-compact
+  .history-controls[data-history-presentation='compact']
   > output {
   position: absolute;
   width: 1px;

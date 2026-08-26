@@ -53,7 +53,7 @@ export function HistoryControls({
 
   return (
     <section
-      className={`history-controls history-controls-${presentation}`}
+      className="history-controls"
       data-history-depth={historyStore.maxDepth}
       data-history-presentation={presentation}
       data-redo-count={history.redoCount}

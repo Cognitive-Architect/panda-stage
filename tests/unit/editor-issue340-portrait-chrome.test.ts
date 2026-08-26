@@ -117,7 +117,9 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
     expect(styles).toContain(
       `${scope}\n  .compact-project-bar[data-presentation='portrait']`,
     );
-    expect(styles).toContain('  .history-controls-compact');
+    expect(styles).toContain(
+      "  .history-controls[data-history-presentation='compact']",
+    );
     expect(styles).toContain('clip: rect(0 0 0 0);');
     expect(styles).toContain(
       '.compact-project-bar[data-presentation=\'portrait\']',

@@ -333,9 +333,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
 
   it('locks history-controls selectors into HistoryControls', () => {
     const code = readSource('renderer/features/editor/HistoryControls.tsx');
-    expect(code).toContain(
-      'className={`history-controls history-controls-${presentation}`}',
-    );
+    expect(code).toContain('className="history-controls"');
     expect(code).toContain('data-testid="history-controls"');
   });
 
