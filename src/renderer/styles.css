@@ -8291,6 +8291,9 @@ h1 {
   .resource-activity-dock[data-active-activity='shots']
   .shot-manager[data-shot-editor-presentation='portrait']
   .shot-editor-title {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -8298,6 +8301,7 @@ h1 {
   .resource-activity-dock[data-active-activity='shots']
   .shot-manager[data-shot-editor-presentation='portrait']
   .shot-editor-title h3 {
+  min-width: 0;
   overflow: hidden;
   color: var(--ui-color-text-primary);
   font-size: 18px;
@@ -8310,9 +8314,11 @@ h1 {
   .resource-activity-dock[data-active-activity='shots']
   .shot-manager[data-shot-editor-presentation='portrait']
   .shot-editor-index {
+  flex: 0 0 auto;
   color: var(--ui-color-text-secondary);
   font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']

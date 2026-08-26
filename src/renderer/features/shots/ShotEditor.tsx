@@ -89,11 +89,10 @@ export function ShotEditor({
     >
       <div className="shot-editor-heading">
         <div className="shot-editor-title">
-          <h3>
-            <span className="shot-editor-index">镜头 {index + 1}</span>
-            <span aria-hidden="true"> · </span>
-            <span>{shot.name}</span>
-          </h3>
+          <span aria-hidden="true" className="shot-editor-index">
+            镜头 {index + 1} ·
+          </span>
+          <h3 aria-label={`镜头 ${index + 1} · ${shot.name}`}>{shot.name}</h3>
         </div>
         <div className="shot-editor-actions">
           <button
