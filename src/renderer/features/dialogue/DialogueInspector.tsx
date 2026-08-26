@@ -191,6 +191,202 @@ export function DialogueInspector({
     }, '对白时间段无效。');
   };
 
+  if (timelinePresentation) {
+    return (
+      <div
+        className="dialogue-inspector dialogue-inspector-timeline"
+        data-testid="dialogue-inspector"
+      >
+        <div
+          aria-live="polite"
+          className="timeline-subtitle-selection"
+          data-selection-state="dialogue"
+          data-testid="right-inspector-selection"
+        >
+          <span
+            className="timeline-subtitle-selection-status"
+            data-testid="right-inspector-selection-message"
+          >
+            {timed ? '已定时字幕' : '未定时字幕'}
+          </span>
+        </div>
+
+        <label className="dialogue-field dialogue-timeline-speaker">
+          <span>说话人</span>
+          <select
+            aria-label="字幕角色"
+            data-testid="dialogue-inspector-speaker"
+            value={dialogue.characterId}
+            onChange={(event) =>
+              report(
+                () =>
+                  dialogueStore.update(dialogue.id, {
+                    characterId: event.target.value,
+                  }),
+                '角色无效。',
+              )
+            }
+          >
+            {characters.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <section
+          className="dialogue-inspector-section"
+          data-testid="dialogue-inspector-copy-section"
+        >
+          <label className="dialogue-field">
+            <span>台词</span>
+            <textarea
+              data-testid="dialogue-inspector-text"
+              value={text}
+              rows={3}
+              onChange={(event) => setText(event.target.value)}
+              onFocus={() => {
+                focusedRef.current = true;
+              }}
+              onBlur={commitText}
+            />
+          </label>
+          {subtitleWarning ? (
+            <p
+              className="dialogue-editor-error"
+              data-testid="dialogue-subtitle-warning"
+              role="status"
+            >
+              {subtitleWarning}
+            </p>
+          ) : null}
+        </section>
+
+        <section
+          className="dialogue-inspector-section"
+          data-testid="dialogue-inspector-time-section"
+        >
+          <h3>时间</h3>
+          {timed ? (
+            <>
+              <div className="dialogue-timing-fields">
+                <label className="dialogue-field">
+                  <span>
+                    开始{' '}
+                    <time
+                      data-testid="dialogue-inspector-start-readable"
+                      dateTime={
+                        'PT' + Math.max(0, dialogue.startMs) / 1000 + 'S'
+                      }
+                    >
+                      {formatTimecode(dialogue.startMs)}
+                    </time>
+                  </span>
+                  <input
+                    aria-label="开始时间（毫秒）"
+                    data-display-time={formatTimecode(dialogue.startMs)}
+                    data-testid="dialogue-inspector-start"
+                    inputMode="numeric"
+                    min={0}
+                    onChange={(event) => setStartMs(event.target.value)}
+                    type="number"
+                    value={startMs}
+                  />
+                </label>
+                <label className="dialogue-field">
+                  <span>
+                    结束{' '}
+                    <time
+                      data-testid="dialogue-inspector-end-readable"
+                      dateTime={'PT' + Math.max(0, dialogue.endMs) / 1000 + 'S'}
+                    >
+                      {formatTimecode(dialogue.endMs)}
+                    </time>
+                  </span>
+                  <input
+                    aria-label="结束时间（毫秒）"
+                    data-display-time={formatTimecode(dialogue.endMs)}
+                    data-testid="dialogue-inspector-end"
+                    inputMode="numeric"
+                    min={0}
+                    onChange={(event) => setEndMs(event.target.value)}
+                    type="number"
+                    value={endMs}
+                  />
+                </label>
+                <button
+                  data-testid="dialogue-inspector-apply-timing"
+                  onClick={commitTiming}
+                  type="button"
+                >
+                  应用时间
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              className="dialogue-arrange"
+              data-testid="dialogue-inspector-arrange"
+              onClick={() =>
+                report(
+                  () =>
+                    dialogueStore.arrange(
+                      dialogue.id,
+                      integerFrameSpanMs(),
+                    ),
+                  '未定时对白安排失败。',
+                )
+              }
+              type="button"
+            >
+              安排一帧
+            </button>
+          )}
+          <p
+            className="dialogue-point-time"
+            data-testid="dialogue-inspector-timing-summary"
+          >
+            {timed
+              ? `字幕持续 ${formatTimecode(dialogue.endMs - dialogue.startMs)}`
+              : '待安排字幕尚未产生显示时间窗。'}
+          </p>
+        </section>
+
+        <section
+          className="dialogue-inspector-section dialogue-inspector-audio-section"
+          data-testid="dialogue-inspector-audio-section"
+        >
+          <h3>音频</h3>
+          <p data-testid="dialogue-inspector-audio-summary">{audioSummary}</p>
+          <span className="dialogue-inspector-audio-note">
+            当前仅展示已有绑定状态。
+          </span>
+        </section>
+
+        {error ? (
+          <p
+            className="dialogue-editor-error"
+            data-testid="dialogue-editor-error"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
+        <div className="dialogue-inspector-actions">
+          <button
+            type="button"
+            className="dialogue-delete"
+            data-testid="dialogue-inspector-delete"
+            onClick={() => dialogueStore.remove(dialogue.id)}
+          >
+            删除字幕
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (landscapePresentation) {
     return (
       <>
@@ -390,48 +586,27 @@ export function DialogueInspector({
 
   return (
     <>
-      {!timelinePresentation ? (
-        <div className="right-inspector-heading">
-          <div>
-            <p className="eyebrow">右侧检查器</p>
-            <h2 id="right-inspector-heading">对白检查器</h2>
-          </div>
-          <span>当前镜头</span>
+      <div className="right-inspector-heading">
+        <div>
+          <p className="eyebrow">右侧检查器</p>
+          <h2 id="right-inspector-heading">对白检查器</h2>
         </div>
-      ) : null}
+        <span>当前镜头</span>
+      </div>
       <section
         aria-live="polite"
-        className={
-          timelinePresentation
-            ? 'timeline-subtitle-selection'
-            : 'right-inspector-selection'
-        }
+        className="right-inspector-selection"
         data-selection-state="dialogue"
         data-testid="right-inspector-selection"
       >
-        {timelinePresentation ? (
-          <>
-            <strong>{character?.name ?? '未知角色'}</strong>
-            <span data-testid="right-inspector-selection-message">
-              {timed
-                ? `已定时 · ${dialogue.startMs}–${dialogue.endMs}ms`
-                : '未定时字幕'}
-            </span>
-          </>
-        ) : (
-          <>
-            <p className="eyebrow">当前选择</p>
-            <strong>{character?.name ?? '未知角色'}</strong>
-            <span data-testid="right-inspector-selection-message">
-              已选择对白：{character?.name ?? dialogue.characterId}
-            </span>
-          </>
-        )}
+        <p className="eyebrow">当前选择</p>
+        <strong>{character?.name ?? '未知角色'}</strong>
+        <span data-testid="right-inspector-selection-message">
+          已选择对白：{character?.name ?? dialogue.characterId}
+        </span>
       </section>
       <div
-        className={`dialogue-inspector${
-          timelinePresentation ? ' dialogue-inspector-timeline' : ''
-        }`}
+        className="dialogue-inspector"
         data-testid="dialogue-inspector"
       >
         <label className="dialogue-field">

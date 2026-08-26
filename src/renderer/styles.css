@@ -7606,3 +7606,557 @@ h1 {
   width: auto;
   min-height: 0;
 }
+
+/* Issue #339: make the Cloud Touch portrait Timeline a task surface rather
+   than a stack of Timeline/dialogue admin cards. The production owners stay
+   unchanged; this layer only reshapes their presentation. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-header {
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  background: transparent;
+  color: var(--ui-color-text-secondary);
+  font-size: 22px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse:focus-visible {
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-timecode {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 15px;
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-ruler-scroll {
+  border-inline: 0;
+  border-radius: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lane {
+  grid-template-columns: var(--timeline-lane-label-width, 58px) max-content;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lane-label {
+  padding-inline: 8px;
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.is-empty {
+  height: 48px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.has-clips {
+  height: 76px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.is-empty .timeline-audio-empty {
+  padding-inline: 8px;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-timeline {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-header {
+  min-height: 52px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-heading {
+  min-width: 0;
+  gap: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-heading .eyebrow {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-header h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 17px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-count {
+  color: var(--ui-color-accent);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-action {
+  min-height: 44px;
+  padding: 8px 4px 8px 10px;
+  border: 0;
+  color: var(--ui-color-accent);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-action:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-action:focus-visible {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-editor {
+  display: block;
+  min-width: 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline {
+  gap: 14px;
+  padding: 0 0 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-selection {
+  min-height: 24px;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-selection-status {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline > .dialogue-field,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-section {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-field {
+  gap: 6px;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline textarea,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-timing-fields input {
+  min-height: 48px;
+  min-width: 0;
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-section > h3 {
+  margin: 0 0 8px;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-timing-fields {
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-timing-fields button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-arrange {
+  min-height: 44px;
+  border-color: var(--ui-color-separator);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-field time,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-point-time {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-section {
+  display: grid;
+  gap: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-section p,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-note {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-section p {
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-note {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-actions {
+  padding-top: 12px;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-delete {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-color: transparent;
+  color: var(--ui-color-danger, #e28a7a);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-queue {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 0 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-queue-intro {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-queue {
+  list-style: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 64px;
+  grid-template-columns: minmax(64px, 0.5fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  text-align: left;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item.selected
+  .dialogue-untimed-select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-speaker {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-text {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-secondary);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-status {
+  display: inline-flex;
+  min-width: 64px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-arrange {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-color: var(--ui-color-separator);
+  color: var(--ui-color-accent);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-empty {
+  min-height: 48px;
+  margin: 0;
+  padding: 14px 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools {
+  min-width: 0;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools > summary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: var(--ui-color-text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools > summary::-webkit-details-marker {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools > summary::before {
+  content: '›';
+  display: inline-block;
+  color: var(--ui-color-text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  transform-origin: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add input,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add button {
+  min-width: 0;
+  min-height: 48px;
+}

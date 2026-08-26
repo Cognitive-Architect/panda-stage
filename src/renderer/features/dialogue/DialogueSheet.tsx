@@ -3,27 +3,30 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { Character } from '../../../domain';
+import type { Character, Dialogue } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { dialogueStore } from '../../stores/dialogueStore';
-import {
-  DialogueAuthoringDraft,
-} from './dialogueAuthoringDraft';
+import { DialogueAuthoringDraft } from './dialogueAuthoringDraft';
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
+import { integerFrameSpanMs } from '../timeline/timeGeometry';
+
+/** Keep the Timeline presentation on the same timed/untimed truth as the
+ * DialogueClip and DialogueInspector owners. */
+export function isTimedDialogue(
+  dialogue: Pick<Dialogue, 'startMs' | 'endMs'>,
+): boolean {
+  return dialogue.endMs > dialogue.startMs;
+}
 
 /**
- * Dialogue Sheet: lists the current shot's dialogues, offers a single-line add
- * form and a batch-paste entry point. Rendered as a child of the single
- * TimelineDock so there is exactly one Timeline surface. Selecting a dialogue
- * here clears the layer selection and routes the RightInspector to the
- * DialogueInspector.
- *
- * All uncommitted authoring inputs live in a single draft bound to the
- * (projectRoot, shotId) identity; switching shot or project clears the draft so
- * a Shot A draft can never be committed into Shot B.
+ * Dialogue Sheet: the lower task surface of the single Timeline owner. It
+ * shows either the existing timed-dialogue editor, the existing untimed queue,
+ * or a compact empty state. Authoring inputs still live in one draft bound to
+ * the (projectRoot, shotId) identity, so a Shot A draft can never be committed
+ * into Shot B.
  */
 export function DialogueSheet(): React.JSX.Element {
   const snapshot = useSyncExternalStore(
@@ -40,12 +43,17 @@ export function DialogueSheet(): React.JSX.Element {
   );
   const [draft] = useState(() => new DialogueAuthoringDraft());
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
+  const [queueError, setQueueError] = useState<string | null>(null);
 
   const projectRoot = snapshot?.projectRoot ?? '';
   const shotId = currentShotId ?? null;
   useEffect(() => {
     draft.bindIdentity({ projectRoot, shotId });
   }, [draft, projectRoot, shotId]);
+
+  useEffect(() => {
+    setQueueError(null);
+  }, [currentShotId, selectedDialogueId]);
 
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
   const shot = snapshot?.project.shots.find(
@@ -54,6 +62,13 @@ export function DialogueSheet(): React.JSX.Element {
   const dialogues = shot?.dialogues ?? [];
   const selectedDialogue = dialogues.find(
     (dialogue) => dialogue.id === selectedDialogueId,
+  );
+  const selectedTimedDialogue =
+    selectedDialogue && isTimedDialogue(selectedDialogue)
+      ? selectedDialogue
+      : undefined;
+  const untimedDialogues = dialogues.filter(
+    (dialogue) => !isTimedDialogue(dialogue),
   );
   const canAdd =
     draftState.singleCharacterId !== '' &&
@@ -69,22 +84,64 @@ export function DialogueSheet(): React.JSX.Element {
 
   const handleAdd = (): void => {
     if (!canAdd) return;
-    dialogueStore.create(draftState.singleCharacterId, draftState.singleText.trim());
+    dialogueStore.create(
+      draftState.singleCharacterId,
+      draftState.singleText.trim(),
+    );
     draft.setSingleText('');
+  };
+
+  const handleArrange = (dialogueId: string): void => {
+    try {
+      // Reuse the existing one-frame arrangement path. This is intentionally
+      // not a new scheduler or a "nearest free slot" algorithm.
+      dialogueStore.arrange(dialogueId, integerFrameSpanMs());
+      setQueueError(null);
+    } catch (nextError) {
+      setQueueError(
+        nextError instanceof Error ? nextError.message : '字幕安排失败。',
+      );
+    }
   };
 
   const characterName = (id: string): string =>
     characters.find((candidate) => candidate.id === id)?.name ?? id;
 
+  const subtitleState = selectedTimedDialogue
+    ? 'selected-timed'
+    : untimedDialogues.length > 0
+      ? 'untimed-queue'
+      : 'empty';
+
   return (
     <div
       className="dialogue-sheet dialogue-sheet-timeline"
+      data-subtitle-state={subtitleState}
       data-testid="dialogue-sheet"
     >
       <header className="dialogue-sheet-header">
         <div className="dialogue-sheet-heading">
-          <p className="eyebrow">当前字幕</p>
-          <h3>字幕</h3>
+          <p className="eyebrow">
+            {selectedTimedDialogue
+              ? '编辑任务'
+              : untimedDialogues.length > 0
+                ? '字幕任务'
+                : '字幕'}
+          </p>
+          <h3>
+            {selectedTimedDialogue ? (
+              '当前字幕'
+            ) : untimedDialogues.length > 0 ? (
+              <>
+                待安排字幕{' '}
+                <span className="dialogue-untimed-count">
+                  {untimedDialogues.length}条
+                </span>
+              </>
+            ) : (
+              '字幕'
+            )}
+          </h3>
         </div>
         <button
           type="button"
@@ -92,63 +149,104 @@ export function DialogueSheet(): React.JSX.Element {
           data-testid="dialogue-batch-open"
           onClick={() => draft.openBatch()}
         >
-          批量粘贴
+          + 批量粘贴
         </button>
       </header>
-      {selectedDialogue ? (
+
+      {selectedTimedDialogue ? (
         <section
           className="timeline-subtitle-editor"
+          data-state="selected-timed"
           data-testid="timeline-subtitle-editor"
         >
           <DialogueInspector
-            dialogueId={selectedDialogue.id}
+            dialogueId={selectedTimedDialogue.id}
             presentation="timeline"
           />
         </section>
+      ) : untimedDialogues.length > 0 ? (
+        <section
+          className="timeline-subtitle-queue"
+          data-testid="timeline-subtitle-queue"
+        >
+          <p className="timeline-subtitle-queue-intro">
+            这些台词还没有安排到时间轴上。
+          </p>
+          <ul className="dialogue-untimed-queue">
+            {untimedDialogues.map((dialogue) => {
+              const selected = dialogue.id === selectedDialogueId;
+              return (
+                <li
+                  className={`dialogue-untimed-item${
+                    selected ? ' selected' : ''
+                  }`}
+                  data-dialogue-id={dialogue.id}
+                  data-selected={String(selected)}
+                  data-testid="dialogue-untimed-item"
+                  key={dialogue.id}
+                >
+                  <button
+                    type="button"
+                    className="dialogue-untimed-select"
+                    data-testid="dialogue-untimed-select"
+                    onClick={() => dialogueSelectionStore.select(dialogue.id)}
+                  >
+                    <span className="dialogue-untimed-speaker">
+                      {characterName(dialogue.characterId)}
+                    </span>
+                    <span className="dialogue-untimed-text">
+                      {dialogue.text}
+                    </span>
+                    <span className="dialogue-untimed-status">
+                      未定时 <span aria-hidden="true">›</span>
+                    </span>
+                  </button>
+                  {selected ? (
+                    <button
+                      type="button"
+                      className="dialogue-untimed-arrange"
+                      data-dialogue-id={dialogue.id}
+                      data-testid="dialogue-untimed-arrange"
+                      onClick={() => handleArrange(dialogue.id)}
+                    >
+                      安排一帧
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {queueError ? (
+            <p className="dialogue-editor-error" role="alert">
+              {queueError}
+            </p>
+          ) : null}
+        </section>
       ) : (
         <p
-          className="timeline-dialogue-empty"
+          className="timeline-subtitle-empty"
           data-testid="timeline-subtitle-empty"
         >
-          请选择时间轴中的字幕片段。
+          点击时间轴中的字幕即可编辑。
         </p>
       )}
+
       <details
-        className="dialogue-secondary-tools"
-        data-testid="dialogue-secondary-tools"
+        className="dialogue-secondary-tools dialogue-add-disclosure"
+        data-testid="dialogue-add-disclosure"
       >
-        <summary>其他字幕工具</summary>
+        <summary>+ 添加单条字幕</summary>
         <div className="dialogue-secondary-tools-body">
-          <ul className="dialogue-list" data-testid="dialogue-list">
-            {dialogues.map((dialogue) => (
-              <li
-                key={dialogue.id}
-                data-testid="dialogue-list-item"
-                data-selected={dialogue.id === selectedDialogueId}
-                className={
-                  dialogue.id === selectedDialogueId
-                    ? 'dialogue-list-item selected'
-                    : 'dialogue-list-item'
-                }
-                onClick={() => dialogueSelectionStore.select(dialogue.id)}
-              >
-                <span className="dialogue-speaker">
-                  {characterName(dialogue.characterId)}
-                </span>
-                <span className="dialogue-text">{dialogue.text}</span>
-              </li>
-            ))}
-            {dialogues.length === 0 && (
-              <li className="dialogue-empty">暂无对白，粘贴或新增一条开始。</li>
-            )}
-          </ul>
           <div className="dialogue-add">
             <select
+              aria-label="字幕角色"
               data-testid="dialogue-add-speaker"
               value={draftState.singleCharacterId}
-              onChange={(event) => draft.setSingleCharacterId(event.target.value)}
+              onChange={(event) =>
+                draft.setSingleCharacterId(event.target.value)
+              }
             >
-              <option value="">选择角色…</option>
+              <option value="">选择角色</option>
               {characters.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>
                   {candidate.name}
@@ -156,9 +254,10 @@ export function DialogueSheet(): React.JSX.Element {
               ))}
             </select>
             <input
+              aria-label="字幕台词"
               data-testid="dialogue-add-text"
               value={draftState.singleText}
-              placeholder="输入台词…"
+              placeholder="输入台词"
               onChange={(event) => draft.setSingleText(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && canAdd) handleAdd();
@@ -175,9 +274,10 @@ export function DialogueSheet(): React.JSX.Element {
           </div>
         </div>
       </details>
-      {draftState.batchOpen && (
+
+      {draftState.batchOpen ? (
         <DialogueBatchPaste draft={draft} onClose={() => draft.closeBatch()} />
-      )}
+      ) : null}
     </div>
   );
 }

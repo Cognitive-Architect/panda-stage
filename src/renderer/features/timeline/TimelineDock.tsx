@@ -20,6 +20,7 @@ import { DialogueClip } from './DialogueClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
+const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
 
 export interface TimelineDockProps {
   presentation?: 'desktop' | 'landscape' | 'portrait';
@@ -59,6 +60,10 @@ export function TimelineDock({
     : null;
   const characters = snapshot?.project.characters ?? [];
   const audioClips = shot?.audioClips ?? [];
+  const laneLabelWidth =
+    presentation === 'portrait'
+      ? PORTRAIT_TIMELINE_LANE_LABEL_WIDTH
+      : TIMELINE_LANE_LABEL_WIDTH;
 
   const audioClipName = (assetId: string, clipName: string): string =>
     snapshot?.project.assets.find((asset) => asset.id === assetId)?.name ??
@@ -143,8 +148,14 @@ export function TimelineDock({
       className="timeline-dock"
       data-expanded={ui.expanded ? 'true' : 'false'}
       data-has-shot={hasShot ? 'true' : 'false'}
+      data-lane-label-width={laneLabelWidth}
       data-presentation={presentation}
       data-testid="timeline-dock"
+      style={
+        {
+          '--timeline-lane-label-width': `${laneLabelWidth}px`,
+        } as React.CSSProperties
+      }
     >
       <header className="timeline-header">
         <button
@@ -152,9 +163,16 @@ export function TimelineDock({
           className="timeline-collapse"
           data-testid="timeline-collapse"
           aria-expanded={ui.expanded}
+          aria-label={ui.expanded ? '收起时间轴' : '展开时间轴'}
+          title={ui.expanded ? '收起时间轴' : '展开时间轴'}
           onClick={() => timelineUiStore.setExpanded(!ui.expanded)}
         >
-          {ui.expanded ? '收起时间轴' : '展开时间轴'}
+          <span aria-hidden="true" className="timeline-collapse-icon">
+            {ui.expanded ? '⌄' : '›'}
+          </span>
+          <span className="timeline-collapse-label">
+            {ui.expanded ? '收起时间轴' : '展开时间轴'}
+          </span>
         </button>
         <output
           className="timeline-timecode"
@@ -198,7 +216,7 @@ export function TimelineDock({
               className="timeline-ruler-track"
               ref={trackRef}
               style={{
-                width: `${trackWidth + TIMELINE_LANE_LABEL_WIDTH}px`,
+                width: `${trackWidth + laneLabelWidth}px`,
               }}
               data-duration={durationMs}
               data-testid="timeline-ruler-track"
@@ -212,7 +230,7 @@ export function TimelineDock({
                   className="timeline-tick"
                   data-testid="timeline-tick"
                   style={{
-                    left: `${TIMELINE_LANE_LABEL_WIDTH + tick.px}px`,
+                    left: `${laneLabelWidth + tick.px}px`,
                   }}
                 >
                   <span className="timeline-tick-label">{tick.label}</span>
@@ -253,7 +271,10 @@ export function TimelineDock({
                   </div>
                 </div>
                 <div
-                  className="timeline-lane timeline-audio-lane"
+                  className={`timeline-lane timeline-audio-lane ${
+                    audioClips.length === 0 ? 'is-empty' : 'has-clips'
+                  }`}
+                  data-audio-state={audioClips.length === 0 ? 'empty' : 'populated'}
                   data-testid="timeline-audio-track"
                 >
                   <span className="timeline-lane-label">音频</span>
@@ -296,7 +317,7 @@ export function TimelineDock({
                 className="timeline-playhead"
                 data-testid="timeline-playhead"
                 style={{
-                  left: `${TIMELINE_LANE_LABEL_WIDTH + playheadPx}px`,
+                  left: `${laneLabelWidth + playheadPx}px`,
                 }}
                 data-current-time={ui.currentTimeMs}
               >
