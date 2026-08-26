@@ -87,7 +87,7 @@ describe('shot management components', () => {
         onSetDuration: noop,
       }),
     );
-    expect(markup).toContain('不少于 500ms');
+    expect(markup).toContain('最短 0.500 秒');
     expect(markup).toContain('不能短于镜头内已有内容');
     expect(markup).toContain('缩略图占位');
     expect(markup).not.toContain('<img');

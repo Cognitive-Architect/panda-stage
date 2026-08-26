@@ -8,11 +8,12 @@ import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import { ShotCreateForm } from './ShotCreateForm';
-import { ShotEditor } from './ShotEditor';
+import { formatShotDuration, ShotEditor } from './ShotEditor';
 import { nextAvailableShotName, ShotList } from './ShotList';
 
 export type ShotWorkspaceView = 'list' | 'create';
 export type ShotManagerPresentation = 'default' | 'landscape';
+export type ShotEditorPresentation = 'default' | 'portrait';
 
 export interface ShotManagerProps {
   snapshot: EditorProjectSnapshot | null;
@@ -22,6 +23,8 @@ export interface ShotManagerProps {
   hideHeading?: boolean;
   /** Keep the landscape drawer focused on the existing Shot list owner. */
   presentation?: ShotManagerPresentation;
+  /** Presentation-only seam for the selected Shot detail surface. */
+  shotEditorPresentation?: ShotEditorPresentation;
 }
 
 export function ShotManager({
@@ -30,6 +33,7 @@ export function ShotManager({
   onViewChange = () => undefined,
   hideHeading = false,
   presentation = 'default',
+  shotEditorPresentation = 'default',
 }: ShotManagerProps): React.JSX.Element {
   const selectedShotId = useSyncExternalStore(
     shotStore.subscribe,
@@ -79,6 +83,7 @@ export function ShotManager({
       className="shot-manager"
       aria-label={hideHeading ? '镜头' : undefined}
       aria-labelledby="shot-manager-heading"
+      data-shot-editor-presentation={shotEditorPresentation}
       data-testid="shot-manager"
     >
       <div
@@ -182,7 +187,7 @@ export function ShotManager({
                 if (!selectedShot) return;
                 mutate(
                   () => shotStore.setDuration(selectedShot.id, durationMs),
-                  `镜头时长已更新为 ${durationMs}ms。`,
+                  `镜头时长已更新为 ${formatShotDuration(durationMs)}。`,
                 );
               }}
               shot={selectedShot}

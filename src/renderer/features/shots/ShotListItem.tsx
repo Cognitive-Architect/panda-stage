@@ -1,5 +1,6 @@
 import type { DragEvent } from 'react';
 import type { Shot } from '../../../domain';
+import { formatShotDuration } from './ShotEditor';
 import { ShotThumbnailPlaceholder } from './ShotThumbnailPlaceholder';
 
 const SHOT_DRAG_TYPE = 'application/x-panda-stage-shot';
@@ -49,7 +50,7 @@ export function ShotListItem({
         <ShotThumbnailPlaceholder index={index} name={shot.name} />
         <span>
           <strong>{shot.name}</strong>
-          <small>{shot.durationMs}ms</small>
+          <small>{formatShotDuration(shot.durationMs)}</small>
         </span>
         <span className="shot-drag-handle" aria-label="拖拽排序">
           ⋮⋮

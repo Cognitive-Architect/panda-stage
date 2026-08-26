@@ -5,7 +5,10 @@ import type { AssetWorkspaceView } from '../features/assets/AssetLibrary';
 import { CharacterManager } from '../features/characters/CharacterManager';
 import type { CharacterWorkspaceView } from '../features/characters/CharacterManager';
 import { ShotManager } from '../features/shots/ShotManager';
-import type { ShotWorkspaceView } from '../features/shots/ShotManager';
+import type {
+  ShotEditorPresentation,
+  ShotWorkspaceView,
+} from '../features/shots/ShotManager';
 
 export type ResourceActivity = 'shots' | 'assets' | 'characters';
 
@@ -136,6 +139,8 @@ export function ResourceActivityDock({
     hideSectionLabels && activeActivity === 'assets';
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
+  const shotEditorPresentation: ShotEditorPresentation =
+    hidePortraitShotChrome ? 'portrait' : 'default';
 
   const primaryAction =
     activeActivity === 'shots'
@@ -325,6 +330,7 @@ export function ResourceActivityDock({
                 presentation={
                   landscapePresentation ? 'landscape' : 'default'
                 }
+                shotEditorPresentation={shotEditorPresentation}
                 snapshot={snapshot}
                 view={shotView}
               />
