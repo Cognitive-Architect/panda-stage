@@ -9,6 +9,7 @@ import type {
   ShotEditorPresentation,
   ShotWorkspaceView,
 } from '../features/shots/ShotManager';
+import { CirclePlus } from 'lucide-react';
 
 export type ResourceActivity = 'shots' | 'assets' | 'characters';
 
@@ -256,13 +257,21 @@ export function ResourceActivityDock({
             )}
             <div className="resource-activity-header-actions">
               <button
-                className="resource-activity-primary-action"
+                className="resource-activity-primary-action ui-icon-label"
                 data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
                 data-testid="resource-primary-action"
                 onClick={primaryAction.onClick}
                 type="button"
               >
-                {primaryAction.label}
+                {activeActivity === 'shots' && shotView !== 'create' ? (
+                  <CirclePlus
+                    aria-hidden="true"
+                    className="ui-icon"
+                    focusable="false"
+                    size={18}
+                  />
+                ) : null}
+                <span>{primaryAction.label}</span>
               </button>
               {hidePortraitAssetsChrome ? null : hidePortraitShotChrome ? null : (
                 <button

@@ -9,6 +9,7 @@ import {
   historyStore,
 } from '../../stores/EditorProjectStore';
 import { useHistoryShortcuts } from './useHistoryShortcuts';
+import { Redo2, Undo2 } from 'lucide-react';
 
 export type HistoryControlsPresentation = 'bottom' | 'compact';
 
@@ -69,21 +70,25 @@ export function HistoryControls({
       <div className="history-actions">
         <button
           aria-label="撤销"
+          className="ui-icon-label"
           disabled={history.undoCount === 0}
           onClick={undo}
           title={history.nextUndoLabel ?? '没有可撤销的操作'}
           type="button"
         >
-          撤销
+          <Undo2 aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+          <span>撤销</span>
         </button>
         <button
           aria-label="重做"
+          className="ui-icon-label"
           disabled={history.redoCount === 0}
           onClick={redo}
           title={history.nextRedoLabel ?? '没有可重做的操作'}
           type="button"
         >
-          重做
+          <Redo2 aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+          <span>重做</span>
         </button>
         <span aria-hidden={compact}>
           {history.undoCount} 可撤销 · {history.redoCount} 可重做

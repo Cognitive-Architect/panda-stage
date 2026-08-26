@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SHOT_MIN_DURATION_MS } from '../../../domain';
+import { CirclePlus } from 'lucide-react';
 
 export interface ShotCreateFormProps {
   disabled?: boolean;
@@ -76,10 +77,12 @@ export function ShotCreateForm({
           时长必须是整数，且不少于 {SHOT_MIN_DURATION_MS}ms。
         </p>
         <button
+          className="ui-icon-label"
           disabled={disabled || !name.trim() || !Number.isInteger(durationMs)}
           type="submit"
         >
-          创建镜头
+          <CirclePlus aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+          <span>创建镜头</span>
         </button>
       </form>
     </section>

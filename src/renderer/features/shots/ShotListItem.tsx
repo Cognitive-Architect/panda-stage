@@ -2,6 +2,7 @@ import type { DragEvent } from 'react';
 import type { Shot } from '../../../domain';
 import { formatShotDuration } from './ShotEditor';
 import { ShotThumbnailPlaceholder } from './ShotThumbnailPlaceholder';
+import { GripVertical } from 'lucide-react';
 
 const SHOT_DRAG_TYPE = 'application/x-panda-stage-shot';
 
@@ -53,7 +54,7 @@ export function ShotListItem({
           <small>{formatShotDuration(shot.durationMs)}</small>
         </span>
         <span className="shot-drag-handle" aria-label="拖拽排序">
-          ⋮⋮
+          <GripVertical aria-hidden="true" className="ui-icon" focusable="false" size={18} />
         </span>
       </button>
     </li>

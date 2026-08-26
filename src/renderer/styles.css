@@ -2786,6 +2786,11 @@ button:disabled {
 }
 
 .shot-drag-handle {
+  display: inline-flex;
+  min-width: 26px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
   color: #708078;
   cursor: grab;
 }

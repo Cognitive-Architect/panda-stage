@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { SHOT_MIN_DURATION_MS, type Shot } from '../../../domain';
 import { ShotThumbnailPlaceholder } from './ShotThumbnailPlaceholder';
+import {
+  Copy,
+  Layers3,
+  MessageSquareText,
+  Music2,
+  Trash2,
+  Zap,
+} from 'lucide-react';
 
 const SHOT_DURATION_STEP_MS = 100;
 
@@ -96,20 +104,22 @@ export function ShotEditor({
         </div>
         <div className="shot-editor-actions">
           <button
-            className="shot-duplicate-button"
+            className="shot-duplicate-button ui-icon-label"
             disabled={disabled}
             onClick={onDuplicate}
             type="button"
           >
-            复制镜头
+            <Copy aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+            <span>复制镜头</span>
           </button>
           <button
-            className="shot-delete-button"
+            className="shot-delete-button ui-icon-label"
             disabled={disabled}
             onClick={onRemove}
             type="button"
           >
-            移除镜头
+            <Trash2 aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+            <span>移除镜头</span>
           </button>
         </div>
       </div>
@@ -215,10 +225,10 @@ export function ShotEditor({
         </div>
       </div>
       <dl aria-label="镜头内容统计" className="shot-entity-summary">
-        <div><dt>图层</dt><dd>{shot.layers.length}</dd></div>
-        <div><dt>音频</dt><dd>{shot.audioClips.length}</dd></div>
-        <div><dt>对白</dt><dd>{shot.dialogues.length}</dd></div>
-        <div><dt>事件</dt><dd>{shot.timelineEvents.length}</dd></div>
+        <div><dt className="ui-icon-label"><Layers3 aria-hidden="true" className="ui-icon" focusable="false" size={16} /><span>图层</span></dt><dd>{shot.layers.length}</dd></div>
+        <div><dt className="ui-icon-label"><Music2 aria-hidden="true" className="ui-icon" focusable="false" size={16} /><span>音频</span></dt><dd>{shot.audioClips.length}</dd></div>
+        <div><dt className="ui-icon-label"><MessageSquareText aria-hidden="true" className="ui-icon" focusable="false" size={16} /><span>对白</span></dt><dd>{shot.dialogues.length}</dd></div>
+        <div><dt className="ui-icon-label"><Zap aria-hidden="true" className="ui-icon" focusable="false" size={16} /><span>事件</span></dt><dd>{shot.timelineEvents.length}</dd></div>
       </dl>
     </article>
   );

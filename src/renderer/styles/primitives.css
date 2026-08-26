@@ -65,6 +65,25 @@ button[data-ui-button][data-ui-size='icon'] {
   justify-content: center;
 }
 
+.ui-icon-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ui-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.ui-icon-tab {
+  width: 20px;
+  height: 20px;
+}
+
 .ui-segmented-tabs {
   display: inline-flex;
   max-width: 100%;
@@ -76,6 +95,10 @@ button[data-ui-button][data-ui-size='icon'] {
 }
 
 .ui-segmented-tabs__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-width: var(--ui-touch-icon);
   min-height: var(--ui-touch-icon);
   border-color: transparent;

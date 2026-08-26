@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { HistoryControls } from '../features/editor/HistoryControls';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { Button, PanelSurface } from '../ui';
+import { MoreHorizontal, Save } from 'lucide-react';
 import {
   EDITOR_DEVICE_MODE_OPTIONS,
   type EditorDeviceMode,
@@ -163,28 +164,30 @@ export function CompactProjectBar({
         <Button
           variant="primary"
           aria-label="保存整个项目"
-          className="editor-save-button"
+          className="editor-save-button ui-icon-label"
           data-task4-core="save-project"
           data-testid="compact-project-save"
           disabled={saveDisabled}
           onClick={() => void onSaveProject()}
           type="button"
         >
-          保存
+          <Save aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+          <span>保存</span>
         </Button>
         <div className="compact-project-menu-wrap" ref={menuRef}>
           <Button
             variant="secondary"
             aria-expanded={menuOpen}
             aria-haspopup="menu"
-            className="compact-project-more-button task4-hit-target"
+            className="compact-project-more-button task4-hit-target ui-icon-label"
             data-task4-core="more-menu"
             data-testid="compact-project-more"
             disabled={busy}
             onClick={() => setMenuOpen((open) => !open)}
             type="button"
           >
-            更多 <span aria-hidden="true">⋯</span>
+            <MoreHorizontal aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+            <span>更多</span>
           </Button>
           {menuOpen ? (
             <div
