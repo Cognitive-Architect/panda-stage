@@ -42,6 +42,40 @@ export interface LayerTransformPanelProps {
   showLockControl?: boolean;
 }
 
+const SCALE_STEP = 0.1;
+const ROTATION_STEP_DEG = 15;
+
+/** Format the domain scale as an editable, user-facing percentage. */
+export function formatScalePercent(scale: number): string {
+  if (!Number.isFinite(scale)) return '';
+  const percent = scale * 100;
+  return Number.isInteger(percent)
+    ? String(percent)
+    : String(Number(percent.toPrecision(12)));
+}
+
+/** Convert a percentage draft back to the existing domain scale semantics. */
+export function parseScalePercentDraft(percentDraft: string): string {
+  if (!percentDraft.trim()) return '';
+  const percent = Number(percentDraft);
+  return Number.isFinite(percent) ? String(percent / 100) : 'NaN';
+}
+
+/** Step a percentage draft while respecting the existing domain scale bounds. */
+export function stepScalePercentDraft(
+  percentDraft: string,
+  direction: -1 | 1,
+): string | null {
+  if (!percentDraft.trim()) return null;
+  const percent = Number(percentDraft);
+  if (!Number.isFinite(percent)) return null;
+  const nextScale = Math.min(
+    LAYER_MAX_SCALE,
+    Math.max(LAYER_MIN_SCALE, percent / 100 + direction * SCALE_STEP),
+  );
+  return formatScalePercent(nextScale);
+}
+
 export function canRunTransformAction(
   result: CommitTransformDraftResult,
 ): boolean {
@@ -101,8 +135,8 @@ const EMPTY_DRAFT: LayerTransformDraft = {
 export function LayerTransformPanel({
   backgroundLayerSelected,
   compact = false,
-  showResetTransform = false,
-  showLockControl = true,
+  showResetTransform = compact,
+  showLockControl = !compact,
 }: LayerTransformPanelProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -125,11 +159,13 @@ export function LayerTransformPanel({
     Boolean(backgroundLayerSelected) ||
     Boolean(shot && layer && shot.backgroundLayerId === layer.id);
   const [draft, setDraft] = useState<LayerTransformDraft>(EMPTY_DRAFT);
+  const [scalePercentDraft, setScalePercentDraft] = useState('');
   const [status, setStatus] = useState(
     compact ? '' : '选择普通图层后可编辑中心位置与静态变换。',
   );
   const formRef = useRef<HTMLFormElement>(null);
   const preserveCommitErrorRef = useRef(false);
+  const scalePercentEditedRef = useRef(false);
   const draftVersionRef = useRef(0);
   const lastCommittedRef = useRef<{
     layerId: string;
@@ -148,6 +184,8 @@ export function LayerTransformPanel({
           }
         : EMPTY_DRAFT,
     );
+    setScalePercentDraft(layer ? formatScalePercent(layer.scaleX) : '');
+    scalePercentEditedRef.current = false;
     if (layer) {
       preserveCommitErrorRef.current = false;
       setStatus(compact ? '' : layer.locked
@@ -171,14 +209,38 @@ export function LayerTransformPanel({
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
+  const updateScalePercentDraft = (value: string): void => {
+    draftVersionRef.current += 1;
+    scalePercentEditedRef.current = true;
+    setScalePercentDraft(value);
+    setDraft((current) => ({
+      ...current,
+      scale: parseScalePercentDraft(value),
+    }));
+  };
+
+  const draftForCommit = (
+    draftValue: LayerTransformDraft,
+    scaleValue = scalePercentDraft,
+  ): LayerTransformDraft =>
+    compact && scalePercentEditedRef.current
+      ? {
+          ...draftValue,
+          scale: parseScalePercentDraft(scaleValue),
+        }
+      : draftValue;
+
   const commitPendingDraft = (
     reason: 'action' | 'blur' | 'submit',
+    draftOverride = draft,
+    scaleValue = scalePercentDraft,
   ): CommitTransformDraftResult => {
     if (!layer) return 'invalid';
     if (layer.locked) {
       setStatus('图层已锁定；属性草稿未提交。');
       return 'locked';
     }
+    const nextDraft = draftForCommit(draftOverride, scaleValue);
     const commitIdentity = {
       layerId: layer.id,
       draftVersion: draftVersionRef.current,
@@ -191,7 +253,7 @@ export function LayerTransformPanel({
       return 'noop';
     }
     try {
-      const transform = parseLayerTransformDraft(draft, layer.flipX);
+      const transform = parseLayerTransformDraft(nextDraft, layer.flipX);
       const revisionBefore =
         editorProjectStore.getSnapshot()?.revision ?? null;
       layerStore.updateTransform(layer.id, transform);
@@ -243,6 +305,112 @@ export function LayerTransformPanel({
       );
     }
   };
+
+  const adjustScale = (direction: -1 | 1): void => {
+    const nextPercent = stepScalePercentDraft(scalePercentDraft, direction);
+    if (nextPercent === null) {
+      setStatus('缩放数值必须是有限数字。');
+      return;
+    }
+    const nextDraft = {
+      ...draft,
+      scale: parseScalePercentDraft(nextPercent),
+    };
+    draftVersionRef.current += 1;
+    scalePercentEditedRef.current = true;
+    setScalePercentDraft(nextPercent);
+    setDraft(nextDraft);
+    commitPendingDraft('action', nextDraft, nextPercent);
+  };
+
+  const adjustRotation = (direction: -1 | 1): void => {
+    const currentRotation = Number(draft.rotationDeg);
+    if (!Number.isFinite(currentRotation)) {
+      setStatus('旋转数值必须是有限数字。');
+      return;
+    }
+    const nextDraft = {
+      ...draft,
+      rotationDeg: String(currentRotation + direction * ROTATION_STEP_DEG),
+    };
+    draftVersionRef.current += 1;
+    setDraft(nextDraft);
+    commitPendingDraft('action', nextDraft);
+  };
+
+  const toggleFlip = (): void => {
+    if (!layer || layer.locked) return;
+    if (!canRunTransformAction(commitPendingDraft('action'))) return;
+    try {
+      layerStore.toggleFlipX(layer.id);
+      setStatus('水平翻转已切换，中心坐标保持不变。');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '水平翻转失败。',
+      );
+    }
+  };
+
+  const resetButton = layer && showResetTransform ? (
+    <button
+      className="layer-transform-secondary-action"
+      data-testid="layer-transform-reset"
+      disabled={layer.locked || isBackgroundLayer}
+      onClick={resetTransform}
+      type="button"
+    >
+      重置变换
+    </button>
+  ) : null;
+
+  const flipButton = layer ? (
+    <button
+      className="layer-transform-secondary-action"
+      disabled={layer.locked}
+      onClick={toggleFlip}
+      type="button"
+    >
+      {layer.flipX ? '取消水平翻转' : '水平翻转'}
+    </button>
+  ) : null;
+
+  const lockControl = layer && showLockControl ? (
+    <label className="layer-lock-control">
+      <input
+        checked={layer.locked}
+        onChange={(event) => {
+          const shouldLock = event.target.checked;
+          if (
+            shouldLock &&
+            !canRunTransformAction(commitPendingDraft('action'))
+          ) {
+            return;
+          }
+          try {
+            layerStore.setLocked(layer.id, shouldLock);
+          } catch (error) {
+            setStatus(
+              error instanceof Error
+                ? error.message
+                : '锁定状态更新失败。',
+            );
+          }
+        }}
+        type="checkbox"
+      />
+      锁定图层
+    </label>
+  ) : null;
+
+  const applyButton = layer ? (
+    <button
+      className="layer-transform-submit-action"
+      disabled={layer.locked}
+      type="submit"
+    >
+      应用变换
+    </button>
+  ) : null;
 
   const commitDraftRef = useRef(commitPendingDraft);
   commitDraftRef.current = commitPendingDraft;
@@ -300,95 +468,160 @@ export function LayerTransformPanel({
       </div>
       {layer ? (
         <form onSubmit={submit} ref={formRef}>
-          <strong>{layer.name}</strong>
-          {(
-            [
-              ['x', 'X（中心）'],
-              ['y', 'Y（中心）'],
-              ['scale', '等比缩放'],
-              ['rotationDeg', '旋转（°）'],
-              ['opacity', '不透明度'],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key}>
-              {label}
-              <input
-                disabled={layer.locked}
-                inputMode="decimal"
-                onChange={(event) =>
-                  updateDraft(key, event.target.value)
-                }
-                value={draft[key]}
-              />
-            </label>
-          ))}
-          {showResetTransform ? (
-            <button
-              data-testid="layer-transform-reset"
-              disabled={layer.locked || isBackgroundLayer}
-              onClick={resetTransform}
-              type="button"
-            >
-              重置变换
-            </button>
-          ) : null}
-          <button
-            disabled={layer.locked}
-            onClick={() => {
-              if (
-                !canRunTransformAction(
-                  commitPendingDraft('action'),
-                )
-              ) {
-                return;
-              }
-              try {
-                layerStore.toggleFlipX(layer.id);
-                setStatus('水平翻转已切换，中心坐标保持不变。');
-              } catch (error) {
-                setStatus(
-                  error instanceof Error
-                    ? error.message
-                    : '水平翻转失败。',
-                );
-              }
-            }}
-            type="button"
-          >
-            {layer.flipX ? '取消水平翻转' : '水平翻转'}
-          </button>
-          {showLockControl ? (
-            <label className="layer-lock-control">
-              <input
-                checked={layer.locked}
-                onChange={(event) => {
-                  const shouldLock = event.target.checked;
-                  if (
-                    shouldLock &&
-                    !canRunTransformAction(
-                      commitPendingDraft('action'),
-                    )
-                  ) {
-                    return;
+          {!compact ? <strong>{layer.name}</strong> : null}
+          {compact ? (
+            <>
+              <div
+                className="layer-transform-position-row"
+                data-testid="layer-transform-position"
+              >
+                <span className="layer-transform-control-label">位置</span>
+                <label>
+                  X
+                  <input
+                    aria-label="X（中心）"
+                    data-testid="layer-transform-x"
+                    disabled={layer.locked}
+                    inputMode="decimal"
+                    onChange={(event) =>
+                      updateDraft('x', event.target.value)
+                    }
+                    value={draft.x}
+                  />
+                </label>
+                <label>
+                  Y
+                  <input
+                    aria-label="Y（中心）"
+                    data-testid="layer-transform-y"
+                    disabled={layer.locked}
+                    inputMode="decimal"
+                    onChange={(event) =>
+                      updateDraft('y', event.target.value)
+                    }
+                    value={draft.y}
+                  />
+                </label>
+              </div>
+              <div
+                className="layer-transform-stepper-row"
+                data-testid="layer-transform-scale"
+              >
+                <span className="layer-transform-control-label">缩放</span>
+                <div className="layer-transform-stepper">
+                  <button
+                    aria-label="缩小缩放"
+                    disabled={layer.locked}
+                    onClick={() => adjustScale(-1)}
+                    type="button"
+                  >
+                    −
+                  </button>
+                  <label className="layer-transform-stepper-value">
+                    <input
+                      aria-label="缩放百分比"
+                      disabled={layer.locked}
+                      inputMode="decimal"
+                      onChange={(event) =>
+                        updateScalePercentDraft(event.target.value)
+                      }
+                      value={scalePercentDraft}
+                    />
+                    <span aria-hidden="true">%</span>
+                  </label>
+                  <button
+                    aria-label="放大缩放"
+                    disabled={layer.locked}
+                    onClick={() => adjustScale(1)}
+                    type="button"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <div
+                className="layer-transform-stepper-row"
+                data-testid="layer-transform-rotation"
+              >
+                <span className="layer-transform-control-label">旋转</span>
+                <div className="layer-transform-stepper">
+                  <button
+                    aria-label="减少旋转角度"
+                    disabled={layer.locked}
+                    onClick={() => adjustRotation(-1)}
+                    type="button"
+                  >
+                    −
+                  </button>
+                  <label className="layer-transform-stepper-value">
+                    <input
+                      aria-label="旋转角度"
+                      disabled={layer.locked}
+                      inputMode="decimal"
+                      onChange={(event) =>
+                        updateDraft('rotationDeg', event.target.value)
+                      }
+                      value={draft.rotationDeg}
+                    />
+                    <span aria-hidden="true">°</span>
+                  </label>
+                  <button
+                    aria-label="增加旋转角度"
+                    disabled={layer.locked}
+                    onClick={() => adjustRotation(1)}
+                    type="button"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <label className="layer-transform-appearance-field">
+                <span>外观 · 不透明度</span>
+                <input
+                  aria-label="不透明度"
+                  disabled={layer.locked}
+                  inputMode="decimal"
+                  onChange={(event) =>
+                    updateDraft('opacity', event.target.value)
                   }
-                  try {
-                    layerStore.setLocked(layer.id, shouldLock);
-                  } catch (error) {
-                    setStatus(
-                      error instanceof Error
-                        ? error.message
-                        : '锁定状态更新失败。',
-                    );
-                  }
-                }}
-                type="checkbox"
-              />
-              锁定图层
-            </label>
-          ) : null}
-          <button disabled={layer.locked} type="submit">
-            应用变换
-          </button>
+                  value={draft.opacity}
+                />
+              </label>
+              <div className="layer-transform-action-row">
+                {flipButton}
+                {resetButton}
+                {applyButton}
+              </div>
+            </>
+          ) : (
+            <>
+              {(
+                [
+                  ['x', 'X（中心）'],
+                  ['y', 'Y（中心）'],
+                  ['scale', '等比缩放'],
+                  ['rotationDeg', '旋转（°）'],
+                  ['opacity', '不透明度'],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key}>
+                  {label}
+                  <input
+                    disabled={layer.locked}
+                    inputMode="decimal"
+                    onChange={(event) =>
+                      updateDraft(key, event.target.value)
+                    }
+                    value={draft[key]}
+                  />
+                </label>
+              ))}
+              {resetButton}
+              {flipButton}
+              {lockControl}
+              {applyButton}
+            </>
+          )}
         </form>
       ) : (
         <p>

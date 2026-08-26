@@ -294,6 +294,18 @@ export function RightInspector({
   const inspectorHeading = (
     <div className="right-inspector-heading">
       <h2 id="right-inspector-heading">{dialogueMode ? '字幕' : '属性'}</h2>
+      {compact && !dialogueMode ? (
+        <button
+          aria-label="关闭属性"
+          className="right-inspector-heading-close"
+          data-testid="inspector-inline-close"
+          onClick={() => setDrawerOpen(false)}
+          title="关闭属性"
+          type="button"
+        >
+          ×
+        </button>
+      ) : null}
     </div>
   );
 
@@ -353,15 +365,15 @@ export function RightInspector({
     <LayerTransformPanel
       backgroundLayerSelected={selection.state === 'background'}
       compact={compact}
-      showResetTransform={landscapePresentation}
-      showLockControl={!landscapePresentation}
+      showResetTransform={Boolean(compact) || landscapePresentation}
+      showLockControl={!compact && !landscapePresentation}
     />
   );
   const backgroundPanel = <LayerBackgroundControl />;
   const orderPanel = (
     <LayerOrderControls
       backgroundLayerSelected={selection.state === 'background'}
-      showLockControl={landscapePresentation}
+      showLockControl={Boolean(compact) || landscapePresentation}
     />
   );
 
@@ -447,37 +459,43 @@ export function RightInspector({
       />
       {narrow ? (
         <>
-      <button
-        ref={railRef}
-        aria-controls="right-inspector-drawer"
-        aria-expanded={drawerOpen}
-        aria-label={drawerOpen ? `收起${inspectorModeLabel}` : `打开${inspectorModeLabel}`}
-        className="inspector-rail-handle"
-        data-testid="inspector-rail-handle"
-        onClick={() => setDrawerOpen(!drawerOpen)}
-        type="button"
-      >
-        <span>{drawerOpen ? '›' : '‹'}</span>
-        <strong>{dialogueMode ? '字幕' : '属性'}</strong>
-      </button>
-      <div
-        ref={drawerRef}
-        tabIndex={-1}
-        className="right-inspector-drawer"
-        data-testid="right-inspector-drawer"
-        id="right-inspector-drawer"
-      >
-        <button
-          aria-label={`关闭${inspectorModeLabel}`}
-          className="inspector-drawer-close"
-          data-testid="inspector-drawer-close"
-          onClick={() => setDrawerOpen(false)}
-          type="button"
-        >
-          关闭
-        </button>
-        {inspectorContent}
-      </div>
+          <button
+            ref={railRef}
+            aria-controls="right-inspector-drawer"
+            aria-expanded={drawerOpen}
+            aria-label={
+              drawerOpen
+                ? `收起${inspectorModeLabel}`
+                : `打开${inspectorModeLabel}`
+            }
+            className="inspector-rail-handle"
+            data-testid="inspector-rail-handle"
+            onClick={() => setDrawerOpen(!drawerOpen)}
+            type="button"
+          >
+            <span>{drawerOpen ? '›' : '‹'}</span>
+            <strong>{dialogueMode ? '字幕' : '属性'}</strong>
+          </button>
+          <div
+            ref={drawerRef}
+            tabIndex={-1}
+            className="right-inspector-drawer"
+            data-testid="right-inspector-drawer"
+            id="right-inspector-drawer"
+          >
+            {!compact ? (
+              <button
+                aria-label={`关闭${inspectorModeLabel}`}
+                className="inspector-drawer-close"
+                data-testid="inspector-drawer-close"
+                onClick={() => setDrawerOpen(false)}
+                type="button"
+              >
+                关闭
+              </button>
+            ) : null}
+            {inspectorContent}
+          </div>
         </>
       ) : (
         inspectorContent

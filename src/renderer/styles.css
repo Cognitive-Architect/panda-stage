@@ -7244,3 +7244,365 @@ h1 {
   background: var(--ui-color-surface);
   line-height: 1.5;
 }
+
+/* Issue #338: flatten the portrait Properties hierarchy without changing the
+   single inspector/panel owners or their commit paths. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading {
+  display: flex;
+  min-height: 44px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--ui-color-separator);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading-close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  place-items: center;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading-close:hover {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading-close:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection {
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection[data-selection-state='locked'],
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection[data-selection-state='background'],
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection[data-selection-state='invalid'] {
+  border-bottom-color: rgb(255 209 102 / 62%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-summary {
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-thumbnail {
+  width: 48px;
+  height: 48px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-copy {
+  gap: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-copy strong {
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-compact-sections {
+  gap: 0;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section {
+  overflow: visible;
+  border: 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > summary {
+  min-height: 48px;
+  padding: 12px 0;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > summary::before {
+  width: 18px;
+  color: var(--ui-color-text-secondary);
+  content: '›';
+  font-size: 22px;
+  line-height: 1;
+  text-align: center;
+  transition: transform 120ms ease;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section[open] > summary {
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-transform-panel,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-background-control,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-order-controls {
+  padding: 14px 0 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel-heading,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > strong,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  .eyebrow,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  > div:first-child {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-position-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-control-label {
+  align-self: center;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-position-row
+  label {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-position-row
+  input,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-value
+  input {
+  min-height: 44px;
+  padding: 9px 10px;
+  font-size: 15px;
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper
+  > button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper
+  > button:hover:not(:disabled) {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-value {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-value
+  input {
+  padding-right: 28px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-value
+  > span {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  color: var(--ui-color-text-secondary);
+  font-size: 14px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-appearance-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-appearance-field
+  input {
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-color-separator);
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-action-row
+  button {
+  flex: 1 1 112px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-color: var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-action-row
+  button:hover:not(:disabled) {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-actions,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-actions
+  .layer-delete-button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-actions
+  .layer-background-primary {
+  grid-column: 1 / -1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control {
+  display: flex;
+  min-height: 44px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-color-separator);
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control
+  input {
+  width: auto;
+  min-height: 0;
+}
