@@ -34,10 +34,12 @@ export function shouldDeleteSelectedLayer(
 
 export interface LayerOrderControlsProps {
   backgroundLayerSelected?: boolean;
+  showLockControl?: boolean;
 }
 
 export function LayerOrderControls({
   backgroundLayerSelected,
+  showLockControl = false,
 }: LayerOrderControlsProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -120,6 +122,18 @@ export function LayerOrderControls({
     }
   };
 
+  const setLock = (locked: boolean): void => {
+    if (!layer) return;
+    try {
+      layerStore.setLocked(layer.id, locked);
+      setStatus(locked ? '图层已锁定。' : '图层已解锁。');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '锁定状态更新失败。',
+      );
+    }
+  };
+
   const disabled = !layer || layer.locked || isBackgroundLayer;
   return (
     <section
@@ -169,6 +183,17 @@ export function LayerOrderControls({
           删除图层
         </button>
       </div>
+      {showLockControl ? (
+        <label className="layer-lock-control">
+          <input
+            checked={Boolean(layer?.locked)}
+            disabled={!layer}
+            onChange={(event) => setLock(event.target.checked)}
+            type="checkbox"
+          />
+          锁定图层
+        </label>
+      ) : null}
       <p data-testid="layer-order-guidance">
         {isBackgroundLayer
           ? '正式背景受到保护，不能执行普通排序或删除操作。'

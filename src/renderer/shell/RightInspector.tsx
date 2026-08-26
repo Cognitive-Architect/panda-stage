@@ -211,7 +211,12 @@ export function RightInspector({
     dialogueSelectionStore.subscribe,
     dialogueSelectionStore.getSelectedDialogueId,
   );
-  const inspectorModeLabel = selectedDialogueId ? '对白检查器' : '属性检查器';
+  const landscapePresentation = shellMode === 'landscape';
+  const compactSections = compact === true || landscapePresentation;
+  const dialogueMode = Boolean(
+    selectedDialogueId && dialogueSelectionVisible,
+  );
+  const inspectorModeLabel = dialogueMode ? '字幕' : '属性';
   const selection = getRightInspectorSelection(
     snapshot,
     currentShotId,
@@ -288,7 +293,7 @@ export function RightInspector({
 
   const inspectorHeading = (
     <div className="right-inspector-heading">
-      <h2 id="right-inspector-heading">属性</h2>
+      <h2 id="right-inspector-heading">{dialogueMode ? '字幕' : '属性'}</h2>
     </div>
   );
 
@@ -348,12 +353,15 @@ export function RightInspector({
     <LayerTransformPanel
       backgroundLayerSelected={selection.state === 'background'}
       compact={compact}
+      showResetTransform={landscapePresentation}
+      showLockControl={!landscapePresentation}
     />
   );
   const backgroundPanel = <LayerBackgroundControl />;
   const orderPanel = (
     <LayerOrderControls
       backgroundLayerSelected={selection.state === 'background'}
+      showLockControl={landscapePresentation}
     />
   );
 
@@ -361,20 +369,27 @@ export function RightInspector({
     <>
       {inspectorHeading}
       {inspectorSelection}
-      {compact ? (
+      {compactSections ? (
         <div className="right-inspector-compact-sections">
           <details
             className="right-inspector-section right-inspector-transform-section"
+            data-testid="right-inspector-transform-section"
             open
           >
             <summary>变换</summary>
             {transformPanel}
           </details>
-          <details className="right-inspector-section">
+          <details
+            className="right-inspector-section"
+            data-testid="right-inspector-appearance-section"
+          >
             <summary>外观</summary>
             {backgroundPanel}
           </details>
-          <details className="right-inspector-section">
+          <details
+            className="right-inspector-section"
+            data-testid="right-inspector-layer-section"
+          >
             <summary>图层</summary>
             {orderPanel}
           </details>
@@ -392,10 +407,13 @@ export function RightInspector({
   // A selected dialogue takes over the single inspector surface; the
   // layer/background body is shown otherwise. The two selections are mutually
   // exclusive (selecting one clears the other), so at most one is active.
-  const inspectorContent = selectedDialogueId && dialogueSelectionVisible ? (
+  const inspectorContent = dialogueMode ? (
     <>
-      {inspectorHeading}
-      <DialogueInspector dialogueId={selectedDialogueId} />
+      {landscapePresentation ? inspectorHeading : null}
+      <DialogueInspector
+        dialogueId={selectedDialogueId!}
+        presentation={landscapePresentation ? 'landscape' : 'inspector'}
+      />
     </>
   ) : (
     inspectorBody
@@ -409,7 +427,15 @@ export function RightInspector({
       }`}
       data-background-layer-id={backgroundLayerId}
       data-drawer-open={drawerOpen}
+      data-inspector-mode={dialogueMode ? 'subtitle' : 'properties'}
       data-narrow={narrow ? 'true' : 'false'}
+      data-presentation={
+        landscapePresentation
+          ? 'landscape'
+          : compact
+            ? 'compact'
+            : 'default'
+      }
       data-selected-layer-id={selectedLayerId ?? ''}
       data-selection-state={selection.state}
       data-testid="right-inspector"
@@ -432,7 +458,7 @@ export function RightInspector({
         type="button"
       >
         <span>{drawerOpen ? '›' : '‹'}</span>
-        <strong>属性</strong>
+        <strong>{dialogueMode ? '字幕' : '属性'}</strong>
       </button>
       <div
         ref={drawerRef}

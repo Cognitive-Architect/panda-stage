@@ -8,6 +8,8 @@ import {
 import {
   LAYER_MAX_SCALE,
   LAYER_MIN_SCALE,
+  PROJECT_HEIGHT,
+  PROJECT_WIDTH,
   type LayerTransformInput,
 } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
@@ -34,6 +36,10 @@ export interface LayerTransformPanelProps {
   backgroundLayerSelected?: boolean;
   /** Compact portrait presentation keeps the existing draft/commit contract. */
   compact?: boolean;
+  /** Landscape contextual inspector exposes the real neutral-transform action. */
+  showResetTransform?: boolean;
+  /** Keep layer locking in the landscape 图层 section. */
+  showLockControl?: boolean;
 }
 
 export function canRunTransformAction(
@@ -95,6 +101,8 @@ const EMPTY_DRAFT: LayerTransformDraft = {
 export function LayerTransformPanel({
   backgroundLayerSelected,
   compact = false,
+  showResetTransform = false,
+  showLockControl = true,
 }: LayerTransformPanelProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -217,6 +225,25 @@ export function LayerTransformPanel({
     commitPendingDraft('submit');
   };
 
+  const resetTransform = (): void => {
+    if (!layer || layer.locked || isBackgroundLayer) return;
+    try {
+      layerStore.updateTransform(layer.id, {
+        x: PROJECT_WIDTH / 2,
+        y: PROJECT_HEIGHT / 2,
+        scale: 1,
+        rotationDeg: 0,
+        opacity: 1,
+        flipX: false,
+      });
+      setStatus('变换已重置到画布中心与中性状态。');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '变换重置失败。',
+      );
+    }
+  };
+
   const commitDraftRef = useRef(commitPendingDraft);
   commitDraftRef.current = commitPendingDraft;
 
@@ -295,6 +322,16 @@ export function LayerTransformPanel({
               />
             </label>
           ))}
+          {showResetTransform ? (
+            <button
+              data-testid="layer-transform-reset"
+              disabled={layer.locked || isBackgroundLayer}
+              onClick={resetTransform}
+              type="button"
+            >
+              重置变换
+            </button>
+          ) : null}
           <button
             disabled={layer.locked}
             onClick={() => {
@@ -320,33 +357,35 @@ export function LayerTransformPanel({
           >
             {layer.flipX ? '取消水平翻转' : '水平翻转'}
           </button>
-          <label className="layer-lock-control">
-            <input
-              checked={layer.locked}
-              onChange={(event) => {
-                const shouldLock = event.target.checked;
-                if (
-                  shouldLock &&
-                  !canRunTransformAction(
-                    commitPendingDraft('action'),
-                  )
-                ) {
-                  return;
-                }
-                try {
-                  layerStore.setLocked(layer.id, shouldLock);
-                } catch (error) {
-                  setStatus(
-                    error instanceof Error
-                      ? error.message
-                      : '锁定状态更新失败。',
-                  );
-                }
-              }}
-              type="checkbox"
-            />
-            锁定图层
-          </label>
+          {showLockControl ? (
+            <label className="layer-lock-control">
+              <input
+                checked={layer.locked}
+                onChange={(event) => {
+                  const shouldLock = event.target.checked;
+                  if (
+                    shouldLock &&
+                    !canRunTransformAction(
+                      commitPendingDraft('action'),
+                    )
+                  ) {
+                    return;
+                  }
+                  try {
+                    layerStore.setLocked(layer.id, shouldLock);
+                  } catch (error) {
+                    setStatus(
+                      error instanceof Error
+                        ? error.message
+                        : '锁定状态更新失败。',
+                    );
+                  }
+                }}
+                type="checkbox"
+              />
+              锁定图层
+            </label>
+          ) : null}
           <button disabled={layer.locked} type="submit">
             应用变换
           </button>

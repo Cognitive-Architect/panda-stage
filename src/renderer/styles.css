@@ -6692,3 +6692,541 @@ h1 {
   padding: 8px;
   border-top: 1px solid rgb(255 255 255 / 8%);
 }
+
+/* Issue #332: the landscape right side is one contextual inspector. Keep
+   Properties and Subtitle presentation compact without changing their
+   existing state owners or the accepted portrait surface. */
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+  padding: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .inspector-drawer-close {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  min-height: 40px;
+  margin-bottom: 0;
+  padding: 8px 12px;
+  background: #0f1812;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading {
+  display: block;
+  min-width: 0;
+  padding: 0 0 2px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading
+  h2 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 20px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection {
+  min-width: 0;
+  padding: 12px;
+  border-color: var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-thumbnail {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  place-items: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-thumbnail
+  img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-copy
+  strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-copy
+  span,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-message {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection[data-selection-state='selected']
+  .right-inspector-selection-message {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-compact-sections {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > summary {
+  display: flex;
+  min-height: 48px;
+  padding: 12px 14px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ui-color-text-primary);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section[open]
+  > summary {
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > .layer-transform-panel,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > .layer-background-control,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > .layer-order-controls {
+  min-width: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel-heading,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel-heading
+  + form
+  > strong,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  .eyebrow,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  h3,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  > div:first-child {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label {
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label
+  input,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  button {
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label
+  input {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > .layer-lock-control {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button {
+  width: 100%;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control {
+  display: flex;
+  min-height: 44px;
+  padding: 10px 0 0;
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control
+  input {
+  width: auto;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  > p,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  > output,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > p,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  > p {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  output:empty {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-delete-button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-delete {
+  border-color: rgb(246 139 118 / 62%);
+  color: #ffd6ca;
+  background: rgb(93 37 32 / 72%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-summary {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy
+  strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy
+  span {
+  flex: 0 0 auto;
+  color: var(--ui-color-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-section {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-section
+  h3 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  textarea {
+  min-height: 96px;
+  padding: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields
+  input,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  select,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  button {
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields
+  input {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-field
+  span
+  time {
+  color: var(--ui-color-accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-audio-section
+  p {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-audio-note {
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-actions {
+  display: grid;
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-actions
+  button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-empty {
+  padding: 14px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface);
+  line-height: 1.5;
+}
