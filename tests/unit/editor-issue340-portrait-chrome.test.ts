@@ -8,7 +8,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import { readFileSync } from 'node:fs';
 
 function source(path: string): string {
-  return readFileSync(path, 'utf8');
+  return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
 }
 
 const project = migrateProject(exampleProject);

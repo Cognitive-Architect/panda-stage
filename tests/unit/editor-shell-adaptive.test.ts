@@ -8,7 +8,7 @@ import {
 } from '../../src/renderer/shell/adaptiveEditorShell';
 
 function readSource(path: string): string {
-  return readFileSync(path, 'utf8');
+  return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
 }
 
 describe('UI-M2 adaptive EditorShell state', () => {
