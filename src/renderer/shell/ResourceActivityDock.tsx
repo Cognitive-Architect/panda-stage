@@ -134,6 +134,8 @@ export function ResourceActivityDock({
       (activeActivity === 'shots' || activeActivity === 'assets'));
   const hidePortraitAssetsChrome =
     hideSectionLabels && activeActivity === 'assets';
+  const hidePortraitShotChrome =
+    hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
 
   const primaryAction =
     activeActivity === 'shots'
@@ -178,7 +180,10 @@ export function ResourceActivityDock({
 
   return (
     <section
-      aria-labelledby="resource-activity-heading"
+      aria-label={hidePortraitShotChrome ? activeLabel : undefined}
+      aria-labelledby={
+        hidePortraitShotChrome ? undefined : 'resource-activity-heading'
+      }
       className={`resource-activity-dock${drawerOpen ? ' resource-activity-dock-open' : ''}${landscapePresentation ? ' resource-activity-dock-landscape' : ''}`}
       data-resource-drawer-open={drawerOpen}
       data-resource-mode={narrow ? 'narrow' : 'wide'}
@@ -232,27 +237,34 @@ export function ResourceActivityDock({
       >
         <div className="resource-activity-header">
           <div className="resource-activity-heading">
-            <div>
-              {hideSectionLabels || landscapePresentation ? (
-                <h2 id="resource-activity-heading">{activeLabel}</h2>
-              ) : (
-                <>
-                  <p className="eyebrow">编辑资源</p>
-                  <h2 id="resource-activity-heading">{activeLabel}工作区</h2>
-                </>
-              )}
-            </div>
+            {hidePortraitShotChrome ? null : (
+              <div>
+                {hideSectionLabels || landscapePresentation ? (
+                  <h2 id="resource-activity-heading">{activeLabel}</h2>
+                ) : (
+                  <>
+                    <p className="eyebrow">编辑资源</p>
+                    <h2 id="resource-activity-heading">{activeLabel}工作区</h2>
+                  </>
+                )}
+              </div>
+            )}
             <div className="resource-activity-header-actions">
               <button
                 className="resource-activity-primary-action"
                 data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
                 data-testid="resource-primary-action"
                 onClick={primaryAction.onClick}
+                style={
+                  hidePortraitShotChrome
+                    ? { gridColumn: '1 / -1', gridRow: 1 }
+                    : undefined
+                }
                 type="button"
               >
                 {primaryAction.label}
               </button>
-              {hidePortraitAssetsChrome ? null : (
+              {hidePortraitAssetsChrome || hidePortraitShotChrome ? null : (
                 <button
                   aria-label="关闭资源工作区"
                   className="resource-activity-close"
