@@ -22,6 +22,8 @@ export type ThumbnailState =
     }
   | { status: 'ready'; dataUrl: string };
 
+const draggedCards = new WeakSet<HTMLElement>();
+
 export function formatAssetDuration(durationMs: number | undefined): string {
   if (durationMs === undefined) return '时长未知';
   if (durationMs < 60_000) {
@@ -114,13 +116,31 @@ export function AssetCard({
       data-asset-id={asset.id}
       data-category={category}
       draggable
-      onClick={() => onSelect(asset.id)}
-      onDragEnd={onDragEnd}
+      onClick={(event) => {
+        if (draggedCards.has(event.currentTarget)) {
+          draggedCards.delete(event.currentTarget);
+          return;
+        }
+        onSelect(asset.id);
+      }}
+      onDragEnd={(event) => {
+        const card = event.currentTarget;
+        onDragEnd();
+        if (typeof window === 'undefined') {
+          draggedCards.delete(card);
+          return;
+        }
+        window.setTimeout(() => {
+          draggedCards.delete(card);
+        }, 0);
+      }}
       onDragStart={(event) => {
+        draggedCards.add(event.currentTarget);
         writeAssetDropPayload(event.dataTransfer, dropPayload);
         onDragStart(asset.id);
       }}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           onSelect(asset.id);

@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import {
   scanAssetReferences,
 } from '../../../domain';
@@ -29,6 +29,10 @@ import {
   type ThumbnailState,
 } from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
+import {
+  assetLibraryPageCount,
+  paginateAssetLibraryEntries,
+} from './assetLibraryPagination';
 import { applyFlaAssetCommitResponse } from './applyFlaAssetCommitResponse';
 import { applyFlaFrameSequenceCommitResponse } from './applyFlaFrameSequenceCommitResponse';
 import { applyFlaStaticSnapshotCommitResponse } from './applyFlaStaticSnapshotCommitResponse';
@@ -69,6 +73,7 @@ export function AssetLibrary({
     hideHeading ? 'all' : 'background',
   );
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [selectedAssetId, setSelectedAssetId] =
     useState<string | null>(null);
   const [selectedDetailsOpen, setSelectedDetailsOpen] = useState(false);
@@ -88,6 +93,9 @@ export function AssetLibrary({
   const [flaInspection, setFlaInspection] =
     useState<FlaInspectionOperation | null>(null);
   const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
+  const detailsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lastOpenedAssetId = useRef<string | null>(null);
+  const pendingFocusReturnAssetId = useRef<string | null>(null);
   const lastCloseRequest = useRef(closeRequestToken ?? 0);
   const lastFlaReviewRequest = useRef(flaReviewRequestToken ?? 0);
 
@@ -136,6 +144,20 @@ export function AssetLibrary({
     () => filterAssetLibraryEntries(entries, searchQuery),
     [entries, searchQuery],
   );
+  const isPortraitBrowser = hideHeading && view === 'browser';
+  const totalPages = isPortraitBrowser
+    ? assetLibraryPageCount(visibleEntries.length)
+    : 1;
+  const currentPage = isPortraitBrowser
+    ? Math.max(1, Math.min(page, totalPages))
+    : 1;
+  const pageEntries = useMemo(
+    () =>
+      isPortraitBrowser
+        ? paginateAssetLibraryEntries(visibleEntries, currentPage)
+        : visibleEntries,
+    [currentPage, isPortraitBrowser, visibleEntries],
+  );
   const selectedAsset = useMemo(
     () =>
       snapshot?.project.assets.find(
@@ -155,16 +177,105 @@ export function AssetLibrary({
       ? authoritativeReferences
       : localReferences;
 
+  const clearSelectedAsset = useCallback((): void => {
+    pendingFocusReturnAssetId.current = null;
+    setSelectedAssetId(null);
+    setSelectedDetailsOpen(false);
+    setAuthoritativeReferences([]);
+  }, []);
+
+  const closeSelectedDetails = useCallback(
+    (returnFocus = true): void => {
+      pendingFocusReturnAssetId.current = returnFocus
+        ? lastOpenedAssetId.current ?? selectedAssetId
+        : null;
+      setSelectedDetailsOpen(false);
+    },
+    [selectedAssetId],
+  );
+
+  const focusAssetCard = useCallback((assetId: string): void => {
+    if (typeof document === 'undefined') return;
+    const library = document.querySelector<HTMLElement>(
+      '[data-testid="asset-library"]',
+    );
+    const card = library
+      ? Array.from(
+          library.querySelectorAll<HTMLElement>('[data-asset-id]'),
+        ).find((candidate) => candidate.dataset.assetId === assetId)
+      : null;
+    card?.focus({ preventScroll: true });
+  }, []);
+
+  const selectCategory = (nextCategory: AssetLibraryFilter): void => {
+    setCategory(nextCategory);
+    setPage(1);
+    clearSelectedAsset();
+  };
+
+  const updateSearchQuery = (nextQuery: string): void => {
+    setSearchQuery(nextQuery);
+    setPage(1);
+    clearSelectedAsset();
+  };
+
+  const goToPage = (requestedPage: number): void => {
+    if (!isPortraitBrowser) return;
+    const nextPage = Math.max(1, Math.min(requestedPage, totalPages));
+    if (nextPage === currentPage) return;
+    const nextEntries = paginateAssetLibraryEntries(
+      visibleEntries,
+      nextPage,
+    );
+    setPage(nextPage);
+    closeSelectedDetails(false);
+    if (
+      selectedAssetId &&
+      !nextEntries.some((entry) => entry.asset.id === selectedAssetId)
+    ) {
+      clearSelectedAsset();
+    }
+  };
+
   useEffect(() => {
     if (
       selectedAssetId &&
-      !visibleEntries.some((entry) => entry.asset.id === selectedAssetId)
+      !pageEntries.some((entry) => entry.asset.id === selectedAssetId)
     ) {
       setSelectedAssetId(null);
       setSelectedDetailsOpen(false);
       setAuthoritativeReferences([]);
     }
-  }, [selectedAssetId, visibleEntries]);
+  }, [pageEntries, selectedAssetId]);
+
+  useEffect(() => {
+    if (page <= totalPages) return;
+    setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    if (!selectedDetailsOpen || !isPortraitBrowser) return;
+    detailsCloseButtonRef.current?.focus();
+  }, [isPortraitBrowser, selectedDetailsOpen]);
+
+  useEffect(() => {
+    if (!isPortraitBrowser || !selectedDetailsOpen) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeSelectedDetails();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [closeSelectedDetails, isPortraitBrowser, selectedDetailsOpen]);
+
+  useEffect(() => {
+    if (selectedDetailsOpen || !pendingFocusReturnAssetId.current) return;
+    const assetId = pendingFocusReturnAssetId.current;
+    pendingFocusReturnAssetId.current = null;
+    focusAssetCard(assetId);
+  }, [focusAssetCard, selectedDetailsOpen]);
 
   useEffect(() => {
     let active = true;
@@ -214,11 +325,12 @@ export function AssetLibrary({
 
   const selectAsset = (assetId: string): void => {
     setSelectedAssetId(assetId);
-    setSelectedDetailsOpen(true);
+    setSelectedDetailsOpen(hideHeading);
     setAuthoritativeReferences([]);
-    // Portrait keeps the selected card in the two-column browser so the
-    // lightweight selected state remains visible; the existing details route
-    // remains unchanged for the established non-portrait workspace.
+    if (hideHeading) {
+      lastOpenedAssetId.current = assetId;
+      pendingFocusReturnAssetId.current = null;
+    }
     if (!hideHeading) onViewChange('details');
   };
 
@@ -307,7 +419,7 @@ export function AssetLibrary({
       setStatus(outcome.status);
       if (outcome.applied) {
         setSelectedAssetId(null);
-        setSelectedDetailsOpen(false);
+        closeSelectedDetails(false);
       }
     } catch (error) {
       setStatus(
@@ -360,10 +472,15 @@ export function AssetLibrary({
   useEffect(() => {
     const previousPortraitAssets = previousHideHeading.current;
     previousHideHeading.current = hideHeading;
-    if (previousPortraitAssets === hideHeading || hideHeading) return;
+    if (previousPortraitAssets === hideHeading) return;
 
+    setPage(1);
+    pendingFocusReturnAssetId.current = null;
+    setSelectedAssetId(null);
+    setSelectedDetailsOpen(false);
+    setAuthoritativeReferences([]);
     setSearchQuery('');
-    setCategory((current) => current === 'all' ? 'background' : current);
+    setCategory(hideHeading ? 'all' : 'background');
   }, [hideHeading]);
 
   const previousProjectRoot = useRef(snapshot?.projectRoot);
@@ -373,6 +490,8 @@ export function AssetLibrary({
     if (previousProject !== snapshot?.projectRoot) {
       setCategory(hideHeading ? 'all' : 'background');
       setSearchQuery('');
+      setPage(1);
+      pendingFocusReturnAssetId.current = null;
       setSelectedAssetId(null);
       setSelectedDetailsOpen(false);
       setAuthoritativeReferences([]);
@@ -494,7 +613,7 @@ export function AssetLibrary({
                   <input
                     aria-label="搜索素材"
                     id="asset-library-search-input"
-                    onChange={(event) => setSearchQuery(event.target.value)}
+                    onChange={(event) => updateSearchQuery(event.target.value)}
                     placeholder="搜索素材"
                     type="search"
                     value={searchQuery}
@@ -504,7 +623,7 @@ export function AssetLibrary({
                       aria-label="清除搜索"
                       className="asset-library-search-clear"
                       data-testid="asset-library-search-clear"
-                      onClick={() => setSearchQuery('')}
+                      onClick={() => updateSearchQuery('')}
                       title="清除搜索"
                       type="button"
                     >
@@ -524,12 +643,7 @@ export function AssetLibrary({
                       : ''
                   }
                   key={item.id}
-                  onClick={() => {
-                    setCategory(item.id);
-                    setSelectedAssetId(null);
-                    setSelectedDetailsOpen(false);
-                    setAuthoritativeReferences([]);
-                  }}
+                  onClick={() => selectCategory(item.id)}
                   type="button"
                 >
                   <span>{item.label}</span>
@@ -537,22 +651,32 @@ export function AssetLibrary({
                 </button>
               ))}
             </nav>
-            {hideHeading && selectedAsset ? (
+            {hideHeading && selectedAsset && selectedDetailsOpen ? (
               <section
-                aria-label="褰撳墠閫変腑绱犳潗"
-                className="asset-selected-inspector"
+                role="presentation"
+                className="asset-details-overlay"
                 data-selected-asset-id={selectedAsset.id}
-                data-testid="asset-selected-inspector"
+                data-testid="asset-details-overlay"
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) {
+                    closeSelectedDetails();
+                  }
+                }}
               >
                 <div
-                  className="asset-selected-summary"
-                  data-testid="asset-selected-summary"
+                  aria-label="Asset details"
+                  aria-modal="true"
+                  className="asset-details-dialog"
+                  data-testid="asset-details-dialog"
+                  onClick={(event) => event.stopPropagation()}
+                  role="dialog"
                 >
                   <button
-                    aria-controls={`asset-selected-details-${selectedAsset.id}`}
-                    aria-expanded={selectedDetailsOpen}
-                    data-testid="asset-selected-summary-toggle"
-                    onClick={() => setSelectedDetailsOpen((open) => !open)}
+                    aria-label="关闭素材详情"
+                    aria-controls={`asset-details-dialog-body-${selectedAsset.id}`}
+                    data-testid="asset-details-close"
+                    onClick={() => closeSelectedDetails()}
+                    ref={detailsCloseButtonRef}
                     type="button"
                   >
                     <span>当前选中</span>
@@ -561,16 +685,15 @@ export function AssetLibrary({
                       {selectedAsset.name}
                     </strong>
                     <DecorativeIcon
-                      className="asset-selected-summary-icon"
-                      icon={ChevronDown}
+                      className="asset-details-close-icon"
+                      icon={X}
                       size={18}
                     />
                   </button>
-                </div>
                 {selectedDetailsOpen ? (
                   <div
-                    className="asset-selected-summary-body"
-                    id={`asset-selected-details-${selectedAsset.id}`}
+                    className="asset-details-dialog-body"
+                    id={`asset-details-dialog-body-${selectedAsset.id}`}
                   >
                     <AssetDetails
                       asset={selectedAsset}
@@ -582,6 +705,7 @@ export function AssetLibrary({
                     />
                   </div>
                 ) : null}
+                </div>
               </section>
             ) : null}
             <div className="asset-library-content">
@@ -620,8 +744,42 @@ export function AssetLibrary({
                 }
                 selectedAssetId={selectedAssetId}
                 thumbnails={thumbnails}
-                entries={visibleEntries}
+                entries={pageEntries}
               />
+              {isPortraitBrowser && totalPages > 1 ? (
+                <nav
+                  aria-label="绱犳潗鍒嗛〉"
+                  className="asset-library-pagination"
+                  data-page={currentPage}
+                  data-testid="asset-library-pagination"
+                  data-total-pages={totalPages}
+                >
+                  <button
+                    aria-label="上一页"
+                    disabled={currentPage === 1}
+                    onClick={() => goToPage(currentPage - 1)}
+                    type="button"
+                  >
+                    <DecorativeIcon icon={ChevronLeft} size={18} />
+                  </button>
+                  <span
+                    aria-live="polite"
+                    data-testid="asset-library-page-status"
+                  >
+                    <strong>{currentPage}</strong>
+                    <span aria-hidden="true"> / </span>
+                    <strong>{totalPages}</strong>
+                  </span>
+                  <button
+                    aria-label="下一页"
+                    disabled={currentPage === totalPages}
+                    onClick={() => goToPage(currentPage + 1)}
+                    type="button"
+                  >
+                    <DecorativeIcon icon={ChevronRight} size={18} />
+                  </button>
+                </nav>
+              ) : null}
             </div>
           </div>
         </>

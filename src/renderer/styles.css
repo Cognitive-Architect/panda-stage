@@ -2425,49 +2425,56 @@ button:disabled {
   height: 28px;
 }
 
-.asset-selected-inspector {
-  min-width: 0;
-  margin-bottom: 8px;
+.asset-details-overlay {
+  position: fixed;
+  z-index: 55;
+  inset: 0;
+  display: grid;
+  padding: 16px;
+  background: rgb(4 10 7 / 72%);
+  place-items: center;
 }
 
-.asset-selected-summary {
-  position: sticky;
-  z-index: 5;
-  top: 0;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--ui-color-separator);
-  border-radius: var(--ui-radius-medium);
-  background: var(--asset-library-card-surface);
+.asset-details-dialog {
+  display: grid;
+  width: min(100%, 460px);
+  max-height: min(680px, calc(100vh - 32px));
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid rgb(154 216 172 / 32%);
+  border-radius: 14px;
+  background: linear-gradient(160deg, #16211b, #0d1512);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 48%);
+  gap: 10px;
 }
 
-.asset-selected-summary > button {
+.asset-details-dialog > button {
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 48px;
-  padding: 10px 12px;
+  min-height: 44px;
+  padding: 8px 4px 8px 8px;
   border: 0;
+  border-bottom: 1px solid var(--ui-color-separator);
   color: var(--ui-color-text-secondary);
   background: transparent;
   align-items: center;
   gap: 6px;
   cursor: pointer;
   font: inherit;
-  list-style: none;
   text-align: left;
 }
 
-.asset-selected-summary > button:hover:not(:disabled) {
+.asset-details-dialog > button:hover:not(:disabled) {
   background: rgb(127 199 148 / 8%);
 }
 
-.asset-selected-summary > button:focus-visible {
+.asset-details-dialog > button:focus-visible {
   outline: 3px solid var(--ui-color-focus-ring);
   outline-offset: -3px;
 }
 
-.asset-selected-summary > button > strong {
+.asset-details-dialog > button > strong {
   min-width: 0;
   overflow: hidden;
   color: var(--ui-color-text-primary);
@@ -2475,29 +2482,58 @@ button:disabled {
   white-space: nowrap;
 }
 
-.asset-selected-summary-icon {
+.asset-details-close-icon {
   flex: 0 0 auto;
   margin-left: auto;
   color: var(--ui-color-text-secondary);
 }
 
-.asset-selected-summary > button[aria-expanded='true']
-  .asset-selected-summary-icon {
-  transform: rotate(180deg);
+.asset-details-dialog-body {
+  min-width: 0;
 }
 
-.asset-selected-summary-body {
-  padding: 12px;
-  border-top: 1px solid var(--ui-color-separator);
-}
-
-.asset-selected-summary-body .asset-details {
+.asset-details-dialog-body .asset-details {
   width: auto;
   min-width: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
+}
+
+.asset-library-pagination {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+}
+
+.asset-library-pagination button {
+  display: inline-flex;
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.asset-library-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.asset-library-pagination > span {
+  min-width: 56px;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-library-pagination > span strong:first-child {
+  color: var(--ui-color-text-primary);
 }
 
 .asset-library-empty {
@@ -5893,20 +5929,7 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
-  .asset-selected-inspector {
-  margin: 0 0 10px;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .resource-activity-dock[data-active-activity='assets']
-  .asset-selected-summary {
-  top: 84px;
-  margin-top: 0;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .resource-activity-dock[data-active-activity='assets']
-  .asset-selected-summary-body .asset-details-preview {
+  .asset-details-dialog-body .asset-details-preview {
   width: 100%;
   max-width: 124px;
   min-height: 96px;
@@ -5916,7 +5939,7 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
-  .asset-selected-summary-body .asset-details {
+  .asset-details-dialog-body .asset-details {
   grid-template-columns: minmax(96px, 124px) minmax(0, 1fr);
   grid-template-areas:
     'preview heading'
@@ -5925,16 +5948,6 @@ h1 {
     'delete delete';
   align-items: start;
   gap: 8px 12px;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .resource-activity-dock[data-active-activity='assets']
-  .asset-selected-summary-body {
-  padding: 10px 12px 12px;
-  border: 1px solid var(--ui-color-separator);
-  border-top: 0;
-  border-radius: 0 0 var(--ui-radius-medium) var(--ui-radius-medium);
-  background: var(--asset-library-card-surface);
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']

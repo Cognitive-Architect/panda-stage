@@ -128,7 +128,8 @@ describe('Issue #343 portrait Assets media library', () => {
     expect(markup).toContain('背景');
     expect(markup).toContain('音频');
     expect(markup).not.toContain('data-testid="asset-import-fla"');
-    expect(library).toContain('data-testid="asset-selected-summary"');
+    expect(library).not.toContain('data-testid="asset-selected-summary"');
+    expect(library).toContain('data-testid="asset-details-overlay"');
     expect(library).toContain('flaReviewRequestToken');
     expect(dock).toContain('Upload');
     expect(dock).toContain('FileArchive');

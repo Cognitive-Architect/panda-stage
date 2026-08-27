@@ -13,19 +13,13 @@ function source(path: string): string {
 const noop = () => undefined;
 
 describe('Issue #344 portrait Assets density and reachability', () => {
-  it('keeps the selected inspector before the normal asset grid', () => {
+  it('leaves the accepted dense grid free of a persistent selected inspector', () => {
     const library = source(
       'src/renderer/features/assets/AssetLibrary.tsx',
     );
-    const inspectorIndex = library.indexOf(
-      'className="asset-selected-inspector"',
-    );
-    const gridIndex = library.indexOf('<AssetGrid');
-
-    expect(inspectorIndex).toBeGreaterThanOrEqual(0);
-    expect(gridIndex).toBeGreaterThan(inspectorIndex);
-    expect(library).toContain('aria-expanded={selectedDetailsOpen}');
-    expect(library).toContain('aria-controls={`asset-selected-details-');
+    expect(library).not.toContain('asset-selected-inspector');
+    expect(library).not.toContain('asset-selected-summary');
+    expect(library).toContain('data-testid="asset-details-overlay"');
     expect(library).toContain('presentation="portrait"');
   });
 
