@@ -173,29 +173,31 @@ export function DialogueSheet(): React.JSX.Element {
       data-timeline-state={timelineState}
       data-testid="dialogue-sheet"
     >
-      <header className="dialogue-sheet-header">
-        <div className="dialogue-sheet-heading">
-          <p className="eyebrow">
-            {showTimedEditor ? '编辑任务' : '字幕任务'}
-          </p>
-          <h3>
-            {showTimedEditor ? (
-              '当前字幕'
-            ) : untimedDialogues.length > 0 ? (
-              <>
-                待安排字幕{' '}
-                <span
-                  className="dialogue-untimed-count"
-                  data-testid="dialogue-untimed-count"
-                >
-                  {untimedDialogues.length} 条
-                </span>
-              </>
-            ) : (
-              '暂无待安排字幕'
-            )}
-          </h3>
-        </div>
+      <header
+        className={`dialogue-sheet-header${
+          showTimedEditor ? ' dialogue-sheet-header-timed' : ''
+        }`}
+      >
+        {!showTimedEditor ? (
+          <div className="dialogue-sheet-heading">
+            <p className="eyebrow">字幕任务</p>
+            <h3>
+              {untimedDialogues.length > 0 ? (
+                <>
+                  待安排字幕{' '}
+                  <span
+                    className="dialogue-untimed-count"
+                    data-testid="dialogue-untimed-count"
+                  >
+                    {untimedDialogues.length} 条
+                  </span>
+                </>
+              ) : (
+                '暂无待安排字幕'
+              )}
+            </h3>
+          </div>
+        ) : null}
         <button
           aria-expanded={draftState.batchOpen}
           type="button"

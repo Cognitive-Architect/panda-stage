@@ -10865,6 +10865,12 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-header-timed {
+  justify-content: flex-end;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
   .dialogue-inspector-timeline
   .timeline-subtitle-selection {
   display: flex;
