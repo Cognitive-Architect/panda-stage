@@ -15,23 +15,20 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(isTimedDialogue({ startMs: 240, endMs: 240 })).toBe(false);
     expect(
       getDialogueSheetState({
-        batchOpen: false,
+        authoringMode: 'none',
         selectedDialogueState: 'none',
-        singleAddOpen: false,
       }),
     ).toBe('timeline-default');
     expect(
       getDialogueSheetState({
-        batchOpen: true,
+        authoringMode: 'batch',
         selectedDialogueState: 'none',
-        singleAddOpen: false,
       }),
     ).toBe('timeline-bulk-paste-open');
     expect(
       getDialogueSheetState({
-        batchOpen: false,
+        authoringMode: 'none',
         selectedDialogueState: 'untimed',
-        singleAddOpen: false,
       }),
     ).toBe('timeline-untimed-selected');
   });
@@ -47,7 +44,7 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(sheet).toContain('data-testid="dialogue-untimed-count"');
     expect(sheet).toContain('这些台词还没有安排到时间轴上。');
     expect(sheet).toContain('data-testid="dialogue-batch-open"');
-    expect(sheet).toContain('>\n          批量粘贴\n');
+    expect(sheet).toContain('批量粘贴');
     expect(sheet).toContain('<details');
     expect(sheet).toContain('data-testid="dialogue-add-disclosure"');
     expect(sheet).toContain('<summary>+ 添加单条字幕</summary>');
@@ -61,7 +58,7 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(sheet).toContain('dialogue-untimed-speaker');
     expect(sheet).toContain('dialogue-untimed-text');
     expect(sheet).toContain('dialogue-untimed-status');
-    expect(sheet).toContain('dialogueSelectionStore.select(dialogue.id)');
+    expect(sheet).toContain('handleSelectDialogue(dialogue.id)');
     expect(sheet).toContain('dialogue-untimed-affordance');
   });
 
@@ -70,8 +67,9 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
 
     expect(sheet).toContain('暂无待安排字幕');
     expect(sheet).toContain('timeline-subtitle-empty');
-    expect(sheet).toContain('open={singleAddOpen}');
-    expect(sheet).toContain('onToggle={(event) => setSingleAddOpen(event.currentTarget.open)}');
+    expect(sheet).toContain("open={authoringMode === 'single'}");
+    expect(sheet).toContain('onToggle={(event) => {');
+    expect(sheet).toContain("handleOpenAuthoring('single')");
     expect(sheet).not.toContain('defaultOpen');
   });
 

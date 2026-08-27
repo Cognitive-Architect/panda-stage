@@ -8,7 +8,6 @@ export interface DialogueDraftIdentity {
 export interface DialogueAuthoringDraftSnapshot {
   singleCharacterId: string;
   singleText: string;
-  batchOpen: boolean;
   batchRaw: string;
   batchMapping: Record<number, string>;
 }
@@ -16,7 +15,6 @@ export interface DialogueAuthoringDraftSnapshot {
 const EMPTY_DRAFT: DialogueAuthoringDraftSnapshot = {
   singleCharacterId: '',
   singleText: '',
-  batchOpen: false,
   batchRaw: '',
   batchMapping: {},
 };
@@ -76,18 +74,10 @@ export class DialogueAuthoringDraft {
     this.set({ ...this.snapshot, singleText: value });
   }
 
-  /** Open the batch surface. Only flips batchOpen; the single-add draft and
-   * the batch raw/mapping survive until the batch is closed or the identity
-   * changes, so opening the batch never discards an in-progress single line. */
-  openBatch(): void {
-    this.set({ ...this.snapshot, batchOpen: true });
-  }
-
-  /** Close the batch surface and drop the raw text + manual mapping. */
-  closeBatch(): void {
+  /** Drop the batch raw text + manual mapping when its authoring mode closes. */
+  clearBatch(): void {
     this.set({
       ...this.snapshot,
-      batchOpen: false,
       batchRaw: '',
       batchMapping: {},
     });

@@ -23,6 +23,45 @@ export function isTimedDialogue(
 }
 
 export type DialogueSelectionState = 'none' | 'untimed' | 'timed';
+export type DialogueAuthoringMode = 'none' | 'single' | 'batch';
+
+export interface DialogueUiState {
+  authoringMode: DialogueAuthoringMode;
+  selectedDialogueState: DialogueSelectionState;
+}
+
+export type DialogueUiEvent =
+  | { type: 'select'; dialogueState: Exclude<DialogueSelectionState, 'none'> }
+  | { type: 'clear-selection' }
+  | { type: 'open-authoring'; mode: Exclude<DialogueAuthoringMode, 'none'> }
+  | { type: 'close-authoring' };
+
+/**
+ * The portrait subtitle workflow has exactly one visible mode. Selection
+ * interrupts authoring; opening authoring clears selection; closing either
+ * returns to the stable default state.
+ */
+export function transitionDialogueUiState(
+  state: DialogueUiState,
+  event: DialogueUiEvent,
+): DialogueUiState {
+  switch (event.type) {
+    case 'select':
+      return {
+        authoringMode: 'none',
+        selectedDialogueState: event.dialogueState,
+      };
+    case 'clear-selection':
+      return { ...state, selectedDialogueState: 'none' };
+    case 'open-authoring':
+      return {
+        authoringMode: event.mode,
+        selectedDialogueState: 'none',
+      };
+    case 'close-authoring':
+      return { authoringMode: 'none', selectedDialogueState: 'none' };
+  }
+}
 
 export type DialogueSheetState =
   | 'timeline-default'
@@ -32,12 +71,11 @@ export type DialogueSheetState =
   | 'timeline-single-add-open';
 
 export function getDialogueSheetState(input: {
+  authoringMode: DialogueAuthoringMode;
   selectedDialogueState: DialogueSelectionState;
-  batchOpen: boolean;
-  singleAddOpen: boolean;
 }): DialogueSheetState {
-  if (input.batchOpen) return 'timeline-bulk-paste-open';
-  if (input.singleAddOpen) return 'timeline-single-add-open';
+  if (input.authoringMode === 'batch') return 'timeline-bulk-paste-open';
+  if (input.authoringMode === 'single') return 'timeline-single-add-open';
   if (input.selectedDialogueState === 'timed') return 'timeline-timed-selected';
   if (input.selectedDialogueState === 'untimed') {
     return 'timeline-untimed-selected';
@@ -67,7 +105,8 @@ export function DialogueSheet(): React.JSX.Element {
   );
   const timelineUi = useTimelineUi();
   const [draft] = useState(() => new DialogueAuthoringDraft());
-  const [singleAddOpen, setSingleAddOpen] = useState(false);
+  const [authoringMode, setAuthoringMode] =
+    useState<DialogueAuthoringMode>('none');
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const [queueError, setQueueError] = useState<{
     dialogueId: string;
@@ -78,8 +117,14 @@ export function DialogueSheet(): React.JSX.Element {
   const shotId = currentShotId ?? null;
   useEffect(() => {
     draft.bindIdentity({ projectRoot, shotId });
-    setSingleAddOpen(false);
+    setAuthoringMode('none');
   }, [draft, projectRoot, shotId]);
+
+  useEffect(() => {
+    if (selectedDialogueId === null) return;
+    if (authoringMode === 'batch') draft.clearBatch();
+    setAuthoringMode('none');
+  }, [authoringMode, draft, selectedDialogueId]);
 
   useEffect(() => {
     setQueueError(null);
@@ -142,6 +187,26 @@ export function DialogueSheet(): React.JSX.Element {
     }
   };
 
+  const handleSelectDialogue = (dialogueId: string): void => {
+    if (authoringMode === 'batch') draft.clearBatch();
+    setAuthoringMode('none');
+    dialogueSelectionStore.select(dialogueId);
+  };
+
+  const handleOpenAuthoring = (
+    mode: Exclude<DialogueAuthoringMode, 'none'>,
+  ): void => {
+    if (authoringMode === 'batch' && mode !== 'batch') draft.clearBatch();
+    dialogueSelectionStore.clear();
+    setAuthoringMode(mode);
+  };
+
+  const handleCloseAuthoring = (): void => {
+    if (authoringMode === 'batch') draft.clearBatch();
+    dialogueSelectionStore.clear();
+    setAuthoringMode('none');
+  };
+
   const characterName = (id: string): string =>
     characters.find((candidate) => candidate.id === id)?.name ?? id;
 
@@ -151,14 +216,13 @@ export function DialogueSheet(): React.JSX.Element {
       ? 'untimed'
       : 'none';
   const timelineState = getDialogueSheetState({
-    batchOpen: draftState.batchOpen,
+    authoringMode,
     selectedDialogueState,
-    singleAddOpen,
   });
   const showTimedEditor = timelineState === 'timeline-timed-selected';
   const subtitleState = showTimedEditor
     ? 'selected-timed'
-    : selectedUntimedDialogue
+    : timelineState === 'timeline-untimed-selected'
       ? 'untimed-selected'
       : untimedDialogues.length > 0
         ? 'untimed-queue'
@@ -198,15 +262,27 @@ export function DialogueSheet(): React.JSX.Element {
             </h3>
           </div>
         ) : null}
-        <button
-          aria-expanded={draftState.batchOpen}
-          type="button"
-          className="dialogue-secondary-action"
-          data-testid="dialogue-batch-open"
-          onClick={() => draft.openBatch()}
-        >
-          批量粘贴
-        </button>
+        <div className="dialogue-sheet-header-actions">
+          {showTimedEditor ? (
+            <button
+              type="button"
+              className="dialogue-secondary-action dialogue-timed-back"
+              data-testid="dialogue-timed-back"
+              onClick={() => dialogueSelectionStore.clear()}
+            >
+              返回待安排字幕
+            </button>
+          ) : null}
+          <button
+            aria-expanded={authoringMode === 'batch'}
+            type="button"
+            className="dialogue-secondary-action"
+            data-testid="dialogue-batch-open"
+            onClick={() => handleOpenAuthoring('batch')}
+          >
+            批量粘贴
+          </button>
+        </div>
       </header>
 
       {showTimedEditor && selectedTimedDialogue ? (
@@ -249,7 +325,7 @@ export function DialogueSheet(): React.JSX.Element {
                     type="button"
                     className="dialogue-untimed-select"
                     data-testid="dialogue-untimed-select"
-                    onClick={() => dialogueSelectionStore.select(dialogue.id)}
+                    onClick={() => handleSelectDialogue(dialogue.id)}
                   >
                     <span className="dialogue-untimed-speaker">
                       {characterName(dialogue.characterId)}
@@ -339,10 +415,19 @@ export function DialogueSheet(): React.JSX.Element {
 
       <details
         className="dialogue-secondary-tools dialogue-add-disclosure"
-        data-open={String(singleAddOpen)}
+        data-open={String(authoringMode === 'single')}
         data-testid="dialogue-add-disclosure"
-        open={singleAddOpen}
-        onToggle={(event) => setSingleAddOpen(event.currentTarget.open)}
+        open={authoringMode === 'single'}
+        onToggle={(event) => {
+          if (event.currentTarget.open && authoringMode !== 'single') {
+            handleOpenAuthoring('single');
+          } else if (
+            !event.currentTarget.open &&
+            authoringMode === 'single'
+          ) {
+            handleCloseAuthoring();
+          }
+        }}
       >
         <summary>+ 添加单条字幕</summary>
         <div className="dialogue-secondary-tools-body">
@@ -384,8 +469,8 @@ export function DialogueSheet(): React.JSX.Element {
         </div>
       </details>
 
-      {draftState.batchOpen ? (
-        <DialogueBatchPaste draft={draft} onClose={() => draft.closeBatch()} />
+      {authoringMode === 'batch' ? (
+        <DialogueBatchPaste draft={draft} onClose={handleCloseAuthoring} />
       ) : null}
     </div>
   );

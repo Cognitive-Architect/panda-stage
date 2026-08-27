@@ -13,32 +13,28 @@ describe('Issue #353 portrait Timeline State C', () => {
     expect(
       getDialogueSheetState({
         selectedDialogueState: 'timed',
-        batchOpen: false,
-        singleAddOpen: false,
+        authoringMode: 'none',
       }),
     ).toBe('timeline-timed-selected');
 
     expect(
       getDialogueSheetState({
         selectedDialogueState: 'timed',
-        batchOpen: true,
-        singleAddOpen: false,
+        authoringMode: 'batch',
       }),
     ).toBe('timeline-bulk-paste-open');
 
     expect(
       getDialogueSheetState({
         selectedDialogueState: 'timed',
-        batchOpen: false,
-        singleAddOpen: true,
+        authoringMode: 'single',
       }),
     ).toBe('timeline-single-add-open');
 
     expect(
       getDialogueSheetState({
         selectedDialogueState: 'untimed',
-        batchOpen: false,
-        singleAddOpen: false,
+        authoringMode: 'none',
       }),
     ).toBe('timeline-untimed-selected');
   });

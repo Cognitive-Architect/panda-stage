@@ -9315,6 +9315,24 @@ h1 {
   }
 }
 
+/* Issue #354: make the State C exit and the mutually-exclusive authoring
+   transitions explicit without adding another Timeline or dialogue owner. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-header-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-timed-back {
+  color: var(--ui-color-accent);
+}
+
 /* Issue #352: State B keeps the queue browseable and expands only the selected
    untimed row into a compact, in-context next-step surface. */
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']

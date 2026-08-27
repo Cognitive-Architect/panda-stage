@@ -15,37 +15,32 @@ describe('Issue #352 Timeline State B selected untimed subtitle', () => {
     expect(isTimedDialogue({ startMs: 0, endMs: 1 })).toBe(true);
     expect(
       getDialogueSheetState({
-        batchOpen: false,
+        authoringMode: 'none',
         selectedDialogueState: 'none',
-        singleAddOpen: false,
       }),
     ).toBe('timeline-default');
     expect(
       getDialogueSheetState({
-        batchOpen: false,
+        authoringMode: 'none',
         selectedDialogueState: 'untimed',
-        singleAddOpen: false,
       }),
     ).toBe('timeline-untimed-selected');
     expect(
       getDialogueSheetState({
-        batchOpen: false,
+        authoringMode: 'none',
         selectedDialogueState: 'timed',
-        singleAddOpen: false,
       }),
     ).toBe('timeline-timed-selected');
     expect(
       getDialogueSheetState({
-        batchOpen: true,
+        authoringMode: 'batch',
         selectedDialogueState: 'untimed',
-        singleAddOpen: false,
       }),
     ).toBe('timeline-bulk-paste-open');
     expect(
       getDialogueSheetState({
-        batchOpen: false,
+        authoringMode: 'single',
         selectedDialogueState: 'untimed',
-        singleAddOpen: true,
       }),
     ).toBe('timeline-single-add-open');
   });
