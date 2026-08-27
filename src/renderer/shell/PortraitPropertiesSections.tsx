@@ -60,6 +60,7 @@ export function PortraitPropertiesSections({
         <summary>图层</summary>
         <LayerOrderControls
           backgroundLayerSelected={backgroundLayerSelected}
+          compact
           showLockControl
         />
       </details>
