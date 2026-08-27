@@ -145,13 +145,6 @@ export function DialogueSheet(): React.JSX.Element {
   const characterName = (id: string): string =>
     characters.find((candidate) => candidate.id === id)?.name ?? id;
 
-  const subtitleState = selectedTimedDialogue
-    ? 'selected-timed'
-    : selectedUntimedDialogue
-      ? 'untimed-selected'
-    : untimedDialogues.length > 0
-      ? 'untimed-queue'
-      : 'empty';
   const selectedDialogueState: DialogueSelectionState = selectedTimedDialogue
     ? 'timed'
     : selectedUntimedDialogue
@@ -162,6 +155,14 @@ export function DialogueSheet(): React.JSX.Element {
     selectedDialogueState,
     singleAddOpen,
   });
+  const showTimedEditor = timelineState === 'timeline-timed-selected';
+  const subtitleState = showTimedEditor
+    ? 'selected-timed'
+    : selectedUntimedDialogue
+      ? 'untimed-selected'
+      : untimedDialogues.length > 0
+        ? 'untimed-queue'
+        : 'empty';
   const showInlineActions = timelineState === 'timeline-untimed-selected';
 
   return (
@@ -175,10 +176,10 @@ export function DialogueSheet(): React.JSX.Element {
       <header className="dialogue-sheet-header">
         <div className="dialogue-sheet-heading">
           <p className="eyebrow">
-            {selectedTimedDialogue ? '编辑任务' : '字幕任务'}
+            {showTimedEditor ? '编辑任务' : '字幕任务'}
           </p>
           <h3>
-            {selectedTimedDialogue ? (
+            {showTimedEditor ? (
               '当前字幕'
             ) : untimedDialogues.length > 0 ? (
               <>
@@ -206,7 +207,7 @@ export function DialogueSheet(): React.JSX.Element {
         </button>
       </header>
 
-      {selectedTimedDialogue ? (
+      {showTimedEditor && selectedTimedDialogue ? (
         <section
           className="timeline-subtitle-editor"
           data-state="selected-timed"

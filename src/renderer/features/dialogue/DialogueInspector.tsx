@@ -36,6 +36,13 @@ export function normalizeManualDialogueTiming(
 export type DialogueInspectorPresentation = 'inspector' | 'timeline';
 export type DialogueInspectorLandscapePresentation = 'landscape';
 
+type DialogueInspectorErrorScope = 'text' | 'timing' | 'speaker';
+
+interface DialogueInspectorError {
+  scope: DialogueInspectorErrorScope;
+  message: string;
+}
+
 /**
  * The existing dialogue editor owner, extended only with a presentation seam
  * for the portrait Timeline. Text still commits on blur; timing and Untimed
@@ -95,7 +102,7 @@ export function DialogueInspector({
   const [text, setText] = useState(dialogue?.text ?? '');
   const [startMs, setStartMs] = useState(String(dialogue?.startMs ?? 0));
   const [endMs, setEndMs] = useState(String(dialogue?.endMs ?? 0));
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DialogueInspectorError | null>(null);
   const focusedRef = useRef(false);
 
   useEffect(() => {
@@ -137,12 +144,19 @@ export function DialogueInspector({
     subtitleStyle ?? { fontSize: 44, maxWidth: 1_420 },
   ).warning;
 
-  const report = (action: () => void, fallback: string): void => {
+  const report = (
+    scope: DialogueInspectorErrorScope,
+    action: () => void,
+    fallback: string,
+  ): void => {
     try {
       action();
       setError(null);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : fallback);
+      setError({
+        scope,
+        message: nextError instanceof Error ? nextError.message : fallback,
+      });
     }
   };
 
@@ -151,11 +165,12 @@ export function DialogueInspector({
     const trimmed = text.trim();
     if (!trimmed) {
       setText(dialogue.text);
-      setError('对白文本不能为空。');
+      setError({ scope: 'text', message: '对白文本不能为空。' });
       return;
     }
     if (trimmed !== dialogue.text) {
       report(
+        'text',
         () => dialogueStore.update(dialogue.id, { text: trimmed }),
         '对白文本无效。',
       );
@@ -174,74 +189,74 @@ export function DialogueInspector({
       );
     } catch (nextError) {
       setError(
-        nextError instanceof Error
-          ? nextError.message
-          : '开始和结束时间必须是整数毫秒。',
+        {
+          scope: 'timing',
+          message:
+            nextError instanceof Error
+              ? nextError.message
+              : '开始和结束时间必须是整数毫秒。',
+        },
       );
       return;
     }
-    report(() => {
-      dialogueStore.setTiming(
-        dialogue.id,
-        timing.startMs,
-        timing.endMs,
-      );
-      setStartMs(String(timing.startMs));
-      setEndMs(String(timing.endMs));
-    }, '对白时间段无效。');
+    report(
+      'timing',
+      () => {
+        dialogueStore.setTiming(
+          dialogue.id,
+          timing.startMs,
+          timing.endMs,
+        );
+        setStartMs(String(timing.startMs));
+        setEndMs(String(timing.endMs));
+      },
+      '对白时间段无效。',
+    );
   };
+
+  const timingInputValid = [startMs, endMs].every((value) => {
+    if (value.trim() === '') return false;
+    const raw = Number(value);
+    return Number.isFinite(raw) && Number.isInteger(raw);
+  });
 
   if (timelinePresentation) {
     return (
       <div
         className="dialogue-inspector dialogue-inspector-timeline"
+        data-dialogue-id={dialogue.id}
         data-testid="dialogue-inspector"
       >
-        <div
+        <header
           aria-live="polite"
           className="timeline-subtitle-selection"
           data-selection-state="dialogue"
           data-testid="right-inspector-selection"
         >
+          <div className="timeline-subtitle-selection-identity">
+            <p className="eyebrow">当前字幕</p>
+            <strong data-testid="dialogue-inspector-speaker-name">
+              {character?.name ?? '未知角色'}
+            </strong>
+          </div>
           <span
             className="timeline-subtitle-selection-status"
             data-testid="right-inspector-selection-message"
+            data-timed={String(timed)}
           >
-            {timed ? '已定时字幕' : '未定时字幕'}
+            <span aria-hidden="true">✓</span> {timed ? '已定时' : '未定时'}
           </span>
-        </div>
-
-        <label className="dialogue-field dialogue-timeline-speaker">
-          <span>说话人</span>
-          <select
-            aria-label="字幕角色"
-            data-testid="dialogue-inspector-speaker"
-            value={dialogue.characterId}
-            onChange={(event) =>
-              report(
-                () =>
-                  dialogueStore.update(dialogue.id, {
-                    characterId: event.target.value,
-                  }),
-                '角色无效。',
-              )
-            }
-          >
-            {characters.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        </header>
 
         <section
           className="dialogue-inspector-section"
           data-testid="dialogue-inspector-copy-section"
         >
+          <h3>台词</h3>
           <label className="dialogue-field">
-            <span>台词</span>
+            <span>内容</span>
             <textarea
+              aria-label="台词内容"
               data-testid="dialogue-inspector-text"
               value={text}
               rows={3}
@@ -261,6 +276,16 @@ export function DialogueInspector({
               {subtitleWarning}
             </p>
           ) : null}
+          {error?.scope === 'text' ? (
+            <p
+              className="dialogue-editor-error"
+              data-error-scope="text"
+              data-testid="dialogue-editor-error"
+              role="alert"
+            >
+              {error.message}
+            </p>
+          ) : null}
         </section>
 
         <section
@@ -272,7 +297,7 @@ export function DialogueInspector({
             <>
               <div className="dialogue-timing-fields">
                 <label className="dialogue-field">
-                  <span>
+                  <span className="dialogue-timing-label">
                     开始{' '}
                     <time
                       data-testid="dialogue-inspector-start-readable"
@@ -283,19 +308,22 @@ export function DialogueInspector({
                       {formatTimecode(dialogue.startMs)}
                     </time>
                   </span>
-                  <input
-                    aria-label="开始时间（毫秒）"
-                    data-display-time={formatTimecode(dialogue.startMs)}
-                    data-testid="dialogue-inspector-start"
-                    inputMode="numeric"
-                    min={0}
-                    onChange={(event) => setStartMs(event.target.value)}
-                    type="number"
-                    value={startMs}
-                  />
+                  <span className="dialogue-timing-input">
+                    <input
+                      aria-label="开始时间（毫秒）"
+                      data-display-time={formatTimecode(dialogue.startMs)}
+                      data-testid="dialogue-inspector-start"
+                      inputMode="numeric"
+                      min={0}
+                      onChange={(event) => setStartMs(event.target.value)}
+                      type="number"
+                      value={startMs}
+                    />
+                    <span aria-hidden="true">ms</span>
+                  </span>
                 </label>
                 <label className="dialogue-field">
-                  <span>
+                  <span className="dialogue-timing-label">
                     结束{' '}
                     <time
                       data-testid="dialogue-inspector-end-readable"
@@ -304,25 +332,61 @@ export function DialogueInspector({
                       {formatTimecode(dialogue.endMs)}
                     </time>
                   </span>
-                  <input
-                    aria-label="结束时间（毫秒）"
-                    data-display-time={formatTimecode(dialogue.endMs)}
-                    data-testid="dialogue-inspector-end"
-                    inputMode="numeric"
-                    min={0}
-                    onChange={(event) => setEndMs(event.target.value)}
-                    type="number"
-                    value={endMs}
-                  />
+                  <span className="dialogue-timing-input">
+                    <input
+                      aria-label="结束时间（毫秒）"
+                      data-display-time={formatTimecode(dialogue.endMs)}
+                      data-testid="dialogue-inspector-end"
+                      inputMode="numeric"
+                      min={0}
+                      onChange={(event) => setEndMs(event.target.value)}
+                      type="number"
+                      value={endMs}
+                    />
+                    <span aria-hidden="true">ms</span>
+                  </span>
                 </label>
+              </div>
+              <div className="dialogue-timing-footer">
+                <p
+                  className="dialogue-point-time"
+                  data-duration-ms={Math.max(
+                    0,
+                    dialogue.endMs - dialogue.startMs,
+                  )}
+                  data-testid="dialogue-inspector-timing-summary"
+                >
+                  <span>持续</span>{' '}
+                  <time
+                    dateTime={
+                      'PT' +
+                      Math.max(0, dialogue.endMs - dialogue.startMs) / 1000 +
+                      'S'
+                    }
+                  >
+                    {formatTimecode(dialogue.endMs - dialogue.startMs)}
+                  </time>
+                </p>
                 <button
+                  className="dialogue-timeline-apply-timing"
                   data-testid="dialogue-inspector-apply-timing"
+                  disabled={!timingInputValid}
                   onClick={commitTiming}
                   type="button"
                 >
                   应用时间
                 </button>
               </div>
+              {error?.scope === 'timing' ? (
+                <p
+                  className="dialogue-editor-error"
+                  data-error-scope="timing"
+                  data-testid="dialogue-editor-error"
+                  role="alert"
+                >
+                  {error.message}
+                </p>
+              ) : null}
             </>
           ) : (
             <button
@@ -330,6 +394,7 @@ export function DialogueInspector({
               data-testid="dialogue-inspector-arrange"
               onClick={() =>
                 report(
+                  'timing',
                   () =>
                     dialogueStore.arrange(
                       dialogue.id,
@@ -343,14 +408,52 @@ export function DialogueInspector({
               安排一帧
             </button>
           )}
-          <p
-            className="dialogue-point-time"
-            data-testid="dialogue-inspector-timing-summary"
-          >
-            {timed
-              ? `字幕持续 ${formatTimecode(dialogue.endMs - dialogue.startMs)}`
-              : '待安排字幕尚未产生显示时间窗。'}
-          </p>
+          {!timed ? (
+            <p className="dialogue-point-time">
+              待安排字幕尚未产生显示时间窗。
+            </p>
+          ) : null}
+        </section>
+
+        <section
+          className="dialogue-inspector-section dialogue-inspector-speaker-section"
+          data-testid="dialogue-inspector-speaker-section"
+        >
+          <h3>角色</h3>
+          <label className="dialogue-field">
+            <span>说话人</span>
+            <select
+              aria-label="字幕角色"
+              data-testid="dialogue-inspector-speaker"
+              value={dialogue.characterId}
+              onChange={(event) =>
+                report(
+                  'speaker',
+                  () =>
+                    dialogueStore.update(dialogue.id, {
+                      characterId: event.target.value,
+                    }),
+                  '角色无效。',
+                )
+              }
+            >
+              {characters.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {error?.scope === 'speaker' ? (
+            <p
+              className="dialogue-editor-error"
+              data-error-scope="speaker"
+              data-testid="dialogue-editor-error"
+              role="alert"
+            >
+              {error.message}
+            </p>
+          ) : null}
         </section>
 
         <section
@@ -364,17 +467,9 @@ export function DialogueInspector({
           </span>
         </section>
 
-        {error ? (
-          <p
-            className="dialogue-editor-error"
-            data-testid="dialogue-editor-error"
-            role="alert"
-          >
-            {error}
-          </p>
-        ) : null}
         <div className="dialogue-inspector-actions">
           <button
+            aria-label={`删除字幕：${character?.name ?? '未知角色'}：${dialogue.text}`}
             type="button"
             className="dialogue-delete"
             data-testid="dialogue-inspector-delete"
@@ -408,6 +503,7 @@ export function DialogueInspector({
               value={dialogue.characterId}
               onChange={(event) =>
                 report(
+                  'speaker',
                   () =>
                     dialogueStore.update(dialogue.id, {
                       characterId: event.target.value,
@@ -525,6 +621,7 @@ export function DialogueInspector({
                 data-testid="dialogue-inspector-arrange"
                 onClick={() =>
                   report(
+                    'timing',
                     () =>
                       dialogueStore.arrange(
                         dialogue.id,
@@ -566,7 +663,7 @@ export function DialogueInspector({
               data-testid="dialogue-editor-error"
               role="alert"
             >
-              {error}
+              {error.message}
             </p>
           ) : null}
           <div className="dialogue-inspector-actions">
@@ -616,6 +713,7 @@ export function DialogueInspector({
             value={dialogue.characterId}
             onChange={(event) =>
               report(
+                'speaker',
                 () =>
                   dialogueStore.update(dialogue.id, {
                     characterId: event.target.value,
@@ -691,6 +789,7 @@ export function DialogueInspector({
             data-testid="dialogue-inspector-arrange"
             onClick={() =>
               report(
+                'timing',
                 () =>
                   dialogueStore.arrange(
                     dialogue.id,
@@ -710,7 +809,7 @@ export function DialogueInspector({
             data-testid="dialogue-editor-error"
             role="alert"
           >
-            {error}
+            {error.message}
           </p>
         ) : null}
         <button
