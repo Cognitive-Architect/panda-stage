@@ -18,8 +18,16 @@ import { LayerBackgroundControl } from '../features/properties/LayerBackgroundCo
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
+import { DecorativeIcon } from '../ui';
 import { isNarrowViewport, useNarrowViewport } from './ResourceActivityDock';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
+import {
+  Layers3,
+  Move,
+  Palette,
+  SquareDashedMousePointer,
+  X,
+} from 'lucide-react';
 
 // Issue 109's existing Electron receipt measures the right column by this
 // stable selector. Keep the selector as a non-visual alias on the real
@@ -125,6 +133,74 @@ function useRightInspectorThumbnail(
   return thumbnail;
 }
 
+/**
+ * Presentation-only guide for the portrait Properties empty state. Selection
+ * remains owned by selectionStore; this component deliberately has no state
+ * or event handlers of its own.
+ */
+export function RightInspectorEmptyState(): React.JSX.Element {
+  return (
+    <section
+      aria-describedby="right-inspector-empty-state-description"
+      aria-labelledby="right-inspector-empty-state-title"
+      aria-live="polite"
+      className="right-inspector-selection right-inspector-selection-empty"
+      data-selection-state="empty"
+      data-testid="right-inspector-selection"
+    >
+      <div
+        className="right-inspector-empty-state-content"
+        data-testid="right-inspector-empty-state"
+      >
+        <div
+          aria-hidden="true"
+          className="right-inspector-empty-state-icon"
+        >
+          <DecorativeIcon
+            icon={SquareDashedMousePointer}
+            size={32}
+            strokeWidth={1.8}
+          />
+        </div>
+        <div className="right-inspector-empty-state-copy">
+          <h3 id="right-inspector-empty-state-title">
+            选择一个对象开始编辑
+          </h3>
+          <p id="right-inspector-empty-state-description">
+            点击上方画布中的角色、图片或背景，即可调整位置、缩放、外观与图层顺序。
+          </p>
+        </div>
+        <ul
+          aria-label="可编辑属性预览"
+          className="right-inspector-empty-state-capabilities"
+        >
+          <li>
+            <DecorativeIcon icon={Move} size={18} />
+            <div>
+              <strong>变换</strong>
+              <span>位置 / 缩放 / 旋转</span>
+            </div>
+          </li>
+          <li>
+            <DecorativeIcon icon={Palette} size={18} />
+            <div>
+              <strong>外观</strong>
+              <span>透明度 / 背景填充</span>
+            </div>
+          </li>
+          <li>
+            <DecorativeIcon icon={Layers3} size={18} />
+            <div>
+              <strong>图层</strong>
+              <span>顺序 / 锁定 / 删除</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 export function getRightInspectorSelection(
   snapshot: EditorProjectSnapshot | null,
   currentShotId: string | null,
@@ -222,6 +298,8 @@ export function RightInspector({
     currentShotId,
     selectedLayerId,
   );
+  const portraitEmptyState =
+    compact === true && !dialogueMode && selection.state === 'empty';
   const backgroundLayerId =
     snapshot?.project.shots.find((candidate) => candidate.id === currentShotId)
       ?.backgroundLayerId ?? '';
@@ -303,13 +381,19 @@ export function RightInspector({
           title="关闭属性"
           type="button"
         >
-          ×
+          <DecorativeIcon
+            className="right-inspector-heading-close-icon"
+            icon={X}
+            size={20}
+          />
         </button>
       ) : null}
     </div>
   );
 
-  const inspectorSelection = (
+  const inspectorSelection = portraitEmptyState ? (
+    <RightInspectorEmptyState />
+  ) : (
     <section
       aria-live="polite"
       className="right-inspector-selection"
@@ -381,7 +465,7 @@ export function RightInspector({
     <>
       {inspectorHeading}
       {inspectorSelection}
-      {compactSections ? (
+      {!portraitEmptyState && compactSections ? (
         <div className="right-inspector-compact-sections">
           <details
             className="right-inspector-section right-inspector-transform-section"
@@ -406,13 +490,13 @@ export function RightInspector({
             {orderPanel}
           </details>
         </div>
-      ) : (
+      ) : !portraitEmptyState ? (
         <>
           {backgroundPanel}
           {transformPanel}
           {orderPanel}
         </>
-      )}
+      ) : null}
     </>
   );
 
