@@ -21,6 +21,23 @@ export function isTimedDialogue(
   return dialogue.endMs > dialogue.startMs;
 }
 
+export type DialogueSheetState =
+  | 'timeline-default'
+  | 'timeline-caption-selected'
+  | 'timeline-bulk-paste-open'
+  | 'timeline-single-add-open';
+
+export function getDialogueSheetState(input: {
+  selectedDialogueId: string | null;
+  batchOpen: boolean;
+  singleAddOpen: boolean;
+}): DialogueSheetState {
+  if (input.batchOpen) return 'timeline-bulk-paste-open';
+  if (input.singleAddOpen) return 'timeline-single-add-open';
+  if (input.selectedDialogueId !== null) return 'timeline-caption-selected';
+  return 'timeline-default';
+}
+
 /**
  * Dialogue Sheet: the lower task surface of the single Timeline owner. It
  * shows either the existing timed-dialogue editor, the existing untimed queue,
@@ -42,6 +59,7 @@ export function DialogueSheet(): React.JSX.Element {
     dialogueSelectionStore.getSelectedDialogueId,
   );
   const [draft] = useState(() => new DialogueAuthoringDraft());
+  const [singleAddOpen, setSingleAddOpen] = useState(false);
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const [queueError, setQueueError] = useState<string | null>(null);
 
@@ -49,6 +67,7 @@ export function DialogueSheet(): React.JSX.Element {
   const shotId = currentShotId ?? null;
   useEffect(() => {
     draft.bindIdentity({ projectRoot, shotId });
+    setSingleAddOpen(false);
   }, [draft, projectRoot, shotId]);
 
   useEffect(() => {
@@ -112,21 +131,23 @@ export function DialogueSheet(): React.JSX.Element {
     : untimedDialogues.length > 0
       ? 'untimed-queue'
       : 'empty';
+  const timelineState = getDialogueSheetState({
+    batchOpen: draftState.batchOpen,
+    selectedDialogueId,
+    singleAddOpen,
+  });
 
   return (
     <div
       className="dialogue-sheet dialogue-sheet-timeline"
       data-subtitle-state={subtitleState}
+      data-timeline-state={timelineState}
       data-testid="dialogue-sheet"
     >
       <header className="dialogue-sheet-header">
         <div className="dialogue-sheet-heading">
           <p className="eyebrow">
-            {selectedTimedDialogue
-              ? '编辑任务'
-              : untimedDialogues.length > 0
-                ? '字幕任务'
-                : '字幕'}
+            {selectedTimedDialogue ? '编辑任务' : '字幕任务'}
           </p>
           <h3>
             {selectedTimedDialogue ? (
@@ -135,21 +156,22 @@ export function DialogueSheet(): React.JSX.Element {
               <>
                 待安排字幕{' '}
                 <span className="dialogue-untimed-count">
-                  {untimedDialogues.length}条
+                  {untimedDialogues.length} 条
                 </span>
               </>
             ) : (
-              '字幕'
+              '暂无待安排字幕'
             )}
           </h3>
         </div>
         <button
+          aria-expanded={draftState.batchOpen}
           type="button"
           className="dialogue-secondary-action"
           data-testid="dialogue-batch-open"
           onClick={() => draft.openBatch()}
         >
-          + 批量粘贴
+          批量粘贴
         </button>
       </header>
 
@@ -169,9 +191,11 @@ export function DialogueSheet(): React.JSX.Element {
           className="timeline-subtitle-queue"
           data-testid="timeline-subtitle-queue"
         >
-          <p className="timeline-subtitle-queue-intro">
-            这些台词还没有安排到时间轴上。
-          </p>
+          {timelineState === 'timeline-default' ? (
+            <p className="timeline-subtitle-queue-intro">
+              这些台词还没有安排到时间轴上。
+            </p>
+          ) : null}
           <ul className="dialogue-untimed-queue">
             {untimedDialogues.map((dialogue) => {
               const selected = dialogue.id === selectedDialogueId;
@@ -198,20 +222,22 @@ export function DialogueSheet(): React.JSX.Element {
                       {dialogue.text}
                     </span>
                     <span className="dialogue-untimed-status">
-                      未定时 <span aria-hidden="true">›</span>
+                      未定时
                     </span>
                   </button>
-                  {selected ? (
-                    <button
-                      type="button"
-                      className="dialogue-untimed-arrange"
-                      data-dialogue-id={dialogue.id}
-                      data-testid="dialogue-untimed-arrange"
-                      onClick={() => handleArrange(dialogue.id)}
-                    >
-                      安排一帧
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    className="dialogue-untimed-arrange"
+                    aria-label={`安排一帧：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                    data-dialogue-id={dialogue.id}
+                    data-testid="dialogue-untimed-arrange"
+                    onClick={() => {
+                      dialogueSelectionStore.select(dialogue.id);
+                      handleArrange(dialogue.id);
+                    }}
+                  >
+                    安排一帧
+                  </button>
                 </li>
               );
             })}
@@ -223,17 +249,20 @@ export function DialogueSheet(): React.JSX.Element {
           ) : null}
         </section>
       ) : (
-        <p
+        <div
           className="timeline-subtitle-empty"
           data-testid="timeline-subtitle-empty"
         >
-          点击时间轴中的字幕即可编辑。
-        </p>
+          <strong>暂无待安排字幕</strong>
+          <span>点击下方入口添加字幕，或从时间轴选择已有字幕。</span>
+        </div>
       )}
 
       <details
         className="dialogue-secondary-tools dialogue-add-disclosure"
+        data-open={String(singleAddOpen)}
         data-testid="dialogue-add-disclosure"
+        onToggle={(event) => setSingleAddOpen(event.currentTarget.open)}
       >
         <summary>+ 添加单条字幕</summary>
         <div className="dialogue-secondary-tools-body">
