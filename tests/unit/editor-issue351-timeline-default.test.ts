@@ -16,24 +16,24 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(
       getDialogueSheetState({
         batchOpen: false,
-        selectedDialogueId: null,
+        selectedDialogueState: 'none',
         singleAddOpen: false,
       }),
     ).toBe('timeline-default');
     expect(
       getDialogueSheetState({
         batchOpen: true,
-        selectedDialogueId: null,
+        selectedDialogueState: 'none',
         singleAddOpen: false,
       }),
     ).toBe('timeline-bulk-paste-open');
     expect(
       getDialogueSheetState({
         batchOpen: false,
-        selectedDialogueId: 'dialogue-1',
+        selectedDialogueState: 'untimed',
         singleAddOpen: false,
       }),
-    ).toBe('timeline-caption-selected');
+    ).toBe('timeline-untimed-selected');
   });
 
   it('keeps the default work panel hierarchy and both authoring entries', () => {
@@ -54,17 +54,15 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(sheet).toContain('data-testid="dialogue-add"');
   });
 
-  it('renders every pending row with speaker, copy, status and a one-frame CTA', () => {
+  it('renders every pending row with speaker, copy, status and a selection affordance', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
 
     expect(sheet).toContain('data-testid="dialogue-untimed-item"');
     expect(sheet).toContain('dialogue-untimed-speaker');
     expect(sheet).toContain('dialogue-untimed-text');
     expect(sheet).toContain('dialogue-untimed-status');
-    expect(sheet).toContain('data-testid="dialogue-untimed-arrange"');
-    expect(sheet).toContain('安排一帧');
     expect(sheet).toContain('dialogueSelectionStore.select(dialogue.id)');
-    expect(sheet).toContain('handleArrange(dialogue.id)');
+    expect(sheet).toContain('dialogue-untimed-affordance');
   });
 
   it('keeps the empty state and add disclosure explicit and collapsed by default', () => {

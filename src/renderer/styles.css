@@ -9315,6 +9315,180 @@ h1 {
   }
 }
 
+/* Issue #352: State B keeps the queue browseable and expands only the selected
+   untimed row into a compact, in-context next-step surface. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item:not([data-selected='true']) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item[data-selected='true'] {
+  padding-left: 8px;
+  border-left: 2px solid var(--ui-color-selected-border);
+  background: rgb(127 199 148 / 8%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select {
+  grid-column: 1 / -1;
+  width: 100%;
+  cursor: pointer;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select:hover {
+  background: rgb(127 199 148 / 10%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-affordance {
+  display: inline-flex;
+  width: 24px;
+  min-width: 24px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-color-text-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item[data-selected='true']
+  .dialogue-untimed-affordance {
+  color: var(--ui-color-selected-border);
+  font-size: 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-strip {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-meta {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-playhead-label {
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-playhead-time {
+  color: var(--ui-color-text-primary);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-buttons > button {
+  min-height: 48px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-arrange {
+  min-width: 96px;
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-primary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-arrange:hover {
+  background: var(--ui-color-action-hover);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-cancel {
+  min-width: 88px;
+  border-color: transparent;
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-cancel:hover {
+  border-color: var(--ui-color-separator);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-untimed-action-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-untimed-action-buttons {
+    justify-content: flex-start;
+  }
+}
+
 /* Issue #348: keep object appearance separate from canvas-background
    management while reusing the existing transform/background owners. */
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
@@ -10651,4 +10825,28 @@ h1 {
     min-width: 72px;
     padding-inline: 8px;
   }
+}
+
+/* Keep State B's selected-row action hierarchy after the State A base rules. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item[data-selected='true'] {
+  row-gap: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-strip
+  .dialogue-untimed-arrange {
+  min-width: 96px;
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-primary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-strip
+  .dialogue-untimed-arrange:hover {
+  background: var(--ui-color-action-hover);
 }

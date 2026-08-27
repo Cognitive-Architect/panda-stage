@@ -11,7 +11,8 @@ import { dialogueStore } from '../../stores/dialogueStore';
 import { DialogueAuthoringDraft } from './dialogueAuthoringDraft';
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
-import { integerFrameSpanMs } from '../timeline/timeGeometry';
+import { useTimelineUi } from '../timeline/timelineUiStore';
+import { formatTimecode, integerFrameSpanMs } from '../timeline/timeGeometry';
 
 /** Keep the Timeline presentation on the same timed/untimed truth as the
  * DialogueClip and DialogueInspector owners. */
@@ -21,20 +22,26 @@ export function isTimedDialogue(
   return dialogue.endMs > dialogue.startMs;
 }
 
+export type DialogueSelectionState = 'none' | 'untimed' | 'timed';
+
 export type DialogueSheetState =
   | 'timeline-default'
-  | 'timeline-caption-selected'
+  | 'timeline-untimed-selected'
+  | 'timeline-timed-selected'
   | 'timeline-bulk-paste-open'
   | 'timeline-single-add-open';
 
 export function getDialogueSheetState(input: {
-  selectedDialogueId: string | null;
+  selectedDialogueState: DialogueSelectionState;
   batchOpen: boolean;
   singleAddOpen: boolean;
 }): DialogueSheetState {
   if (input.batchOpen) return 'timeline-bulk-paste-open';
   if (input.singleAddOpen) return 'timeline-single-add-open';
-  if (input.selectedDialogueId !== null) return 'timeline-caption-selected';
+  if (input.selectedDialogueState === 'timed') return 'timeline-timed-selected';
+  if (input.selectedDialogueState === 'untimed') {
+    return 'timeline-untimed-selected';
+  }
   return 'timeline-default';
 }
 
@@ -58,10 +65,14 @@ export function DialogueSheet(): React.JSX.Element {
     dialogueSelectionStore.subscribe,
     dialogueSelectionStore.getSelectedDialogueId,
   );
+  const timelineUi = useTimelineUi();
   const [draft] = useState(() => new DialogueAuthoringDraft());
   const [singleAddOpen, setSingleAddOpen] = useState(false);
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
-  const [queueError, setQueueError] = useState<string | null>(null);
+  const [queueError, setQueueError] = useState<{
+    dialogueId: string;
+    message: string;
+  } | null>(null);
 
   const projectRoot = snapshot?.projectRoot ?? '';
   const shotId = currentShotId ?? null;
@@ -84,6 +95,10 @@ export function DialogueSheet(): React.JSX.Element {
   );
   const selectedTimedDialogue =
     selectedDialogue && isTimedDialogue(selectedDialogue)
+      ? selectedDialogue
+      : undefined;
+  const selectedUntimedDialogue =
+    selectedDialogue && !isTimedDialogue(selectedDialogue)
       ? selectedDialogue
       : undefined;
   const untimedDialogues = dialogues.filter(
@@ -118,7 +133,11 @@ export function DialogueSheet(): React.JSX.Element {
       setQueueError(null);
     } catch (nextError) {
       setQueueError(
-        nextError instanceof Error ? nextError.message : '字幕安排失败。',
+        {
+          dialogueId,
+          message:
+            nextError instanceof Error ? nextError.message : '字幕安排失败。',
+        },
       );
     }
   };
@@ -128,14 +147,22 @@ export function DialogueSheet(): React.JSX.Element {
 
   const subtitleState = selectedTimedDialogue
     ? 'selected-timed'
+    : selectedUntimedDialogue
+      ? 'untimed-selected'
     : untimedDialogues.length > 0
       ? 'untimed-queue'
       : 'empty';
+  const selectedDialogueState: DialogueSelectionState = selectedTimedDialogue
+    ? 'timed'
+    : selectedUntimedDialogue
+      ? 'untimed'
+      : 'none';
   const timelineState = getDialogueSheetState({
     batchOpen: draftState.batchOpen,
-    selectedDialogueId,
+    selectedDialogueState,
     singleAddOpen,
   });
+  const showInlineActions = timelineState === 'timeline-untimed-selected';
 
   return (
     <div
@@ -214,6 +241,8 @@ export function DialogueSheet(): React.JSX.Element {
                   key={dialogue.id}
                 >
                   <button
+                    aria-label={`选择字幕：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                    aria-pressed={selected}
                     type="button"
                     className="dialogue-untimed-select"
                     data-testid="dialogue-untimed-select"
@@ -228,29 +257,72 @@ export function DialogueSheet(): React.JSX.Element {
                     <span className="dialogue-untimed-status">
                       未定时
                     </span>
+                    <span
+                      aria-hidden="true"
+                      className="dialogue-untimed-affordance"
+                    >
+                      {selected ? '✓' : '›'}
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    className="dialogue-untimed-arrange"
-                    aria-label={`安排一帧：${characterName(dialogue.characterId)}：${dialogue.text}`}
-                    data-dialogue-id={dialogue.id}
-                    data-testid="dialogue-untimed-arrange"
-                    onClick={() => {
-                      dialogueSelectionStore.select(dialogue.id);
-                      handleArrange(dialogue.id);
-                    }}
-                  >
-                    安排一帧
-                  </button>
+                  {selected && showInlineActions ? (
+                    <div
+                      className="dialogue-untimed-action-strip"
+                      data-dialogue-id={dialogue.id}
+                      data-testid="dialogue-untimed-action-strip"
+                    >
+                      <div className="dialogue-untimed-action-meta">
+                        <span className="dialogue-untimed-playhead-label">
+                          当前播放头
+                        </span>
+                        <output
+                          aria-label={`当前播放头 ${formatTimecode(timelineUi.currentTimeMs)}`}
+                          aria-live="polite"
+                          className="dialogue-untimed-playhead-time"
+                          data-current-time={timelineUi.currentTimeMs}
+                          data-testid="dialogue-untimed-playhead"
+                        >
+                          {formatTimecode(timelineUi.currentTimeMs)}
+                        </output>
+                      </div>
+                      <div className="dialogue-untimed-action-buttons">
+                        <button
+                          type="button"
+                          className="dialogue-untimed-arrange"
+                          aria-label={`安排一帧：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                          data-dialogue-id={dialogue.id}
+                          data-testid="dialogue-untimed-arrange"
+                          onClick={() => handleArrange(dialogue.id)}
+                        >
+                          安排一帧
+                        </button>
+                        <button
+                          type="button"
+                          className="dialogue-untimed-cancel"
+                          data-dialogue-id={dialogue.id}
+                          data-testid="dialogue-untimed-cancel"
+                          onClick={() => {
+                            setQueueError(null);
+                            dialogueSelectionStore.clear();
+                          }}
+                        >
+                          取消选择
+                        </button>
+                      </div>
+                      {queueError?.dialogueId === dialogue.id ? (
+                        <p
+                          className="dialogue-editor-error dialogue-untimed-error"
+                          data-testid="dialogue-untimed-error"
+                          role="alert"
+                        >
+                          {queueError.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
-          {queueError ? (
-            <p className="dialogue-editor-error" role="alert">
-              {queueError}
-            </p>
-          ) : null}
         </section>
       ) : (
         <div
