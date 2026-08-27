@@ -140,6 +140,7 @@ export function DialogueSheet(): React.JSX.Element {
   return (
     <div
       className="dialogue-sheet dialogue-sheet-timeline"
+      data-state={timelineState}
       data-subtitle-state={subtitleState}
       data-timeline-state={timelineState}
       data-testid="dialogue-sheet"
@@ -155,7 +156,10 @@ export function DialogueSheet(): React.JSX.Element {
             ) : untimedDialogues.length > 0 ? (
               <>
                 待安排字幕{' '}
-                <span className="dialogue-untimed-count">
+                <span
+                  className="dialogue-untimed-count"
+                  data-testid="dialogue-untimed-count"
+                >
                   {untimedDialogues.length} 条
                 </span>
               </>
@@ -262,6 +266,7 @@ export function DialogueSheet(): React.JSX.Element {
         className="dialogue-secondary-tools dialogue-add-disclosure"
         data-open={String(singleAddOpen)}
         data-testid="dialogue-add-disclosure"
+        open={singleAddOpen}
         onToggle={(event) => setSingleAddOpen(event.currentTarget.open)}
       >
         <summary>+ 添加单条字幕</summary>

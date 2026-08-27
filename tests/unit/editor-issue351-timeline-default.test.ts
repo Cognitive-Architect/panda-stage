@@ -41,8 +41,10 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
 
     expect(sheet).toContain("'timeline-default'");
     expect(sheet).toContain('data-timeline-state={timelineState}');
+    expect(sheet).toContain('data-state={timelineState}');
     expect(sheet).toContain('字幕任务');
     expect(sheet).toContain('待安排字幕');
+    expect(sheet).toContain('data-testid="dialogue-untimed-count"');
     expect(sheet).toContain('这些台词还没有安排到时间轴上。');
     expect(sheet).toContain('data-testid="dialogue-batch-open"');
     expect(sheet).toContain('>\n          批量粘贴\n');
@@ -70,6 +72,7 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
 
     expect(sheet).toContain('暂无待安排字幕');
     expect(sheet).toContain('timeline-subtitle-empty');
+    expect(sheet).toContain('open={singleAddOpen}');
     expect(sheet).toContain('onToggle={(event) => setSingleAddOpen(event.currentTarget.open)}');
     expect(sheet).not.toContain('defaultOpen');
   });
