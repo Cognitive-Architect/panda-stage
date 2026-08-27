@@ -12,10 +12,12 @@ import {
   PROJECT_WIDTH,
   type LayerTransformInput,
 } from '../../../domain';
+import { Check, FlipHorizontal2, Info, RotateCcw } from 'lucide-react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
+import { DecorativeIcon } from '../../ui';
 
 export interface LayerTransformDraft {
   x: string;
@@ -52,6 +54,13 @@ export function formatScalePercent(scale: number): string {
   return Number.isInteger(percent)
     ? String(percent)
     : String(Number(percent.toPrecision(12)));
+}
+
+/** Format only the portrait presentation; the underlying coordinate is untouched. */
+export function formatPositionDisplay(value: number): string {
+  if (!Number.isFinite(value)) return '';
+  const rounded = Number(value.toFixed(1));
+  return String(Object.is(rounded, -0) ? 0 : rounded);
 }
 
 /** Convert a percentage draft back to the existing domain scale semantics. */
@@ -176,8 +185,8 @@ export function LayerTransformPanel({
     setDraft(
       layer
         ? {
-            x: String(layer.x),
-            y: String(layer.y),
+            x: compact ? formatPositionDisplay(layer.x) : String(layer.x),
+            y: compact ? formatPositionDisplay(layer.y) : String(layer.y),
             scale: String(layer.scaleX),
             rotationDeg: String(layer.rotationDeg),
             opacity: String(layer.opacity),
@@ -353,24 +362,39 @@ export function LayerTransformPanel({
 
   const resetButton = layer && showResetTransform ? (
     <button
-      className="layer-transform-secondary-action"
+      className="layer-transform-action layer-transform-secondary-action layer-transform-reset-action"
       data-testid="layer-transform-reset"
       disabled={layer.locked || isBackgroundLayer}
       onClick={resetTransform}
       type="button"
     >
-      重置变换
+      {compact ? (
+        <span className="ui-icon-label">
+          <DecorativeIcon icon={RotateCcw} size={16} />
+          <span>重置变换</span>
+        </span>
+      ) : (
+        '重置变换'
+      )}
     </button>
   ) : null;
 
   const flipButton = layer ? (
     <button
-      className="layer-transform-secondary-action"
+      aria-pressed={compact ? layer.flipX : undefined}
+      className="layer-transform-action layer-transform-secondary-action layer-transform-toggle-action"
       disabled={layer.locked}
       onClick={toggleFlip}
       type="button"
     >
-      {layer.flipX ? '取消水平翻转' : '水平翻转'}
+      {compact ? (
+        <span className="ui-icon-label">
+          <DecorativeIcon icon={FlipHorizontal2} size={16} />
+          <span>{layer.flipX ? '取消水平翻转' : '水平翻转'}</span>
+        </span>
+      ) : (
+        layer.flipX ? '取消水平翻转' : '水平翻转'
+      )}
     </button>
   ) : null;
 
@@ -404,11 +428,18 @@ export function LayerTransformPanel({
 
   const applyButton = layer ? (
     <button
-      className="layer-transform-submit-action"
+      className="layer-transform-action layer-transform-primary-action layer-transform-submit-action"
       disabled={layer.locked}
       type="submit"
     >
-      应用变换
+      {compact ? (
+        <span className="ui-icon-label">
+          <DecorativeIcon icon={Check} size={16} />
+          <span>应用变换</span>
+        </span>
+      ) : (
+        '应用变换'
+      )}
     </button>
   ) : null;
 
@@ -472,7 +503,7 @@ export function LayerTransformPanel({
           {compact ? (
             <>
               <div
-                className="layer-transform-position-row"
+                className="layer-transform-control-row layer-transform-position-row"
                 data-testid="layer-transform-position"
               >
                 <span className="layer-transform-control-label">位置</span>
@@ -504,7 +535,7 @@ export function LayerTransformPanel({
                 </label>
               </div>
               <div
-                className="layer-transform-stepper-row"
+                className="layer-transform-control-row layer-transform-stepper-row"
                 data-testid="layer-transform-scale"
               >
                 <span className="layer-transform-control-label">缩放</span>
@@ -540,7 +571,7 @@ export function LayerTransformPanel({
                 </div>
               </div>
               <div
-                className="layer-transform-stepper-row"
+                className="layer-transform-control-row layer-transform-stepper-row"
                 data-testid="layer-transform-rotation"
               >
                 <span className="layer-transform-control-label">旋转</span>
@@ -638,7 +669,14 @@ export function LayerTransformPanel({
               ? '请先解锁图层，再修改变换。'
               : layer
                 ? compact
-                  ? 'X/Y 是视觉中心；离开字段或提交即可保存。'
+                  ? (
+                      <span className="layer-transform-guidance-inline">
+                        <DecorativeIcon icon={Info} size={14} />
+                        <span>
+                          X / Y 为对象视觉中心；离开输入框或点击“应用变换”即可保存。
+                        </span>
+                      </span>
+                    )
                   : 'X/Y 表示视觉中心，缩放保持等比。'
                 : '请在画布中选择图层以编辑变换。'}
         </p>

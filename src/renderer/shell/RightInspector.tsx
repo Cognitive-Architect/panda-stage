@@ -52,6 +52,19 @@ export interface RightInspectorLayerSummary {
   typeLabel: string;
 }
 
+function getPortraitLayerTypeLabel(typeLabel: string): string {
+  switch (typeLabel) {
+    case '角色图层':
+      return '角色';
+    case '图片素材图层':
+      return '图片';
+    case '音频素材图层':
+      return '音频';
+    default:
+      return typeLabel;
+  }
+}
+
 /**
  * Resolve the existing layer source into the small identity summary shown by
  * the portrait inspector. This is deliberately a pure projection over the
@@ -307,6 +320,9 @@ export function RightInspector({
     snapshot,
     selection.layer,
   );
+  const selectionTypeLabel = compact
+    ? getPortraitLayerTypeLabel(layerSummary.typeLabel)
+    : layerSummary.typeLabel;
   const selectionThumbnail = useRightInspectorThumbnail(
     snapshot,
     layerSummary.asset,
@@ -420,7 +436,7 @@ export function RightInspector({
           </div>
           <div className="right-inspector-selection-copy">
             <strong>{selection.layer.name}</strong>
-            <span>{layerSummary.typeLabel}</span>
+            <span>{selectionTypeLabel}</span>
           </div>
         </div>
       ) : (
