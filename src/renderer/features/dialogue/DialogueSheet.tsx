@@ -3,12 +3,17 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { X } from 'lucide-react';
 import type { Character, Dialogue } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { dialogueStore } from '../../stores/dialogueStore';
-import { DialogueAuthoringDraft } from './dialogueAuthoringDraft';
+import {
+  DIALOGUE_AUTHORING_TEXT_MAX_LENGTH,
+  DialogueAuthoringDraft,
+  validateSingleDialogueDraft,
+} from './dialogueAuthoringDraft';
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
 import { useTimelineUi } from '../timeline/timelineUiStore';
@@ -108,6 +113,13 @@ export function DialogueSheet(): React.JSX.Element {
   const [authoringMode, setAuthoringMode] =
     useState<DialogueAuthoringMode>('none');
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
+  const [singleTouched, setSingleTouched] = useState({
+    speaker: false,
+    text: false,
+  });
+  const [singleSubmitError, setSingleSubmitError] = useState<string | null>(
+    null,
+  );
   const [queueError, setQueueError] = useState<{
     dialogueId: string;
     message: string;
@@ -118,13 +130,32 @@ export function DialogueSheet(): React.JSX.Element {
   useEffect(() => {
     draft.bindIdentity({ projectRoot, shotId });
     setAuthoringMode('none');
+    setSingleTouched({ speaker: false, text: false });
+    setSingleSubmitError(null);
   }, [draft, projectRoot, shotId]);
 
   useEffect(() => {
     if (selectedDialogueId === null) return;
-    if (authoringMode === 'batch') draft.clearBatch();
+    if (authoringMode !== 'none') draft.clear();
     setAuthoringMode('none');
+    setSingleTouched({ speaker: false, text: false });
+    setSingleSubmitError(null);
   }, [authoringMode, draft, selectedDialogueId]);
+
+  useEffect(() => {
+    if (authoringMode === 'none') return undefined;
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      draft.clear();
+      dialogueSelectionStore.clear();
+      setAuthoringMode('none');
+      setSingleTouched({ speaker: false, text: false });
+      setSingleSubmitError(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [authoringMode, draft]);
 
   useEffect(() => {
     setQueueError(null);
@@ -149,9 +180,11 @@ export function DialogueSheet(): React.JSX.Element {
   const untimedDialogues = dialogues.filter(
     (dialogue) => !isTimedDialogue(dialogue),
   );
-  const canAdd =
-    draftState.singleCharacterId !== '' &&
-    draftState.singleText.trim().length > 0;
+  const singleErrors = validateSingleDialogueDraft(
+    draftState,
+    characters.map((character) => character.id),
+  );
+  const canAdd = singleErrors.speaker === null && singleErrors.text === null;
 
   if (!shot) {
     return (
@@ -162,12 +195,23 @@ export function DialogueSheet(): React.JSX.Element {
   }
 
   const handleAdd = (): void => {
+    setSingleTouched({ speaker: true, text: true });
     if (!canAdd) return;
-    dialogueStore.create(
-      draftState.singleCharacterId,
-      draftState.singleText.trim(),
-    );
-    draft.setSingleText('');
+    try {
+      dialogueStore.create(
+        draftState.singleCharacterId,
+        draftState.singleText.trim(),
+      );
+      draft.clear();
+      dialogueSelectionStore.clear();
+      setAuthoringMode('none');
+      setSingleTouched({ speaker: false, text: false });
+      setSingleSubmitError(null);
+    } catch (nextError) {
+      setSingleSubmitError(
+        nextError instanceof Error ? nextError.message : '新增字幕失败。',
+      );
+    }
   };
 
   const handleArrange = (dialogueId: string): void => {
@@ -188,23 +232,47 @@ export function DialogueSheet(): React.JSX.Element {
   };
 
   const handleSelectDialogue = (dialogueId: string): void => {
-    if (authoringMode === 'batch') draft.clearBatch();
+    if (authoringMode !== 'none') draft.clear();
     setAuthoringMode('none');
+    setSingleTouched({ speaker: false, text: false });
+    setSingleSubmitError(null);
     dialogueSelectionStore.select(dialogueId);
   };
 
   const handleOpenAuthoring = (
     mode: Exclude<DialogueAuthoringMode, 'none'>,
   ): void => {
-    if (authoringMode === 'batch' && mode !== 'batch') draft.clearBatch();
+    if (authoringMode === 'none') {
+      draft.clear();
+      setSingleTouched({ speaker: false, text: false });
+      setSingleSubmitError(null);
+    }
     dialogueSelectionStore.clear();
     setAuthoringMode(mode);
   };
 
   const handleCloseAuthoring = (): void => {
-    if (authoringMode === 'batch') draft.clearBatch();
+    draft.clear();
     dialogueSelectionStore.clear();
     setAuthoringMode('none');
+    setSingleTouched({ speaker: false, text: false });
+    setSingleSubmitError(null);
+  };
+
+  const handleAuthoringTabKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+  ): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const nextMode = authoringMode === 'single' ? 'batch' : 'single';
+    handleOpenAuthoring(nextMode);
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>(
+          `[data-testid="dialogue-authoring-tab-${nextMode}"]`,
+        )
+        ?.focus();
+    });
   };
 
   const characterName = (id: string): string =>
@@ -237,53 +305,258 @@ export function DialogueSheet(): React.JSX.Element {
       data-timeline-state={timelineState}
       data-testid="dialogue-sheet"
     >
-      <header
-        className={`dialogue-sheet-header${
-          showTimedEditor ? ' dialogue-sheet-header-timed' : ''
-        }`}
-      >
-        {!showTimedEditor ? (
-          <div className="dialogue-sheet-heading">
-            <p className="eyebrow">字幕任务</p>
-            <h3>
-              {untimedDialogues.length > 0 ? (
-                <>
-                  待安排字幕{' '}
-                  <span
-                    className="dialogue-untimed-count"
-                    data-testid="dialogue-untimed-count"
-                  >
-                    {untimedDialogues.length} 条
-                  </span>
-                </>
-              ) : (
-                '暂无待安排字幕'
-              )}
-            </h3>
-          </div>
-        ) : null}
-        <div className="dialogue-sheet-header-actions">
-          {showTimedEditor ? (
+      {authoringMode === 'none' ? (
+        <header
+          className={`dialogue-sheet-header${
+            showTimedEditor ? ' dialogue-sheet-header-timed' : ''
+          }`}
+        >
+          {!showTimedEditor ? (
+            <div className="dialogue-sheet-heading">
+              <p className="eyebrow">字幕任务</p>
+              <h3>
+                {untimedDialogues.length > 0 ? (
+                  <>
+                    待安排字幕{' '}
+                    <span
+                      className="dialogue-untimed-count"
+                      data-testid="dialogue-untimed-count"
+                    >
+                      {untimedDialogues.length} 条
+                    </span>
+                  </>
+                ) : (
+                  '暂无待安排字幕'
+                )}
+              </h3>
+            </div>
+          ) : null}
+          <div className="dialogue-sheet-header-actions">
+            {showTimedEditor ? (
+              <button
+                type="button"
+                className="dialogue-secondary-action dialogue-timed-back"
+                data-testid="dialogue-timed-back"
+                onClick={() => dialogueSelectionStore.clear()}
+              >
+                返回待安排字幕
+              </button>
+            ) : null}
             <button
               type="button"
-              className="dialogue-secondary-action dialogue-timed-back"
-              data-testid="dialogue-timed-back"
-              onClick={() => dialogueSelectionStore.clear()}
+              className="dialogue-secondary-action dialogue-authoring-open"
+              data-testid="dialogue-authoring-open"
+              onClick={() => handleOpenAuthoring('single')}
             >
-              返回待安排字幕
+              + 新建字幕
             </button>
-          ) : null}
-          <button
-            aria-expanded={authoringMode === 'batch'}
-            type="button"
-            className="dialogue-secondary-action"
-            data-testid="dialogue-batch-open"
-            onClick={() => handleOpenAuthoring('batch')}
+          </div>
+        </header>
+      ) : (
+        <section
+          aria-labelledby="dialogue-authoring-title"
+          className="dialogue-authoring-shell"
+          data-mode={authoringMode}
+          data-testid="dialogue-authoring-shell"
+        >
+          <header className="dialogue-authoring-header">
+            <div>
+              <p className="eyebrow">字幕任务</p>
+              <h3 id="dialogue-authoring-title">新建字幕</h3>
+              <p>创建新的未定时字幕或批量导入。</p>
+            </div>
+            <button
+              aria-label="关闭新建字幕"
+              className="dialogue-authoring-close"
+              data-testid="dialogue-authoring-close"
+              type="button"
+              onClick={handleCloseAuthoring}
+            >
+              <X aria-hidden="true" size={20} strokeWidth={2} />
+            </button>
+          </header>
+
+          <div
+            aria-label="新建字幕方式"
+            className="dialogue-authoring-tabs"
+            role="tablist"
           >
-            批量粘贴
-          </button>
-        </div>
-      </header>
+            <button
+              aria-controls="dialogue-authoring-panel-single"
+              aria-selected={authoringMode === 'single'}
+              className="dialogue-authoring-tab"
+              data-testid="dialogue-authoring-tab-single"
+              id="dialogue-authoring-tab-single"
+              role="tab"
+              tabIndex={authoringMode === 'single' ? 0 : -1}
+              type="button"
+              onClick={() => handleOpenAuthoring('single')}
+              onKeyDown={handleAuthoringTabKeyDown}
+            >
+              单条
+            </button>
+            <button
+              aria-controls="dialogue-authoring-panel-batch"
+              aria-selected={authoringMode === 'batch'}
+              className="dialogue-authoring-tab"
+              data-testid="dialogue-authoring-tab-batch"
+              id="dialogue-authoring-tab-batch"
+              role="tab"
+              tabIndex={authoringMode === 'batch' ? 0 : -1}
+              type="button"
+              onClick={() => handleOpenAuthoring('batch')}
+              onKeyDown={handleAuthoringTabKeyDown}
+            >
+              批量粘贴
+            </button>
+          </div>
+
+          {authoringMode === 'single' ? (
+            <div
+              aria-labelledby="dialogue-authoring-tab-single"
+              className="dialogue-authoring-mode dialogue-authoring-single"
+              data-testid="dialogue-authoring-single"
+              id="dialogue-authoring-panel-single"
+              role="tabpanel"
+            >
+              <section className="dialogue-authoring-section">
+                <label htmlFor="dialogue-add-speaker">角色（说话人）</label>
+                <select
+                  aria-describedby={
+                    singleTouched.speaker && singleErrors.speaker
+                      ? 'dialogue-add-speaker-error'
+                      : undefined
+                  }
+                  aria-invalid={Boolean(
+                    singleTouched.speaker && singleErrors.speaker,
+                  )}
+                  data-testid="dialogue-add-speaker"
+                  id="dialogue-add-speaker"
+                  value={draftState.singleCharacterId}
+                  onBlur={() =>
+                    setSingleTouched((current) => ({
+                      ...current,
+                      speaker: true,
+                    }))
+                  }
+                  onChange={(event) => {
+                    setSingleSubmitError(null);
+                    draft.setSingleCharacterId(event.target.value);
+                  }}
+                >
+                  <option value="">选择现有角色</option>
+                  {characters.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+                </select>
+                {singleTouched.speaker && singleErrors.speaker ? (
+                  <p
+                    className="dialogue-authoring-error"
+                    id="dialogue-add-speaker-error"
+                    role="alert"
+                  >
+                    {singleErrors.speaker}
+                  </p>
+                ) : null}
+              </section>
+
+              <section className="dialogue-authoring-section">
+                <label htmlFor="dialogue-add-text">
+                  台词内容 <span aria-hidden="true">*</span>
+                </label>
+                <textarea
+                  aria-describedby="dialogue-add-text-message dialogue-add-text-count"
+                  aria-invalid={Boolean(singleTouched.text && singleErrors.text)}
+                  data-testid="dialogue-add-text"
+                  id="dialogue-add-text"
+                  placeholder="请输入台词内容…"
+                  rows={5}
+                  value={draftState.singleText}
+                  onBlur={() =>
+                    setSingleTouched((current) => ({
+                      ...current,
+                      text: true,
+                    }))
+                  }
+                  onChange={(event) => {
+                    setSingleSubmitError(null);
+                    draft.setSingleText(event.target.value);
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === 'Enter' &&
+                      (event.ctrlKey || event.metaKey)
+                    ) {
+                      event.preventDefault();
+                      handleAdd();
+                    }
+                  }}
+                />
+                <div className="dialogue-authoring-field-meta">
+                  <span id="dialogue-add-text-message">
+                    {singleTouched.text && singleErrors.text
+                      ? singleErrors.text
+                      : '普通 Enter 换行，Ctrl/Cmd + Enter 提交'}
+                  </span>
+                  <output id="dialogue-add-text-count">
+                    {`${draftState.singleText.length} / ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH}`}
+                  </output>
+                </div>
+              </section>
+
+              <section className="dialogue-authoring-section dialogue-authoring-placement">
+                <div>
+                  <h4>创建位置</h4>
+                  <p>将在当前播放头处创建未定时字幕。</p>
+                </div>
+                <div>
+                  <span>当前播放头</span>
+                  <output
+                    data-current-time={timelineUi.currentTimeMs}
+                    data-testid="dialogue-authoring-playhead"
+                  >
+                    {formatTimecode(timelineUi.currentTimeMs)}
+                  </output>
+                </div>
+              </section>
+
+              {singleSubmitError ? (
+                <p className="dialogue-authoring-error" role="alert">
+                  {singleSubmitError}
+                </p>
+              ) : null}
+
+              <footer className="dialogue-authoring-footer">
+                <button
+                  className="dialogue-authoring-cancel"
+                  data-testid="dialogue-authoring-cancel"
+                  type="button"
+                  onClick={handleCloseAuthoring}
+                >
+                  取消
+                </button>
+                <button
+                  className="dialogue-authoring-submit"
+                  data-testid="dialogue-add"
+                  disabled={!canAdd}
+                  type="button"
+                  onClick={handleAdd}
+                >
+                  新增字幕
+                </button>
+              </footer>
+            </div>
+          ) : (
+            <DialogueBatchPaste
+              draft={draft}
+              onCancel={handleCloseAuthoring}
+              onSuccess={handleCloseAuthoring}
+            />
+          )}
+        </section>
+      )}
 
       {showTimedEditor && selectedTimedDialogue ? (
         <section
@@ -305,6 +578,8 @@ export function DialogueSheet(): React.JSX.Element {
             <p className="timeline-subtitle-queue-intro">
               这些台词还没有安排到时间轴上。
             </p>
+          ) : authoringMode !== 'none' ? (
+            <h4 className="dialogue-authoring-queue-heading">待安排字幕</h4>
           ) : null}
           <ul className="dialogue-untimed-queue">
             {untimedDialogues.map((dialogue) => {
@@ -413,65 +688,6 @@ export function DialogueSheet(): React.JSX.Element {
         </div>
       )}
 
-      <details
-        className="dialogue-secondary-tools dialogue-add-disclosure"
-        data-open={String(authoringMode === 'single')}
-        data-testid="dialogue-add-disclosure"
-        open={authoringMode === 'single'}
-        onToggle={(event) => {
-          if (event.currentTarget.open && authoringMode !== 'single') {
-            handleOpenAuthoring('single');
-          } else if (
-            !event.currentTarget.open &&
-            authoringMode === 'single'
-          ) {
-            handleCloseAuthoring();
-          }
-        }}
-      >
-        <summary>+ 添加单条字幕</summary>
-        <div className="dialogue-secondary-tools-body">
-          <div className="dialogue-add">
-            <select
-              aria-label="字幕角色"
-              data-testid="dialogue-add-speaker"
-              value={draftState.singleCharacterId}
-              onChange={(event) =>
-                draft.setSingleCharacterId(event.target.value)
-              }
-            >
-              <option value="">选择角色</option>
-              {characters.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
-            <input
-              aria-label="字幕台词"
-              data-testid="dialogue-add-text"
-              value={draftState.singleText}
-              placeholder="输入台词"
-              onChange={(event) => draft.setSingleText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && canAdd) handleAdd();
-              }}
-            />
-            <button
-              type="button"
-              data-testid="dialogue-add"
-              disabled={!canAdd}
-              onClick={handleAdd}
-            >
-              新增
-            </button>
-          </div>
-        </div>
-      </details>
-
-      {authoringMode === 'batch' ? (
-        <DialogueBatchPaste draft={draft} onClose={handleCloseAuthoring} />
-      ) : null}
     </div>
   );
 }

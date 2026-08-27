@@ -147,7 +147,8 @@ describe('Issue #354 subtitle state transitions', () => {
     expect(sheet).toContain('onClick={() => dialogueSelectionStore.clear()}');
     expect(sheet).toContain("handleOpenAuthoring('single')");
     expect(sheet).toContain("handleOpenAuthoring('batch')");
-    expect(sheet).toContain("authoringMode === 'batch' ? (");
+    expect(sheet).toContain('data-testid="dialogue-authoring-shell"');
+    expect(sheet).toContain('data-testid="dialogue-authoring-tab-batch"');
     expect(sheet).toContain('if (selectedDialogueId === null) return;');
     expect(sheet).toContain('dialogueSelectionStore.clear();');
     expect(sheet).toContain('dialogueSelectionStore.select(dialogueId);');

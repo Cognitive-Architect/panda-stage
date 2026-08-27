@@ -1,5 +1,7 @@
 type Listener = () => void;
 
+export const DIALOGUE_AUTHORING_TEXT_MAX_LENGTH = 10_000;
+
 export interface DialogueDraftIdentity {
   projectRoot: string;
   shotId: string | null;
@@ -10,6 +12,34 @@ export interface DialogueAuthoringDraftSnapshot {
   singleText: string;
   batchRaw: string;
   batchMapping: Record<number, string>;
+}
+
+export interface SingleDialogueDraftErrors {
+  speaker: string | null;
+  text: string | null;
+}
+
+export function validateSingleDialogueDraft(
+  draft: Pick<
+    DialogueAuthoringDraftSnapshot,
+    'singleCharacterId' | 'singleText'
+  >,
+  characterIds: readonly string[],
+): SingleDialogueDraftErrors {
+  const text = draft.singleText.trim();
+  const speaker =
+    draft.singleCharacterId === ''
+      ? '请选择角色。'
+      : !characterIds.includes(draft.singleCharacterId)
+        ? '所选角色已不存在，请重新选择。'
+        : null;
+  const textError =
+    text.length === 0
+      ? '请输入台词内容。'
+      : text.length > DIALOGUE_AUTHORING_TEXT_MAX_LENGTH
+        ? `台词内容不能超过 ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH} 个字符。`
+        : null;
+  return { speaker, text: textError };
 }
 
 const EMPTY_DRAFT: DialogueAuthoringDraftSnapshot = {
@@ -74,13 +104,9 @@ export class DialogueAuthoringDraft {
     this.set({ ...this.snapshot, singleText: value });
   }
 
-  /** Drop the batch raw text + manual mapping when its authoring mode closes. */
-  clearBatch(): void {
-    this.set({
-      ...this.snapshot,
-      batchRaw: '',
-      batchMapping: {},
-    });
+  /** Close the whole shared authoring shell and discard every transient field. */
+  clear(): void {
+    this.set({ ...EMPTY_DRAFT });
   }
 
   setBatchRaw(value: string): void {

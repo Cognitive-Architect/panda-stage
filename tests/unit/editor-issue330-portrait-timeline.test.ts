@@ -44,7 +44,7 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(timeline).not.toContain('updateProject');
   });
 
-  it('makes the current subtitle editor primary and keeps authoring tools secondary', () => {
+  it('keeps the current subtitle editor and the unified authoring owner reachable', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
     const inspector = source(
       'src/renderer/features/dialogue/DialogueInspector.tsx',
@@ -53,8 +53,9 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(sheet).toContain('<DialogueInspector');
     expect(sheet).toContain('presentation="timeline"');
     expect(sheet).toContain('timeline-subtitle-empty');
-    expect(sheet).toContain('dialogue-secondary-tools');
-    expect(sheet).toContain('dialogue-batch-open');
+    expect(sheet).toContain('dialogue-authoring-shell');
+    expect(sheet).toContain('dialogue-authoring-open');
+    expect(sheet).toContain('DialogueBatchPaste');
     expect(sheet).toContain('dialogue-add');
     expect(inspector).toContain("'inspector' | 'timeline'");
     expect(inspector).toContain('dialogueStore.update');
@@ -71,7 +72,7 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(styles).toContain(
       ".editor-body[data-active-workspace='timeline']",
     );
-    expect(styles).toContain('.dialogue-secondary-tools');
+    expect(styles).toContain('.dialogue-authoring-shell');
     expect(styles).toContain('.timeline-audio-clip');
     expect(preview).toContain('product-preview-play');
     expect(preview).toContain('product-preview-pause');

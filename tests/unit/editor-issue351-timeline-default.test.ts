@@ -33,7 +33,7 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     ).toBe('timeline-untimed-selected');
   });
 
-  it('keeps the default work panel hierarchy and both authoring entries', () => {
+  it('keeps the default work panel hierarchy and one unified authoring entry', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
 
     expect(sheet).toContain("'timeline-default'");
@@ -43,11 +43,10 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(sheet).toContain('待安排字幕');
     expect(sheet).toContain('data-testid="dialogue-untimed-count"');
     expect(sheet).toContain('这些台词还没有安排到时间轴上。');
-    expect(sheet).toContain('data-testid="dialogue-batch-open"');
-    expect(sheet).toContain('批量粘贴');
-    expect(sheet).toContain('<details');
-    expect(sheet).toContain('data-testid="dialogue-add-disclosure"');
-    expect(sheet).toContain('<summary>+ 添加单条字幕</summary>');
+    expect(sheet).toContain('data-testid="dialogue-authoring-open"');
+    expect(sheet).toContain('+ 新建字幕');
+    expect(sheet).toContain('data-testid="dialogue-authoring-tab-single"');
+    expect(sheet).toContain('data-testid="dialogue-authoring-tab-batch"');
     expect(sheet).toContain('data-testid="dialogue-add"');
   });
 
@@ -62,15 +61,14 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(sheet).toContain('dialogue-untimed-affordance');
   });
 
-  it('keeps the empty state and add disclosure explicit and collapsed by default', () => {
+  it('keeps the empty state and opens authoring explicitly from State A', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
 
     expect(sheet).toContain('暂无待安排字幕');
     expect(sheet).toContain('timeline-subtitle-empty');
-    expect(sheet).toContain("open={authoringMode === 'single'}");
-    expect(sheet).toContain('onToggle={(event) => {');
+    expect(sheet).toContain("authoringMode === 'none' ? (");
     expect(sheet).toContain("handleOpenAuthoring('single')");
-    expect(sheet).not.toContain('defaultOpen');
+    expect(sheet).not.toContain('<details');
   });
 
   it('limits the visual redesign to Cloud Touch portrait Timeline and preserves touch targets', () => {

@@ -50,7 +50,8 @@ describe('Issue #339 portrait Timeline subtitle task surface', () => {
     expect(sheet).toContain('dialogueStore.arrange');
     expect(sheet).toContain('DialogueBatchPaste');
     expect(sheet).toContain('new DialogueAuthoringDraft');
-    expect(sheet).toContain('data-testid="dialogue-batch-open"');
+    expect(sheet).toContain('data-testid="dialogue-authoring-open"');
+    expect(sheet).toContain('data-testid="dialogue-authoring-tab-batch"');
     expect(sheet).toContain('data-testid="dialogue-add"');
     expect(inspector).toContain("'inspector' | 'timeline'");
     expect(inspector).toContain('dialogueStore.update');
@@ -69,7 +70,7 @@ describe('Issue #339 portrait Timeline subtitle task surface', () => {
     expect(issue339).toContain('.timeline-audio-lane.is-empty');
     expect(issue339).toContain('.timeline-audio-lane.has-clips');
     expect(issue339).toContain('.dialogue-untimed-queue');
-    expect(issue339).toContain('.dialogue-secondary-tools > summary');
+    expect(styles).toContain('.dialogue-authoring-shell');
     expect(issue339).toContain('.timeline-subtitle-empty');
     expect(issue339).toContain('border: 0;');
   });

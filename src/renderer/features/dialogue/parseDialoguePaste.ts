@@ -42,6 +42,19 @@ export interface ParseDialoguePasteResult {
   validCount: number;
 }
 
+export interface ResolvedDialogueLine {
+  characterId: string;
+  text: string;
+}
+
+export interface DialogueBatchResolution {
+  resolvedLines: Array<ResolvedDialogueLine | null>;
+  readyCount: number;
+  failureCount: number;
+  unknownCount: number;
+  allResolved: boolean;
+}
+
 const FULL_WIDTH_COLON = '：';
 const ASCII_COLON = ':';
 
@@ -169,4 +182,41 @@ export function isBatchSubmittable(result: ParseDialoguePasteResult): boolean {
     result.lines.length > 0 &&
     result.lines.every((line) => line.status === 'valid')
   );
+}
+
+/**
+ * Applies the existing draft-only speaker mapping to one parse result. This is
+ * presentation readiness only: it never creates a Character or mutates the
+ * Project/History, and stale mappings to removed characters stay unresolved.
+ */
+export function resolveDialoguePaste(
+  result: ParseDialoguePasteResult,
+  mapping: Readonly<Record<number, string>>,
+  characters: readonly Character[],
+): DialogueBatchResolution {
+  const characterIds = new Set(characters.map((character) => character.id));
+  const resolvedLines = result.lines.map((line): ResolvedDialogueLine | null => {
+    if (line.status === 'valid') {
+      return { characterId: line.characterId!, text: line.text! };
+    }
+    if (line.status !== 'unknown' && line.status !== 'ambiguous') return null;
+    const mappedCharacterId = mapping[line.lineNumber];
+    if (!mappedCharacterId || !characterIds.has(mappedCharacterId)) return null;
+    return { characterId: mappedCharacterId, text: line.text! };
+  });
+  const readyCount = resolvedLines.filter((line) => line !== null).length;
+  const failureCount = result.lines.filter(
+    (line) => line.status === 'malformed' || line.status === 'invalid',
+  ).length;
+  const unknownCount = result.lines.filter(
+    (line) => line.status === 'unknown' || line.status === 'ambiguous',
+  ).length;
+  return {
+    resolvedLines,
+    readyCount,
+    failureCount,
+    unknownCount,
+    allResolved:
+      result.lines.length > 0 && readyCount === result.lines.length,
+  };
 }

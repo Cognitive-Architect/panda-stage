@@ -1,35 +1,35 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import type { Character } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
 import {
   parseDialoguePaste,
+  resolveDialoguePaste,
   type DialogueLineStatus,
 } from './parseDialoguePaste';
 import type { DialogueAuthoringDraft } from './dialogueAuthoringDraft';
 
 const STATUS_LABEL: Record<DialogueLineStatus, string> = {
-  valid: '有效',
+  valid: '解析成功',
   malformed: '缺少“角色：台词”分隔符',
   invalid: '角色或台词为空',
   unknown: '未知角色',
-  ambiguous: '角色重名需手动指定',
+  ambiguous: '角色重名需映射',
 };
 
 /**
- * Batch paste surface. Parsing and preview are pure UI state and never touch the
- * project, the History or the dirty flag. Unknown speakers are mapped manually;
- * only when every line is resolved does the commit button enable, and the whole
- * batch becomes a single History command. The draft (raw text + manual mapping)
- * is owned by the DialogueAuthoringDraft bound to the current shot, so it is
- * cleared on shot/project switch and on close.
+ * State E content inside the one shared authoring shell. Parsing and speaker
+ * mapping remain transient DialogueAuthoringDraft state; the existing
+ * DialogueStore.createMany path performs the sole, atomic History commit.
  */
 export function DialogueBatchPaste({
   draft,
-  onClose,
+  onCancel,
+  onSuccess,
 }: {
   draft: DialogueAuthoringDraft;
-  onClose: () => void;
+  onCancel: () => void;
+  onSuccess: () => void;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -37,117 +37,219 @@ export function DialogueBatchPaste({
   );
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
+  const [commitError, setCommitError] = useState<string | null>(null);
 
   const parsed = useMemo(
     () => parseDialoguePaste(draftState.batchRaw, characters),
     [draftState.batchRaw, characters],
   );
-
-  const resolvedLines = parsed.lines.map((line) => {
-    if (line.status === 'valid') {
-      return { characterId: line.characterId!, text: line.text! };
-    }
-    if (
-      (line.status === 'unknown' || line.status === 'ambiguous') &&
-      draftState.batchMapping[line.lineNumber]
-    ) {
-      return {
-        characterId: draftState.batchMapping[line.lineNumber]!,
-        text: line.text!,
-      };
-    }
-    return null;
-  });
-  const allResolved =
-    parsed.lines.length > 0 && resolvedLines.every((line) => line !== null);
-  const resolvedCount = resolvedLines.filter((line) => line !== null).length;
+  const resolution = useMemo(
+    () =>
+      resolveDialoguePaste(parsed, draftState.batchMapping, characters),
+    [characters, draftState.batchMapping, parsed],
+  );
+  const unknownLines = parsed.lines.filter(
+    (line) => line.status === 'unknown' || line.status === 'ambiguous',
+  );
 
   const handleCommit = (): void => {
-    if (!allResolved) return;
-    dialogueStore.createMany(
-      resolvedLines as { characterId: string; text: string }[],
-    );
-    onClose();
+    if (!resolution.allResolved) return;
+    try {
+      dialogueStore.createMany(
+        resolution.resolvedLines.filter(
+          (line): line is NonNullable<typeof line> => line !== null,
+        ),
+      );
+      setCommitError(null);
+      onSuccess();
+    } catch (nextError) {
+      setCommitError(
+        nextError instanceof Error ? nextError.message : '批量提交失败。',
+      );
+    }
   };
 
   return (
-    <div className="dialogue-batch" data-testid="dialogue-batch">
-      <header className="dialogue-batch-header">
-        <h4>批量粘贴对白</h4>
-        <button
-          type="button"
-          data-testid="dialogue-batch-close"
-          onClick={onClose}
-        >
-          关闭
-        </button>
-      </header>
-      <textarea
-        data-testid="dialogue-batch-input"
-        className="dialogue-batch-input"
-        rows={8}
-        placeholder="每行：角色名：台词"
-        value={draftState.batchRaw}
-        onChange={(event) => draft.setBatchRaw(event.target.value)}
-      />
-      <p className="dialogue-batch-summary" data-testid="dialogue-batch-summary">
-        {`共 ${parsed.lines.length} 行，有效 ${parsed.validCount} 行，忽略空行 ${parsed.ignoredEmpty} 行。`}
-      </p>
-      <ul
-        className="dialogue-batch-preview"
-        data-testid="dialogue-batch-preview"
-      >
-        {parsed.lines.map((line) => (
-          <li
-            key={line.lineNumber}
-            data-status={line.status}
-            data-testid="dialogue-batch-line"
-          >
-            <span className="dialogue-batch-lineno">{line.lineNumber}</span>
-            {line.status === 'valid' ? (
-              <span className="dialogue-batch-valid">
-                {`${line.speaker}：${line.text}`}
-              </span>
-            ) : (
-              <>
-                <span className="dialogue-batch-issue">
-                  {`${STATUS_LABEL[line.status]}：${line.raw}`}
-                </span>
-                {(line.status === 'unknown' ||
-                  line.status === 'ambiguous') && (
-                  <select
-                    data-testid={`dialogue-batch-map-${line.lineNumber}`}
-                    className="dialogue-batch-map"
-                    value={draftState.batchMapping[line.lineNumber] ?? ''}
-                    onChange={(event) =>
-                      draft.setBatchMapping(line.lineNumber, event.target.value)
-                    }
+    <div
+      aria-labelledby="dialogue-authoring-tab-batch"
+      className="dialogue-authoring-mode dialogue-authoring-batch"
+      data-testid="dialogue-batch"
+      id="dialogue-authoring-panel-batch"
+      role="tabpanel"
+    >
+      <section className="dialogue-authoring-section">
+        <label htmlFor="dialogue-batch-input">
+          <span className="dialogue-authoring-step">1</span>
+          粘贴原始文本
+          <small>每行：角色：台词</small>
+        </label>
+        <textarea
+          aria-describedby="dialogue-batch-format-hint"
+          aria-label="批量字幕原始文本"
+          className="dialogue-batch-input"
+          data-testid="dialogue-batch-input"
+          id="dialogue-batch-input"
+          placeholder={'Panda：你好呀\n角色B：这是第二行台词'}
+          rows={7}
+          value={draftState.batchRaw}
+          onChange={(event) => {
+            setCommitError(null);
+            draft.setBatchRaw(event.target.value);
+          }}
+        />
+        <p className="dialogue-authoring-hint" id="dialogue-batch-format-hint">
+          空行会被忽略；角色名需与现有角色一致，未知角色可在下方映射。
+        </p>
+      </section>
+
+      <section className="dialogue-authoring-section">
+        <h4>
+          <span className="dialogue-authoring-step">2</span>
+          解析结果
+          <small>{`共 ${parsed.lines.length} 条`}</small>
+        </h4>
+        <div className="dialogue-batch-table-wrap">
+          <table className="dialogue-batch-table" data-testid="dialogue-batch-preview">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">说话人</th>
+                <th scope="col">台词内容</th>
+                <th scope="col">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parsed.lines.map((line, index) => {
+                const mapped =
+                  line.status !== 'valid' &&
+                  resolution.resolvedLines[index] !== null;
+                return (
+                  <tr
+                    data-status={mapped ? 'mapped' : line.status}
+                    data-testid="dialogue-batch-line"
+                    key={line.lineNumber}
                   >
-                    <option value="">手动映射到…</option>
-                    {characters.map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </>
-            )}
-          </li>
-        ))}
-        {parsed.lines.length === 0 && (
-          <li className="dialogue-batch-empty">粘贴内容后此处显示预览。</li>
-        )}
-      </ul>
-      <button
-        type="button"
-        className="dialogue-batch-commit"
-        data-testid="dialogue-batch-commit"
-        disabled={!allResolved}
-        onClick={handleCommit}
+                    <td>{line.lineNumber}</td>
+                    <td>{line.speaker || '—'}</td>
+                    <td>{line.text || line.raw}</td>
+                    <td>
+                      {line.status === 'valid'
+                        ? '✓ 解析成功'
+                        : mapped
+                          ? '✓ 已映射'
+                          : STATUS_LABEL[line.status]}
+                    </td>
+                  </tr>
+                );
+              })}
+              {parsed.lines.length === 0 ? (
+                <tr>
+                  <td className="dialogue-batch-empty" colSpan={4}>
+                    粘贴内容后，此处会逐行显示解析结果。
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {unknownLines.length > 0 ? (
+        <section
+          className="dialogue-authoring-section dialogue-batch-mapping"
+          data-testid="dialogue-batch-mapping"
+        >
+          <h4>
+            <span className="dialogue-authoring-step">3</span>
+            未知角色映射
+            <small>{unknownLines.length}</small>
+          </h4>
+          <div className="dialogue-batch-mapping-list">
+            {unknownLines.map((line) => (
+              <label key={line.lineNumber}>
+                <span>{`未知角色：${line.speaker}`}</span>
+                <select
+                  aria-label={`将未知角色 ${line.speaker} 映射为`}
+                  data-testid={`dialogue-batch-map-${line.lineNumber}`}
+                  value={draftState.batchMapping[line.lineNumber] ?? ''}
+                  onChange={(event) => {
+                    setCommitError(null);
+                    draft.setBatchMapping(line.lineNumber, event.target.value);
+                  }}
+                >
+                  <option value="">请选择现有角色</option>
+                  {characters.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section
+        className="dialogue-authoring-section dialogue-batch-stats"
+        data-testid="dialogue-batch-stats"
       >
-        {`提交 ${resolvedCount} 条`}
-      </button>
+        <h4>
+          <span className="dialogue-authoring-step">
+            {unknownLines.length > 0 ? '4' : '3'}
+          </span>
+          解析统计
+        </h4>
+        <dl>
+          <div>
+            <dt>总行数</dt>
+            <dd>{parsed.lines.length}</dd>
+          </div>
+          <div>
+            <dt>可提交</dt>
+            <dd>{resolution.readyCount}</dd>
+          </div>
+          <div>
+            <dt>解析失败</dt>
+            <dd>{resolution.failureCount}</dd>
+          </div>
+          <div>
+            <dt>未知角色</dt>
+            <dd>{resolution.unknownCount}</dd>
+          </div>
+        </dl>
+        {parsed.ignoredEmpty > 0 ? (
+          <p className="dialogue-authoring-hint">
+            {`已忽略 ${parsed.ignoredEmpty} 个空行。`}
+          </p>
+        ) : null}
+      </section>
+
+      {commitError ? (
+        <p className="dialogue-authoring-error" role="alert">
+          {commitError}
+        </p>
+      ) : null}
+
+      <footer className="dialogue-authoring-footer">
+        <button
+          className="dialogue-authoring-cancel"
+          data-testid="dialogue-authoring-cancel"
+          type="button"
+          onClick={onCancel}
+        >
+          取消
+        </button>
+        <button
+          className="dialogue-authoring-submit"
+          data-testid="dialogue-batch-commit"
+          disabled={!resolution.allResolved}
+          type="button"
+          onClick={handleCommit}
+        >
+          {`提交 ${resolution.readyCount} 条字幕`}
+        </button>
+      </footer>
     </div>
   );
 }
