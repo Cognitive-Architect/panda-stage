@@ -20,6 +20,7 @@ import { LayerTransformPanel } from '../features/properties/LayerTransformPanel'
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
 import { isNarrowViewport, useNarrowViewport } from './ResourceActivityDock';
+import { PortraitPropertiesSections } from './PortraitPropertiesSections';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 import {
   Layers3,
@@ -481,38 +482,46 @@ export function RightInspector({
     <>
       {inspectorHeading}
       {inspectorSelection}
-      {!portraitEmptyState && compactSections ? (
-        <div className="right-inspector-compact-sections">
-          <details
-            className="right-inspector-section right-inspector-transform-section"
-            data-testid="right-inspector-transform-section"
-            open
-          >
-            <summary>变换</summary>
-            {transformPanel}
-          </details>
-          <details
-            className="right-inspector-section"
-            data-testid="right-inspector-appearance-section"
-          >
-            <summary>外观</summary>
-            {backgroundPanel}
-          </details>
-          <details
-            className="right-inspector-section"
-            data-testid="right-inspector-layer-section"
-          >
-            <summary>图层</summary>
-            {orderPanel}
-          </details>
-        </div>
-      ) : !portraitEmptyState ? (
+      {!portraitEmptyState && compact === true ? (
+        <PortraitPropertiesSections
+          backgroundLayerSelected={selection.state === 'background'}
+        />
+      ) : (
         <>
-          {backgroundPanel}
-          {transformPanel}
-          {orderPanel}
+          {!portraitEmptyState && compactSections ? (
+            <div className="right-inspector-compact-sections">
+              <details
+                className="right-inspector-section right-inspector-transform-section"
+                data-testid="right-inspector-transform-section"
+                open
+              >
+                <summary>变换</summary>
+                {transformPanel}
+              </details>
+              <details
+                className="right-inspector-section"
+                data-testid="right-inspector-appearance-section"
+              >
+                <summary>外观</summary>
+                {backgroundPanel}
+              </details>
+              <details
+                className="right-inspector-section"
+                data-testid="right-inspector-layer-section"
+              >
+                <summary>图层</summary>
+                {orderPanel}
+              </details>
+            </div>
+          ) : !portraitEmptyState ? (
+            <>
+              {backgroundPanel}
+              {transformPanel}
+              {orderPanel}
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
     </>
   );
 

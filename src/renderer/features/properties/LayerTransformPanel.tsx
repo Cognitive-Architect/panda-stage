@@ -4,12 +4,14 @@ import {
   useState,
   useSyncExternalStore,
   type FormEvent,
+  type RefObject,
 } from 'react';
 import {
   LAYER_MAX_SCALE,
   LAYER_MIN_SCALE,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
+  type Layer,
   type LayerTransformInput,
 } from '../../../domain';
 import { Check, FlipHorizontal2, Info, RotateCcw } from 'lucide-react';
@@ -38,10 +40,43 @@ export interface LayerTransformPanelProps {
   backgroundLayerSelected?: boolean;
   /** Compact portrait presentation keeps the existing draft/commit contract. */
   compact?: boolean;
+  /** Reuse one transform draft when Appearance renders opacity beside this panel. */
+  controller?: LayerTransformController;
+  /** Optional boundary that includes the portrait Appearance controls. */
+  commitBoundaryRef?: RefObject<HTMLElement | null>;
   /** Landscape contextual inspector exposes the real neutral-transform action. */
   showResetTransform?: boolean;
   /** Keep layer locking in the landscape 图层 section. */
   showLockControl?: boolean;
+}
+
+export interface LayerTransformController {
+  layer: Layer | null;
+  isBackgroundLayer: boolean;
+  selectedLayerId: string | null;
+  draft: LayerTransformDraft;
+  scalePercentDraft: string;
+  formRef: RefObject<HTMLFormElement | null>;
+  status: string;
+  setStatus: (status: string) => void;
+  updateDraft: (key: keyof LayerTransformDraft, value: string) => void;
+  updateScalePercentDraft: (value: string) => void;
+  updateOpacityPercentDraft: (value: string) => void;
+  commitPendingDraft: (
+    reason: 'action' | 'blur' | 'submit',
+    draftOverride?: LayerTransformDraft,
+    scaleValue?: string,
+  ) => CommitTransformDraftResult;
+  resetTransform: () => void;
+  adjustScale: (direction: -1 | 1) => void;
+  adjustRotation: (direction: -1 | 1) => void;
+  toggleFlip: () => void;
+}
+
+export interface LayerTransformControllerOptions {
+  backgroundLayerSelected?: boolean;
+  compact?: boolean;
+  commitBoundaryRef?: RefObject<HTMLElement | null>;
 }
 
 const SCALE_STEP = 0.1;
@@ -141,12 +176,11 @@ const EMPTY_DRAFT: LayerTransformDraft = {
   opacity: '',
 };
 
-export function LayerTransformPanel({
+export function useLayerTransformController({
   backgroundLayerSelected,
   compact = false,
-  showResetTransform = compact,
-  showLockControl = !compact,
-}: LayerTransformPanelProps = {}): React.JSX.Element {
+  commitBoundaryRef,
+}: LayerTransformControllerOptions = {}): LayerTransformController {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -172,7 +206,7 @@ export function LayerTransformPanel({
   const [status, setStatus] = useState(
     compact ? '' : '选择普通图层后可编辑中心位置与静态变换。',
   );
-  const formRef = useRef<HTMLFormElement>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const preserveCommitErrorRef = useRef(false);
   const scalePercentEditedRef = useRef(false);
   const draftVersionRef = useRef(0);
@@ -197,13 +231,21 @@ export function LayerTransformPanel({
     scalePercentEditedRef.current = false;
     if (layer) {
       preserveCommitErrorRef.current = false;
-      setStatus(compact ? '' : layer.locked
-        ? '图层已锁定；请先解锁再修改。'
-        : 'X/Y 始终表示视觉中心；缩放保持等比。');
+      setStatus(
+        compact
+          ? ''
+          : layer.locked
+            ? '图层已锁定；请先解锁再修改。'
+            : 'X/Y 始终表示视觉中心；缩放保持等比。',
+      );
       if (isBackgroundLayer) {
-        setStatus(compact ? '' : layer.locked
-          ? 'Formal background is locked; unlock it before editing.'
-          : 'Formal background is editable; lock it again when finished.');
+        setStatus(
+          compact
+            ? ''
+            : layer.locked
+              ? 'Formal background is locked; unlock it before editing.'
+              : 'Formal background is editable; lock it again when finished.',
+        );
       }
     } else if (!preserveCommitErrorRef.current) {
       setStatus(compact ? '' : '选择普通图层后可编辑中心位置与静态变换。');
@@ -225,6 +267,14 @@ export function LayerTransformPanel({
     setDraft((current) => ({
       ...current,
       scale: parseScalePercentDraft(value),
+    }));
+  };
+
+  const updateOpacityPercentDraft = (value: string): void => {
+    draftVersionRef.current += 1;
+    setDraft((current) => ({
+      ...current,
+      opacity: value.trim() ? String(Number(value) / 100) : '',
     }));
   };
 
@@ -256,8 +306,7 @@ export function LayerTransformPanel({
     };
     if (
       lastCommittedRef.current?.layerId === commitIdentity.layerId &&
-      lastCommittedRef.current.draftVersion ===
-        commitIdentity.draftVersion
+      lastCommittedRef.current.draftVersion === commitIdentity.draftVersion
     ) {
       return 'noop';
     }
@@ -289,11 +338,6 @@ export function LayerTransformPanel({
       );
       return 'invalid';
     }
-  };
-
-  const submit = (event: FormEvent): void => {
-    event.preventDefault();
-    commitPendingDraft('submit');
   };
 
   const resetTransform = (): void => {
@@ -359,6 +403,107 @@ export function LayerTransformPanel({
       );
     }
   };
+
+  const commitDraftRef = useRef(commitPendingDraft);
+  commitDraftRef.current = commitPendingDraft;
+
+  useEffect(() => {
+    const isTransformEditorTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Node)) return false;
+      const form = formRef.current;
+      return Boolean(
+        form?.contains(target) ||
+          (target instanceof Element &&
+            target.closest('[data-testid="layer-opacity-control"]')),
+      );
+    };
+    const boundary = commitBoundaryRef?.current ?? formRef.current;
+    if (!boundary) return undefined;
+    const onFocusOut = (event: FocusEvent): void => {
+      if (!isTransformEditorTarget(event.target)) return;
+      if (
+        !shouldCommitTransformBlur(
+          isTransformEditorTarget,
+          event.relatedTarget,
+        )
+      ) {
+        return;
+      }
+      commitDraftRef.current('blur');
+    };
+    const onMouseDown = (event: MouseEvent): void => {
+      const activeElement = document.activeElement;
+      const target = event.target;
+      if (
+        !(activeElement instanceof Node) ||
+        !boundary.contains(activeElement) ||
+        !isTransformEditorTarget(activeElement) ||
+        isTransformEditorTarget(target)
+      ) {
+        return;
+      }
+      // Konva and the sibling Appearance section can clear selection during
+      // this click, so commit while the focused draft still owns its layer.
+      commitDraftRef.current('blur');
+    };
+    boundary.addEventListener('focusout', onFocusOut);
+    document.addEventListener('mousedown', onMouseDown, true);
+    return () => {
+      boundary.removeEventListener('focusout', onFocusOut);
+      document.removeEventListener('mousedown', onMouseDown, true);
+    };
+  }, [commitBoundaryRef, layer?.id]);
+
+  return {
+    layer,
+    isBackgroundLayer,
+    selectedLayerId,
+    draft,
+    scalePercentDraft,
+    formRef,
+    status,
+    setStatus,
+    updateDraft,
+    updateScalePercentDraft,
+    updateOpacityPercentDraft,
+    commitPendingDraft,
+    resetTransform,
+    adjustScale,
+    adjustRotation,
+    toggleFlip,
+  };
+}
+
+interface LayerTransformPanelViewProps {
+  compact?: boolean;
+  showResetTransform?: boolean;
+  showLockControl?: boolean;
+  controller: LayerTransformController;
+}
+
+function LayerTransformPanelView({
+  compact = false,
+  showResetTransform = compact,
+  showLockControl = !compact,
+  controller,
+}: LayerTransformPanelViewProps): React.JSX.Element {
+  const {
+    draft,
+    formRef,
+    isBackgroundLayer,
+    layer,
+    selectedLayerId,
+    scalePercentDraft,
+    status,
+    adjustRotation,
+    adjustScale,
+    commitPendingDraft,
+    resetTransform,
+    setStatus,
+    toggleFlip,
+    updateDraft,
+    updateScalePercentDraft,
+  } = controller;
 
   const resetButton = layer && showResetTransform ? (
     <button
@@ -443,47 +588,10 @@ export function LayerTransformPanel({
     </button>
   ) : null;
 
-  const commitDraftRef = useRef(commitPendingDraft);
-  commitDraftRef.current = commitPendingDraft;
-
-  useEffect(() => {
-    const onFocusOut = (event: FocusEvent): void => {
-      const form = formRef.current;
-      if (
-        !form ||
-        !shouldCommitTransformBlur(
-          (target) => form.contains(target as Node),
-          event.relatedTarget,
-        )
-      ) {
-        return;
-      }
-      commitDraftRef.current('blur');
-    };
-    const onMouseDown = (event: MouseEvent): void => {
-      // Konva can clear selection during this click, so commit while the
-      // focused form still owns its draft.
-      const form = formRef.current;
-      const activeElement = document.activeElement;
-      const target = event.target;
-      if (
-        form &&
-        activeElement instanceof Node &&
-        form.contains(activeElement) &&
-        target instanceof Node &&
-        !form.contains(target)
-      ) {
-        commitDraftRef.current('blur');
-      }
-    };
-    const form = formRef.current;
-    form?.addEventListener('focusout', onFocusOut);
-    document.addEventListener('mousedown', onMouseDown, true);
-    return () => {
-      form?.removeEventListener('focusout', onFocusOut);
-      document.removeEventListener('mousedown', onMouseDown, true);
-    };
-  }, [layer?.id]);
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    commitPendingDraft('submit');
+  };
 
   return (
     <section
@@ -606,18 +714,6 @@ export function LayerTransformPanel({
                   </button>
                 </div>
               </div>
-              <label className="layer-transform-appearance-field">
-                <span>外观 · 不透明度</span>
-                <input
-                  aria-label="不透明度"
-                  disabled={layer.locked}
-                  inputMode="decimal"
-                  onChange={(event) =>
-                    updateDraft('opacity', event.target.value)
-                  }
-                  value={draft.opacity}
-                />
-              </label>
               <div className="layer-transform-action-row">
                 {flipButton}
                 {resetButton}
@@ -684,4 +780,38 @@ export function LayerTransformPanel({
       <output data-testid="layer-transform-status">{status}</output>
     </section>
   );
+}
+
+function LayerTransformPanelWithController(
+  props: LayerTransformPanelProps,
+): React.JSX.Element {
+  const controller = useLayerTransformController({
+    backgroundLayerSelected: props.backgroundLayerSelected,
+    compact: props.compact,
+    commitBoundaryRef: props.commitBoundaryRef,
+  });
+  return (
+    <LayerTransformPanelView
+      compact={props.compact}
+      controller={controller}
+      showLockControl={props.showLockControl}
+      showResetTransform={props.showResetTransform}
+    />
+  );
+}
+
+export function LayerTransformPanel(
+  props: LayerTransformPanelProps = {},
+): React.JSX.Element {
+  if (props.controller) {
+    return (
+      <LayerTransformPanelView
+        compact={props.compact}
+        controller={props.controller}
+        showLockControl={props.showLockControl}
+        showResetTransform={props.showResetTransform}
+      />
+    );
+  }
+  return <LayerTransformPanelWithController {...props} />;
 }

@@ -8028,23 +8028,6 @@ h1 {
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .layer-transform-appearance-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
-  color: var(--ui-color-text-secondary);
-  font-size: 12px;
-  gap: 8px;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .layer-transform-appearance-field
-  input {
-  min-height: 40px;
-  font-size: 14px;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .layer-transform-action-row {
   display: flex;
   flex-wrap: wrap;
@@ -9330,6 +9313,290 @@ h1 {
     .right-inspector-empty-state-capabilities {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Issue #348: keep object appearance separate from canvas-background
+   management while reusing the existing transform/background owners. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact {
+  display: grid;
+  min-width: 0;
+  padding: 14px 0 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-appearance-object-group {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-panel);
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-appearance-object-group
+  .layer-appearance-group-heading
+  h3 {
+  display: block;
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-control {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-label-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-label {
+  display: inline-flex;
+  min-width: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-label
+  .ui-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--ui-color-selected-border);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-value {
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-control
+  input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-pill);
+  background: transparent;
+  accent-color: var(--ui-color-selected-border);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-control
+  input[type='range']:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-scale {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  color: var(--ui-color-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-scale
+  span:nth-child(2) {
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-opacity-scale
+  span:last-child {
+  text-align: right;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-canvas-background-group {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-background-subgroup-heading {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-background-subgroup-heading
+  h3 {
+  display: block;
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-background-subgroup-heading
+  p {
+  margin: 0;
+  color: var(--ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  > .layer-canvas-background-group
+  > strong {
+  display: block;
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions
+  button {
+  display: inline-flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-1);
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions
+  button:hover:not(:disabled) {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions
+  button:disabled {
+  border-color: rgb(154 216 172 / 12%);
+  color: var(--ui-color-disabled-text);
+  background: var(--ui-color-disabled-surface);
+  opacity: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions
+  [data-testid='select-current-shot-background'],
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions
+  [data-testid='set-current-shot-background'] {
+  grid-column: 1 / -1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions
+  .layer-background-primary:not(:disabled) {
+  border-color: var(--ui-color-selected-border);
+  color: #07110a;
+  background: var(--ui-color-selected-border);
+  font-weight: 800;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions
+  .layer-background-primary:hover:not(:disabled) {
+  border-color: var(--ui-color-action-hover);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-hover);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-background-actions
+  .ui-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  [data-testid='layer-background-guidance'] {
+  padding-top: 2px;
+  margin: 0;
+  color: var(--ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  > .layer-background-control-compact
+  .layer-appearance-empty {
+  padding: 0;
+  margin: 0;
+  color: var(--ui-color-text-muted);
+  font-size: 12px;
 }
 
 /* Issue #347: refine only the selected-object Transform controls in the
