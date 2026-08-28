@@ -46,7 +46,7 @@ describe('Issue #339 portrait Timeline subtitle task surface', () => {
 
     expect(sheet).toContain('<DialogueInspector');
     expect(sheet).toContain('presentation="timeline"');
-    expect(sheet).toContain('dialogueSelectionStore.select');
+    expect(sheet).toContain('dialogueSelectionStore.toggle');
     expect(sheet).toContain('dialogueStore.arrange');
     expect(sheet).toContain('DialogueBatchPaste');
     expect(sheet).toContain('new DialogueAuthoringDraft');

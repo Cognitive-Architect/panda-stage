@@ -151,7 +151,7 @@ describe('Issue #354 subtitle state transitions', () => {
     expect(sheet).toContain('data-testid="dialogue-authoring-tab-batch"');
     expect(sheet).toContain('if (selectedDialogueId === null) return;');
     expect(sheet).toContain('dialogueSelectionStore.clear();');
-    expect(sheet).toContain('dialogueSelectionStore.select(dialogueId);');
+    expect(sheet).toContain('dialogueSelectionStore.toggle(dialogueId);');
     expect(draft).not.toContain('batchOpen');
   });
 });

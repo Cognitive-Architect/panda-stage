@@ -93,7 +93,7 @@ describe('Issue #353 portrait Timeline State C', () => {
     expect(sheet).toContain(
       "const showTimedEditor = timelineState === 'timeline-timed-selected'",
     );
-    expect(sheet).toContain('dialogueSelectionStore.select');
+    expect(sheet).toContain('dialogueSelectionStore.toggle');
     expect(sheet).toContain('dialogueStore.arrange');
   });
 

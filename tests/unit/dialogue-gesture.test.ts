@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   commitDialogueGesture,
+  hasDialogueGestureMoved,
   isolateDialoguePointerEvent,
+  shouldClearDialogueSelectionOnClick,
   type DialogueGestureContext,
   type DialogueGestureIdentity,
 } from '../../src/renderer/features/timeline/dialogueGesture';
@@ -68,5 +70,24 @@ describe('Dialogue pointer isolation', () => {
     isolateDialoguePointerEvent(event);
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(event.stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [true, false, true],
+    [true, true, false],
+    [false, false, false],
+  ])(
+    'clears only a selected genuine click (wasSelected=%s, moved=%s)',
+    (wasSelected, moved, expected) => {
+      expect(shouldClearDialogueSelectionOnClick(wasSelected, moved)).toBe(
+        expected,
+      );
+    },
+  );
+
+  it('uses a small horizontal threshold to distinguish a tap from a drag', () => {
+    expect(hasDialogueGestureMoved(100, 103)).toBe(false);
+    expect(hasDialogueGestureMoved(100, 104)).toBe(true);
+    expect(hasDialogueGestureMoved(100, 96)).toBe(true);
   });
 });

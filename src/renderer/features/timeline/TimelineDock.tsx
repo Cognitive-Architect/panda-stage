@@ -5,6 +5,15 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  MessageSquareText,
+  Volume2,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import {
@@ -168,6 +177,11 @@ export function TimelineDock({
           title={ui.expanded ? '收起时间轴' : '展开时间轴'}
           onClick={() => timelineUiStore.setExpanded(!ui.expanded)}
         >
+          {ui.expanded ? (
+            <ChevronUp aria-hidden="true" focusable="false" size={18} />
+          ) : (
+            <ChevronDown aria-hidden="true" focusable="false" size={18} />
+          )}
           <span className="timeline-collapse-label">
             {ui.expanded ? '收起时间轴' : '展开时间轴'}
           </span>
@@ -178,15 +192,21 @@ export function TimelineDock({
           data-current-time={ui.currentTimeMs}
           data-duration={durationMs}
         >
-          {formatTimecode(ui.currentTimeMs)} / {formatTimecode(durationMs)}
+          <Clock3 aria-hidden="true" focusable="false" size={14} />
+          <span>
+            {formatTimecode(ui.currentTimeMs)} / {formatTimecode(durationMs)}
+          </span>
         </output>
         <div className="timeline-zoom">
           <button
             type="button"
             className="timeline-zoom-out"
             data-testid="timeline-zoom-out"
+            aria-label="缩小时间轴"
+            title="缩小时间轴"
             onClick={() => timelineUiStore.setZoom(ui.zoom / 2)}
           >
+            <ZoomOut aria-hidden="true" focusable="false" size={16} />
             −
           </button>
           <span className="timeline-zoom-value" data-testid="timeline-zoom-value">
@@ -196,8 +216,11 @@ export function TimelineDock({
             type="button"
             className="timeline-zoom-in"
             data-testid="timeline-zoom-in"
+            aria-label="放大时间轴"
+            title="放大时间轴"
             onClick={() => timelineUiStore.setZoom(ui.zoom * 2)}
           >
+            <ZoomIn aria-hidden="true" focusable="false" size={16} />
             +
           </button>
         </div>
@@ -239,7 +262,15 @@ export function TimelineDock({
                   className="timeline-lane timeline-subtitle-lane"
                   data-testid="timeline-subtitle-track"
                 >
-                  <span className="timeline-lane-label">字幕</span>
+                  <span className="timeline-lane-label">
+                    <MessageSquareText
+                      aria-hidden="true"
+                      className="timeline-lane-icon"
+                      focusable="false"
+                      size={16}
+                    />
+                    <span className="timeline-lane-label-text">字幕</span>
+                  </span>
                   <div
                     className="timeline-lane-content"
                     style={{ width: `${trackWidth}px` }}
@@ -275,7 +306,15 @@ export function TimelineDock({
                   data-audio-state={audioClips.length === 0 ? 'empty' : 'populated'}
                   data-testid="timeline-audio-track"
                 >
-                  <span className="timeline-lane-label">音频</span>
+                  <span className="timeline-lane-label">
+                    <Volume2
+                      aria-hidden="true"
+                      className="timeline-lane-icon"
+                      focusable="false"
+                      size={16}
+                    />
+                    <span className="timeline-lane-label-text">音频</span>
+                  </span>
                   <div
                     className="timeline-lane-content"
                     style={{ width: `${trackWidth}px` }}

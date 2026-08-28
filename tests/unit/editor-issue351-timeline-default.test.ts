@@ -44,7 +44,7 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(sheet).toContain('data-testid="dialogue-untimed-count"');
     expect(sheet).toContain('这些台词还没有安排到时间轴上。');
     expect(sheet).toContain('data-testid="dialogue-authoring-open"');
-    expect(sheet).toContain('+ 新建字幕');
+    expect(sheet).toContain('<Plus');
     expect(sheet).toContain('data-testid="dialogue-authoring-tab-single"');
     expect(sheet).toContain('data-testid="dialogue-authoring-tab-batch"');
     expect(sheet).toContain('data-testid="dialogue-add"');

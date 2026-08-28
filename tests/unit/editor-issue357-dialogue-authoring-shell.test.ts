@@ -160,7 +160,7 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
     expect(sheet).toContain('if (selectedDialogueId === null) return;');
     expect(sheet).toContain("if (authoringMode !== 'none') draft.clear();");
     expect(sheet).toContain('handleSelectDialogue(dialogue.id)');
-    expect(sheet).toContain('dialogueSelectionStore.select(dialogueId);');
+    expect(sheet).toContain('dialogueSelectionStore.toggle(dialogueId);');
     expect(sheet).toContain('dialogue-authoring-queue-heading');
     expect(sheet).toContain('data-testid="dialogue-timed-back"');
   });

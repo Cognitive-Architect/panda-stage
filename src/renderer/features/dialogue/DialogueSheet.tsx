@@ -3,7 +3,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { X } from 'lucide-react';
+import { ArrowLeft, Plus, X } from 'lucide-react';
 import type { Character, Dialogue } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
@@ -236,7 +236,7 @@ export function DialogueSheet(): React.JSX.Element {
     setAuthoringMode('none');
     setSingleTouched({ speaker: false, text: false });
     setSingleSubmitError(null);
-    dialogueSelectionStore.select(dialogueId);
+    dialogueSelectionStore.toggle(dialogueId);
   };
 
   const handleOpenAuthoring = (
@@ -339,6 +339,7 @@ export function DialogueSheet(): React.JSX.Element {
                 data-testid="dialogue-timed-back"
                 onClick={() => dialogueSelectionStore.clear()}
               >
+                <ArrowLeft aria-hidden="true" focusable="false" size={16} />
                 返回待安排字幕
               </button>
             ) : null}
@@ -348,7 +349,8 @@ export function DialogueSheet(): React.JSX.Element {
               data-testid="dialogue-authoring-open"
               onClick={() => handleOpenAuthoring('single')}
             >
-              + 新建字幕
+              <Plus aria-hidden="true" focusable="false" size={16} />
+              <span>新建字幕</span>
             </button>
           </div>
         </header>
