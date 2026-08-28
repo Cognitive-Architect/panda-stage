@@ -57,7 +57,8 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(sheet).toContain('dialogue-authoring-open');
     expect(sheet).toContain('DialogueBatchPaste');
     expect(sheet).toContain('dialogue-add');
-    expect(inspector).toContain("'inspector' | 'timeline'");
+    expect(inspector).toContain("'properties'");
+    expect(inspector).toContain("'inspector'");
     expect(inspector).toContain('dialogueStore.update');
     expect(inspector).toContain('dialogueStore.setTiming');
   });

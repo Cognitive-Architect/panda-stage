@@ -53,7 +53,8 @@ describe('Issue #339 portrait Timeline subtitle task surface', () => {
     expect(sheet).toContain('data-testid="dialogue-authoring-open"');
     expect(sheet).toContain('data-testid="dialogue-authoring-tab-batch"');
     expect(sheet).toContain('data-testid="dialogue-add"');
-    expect(inspector).toContain("'inspector' | 'timeline'");
+    expect(inspector).toContain("'properties'");
+    expect(inspector).toContain("'inspector'");
     expect(inspector).toContain('dialogueStore.update');
     expect(inspector).toContain('dialogueStore.setTiming');
     expect(inspector).toContain('dialogue-inspector-audio-section');

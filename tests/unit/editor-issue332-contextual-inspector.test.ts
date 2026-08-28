@@ -15,9 +15,11 @@ describe('Issue #332 landscape contextual inspector', () => {
     expect(inspector).toContain('const dialogueMode');
     expect(inspector).toContain('data-inspector-mode');
     expect(inspector).toContain('data-presentation=');
-    expect(inspector).toContain(
-      "presentation={landscapePresentation ? 'landscape' : 'inspector'}",
-    );
+    expect(inspector).toContain("'properties'");
+    expect(inspector).toContain('presentation={');
+    expect(inspector).toContain("'landscape'");
+    expect(inspector).toContain("'properties'");
+    expect(inspector).toContain("'inspector'");
     expect(inspector.match(/<LayerTransformPanel/gu)).toHaveLength(1);
     expect(inspector.match(/<LayerBackgroundControl/gu)).toHaveLength(1);
     expect(inspector.match(/<LayerOrderControls/gu)).toHaveLength(1);

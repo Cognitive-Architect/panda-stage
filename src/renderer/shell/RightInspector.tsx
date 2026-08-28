@@ -533,7 +533,13 @@ export function RightInspector({
       {landscapePresentation ? inspectorHeading : null}
       <DialogueInspector
         dialogueId={selectedDialogueId!}
-        presentation={landscapePresentation ? 'landscape' : 'inspector'}
+        presentation={
+          landscapePresentation
+            ? 'landscape'
+            : compact
+              ? 'properties'
+              : 'inspector'
+        }
       />
     </>
   ) : (
