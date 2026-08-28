@@ -12644,6 +12644,251 @@ h1 {
   font-size: 10px;
 }
 
+/* Issue #362: keep landscape Shot creation as a focused, touch-first local
+   form. The dock still owns the single back-to-list action; only the create
+   submit is presented as the strong action. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-resource-shot-view='create']
+  .resource-activity-primary-action {
+  border-color: rgb(127 199 148 / 34%);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-resource-shot-view='create']
+  .resource-activity-primary-action:hover:not(:disabled),
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-resource-shot-view='create']
+  .resource-activity-primary-action:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: var(--ui-color-surface-overlay, rgb(255 255 255 / 5%));
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-view-landscape {
+  padding: 0;
+  gap: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-heading-landscape {
+  padding: 2px 2px 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-heading-landscape
+  h3 {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-form-landscape {
+  padding: 14px 12px 12px;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+  gap: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-form-landscape
+  .shot-create-field {
+  min-width: 0;
+  color: var(--ui-color-text-secondary, #a9b8ae);
+  gap: 6px;
+  font-size: 11px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-field-label {
+  color: var(--ui-color-text-secondary, #a9b8ae);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-form-landscape
+  input {
+  min-height: 48px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-field {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-control {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-stepper {
+  display: inline-grid;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: 9px;
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: transparent;
+  place-items: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-stepper:hover:not(:disabled),
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-stepper:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 28%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-input {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-input
+  input {
+  padding-right: 38px;
+  text-align: center;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-input
+  > span {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  color: var(--ui-color-text-secondary, #a9b8ae);
+  font-size: 14px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-presets {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-presets
+  button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 8px;
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: transparent;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-presets
+  button:hover:not(:disabled),
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-presets
+  button:focus-visible,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-presets
+  button.shot-create-preset-selected {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(45 104 62 / 30%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-duration-error {
+  padding: 0;
+  margin: 0;
+  color: #f3c681;
+  font-size: 11px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-field-invalid
+  .shot-create-duration-input
+  input {
+  border-color: rgb(255 155 143 / 75%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-primary-action {
+  display: inline-flex;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border-color: var(--ui-color-selected-border, #83d39a);
+  border-radius: 9px;
+  color: #07110a;
+  background: var(--ui-color-action-primary, #8ed9a2);
+  font-size: 15px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-primary-action:hover:not(:disabled),
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-primary-action:focus-visible {
+  color: #07110a;
+  background: #a4eab4;
+}
+
 /* The existing project/recovery and compatibility owners remain reachable
    from a separate project-level entry instead of occupying the Shot drawer. */
 .editor-layout[data-shell-mode='landscape'] .left-workspace {

@@ -198,6 +198,7 @@ export function ResourceActivityDock({
       data-resource-drawer-open={drawerOpen}
       data-resource-mode={narrow ? 'narrow' : 'wide'}
       data-resource-presentation={presentation}
+      data-resource-shot-view={activeActivity === 'shots' ? shotView : undefined}
       data-active-activity={activeActivity}
       data-testid="resource-activity-dock"
     >

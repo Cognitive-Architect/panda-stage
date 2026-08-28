@@ -173,6 +173,7 @@ export function ShotManager({
           disabled={!snapshot}
           onBack={() => onViewChange('list')}
           onCreate={createShot}
+          presentation={presentation}
           suggestedName={nextAvailableShotName(project?.shots ?? [])}
         />
       ) : (
