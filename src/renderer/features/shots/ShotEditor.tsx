@@ -20,6 +20,10 @@ export function formatShotDuration(durationMs: number): string {
   return `${formatDurationInput(durationMs)} 秒`;
 }
 
+export function formatCompactShotDuration(durationMs: number): string {
+  return `${(durationMs / 1_000).toFixed(1)} 秒`;
+}
+
 function parseShotDurationInput(value: string): number {
   const seconds = Number(value);
   return Number.isFinite(seconds) ? Math.round(seconds * 1_000) : Number.NaN;

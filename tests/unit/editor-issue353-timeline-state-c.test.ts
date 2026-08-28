@@ -99,7 +99,12 @@ describe('Issue #353 portrait Timeline State C', () => {
 
   it('uses one flat portrait surface without an internal scroll owner', () => {
     const styles = source('src/renderer/styles.css');
-    const issue353 = styles.slice(styles.indexOf('/* Issue #353:'));
+    const issue353Start = styles.indexOf('/* Issue #353:');
+    const issue353End = styles.indexOf('/* Issue #358:', issue353Start);
+    const issue353 = styles.slice(
+      issue353Start,
+      issue353End < 0 ? undefined : issue353End,
+    );
     const portraitScope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
 

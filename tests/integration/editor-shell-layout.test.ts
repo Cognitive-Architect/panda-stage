@@ -413,4 +413,32 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(compatibility).toContain('{active ? <LegacyWorkspace');
     expect(compatibility).not.toContain('display: none');
   });
+
+  it('keeps the landscape Shot drawer focused without deleting project tools', () => {
+    const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
+    const dock = readSource('src/renderer/shell/ResourceActivityDock.tsx');
+    const shots = readSource('src/renderer/features/shots/ShotManager.tsx');
+    const quickActions = readSource(
+      'src/renderer/features/shots/ShotQuickActions.tsx',
+    );
+    const thumbnail = readSource(
+      'src/renderer/features/shots/ShotThumbnailPlaceholder.tsx',
+    );
+    const styles = readSource('src/renderer/styles.css');
+
+    expect(left).toContain(
+      "auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}",
+    );
+    expect(left).toContain('data-testid="landscape-project-tools"');
+    expect(dock).toContain('resource-activity-secondary-tools');
+    expect(shots).toContain('<ShotQuickActions');
+    expect(shots).toContain("presentation === 'landscape' ? null");
+    expect(shots).toContain('shotStore.rename');
+    expect(shots).toContain('shotStore.setDuration');
+    expect(quickActions).not.toContain('editorProjectStore');
+    expect(thumbnail).not.toContain('画布预览将在后续版本提供');
+    expect(styles).toContain('shot-list-item-selected');
+    expect(styles).toContain('shot-quick-actions');
+    expect(styles).toContain('landscape-project-tools-body');
+  });
 });

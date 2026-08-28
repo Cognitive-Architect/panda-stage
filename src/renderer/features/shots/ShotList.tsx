@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Shot } from '../../../domain';
 import { ShotCreateForm } from './ShotCreateForm';
 import { ShotListItem } from './ShotListItem';
@@ -23,6 +24,8 @@ export interface ShotListProps {
   onBack?: () => void;
   showCreateForm?: boolean;
   showHeading?: boolean;
+  selectedActions?: ReactNode;
+  compactDuration?: boolean;
 }
 
 export function ShotList({
@@ -35,6 +38,8 @@ export function ShotList({
   onBack = () => undefined,
   showCreateForm = true,
   showHeading = true,
+  selectedActions,
+  compactDuration = false,
 }: ShotListProps): React.JSX.Element {
   const suggestedName = nextAvailableShotName(shots);
 
@@ -69,7 +74,11 @@ export function ShotList({
               onDropShot={onMove}
               onSelect={onSelect}
               selected={shot.id === selectedShotId}
+              selectedActions={
+                shot.id === selectedShotId ? selectedActions : undefined
+              }
               shot={shot}
+              compactDuration={compactDuration}
             />
           ))}
         </ol>

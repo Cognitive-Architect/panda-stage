@@ -13,7 +13,6 @@ export function ShotThumbnailPlaceholder({
       aria-label={`${name} 缩略图占位`}
     >
       <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-      <small>画布预览将在后续版本提供</small>
     </div>
   );
 }

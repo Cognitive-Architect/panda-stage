@@ -29,6 +29,20 @@ export function LeftWorkspace({
   onActiveActivityChange,
   onOpenRecentProject,
 }: LeftWorkspaceProps): React.JSX.Element {
+  const projectUtilities = (
+    <>
+      <ProjectRecoveryPanel
+        onOpenRecentProject={onOpenRecentProject}
+        projectSnapshot={projectSnapshot}
+        recentRefreshToken={recentRefreshToken}
+      />
+      <LegacyCompatibilityActivity
+        key={`compatibility:${projectSnapshot.projectRoot}`}
+        projectRoot={projectSnapshot.projectRoot}
+      />
+    </>
+  );
+
   return (
     <aside
       aria-label="左侧工作区"
@@ -36,19 +50,7 @@ export function LeftWorkspace({
       data-testid="left-workspace-scroll"
     >
       <ResourceActivityDock
-        auxiliaryContent={
-          <>
-            <ProjectRecoveryPanel
-              onOpenRecentProject={onOpenRecentProject}
-              projectSnapshot={projectSnapshot}
-              recentRefreshToken={recentRefreshToken}
-            />
-            <LegacyCompatibilityActivity
-              key={`compatibility:${projectSnapshot.projectRoot}`}
-              projectRoot={projectSnapshot.projectRoot}
-            />
-          </>
-        }
+        auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}
         activeActivity={activeActivity}
         drawerOpen={drawerOpen}
         onDrawerOpenChange={onDrawerOpenChange}
@@ -61,6 +63,17 @@ export function LeftWorkspace({
         hideSectionLabels={shellMode === 'portrait'}
         snapshot={projectSnapshot}
       />
+      {shellMode === 'landscape' ? (
+        <details
+          className="landscape-project-tools"
+          data-testid="landscape-project-tools"
+        >
+          <summary>项目工具</summary>
+          <div className="landscape-project-tools-body">
+            {projectUtilities}
+          </div>
+        </details>
+      ) : null}
     </aside>
   );
 }

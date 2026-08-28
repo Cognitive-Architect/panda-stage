@@ -10,6 +10,7 @@ import { shotStore } from '../../stores/shotStore';
 import { ShotCreateForm } from './ShotCreateForm';
 import { formatShotDuration, ShotEditor } from './ShotEditor';
 import { nextAvailableShotName, ShotList } from './ShotList';
+import { ShotQuickActions } from './ShotQuickActions';
 
 export type ShotWorkspaceView = 'list' | 'create';
 export type ShotManagerPresentation = 'default' | 'landscape';
@@ -78,6 +79,54 @@ export function ShotManager({
     }
   };
 
+  const createShot = (name: string, durationMs: number): boolean =>
+    mutate(
+      () => shotStore.create({ name, durationMs }),
+      `镜头“${name.trim()}”已创建。`,
+    ) !== null;
+
+  const duplicateSelectedShot = (): void => {
+    if (!selectedShot) return;
+    mutate(
+      () => shotStore.duplicate(selectedShot.id),
+      `镜头“${selectedShot.name}”已复制，所有子实体 ID 已重建。`,
+    );
+  };
+
+  const removeSelectedShot = (): void => {
+    if (
+      !selectedShot ||
+      !window.confirm(
+        `确认移除镜头“${selectedShot.name}”？项目素材和角色不会被删除。`,
+      )
+    ) {
+      return;
+    }
+    const next = mutate(
+      () => shotStore.remove(selectedShot.id),
+      `镜头“${selectedShot.name}”已移除。`,
+    );
+    if (next?.shots.length === 0) {
+      setStatus('最后一个镜头已移除；请创建新镜头继续。项目尚未保存。');
+    }
+  };
+
+  const renameSelectedShot = (name: string): void => {
+    if (!selectedShot) return;
+    mutate(
+      () => shotStore.rename(selectedShot.id, name),
+      '镜头名称已更新。',
+    );
+  };
+
+  const setSelectedShotDuration = (durationMs: number): void => {
+    if (!selectedShot) return;
+    mutate(
+      () => shotStore.setDuration(selectedShot.id, durationMs),
+      `镜头时长已更新为 ${formatShotDuration(durationMs)}。`,
+    );
+  };
+
   return (
     <section
       className="shot-manager"
@@ -111,14 +160,7 @@ export function ShotManager({
         <ShotCreateForm
           disabled={!snapshot}
           onBack={() => onViewChange('list')}
-          onCreate={(name, durationMs) => {
-            return (
-              mutate(
-                () => shotStore.create({ name, durationMs }),
-                `镜头“${name.trim()}”已创建。`,
-              ) !== null
-            );
-          }}
+          onCreate={createShot}
           suggestedName={nextAvailableShotName(project?.shots ?? [])}
         />
       ) : (
@@ -126,14 +168,7 @@ export function ShotManager({
           <ShotList
             disabled={!snapshot}
             key={project?.id ?? 'no-project'}
-            onCreate={(name, durationMs) => {
-              return (
-                mutate(
-                  () => shotStore.create({ name, durationMs }),
-                  `镜头“${name.trim()}”已创建。`,
-                ) !== null
-              );
-            }}
+            onCreate={createShot}
             onMove={(shotId, targetIndex) => {
               mutate(
                 () => shotStore.move(shotId, targetIndex),
@@ -143,6 +178,20 @@ export function ShotManager({
             }}
             onSelect={(shotId) => shotStore.select(shotId)}
             selectedShotId={effectiveSelectedId}
+            selectedActions={
+              presentation === 'landscape' && selectedShot ? (
+                <ShotQuickActions
+                  disabled={!snapshot}
+                  index={selectedIndex}
+                  onDuplicate={duplicateSelectedShot}
+                  onRemove={removeSelectedShot}
+                  onRename={renameSelectedShot}
+                  onSetDuration={setSelectedShotDuration}
+                  shot={selectedShot}
+                />
+              ) : undefined
+            }
+            compactDuration={presentation === 'landscape'}
             showHeading={!hideHeading}
             showCreateForm={false}
             shots={project?.shots ?? []}
@@ -152,44 +201,10 @@ export function ShotManager({
               disabled={!snapshot}
               index={selectedIndex}
               key={selectedShot?.id ?? 'empty'}
-              onDuplicate={() => {
-                if (!selectedShot) return;
-                mutate(
-                  () => shotStore.duplicate(selectedShot.id),
-                  `镜头“${selectedShot.name}”已复制，所有子实体 ID 已重建。`,
-                );
-              }}
-              onRemove={() => {
-                if (
-                  !selectedShot ||
-                  !window.confirm(
-                    `确认移除镜头“${selectedShot.name}”？项目素材和角色不会被删除。`,
-                  )
-                ) {
-                  return;
-                }
-                const next = mutate(
-                  () => shotStore.remove(selectedShot.id),
-                  `镜头“${selectedShot.name}”已移除。`,
-                );
-                if (next?.shots.length === 0) {
-                  setStatus('最后一个镜头已移除；请创建新镜头继续。项目尚未保存。');
-                }
-              }}
-              onRename={(name) => {
-                if (!selectedShot) return;
-                mutate(
-                  () => shotStore.rename(selectedShot.id, name),
-                  '镜头名称已更新。',
-                );
-              }}
-              onSetDuration={(durationMs) => {
-                if (!selectedShot) return;
-                mutate(
-                  () => shotStore.setDuration(selectedShot.id, durationMs),
-                  `镜头时长已更新为 ${formatShotDuration(durationMs)}。`,
-                );
-              }}
+              onDuplicate={duplicateSelectedShot}
+              onRemove={removeSelectedShot}
+              onRename={renameSelectedShot}
+              onSetDuration={setSelectedShotDuration}
               shot={selectedShot}
             />
           )}
