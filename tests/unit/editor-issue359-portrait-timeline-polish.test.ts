@@ -72,6 +72,9 @@ describe('Issue #359 portrait Timeline polish', () => {
     expect(issue359).toContain("data-active-workspace='timeline'");
     expect(issue359).toContain("min-height: 56px;");
     expect(issue359).toContain("min-height: 60px;");
+    expect(issue359).toContain(
+      'grid-template-columns: minmax(60px, 0.45fr) minmax(0, 1fr) auto 24px;',
+    );
     expect(issue359).toContain('text-overflow: ellipsis;');
     expect(issue359).not.toContain("data-editor-shell-layout='landscape'");
   });
