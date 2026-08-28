@@ -115,6 +115,7 @@ export function AssetCard({
       ].filter(Boolean).join(' ')}
       data-asset-id={asset.id}
       data-category={category}
+      data-asset-kind={asset.kind}
       draggable
       onClick={(event) => {
         if (draggedCards.has(event.currentTarget)) {

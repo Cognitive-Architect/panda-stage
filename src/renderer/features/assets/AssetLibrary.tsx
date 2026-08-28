@@ -44,6 +44,7 @@ import {
 } from '../../fla-import/fla-inspection-lifecycle';
 
 export type AssetWorkspaceView = 'browser' | 'details';
+export type AssetLibraryPresentation = 'default' | 'portrait' | 'landscape';
 
 const DEFAULT_ASSET_LIBRARY_STATUS =
   '打开项目后即可分类浏览、拖动和安全删除素材。';
@@ -51,6 +52,7 @@ const DEFAULT_ASSET_LIBRARY_STATUS =
 export interface AssetLibraryProps {
   snapshot: EditorProjectSnapshot | null;
   view?: AssetWorkspaceView;
+  presentation?: AssetLibraryPresentation;
   onViewChange?: (view: AssetWorkspaceView) => void;
   importRequestToken?: number;
   flaReviewRequestToken?: number;
@@ -62,6 +64,7 @@ export interface AssetLibraryProps {
 export function AssetLibrary({
   snapshot,
   view = 'browser',
+  presentation,
   onViewChange = () => undefined,
   importRequestToken,
   flaReviewRequestToken,
@@ -69,6 +72,8 @@ export function AssetLibrary({
   hideHeading = false,
   showFlaAction = true,
 }: AssetLibraryProps): React.JSX.Element {
+  const resolvedPresentation =
+    presentation ?? (hideHeading ? 'portrait' : 'default');
   const [category, setCategory] = useState<AssetLibraryFilter>(() =>
     hideHeading ? 'all' : 'background',
   );
@@ -510,10 +515,12 @@ export function AssetLibrary({
     <section
       className={[
         'asset-library',
+        `asset-library-presentation-${resolvedPresentation}`,
         dragOver ? 'asset-library-drag-over' : '',
       ].filter(Boolean).join(' ')}
       aria-labelledby="asset-library-heading"
       data-testid="asset-library"
+      data-asset-library-presentation={resolvedPresentation}
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node)) {
           setDragOver(false);

@@ -132,8 +132,10 @@ export function ResourceActivityDock({
   }, [narrow]);
 
   const activeLabel =
-    ACTIVITIES.find((activity) => activity.id === activeActivity)?.label ??
-    '资源';
+    landscapePresentation && activeActivity === 'assets'
+      ? '素材库'
+      : ACTIVITIES.find((activity) => activity.id === activeActivity)?.label ??
+        '资源';
   const hideLocalActivityTabs =
     landscapePresentation ||
     (hideSectionLabels &&
@@ -142,6 +144,10 @@ export function ResourceActivityDock({
     hideSectionLabels && activeActivity === 'assets';
   const showPortraitAssetActionGroup =
     hidePortraitAssetsChrome && assetView === 'browser';
+  const showLandscapeAssetActionGroup =
+    landscapePresentation &&
+    activeActivity === 'assets' &&
+    assetView === 'browser';
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
@@ -260,12 +266,25 @@ export function ResourceActivityDock({
                 )}
               </div>
             )}
-            <div className="resource-activity-header-actions">
+            <div
+              className="resource-activity-header-actions"
+              data-resource-action-group={
+                showLandscapeAssetActionGroup
+                  ? 'asset-browser-landscape'
+                  : showPortraitAssetActionGroup
+                    ? 'asset-browser-portrait'
+                    : undefined
+              }
+            >
               <button
                 className="resource-activity-primary-action"
                 data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
                 data-resource-action-layout={
-                  showPortraitAssetActionGroup ? 'asset-browser' : undefined
+                  showLandscapeAssetActionGroup
+                    ? 'asset-browser-landscape'
+                    : showPortraitAssetActionGroup
+                      ? 'asset-browser'
+                      : undefined
                 }
                 data-testid="resource-primary-action"
                 onClick={primaryAction.onClick}
@@ -279,6 +298,21 @@ export function ResourceActivityDock({
                 ) : null}
                 <span>{primaryAction.label}</span>
               </button>
+              {showLandscapeAssetActionGroup ? (
+                <button
+                  aria-label="导入 FLA"
+                  className="resource-activity-fla-action"
+                  data-resource-action="assets-import-fla"
+                  data-testid="resource-asset-import-fla"
+                  onClick={() =>
+                    setAssetFlaReviewRequest((value) => value + 1)
+                  }
+                  type="button"
+                >
+                  <DecorativeIcon icon={FileArchive} size={18} />
+                  <span>导入 FLA</span>
+                </button>
+              ) : null}
               {showPortraitAssetActionGroup ? (
                 <button
                   aria-label="导入 FLA"
@@ -371,9 +405,18 @@ export function ResourceActivityDock({
                 hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}
                 onViewChange={setAssetView}
+                presentation={
+                  landscapePresentation
+                    ? 'landscape'
+                    : hidePortraitAssetsChrome
+                      ? 'portrait'
+                      : 'default'
+                }
                 snapshot={snapshot}
                 view={assetView}
-                showFlaAction={!hidePortraitAssetsChrome}
+                showFlaAction={
+                  !hidePortraitAssetsChrome && !landscapePresentation
+                }
               />
             ) : (
               <CharacterManager
