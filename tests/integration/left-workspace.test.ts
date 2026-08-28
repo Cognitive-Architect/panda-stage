@@ -262,7 +262,9 @@ async function snapshot(window) {
     JSON.stringify('.character-create-form input') +
     ')?.value ?? null,' +
     'charEditorDraft: document.querySelector(' +
-    JSON.stringify('.character-settings input') +
+    JSON.stringify(
+      '.character-rename-form input, .character-settings input',
+    ) +
     ')?.value ?? null,' +
     'shotId: document.querySelector(' +
     JSON.stringify('.shot-list-item-selected') +
@@ -572,12 +574,25 @@ async function verifyIssue81() {
     await click(window, '.character-list-items button');
     await waitFor(
       window,
-      'document.querySelector(".character-settings input")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-detail-view"]') +
+      ')',
       'Character detail subview did not open.',
+    );
+    await window.webContents.executeJavaScript(
+      '(() => {' +
+        'document.querySelector(".character-rename-trigger")?.click();' +
+        'return true;' +
+      '})()',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'Character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-settings input',
+      '.character-rename-form input, .character-settings input',
       'B editor draft must not return',
     );
     await openProject(window, projectARoot);
@@ -602,12 +617,25 @@ async function verifyIssue81() {
     await click(window, '.character-list-items button');
     await waitFor(
       window,
-      'document.querySelector(".character-settings input")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-detail-view"]') +
+      ')',
       'A character detail subview did not open.',
+    );
+    await window.webContents.executeJavaScript(
+      '(() => {' +
+        'document.querySelector(".character-rename-trigger")?.click();' +
+        'return true;' +
+      '})()',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'A character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-settings input',
+      '.character-rename-form input, .character-settings input',
       'A editor draft must not enter B',
     );
     await openProject(window, projectBRoot);
@@ -631,12 +659,25 @@ async function verifyIssue81() {
     await click(window, '.character-list-items button');
     await waitFor(
       window,
-      'document.querySelector(".character-settings input")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-detail-view"]') +
+      ')',
       'B second character detail subview did not open.',
+    );
+    await window.webContents.executeJavaScript(
+      '(() => {' +
+        'document.querySelector(".character-rename-trigger")?.click();' +
+        'return true;' +
+      '})()',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'B second character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-settings input',
+      '.character-rename-form input, .character-settings input',
       'B second editor draft must not enter A',
     );
     await openProject(window, projectARoot);
