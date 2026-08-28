@@ -430,7 +430,11 @@ describe('EditorShell Stage 2-B composition contract', () => {
       "auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}",
     );
     expect(left).toContain('data-testid="landscape-project-tools"');
-    expect(dock).toContain('resource-activity-secondary-tools');
+    expect(dock).toContain('resource-activity-auxiliary');
+    expect(dock).toContain(
+      '!landscapePresentation && auxiliaryContent ? (',
+    );
+    expect(dock).not.toContain('resource-activity-secondary-tools');
     expect(shots).toContain('<ShotQuickActions');
     expect(shots).toContain("presentation === 'landscape' ? null");
     expect(shots).toContain('shotStore.rename');
@@ -440,5 +444,6 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(styles).toContain('shot-list-item-selected');
     expect(styles).toContain('shot-quick-actions');
     expect(styles).toContain('landscape-project-tools-body');
+    expect(styles).not.toContain('shot-list-item-context');
   });
 });

@@ -383,19 +383,10 @@ export function ResourceActivityDock({
               />
             )}
           </div>
-          {auxiliaryContent ? (
-            landscapePresentation ? (
-              <details className="resource-activity-secondary-tools">
-                <summary>其他项目工具</summary>
-                <div className="resource-activity-auxiliary">
-                  {auxiliaryContent}
-                </div>
-              </details>
-            ) : (
-              <div className="resource-activity-auxiliary">
-                {auxiliaryContent}
-              </div>
-            )
+          {!landscapePresentation && auxiliaryContent ? (
+            <div className="resource-activity-auxiliary">
+              {auxiliaryContent}
+            </div>
           ) : null}
         </div>
       </div>

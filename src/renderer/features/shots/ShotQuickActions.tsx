@@ -45,16 +45,25 @@ export function ShotQuickActions({
   const [durationInput, setDurationInput] = useState(
     (shot.durationMs / 1_000).toFixed(1),
   );
+  const [durationTouched, setDurationTouched] = useState(false);
 
   useEffect(() => {
     setActiveEditor(null);
     setNameInput(shot.name);
     setDurationInput((shot.durationMs / 1_000).toFixed(1));
+    setDurationTouched(false);
   }, [shot.id, shot.name, shot.durationMs]);
 
   const durationMs = parseDurationInput(durationInput);
   const durationValid =
     Number.isInteger(durationMs) && durationMs >= SHOT_MIN_DURATION_MS;
+  const durationError = durationTouched
+    ? durationInput.trim() === ''
+      ? '请输入时长。'
+      : durationValid
+        ? null
+        : `最短 ${(SHOT_MIN_DURATION_MS / 1_000).toFixed(1)} 秒。`
+    : null;
   const nameValid =
     Boolean(nameInput.trim()) && nameInput.trim() !== shot.name;
 
@@ -66,9 +75,6 @@ export function ShotQuickActions({
       data-testid="shot-quick-actions"
     >
       <div className="shot-quick-actions-bar">
-        <span className="shot-quick-actions-label">
-          已选镜头 {String(index + 1).padStart(2, '0')}
-        </span>
         <div className="shot-quick-actions-buttons">
           <button
             aria-expanded={activeEditor === 'rename'}
@@ -137,7 +143,7 @@ export function ShotQuickActions({
             setActiveEditor(null);
           }}
         >
-          <label>
+          <label className="shot-quick-edit-field">
             <span>镜头名称</span>
             <input
               aria-label="镜头名称"
@@ -150,22 +156,24 @@ export function ShotQuickActions({
           </label>
           <div className="shot-quick-edit-buttons">
             <button
+              aria-label="应用镜头名称修改"
               className="shot-quick-apply"
               data-testid="shot-quick-rename-apply"
               disabled={disabled || !nameValid}
+              title="应用"
               type="submit"
             >
               <Check aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-              <span>应用</span>
             </button>
             <button
+              aria-label="取消镜头名称修改"
               className="shot-quick-cancel"
               data-testid="shot-quick-rename-cancel"
               onClick={() => setActiveEditor(null)}
+              title="取消"
               type="button"
             >
               <X aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-              <span>取消</span>
             </button>
           </div>
         </form>
@@ -176,46 +184,65 @@ export function ShotQuickActions({
           data-testid="shot-quick-duration-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!durationValid) return;
+            if (!durationValid) {
+              setDurationTouched(true);
+              return;
+            }
             onSetDuration(durationMs);
             setActiveEditor(null);
           }}
         >
-          <label>
-            <span>时长（秒）</span>
+          <label className="shot-quick-edit-field">
+            <span>时长</span>
             <input
               aria-label="镜头时长（秒）"
-              aria-invalid={durationInput !== '' && !durationValid}
+              aria-describedby={
+                durationError ? `shot-quick-duration-error-${shot.id}` : undefined
+              }
+              aria-invalid={durationError ? 'true' : 'false'}
               autoFocus
               disabled={disabled}
               min={SHOT_MIN_DURATION_MS / 1_000}
-              onChange={(event) => setDurationInput(event.target.value)}
+              onChange={(event) => {
+                setDurationInput(event.target.value);
+                setDurationTouched(true);
+              }}
+              required
               step="0.1"
               type="number"
               value={durationInput}
             />
+            <span>秒</span>
           </label>
-          <span className="shot-quick-edit-hint">
-            最短 {SHOT_MIN_DURATION_MS / 1_000} 秒
-          </span>
+          {durationError ? (
+            <span
+              className="shot-quick-edit-error"
+              id={`shot-quick-duration-error-${shot.id}`}
+              role="alert"
+            >
+              {durationError}
+            </span>
+          ) : null}
           <div className="shot-quick-edit-buttons">
             <button
+              aria-label="应用镜头时长修改"
               className="shot-quick-apply"
               data-testid="shot-quick-duration-apply"
               disabled={disabled || !durationValid || durationMs === shot.durationMs}
+              title="应用"
               type="submit"
             >
               <Check aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-              <span>应用</span>
             </button>
             <button
+              aria-label="取消镜头时长修改"
               className="shot-quick-cancel"
               data-testid="shot-quick-duration-cancel"
               onClick={() => setActiveEditor(null)}
+              title="取消"
               type="button"
             >
               <X aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-              <span>取消</span>
             </button>
           </div>
         </form>

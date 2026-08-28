@@ -66,7 +66,7 @@ export function ShotListItem({
         </span>
       </button>
       {selected && selectedActions ? (
-        <div className="shot-list-item-context" data-testid="shot-selected-context">
+        <div className="shot-list-item-actions" data-testid="shot-selected-actions">
           {selectedActions}
         </div>
       ) : null}

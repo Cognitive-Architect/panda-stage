@@ -7186,37 +7186,6 @@ h1 {
   text-align: left;
 }
 
-/* Recovery/recent-project and compatibility owners remain reachable without
-   competing with the active resource list on first glance. */
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
-  .resource-activity-secondary-tools {
-  margin: 0 12px 12px;
-  border: 1px solid rgb(127 199 148 / 22%);
-  border-radius: 10px;
-  background: rgb(8 14 10 / 45%);
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
-  .resource-activity-secondary-tools
-  > summary {
-  min-height: 44px;
-  padding: 11px 12px;
-  color: #b9efc8;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
-  .resource-activity-secondary-tools[open]
-  > .resource-activity-auxiliary {
-  padding: 8px;
-  border-top: 1px solid rgb(255 255 255 / 8%);
-}
-
 /* Issue #332: the landscape right side is one contextual inspector. Keep
    Properties and Subtitle presentation compact without changing their
    existing state owners or the accepted portrait surface. */
@@ -12425,17 +12394,37 @@ h1 {
   .shot-list-item {
   display: grid;
   min-width: 0;
-  gap: 6px;
+  gap: 0;
+  overflow: visible;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button {
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item-selected {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 12%);
+  box-shadow: inset 0 0 0 1px rgb(131 211 154 / 10%);
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
   .shot-list-item-selected
   > button {
-  border-color: var(--ui-color-selected-border, #83d39a);
-  border-left-width: 3px;
-  background: rgb(45 104 62 / 18%);
-  box-shadow: inset 0 0 0 1px rgb(131 211 154 / 12%);
+  color: #e6f7ea;
+  background: transparent;
+  box-shadow: none;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -12455,9 +12444,10 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
-  .shot-list-item-context {
+  .shot-list-item-actions {
   min-width: 0;
-  padding: 0 0 2px 69px;
+  padding: 4px 10px 8px;
+  border-top: 1px solid rgb(131 211 154 / 16%);
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -12465,8 +12455,7 @@ h1 {
   .shot-quick-actions {
   position: relative;
   min-width: 0;
-  padding: 6px 0 2px;
-  border-left: 2px solid rgb(131 211 154 / 62%);
+  padding: 0;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -12487,20 +12476,8 @@ h1 {
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
   .shot-quick-actions-bar {
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
-  .shot-quick-actions-label {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ui-color-text-secondary, #a9b8ae);
-  font-size: 11px;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -12600,21 +12577,22 @@ h1 {
   .shot-quick-edit-form {
   display: grid;
   min-width: 0;
-  padding: 8px 0 2px;
+  padding: 6px 0 2px;
   border-top: 1px solid rgb(255 255 255 / 8%);
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
   .shot-quick-edit-form
   label {
-  display: grid;
+  display: flex;
   min-width: 0;
+  align-items: center;
   color: var(--ui-color-text-secondary, #a9b8ae);
-  gap: 4px;
+  gap: 6px;
   font-size: 10px;
 }
 
@@ -12622,9 +12600,10 @@ h1 {
   .resource-activity-dock-landscape
   .shot-quick-edit-form
   input {
+  flex: 1 1 auto;
   min-width: 0;
-  min-height: 44px;
-  padding: 7px 8px;
+  min-height: 40px;
+  padding: 6px 8px;
   border: 1px solid rgb(154 216 172 / 25%);
   border-radius: 8px;
   color: #eef6f0;
@@ -12634,9 +12613,9 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
-  .shot-quick-edit-hint {
+  .shot-quick-edit-error {
   grid-column: 1 / -1;
-  color: #82938a;
+  color: #f3c681;
   font-size: 10px;
 }
 
@@ -12658,7 +12637,9 @@ h1 {
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
   .shot-manager-status {
-  min-height: 18px;
+  display: block;
+  min-height: 0;
+  margin: 0;
   color: #819188;
   font-size: 10px;
 }

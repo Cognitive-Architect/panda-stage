@@ -18,7 +18,11 @@ describe('Issue #331 landscape resource drawers', () => {
     expect(dock).toContain('data-testid="resource-activity-rail"');
     expect(dock).toContain('landscapePresentation ||');
     expect(dock).toContain('{hideLocalActivityTabs ? null : (');
-    expect(dock).toContain('resource-activity-secondary-tools');
+    expect(dock).toContain('resource-activity-auxiliary');
+    expect(dock).toContain(
+      '!landscapePresentation && auxiliaryContent ? (',
+    );
+    expect(dock).not.toContain('resource-activity-secondary-tools');
     expect(left).toContain(
       "presentation={shellMode === 'landscape' ? 'landscape' : 'default'}",
     );
@@ -69,7 +73,7 @@ describe('Issue #331 landscape resource drawers', () => {
     expect(styles).toContain('display: none;');
     expect(styles).toContain(`${scope}\n  .resource-activity-body`);
     expect(styles).toContain('overflow: visible;');
-    expect(styles).toContain('resource-activity-secondary-tools');
+    expect(styles).not.toContain('resource-activity-secondary-tools');
     expect(dock).not.toContain('updateProject');
     expect(left).not.toContain('editorProjectStore.updateProject');
   });

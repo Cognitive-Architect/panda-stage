@@ -16,8 +16,11 @@ describe('Issue #360 landscape Shot drawer', () => {
     expect(left).toContain('data-testid="landscape-project-tools"');
     expect(left).toContain('<ProjectRecoveryPanel');
     expect(left).toContain('<LegacyCompatibilityActivity');
-    expect(dock).toContain('resource-activity-secondary-tools');
-    expect(dock).toContain('auxiliaryContent ?');
+    expect(dock).toContain('resource-activity-auxiliary');
+    expect(dock).toContain(
+      '!landscapePresentation && auxiliaryContent ? (',
+    );
+    expect(dock).not.toContain('resource-activity-secondary-tools');
   });
 
   it('keeps landscape selected actions and mutations on the existing Shot owner', () => {
@@ -40,7 +43,7 @@ describe('Issue #360 landscape Shot drawer', () => {
     expect(manager).toContain('<ShotQuickActions');
     expect(list).toContain('selectedActions?: ReactNode');
     expect(list).toContain('compactDuration?: boolean');
-    expect(item).toContain('data-testid="shot-selected-context"');
+    expect(item).toContain('className="shot-list-item-actions"');
     expect(item).toContain('formatCompactShotDuration');
     expect(quickActions).toContain('data-testid="shot-quick-rename"');
     expect(quickActions).toContain('data-testid="shot-quick-duration"');
@@ -49,6 +52,8 @@ describe('Issue #360 landscape Shot drawer', () => {
     expect(quickActions).toContain('onSetDuration(durationMs)');
     expect(quickActions).toContain('onDuplicate');
     expect(quickActions).toContain('onRemove');
+    expect(quickActions).not.toContain('已选镜头');
+    expect(quickActions).not.toContain('shot-quick-edit-hint');
     expect(thumbnail).not.toContain('画布预览将在后续版本提供');
     expect(thumbnail).toContain('String(index + 1).padStart(2, \'0\')');
   });
@@ -61,6 +66,8 @@ describe('Issue #360 landscape Shot drawer', () => {
     expect(styles).toContain(`${scope}\n  .landscape-project-tools`);
     expect(styles).toContain('shot-list-item-selected');
     expect(styles).toContain('shot-quick-actions');
+    expect(styles).toContain('shot-list-item-actions');
+    expect(styles).not.toContain('border-left: 2px solid rgb(131 211 154 / 62%)');
     expect(styles).toContain('min-height: 44px;');
     expect(styles).toContain('writing-mode: vertical-rl;');
     expect(styles).not.toContain('.editor.layout[data-shell-mode=');

@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   projectDurationMs,
   ShotServiceError,
@@ -15,6 +15,9 @@ import { ShotQuickActions } from './ShotQuickActions';
 export type ShotWorkspaceView = 'list' | 'create';
 export type ShotManagerPresentation = 'default' | 'landscape';
 export type ShotEditorPresentation = 'default' | 'portrait';
+
+const SHOT_STATUS_GUIDANCE =
+  '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。';
 
 export interface ShotManagerProps {
   snapshot: EditorProjectSnapshot | null;
@@ -42,8 +45,11 @@ export function ShotManager({
     shotStore.getCurrentShotId,
   );
   const [status, setStatus] = useState(
-    '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
+    presentation === 'landscape' ? '' : SHOT_STATUS_GUIDANCE,
   );
+  useEffect(() => {
+    setStatus(presentation === 'landscape' ? '' : SHOT_STATUS_GUIDANCE);
+  }, [presentation]);
   const project = snapshot?.project ?? null;
   const effectiveSelectedId =
     project?.shots.some((shot) => shot.id === selectedShotId)
@@ -66,7 +72,9 @@ export function ShotManager({
       setStatus(
         unchanged && next === current
           ? unchanged
-          : `${success} 修改已应用，项目尚未保存。`,
+          : presentation === 'landscape'
+            ? success
+            : `${success} 修改已应用，项目尚未保存。`,
       );
       return next;
     } catch (error) {
@@ -107,7 +115,11 @@ export function ShotManager({
       `镜头“${selectedShot.name}”已移除。`,
     );
     if (next?.shots.length === 0) {
-      setStatus('最后一个镜头已移除；请创建新镜头继续。项目尚未保存。');
+      setStatus(
+        presentation === 'landscape'
+          ? '最后一个镜头已移除，请创建新镜头。'
+          : '最后一个镜头已移除；请创建新镜头继续。项目尚未保存。',
+      );
     }
   };
 
@@ -173,7 +185,9 @@ export function ShotManager({
               mutate(
                 () => shotStore.move(shotId, targetIndex),
                 '镜头顺序已写回项目。',
-                '镜头位置未变化，未新增待保存修改。',
+                presentation === 'landscape'
+                  ? '镜头位置未变化。'
+                  : '镜头位置未变化，未新增待保存修改。',
               );
             }}
             onSelect={(shotId) => shotStore.select(shotId)}
@@ -210,7 +224,11 @@ export function ShotManager({
           )}
         </div>
       )}
-      <output className="shot-manager-status">{status}</output>
+      {status ? (
+        <output aria-live="polite" className="shot-manager-status">
+          {status}
+        </output>
+      ) : null}
     </section>
   );
 }
