@@ -26,12 +26,19 @@ export type CharacterWorkspaceView =
   | 'detail'
   | 'expression';
 
+export type CharacterManagerPresentation = 'default' | 'landscape';
+
+const CHARACTER_IDLE_STATUS =
+  '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。';
+
 export interface CharacterManagerProps {
   snapshot: EditorProjectSnapshot | null;
   view?: CharacterWorkspaceView;
   onViewChange?: (view: CharacterWorkspaceView) => void;
   /** Keep the landscape drawer's active label as the visible identity. */
   hideHeading?: boolean;
+  /** Apply visual-first Character presentation without changing its owners. */
+  presentation?: CharacterManagerPresentation;
 }
 
 export function CharacterManager({
@@ -39,13 +46,12 @@ export function CharacterManager({
   view = 'legacy',
   onViewChange = () => undefined,
   hideHeading = false,
+  presentation = 'default',
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] =
     useState<string | null>(snapshot?.project.characters[0]?.id ?? null);
-  const [status, setStatus] = useState(
-    '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
-  );
+  const [status, setStatus] = useState(CHARACTER_IDLE_STATUS);
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
@@ -65,6 +71,10 @@ export function CharacterManager({
     project && selectedCharacter
       ? service.dimensionWarnings(project, selectedCharacter.id)
       : [];
+  const visibleStatus =
+    presentation === 'landscape' && status === CHARACTER_IDLE_STATUS
+      ? ''
+      : status;
 
   useEffect(() => {
     if (
@@ -128,6 +138,13 @@ export function CharacterManager({
     setStatus(error instanceof Error ? error.message : '角色修改失败。');
   };
 
+  const markThumbnailError = (assetId: string): void => {
+    setThumbnails((current) => ({
+      ...current,
+      [assetId]: { status: 'missing', reason: 'error' },
+    }));
+  };
+
   const mutate = (
     action: () => Project,
     success: string,
@@ -157,6 +174,7 @@ export function CharacterManager({
     <section
       className="character-manager"
       aria-labelledby="character-manager-heading"
+      data-character-presentation={presentation}
       data-testid="character-manager"
     >
       <div
@@ -187,8 +205,11 @@ export function CharacterManager({
             mode="legacy"
             onCreate={createCharacter}
             onSelect={setSelectedCharacterId}
+            onThumbnailError={markThumbnailError}
+            presentation={presentation}
             selectedCharacterId={selectedCharacterId}
             showHeading={!hideHeading}
+            thumbnails={thumbnails}
           />
         ) : view === 'list' ? (
           <CharacterList
@@ -201,8 +222,11 @@ export function CharacterManager({
               setSelectedCharacterId(characterId);
               onViewChange('detail');
             }}
+            onThumbnailError={markThumbnailError}
+            presentation={presentation}
             selectedCharacterId={selectedCharacterId}
             showHeading={view !== 'list' || !hideHeading}
+            thumbnails={thumbnails}
           />
         ) : view === 'create' ? (
           <CharacterList
@@ -213,8 +237,11 @@ export function CharacterManager({
             onBack={() => onViewChange('list')}
             onCreate={createCharacter}
             onSelect={setSelectedCharacterId}
+            onThumbnailError={markThumbnailError}
+            presentation={presentation}
             selectedCharacterId={selectedCharacterId}
             showHeading={!hideHeading}
+            thumbnails={thumbnails}
           />
         ) : null}
         {view === 'legacy' || view === 'detail' || view === 'expression' ? (
@@ -332,12 +359,8 @@ export function CharacterManager({
               assetId ? '张嘴图已更新。' : '张嘴图已清除。',
             );
           }}
-          onThumbnailError={(assetId) => {
-            setThumbnails((current) => ({
-              ...current,
-              [assetId]: { status: 'missing', reason: 'error' },
-            }));
-          }}
+          onThumbnailError={markThumbnailError}
+          presentation={presentation}
           thumbnails={thumbnails}
           view={
             view === 'legacy'
@@ -348,11 +371,14 @@ export function CharacterManager({
           }
           warnings={warnings}
           onBackToDetail={() => onViewChange('detail')}
+          onBackToList={() => onViewChange('list')}
           onOpenExpressions={() => onViewChange('expression')}
           />
         ) : null}
       </div>
-      <output className="character-manager-status">{status}</output>
+      {visibleStatus ? (
+        <output className="character-manager-status">{visibleStatus}</output>
+      ) : null}
     </section>
   );
 }

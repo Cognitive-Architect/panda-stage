@@ -148,6 +148,10 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'assets' &&
     assetView === 'browser';
+  const hideLandscapeCharacterPrimaryAction =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    (characterView === 'detail' || characterView === 'expression');
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
@@ -271,33 +275,37 @@ export function ResourceActivityDock({
               data-resource-action-group={
                 showLandscapeAssetActionGroup
                   ? 'asset-browser-landscape'
+                  : hideLandscapeCharacterPrimaryAction
+                    ? 'character-detail-landscape'
                   : showPortraitAssetActionGroup
                     ? 'asset-browser-portrait'
                     : undefined
               }
             >
-              <button
-                className="resource-activity-primary-action"
-                data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
-                data-resource-action-layout={
-                  showLandscapeAssetActionGroup
-                    ? 'asset-browser-landscape'
-                    : showPortraitAssetActionGroup
-                      ? 'asset-browser'
-                      : undefined
-                }
-                data-testid="resource-primary-action"
-                onClick={primaryAction.onClick}
-                type="button"
-              >
-                {activeActivity === 'shots' && shotView !== 'create' ? (
-                  <DecorativeIcon icon={CirclePlus} size={18} />
-                ) : null}
-                {activeActivity === 'assets' && assetView === 'browser' ? (
-                  <DecorativeIcon icon={Upload} size={18} />
-                ) : null}
-                <span>{primaryAction.label}</span>
-              </button>
+              {hideLandscapeCharacterPrimaryAction ? null : (
+                <button
+                  className="resource-activity-primary-action"
+                  data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
+                  data-resource-action-layout={
+                    showLandscapeAssetActionGroup
+                      ? 'asset-browser-landscape'
+                      : showPortraitAssetActionGroup
+                        ? 'asset-browser'
+                        : undefined
+                  }
+                  data-testid="resource-primary-action"
+                  onClick={primaryAction.onClick}
+                  type="button"
+                >
+                  {activeActivity === 'shots' && shotView !== 'create' ? (
+                    <DecorativeIcon icon={CirclePlus} size={18} />
+                  ) : null}
+                  {activeActivity === 'assets' && assetView === 'browser' ? (
+                    <DecorativeIcon icon={Upload} size={18} />
+                  ) : null}
+                  <span>{primaryAction.label}</span>
+                </button>
+              )}
               {showLandscapeAssetActionGroup ? (
                 <button
                   aria-label="导入 FLA"
@@ -422,6 +430,9 @@ export function ResourceActivityDock({
               <CharacterManager
                 hideHeading={landscapePresentation}
                 onViewChange={setCharacterView}
+                presentation={
+                  landscapePresentation ? 'landscape' : 'default'
+                }
                 snapshot={snapshot}
                 view={characterView}
               />

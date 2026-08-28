@@ -4,6 +4,7 @@ import type {
   CreateCharacterInput,
   ImageAsset,
 } from '../../../domain';
+import type { ThumbnailState } from '../assets/AssetCard';
 
 export interface CharacterListProps {
   characters: readonly Character[];
@@ -15,9 +16,13 @@ export interface CharacterListProps {
   mode?: CharacterListMode;
   onBack?: () => void;
   showHeading?: boolean;
+  presentation?: CharacterListPresentation;
+  thumbnails?: Readonly<Record<string, ThumbnailState>>;
+  onThumbnailError?: (assetId: string) => void;
 }
 
 export type CharacterListMode = 'legacy' | 'list' | 'create';
+export type CharacterListPresentation = 'default' | 'landscape';
 
 export function CharacterList({
   characters,
@@ -29,6 +34,9 @@ export function CharacterList({
   mode = 'legacy',
   onBack = () => undefined,
   showHeading = true,
+  presentation = 'default',
+  thumbnails = {},
+  onThumbnailError = () => undefined,
 }: CharacterListProps): React.JSX.Element {
   const [name, setName] = useState('新角色');
   const [normalAssetId, setNormalAssetId] = useState(
@@ -52,6 +60,7 @@ export function CharacterList({
     <aside
       aria-label={showHeading ? undefined : '角色列表'}
       className={`character-list character-list-${mode}`}
+      data-character-list-presentation={presentation}
       data-testid={
         mode === 'list'
           ? 'character-list-view'
@@ -88,23 +97,70 @@ export function CharacterList({
           {characters.length === 0 ? (
             <p>还没有角色。请先准备至少两张图片素材。</p>
           ) : (
-            characters.map((character) => (
-              <button
-                aria-pressed={selectedCharacterId === character.id}
-                className={
-                  selectedCharacterId === character.id
-                    ? 'character-list-active'
-                    : ''
-                }
-                data-character-id={character.id}
-                key={character.id}
-                onClick={() => onSelect(character.id)}
-                type="button"
-              >
-                <strong>{character.name}</strong>
-                <span>{character.expressions.length} 个表情</span>
-              </button>
-            ))
+            characters.map((character) => {
+              const defaultExpression =
+                character.expressions.find(
+                  (expression) =>
+                    expression.id === character.defaultExpressionId,
+                ) ?? character.expressions[0];
+              const thumbnail = defaultExpression
+                ? thumbnails[defaultExpression.assetId]
+                : undefined;
+              const selected = selectedCharacterId === character.id;
+              return (
+                <button
+                  aria-pressed={selected}
+                  className={selected ? 'character-list-active' : ''}
+                  data-character-id={character.id}
+                  key={character.id}
+                  onClick={() => onSelect(character.id)}
+                  type="button"
+                >
+                  {presentation === 'landscape' ? (
+                    <>
+                      <span
+                        className="character-list-avatar"
+                        data-thumbnail-status={thumbnail?.status ?? 'missing'}
+                      >
+                        {thumbnail?.status === 'ready' && defaultExpression ? (
+                          <img
+                            alt={`${character.name} 默认表情`}
+                            onError={() =>
+                              onThumbnailError(defaultExpression.assetId)
+                            }
+                            src={thumbnail.dataUrl}
+                          />
+                        ) : (
+                          <span aria-hidden="true">
+                            {character.name.trim().charAt(0) || '角'}
+                          </span>
+                        )}
+                      </span>
+                      <span className="character-list-copy">
+                        <strong>{character.name}</strong>
+                        <small>
+                          {character.expressions.length} 个表情 · 默认{' '}
+                          {defaultExpression?.name ?? '未配置'}
+                        </small>
+                      </span>
+                      {selected ? (
+                        <span
+                          aria-label="当前选择"
+                          className="character-list-selected-badge"
+                        >
+                          ✓
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <strong>{character.name}</strong>
+                      <span>{character.expressions.length} 个表情</span>
+                    </>
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
       ) : null}
