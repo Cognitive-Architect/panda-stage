@@ -1,5 +1,8 @@
 import { useRef } from 'react';
-import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
+import {
+  LayerBackgroundControl,
+  type LayerBackgroundControlProps,
+} from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import {
   LayerTransformPanel,
@@ -8,6 +11,7 @@ import {
 
 export interface PortraitPropertiesSectionsProps {
   backgroundLayerSelected: boolean;
+  presentation?: LayerBackgroundControlProps['presentation'];
 }
 
 /**
@@ -16,6 +20,7 @@ export interface PortraitPropertiesSectionsProps {
  */
 export function PortraitPropertiesSections({
   backgroundLayerSelected,
+  presentation = 'portrait',
 }: PortraitPropertiesSectionsProps): React.JSX.Element {
   const sectionsRef = useRef<HTMLDivElement | null>(null);
   const transformController = useLayerTransformController({
@@ -49,6 +54,7 @@ export function PortraitPropertiesSections({
       >
         <summary>外观</summary>
         <LayerBackgroundControl
+          presentation={presentation}
           compact
           transformController={transformController}
         />

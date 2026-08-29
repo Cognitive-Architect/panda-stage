@@ -529,6 +529,7 @@ export function RightInspector({
           {!portraitEmptyState && compactPresentation ? (
             <PortraitPropertiesSections
               backgroundLayerSelected={selection.state === 'background'}
+              presentation={landscapePresentation ? 'landscape' : 'portrait'}
             />
           ) : (
             <>
