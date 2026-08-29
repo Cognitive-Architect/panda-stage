@@ -5196,6 +5196,42 @@ h1 {
   font-size: 12px;
 }
 
+/* Issue #371: Cloud Touch landscape keeps the existing RightInspector owner
+   and drawer, but replaces the collapsed full-height rail with one compact,
+   centered edge handle. The transparent 56px column remains the adaptive
+   shell slot; only the visual/interactive affordance is shortened so it does
+   not compete with the Canvas scrollbar. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector {
+  background: transparent;
+  border: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-handle {
+  top: 50%;
+  right: 0;
+  width: 56px;
+  height: 152px;
+  min-height: 132px;
+  max-height: 168px;
+  padding: 12px 6px;
+  border-radius: 14px;
+  transform: translateY(-50%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-handle span {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-handle strong {
+  font-size: 11px;
+  writing-mode: vertical-rl;
+}
+
 .editor-layout[data-shell-mode='portrait'] {
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
