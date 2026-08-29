@@ -27,6 +27,15 @@ describe('Issue #371 Cloud Touch landscape inspector handle', () => {
     );
   });
 
+  it('keeps the existing compact project bar layout stable for regression gates', () => {
+    expect(styles).toMatch(
+      /\.compact-project-controls\s+\.history-controls\[data-history-presentation='compact'\]\s*\{[\s\S]*?display:\s*flex;[\s\S]*?padding:\s*0;[\s\S]*?background:\s*transparent;/u,
+    );
+    expect(styles).toMatch(
+      /\.compact-project-controls\s+\.history-controls\[data-history-presentation='compact'\][\s\S]*?\.history-actions\s*>\s*span,[\s\S]*?\.compact-project-controls\s+\.history-controls\[data-history-presentation='compact'\][\s\S]*?>\s*output\s*\{[\s\S]*?position:\s*absolute;/u,
+    );
+  });
+
   it('preserves the existing focus return and non-mutation ownership paths', () => {
     expect(inspector).toContain('drawerRef.current?.focus()');
     expect(inspector).toContain('railRef.current?.focus()');

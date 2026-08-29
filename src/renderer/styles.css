@@ -276,6 +276,58 @@ button:disabled {
   justify-content: flex-end;
 }
 
+/* Keep the compact HistoryControls presentation compact in the desktop
+   editor bar as well as the Cloud Touch portrait/landscape overrides below.
+   Without this shared base, the status copy expands the top bar and lets the
+   project menu overlap its own save/identity controls. */
+.compact-project-controls
+  .history-controls[data-history-presentation='compact'] {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  align-items: center;
+  gap: 4px;
+}
+
+.compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions
+  button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 9px;
+}
+
+.compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions
+  > span,
+.compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  > output {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .compact-project-save-state {
   flex: 0 1 auto;
   max-width: 150px;
