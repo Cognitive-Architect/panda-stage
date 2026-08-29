@@ -378,12 +378,25 @@ export function RightInspector({
   // without this, focus would strand on a visibility:hidden element.
   useEffect(() => {
     if (!narrow) return;
+    let focusFrame: number | undefined;
     if (drawerOpen && !prevDrawerOpenRef.current) {
       drawerRef.current?.focus();
+      const drawer = drawerRef.current;
+      // The drawer becomes visible in the same commit as this effect. If the
+      // browser still observes its pre-commit hidden state, retry after the
+      // next paint so focus does not fall through to document.body.
+      if (drawer && document.activeElement !== drawer) {
+        focusFrame = window.requestAnimationFrame(() => {
+          if (drawerOpen && drawerRef.current === drawer) drawer.focus();
+        });
+      }
     } else if (!drawerOpen && prevDrawerOpenRef.current) {
       railRef.current?.focus();
     }
     prevDrawerOpenRef.current = drawerOpen;
+    return () => {
+      if (focusFrame !== undefined) window.cancelAnimationFrame(focusFrame);
+    };
   }, [drawerOpen, narrow]);
 
   const inspectorHeading = (
