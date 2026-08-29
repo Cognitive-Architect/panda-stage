@@ -429,7 +429,9 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(left).toContain(
       "auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}",
     );
-    expect(left).toContain('data-testid="landscape-project-tools"');
+    expect(left).toContain('<ProjectToolsDrawer');
+    expect(dock).toContain('data-testid="resource-activity-rail-project-tools"');
+    expect(dock).toContain('projectToolsContent');
     expect(dock).toContain('resource-activity-auxiliary');
     expect(dock).toContain(
       '!landscapePresentation && auxiliaryContent ? (',
@@ -443,7 +445,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(thumbnail).not.toContain('画布预览将在后续版本提供');
     expect(styles).toContain('shot-list-item-selected');
     expect(styles).toContain('shot-quick-actions');
-    expect(styles).toContain('landscape-project-tools-body');
+    expect(styles).toContain('project-tools-activity-surface');
     expect(styles).not.toContain('shot-list-item-context');
   });
 });

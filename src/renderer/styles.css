@@ -12901,106 +12901,6 @@ h1 {
   background: #a4eab4;
 }
 
-/* The existing project/recovery and compatibility owners remain reachable
-   from a separate project-level entry instead of occupying the Shot drawer. */
-.editor-layout[data-shell-mode='landscape'] .left-workspace {
-  overflow: visible;
-}
-
-.editor-layout[data-shell-mode='landscape'] .landscape-project-tools {
-  position: absolute;
-  z-index: 35;
-  bottom: 0;
-  left: 0;
-  width: 52px;
-}
-
-.editor-layout[data-shell-mode='landscape'] .landscape-project-tools > summary {
-  display: grid;
-  width: 52px;
-  min-height: 52px;
-  padding: 8px 3px;
-  border: 1px solid rgb(127 199 148 / 34%);
-  border-radius: 12px;
-  color: #b9efc8;
-  background: #142019;
-  cursor: pointer;
-  place-items: center;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.1;
-  list-style: none;
-  writing-mode: vertical-rl;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools
-  > summary::-webkit-details-marker {
-  display: none;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools[open]
-  > summary {
-  border-color: var(--ui-color-selected-border, #83d39a);
-  color: #07110a;
-  background: var(--ui-color-action-primary, #8ed9a2);
-}
-
-.editor-layout[data-shell-mode='landscape'] .landscape-project-tools-body {
-  position: absolute;
-  bottom: 0;
-  left: 64px;
-  display: grid;
-  width: min(360px, calc(100vw - 80px));
-  max-height: min(80vh, 720px);
-  padding: 10px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  border: 1px solid rgb(127 199 148 / 38%);
-  border-radius: 14px;
-  background: #122018;
-  box-shadow: 18px 0 34px rgb(0 0 0 / 32%);
-  gap: 10px;
-  scrollbar-color: #3f6d4e #0a100c;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools-body
-  > * {
-  max-width: none;
-  margin: 0;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools-body
-  .recent-projects-panel {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools-body
-  .recent-projects-list
-  li {
-  display: grid;
-  align-items: start;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools-body
-  .recent-projects-actions {
-  flex-wrap: wrap;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools-body
-  .legacy-compatibility-activity {
-  padding: 10px;
-}
-
 /* Issue #363: turn the landscape Asset Library into a visual-first browsing
    surface while retaining the existing import, selection, thumbnail, drag/drop
    and pagination owners. */
@@ -15218,58 +15118,286 @@ h1 {
     0 0 14px rgb(131 211 154 / 8%);
 }
 
+/* Issue #369: Project Tools is a first-class landscape drawer, while its
+   recent-project and ActionPreset feature owners remain unchanged. */
 .editor-shell[data-editor-shell-layout='landscape']
   .editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools
-  > summary {
+  .resource-activity-dock[data-project-tools='true']
+  .resource-activity-rail {
+  height: min(100%, 440px);
+  grid-template-rows: repeat(4, minmax(72px, 1fr));
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .project-tools-activity-surface {
+  padding: 0;
+}
+
+.project-tools-drawer {
   display: grid;
-  width: 52px;
+  min-width: 0;
+  min-height: 100%;
+  align-content: start;
+  gap: 0;
+}
+
+.project-tools-drawer-header {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: grid;
+  min-width: 0;
   min-height: 72px;
-  padding: 8px 3px;
-  align-content: center;
-  gap: 4px;
-  border-color: rgb(127 199 148 / 24%);
-  color: #a9c5b0;
-  background: rgb(20 32 25 / 88%);
+  padding: 12px;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 10px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  background: #122018;
+}
+
+.project-tools-drawer-heading {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 2px;
+}
+
+.project-tools-drawer-heading .eyebrow,
+.project-tools-drawer-heading h2 {
+  margin: 0;
+}
+
+.project-tools-drawer-heading h2 {
+  font-size: 18px;
+}
+
+.project-tools-back {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 44px;
+  padding: 4px 8px;
+  align-items: center;
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  gap: 5px;
+}
+
+.project-tools-back:hover,
+.project-tools-back:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: rgb(45 104 62 / 28%);
+}
+
+.project-tools-close {
+  display: inline-grid;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
   place-items: center;
-  writing-mode: horizontal-tb;
+  font-size: 24px;
+  line-height: 1;
 }
 
-.editor-shell[data-editor-shell-layout='landscape']
-  .editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools
-  > summary
-  > .ui-icon {
-  width: 20px;
-  height: 20px;
+.project-tools-home {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  align-content: start;
+  gap: 12px;
 }
 
-.editor-shell[data-editor-shell-layout='landscape']
-  .editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools
-  > summary
-  > span {
-  color: currentColor;
-  font-size: 10px;
-  line-height: 1.15;
+.project-tools-home > .recent-projects-panel {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.recent-projects-panel-compact .recent-projects-heading {
+  display: block;
+}
+
+.recent-projects-panel-compact .recent-projects-heading .eyebrow,
+.recent-projects-panel-compact .recent-projects-heading h2 {
+  margin: 0;
+}
+
+.recent-projects-panel-compact .recent-projects-heading h2 {
+  font-size: 17px;
+}
+
+.recent-projects-panel-compact .recent-projects-list {
+  gap: 8px;
+}
+
+.recent-projects-panel-compact .recent-projects-list li {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.recent-projects-panel-compact .recent-projects-list li > div:first-child {
+  min-width: 0;
+  gap: 4px;
+}
+
+.recent-projects-panel-compact .recent-projects-list strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.editor-shell[data-editor-shell-layout='landscape']
-  .editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools[open]
-  > summary,
-.editor-shell[data-editor-shell-layout='landscape']
-  .editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools
-  > summary:hover,
-.editor-shell[data-editor-shell-layout='landscape']
-  .editor-layout[data-shell-mode='landscape']
-  .landscape-project-tools
-  > summary:focus-visible {
-  border-color: var(--ui-color-selected-border, #83d39a);
-  color: #d8f2df;
-  background: rgb(45 104 62 / 28%);
-  box-shadow: inset 0 0 0 1px rgb(131 211 154 / 10%),
-    0 0 14px rgb(131 211 154 / 8%);
+.recent-projects-panel-compact .recent-project-meta {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-projects-panel-compact .recent-projects-actions {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.recent-projects-panel-compact .recent-projects-actions button {
+  min-height: 44px;
+}
+
+.recent-projects-panel-compact .recent-project-action-primary {
+  border-color: rgb(131 211 154 / 56%);
+  color: #e6f7ea;
+  background: #235739;
+}
+
+.recent-projects-panel-compact .recent-project-action-primary:hover,
+.recent-projects-panel-compact .recent-project-action-primary:focus-visible {
+  color: #f2fff4;
+  background: #2d6840;
+}
+
+.recent-projects-panel-compact .recent-project-more {
+  display: inline-grid;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  place-items: center;
+}
+
+.recent-project-maintenance-menu {
+  display: grid;
+  min-width: 0;
+  padding-top: 10px;
+  grid-column: 1 / -1;
+  gap: 8px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+
+.recent-project-maintenance-menu p {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.recent-project-maintenance-menu button {
+  width: fit-content;
+  min-height: 44px;
+}
+
+.recent-projects-panel-compact > .recent-projects-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.project-tools-action-preset-card {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.project-tools-action-preset-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-tools-action-preset-heading .eyebrow,
+.project-tools-action-preset-heading h3,
+.project-tools-action-preset-card > p {
+  margin: 0;
+}
+
+.project-tools-action-preset-heading h3 {
+  font-size: 16px;
+}
+
+.project-tools-compatibility-badge {
+  padding: 3px 7px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: 999px;
+  color: var(--ui-color-text-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.project-tools-action-preset-card > p {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.project-tools-action-preset-launcher {
+  display: inline-flex;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.project-tools-action-presets-view {
+  min-width: 0;
+  padding: 12px;
+}
+
+.project-tools-action-presets-view > .legacy-workspace {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.project-tools-action-presets-view .action-preset-panel > div:first-child {
+  display: none;
+}
+
+.project-tools-action-presets-view .action-preset-grid button {
+  min-height: 48px;
 }

@@ -13,7 +13,10 @@ describe('Issue #360 landscape Shot drawer', () => {
     expect(left).toContain(
       "auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}",
     );
-    expect(left).toContain('data-testid="landscape-project-tools"');
+    expect(left).toContain('<ProjectToolsDrawer');
+    expect(dock).toContain('data-testid="resource-activity-rail-project-tools"');
+    expect(dock).toContain('projectToolsContent');
+    expect(dock).toContain('projectToolsOpen');
     expect(left).toContain('<ProjectRecoveryPanel');
     expect(left).toContain('<LegacyCompatibilityActivity');
     expect(dock).toContain('resource-activity-auxiliary');
@@ -63,7 +66,9 @@ describe('Issue #360 landscape Shot drawer', () => {
     const scope = ".editor-layout[data-shell-mode='landscape']";
 
     expect(styles).toContain(`${scope}\n  .resource-activity-dock-landscape`);
-    expect(styles).toContain(`${scope}\n  .landscape-project-tools`);
+    expect(styles).toContain(
+      `${scope}\n  .resource-activity-dock[data-project-tools='true']`,
+    );
     expect(styles).toContain('shot-list-item-selected');
     expect(styles).toContain('shot-quick-actions');
     expect(styles).toContain('shot-list-item-actions');

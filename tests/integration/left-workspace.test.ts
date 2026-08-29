@@ -147,6 +147,14 @@ projectB.shots = projectB.shots.map((shot) => ({
   id: '50000000-0000-4000-8000-000000000099',
 }));
 
+const missingProjectEntry = {
+  projectId: '20000000-0000-4000-8000-000000000099',
+  projectName: 'Issue 81 missing project',
+  projectRoot: 'D:\\Projects\\Issue 81 Missing.pandastage',
+  lastOpenedAt: '2026-08-01T00:02:00.000Z',
+  status: 'missing',
+};
+
 const projects = new Map([
   [projectARoot, projectA],
   [projectBRoot, projectB],
@@ -480,6 +488,7 @@ async function verifyIssue81() {
         lastOpenedAt: '2026-08-01T00:01:00.000Z',
         status: 'available',
       },
+      missingProjectEntry,
     ],
   }));
   register(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => ({
@@ -536,6 +545,7 @@ async function verifyIssue81() {
   }));
 
   const window = await createMainWindow({ show: false });
+  window.setSize(1000, 760);
   try {
     await waitFor(
       window,
@@ -546,6 +556,104 @@ async function verifyIssue81() {
     );
     await openProject(window, projectARoot);
     await waitForActivity(window, 'shots');
+
+    // Issue #369: Project Tools shares the landscape rail/drawer contract,
+    // keeps Recent Projects compact, and only exposes ActionPreset at level 2.
+    const projectToolsBefore = await snapshot(window);
+    await click(window, '[data-testid="resource-activity-rail-project-tools"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-drawer"]') +
+        ') && document.querySelector(' +
+        JSON.stringify('[data-testid="recent-projects-panel"][data-presentation="compact"]') +
+        ')',
+      'Project Tools drawer did not open with compact Recent Projects.',
+    );
+    const projectToolsHome = await window.webContents.executeJavaScript(
+      '(() => {' +
+        'const panel = document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-drawer"]') +
+        ');' +
+        'return {' +
+        'active: document.querySelector(' +
+        JSON.stringify('[data-testid="resource-activity-rail-project-tools"]') +
+        ')?.getAttribute("aria-pressed") === "true",' +
+        'hasPath: Boolean(panel?.querySelector(' +
+        JSON.stringify('.recent-projects-path') +
+        ')),' +
+        'hasCapacity: panel?.textContent?.includes("/12") ?? false,' +
+        'hasImplementationCopy: panel?.textContent?.includes(' +
+        JSON.stringify('最近项目保存在应用配置中') +
+        ') ?? false,' +
+        'hasMissingRelocate: Boolean(panel?.querySelector(' +
+        JSON.stringify('[data-project-status="missing"] [data-task4-core="recent-relocate"]') +
+        ')),' +
+        'hasActionPresetLauncher: Boolean(panel?.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-action-presets"]') +
+        '))' +
+        '};' +
+      '})()',
+    );
+    if (
+      !projectToolsHome.active ||
+      projectToolsHome.hasPath ||
+      projectToolsHome.hasCapacity ||
+      projectToolsHome.hasImplementationCopy ||
+      !projectToolsHome.hasMissingRelocate ||
+      !projectToolsHome.hasActionPresetLauncher
+    ) {
+      throw new Error(
+        'Issue #369 Project Tools home presentation regressed: ' +
+          JSON.stringify(projectToolsHome),
+      );
+    }
+    await click(window, '[data-testid="recent-project-more"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="recent-project-maintenance-menu"]') +
+        ')',
+      'Project Tools recent-project maintenance menu did not open.',
+    );
+    await click(window, '[data-testid="project-tools-action-presets"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-action-presets-view"]') +
+        ') && document.querySelector(' +
+        JSON.stringify('[data-testid="action-preset-panel"]') +
+        ')',
+      'Project Tools did not enter the second-level Action Preset view.',
+    );
+    await click(window, '[data-testid="project-tools-back"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-home"]') +
+        ')',
+      'Project Tools did not return to its home view.',
+    );
+    const projectToolsAfter = await snapshot(window);
+    if (
+      projectToolsAfter.dirty !== projectToolsBefore.dirty ||
+      projectToolsAfter.revision !== projectToolsBefore.revision ||
+      projectToolsAfter.undo !== projectToolsBefore.undo ||
+      projectToolsAfter.redo !== projectToolsBefore.redo
+    ) {
+      throw new Error(
+        'Issue #369 presentation navigation changed editor state: ' +
+          JSON.stringify({ before: projectToolsBefore, after: projectToolsAfter }),
+      );
+    }
+    await click(window, '[data-testid="project-tools-close"]');
+    await waitFor(
+      window,
+      '!document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-drawer"]') +
+        ')',
+      'Project Tools close did not return to the canvas-first shell.',
+    );
 
     // T1: leave local asset state and import results in A, then switch to B.
     await switchActivity(window, 'assets');

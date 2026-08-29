@@ -16,6 +16,7 @@ import {
   Images,
   Smile,
   Upload,
+  Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { DecorativeIcon } from '../ui';
@@ -39,6 +40,10 @@ export interface ResourceActivityDockProps {
   onActiveActivityChange?(activity: ResourceActivity): void;
   /** Hide redundant section labels only for portrait resource surfaces. */
   hideSectionLabels?: boolean;
+  /** Presentation-only Project Tools content hosted beside the resource rail. */
+  projectToolsContent?: ReactNode;
+  projectToolsOpen?: boolean;
+  onProjectToolsOpenChange?(open: boolean): void;
 }
 
 const ACTIVITIES: readonly {
@@ -99,6 +104,9 @@ export function ResourceActivityDock({
   activeActivity: requestedActivity,
   onActiveActivityChange,
   hideSectionLabels = false,
+  projectToolsContent,
+  projectToolsOpen = false,
+  onProjectToolsOpenChange,
 }: ResourceActivityDockProps): React.JSX.Element {
   const landscapePresentation = presentation === 'landscape';
   const [internalActivity, setInternalActivity] =
@@ -117,6 +125,7 @@ export function ResourceActivityDock({
   );
   const [internalDrawerOpen, setInternalDrawerOpen] = useState(() => !narrow);
   const drawerOpen = requestedDrawerOpen ?? internalDrawerOpen;
+  const surfaceOpen = drawerOpen || projectToolsOpen;
 
   const setDrawerOpen = (open: boolean): void => {
     if (requestedDrawerOpen === undefined) {
@@ -134,11 +143,17 @@ export function ResourceActivityDock({
   useEffect(() => {
     if (!narrow) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setDrawerOpen(false);
+      if (event.key === 'Escape') {
+        if (projectToolsOpen) {
+          onProjectToolsOpenChange?.(false);
+        } else {
+          setDrawerOpen(false);
+        }
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [narrow]);
+  }, [narrow, onProjectToolsOpenChange, projectToolsOpen]);
 
   const activeLabel =
     landscapePresentation && activeActivity === 'assets'
@@ -202,6 +217,7 @@ export function ResourceActivityDock({
             };
 
   const selectActivity = (activity: ResourceActivity): void => {
+    if (projectToolsOpen) onProjectToolsOpenChange?.(false);
     if (narrow && drawerOpen && activity === activeActivity) {
       setDrawerOpen(false);
       return;
@@ -211,19 +227,34 @@ export function ResourceActivityDock({
     setDrawerOpen(true);
   };
 
+  const selectProjectTools = (): void => {
+    if (projectToolsOpen) {
+      onProjectToolsOpenChange?.(false);
+      return;
+    }
+    if (drawerOpen) setDrawerOpen(false);
+    onProjectToolsOpenChange?.(true);
+  };
+
   return (
     <section
       aria-label={
-        hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
+        projectToolsOpen
+          ? '项目工具'
+          : hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
           ? activeLabel
           : undefined
       }
       aria-labelledby={
-        hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
+        projectToolsOpen
+          ? undefined
+          : hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
           ? undefined
           : 'resource-activity-heading'
       }
-      className={`resource-activity-dock${drawerOpen ? ' resource-activity-dock-open' : ''}${landscapePresentation ? ' resource-activity-dock-landscape' : ''}`}
+      className={`resource-activity-dock${surfaceOpen ? ' resource-activity-dock-open' : ''}${landscapePresentation ? ' resource-activity-dock-landscape' : ''}`}
+      data-project-tools={String(Boolean(projectToolsContent))}
+      data-project-tools-open={projectToolsOpen}
       data-resource-drawer-open={drawerOpen}
       data-resource-mode={narrow ? 'narrow' : 'wide'}
       data-resource-presentation={presentation}
@@ -233,7 +264,7 @@ export function ResourceActivityDock({
     >
       {landscapePresentation ? (
         <nav
-          aria-label="资源类型"
+          aria-label="资源与项目工具"
           className="resource-activity-rail"
           data-testid="resource-activity-rail"
         >
@@ -242,9 +273,9 @@ export function ResourceActivityDock({
             return (
               <button
                 aria-controls="resource-activity-drawer"
-                aria-expanded={active && drawerOpen}
-                aria-label={`${active && drawerOpen ? '关闭' : '打开'}${activity.label}抽屉`}
-                aria-pressed={active}
+                aria-expanded={active && drawerOpen && !projectToolsOpen}
+                aria-label={`${active && drawerOpen && !projectToolsOpen ? '关闭' : '打开'}${activity.label}抽屉`}
+                aria-pressed={active && !projectToolsOpen}
                 className={active ? 'resource-activity-rail-active' : ''}
                 data-activity={activity.id}
                 data-testid={`resource-activity-rail-${activity.id}`}
@@ -256,6 +287,25 @@ export function ResourceActivityDock({
               </button>
             );
           })}
+          {projectToolsContent ? (
+            <button
+              aria-controls="project-tools-drawer"
+              aria-expanded={projectToolsOpen}
+              aria-label={`${projectToolsOpen ? '关闭' : '打开'}项目工具抽屉`}
+              aria-pressed={projectToolsOpen}
+              className={
+                projectToolsOpen ? 'resource-activity-rail-active' : ''
+              }
+              data-activity="project-tools"
+              data-testid="resource-activity-rail-project-tools"
+              key="project-tools"
+              onClick={selectProjectTools}
+              type="button"
+            >
+              <DecorativeIcon icon={Wrench} size={20} />
+              <strong>项目工具</strong>
+            </button>
+          ) : null}
         </nav>
       ) : (
         <button
@@ -271,11 +321,20 @@ export function ResourceActivityDock({
           <strong>资源</strong>
         </button>
       )}
-      <div
-        className="resource-activity-surface"
-        data-testid="resource-activity-drawer"
-        id="resource-activity-drawer"
-      >
+      {projectToolsOpen && projectToolsContent ? (
+        <div
+          className="resource-activity-surface project-tools-activity-surface"
+          data-testid="project-tools-drawer-surface"
+          id="project-tools-drawer"
+        >
+          {projectToolsContent}
+        </div>
+      ) : (
+        <div
+          className="resource-activity-surface"
+          data-testid="resource-activity-drawer"
+          id="resource-activity-drawer"
+        >
         {!collapseLandscapeCharacterDetailHeader ? (
           <div className="resource-activity-header">
           <div className="resource-activity-heading">
@@ -467,7 +526,8 @@ export function ResourceActivityDock({
             </div>
           ) : null}
         </div>
-      </div>
+        </div>
+      )}
     </section>
   );
 }

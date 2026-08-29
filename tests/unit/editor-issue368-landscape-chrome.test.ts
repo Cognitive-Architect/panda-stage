@@ -81,14 +81,16 @@ describe('Issue #368 landscape editor chrome', () => {
   it('uses icon-over-label controls and restrained landscape selection styling', () => {
     const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
     const left = source('src/renderer/shell/LeftWorkspace.tsx');
+    const projectTools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
     const styles = source('src/renderer/styles.css');
 
     for (const icon of ['Clapperboard', 'Images', 'Smile']) {
       expect(dock).toContain(icon);
     }
     expect(dock).toContain('DecorativeIcon icon={activity.icon}');
-    expect(left).toContain('DecorativeIcon icon={Wrench}');
-    expect(left).toContain('data-testid="landscape-project-tools"');
+    expect(dock).toContain('DecorativeIcon icon={Wrench}');
+    expect(left).toContain('<ProjectToolsDrawer');
+    expect(projectTools).toContain('data-testid="project-tools-action-preset-card"');
     expect(styles).toContain('Issue #368');
     expect(styles).toContain('writing-mode: horizontal-tb;');
     expect(styles).toContain('background: rgb(45 104 62 / 28%);');
