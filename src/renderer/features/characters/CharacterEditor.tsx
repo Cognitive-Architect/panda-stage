@@ -107,6 +107,10 @@ export function CharacterEditor({
 
   const landscapeDetail =
     presentation === 'landscape' && view === 'detail';
+  const landscapeExpression =
+    presentation === 'landscape' && view === 'expression';
+  const landscapeCharacterNavigation =
+    landscapeDetail || landscapeExpression;
 
   const adjustScale = (delta: number): void => {
     setScale((current) =>
@@ -148,7 +152,7 @@ export function CharacterEditor({
 
   return (
     <article
-      className="character-editor"
+      className={`character-editor${view === 'expression' ? ' character-expression-view' : ''}`}
       data-character-editor-id={character.id}
       data-character-editor-presentation={presentation}
       data-testid={
@@ -159,18 +163,26 @@ export function CharacterEditor({
             : undefined
       }
     >
-      {landscapeDetail ? (
+      {landscapeCharacterNavigation ? (
         <div className="character-detail-navigation">
           <button
             className="character-back-button"
-            data-testid="character-detail-back"
-            onClick={onBackToList}
+            data-testid={
+              landscapeExpression
+                ? 'character-expression-back'
+                : 'character-detail-back'
+            }
+            onClick={
+              landscapeExpression ? onBackToDetail : onBackToList
+            }
             type="button"
           >
-            ← 角色列表
+            {landscapeExpression ? '← 返回角色详情' : '← 角色列表'}
           </button>
           <strong className="character-detail-navigation-title">
-            {character.name}
+            {landscapeExpression
+              ? `${character.name} · 表情管理`
+              : character.name}
           </strong>
           <button
             aria-label="关闭角色抽屉"
@@ -632,6 +644,7 @@ export function CharacterEditor({
           onSetAsset={onSetExpressionAsset}
           onSetDefault={onSetDefaultExpression}
           onThumbnailError={onThumbnailError}
+          presentation={presentation}
           thumbnails={thumbnails}
           warnings={warnings}
         />

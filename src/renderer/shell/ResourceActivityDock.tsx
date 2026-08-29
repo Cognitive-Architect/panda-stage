@@ -155,7 +155,7 @@ export function ResourceActivityDock({
   const collapseLandscapeCharacterDetailHeader =
     landscapePresentation &&
     activeActivity === 'characters' &&
-    characterView === 'detail';
+    (characterView === 'detail' || characterView === 'expression');
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
