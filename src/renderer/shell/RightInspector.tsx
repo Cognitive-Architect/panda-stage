@@ -321,7 +321,8 @@ export function RightInspector({
     dialogueSelectionStore.getSelectedDialogueId,
   );
   const landscapePresentation = shellMode === 'landscape';
-  const compactSections = compact === true || landscapePresentation;
+  const compactPresentation = compact === true || landscapePresentation;
+  const compactSections = compactPresentation;
   const dialogueMode = Boolean(
     selectedDialogueId && dialogueSelectionVisible,
   );
@@ -344,7 +345,11 @@ export function RightInspector({
   );
   const selectionTypeLabel = compact
     ? getPortraitLayerTypeLabel(layerSummary.typeLabel)
-    : layerSummary.typeLabel;
+    : landscapePresentation
+      ? selection.state === 'background'
+        ? '背景'
+        : getPortraitLayerTypeLabel(layerSummary.typeLabel)
+      : layerSummary.typeLabel;
   const selectionThumbnail = useRightInspectorThumbnail(
     snapshot,
     layerSummary.asset,
@@ -424,7 +429,7 @@ export function RightInspector({
   const inspectorHeading = (
     <div className="right-inspector-heading">
       <h2 id="right-inspector-heading">{dialogueMode ? '字幕' : '属性'}</h2>
-      {compact && !dialogueMode ? (
+      {(compact || landscapePresentation) && !dialogueMode ? (
         <button
           aria-label="关闭属性"
           className="right-inspector-heading-close"
@@ -521,7 +526,7 @@ export function RightInspector({
       {inspectorSelection}
       {landscapeEmptyState ? null : (
         <>
-          {!portraitEmptyState && compact === true ? (
+          {!portraitEmptyState && compactPresentation ? (
             <PortraitPropertiesSections
               backgroundLayerSelected={selection.state === 'background'}
             />
@@ -640,15 +645,17 @@ export function RightInspector({
             id="right-inspector-drawer"
           >
             {!compact ? (
-              <button
-                aria-label={`关闭${inspectorModeLabel}`}
-                className="inspector-drawer-close"
-                data-testid="inspector-drawer-close"
-                onClick={() => setDrawerOpen(false)}
-                type="button"
-              >
-                关闭
-              </button>
+              landscapePresentation && !dialogueMode ? null : (
+                <button
+                  aria-label={`关闭${inspectorModeLabel}`}
+                  className="inspector-drawer-close"
+                  data-testid="inspector-drawer-close"
+                  onClick={() => setDrawerOpen(false)}
+                  type="button"
+                >
+                  关闭
+                </button>
+              )
             ) : null}
             {inspectorContent}
           </div>
