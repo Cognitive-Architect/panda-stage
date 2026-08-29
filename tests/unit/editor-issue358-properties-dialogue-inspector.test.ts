@@ -69,7 +69,10 @@ describe('Issue #358 portrait Properties dialogue inspector', () => {
 
   it('limits the visual recomposition to Cloud Touch portrait Properties', () => {
     const styles = source('src/renderer/styles.css');
-    const issue358 = styles.slice(styles.lastIndexOf('/* Issue #358:'));
+    const issue358 = styles.slice(
+      styles.lastIndexOf('/* Issue #358:'),
+      styles.indexOf('/* Issue #368:'),
+    );
 
     expect(issue358).toContain(
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']",

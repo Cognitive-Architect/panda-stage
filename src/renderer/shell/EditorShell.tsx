@@ -1056,7 +1056,7 @@ export function EditorShell({
               hidden={!portraitCanvasVisible}
             >
               <CanvasWorkspace
-                showHeading={!isPortrait}
+                showHeading={false}
                 showToolbar={canvasToolbarVisible}
               />
             </div>
@@ -1091,7 +1091,7 @@ export function EditorShell({
           <BottomWorkspace
             hidden={isPortrait && portraitWorkspace !== 'timeline'}
             presentation={layoutMode}
-            showHistoryControls={!isPortrait}
+            showHistoryControls={false}
           />
           {productPreviewOpen ? (
             <ProductPreviewOverlay

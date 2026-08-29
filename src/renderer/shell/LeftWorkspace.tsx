@@ -4,6 +4,8 @@ import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
 import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
+import { Wrench } from 'lucide-react';
+import { DecorativeIcon } from '../ui';
 
 export interface LeftWorkspaceProps {
   projectSnapshot: EditorProjectSnapshot;
@@ -68,7 +70,10 @@ export function LeftWorkspace({
           className="landscape-project-tools"
           data-testid="landscape-project-tools"
         >
-          <summary>项目工具</summary>
+          <summary>
+            <DecorativeIcon icon={Wrench} size={20} />
+            <span>项目工具</span>
+          </summary>
           <div className="landscape-project-tools-body">
             {projectUtilities}
           </div>

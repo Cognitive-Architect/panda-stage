@@ -127,7 +127,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
       "setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none')",
     );
     expect(shell).toContain(
-      '<CanvasWorkspace\n                showHeading={!isPortrait}\n                showToolbar={canvasToolbarVisible}',
+      '<CanvasWorkspace\n                showHeading={false}\n                showToolbar={canvasToolbarVisible}',
     );
     expect(shell).toContain('hidden={isPortrait');
     expect(shell).toContain('aria-hidden={');

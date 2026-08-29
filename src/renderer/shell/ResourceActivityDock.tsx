@@ -9,7 +9,15 @@ import type {
   ShotEditorPresentation,
   ShotWorkspaceView,
 } from '../features/shots/ShotManager';
-import { CirclePlus, FileArchive, Upload } from 'lucide-react';
+import {
+  Clapperboard,
+  CirclePlus,
+  FileArchive,
+  Images,
+  Smile,
+  Upload,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { DecorativeIcon } from '../ui';
 
 export type ResourceActivity = 'shots' | 'assets' | 'characters';
@@ -36,10 +44,11 @@ export interface ResourceActivityDockProps {
 const ACTIVITIES: readonly {
   id: ResourceActivity;
   label: string;
+  icon: LucideIcon;
 }[] = [
-  { id: 'shots', label: '镜头' },
-  { id: 'assets', label: '素材' },
-  { id: 'characters', label: '角色' },
+  { id: 'shots', label: '镜头', icon: Clapperboard },
+  { id: 'assets', label: '素材', icon: Images },
+  { id: 'characters', label: '角色', icon: Smile },
 ];
 
 export function isNarrowViewport(): boolean {
@@ -242,6 +251,7 @@ export function ResourceActivityDock({
                 onClick={() => selectActivity(activity.id)}
                 type="button"
               >
+                <DecorativeIcon icon={activity.icon} size={20} />
                 <strong>{activity.label}</strong>
               </button>
             );

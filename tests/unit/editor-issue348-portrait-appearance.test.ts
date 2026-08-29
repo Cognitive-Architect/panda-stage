@@ -74,7 +74,10 @@ describe('Issue #348 portrait Properties Appearance refinement', () => {
 
   it('scopes appearance hierarchy and enabled primary styling to portrait Cloud Touch', () => {
     const styles = source('src/renderer/styles.css');
-    const issue348Styles = styles.slice(styles.indexOf('/* Issue #348:'));
+    const issue348Styles = styles.slice(
+      styles.indexOf('/* Issue #348:'),
+      styles.indexOf('/* Issue #368:'),
+    );
 
     expect(issue348Styles).toContain(
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']",

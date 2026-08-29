@@ -73,7 +73,10 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
 
   it('limits the visual redesign to Cloud Touch portrait Timeline and preserves touch targets', () => {
     const styles = source('src/renderer/styles.css');
-    const issue351 = styles.slice(styles.indexOf('/* Issue #351:'));
+    const issue351 = styles.slice(
+      styles.indexOf('/* Issue #351:'),
+      styles.indexOf('/* Issue #368:'),
+    );
     const portraitScope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
 

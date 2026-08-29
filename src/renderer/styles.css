@@ -232,6 +232,18 @@ button:disabled {
   white-space: nowrap;
 }
 
+.compact-project-path-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .compact-project-path code {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -15057,4 +15069,207 @@ h1 {
 .expression-editor-landscape .expression-unscoped-warning strong {
   color: #f1d39a;
   font-size: 10px;
+}
+
+/* Issue #368: LANDSCAPE-A7 keeps the editor chrome quiet and groups the
+   existing owners into one touch-friendly visual language. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-bar {
+  gap: 10px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-identity {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-details {
+  gap: 0;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls {
+  gap: 6px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact'] {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  align-items: center;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions
+  button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 9px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions
+  > span,
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  > output {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  > button {
+  display: grid;
+  width: 52px;
+  min-height: 72px;
+  padding: 8px 3px;
+  align-content: center;
+  gap: 4px;
+  border-color: rgb(127 199 148 / 24%);
+  color: #a9c5b0;
+  background: rgb(20 32 25 / 88%);
+  box-shadow: none;
+  place-items: center;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  > button
+  > .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  > button
+  > strong {
+  color: currentColor;
+  font-size: 10px;
+  line-height: 1.15;
+  writing-mode: horizontal-tb;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  > button:hover:not(:disabled),
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  > button:focus-visible,
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  > button.resource-activity-rail-active {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #d8f2df;
+  background: rgb(45 104 62 / 28%);
+  box-shadow: inset 0 0 0 1px rgb(131 211 154 / 10%),
+    0 0 14px rgb(131 211 154 / 8%);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .landscape-project-tools
+  > summary {
+  display: grid;
+  width: 52px;
+  min-height: 72px;
+  padding: 8px 3px;
+  align-content: center;
+  gap: 4px;
+  border-color: rgb(127 199 148 / 24%);
+  color: #a9c5b0;
+  background: rgb(20 32 25 / 88%);
+  place-items: center;
+  writing-mode: horizontal-tb;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .landscape-project-tools
+  > summary
+  > .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .landscape-project-tools
+  > summary
+  > span {
+  color: currentColor;
+  font-size: 10px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .landscape-project-tools[open]
+  > summary,
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .landscape-project-tools
+  > summary:hover,
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .landscape-project-tools
+  > summary:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #d8f2df;
+  background: rgb(45 104 62 / 28%);
+  box-shadow: inset 0 0 0 1px rgb(131 211 154 / 10%),
+    0 0 14px rgb(131 211 154 / 8%);
 }

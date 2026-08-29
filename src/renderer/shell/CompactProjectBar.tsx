@@ -39,7 +39,8 @@ const SAVE_STATE_LABELS: Record<CompactProjectSaveState, string> = {
   failed: '保存失败',
 };
 
-const PORTRAIT_QUIET_STATUS_MESSAGES = new Set([
+const QUIET_STATUS_MESSAGES = new Set([
+  'Ready',
   '项目已打开，暂无未保存更改。',
   '已从最近项目打开，暂无未保存更改。',
   '新项目已创建并打开，暂无未保存更改。',
@@ -48,6 +49,7 @@ const PORTRAIT_QUIET_STATUS_MESSAGES = new Set([
   '已打开项目文件夹。',
   '项目已保存。',
   '已取消关闭，当前项目保持打开。',
+  '已忽略本次恢复内容，恢复文件仍保留。',
 ]);
 
 export function CompactProjectBar({
@@ -96,7 +98,7 @@ export function CompactProjectBar({
     saveState === 'saved' ? 'clean-state' : 'dirty-state';
   const isPortrait = presentation === 'portrait';
   const showFeedback =
-    !isPortrait || !PORTRAIT_QUIET_STATUS_MESSAGES.has(status);
+    Boolean(status.trim()) && !QUIET_STATUS_MESSAGES.has(status.trim());
 
   return (
     <PanelSurface
@@ -107,20 +109,10 @@ export function CompactProjectBar({
       data-testid="compact-project-bar"
     >
       <div className="compact-project-identity">
-        {!isPortrait ? (
-          <Button
-            variant="secondary"
-            className="compact-project-center-button task4-hit-target"
-            data-task4-core="project-center"
-            data-testid="open-project-center"
-            disabled={busy || closeConfirmOpen}
-            onClick={onOpenProjectCenter}
-            type="button"
-          >
-            项目中心
-          </Button>
-        ) : null}
-        <div className="compact-project-details">
+        <div
+          className="compact-project-details"
+          title={!isPortrait ? projectSnapshot.projectRoot : undefined}
+        >
           <strong
             className="compact-project-name"
             title={projectSnapshot.project.name}
@@ -129,9 +121,9 @@ export function CompactProjectBar({
           </strong>
           {!isPortrait ? (
             <span
-              className="compact-project-path"
+              aria-label="Project path"
+              className="compact-project-path-visually-hidden"
               data-testid="active-project-path"
-              title={projectSnapshot.projectRoot}
             >
               <code>{projectSnapshot.projectRoot}</code>
             </span>
@@ -140,12 +132,13 @@ export function CompactProjectBar({
       </div>
 
       <div className="compact-project-controls recovery-status-row">
+        <HistoryControls presentation="compact" />
         {!isPortrait || saveState !== 'saved' ? (
           <span
             aria-live="polite"
             className={`compact-project-save-state compact-project-save-state-${saveState} ${saveStateSemanticClass}`}
             data-testid="project-save-state"
-            title={status}
+            title={showFeedback ? status : undefined}
           >
             {saveStateLabel}
           </span>
@@ -160,7 +153,6 @@ export function CompactProjectBar({
             {status}
           </output>
         ) : null}
-        {isPortrait ? <HistoryControls presentation="compact" /> : null}
         <Button
           variant="primary"
           aria-label="保存整个项目"
@@ -199,7 +191,7 @@ export function CompactProjectBar({
               <Button
                 variant="secondary"
                 className="task4-hit-target"
-                data-task4-core="menu-project-center"
+                data-task4-core="project-center"
                 data-testid="menu-open-project-center"
                 onClick={() => {
                   closeMenu();

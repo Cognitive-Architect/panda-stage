@@ -56,7 +56,10 @@ describe('Issue #349 portrait Properties Layer refinement', () => {
 
   it('scopes the hierarchy redesign to compact Cloud Touch portrait', () => {
     const styles = source('src/renderer/styles.css');
-    const issue349Styles = styles.slice(styles.lastIndexOf('/* Issue #349:'));
+    const issue349Styles = styles.slice(
+      styles.lastIndexOf('/* Issue #349:'),
+      styles.indexOf('/* Issue #368:'),
+    );
 
     expect(issue349Styles).toContain(
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']",

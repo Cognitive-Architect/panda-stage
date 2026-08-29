@@ -75,7 +75,10 @@ describe('Issue #352 Timeline State B selected untimed subtitle', () => {
 
   it('styles the selected row as a compact, keyboard-usable inline action surface', () => {
     const styles = source('src/renderer/styles.css');
-    const issue352 = styles.slice(styles.indexOf('/* Issue #352:'));
+    const issue352 = styles.slice(
+      styles.indexOf('/* Issue #352:'),
+      styles.indexOf('/* Issue #368:'),
+    );
     const portraitScope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
 

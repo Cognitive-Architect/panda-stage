@@ -62,7 +62,10 @@ describe('Issue #359 portrait Timeline polish', () => {
       'src/renderer/features/timeline/TimelineDock.tsx',
     );
     const styles = source('src/renderer/styles.css');
-    const issue359 = styles.slice(styles.indexOf('/* Issue #359:'));
+    const issue359 = styles.slice(
+      styles.indexOf('/* Issue #359:'),
+      styles.indexOf('/* Issue #368:'),
+    );
     const portraitScope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
 

@@ -226,6 +226,33 @@ async function click(window, selector) {
   );
 }
 
+async function openProjectCenter(window) {
+  const editorOpen = await window.webContents.executeJavaScript(
+    '(() => {' +
+      'if (!document.querySelector(' +
+        JSON.stringify('[data-editor-page="editor"]') +
+      ')) return false;' +
+      'const more = document.querySelector(' +
+        JSON.stringify('[data-testid="compact-project-more"]') +
+      ');' +
+      'if (!(more instanceof HTMLElement)) {' +
+        'throw new Error("Project More menu was not found.");' +
+      '}' +
+      'more.click();' +
+      'return true;' +
+    '})()',
+  );
+  if (!editorOpen) return;
+  await waitFor(
+    window,
+    'document.querySelector(' +
+      JSON.stringify('[data-testid="menu-open-project-center"]') +
+    ')',
+    'Project Center menu entry did not open.',
+  );
+  await click(window, '[data-testid="menu-open-project-center"]');
+}
+
 async function snapshot(window) {
   const script =
     '(() => ({' +
@@ -312,17 +339,7 @@ async function waitForActivity(window, activity) {
 }
 
 async function openProject(window, projectRoot) {
-  await window.webContents.executeJavaScript(
-    '(() => {' +
-      'if (document.querySelector(' +
-        JSON.stringify('[data-editor-page="editor"]') +
-        ')) {' +
-        'document.querySelector(' +
-        JSON.stringify('[data-testid="open-project-center"]') +
-        ').click();' +
-      '}' +
-    '})()',
-  );
+  await openProjectCenter(window);
   await waitFor(
     window,
     'document.querySelector(' +
@@ -352,17 +369,7 @@ async function openProject(window, projectRoot) {
 }
 
 async function requestProjectSwitch(window, projectRoot) {
-  await window.webContents.executeJavaScript(
-    '(() => {' +
-      'if (document.querySelector(' +
-        JSON.stringify('[data-editor-page="editor"]') +
-        ')) {' +
-        'document.querySelector(' +
-        JSON.stringify('[data-testid="open-project-center"]') +
-        ').click();' +
-      '}' +
-    '})()',
-  );
+  await openProjectCenter(window);
   await waitFor(
     window,
     'document.querySelector(' +
@@ -492,6 +499,19 @@ async function verifyIssue81() {
   register(IPC_CHANNELS.RECOVERY_IGNORE, () => ({
     ok: true,
     retained: true,
+  }));
+  register(IPC_CHANNELS.ASSET_THUMBNAIL_READ, (_event, request) => ({
+    ok: true,
+    status: 'missing',
+    assetId: request.assetId,
+  }));
+  register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, (_event, request) => ({
+    ok: false,
+    error: {
+      code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+      message: 'Issue 81 test fixture does not provide canvas image bytes.',
+      assetId: request.assetId,
+    },
   }));
   register(IPC_CHANNELS.ASSET_IMPORT_CHOOSE, (_event, request) => ({
     ok: true,

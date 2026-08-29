@@ -50,6 +50,7 @@ describe('Issue #338 portrait Properties refinement', () => {
     const styles = source('src/renderer/styles.css');
     const issue338Styles = styles.slice(
       styles.lastIndexOf('/* Issue #338:'),
+      styles.indexOf('/* Issue #368:'),
     );
 
     expect(issue338Styles).toContain(

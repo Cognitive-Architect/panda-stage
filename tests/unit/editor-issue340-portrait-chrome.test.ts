@@ -82,7 +82,7 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
     expect(bottom).toContain(
       '{showHistoryControls ? <HistoryControls presentation="bottom" /> : null}',
     );
-    expect(shell).toContain('showHistoryControls={!isPortrait}');
+    expect(shell).toContain('showHistoryControls={false}');
     expect(shell).toContain('presentation={layoutMode}');
     expect(history).toContain('presentation?: HistoryControlsPresentation');
     expect(history).toContain('useHistoryShortcuts(undo, redo)');

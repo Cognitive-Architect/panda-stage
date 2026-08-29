@@ -49,7 +49,10 @@ describe('Issue #347 portrait Properties Transform refinement', () => {
       'src/renderer/features/properties/LayerTransformPanel.tsx',
     );
     const styles = source('src/renderer/styles.css');
-    const issue347Styles = styles.slice(styles.lastIndexOf('/* Issue #347:'));
+    const issue347Styles = styles.slice(
+      styles.lastIndexOf('/* Issue #347:'),
+      styles.indexOf('/* Issue #368:'),
+    );
 
     expect(transform).toContain(
       'layer-transform-control-row layer-transform-position-row',
@@ -78,7 +81,10 @@ describe('Issue #347 portrait Properties Transform refinement', () => {
     );
     const inspector = source('src/renderer/shell/RightInspector.tsx');
     const styles = source('src/renderer/styles.css');
-    const issue347Styles = styles.slice(styles.lastIndexOf('/* Issue #347:'));
+    const issue347Styles = styles.slice(
+      styles.lastIndexOf('/* Issue #347:'),
+      styles.indexOf('/* Issue #368:'),
+    );
 
     for (const icon of ['FlipHorizontal2', 'RotateCcw', 'Check', 'Info']) {
       expect(transform).toContain(icon);
