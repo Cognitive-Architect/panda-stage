@@ -14685,7 +14685,10 @@ h1 {
 .expression-editor-landscape .expression-card-list {
   display: grid;
   min-width: 0;
+  padding: 0;
+  margin: 0;
   gap: 6px;
+  list-style: none;
 }
 
 .expression-editor-landscape .expression-card {

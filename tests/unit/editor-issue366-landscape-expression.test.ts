@@ -71,6 +71,8 @@ describe('Issue #366 Cloud Touch landscape Expression Management', () => {
     expect(markup).toContain('表情管理');
     expect(markup).toContain('＋ 添加表情');
     expect(markup).toContain('data-expression-editor-presentation="landscape"');
+    expect(markup).toContain('class="expression-card-list"');
+    expect(markup).not.toContain('expression-list expression-card-list');
     expect(markup.match(/data-expression-editing="false"/gu)).toHaveLength(
       character.expressions.length,
     );
@@ -225,6 +227,16 @@ describe('Issue #366 Cloud Touch landscape Expression Management', () => {
     expect(legacyMarkup).toContain('class="expression-add-form"');
     expect(legacyMarkup).toContain('图片素材');
     expect(legacyMarkup).not.toContain('expression-editor-landscape');
+
+    const styles = source('src/renderer/styles.css');
+    const landscapeStyles = styles.slice(styles.indexOf('/* Issue #366:'));
+    expect(landscapeStyles).toContain(
+      '.expression-editor-landscape .expression-card-list',
+    );
+    expect(landscapeStyles).toContain('padding: 0;');
+    expect(landscapeStyles).toContain('margin: 0;');
+    expect(landscapeStyles).toContain('list-style: none;');
+    expect(styles).toContain('.resource-activity-panel .expression-list li');
 
     const editor = source(
       'src/renderer/features/characters/CharacterEditor.tsx',

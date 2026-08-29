@@ -445,7 +445,7 @@ function LandscapeExpressionEditor({
           </div>
         </form>
       ) : null}
-      <ul className="expression-list expression-card-list">
+      <ul className="expression-card-list">
         {character.expressions.map((expression) => {
           const asset = imageAssets.find(
             (candidate) => candidate.id === expression.assetId,
