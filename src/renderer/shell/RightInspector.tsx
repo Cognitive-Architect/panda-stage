@@ -148,19 +148,33 @@ function useRightInspectorThumbnail(
   return thumbnail;
 }
 
+export type RightInspectorEmptyStatePresentation = 'portrait' | 'landscape';
+
+export interface RightInspectorEmptyStateProps {
+  /** Reuse the same authoritative empty-selection projection per shell. */
+  presentation?: RightInspectorEmptyStatePresentation;
+}
+
 /**
- * Presentation-only guide for the portrait Properties empty state. Selection
+ * Presentation-only guide for an empty Properties selection. Selection
  * remains owned by selectionStore; this component deliberately has no state
  * or event handlers of its own.
  */
-export function RightInspectorEmptyState(): React.JSX.Element {
+export function RightInspectorEmptyState({
+  presentation = 'portrait',
+}: RightInspectorEmptyStateProps = {}): React.JSX.Element {
+  const landscape = presentation === 'landscape';
+
   return (
     <section
       aria-describedby="right-inspector-empty-state-description"
       aria-labelledby="right-inspector-empty-state-title"
       aria-live="polite"
-      className="right-inspector-selection right-inspector-selection-empty"
+      className={`right-inspector-selection right-inspector-selection-empty${
+        landscape ? ' right-inspector-selection-empty-landscape' : ''
+      }`}
       data-selection-state="empty"
+      data-empty-state-presentation={presentation}
       data-testid="right-inspector-selection"
     >
       <div
@@ -179,38 +193,42 @@ export function RightInspectorEmptyState(): React.JSX.Element {
         </div>
         <div className="right-inspector-empty-state-copy">
           <h3 id="right-inspector-empty-state-title">
-            选择一个对象开始编辑
+            {landscape ? '未选择对象' : '选择一个对象开始编辑'}
           </h3>
           <p id="right-inspector-empty-state-description">
-            点击上方画布中的角色、图片或背景，即可调整位置、缩放、外观与图层顺序。
+            {landscape
+              ? '点击画布中的角色、图片或其他可编辑对象，这里会显示位置、大小和图层设置。'
+              : '点击上方画布中的角色、图片或背景，即可调整位置、缩放、外观与图层顺序。'}
           </p>
         </div>
-        <ul
-          aria-label="可编辑属性预览"
-          className="right-inspector-empty-state-capabilities"
-        >
-          <li>
-            <DecorativeIcon icon={Move} size={18} />
-            <div>
-              <strong>变换</strong>
-              <span>位置 / 缩放 / 旋转</span>
-            </div>
-          </li>
-          <li>
-            <DecorativeIcon icon={Palette} size={18} />
-            <div>
-              <strong>外观</strong>
-              <span>透明度 / 背景填充</span>
-            </div>
-          </li>
-          <li>
-            <DecorativeIcon icon={Layers3} size={18} />
-            <div>
-              <strong>图层</strong>
-              <span>顺序 / 锁定 / 删除</span>
-            </div>
-          </li>
-        </ul>
+        {landscape ? null : (
+          <ul
+            aria-label="可编辑属性预览"
+            className="right-inspector-empty-state-capabilities"
+          >
+            <li>
+              <DecorativeIcon icon={Move} size={18} />
+              <div>
+                <strong>变换</strong>
+                <span>位置 / 缩放 / 旋转</span>
+              </div>
+            </li>
+            <li>
+              <DecorativeIcon icon={Palette} size={18} />
+              <div>
+                <strong>外观</strong>
+                <span>透明度 / 背景填充</span>
+              </div>
+            </li>
+            <li>
+              <DecorativeIcon icon={Layers3} size={18} />
+              <div>
+                <strong>图层</strong>
+                <span>顺序 / 锁定 / 删除</span>
+              </div>
+            </li>
+          </ul>
+        )}
       </div>
     </section>
   );
@@ -315,6 +333,8 @@ export function RightInspector({
   );
   const portraitEmptyState =
     compact === true && !dialogueMode && selection.state === 'empty';
+  const landscapeEmptyState =
+    landscapePresentation && !dialogueMode && selection.state === 'empty';
   const backgroundLayerId =
     snapshot?.project.shots.find((candidate) => candidate.id === currentShotId)
       ?.backgroundLayerId ?? '';
@@ -425,6 +445,8 @@ export function RightInspector({
 
   const inspectorSelection = portraitEmptyState ? (
     <RightInspectorEmptyState />
+  ) : landscapeEmptyState ? (
+    <RightInspectorEmptyState presentation="landscape" />
   ) : (
     <section
       aria-live="polite"
@@ -497,44 +519,48 @@ export function RightInspector({
     <>
       {inspectorHeading}
       {inspectorSelection}
-      {!portraitEmptyState && compact === true ? (
-        <PortraitPropertiesSections
-          backgroundLayerSelected={selection.state === 'background'}
-        />
-      ) : (
+      {landscapeEmptyState ? null : (
         <>
-          {!portraitEmptyState && compactSections ? (
-            <div className="right-inspector-compact-sections">
-              <details
-                className="right-inspector-section right-inspector-transform-section"
-                data-testid="right-inspector-transform-section"
-                open
-              >
-                <summary>变换</summary>
-                {transformPanel}
-              </details>
-              <details
-                className="right-inspector-section"
-                data-testid="right-inspector-appearance-section"
-              >
-                <summary>外观</summary>
-                {backgroundPanel}
-              </details>
-              <details
-                className="right-inspector-section"
-                data-testid="right-inspector-layer-section"
-              >
-                <summary>图层</summary>
-                {orderPanel}
-              </details>
-            </div>
-          ) : !portraitEmptyState ? (
+          {!portraitEmptyState && compact === true ? (
+            <PortraitPropertiesSections
+              backgroundLayerSelected={selection.state === 'background'}
+            />
+          ) : (
             <>
-              {backgroundPanel}
-              {transformPanel}
-              {orderPanel}
+              {!portraitEmptyState && compactSections ? (
+                <div className="right-inspector-compact-sections">
+                  <details
+                    className="right-inspector-section right-inspector-transform-section"
+                    data-testid="right-inspector-transform-section"
+                    open
+                  >
+                    <summary>变换</summary>
+                    {transformPanel}
+                  </details>
+                  <details
+                    className="right-inspector-section"
+                    data-testid="right-inspector-appearance-section"
+                  >
+                    <summary>外观</summary>
+                    {backgroundPanel}
+                  </details>
+                  <details
+                    className="right-inspector-section"
+                    data-testid="right-inspector-layer-section"
+                  >
+                    <summary>图层</summary>
+                    {orderPanel}
+                  </details>
+                </div>
+              ) : !portraitEmptyState ? (
+                <>
+                  {backgroundPanel}
+                  {transformPanel}
+                  {orderPanel}
+                </>
+              ) : null}
             </>
-          ) : null}
+          )}
         </>
       )}
     </>
