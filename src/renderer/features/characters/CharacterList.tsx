@@ -131,8 +131,34 @@ export function CharacterList({
                             src={thumbnail.dataUrl}
                           />
                         ) : (
-                          <span aria-hidden="true">
-                            {character.name.trim().charAt(0) || '角'}
+                          <span
+                            aria-label={
+                              thumbnail?.status === 'loading'
+                                ? '加载中'
+                                : thumbnail?.status === 'missing' &&
+                                    thumbnail.reason === 'source'
+                                  ? '源文件缺失'
+                                  : '缩略图缺失'
+                            }
+                            className="character-thumbnail-fallback"
+                            data-thumbnail-fallback={
+                              thumbnail?.status ?? 'missing'
+                            }
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="character-thumbnail-fallback-icon"
+                            >
+                              ▧
+                            </span>
+                            <small>
+                              {thumbnail?.status === 'loading'
+                                ? '加载中'
+                                : thumbnail?.status === 'missing' &&
+                                    thumbnail.reason === 'source'
+                                  ? '源文件缺失'
+                                  : '缩略图缺失'}
+                            </small>
                           </span>
                         )}
                       </span>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   Character,
   CharacterDimensionWarning,
@@ -9,6 +9,43 @@ import { ExpressionEditor } from './ExpressionEditor';
 
 export type CharacterEditorView = 'full' | 'detail' | 'expression';
 export type CharacterEditorPresentation = 'default' | 'landscape';
+
+export function isDefaultTransformPending(
+  character: Pick<Character, 'defaultScale' | 'defaultFlipX'>,
+  scale: number,
+  flipX: boolean,
+): boolean {
+  return (
+    Number.isFinite(scale) &&
+    (scale !== character.defaultScale || flipX !== character.defaultFlipX)
+  );
+}
+
+function CharacterThumbnailFallback({
+  thumbnail,
+}: {
+  thumbnail?: ThumbnailState;
+}): React.JSX.Element {
+  const label =
+    thumbnail?.status === 'loading'
+      ? '加载中'
+      : thumbnail?.status === 'missing' && thumbnail.reason === 'source'
+        ? '源文件缺失'
+        : '缩略图缺失';
+  const state = thumbnail?.status ?? 'missing';
+  return (
+    <span
+      aria-label={label}
+      className="character-thumbnail-fallback"
+      data-thumbnail-fallback={state}
+    >
+      <span aria-hidden="true" className="character-thumbnail-fallback-icon">
+        ▧
+      </span>
+      <small>{label}</small>
+    </span>
+  );
+}
 
 export interface CharacterEditorProps {
   character: Character | null;
@@ -31,6 +68,7 @@ export interface CharacterEditorProps {
   onOpenExpressions?: () => void;
   onBackToDetail?: () => void;
   onBackToList?: () => void;
+  onCloseDrawer?: () => void;
 }
 
 export function CharacterEditor({
@@ -54,11 +92,18 @@ export function CharacterEditor({
   onOpenExpressions = () => undefined,
   onBackToDetail = () => undefined,
   onBackToList = () => undefined,
+  onCloseDrawer = () => undefined,
 }: CharacterEditorProps): React.JSX.Element {
   const [name, setName] = useState(character?.name ?? '');
   const [scale, setScale] = useState(character?.defaultScale ?? 1);
   const [flipX, setFlipX] = useState(character?.defaultFlipX ?? false);
   const [renameOpen, setRenameOpen] = useState(false);
+
+  useEffect(() => {
+    if (!character) return;
+    setScale(character.defaultScale);
+    setFlipX(character.defaultFlipX);
+  }, [character?.defaultFlipX, character?.defaultScale, character?.id]);
 
   const landscapeDetail =
     presentation === 'landscape' && view === 'detail';
@@ -95,6 +140,11 @@ export function CharacterEditor({
   const mouthThumbnail = character.mouthOpenAssetId
     ? thumbnails[character.mouthOpenAssetId]
     : undefined;
+  const hasPendingTransform = isDefaultTransformPending(
+    character,
+    scale,
+    flipX,
+  );
 
   return (
     <article
@@ -118,6 +168,19 @@ export function CharacterEditor({
             type="button"
           >
             ← 角色列表
+          </button>
+          <strong className="character-detail-navigation-title">
+            {character.name}
+          </strong>
+          <button
+            aria-label="关闭角色抽屉"
+            className="resource-activity-close character-detail-close"
+            data-detail-close="true"
+            data-testid="resource-activity-close"
+            onClick={onCloseDrawer}
+            type="button"
+          >
+            ×
           </button>
         </div>
       ) : (
@@ -150,7 +213,9 @@ export function CharacterEditor({
         <>
           <section className="character-detail-identity">
             <div
+              aria-label={`${character.name} 角色预览`}
               className="character-detail-avatar"
+              data-preview-fit="contain"
               data-thumbnail-status={
                 defaultThumbnail?.status ?? 'missing'
               }
@@ -164,9 +229,7 @@ export function CharacterEditor({
                   src={defaultThumbnail.dataUrl}
                 />
               ) : (
-                <span aria-hidden="true">
-                  {character.name.trim().charAt(0) || '角'}
-                </span>
+                <CharacterThumbnailFallback thumbnail={defaultThumbnail} />
               )}
             </div>
             <div className="character-detail-identity-copy">
@@ -381,7 +444,7 @@ export function CharacterEditor({
                           src={thumbnail.dataUrl}
                         />
                       ) : (
-                        <span aria-hidden="true">图</span>
+                        <CharacterThumbnailFallback thumbnail={thumbnail} />
                       )}
                     </div>
                     <strong>{expression.name}</strong>
@@ -391,9 +454,21 @@ export function CharacterEditor({
               })}
             </ul>
           </section>
-          <section className="character-default-presentation">
+          <section
+            className="character-default-presentation"
+            data-default-transform-pending={hasPendingTransform}
+          >
             <div className="character-section-heading">
               <h4>默认表现</h4>
+              {hasPendingTransform ? (
+                <span
+                  aria-live="polite"
+                  className="character-default-pending"
+                  data-testid="character-default-pending"
+                >
+                  ● 未应用
+                </span>
+              ) : null}
             </div>
             <div
               aria-label="默认缩放"
@@ -431,21 +506,38 @@ export function CharacterEditor({
                 <span />
               </span>
             </button>
-            <button
-              className="character-default-apply"
-              disabled={
-                disabled ||
-                !Number.isFinite(scale) ||
-                scale < 0.1 ||
-                scale > 10 ||
-                (scale === character.defaultScale &&
-                  flipX === character.defaultFlipX)
-              }
-              onClick={() => onSetDefaultTransform(scale, flipX)}
-              type="button"
-            >
-              应用默认表现
-            </button>
+            <div className="character-default-action-row">
+              <button
+                className="character-default-apply"
+                data-pending={hasPendingTransform}
+                disabled={
+                  disabled ||
+                  !Number.isFinite(scale) ||
+                  scale < 0.1 ||
+                  scale > 10 ||
+                  !hasPendingTransform
+                }
+                onClick={() => onSetDefaultTransform(scale, flipX)}
+                type="button"
+              >
+                应用默认表现
+              </button>
+              {hasPendingTransform ? (
+                <button
+                  aria-label="还原未应用的默认表现"
+                  className="character-default-revert"
+                  data-testid="character-default-revert"
+                  disabled={disabled}
+                  onClick={() => {
+                    setScale(character.defaultScale);
+                    setFlipX(character.defaultFlipX);
+                  }}
+                  type="button"
+                >
+                  还原
+                </button>
+              ) : null}
+            </div>
           </section>
           <section className="character-mouth-setting-visual">
             <div className="character-section-heading">
@@ -465,15 +557,22 @@ export function CharacterEditor({
                     }
                     src={mouthThumbnail.dataUrl}
                   />
+                ) : character.mouthOpenAssetId ? (
+                  <CharacterThumbnailFallback thumbnail={mouthThumbnail} />
                 ) : (
-                  <span aria-hidden="true">
-                    {character.mouthOpenAssetId ? '图' : '+'}
+                  <span aria-hidden="true" className="character-mouth-empty">
+                    +
                   </span>
                 )}
               </div>
               <div className="character-mouth-copy">
-                <strong>{mouthAsset?.name ?? '未配置'}</strong>
-                <span>张嘴图</span>
+                <strong>
+                  {mouthAsset?.name ??
+                    (character.mouthOpenAssetId
+                      ? '素材不可用'
+                      : '未配置 · 张嘴图')}
+                </strong>
+                {character.mouthOpenAssetId ? <span>张嘴图</span> : null}
               </div>
               <details className="character-mouth-picker">
                 <summary>

@@ -39,6 +39,8 @@ export interface CharacterManagerProps {
   hideHeading?: boolean;
   /** Apply visual-first Character presentation without changing its owners. */
   presentation?: CharacterManagerPresentation;
+  /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
+  onCloseDrawer?: () => void;
 }
 
 export function CharacterManager({
@@ -47,6 +49,7 @@ export function CharacterManager({
   onViewChange = () => undefined,
   hideHeading = false,
   presentation = 'default',
+  onCloseDrawer = () => undefined,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] =
@@ -372,6 +375,7 @@ export function CharacterManager({
           warnings={warnings}
           onBackToDetail={() => onViewChange('detail')}
           onBackToList={() => onViewChange('list')}
+          onCloseDrawer={onCloseDrawer}
           onOpenExpressions={() => onViewChange('expression')}
           />
         ) : null}

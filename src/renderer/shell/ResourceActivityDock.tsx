@@ -152,6 +152,10 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     (characterView === 'detail' || characterView === 'expression');
+  const collapseLandscapeCharacterDetailHeader =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    characterView === 'detail';
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
@@ -200,9 +204,15 @@ export function ResourceActivityDock({
 
   return (
     <section
-      aria-label={hidePortraitShotChrome ? activeLabel : undefined}
+      aria-label={
+        hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
+          ? activeLabel
+          : undefined
+      }
       aria-labelledby={
-        hidePortraitShotChrome ? undefined : 'resource-activity-heading'
+        hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
+          ? undefined
+          : 'resource-activity-heading'
       }
       className={`resource-activity-dock${drawerOpen ? ' resource-activity-dock-open' : ''}${landscapePresentation ? ' resource-activity-dock-landscape' : ''}`}
       data-resource-drawer-open={drawerOpen}
@@ -256,7 +266,8 @@ export function ResourceActivityDock({
         data-testid="resource-activity-drawer"
         id="resource-activity-drawer"
       >
-        <div className="resource-activity-header">
+        {!collapseLandscapeCharacterDetailHeader ? (
+          <div className="resource-activity-header">
           <div className="resource-activity-heading">
             {hidePortraitShotChrome ? null : (
               <div>
@@ -379,7 +390,8 @@ export function ResourceActivityDock({
               ))}
             </nav>
           )}
-        </div>
+          </div>
+        ) : null}
         <div className="resource-activity-body">
           <div
             aria-live="polite"
@@ -435,6 +447,7 @@ export function ResourceActivityDock({
                 }
                 snapshot={snapshot}
                 view={characterView}
+                onCloseDrawer={() => setDrawerOpen(false)}
               />
             )}
           </div>
