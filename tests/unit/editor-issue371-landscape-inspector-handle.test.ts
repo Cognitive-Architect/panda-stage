@@ -30,8 +30,8 @@ describe('Issue #371 Cloud Touch landscape inspector handle', () => {
   it('preserves the existing focus return and non-mutation ownership paths', () => {
     expect(inspector).toContain('drawerRef.current?.focus()');
     expect(inspector).toContain('railRef.current?.focus()');
-    expect(inspector).toContain('window.requestAnimationFrame');
-    expect(inspector).toContain('window.cancelAnimationFrame');
+    expect(inspector).toContain('window.setTimeout');
+    expect(inspector).toContain('window.clearTimeout');
     expect(inspector).toContain('editorProjectStore.getSnapshot');
     expect(inspector).not.toContain('editorProjectStore.update');
     expect(inspector).not.toContain('editorProjectStore.replace');

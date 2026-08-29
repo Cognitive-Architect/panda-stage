@@ -34,6 +34,7 @@ import {
 // stable selector. Keep the selector as a non-visual alias on the real
 // inspector so the receipt can migrate without introducing a second surface.
 const LEGACY_REGION_TEST_ID = ['right-inspector', 'placeholder'].join('-');
+const INSPECTOR_DRAWER_FOCUS_FALLBACK_DELAY_MS = 150;
 
 export type RightInspectorSelectionState =
   | 'empty'
@@ -378,24 +379,25 @@ export function RightInspector({
   // without this, focus would strand on a visibility:hidden element.
   useEffect(() => {
     if (!narrow) return;
-    let focusFrame: number | undefined;
+    let focusTimer: number | undefined;
     if (drawerOpen && !prevDrawerOpenRef.current) {
       drawerRef.current?.focus();
       const drawer = drawerRef.current;
-      // The drawer becomes visible in the same commit as this effect. If the
-      // browser still observes its pre-commit hidden state, retry after the
-      // next paint so focus does not fall through to document.body.
+      // The drawer becomes visible through a short CSS transition in the same
+      // commit as this effect. If the browser still observes its pre-transition
+      // hidden state, retry after the transition so focus does not fall through
+      // to document.body.
       if (drawer && document.activeElement !== drawer) {
-        focusFrame = window.requestAnimationFrame(() => {
+        focusTimer = window.setTimeout(() => {
           if (drawerOpen && drawerRef.current === drawer) drawer.focus();
-        });
+        }, INSPECTOR_DRAWER_FOCUS_FALLBACK_DELAY_MS);
       }
     } else if (!drawerOpen && prevDrawerOpenRef.current) {
       railRef.current?.focus();
     }
     prevDrawerOpenRef.current = drawerOpen;
     return () => {
-      if (focusFrame !== undefined) window.cancelAnimationFrame(focusFrame);
+      if (focusTimer !== undefined) window.clearTimeout(focusTimer);
     };
   }, [drawerOpen, narrow]);
 
