@@ -47,6 +47,60 @@ export interface LayerOrderControlsProps {
   compact?: boolean;
   backgroundLayerSelected?: boolean;
   showLockControl?: boolean;
+  presentation?: 'portrait' | 'landscape';
+}
+
+export function isLayerOrderActionDisabled(
+  action: LayerOrderAction,
+  orderIndex: number,
+  total: number,
+  controlsDisabled: boolean,
+): boolean {
+  if (controlsDisabled || orderIndex < 0 || total <= 0) return true;
+  return action === 'forward' || action === 'front'
+    ? orderIndex >= total - 1
+    : orderIndex <= 0;
+}
+
+export function getLayerLockLabel(
+  locked: boolean,
+  presentation: 'portrait' | 'landscape' = 'portrait',
+): string {
+  if (locked) return '图层已锁定';
+  return presentation === 'landscape' ? '未锁定' : '锁定图层';
+}
+
+export function getLayerLockAriaLabel(
+  locked: boolean,
+  presentation: 'portrait' | 'landscape' = 'portrait',
+): string {
+  if (locked) return '图层已锁定';
+  return presentation === 'landscape' ? '图层未锁定' : '锁定图层';
+}
+
+export function getLayerDeleteDescription(
+  presentation: 'portrait' | 'landscape' = 'portrait',
+): string {
+  return presentation === 'landscape'
+    ? '从当前镜头中移除'
+    : '此操作会从当前镜头中移除此图层。';
+}
+
+export function getLayerOrderSuccessStatus(
+  presentation: 'portrait' | 'landscape' = 'portrait',
+): string {
+  return presentation === 'landscape'
+    ? '已调整层级。'
+    : '图层顺序已写入项目并同步画布。';
+}
+
+export function getLayerDeleteSuccessStatus(
+  layerName: string,
+  presentation: 'portrait' | 'landscape' = 'portrait',
+): string {
+  return presentation === 'landscape'
+    ? '已删除图层。'
+    : `已删除图层“${layerName}”并清理选择。`;
 }
 
 export function formatLayerOrderPosition(
@@ -63,6 +117,7 @@ export function LayerOrderControls({
   compact = false,
   backgroundLayerSelected,
   showLockControl = false,
+  presentation = 'portrait',
 }: LayerOrderControlsProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -103,7 +158,7 @@ export function LayerOrderControls({
     try {
       layerStore.deleteLayer(layer.id);
       selectionStore.clear();
-      setStatus(`已删除图层“${layer.name}”并清理选择。`);
+      setStatus(getLayerDeleteSuccessStatus(layer.name, presentation));
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : '图层删除失败。',
@@ -129,6 +184,17 @@ export function LayerOrderControls({
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  useEffect(() => {
+    if (presentation === 'landscape') setStatus('');
+  }, [
+    isBackgroundLayer,
+    layer?.id,
+    layer?.locked,
+    presentation,
+    selectedLayerId,
+    shotId,
+  ]);
+
   const reorder = (action: LayerOrderAction): void => {
     if (!layer) return;
     if (isBackgroundLayer) {
@@ -137,7 +203,7 @@ export function LayerOrderControls({
     }
     try {
       layerStore.reorder(layer.id, action);
-      setStatus('图层顺序已写入项目并同步画布。');
+      setStatus(getLayerOrderSuccessStatus(presentation));
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : '图层排序失败。',
@@ -163,7 +229,6 @@ export function LayerOrderControls({
     orderedContent.length,
     isBackgroundLayer,
   );
-  const orderingDisabled = disabled || orderIndex < 0;
 
   if (compact) {
     return (
@@ -171,6 +236,7 @@ export function LayerOrderControls({
         className="layer-order-controls"
         data-background-protected={String(isBackgroundLayer)}
         data-compact="true"
+        data-presentation={presentation}
         data-testid="layer-order-controls"
       >
         {isBackgroundLayer ? (
@@ -217,9 +283,12 @@ export function LayerOrderControls({
             <div className="layer-order-actions">
               <button
                 aria-label="上移"
-                disabled={
-                  orderingDisabled || orderIndex >= orderedContent.length - 1
-                }
+                disabled={isLayerOrderActionDisabled(
+                  'forward',
+                  orderIndex,
+                  orderedContent.length,
+                  disabled,
+                )}
                 onClick={() => reorder('forward')}
                 type="button"
               >
@@ -230,7 +299,12 @@ export function LayerOrderControls({
               </button>
               <button
                 aria-label="下移"
-                disabled={orderingDisabled || orderIndex <= 0}
+                disabled={isLayerOrderActionDisabled(
+                  'backward',
+                  orderIndex,
+                  orderedContent.length,
+                  disabled,
+                )}
                 onClick={() => reorder('backward')}
                 type="button"
               >
@@ -241,9 +315,12 @@ export function LayerOrderControls({
               </button>
               <button
                 aria-label="置顶"
-                disabled={
-                  orderingDisabled || orderIndex >= orderedContent.length - 1
-                }
+                disabled={isLayerOrderActionDisabled(
+                  'front',
+                  orderIndex,
+                  orderedContent.length,
+                  disabled,
+                )}
                 onClick={() => reorder('front')}
                 type="button"
               >
@@ -254,7 +331,12 @@ export function LayerOrderControls({
               </button>
               <button
                 aria-label="置底"
-                disabled={orderingDisabled || orderIndex <= 0}
+                disabled={isLayerOrderActionDisabled(
+                  'back',
+                  orderIndex,
+                  orderedContent.length,
+                  disabled,
+                )}
                 onClick={() => reorder('back')}
                 type="button"
               >
@@ -271,7 +353,10 @@ export function LayerOrderControls({
                 <button
                   aria-checked={Boolean(layer?.locked)}
                   aria-describedby="layer-lock-state-help"
-                  aria-label={layer?.locked ? '图层已锁定' : '锁定图层'}
+                  aria-label={getLayerLockAriaLabel(
+                    Boolean(layer?.locked),
+                    presentation,
+                  )}
                   className="layer-lock-switch"
                   disabled={!layer}
                   onClick={() => setLock(!layer?.locked)}
@@ -288,7 +373,9 @@ export function LayerOrderControls({
                       icon={layer?.locked ? Lock : Unlock}
                       size={18}
                     />
-                    <span>{layer?.locked ? '图层已锁定' : '锁定图层'}</span>
+                    <span>
+                      {getLayerLockLabel(Boolean(layer?.locked), presentation)}
+                    </span>
                   </span>
                   <span
                     aria-hidden="true"
@@ -309,7 +396,7 @@ export function LayerOrderControls({
               <div className="layer-order-danger-copy">
                 <p className="layer-order-subheading">危险操作</p>
                 <strong>删除当前图层</strong>
-                <span>此操作会从当前镜头中移除此图层。</span>
+                <span>{getLayerDeleteDescription(presentation)}</span>
               </div>
               <button
                 aria-label="删除图层"
@@ -324,13 +411,15 @@ export function LayerOrderControls({
                 </span>
               </button>
             </div>
-            <p data-testid="layer-order-guidance">
-              {layer?.locked
-                ? '排序与删除暂不可用。'
-                : layer
-                  ? '排序操作会影响当前镜头中的普通图层。'
-                  : '请先在画布中选择普通图层。'}
-            </p>
+            {presentation === 'landscape' ? null : (
+              <p data-testid="layer-order-guidance">
+                {layer?.locked
+                  ? '排序与删除暂不可用。'
+                  : layer
+                    ? '排序操作会影响当前镜头中的普通图层。'
+                    : '请先在画布中选择普通图层。'}
+              </p>
+            )}
           </>
         )}
         <output data-testid="layer-order-status">{status}</output>
@@ -342,6 +431,7 @@ export function LayerOrderControls({
     <section
       className="layer-order-controls"
       data-background-protected={String(isBackgroundLayer)}
+      data-presentation={presentation}
       data-testid="layer-order-controls"
     >
       <div>
@@ -350,28 +440,48 @@ export function LayerOrderControls({
       </div>
       <div className="layer-order-actions">
         <button
-          disabled={disabled || orderIndex >= orderedContent.length - 1}
+          disabled={isLayerOrderActionDisabled(
+            'forward',
+            orderIndex,
+            orderedContent.length,
+            disabled,
+          )}
           onClick={() => reorder('forward')}
           type="button"
         >
           上移
         </button>
         <button
-          disabled={disabled || orderIndex <= 0}
+          disabled={isLayerOrderActionDisabled(
+            'backward',
+            orderIndex,
+            orderedContent.length,
+            disabled,
+          )}
           onClick={() => reorder('backward')}
           type="button"
         >
           下移
         </button>
         <button
-          disabled={disabled || orderIndex >= orderedContent.length - 1}
+          disabled={isLayerOrderActionDisabled(
+            'front',
+            orderIndex,
+            orderedContent.length,
+            disabled,
+          )}
           onClick={() => reorder('front')}
           type="button"
         >
           置顶
         </button>
         <button
-          disabled={disabled || orderIndex <= 0}
+          disabled={isLayerOrderActionDisabled(
+            'back',
+            orderIndex,
+            orderedContent.length,
+            disabled,
+          )}
           onClick={() => reorder('back')}
           type="button"
         >

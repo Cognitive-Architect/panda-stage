@@ -68,6 +68,7 @@ export function PortraitPropertiesSections({
           backgroundLayerSelected={backgroundLayerSelected}
           compact
           showLockControl
+          presentation={presentation}
         />
       </details>
     </div>
