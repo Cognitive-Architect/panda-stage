@@ -19,6 +19,9 @@ import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import { formatTimecode, integerFrameSpanMs } from '../timeline/timeGeometry';
+import { isHorizontalPendingTrayGesture } from '../timeline/pendingDialogueDrag';
+
+export { isHorizontalPendingTrayGesture } from '../timeline/pendingDialogueDrag';
 
 /** Keep the Timeline presentation on the same timed/untimed truth as the
  * DialogueClip and DialogueInspector owners. */
@@ -30,27 +33,6 @@ export function isTimedDialogue(
 
 export type DialogueSelectionState = 'none' | 'untimed' | 'timed';
 export type DialogueAuthoringMode = 'none' | 'single' | 'batch';
-
-const PENDING_TRAY_SWIPE_THRESHOLD_PX = 8;
-
-/**
- * Keep a horizontal Pending Tray swipe from being interpreted as a card tap.
- * This is intentionally a presentation/input threshold, not a placement
- * gesture or a second dialogue interaction owner.
- */
-export function isHorizontalPendingTrayGesture(
-  startX: number,
-  startY: number,
-  currentX: number,
-  currentY: number,
-): boolean {
-  const horizontalDistance = Math.abs(currentX - startX);
-  const verticalDistance = Math.abs(currentY - startY);
-  return (
-    horizontalDistance >= PENDING_TRAY_SWIPE_THRESHOLD_PX &&
-    horizontalDistance > verticalDistance
-  );
-}
 
 function isCloudTouchLandscapeTray(element: HTMLElement): boolean {
   return Boolean(
@@ -65,6 +47,34 @@ interface PendingTrayPointerState {
   startX: number;
   startY: number;
   swiping: boolean;
+}
+
+export interface PendingTrayInteractionController {
+  onPointerDown(
+    event: React.PointerEvent<HTMLUListElement>,
+    dialogueId: string | null,
+  ): void;
+  onPointerMove(event: React.PointerEvent<HTMLUListElement>): void;
+  onPointerUp(event: React.PointerEvent<HTMLUListElement>): void;
+  onPointerCancel(event: React.PointerEvent<HTMLUListElement>): void;
+  onClickCapture(event: React.MouseEvent<HTMLUListElement>): void;
+}
+
+export interface DialogueSheetProps {
+  pendingTrayInteraction?: PendingTrayInteractionController;
+  pendingDragDialogueId?: string | null;
+}
+
+function pendingDialogueIdFromTarget(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) return null;
+  const select = target.closest<HTMLElement>(
+    '[data-pending-card-select="true"]',
+  );
+  if (!select) return null;
+  return (
+    select.closest<HTMLElement>('[data-pending-card="true"]')?.dataset
+      .dialogueId ?? null
+  );
 }
 
 export interface DialogueUiState {
@@ -132,7 +142,10 @@ export function getDialogueSheetState(input: {
  * the (projectRoot, shotId) identity, so a Shot A draft can never be committed
  * into Shot B.
  */
-export function DialogueSheet(): React.JSX.Element {
+export function DialogueSheet({
+  pendingTrayInteraction,
+  pendingDragDialogueId = null,
+}: DialogueSheetProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -317,6 +330,13 @@ export function DialogueSheet(): React.JSX.Element {
     event: React.PointerEvent<HTMLUListElement>,
   ): void => {
     if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
+    if (pendingTrayInteraction) {
+      pendingTrayInteraction.onPointerDown(
+        event,
+        pendingDialogueIdFromTarget(event.target),
+      );
+      return;
+    }
     if (event.pointerType === 'mouse' && event.button !== 0) {
       pendingTrayPointerRef.current = null;
       return;
@@ -333,6 +353,10 @@ export function DialogueSheet(): React.JSX.Element {
     event: React.PointerEvent<HTMLUListElement>,
   ): void => {
     if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
+    if (pendingTrayInteraction) {
+      pendingTrayInteraction.onPointerMove(event);
+      return;
+    }
     const gesture = pendingTrayPointerRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId || gesture.swiping) {
       return;
@@ -353,6 +377,10 @@ export function DialogueSheet(): React.JSX.Element {
     event: React.PointerEvent<HTMLUListElement>,
   ): void => {
     if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
+    if (pendingTrayInteraction) {
+      pendingTrayInteraction.onPointerUp(event);
+      return;
+    }
     const gesture = pendingTrayPointerRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (!gesture.swiping) {
@@ -374,6 +402,10 @@ export function DialogueSheet(): React.JSX.Element {
     event: React.PointerEvent<HTMLUListElement>,
   ): void => {
     if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
+    if (pendingTrayInteraction) {
+      pendingTrayInteraction.onPointerCancel(event);
+      return;
+    }
     if (pendingTrayPointerRef.current?.pointerId === event.pointerId) {
       pendingTrayPointerRef.current = null;
     }
@@ -383,6 +415,10 @@ export function DialogueSheet(): React.JSX.Element {
     event: React.MouseEvent<HTMLUListElement>,
   ): void => {
     if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
+    if (pendingTrayInteraction) {
+      pendingTrayInteraction.onClickCapture(event);
+      return;
+    }
     if (!pendingTrayPointerRef.current?.swiping) return;
     event.preventDefault();
     event.stopPropagation();
@@ -715,9 +751,16 @@ export function DialogueSheet(): React.JSX.Element {
                 <li
                   className={`dialogue-untimed-item dialogue-pending-card${
                     selected ? ' selected' : ''
+                  }${
+                    pendingDragDialogueId === dialogue.id
+                      ? ' is-pending-dragging'
+                      : ''
                   }`}
                   data-dialogue-id={dialogue.id}
                   data-pending-card="true"
+                  data-pending-dragging={String(
+                    pendingDragDialogueId === dialogue.id,
+                  )}
                   data-selected={String(selected)}
                   data-testid="dialogue-untimed-item"
                   key={dialogue.id}
@@ -727,6 +770,7 @@ export function DialogueSheet(): React.JSX.Element {
                     aria-pressed={selected}
                     type="button"
                     className="dialogue-untimed-select dialogue-pending-card-select"
+                    data-pending-card-select="true"
                     data-testid="dialogue-untimed-select"
                     onClick={() => handleSelectDialogue(dialogue.id)}
                   >

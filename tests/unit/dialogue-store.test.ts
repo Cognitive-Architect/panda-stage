@@ -171,6 +171,33 @@ describe('DialogueStore', () => {
     });
   });
 
+  it('previews and commits an explicit Timeline start without seeking', () => {
+    const { editor, store, timelineState } = setup(700);
+    const id = store.create(IDS.character, 'dragged subtitle');
+    const beforePreview = editor.getSnapshot()!;
+    const beforeHistory = editor.history.getSnapshot();
+
+    expect(store.previewArrange(id, 42, 1200)).toEqual({
+      ok: true,
+      startMs: 1200,
+      endMs: 1242,
+    });
+    expect(editor.getSnapshot()).toBe(beforePreview);
+    expect(editor.history.getSnapshot()).toEqual(beforeHistory);
+    expect(timelineState.currentTimeMs).toBe(700);
+
+    store.arrange(id, 42, 1200);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 1200,
+      endMs: 1242,
+    });
+    expect(editor.getSnapshot()!.revision).toBe(beforePreview.revision + 1);
+    expect(editor.history.getSnapshot().undoCount).toBe(
+      beforeHistory.undoCount + 1,
+    );
+    expect(timelineState.currentTimeMs).toBe(700);
+  });
+
   it('commits one successful move once without seeking the playhead', () => {
     const { editor, store, timelineState } = setup(1000);
     const id = store.create(IDS.character, 'move once');

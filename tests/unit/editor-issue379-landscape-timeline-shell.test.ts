@@ -40,7 +40,7 @@ describe('Issue #379 Cloud Touch landscape Timeline shell', () => {
     expect(timeline).toContain('data-testid="timeline-ruler"');
     expect(timeline).toContain('data-testid="timeline-track-stack"');
     expect(timeline).toContain('data-testid="timeline-task-tray"');
-    expect(timeline).toContain('<DialogueSheet />');
+    expect(timeline).toContain('<DialogueSheet');
   });
 
   it('keeps exactly the V1 subtitle and audio tracks on the shared time surface', () => {

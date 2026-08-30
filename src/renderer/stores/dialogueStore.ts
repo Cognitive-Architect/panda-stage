@@ -1,5 +1,6 @@
 import {
   DialogueService,
+  type DialogueArrangementTiming,
   type ArrangeDialogueInput,
   type MoveDialogueInput,
   type Project,
@@ -21,6 +22,10 @@ export interface CurrentShotSelection {
 export interface TimelineUiPointTime {
   getSnapshot: () => { currentTimeMs: number };
 }
+
+export type DialogueArrangementPreview =
+  | ({ ok: true } & DialogueArrangementTiming)
+  | { ok: false; message: string };
 
 /**
  * Renderer-side owner for dialogue authoring. It pulls the current shot from the
@@ -109,16 +114,41 @@ export class DialogueStore {
     }
   }
 
-  arrange(dialogueId: string, frameSpanMs: number): void {
+  arrange(dialogueId: string, frameSpanMs: number, startMs?: number): void {
     const { project, shotId } = this.context();
     const input: ArrangeDialogueInput = {
       shotId,
       dialogueId,
       frameSpanMs,
+      ...(startMs === undefined ? {} : { startMs }),
     };
     const next = this.service.arrange(project, input);
     if (next !== project) {
       this.editorStore.updateProject(next, 'Arrange dialogue');
+    }
+  }
+
+  /** Resolve the existing arrangement rule without touching Project/History. */
+  previewArrange(
+    dialogueId: string,
+    frameSpanMs: number,
+    startMs: number,
+  ): DialogueArrangementPreview {
+    try {
+      const { project, shotId } = this.context();
+      const timing = this.service.getArrangementTiming(project, {
+        shotId,
+        dialogueId,
+        frameSpanMs,
+        startMs,
+      });
+      return { ok: true, ...timing };
+    } catch (nextError) {
+      return {
+        ok: false,
+        message:
+          nextError instanceof Error ? nextError.message : '字幕安排失败。',
+      };
     }
   }
 

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -16,23 +17,71 @@ import {
 } from 'lucide-react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
+import { dialogueStore } from '../../stores/dialogueStore';
 import {
   computePixelsPerMs,
   formatTimecode,
   generateRulerTicks,
+  integerFrameSpanMs,
   pxToTime,
   timeToPx,
 } from './timeGeometry';
 import { timelineUiStore, useTimelineUi } from './timelineUiStore';
-import { DialogueSheet } from '../dialogue/DialogueSheet';
+import {
+  DialogueSheet,
+  type PendingTrayInteractionController,
+} from '../dialogue/DialogueSheet';
 import { DialogueClip } from './DialogueClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
+import {
+  isHorizontalPendingTrayGesture,
+  isPendingDialoguePlacementGesture,
+  isPointInsidePendingDropTarget,
+  mapPendingDropXToStartMs,
+} from './pendingDialogueDrag';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
 
 export interface TimelineDockProps {
   presentation?: 'desktop' | 'landscape' | 'portrait';
+}
+
+type PendingDropState = 'outside' | 'invalid' | 'valid';
+
+interface PendingDialogueSource {
+  dialogueId: string;
+  projectRoot: string;
+  shotId: string;
+  characterName: string;
+  text: string;
+  sourceElement: HTMLButtonElement | null;
+}
+
+interface PendingTrayPointerState extends PendingDialogueSource {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  phase: 'pending' | 'swiping' | 'dragging';
+  captureTarget: HTMLUListElement | null;
+}
+
+interface PendingDialogueDragState extends PendingDialogueSource {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  dropState: PendingDropState;
+  mappedStartMs: number | null;
+  previewStartMs: number | null;
+  previewEndMs: number | null;
+  message: string;
+}
+
+const CLOUD_TOUCH_LANDSCAPE_SELECTOR =
+  ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']";
+
+function isCloudTouchLandscapeElement(element: HTMLElement): boolean {
+  return Boolean(element.closest(CLOUD_TOUCH_LANDSCAPE_SELECTOR));
 }
 
 /**
@@ -87,8 +136,19 @@ export function TimelineDock({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const subtitleLaneContentRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const pendingPointerRef = useRef<PendingTrayPointerState | null>(null);
+  const pendingDragRef = useRef<PendingDialogueDragState | null>(null);
+  const suppressPendingClickRef = useRef(false);
+  const suppressPendingClickTimerRef = useRef<number | null>(null);
+  const dropNoticeTimerRef = useRef<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [pendingDrag, setPendingDrag] =
+    useState<PendingDialogueDragState | null>(null);
+  const [pendingDropNotice, setPendingDropNotice] = useState<string | null>(
+    null,
+  );
 
   // Re-measure whenever the ruler actually mounts or unmounts. The ruler only
   // exists when the Timeline is expanded (ui.expanded) and a real shot is
@@ -119,6 +179,404 @@ export function TimelineDock({
   const trackWidth = durationMs * pixelsPerMs;
   const playheadPx = timeToPx(ui.currentTimeMs, pixelsPerMs);
   const ticks = generateRulerTicks(durationMs, pixelsPerMs);
+
+  const publishPendingDrag = useCallback(
+    (next: PendingDialogueDragState | null): void => {
+      pendingDragRef.current = next;
+      setPendingDrag(next);
+    },
+    [],
+  );
+
+  const suppressPendingClick = useCallback((): void => {
+    suppressPendingClickRef.current = true;
+    if (suppressPendingClickTimerRef.current !== null) {
+      window.clearTimeout(suppressPendingClickTimerRef.current);
+    }
+    suppressPendingClickTimerRef.current = window.setTimeout(() => {
+      suppressPendingClickRef.current = false;
+      suppressPendingClickTimerRef.current = null;
+    }, 0);
+  }, []);
+
+  const showPendingDropNotice = useCallback((message: string): void => {
+    setPendingDropNotice(message);
+    if (dropNoticeTimerRef.current !== null) {
+      window.clearTimeout(dropNoticeTimerRef.current);
+    }
+    dropNoticeTimerRef.current = window.setTimeout(() => {
+      setPendingDropNotice(null);
+      dropNoticeTimerRef.current = null;
+    }, 1800);
+  }, []);
+
+  const clearPendingDrag = useCallback((restoreFocus: boolean): void => {
+    const pointer = pendingPointerRef.current;
+    const active = pendingDragRef.current;
+    const captureTarget = pointer?.captureTarget;
+    if (
+      captureTarget &&
+      pointer &&
+      captureTarget.hasPointerCapture(pointer.pointerId)
+    ) {
+      captureTarget.releasePointerCapture(pointer.pointerId);
+    }
+    pendingPointerRef.current = null;
+    pendingDragRef.current = null;
+    setPendingDrag(null);
+    if (restoreFocus) {
+      (active?.sourceElement ?? pointer?.sourceElement)?.focus();
+    }
+  }, []);
+
+  const readPendingDialogueSource = useCallback(
+    (
+      dialogueId: string,
+      sourceElement: HTMLButtonElement | null,
+    ): PendingDialogueSource | null => {
+      const currentSnapshot = editorProjectStore.getSnapshot();
+      const currentId = shotStore.getCurrentShotId();
+      const currentShot = currentSnapshot?.project.shots.find(
+        (candidate) => candidate.id === currentId,
+      );
+      const dialogue = currentShot?.dialogues.find(
+        (candidate) => candidate.id === dialogueId,
+      );
+      if (!currentSnapshot || !currentShot || !dialogue) return null;
+      if (dialogue.endMs !== dialogue.startMs) return null;
+      return {
+        dialogueId,
+        projectRoot: currentSnapshot.projectRoot,
+        shotId: currentShot.id,
+        characterName:
+          currentSnapshot.project.characters.find(
+            (character) => character.id === dialogue.characterId,
+          )?.name ?? dialogue.characterId,
+        text: dialogue.text,
+        sourceElement,
+      };
+    },
+    [],
+  );
+
+  const resolvePendingDrag = useCallback(
+    (
+      source: PendingDialogueSource,
+      pointerId: number,
+      clientX: number,
+      clientY: number,
+    ): PendingDialogueDragState => {
+      const base = {
+        ...source,
+        pointerId,
+        clientX,
+        clientY,
+      };
+      const target = subtitleLaneContentRef.current;
+      if (!hasShot || pixelsPerMs <= 0 || !target) {
+        return {
+          ...base,
+          dropState: 'outside',
+          mappedStartMs: null,
+          previewStartMs: null,
+          previewEndMs: null,
+          message: '当前时间轴不可放置字幕',
+        };
+      }
+      const rect = target.getBoundingClientRect();
+      if (!isPointInsidePendingDropTarget(clientX, clientY, rect)) {
+        return {
+          ...base,
+          dropState: 'outside',
+          mappedStartMs: null,
+          previewStartMs: null,
+          previewEndMs: null,
+          message: '请将字幕拖到字幕轨道',
+        };
+      }
+
+      const mappedStartMs = mapPendingDropXToStartMs(
+        clientX,
+        rect.left,
+        pixelsPerMs,
+        durationMs,
+      );
+      const preview = dialogueStore.previewArrange(
+        source.dialogueId,
+        integerFrameSpanMs(),
+        mappedStartMs,
+      );
+      if (!preview.ok) {
+        return {
+          ...base,
+          dropState: 'invalid',
+          mappedStartMs,
+          previewStartMs: null,
+          previewEndMs: null,
+          message: preview.message,
+        };
+      }
+      return {
+        ...base,
+        dropState: 'valid',
+        mappedStartMs,
+        previewStartMs: preview.startMs,
+        previewEndMs: preview.endMs,
+        message: `可放置于 ${formatTimecode(preview.startMs)}`,
+      };
+    },
+    [durationMs, hasShot, pixelsPerMs],
+  );
+
+  const updatePendingDrag = useCallback(
+    (event: React.PointerEvent<HTMLUListElement>): void => {
+      const pointer = pendingPointerRef.current;
+      if (!pointer || pointer.phase !== 'dragging') return;
+      if (pointer.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      publishPendingDrag(
+        resolvePendingDrag(
+          pointer,
+          pointer.pointerId,
+          event.clientX,
+          event.clientY,
+        ),
+      );
+    },
+    [publishPendingDrag, resolvePendingDrag],
+  );
+
+  const startPendingDrag = useCallback(
+    (
+      event: React.PointerEvent<HTMLUListElement>,
+      pointer: PendingTrayPointerState,
+    ): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        event.currentTarget.setPointerCapture(pointer.pointerId);
+      } catch {
+        return;
+      }
+      pointer.phase = 'dragging';
+      pointer.captureTarget = event.currentTarget;
+      suppressPendingClick();
+      publishPendingDrag(
+        resolvePendingDrag(
+          pointer,
+          pointer.pointerId,
+          event.clientX,
+          event.clientY,
+        ),
+      );
+    },
+    [publishPendingDrag, resolvePendingDrag, suppressPendingClick],
+  );
+
+  const handlePendingPointerDown = useCallback(
+    (
+      event: React.PointerEvent<HTMLUListElement>,
+      dialogueId: string | null,
+    ): void => {
+      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
+      if (pendingPointerRef.current) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (!dialogueId) return;
+      const sourceElement =
+        event.target instanceof Element
+          ? event.target.closest<HTMLButtonElement>(
+              '[data-pending-card-select="true"]',
+            )
+          : null;
+      const source = readPendingDialogueSource(dialogueId, sourceElement);
+      if (!source) return;
+      pendingPointerRef.current = {
+        ...source,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        phase: 'pending',
+        captureTarget: null,
+      };
+    },
+    [readPendingDialogueSource],
+  );
+
+  const handlePendingPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLUListElement>): void => {
+      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
+      const pointer = pendingPointerRef.current;
+      if (!pointer || pointer.pointerId !== event.pointerId) return;
+      if (pointer.phase === 'dragging') {
+        updatePendingDrag(event);
+        return;
+      }
+      if (pointer.phase === 'swiping') return;
+      if (
+        isHorizontalPendingTrayGesture(
+          pointer.startX,
+          pointer.startY,
+          event.clientX,
+          event.clientY,
+        )
+      ) {
+        pointer.phase = 'swiping';
+        return;
+      }
+      if (
+        isPendingDialoguePlacementGesture(
+          pointer.startX,
+          pointer.startY,
+          event.clientX,
+          event.clientY,
+        )
+      ) {
+        startPendingDrag(event, pointer);
+      }
+    },
+    [startPendingDrag, updatePendingDrag],
+  );
+
+  const handlePendingPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLUListElement>): void => {
+      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
+      const pointer = pendingPointerRef.current;
+      if (!pointer || pointer.pointerId !== event.pointerId) return;
+      if (pointer.phase === 'pending') {
+        pendingPointerRef.current = null;
+        return;
+      }
+      if (pointer.phase === 'swiping') {
+        suppressPendingClick();
+        pendingPointerRef.current = null;
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const active = pendingDragRef.current;
+      const validDrop =
+        active?.dropState === 'valid' && active.mappedStartMs !== null;
+      clearPendingDrag(!validDrop);
+      suppressPendingClick();
+      if (!active || !validDrop || active.mappedStartMs === null) {
+        if (active) showPendingDropNotice(active.message);
+        return;
+      }
+
+      const currentSource = readPendingDialogueSource(
+        active.dialogueId,
+        active.sourceElement,
+      );
+      if (
+        !currentSource ||
+        currentSource.projectRoot !== active.projectRoot ||
+        currentSource.shotId !== active.shotId
+      ) {
+        showPendingDropNotice('字幕来源已变化，未提交拖拽');
+        return;
+      }
+      try {
+        dialogueStore.arrange(
+          active.dialogueId,
+          integerFrameSpanMs(),
+          active.mappedStartMs,
+        );
+      } catch (nextError) {
+        showPendingDropNotice(
+          nextError instanceof Error ? nextError.message : '字幕安排失败。',
+        );
+      }
+    },
+    [
+      clearPendingDrag,
+      readPendingDialogueSource,
+      showPendingDropNotice,
+      suppressPendingClick,
+    ],
+  );
+
+  const handlePendingPointerCancel = useCallback(
+    (event: React.PointerEvent<HTMLUListElement>): void => {
+      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
+      const pointer = pendingPointerRef.current;
+      if (!pointer || pointer.pointerId !== event.pointerId) return;
+      if (pointer.phase === 'dragging' || pointer.phase === 'swiping') {
+        event.preventDefault();
+        event.stopPropagation();
+        suppressPendingClick();
+      }
+      clearPendingDrag(true);
+    },
+    [clearPendingDrag, suppressPendingClick],
+  );
+
+  const handlePendingClickCapture = useCallback(
+    (event: React.MouseEvent<HTMLUListElement>): void => {
+      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
+      if (!suppressPendingClickRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      suppressPendingClickRef.current = false;
+      if (suppressPendingClickTimerRef.current !== null) {
+        window.clearTimeout(suppressPendingClickTimerRef.current);
+        suppressPendingClickTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const cancelPendingDrag = useCallback((): void => {
+    const pointer = pendingPointerRef.current;
+    if (!pointer) return;
+    if (pointer.phase === 'dragging' || pointer.phase === 'swiping') {
+      suppressPendingClick();
+    }
+    clearPendingDrag(true);
+  }, [clearPendingDrag, suppressPendingClick]);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || !pendingPointerRef.current) return;
+      event.preventDefault();
+      cancelPendingDrag();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [cancelPendingDrag]);
+
+  useEffect(() => {
+    if (presentation === 'portrait' || presentation === 'desktop') {
+      cancelPendingDrag();
+    }
+  }, [cancelPendingDrag, presentation]);
+
+  useEffect(
+    () => () => {
+      const pointer = pendingPointerRef.current;
+      if (
+        pointer?.captureTarget?.hasPointerCapture(pointer.pointerId)
+      ) {
+        pointer.captureTarget.releasePointerCapture(pointer.pointerId);
+      }
+      if (suppressPendingClickTimerRef.current !== null) {
+        window.clearTimeout(suppressPendingClickTimerRef.current);
+      }
+      if (dropNoticeTimerRef.current !== null) {
+        window.clearTimeout(dropNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const pendingTrayInteraction: PendingTrayInteractionController = {
+    onPointerDown: handlePendingPointerDown,
+    onPointerMove: handlePendingPointerMove,
+    onPointerUp: handlePendingPointerUp,
+    onPointerCancel: handlePendingPointerCancel,
+    onClickCapture: handlePendingClickCapture,
+  };
 
   const seekFromClientX = (clientX: number): void => {
     const track = trackRef.current;
@@ -302,7 +760,14 @@ export function TimelineDock({
                       <span className="timeline-lane-label-text">字幕</span>
                     </span>
                     <div
-                      className="timeline-lane-content"
+                      className={`timeline-lane-content${
+                        pendingDrag ? ' pending-drop-surface' : ''
+                      }`}
+                      data-pending-drop-surface="subtitle"
+                      data-pending-drop-target={
+                        pendingDrag ? pendingDrag.dropState : undefined
+                      }
+                      ref={subtitleLaneContentRef}
                       style={{ width: `${trackWidth}px` }}
                     >
                       <div
@@ -325,7 +790,46 @@ export function TimelineDock({
                             selected={dialogue.id === selectedDialogueId}
                             shotId={shot.id}
                           />
-                        ))}
+                          ))}
+                        {pendingDrag &&
+                        pendingDrag.mappedStartMs !== null ? (
+                          <div
+                            aria-hidden="true"
+                            className="pending-dialogue-drop-marker"
+                            data-testid="pending-dialogue-drop-marker"
+                            style={{
+                              left: `${timeToPx(
+                                pendingDrag.mappedStartMs,
+                                pixelsPerMs,
+                              )}px`,
+                            }}
+                          />
+                        ) : null}
+                        {pendingDrag?.dropState === 'valid' &&
+                        pendingDrag.previewStartMs !== null &&
+                        pendingDrag.previewEndMs !== null ? (
+                          <div
+                            aria-hidden="true"
+                            className="pending-dialogue-drop-preview"
+                            data-end-ms={pendingDrag.previewEndMs}
+                            data-start-ms={pendingDrag.previewStartMs}
+                            data-testid="pending-dialogue-drop-preview"
+                            style={{
+                              left: `${timeToPx(
+                                pendingDrag.previewStartMs,
+                                pixelsPerMs,
+                              )}px`,
+                              width: `${Math.max(
+                                10,
+                                timeToPx(
+                                  pendingDrag.previewEndMs -
+                                    pendingDrag.previewStartMs,
+                                  pixelsPerMs,
+                                ),
+                              )}px`,
+                            }}
+                          />
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -353,6 +857,9 @@ export function TimelineDock({
                     </span>
                     <div
                       className="timeline-lane-content"
+                      data-pending-drop-target={
+                        pendingDrag ? 'not-allowed' : undefined
+                      }
                       style={{ width: `${trackWidth}px` }}
                     >
                       {audioClips.map((clip) => (
@@ -405,13 +912,54 @@ export function TimelineDock({
           </div>
         )
       ) : null}
+      {pendingDrag ? (
+        <div
+          className="timeline-pending-drag-layer"
+          data-testid="timeline-pending-drag-layer"
+        >
+          <div
+            className={`pending-dialogue-drag-ghost pending-dialogue-drag-ghost-${pendingDrag.dropState}`}
+            data-dialogue-id={pendingDrag.dialogueId}
+            data-drop-state={pendingDrag.dropState}
+            data-testid="pending-dialogue-drag-ghost"
+            style={{
+              left: `${pendingDrag.clientX}px`,
+              top: `${pendingDrag.clientY}px`,
+            }}
+          >
+            <span className="pending-dialogue-drag-identity">
+              <strong>{pendingDrag.characterName}</strong>
+              <span> · {pendingDrag.text}</span>
+            </span>
+            <output
+              aria-live="polite"
+              className="pending-dialogue-drag-status"
+              data-testid="pending-dialogue-drop-status"
+            >
+              {pendingDrag.message}
+            </output>
+          </div>
+        </div>
+      ) : null}
+      {pendingDropNotice ? (
+        <div
+          className="timeline-pending-drop-notice"
+          data-testid="timeline-pending-drop-notice"
+          role="status"
+        >
+          {pendingDropNotice}
+        </div>
+      ) : null}
       <section
         aria-label="字幕任务区"
         className="timeline-task-tray"
         data-testid="timeline-task-tray"
         data-timeline-layer="task-tray"
       >
-        <DialogueSheet />
+        <DialogueSheet
+          pendingDragDialogueId={pendingDrag?.dialogueId ?? null}
+          pendingTrayInteraction={pendingTrayInteraction}
+        />
       </section>
     </section>
   );

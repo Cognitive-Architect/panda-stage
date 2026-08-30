@@ -14,7 +14,7 @@ describe('Issue #339 portrait Timeline subtitle task surface', () => {
 
     expect(timeline).toContain('timelineUiStore.seek');
     expect(timeline).toContain('<DialogueClip');
-    expect(timeline).toContain('<DialogueSheet />');
+    expect(timeline).toContain('<DialogueSheet');
     expect(timeline).toContain('data-audio-state=');
     expect(timeline).toContain('laneLabelWidth');
     expect(timeline).toContain('--timeline-lane-label-width');
