@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Layer } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
@@ -228,6 +228,17 @@ export function LayerBackgroundControl({
   const statusCopy = (landscape: string, portrait: string): string =>
     presentation === 'landscape' ? landscape : portrait;
   const landscapeGuidance = getLandscapeBackgroundGuidance(model, status);
+
+  useEffect(() => {
+    if (presentation === 'landscape') setStatus('');
+  }, [
+    currentShotId,
+    model.backgroundLayer?.id,
+    model.backgroundLayer?.locked,
+    model.state,
+    presentation,
+    selectedLayerId,
+  ]);
 
   const selectBackground = (): void => {
     if (!model.canSelect) return;

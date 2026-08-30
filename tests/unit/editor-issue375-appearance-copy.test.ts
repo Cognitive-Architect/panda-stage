@@ -114,6 +114,7 @@ describe('Issue #375 Cloud Touch landscape Appearance copy distillation', () => 
     expect(background).toContain('layerStore.setBackground(selectedLayerId)');
     expect(background).toContain('layerStore.clearBackground()');
     expect(background).toContain('layerStore.fillBackground()');
+    expect(background).toContain("if (presentation === 'landscape') setStatus('');");
     expect(background).toContain('为当前镜头选择或更换正式背景。');
     expect(background).toContain('Cover 几何');
   });
