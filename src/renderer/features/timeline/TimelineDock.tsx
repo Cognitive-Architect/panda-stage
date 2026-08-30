@@ -959,6 +959,7 @@ export function TimelineDock({
         <DialogueSheet
           pendingDragDialogueId={pendingDrag?.dialogueId ?? null}
           pendingTrayInteraction={pendingTrayInteraction}
+          unifiedTaskTray={presentation === 'landscape'}
         />
       </section>
     </section>

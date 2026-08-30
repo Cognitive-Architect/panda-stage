@@ -47,7 +47,7 @@ describe('Issue #352 Timeline State B selected untimed subtitle', () => {
 
   it('keeps State A as a browse surface and mounts actions only for the selected row', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
-    const row = sheet.slice(sheet.indexOf('untimedDialogues.map'));
+    const row = sheet.slice(sheet.indexOf('displayedUntimedDialogues.map'));
 
     expect(sheet).toContain("const showInlineActions = timelineState === 'timeline-untimed-selected'");
     expect(sheet).toContain('aria-pressed={selected}');
@@ -59,6 +59,9 @@ describe('Issue #352 Timeline State B selected untimed subtitle', () => {
     expect(sheet).toContain('dialogueSelectionStore.clear()');
     expect(row.indexOf('data-testid="dialogue-untimed-arrange"')).toBeGreaterThan(
       row.indexOf('selected && showInlineActions'),
+    );
+    expect(sheet.indexOf('data-testid="dialogue-untimed-cancel"')).toBeLessThan(
+      sheet.indexOf('displayedUntimedDialogues.map'),
     );
   });
 

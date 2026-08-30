@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -34,6 +35,11 @@ export function isTimedDialogue(
 export type DialogueSelectionState = 'none' | 'untimed' | 'timed';
 export type DialogueAuthoringMode = 'none' | 'single' | 'batch';
 
+// RightInspector's existing drawer fallback may return focus to its rail at
+// 150ms when opening a Task Tray state clears dialogue selection. Run after
+// that established transition so the newly active task keeps final focus.
+const TASK_TRAY_FOCUS_DELAY_MS = 180;
+
 function isCloudTouchLandscapeTray(element: HTMLElement): boolean {
   return Boolean(
     element.closest(
@@ -63,6 +69,7 @@ export interface PendingTrayInteractionController {
 export interface DialogueSheetProps {
   pendingTrayInteraction?: PendingTrayInteractionController;
   pendingDragDialogueId?: string | null;
+  unifiedTaskTray?: boolean;
 }
 
 function pendingDialogueIdFromTarget(target: EventTarget | null): string | null {
@@ -120,19 +127,59 @@ export type DialogueSheetState =
   | 'timeline-untimed-selected'
   | 'timeline-timed-selected'
   | 'timeline-bulk-paste-open'
-  | 'timeline-single-add-open';
+  | 'timeline-single-add-open'
+  | 'timeline-empty';
+
+export type DialogueTaskTrayState =
+  | 'pending'
+  | 'untimed-selected'
+  | 'timed-selected'
+  | 'single-add'
+  | 'batch-paste'
+  | 'empty';
+
+/**
+ * Derive the one visible Task Tray body from existing authoritative truth.
+ * This is presentation only: selection, authoring draft, and dialogue data
+ * remain owned by their existing stores/classes.
+ */
+export function getDialogueTaskTrayState(input: {
+  authoringMode: DialogueAuthoringMode;
+  selectedDialogueState: DialogueSelectionState;
+  pendingCount: number;
+}): DialogueTaskTrayState {
+  if (input.authoringMode === 'batch') return 'batch-paste';
+  if (input.authoringMode === 'single') return 'single-add';
+  if (input.selectedDialogueState === 'timed') return 'timed-selected';
+  if (input.selectedDialogueState === 'untimed') return 'untimed-selected';
+  return input.pendingCount > 0 ? 'pending' : 'empty';
+}
 
 export function getDialogueSheetState(input: {
   authoringMode: DialogueAuthoringMode;
   selectedDialogueState: DialogueSelectionState;
+  pendingCount?: number;
 }): DialogueSheetState {
-  if (input.authoringMode === 'batch') return 'timeline-bulk-paste-open';
-  if (input.authoringMode === 'single') return 'timeline-single-add-open';
-  if (input.selectedDialogueState === 'timed') return 'timeline-timed-selected';
-  if (input.selectedDialogueState === 'untimed') {
-    return 'timeline-untimed-selected';
+  const taskState = getDialogueTaskTrayState({
+    ...input,
+    // Preserve the pre-Stage-E helper contract for callers that only test
+    // selection/authoring precedence and do not provide queue data.
+    pendingCount: input.pendingCount ?? 1,
+  });
+  switch (taskState) {
+    case 'batch-paste':
+      return 'timeline-bulk-paste-open';
+    case 'single-add':
+      return 'timeline-single-add-open';
+    case 'timed-selected':
+      return 'timeline-timed-selected';
+    case 'untimed-selected':
+      return 'timeline-untimed-selected';
+    case 'empty':
+      return 'timeline-empty';
+    case 'pending':
+      return 'timeline-default';
   }
-  return 'timeline-default';
 }
 
 /**
@@ -145,6 +192,7 @@ export function getDialogueSheetState(input: {
 export function DialogueSheet({
   pendingTrayInteraction,
   pendingDragDialogueId = null,
+  unifiedTaskTray = false,
 }: DialogueSheetProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -174,7 +222,26 @@ export function DialogueSheet({
     dialogueId: string;
     message: string;
   } | null>(null);
+  const taskSheetRef = useRef<HTMLDivElement>(null);
   const pendingTrayPointerRef = useRef<PendingTrayPointerState | null>(null);
+
+  const focusDefaultTaskControl = useCallback((): void => {
+    window.setTimeout(() => {
+      const sheet = taskSheetRef.current;
+      const candidates = [
+        sheet?.querySelector<HTMLButtonElement>(
+          '[data-testid="dialogue-untimed-select"]',
+        ),
+        sheet?.querySelector<HTMLButtonElement>(
+          '[data-testid="dialogue-authoring-open"]',
+        ),
+      ];
+      const nextControl = candidates.find(
+        (candidate) => candidate && candidate.getClientRects().length > 0,
+      );
+      nextControl?.focus();
+    }, TASK_TRAY_FOCUS_DELAY_MS);
+  }, []);
 
   const projectRoot = snapshot?.projectRoot ?? '';
   const shotId = currentShotId ?? null;
@@ -203,10 +270,11 @@ export function DialogueSheet({
       setAuthoringMode('none');
       setSingleTouched({ speaker: false, text: false });
       setSingleSubmitError(null);
+      focusDefaultTaskControl();
     };
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [authoringMode, draft]);
+  }, [authoringMode, draft, focusDefaultTaskControl]);
 
   useEffect(() => {
     setQueueError(null);
@@ -258,6 +326,7 @@ export function DialogueSheet({
       setAuthoringMode('none');
       setSingleTouched({ speaker: false, text: false });
       setSingleSubmitError(null);
+      focusDefaultTaskControl();
     } catch (nextError) {
       setSingleSubmitError(
         nextError instanceof Error ? nextError.message : '新增字幕失败。',
@@ -300,6 +369,15 @@ export function DialogueSheet({
     }
     dialogueSelectionStore.clear();
     setAuthoringMode(mode);
+    window.setTimeout(() => {
+      const tab = taskSheetRef.current?.querySelector<HTMLButtonElement>(
+        `[data-testid="dialogue-authoring-tab-${mode}"]`,
+      );
+      const close = taskSheetRef.current?.querySelector<HTMLButtonElement>(
+        '[data-testid="dialogue-authoring-close"]',
+      );
+      (tab && tab.getClientRects().length > 0 ? tab : close)?.focus();
+    }, TASK_TRAY_FOCUS_DELAY_MS);
   };
 
   const handleCloseAuthoring = (): void => {
@@ -308,6 +386,13 @@ export function DialogueSheet({
     setAuthoringMode('none');
     setSingleTouched({ speaker: false, text: false });
     setSingleSubmitError(null);
+    focusDefaultTaskControl();
+  };
+
+  const handleClearSelection = (): void => {
+    setQueueError(null);
+    dialogueSelectionStore.clear();
+    focusDefaultTaskControl();
   };
 
   const handleAuthoringTabKeyDown = (
@@ -436,6 +521,12 @@ export function DialogueSheet({
   const timelineState = getDialogueSheetState({
     authoringMode,
     selectedDialogueState,
+    pendingCount: untimedDialogues.length,
+  });
+  const taskTrayState = getDialogueTaskTrayState({
+    authoringMode,
+    selectedDialogueState,
+    pendingCount: untimedDialogues.length,
   });
   const showTimedEditor = timelineState === 'timeline-timed-selected';
   const subtitleState = showTimedEditor
@@ -446,14 +537,19 @@ export function DialogueSheet({
         ? 'untimed-queue'
         : 'empty';
   const showInlineActions = timelineState === 'timeline-untimed-selected';
+  const displayedUntimedDialogues = unifiedTaskTray && selectedUntimedDialogue
+    ? [selectedUntimedDialogue]
+    : untimedDialogues;
 
   return (
     <div
       className="dialogue-sheet dialogue-sheet-timeline"
       data-state={timelineState}
       data-subtitle-state={subtitleState}
+      data-task-tray-state={taskTrayState}
       data-timeline-state={timelineState}
       data-testid="dialogue-sheet"
+      ref={taskSheetRef}
     >
       {authoringMode === 'none' ? (
         <header
@@ -465,7 +561,9 @@ export function DialogueSheet({
             <div className="dialogue-sheet-heading">
               <p className="eyebrow">字幕任务</p>
               <h3>
-                {untimedDialogues.length > 0 ? (
+                {unifiedTaskTray && selectedUntimedDialogue ? (
+                  <>安排字幕</>
+                ) : untimedDialogues.length > 0 ? (
                   <>
                     待安排字幕{' '}
                     <span
@@ -487,27 +585,41 @@ export function DialogueSheet({
                 type="button"
                 className="dialogue-secondary-action dialogue-timed-back"
                 data-testid="dialogue-timed-back"
-                onClick={() => dialogueSelectionStore.clear()}
+                onClick={handleClearSelection}
               >
                 <ArrowLeft aria-hidden="true" focusable="false" size={16} />
                 返回待安排字幕
               </button>
             ) : null}
-            <button
-              type="button"
-              className="dialogue-secondary-action dialogue-authoring-open"
-              data-testid="dialogue-authoring-open"
-              onClick={() => handleOpenAuthoring('single')}
-            >
-              <Plus aria-hidden="true" focusable="false" size={16} />
-              <span>新建字幕</span>
-            </button>
+            {unifiedTaskTray && selectedUntimedDialogue ? (
+              <button
+                type="button"
+                className="dialogue-secondary-action dialogue-untimed-cancel"
+                data-testid="dialogue-untimed-cancel"
+                onClick={handleClearSelection}
+              >
+                <ArrowLeft aria-hidden="true" focusable="false" size={16} />
+                返回待安排字幕
+              </button>
+            ) : null}
+            {!unifiedTaskTray ||
+            (!selectedUntimedDialogue && !showTimedEditor) ? (
+              <button
+                type="button"
+                className="dialogue-secondary-action dialogue-authoring-open"
+                data-testid="dialogue-authoring-open"
+                onClick={() => handleOpenAuthoring('single')}
+              >
+                <Plus aria-hidden="true" focusable="false" size={16} />
+                <span>新建字幕</span>
+              </button>
+            ) : null}
           </div>
         </header>
       ) : (
         <section
           aria-labelledby="dialogue-authoring-title"
-          className="dialogue-authoring-shell"
+          className="dialogue-authoring-shell dialogue-task-body dialogue-task-body-authoring"
           data-mode={authoringMode}
           data-testid="dialogue-authoring-shell"
         >
@@ -712,7 +824,7 @@ export function DialogueSheet({
 
       {showTimedEditor && selectedTimedDialogue ? (
         <section
-          className="timeline-subtitle-editor"
+          className="timeline-subtitle-editor dialogue-task-body dialogue-task-body-timed"
           data-state="selected-timed"
           data-testid="timeline-subtitle-editor"
         >
@@ -721,11 +833,12 @@ export function DialogueSheet({
             presentation="timeline"
           />
         </section>
-      ) : untimedDialogues.length > 0 ? (
+      ) : unifiedTaskTray && authoringMode !== 'none' ? null : untimedDialogues.length > 0 ? (
         <section
           className="timeline-subtitle-queue timeline-pending-tray"
           data-pending-count={untimedDialogues.length}
           data-pending-tray="true"
+          data-task-body={taskTrayState}
           data-testid="timeline-subtitle-queue"
         >
           {timelineState === 'timeline-default' ? (
@@ -745,7 +858,7 @@ export function DialogueSheet({
             onPointerMove={handlePendingTrayPointerMove}
             onPointerUp={handlePendingTrayPointerUp}
           >
-            {untimedDialogues.map((dialogue) => {
+            {displayedUntimedDialogues.map((dialogue) => {
               const selected = dialogue.id === selectedDialogueId;
               return (
                 <li
@@ -821,18 +934,17 @@ export function DialogueSheet({
                         >
                           安排一帧
                         </button>
-                        <button
-                          type="button"
-                          className="dialogue-untimed-cancel"
-                          data-dialogue-id={dialogue.id}
-                          data-testid="dialogue-untimed-cancel"
-                          onClick={() => {
-                            setQueueError(null);
-                            dialogueSelectionStore.clear();
-                          }}
-                        >
-                          取消选择
-                        </button>
+                        {!unifiedTaskTray ? (
+                          <button
+                            type="button"
+                            className="dialogue-untimed-cancel"
+                            data-dialogue-id={dialogue.id}
+                            data-testid="dialogue-untimed-cancel"
+                            onClick={handleClearSelection}
+                          >
+                            取消选择
+                          </button>
+                        ) : null}
                       </div>
                       {queueError?.dialogueId === dialogue.id ? (
                         <p
@@ -852,7 +964,7 @@ export function DialogueSheet({
         </section>
       ) : (
         <div
-          className="timeline-subtitle-empty"
+          className="timeline-subtitle-empty dialogue-task-body dialogue-task-body-empty"
           data-testid="timeline-subtitle-empty"
         >
           <strong>暂无待安排字幕</strong>

@@ -144,7 +144,7 @@ describe('Issue #354 subtitle state transitions', () => {
     expect(sheet).toContain("useState<DialogueAuthoringMode>('none')");
     expect(sheet).toContain('data-testid="dialogue-timed-back"');
     expect(sheet).toContain('返回待安排字幕');
-    expect(sheet).toContain('onClick={() => dialogueSelectionStore.clear()}');
+    expect(sheet).toContain('onClick={handleClearSelection}');
     expect(sheet).toContain("handleOpenAuthoring('single')");
     expect(sheet).toContain("handleOpenAuthoring('batch')");
     expect(sheet).toContain('data-testid="dialogue-authoring-shell"');

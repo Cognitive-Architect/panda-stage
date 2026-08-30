@@ -18206,6 +18206,418 @@ h1 {
   color: var(--ui-color-danger, #e28a7a);
 }
 
+/* Issue #382: Stage E keeps one derived Task Tray body visible at a time.
+   Height and overflow rules stay inside the Cloud Touch landscape Timeline;
+   portrait and wide Desktop retain their accepted presentation contracts. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-dock {
+  container-name: stage-e-timeline;
+  container-type: size;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray {
+  display: flex;
+  min-height: 76px;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  > .dialogue-sheet.dialogue-sheet-timeline {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-task-body,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .timeline-pending-tray[data-task-body] {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-task-body-timed,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-task-body-authoring {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-color: #3f6d4e #0a100c;
+  scrollbar-width: thin;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-task-body-timed
+  .dialogue-inspector-timeline {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.25fr) minmax(220px, 1fr);
+  align-content: start;
+  gap: 10px 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-task-body-timed
+  .timeline-subtitle-selection {
+  grid-column: 1 / -1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-task-body-timed
+  textarea,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-task-body-authoring
+  textarea {
+  max-height: 148px;
+  overflow-y: auto;
+  resize: vertical;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-header
+  > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-header
+  .eyebrow,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-header
+  h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-header
+  p {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-header
+  p {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-close {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-tabs {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-tab {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-tab[aria-selected='true'] {
+  border-bottom-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-mode,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-batch {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-section {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-section
+  h4,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-section
+  p {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-authoring-footer
+  button {
+  min-height: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .timeline-pending-tray[data-task-body='untimed-selected']
+  .dialogue-pending-tray-list {
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .timeline-pending-tray[data-task-body='untimed-selected']
+  .dialogue-pending-card {
+  width: min(100%, 720px);
+  min-width: 0;
+  flex-basis: auto;
+}
+
+@media (max-width: 760px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-task-body-timed
+    .dialogue-inspector-timeline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-task-body-timed
+    .timeline-subtitle-selection {
+    grid-column: 1;
+  }
+}
+
+/* At the accepted Stage A shallow heights, keep every Timeline layer inside
+   the workspace and expose the active task title/exit. The full task body
+   returns automatically once the user gives the workspace useful height. */
+@container stage-e-timeline (max-height: 220px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-toolbar {
+    min-height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-ruler-scroll {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-ruler-track {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-ruler {
+    height: 18px;
+    min-height: 18px;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-track-stack,
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-lanes {
+    height: calc(100% - 18px);
+    min-height: 0;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-lane {
+    height: 50%;
+    min-height: 0;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray {
+    min-height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    > .dialogue-sheet.dialogue-sheet-timeline {
+    padding: 0 8px;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-sheet-header {
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .timeline-pending-tray[data-task-body],
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-task-body-timed,
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-task-body-empty {
+    display: none;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-task-body-authoring {
+    height: 44px;
+    overflow: hidden;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-authoring-header {
+    min-height: 44px;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-authoring-header
+    p,
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-authoring-tabs,
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-authoring-mode {
+    display: none;
+  }
+}
+
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true']
   .timeline-pending-drop-notice {
