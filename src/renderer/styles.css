@@ -17047,3 +17047,85 @@ h1 {
     width: 100%;
   }
 }
+
+/* Issue #378: Stage A gives only the explicit Cloud Touch landscape shell a
+   real adjustable bottom-workspace boundary. The visual grip is compact, but
+   its transparent hit area remains touch-friendly and sits above the Timeline
+   toolbar so ordinary Timeline gestures cannot start a resize. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true'] {
+  position: relative;
+  overflow: visible;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
+  height: var(--timeline-expanded-height, 168px);
+  min-height: 132px;
+  max-height: var(--timeline-expanded-max-height, 420px);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true'][data-timeline-expanded='false'] {
+  height: auto;
+  min-height: 0;
+  max-height: 112px;
+  overflow: hidden;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-resize-handle {
+  position: absolute;
+  z-index: 40;
+  top: -22px;
+  left: 50%;
+  display: flex;
+  width: 96px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-pill);
+  background: transparent;
+  color: var(--ui-color-selected-border);
+  cursor: ns-resize;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  transform: translateX(-50%);
+  user-select: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-resize-handle:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-resize-handle[data-resizing='true'] {
+  background: rgb(127 199 148 / 12%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-resize-handle:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-resize-grip {
+  display: block;
+  width: 64px;
+  height: 5px;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-pill);
+  background: var(--ui-color-action-primary);
+  box-shadow:
+    0 0 0 2px rgb(11 16 14 / 72%),
+    inset 12px 0 0 rgb(127 199 148 / 24%),
+    inset -12px 0 0 rgb(127 199 148 / 24%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-resize-handle[data-resizing='true']
+  .timeline-resize-grip {
+  width: 76px;
+  background: var(--ui-color-action-hover);
+}

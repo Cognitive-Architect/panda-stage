@@ -1091,6 +1091,7 @@ export function EditorShell({
           <BottomWorkspace
             hidden={isPortrait && portraitWorkspace !== 'timeline'}
             presentation={layoutMode}
+            resizable={deviceMode === 'cloud-touch' && layoutMode === 'landscape'}
             showHistoryControls={false}
           />
           {productPreviewOpen ? (
