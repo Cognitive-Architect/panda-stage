@@ -166,7 +166,13 @@ export function TimelineDock({
         } as React.CSSProperties
       }
     >
-      <header className="timeline-header">
+      <header
+        aria-label="时间轴工具栏"
+        className="timeline-header timeline-toolbar"
+        data-testid="timeline-toolbar"
+        data-timeline-layer="toolbar"
+        role="toolbar"
+      >
         <button
           type="button"
           className="timeline-collapse"
@@ -228,7 +234,9 @@ export function TimelineDock({
       {ui.expanded ? (
         hasShot ? (
           <div
+            aria-label="时间标尺和时间轴轨道"
             className="timeline-ruler-scroll"
+            data-timeline-scroll-owner="timeline-ui-store"
             ref={scrollRef}
             onScroll={handleScroll}
             data-testid="timeline-ruler-scroll"
@@ -245,108 +253,137 @@ export function TimelineDock({
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
             >
-              {ticks.map((tick) => (
-                <div
-                  key={tick.timeMs}
-                  className="timeline-tick"
-                  data-testid="timeline-tick"
-                  style={{
-                    left: `${laneLabelWidth + tick.px}px`,
-                  }}
-                >
-                  <span className="timeline-tick-label">{tick.label}</span>
-                </div>
-              ))}
-              <div className="timeline-lanes" data-testid="timeline-lanes">
-                <div
-                  className="timeline-lane timeline-subtitle-lane"
-                  data-testid="timeline-subtitle-track"
-                >
-                  <span className="timeline-lane-label">
-                    <MessageSquareText
-                      aria-hidden="true"
-                      className="timeline-lane-icon"
-                      focusable="false"
-                      size={16}
-                    />
-                    <span className="timeline-lane-label-text">字幕</span>
-                  </span>
+              <div
+                aria-label="时间标尺"
+                className="timeline-ruler"
+                data-testid="timeline-ruler"
+                data-timeline-layer="ruler"
+              >
+                <span
+                  aria-hidden="true"
+                  className="timeline-ruler-label-spacer"
+                />
+                {ticks.map((tick) => (
                   <div
-                    className="timeline-lane-content"
-                    style={{ width: `${trackWidth}px` }}
+                    key={tick.timeMs}
+                    className="timeline-tick"
+                    data-testid="timeline-tick"
+                    style={{
+                      left: `${laneLabelWidth + tick.px}px`,
+                    }}
                   >
-                    <div
-                      className="dialogue-track"
-                      data-testid="dialogue-track"
+                    <span className="timeline-tick-label">{tick.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div
+                aria-label="字幕和音频轨道"
+                className="timeline-track-stack"
+                data-testid="timeline-track-stack"
+                data-timeline-layer="track-stack"
+                role="group"
+              >
+                <div className="timeline-lanes" data-testid="timeline-lanes">
+                  <div
+                    className="timeline-lane timeline-subtitle-lane"
+                    data-testid="timeline-subtitle-track"
+                    data-track-kind="subtitle"
+                  >
+                    <span
+                      className="timeline-lane-label"
+                      data-track-label="subtitle"
                     >
-                      {shot?.dialogues.map((dialogue) => (
-                        <DialogueClip
-                          characterName={
-                            characters.find(
-                              (character) =>
-                                character.id === dialogue.characterId,
-                            )?.name ?? dialogue.characterId
-                          }
-                          dialogue={dialogue}
-                          durationMs={durationMs}
-                          key={dialogue.id}
-                          pixelsPerMs={pixelsPerMs}
-                          projectRoot={snapshot?.projectRoot ?? ''}
-                          selected={dialogue.id === selectedDialogueId}
-                          shotId={shot.id}
-                        />
-                      ))}
+                      <MessageSquareText
+                        aria-hidden="true"
+                        className="timeline-lane-icon"
+                        focusable="false"
+                        size={16}
+                      />
+                      <span className="timeline-lane-label-text">字幕</span>
+                    </span>
+                    <div
+                      className="timeline-lane-content"
+                      style={{ width: `${trackWidth}px` }}
+                    >
+                      <div
+                        className="dialogue-track"
+                        data-testid="dialogue-track"
+                      >
+                        {shot?.dialogues.map((dialogue) => (
+                          <DialogueClip
+                            characterName={
+                              characters.find(
+                                (character) =>
+                                  character.id === dialogue.characterId,
+                              )?.name ?? dialogue.characterId
+                            }
+                            dialogue={dialogue}
+                            durationMs={durationMs}
+                            key={dialogue.id}
+                            pixelsPerMs={pixelsPerMs}
+                            projectRoot={snapshot?.projectRoot ?? ''}
+                            selected={dialogue.id === selectedDialogueId}
+                            shotId={shot.id}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div
-                  className={`timeline-lane timeline-audio-lane ${
-                    audioClips.length === 0 ? 'is-empty' : 'has-clips'
-                  }`}
-                  data-audio-state={audioClips.length === 0 ? 'empty' : 'populated'}
-                  data-testid="timeline-audio-track"
-                >
-                  <span className="timeline-lane-label">
-                    <Volume2
-                      aria-hidden="true"
-                      className="timeline-lane-icon"
-                      focusable="false"
-                      size={16}
-                    />
-                    <span className="timeline-lane-label-text">音频</span>
-                  </span>
                   <div
-                    className="timeline-lane-content"
-                    style={{ width: `${trackWidth}px` }}
+                    className={`timeline-lane timeline-audio-lane ${
+                      audioClips.length === 0 ? 'is-empty' : 'has-clips'
+                    }`}
+                    data-audio-state={
+                      audioClips.length === 0 ? 'empty' : 'populated'
+                    }
+                    data-testid="timeline-audio-track"
+                    data-track-kind="audio"
                   >
-                    {audioClips.map((clip) => (
-                      <div
-                        aria-label={`音频：${audioClipName(clip.assetId, clip.name)}`}
-                        className="timeline-audio-clip"
-                        data-audio-clip-id={clip.id}
-                        data-testid="timeline-audio-clip"
-                        key={clip.id}
-                        style={{
-                          left: `${timeToPx(clip.startMs, pixelsPerMs)}px`,
-                          width: `${Math.max(
-                            8,
-                            timeToPx(clip.endMs - clip.startMs, pixelsPerMs),
-                          )}px`,
-                        }}
-                      >
-                        <span>
-                          {audioClipName(clip.assetId, clip.name)}
+                    <span
+                      className="timeline-lane-label"
+                      data-track-label="audio"
+                    >
+                      <Volume2
+                        aria-hidden="true"
+                        className="timeline-lane-icon"
+                        focusable="false"
+                        size={16}
+                      />
+                      <span className="timeline-lane-label-text">音频</span>
+                    </span>
+                    <div
+                      className="timeline-lane-content"
+                      style={{ width: `${trackWidth}px` }}
+                    >
+                      {audioClips.map((clip) => (
+                        <div
+                          aria-label={`音频：${audioClipName(clip.assetId, clip.name)}`}
+                          className="timeline-audio-clip"
+                          data-audio-clip-id={clip.id}
+                          data-testid="timeline-audio-clip"
+                          key={clip.id}
+                          style={{
+                            left: `${timeToPx(clip.startMs, pixelsPerMs)}px`,
+                            width: `${Math.max(
+                              8,
+                              timeToPx(clip.endMs - clip.startMs, pixelsPerMs),
+                            )}px`,
+                          }}
+                        >
+                          <span>
+                            {audioClipName(clip.assetId, clip.name)}
+                          </span>
+                        </div>
+                      ))}
+                      {audioClips.length === 0 ? (
+                        <span
+                          className="timeline-audio-empty"
+                          data-testid="timeline-audio-empty"
+                        >
+                          暂无音频片段
                         </span>
-                      </div>
-                    ))}
-                    {audioClips.length === 0 ? (
-                      <span
-                        className="timeline-audio-empty"
-                        data-testid="timeline-audio-empty"
-                      >
-                        暂无音频片段
-                      </span>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -368,7 +405,14 @@ export function TimelineDock({
           </div>
         )
       ) : null}
-      <DialogueSheet />
+      <section
+        aria-label="字幕任务区"
+        className="timeline-task-tray"
+        data-testid="timeline-task-tray"
+        data-timeline-layer="task-tray"
+      >
+        <DialogueSheet />
+      </section>
     </section>
   );
 }
