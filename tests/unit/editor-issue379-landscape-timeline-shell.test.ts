@@ -8,7 +8,8 @@ function source(path: string): string {
 function issue379Styles(styles: string): string {
   const start = styles.lastIndexOf('/* Issue #379:');
   if (start < 0) throw new Error('Issue #379 styles are missing');
-  return styles.slice(start);
+  const end = styles.indexOf('/* Issue #380:', start);
+  return styles.slice(start, end < 0 ? undefined : end);
 }
 
 describe('Issue #379 Cloud Touch landscape Timeline shell', () => {
@@ -93,13 +94,14 @@ describe('Issue #379 Cloud Touch landscape Timeline shell', () => {
     );
   });
 
-  it('retains the existing Pending queue and authoring surface without Stage C/D behavior', () => {
+  it('retains the existing Pending queue and authoring surface without Stage D behavior', () => {
     expect(dialogueSheet).toContain('data-testid="timeline-subtitle-queue"');
     expect(dialogueSheet).toContain('data-testid="dialogue-untimed-item"');
     expect(dialogueSheet).toContain('data-testid="dialogue-untimed-select"');
     expect(dialogueSheet).toContain('data-testid="dialogue-untimed-arrange"');
     expect(dialogueSheet).toContain('data-testid="dialogue-authoring-open"');
-    expect(dialogueSheet).not.toMatch(/onPointer(?:Down|Move|Up|Cancel)/u);
+    expect(dialogueSheet).toContain('handlePendingTrayPointerDown');
+    expect(dialogueSheet).toContain('isHorizontalPendingTrayGesture');
     expect(dialogueSheet).not.toMatch(/dragGhost|dropTarget|draggable=/iu);
     expect(issue379).not.toMatch(/pending-(?:card|chip)|drag-to-place|drop target/iu);
   });

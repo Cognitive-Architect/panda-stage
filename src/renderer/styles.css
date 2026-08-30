@@ -17803,3 +17803,264 @@ h1 {
     justify-content: flex-start;
   }
 }
+
+/* Issue #380: Stage C turns only the Cloud Touch landscape Pending state into
+   a compact source shelf. The existing DialogueSheet remains the selection,
+   authoring, and one-frame arrangement owner; this list is its only new
+   horizontal overflow surface. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  > .dialogue-sheet.dialogue-sheet-timeline {
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-sheet-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-sheet-heading
+  .eyebrow {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-sheet-header {
+  min-height: 44px;
+  padding-bottom: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .timeline-pending-tray {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .timeline-subtitle-queue-intro {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-tray-list {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 8px;
+  border-top: 0;
+  list-style: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 4px;
+  scrollbar-color: #3f6d4e #0a100c;
+  scrollbar-width: thin;
+  touch-action: pan-x;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-sheet-timeline[data-state='timeline-default']
+  .dialogue-pending-tray-list {
+  min-height: 92px;
+  max-height: 104px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-tray-list
+  .dialogue-pending-card {
+  display: flex;
+  flex: 0 0 clamp(200px, 24vw, 264px);
+  min-width: 200px;
+  min-height: 76px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card-select {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 76px;
+  flex: 1 0 76px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 38px 10px 12px;
+  border: 1px solid rgb(127 199 148 / 30%);
+  border-radius: 10px;
+  color: var(--ui-color-text-primary);
+  background: rgb(16 31 21 / 96%);
+  text-align: left;
+  touch-action: pan-x;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card-select:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card-select:focus-visible {
+  border-color: rgb(127 199 148 / 64%);
+  background: rgb(25 52 34 / 98%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card[data-selected='true']
+  .dialogue-pending-card-select {
+  padding-left: 11px;
+  border-color: var(--ui-color-selected-border);
+  border-left-width: 2px;
+  background: rgb(30 65 42 / 98%);
+  box-shadow: 0 0 0 1px rgb(127 199 148 / 12%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card
+  .dialogue-untimed-speaker {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card
+  .dialogue-untimed-text {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card
+  .dialogue-untimed-status {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card
+  .dialogue-untimed-affordance {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  width: 28px;
+  min-width: 28px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-color-text-muted);
+  font-size: 18px;
+  transform: translateY(-50%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card[data-selected='true']
+  .dialogue-untimed-affordance {
+  color: var(--ui-color-selected-border);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card
+  .dialogue-untimed-action-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 0;
+  padding: 8px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: 8px;
+  background: rgb(8 18 12 / 98%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card
+  .dialogue-untimed-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .timeline-subtitle-empty {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 0;
+  border-top: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .timeline-subtitle-empty
+  span {
+  display: none;
+}
