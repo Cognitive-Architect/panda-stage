@@ -170,6 +170,38 @@ export function getLayerBackgroundControlModel(
   };
 }
 
+/**
+ * Keep the accepted landscape Appearance surface quiet in its normal state,
+ * while retaining a short, actionable explanation for constrained states.
+ * This is presentation copy only; the authoritative model and capabilities
+ * remain unchanged.
+ */
+export function getLandscapeBackgroundGuidance(
+  model: LayerBackgroundControlModel,
+  status = '',
+): string {
+  if (status) return status;
+
+  switch (model.state) {
+    case 'empty':
+      return model.backgroundLayer
+        ? '请先选择背景图层。'
+        : '请先选择图片对象。';
+    case 'invalid':
+      return '当前选择不可用，请重新选择。';
+    case 'background':
+      return model.backgroundLayer?.locked
+        ? '当前背景已锁定，解锁后可编辑。'
+        : '已选择当前背景，可编辑变换。完成后请重新锁定。';
+    case 'locked':
+      return '图层已锁定，解锁后可设为背景。';
+    case 'unsupported':
+      return '此对象不能设为背景，请选择图片对象。';
+    case 'available':
+      return '';
+  }
+}
+
 export function LayerBackgroundControl({
   compact = false,
   presentation = 'portrait',
@@ -193,17 +225,27 @@ export function LayerBackgroundControl({
     selectedLayerId,
   );
   const [status, setStatus] = useState('');
+  const statusCopy = (landscape: string, portrait: string): string =>
+    presentation === 'landscape' ? landscape : portrait;
+  const landscapeGuidance = getLandscapeBackgroundGuidance(model, status);
 
   const selectBackground = (): void => {
     if (!model.canSelect) return;
     try {
       selectionStore.selectBackground();
-      setStatus('已选择正式背景，可进行显式管理。');
+      setStatus(
+        statusCopy(
+          model.backgroundLayer?.locked
+            ? '已选择当前背景，当前背景已锁定。'
+            : '已选择当前背景。',
+          '已选择正式背景，可进行显式管理。',
+        ),
+      );
     } catch (error) {
       setStatus(
         error instanceof Error
           ? error.message
-          : '无法选择正式背景。',
+          : statusCopy('无法选择当前背景。', '无法选择正式背景。'),
       );
     }
   };
@@ -217,13 +259,15 @@ export function LayerBackgroundControl({
       );
       if (nextShot?.backgroundLayerId === selectedLayerId) {
         selectionStore.selectBackground();
-        setStatus('该图层已设为正式背景，并默认锁定。');
+        setStatus(
+          statusCopy('已设为背景，并已锁定。', '该图层已设为正式背景，并默认锁定。'),
+        );
       }
     } catch (error) {
       setStatus(
         error instanceof Error
           ? error.message
-          : '无法设置正式背景。',
+          : statusCopy('无法设置背景。', '无法设置正式背景。'),
       );
     }
   };
@@ -232,12 +276,17 @@ export function LayerBackgroundControl({
     if (!model.canClear) return;
     try {
       layerStore.clearBackground();
-      setStatus('已清除正式背景标识；该图层仍保留为普通图层。');
+      setStatus(
+        statusCopy(
+          '已清除当前背景。',
+          '已清除正式背景标识；该图层仍保留为普通图层。',
+        ),
+      );
     } catch (error) {
       setStatus(
         error instanceof Error
           ? error.message
-          : '无法清除正式背景。',
+          : statusCopy('无法清除背景。', '无法清除正式背景。'),
       );
     }
   };
@@ -246,10 +295,14 @@ export function LayerBackgroundControl({
     if (!model.canFill) return;
     try {
       layerStore.fillBackground();
-      setStatus('已使用持久化的 Cover 几何修复背景。');
+      setStatus(
+        statusCopy('已填充画布。', '已使用持久化的 Cover 几何修复背景。'),
+      );
     } catch (error) {
       setStatus(
-        error instanceof Error ? error.message : '无法填充画布。',
+        error instanceof Error
+          ? error.message
+          : statusCopy('无法填充画布。', '无法填充画布。'),
       );
     }
   };
@@ -291,7 +344,6 @@ export function LayerBackgroundControl({
           >
             <div className="layer-background-subgroup-heading">
               <h3>画布背景</h3>
-              <p>为当前镜头管理正式背景。</p>
             </div>
             <div
               className="layer-background-current-state"
@@ -302,9 +354,11 @@ export function LayerBackgroundControl({
                 {model.backgroundLayer?.name ?? '未设置'}
               </strong>
             </div>
-            <p data-testid="layer-background-guidance">
-              {status || model.message}
-            </p>
+            {landscapeGuidance ? (
+              <p data-testid="layer-background-guidance">
+                {landscapeGuidance}
+              </p>
+            ) : null}
             {model.canSelect || model.canSet || model.canClear || model.canFill ? (
               <div className="layer-background-actions">
                 {model.canSet ? (

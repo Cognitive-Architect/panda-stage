@@ -38,7 +38,6 @@ describe('Issue #374 Cloud Touch landscape Appearance hierarchy', () => {
     expect(landscape).toContain('<h3>画布背景</h3>');
     expect(landscape).toContain('<span>当前背景</span>');
     expect(landscape).toContain('data-testid="current-background-name"');
-    expect(landscape).toContain('为当前镜头管理正式背景。');
     expect(landscape).toContain('data-testid="layer-background-guidance"');
     expect(landscape).toContain('model.canSet ? (');
     expect(landscape).toContain('model.canSelect ? (');
