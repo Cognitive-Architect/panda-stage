@@ -96,11 +96,23 @@ async function captureSection(window, selector) {
 }
 
 async function openProject(window, root = projectRoot) {
-  await window.webContents.executeJavaScript(`(() => {
-    if (document.querySelector('[data-editor-page="editor"]')) {
-      document.querySelector('[data-testid="open-project-center"]').click();
-    }
-  })()`);
+  const editorOpen = await window.webContents.executeJavaScript(
+    `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
+  );
+  if (editorOpen) {
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="compact-project-more"]').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="compact-project-menu"]')`,
+        'Project menu did not open for a project switch.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="menu-open-project-center"]').click()
+    `);
+  }
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-editor-page="project-center"]')`,
@@ -762,8 +774,10 @@ async function verifyDay20() {
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.recovery-status-row output')" +
-          "?.textContent?.includes('项目已保存')",
+        "document.querySelector('[data-testid=\"compact-project-bar\"]')" +
+          "?.dataset?.saveState === 'saved' && " +
+          "document.querySelector('[data-testid=\"project-save-state\"]')" +
+          "?.textContent?.trim() === '已保存'",
         'Five-shot project did not save.',
       ),
     );
