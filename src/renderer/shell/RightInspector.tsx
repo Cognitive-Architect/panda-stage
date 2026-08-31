@@ -439,7 +439,8 @@ export function RightInspector({
             ? '字幕'
             : '属性'}
       </h2>
-      {(compact || landscapePresentation) && !dialogueMode ? (
+      {(compact || landscapePresentation) &&
+      (!dialogueMode || landscapePresentation) ? (
         <button
           aria-label="关闭属性"
           className="right-inspector-heading-close"
@@ -655,18 +656,16 @@ export function RightInspector({
             data-testid="right-inspector-drawer"
             id="right-inspector-drawer"
           >
-            {!compact ? (
-              landscapePresentation && !dialogueMode ? null : (
-                <button
-                  aria-label={`关闭${inspectorModeLabel}`}
-                  className="inspector-drawer-close"
-                  data-testid="inspector-drawer-close"
-                  onClick={() => setDrawerOpen(false)}
-                  type="button"
-                >
-                  关闭
-                </button>
-              )
+            {!compact && !(landscapePresentation && dialogueMode) ? (
+              <button
+                aria-label={`关闭${inspectorModeLabel}`}
+                className="inspector-drawer-close"
+                data-testid="inspector-drawer-close"
+                onClick={() => setDrawerOpen(false)}
+                type="button"
+              >
+                关闭
+              </button>
             ) : null}
             {inspectorContent}
           </div>

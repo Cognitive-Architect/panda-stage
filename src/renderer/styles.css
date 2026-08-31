@@ -19014,6 +19014,344 @@ h1 {
   line-height: 1.4;
 }
 
+/* Issue #388: keep the accepted Stage C structure while removing presentation
+   noise from the narrow subtitle Properties quick-inspect route. Timing still
+   edits the existing integer-ms draft invisibly; only timecodes are presented
+   to the user. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer:has(> .dialogue-inspector-landscape-properties)
+  > .right-inspector-heading {
+  min-height: 48px;
+  gap: 10px;
+  padding-bottom: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer:has(> .dialogue-inspector-landscape-properties)
+  > .right-inspector-heading
+  h2 {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer:has(> .dialogue-inspector-landscape-properties)
+  > .right-inspector-heading
+  .right-inspector-heading-close {
+  width: var(--ui-touch-icon);
+  height: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  margin: -2px 0 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-header {
+  min-height: 44px;
+  align-items: center;
+  gap: 0;
+  padding: 10px 0 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-identity-row {
+  min-height: 32px;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-identity-row
+  strong {
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-status {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section {
+  gap: 8px;
+  padding: 14px 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-copy-section,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-section {
+  padding-block: 14px 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading
+  h3 {
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-copy-section
+  .dialogue-properties-section-heading
+  h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-section
+  .dialogue-properties-section-heading
+  h3 {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-textarea {
+  resize: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-fields
+  .dialogue-field {
+  position: relative;
+  gap: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-fields
+  .dialogue-timing-label {
+  position: relative;
+  z-index: 0;
+  min-height: var(--ui-touch-icon);
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-work);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-fields
+  .dialogue-timing-label
+  time {
+  margin-left: auto;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-fields
+  .dialogue-timing-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  min-height: var(--ui-touch-icon);
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-fields
+  .dialogue-timing-input
+  input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-height: var(--ui-touch-icon);
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  color: transparent;
+  background: transparent;
+  caret-color: var(--ui-color-accent);
+  cursor: text;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  outline: 0;
+  pointer-events: auto;
+  appearance: textfield;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-fields
+  .dialogue-timing-input
+  input::-webkit-inner-spin-button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-fields
+  .dialogue-timing-input
+  input::-webkit-outer-spin-button {
+  margin: 0;
+  opacity: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-fields
+  .dialogue-timing-input:focus-within {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-section,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-audio-section {
+  padding-block: 10px 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-section
+  .dialogue-properties-section-heading,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-audio-section
+  .dialogue-properties-section-heading {
+  color: var(--ui-color-text-secondary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-section
+  .dialogue-properties-section-heading
+  h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-audio-section
+  .dialogue-properties-section-heading
+  h3 {
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-select {
+  min-height: var(--ui-touch-icon);
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-audio-section {
+  border-bottom: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-audio-state {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-audio-state
+  p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-actions {
+  justify-content: flex-start;
+  padding-top: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-actions
+  .dialogue-delete {
+  width: auto;
+  min-height: var(--ui-touch-icon);
+  justify-content: flex-start;
+  padding: 8px 6px;
+  border-color: transparent;
+  color: var(--ui-color-danger, #e28a7a);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-actions
+  .dialogue-delete:hover:not(:disabled) {
+  color: #ffd4d0;
+  background: rgb(124 46 37 / 18%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-inspector-audio-note {
+  display: none;
+}
+
 /* At the accepted Stage A shallow heights, keep every Timeline layer inside
    the workspace and expose the active task title/exit. The full task body
    returns automatically once the user gives the workspace useful height. */

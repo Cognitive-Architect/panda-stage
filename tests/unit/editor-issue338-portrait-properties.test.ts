@@ -30,7 +30,9 @@ describe('Issue #338 portrait Properties refinement', () => {
 
     expect(inspector).toContain('data-testid="inspector-inline-close"');
     expect(inspector).toContain('aria-label="关闭属性"');
-    expect(inspector).toContain('{!compact ? (');
+    expect(inspector).toContain(
+      '{!compact && !(landscapePresentation && dialogueMode) ? (',
+    );
     expect(inspector).toContain(
       'showLockControl={!compact && !landscapePresentation}',
     );

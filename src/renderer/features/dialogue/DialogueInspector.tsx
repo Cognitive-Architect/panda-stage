@@ -233,6 +233,15 @@ export function DialogueInspector({
     return Number.isFinite(raw) && Number.isInteger(raw);
   });
 
+  const formatDraftTimecode = (value: string, fallback: number): string => {
+    const raw = Number(value);
+    return value.trim() !== '' && Number.isFinite(raw)
+      ? formatTimecode(raw)
+      : formatTimecode(fallback);
+  };
+  const draftStartTimecode = formatDraftTimecode(startMs, dialogue.startMs);
+  const draftEndTimecode = formatDraftTimecode(endMs, dialogue.endMs);
+
   if (timelinePresentation) {
     return (
       <div
@@ -801,29 +810,20 @@ export function DialogueInspector({
           data-testid="dialogue-properties-header"
         >
           <div
-            className="dialogue-properties-heading-copy dialogue-inspector-context-copy"
-            data-testid="dialogue-inspector-context"
+            className="dialogue-landscape-properties-identity-row"
+            data-header-row="identity"
+            data-testid="dialogue-properties-identity"
           >
-            <p className="eyebrow">{timed ? '已安排字幕' : '待安排字幕'}</p>
-            <div className="dialogue-landscape-properties-identity-row">
-              <strong data-testid="dialogue-inspector-speaker-name">
-                {character?.name ?? '未知角色'}
-              </strong>
-              <span
-                className="dialogue-properties-status"
-                data-testid="dialogue-inspector-status"
-                data-timed={String(timed)}
-              >
-                {timed ? '已定时' : '待安排'}
-              </span>
-            </div>
-            <p
-              className="dialogue-properties-identity"
-              data-testid="dialogue-properties-identity"
-              title={dialogue.text}
+            <strong data-testid="dialogue-inspector-speaker-name">
+              {character?.name ?? '未知角色'}
+            </strong>
+            <span
+              className="dialogue-properties-status"
+              data-testid="dialogue-inspector-status"
+              data-timed={String(timed)}
             >
-              {dialogue.text}
-            </p>
+              {timed ? '已定时' : '待安排'}
+            </span>
           </div>
         </header>
 
@@ -886,54 +886,58 @@ export function DialogueInspector({
                   <span className="dialogue-timing-label">
                     <span>开始</span>
                     <time
+                      aria-hidden="true"
                       data-testid="dialogue-inspector-start-readable"
                       dateTime={
                         'PT' + Math.max(0, dialogue.startMs) / 1000 + 'S'
                       }
                     >
-                      {formatTimecode(dialogue.startMs)}
+                      {draftStartTimecode}
                     </time>
                   </span>
                   <span className="dialogue-timing-input">
                     <input
-                      aria-label="开始时间（毫秒）"
+                      aria-label="开始时间"
+                      aria-valuetext={draftStartTimecode}
                       className="dialogue-landscape-properties-time-input"
                       data-testid="dialogue-inspector-start"
-                      data-display-time={formatTimecode(dialogue.startMs)}
+                      data-display-time={draftStartTimecode}
+                      data-persisted-timecode={formatTimecode(dialogue.startMs)}
                       inputMode="numeric"
                       min={0}
                       onChange={(event) => setStartMs(event.target.value)}
                       type="number"
                       value={startMs}
                     />
-                    <span aria-hidden="true">ms</span>
                   </span>
                 </label>
                 <label className="dialogue-field">
                   <span className="dialogue-timing-label">
                     <span>结束</span>
                     <time
+                      aria-hidden="true"
                       data-testid="dialogue-inspector-end-readable"
                       dateTime={
                         'PT' + Math.max(0, dialogue.endMs) / 1000 + 'S'
                       }
                     >
-                      {formatTimecode(dialogue.endMs)}
+                      {draftEndTimecode}
                     </time>
                   </span>
                   <span className="dialogue-timing-input">
                     <input
-                      aria-label="结束时间（毫秒）"
+                      aria-label="结束时间"
+                      aria-valuetext={draftEndTimecode}
                       className="dialogue-landscape-properties-time-input"
                       data-testid="dialogue-inspector-end"
-                      data-display-time={formatTimecode(dialogue.endMs)}
+                      data-display-time={draftEndTimecode}
+                      data-persisted-timecode={formatTimecode(dialogue.endMs)}
                       inputMode="numeric"
                       min={0}
                       onChange={(event) => setEndMs(event.target.value)}
                       type="number"
                       value={endMs}
                     />
-                    <span aria-hidden="true">ms</span>
                   </span>
                 </label>
               </div>
@@ -1014,7 +1018,6 @@ export function DialogueInspector({
             <h3>角色（说话人）</h3>
           </div>
           <label className="dialogue-field">
-            <span>角色（说话人）</span>
             <select
               aria-label="字幕角色"
               className="dialogue-landscape-properties-speaker-select"
@@ -1062,14 +1065,10 @@ export function DialogueInspector({
             className="dialogue-landscape-properties-audio-state"
             data-audio-bound={String(Boolean(audioClip))}
           >
-            <strong>{audioClip ? '已绑定音频' : '未绑定音频'}</strong>
             <p data-testid="dialogue-inspector-audio-summary">
               {audioSummary}
             </p>
           </div>
-          <span className="dialogue-inspector-audio-note">
-            音频播放区间独立于字幕时间；当前仅展示已有绑定状态。
-          </span>
         </section>
 
         <div className="dialogue-properties-actions dialogue-landscape-properties-actions">

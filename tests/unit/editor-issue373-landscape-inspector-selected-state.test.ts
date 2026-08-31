@@ -88,13 +88,12 @@ describe('Issue #373 Cloud Touch landscape selected-object inspector', () => {
     const issue373 = styles.slice(styles.lastIndexOf('/* Issue #373:'));
 
     expect(inspector).toContain(
-      '{(compact || landscapePresentation) && !dialogueMode ? (',
+      '{(compact || landscapePresentation) &&\n      (!dialogueMode || landscapePresentation) ? (',
     );
     expect(inspector).toContain('data-testid="inspector-inline-close"');
     expect(inspector).toContain('railRef.current?.focus()');
-    expect(inspector).toContain('{!compact ? (');
     expect(inspector).toContain(
-      'landscapePresentation && !dialogueMode ? null : (',
+      '{!compact && !(landscapePresentation && dialogueMode) ? (',
     );
     expect(issue373).toContain(
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']",
