@@ -702,108 +702,125 @@ export function DialogueSheet({
               id="dialogue-authoring-panel-single"
               role="tabpanel"
             >
-              <section className="dialogue-authoring-section">
-                <label htmlFor="dialogue-add-speaker">角色（说话人）</label>
-                <select
-                  aria-describedby={
-                    singleTouched.speaker && singleErrors.speaker
-                      ? 'dialogue-add-speaker-error'
-                      : undefined
-                  }
-                  aria-invalid={Boolean(
-                    singleTouched.speaker && singleErrors.speaker,
-                  )}
-                  data-testid="dialogue-add-speaker"
-                  id="dialogue-add-speaker"
-                  value={draftState.singleCharacterId}
-                  onBlur={() =>
-                    setSingleTouched((current) => ({
-                      ...current,
-                      speaker: true,
-                    }))
-                  }
-                  onChange={(event) => {
-                    setSingleSubmitError(null);
-                    draft.setSingleCharacterId(event.target.value);
-                  }}
-                >
-                  <option value="">选择现有角色</option>
-                  {characters.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name}
-                    </option>
-                  ))}
-                </select>
-                {singleTouched.speaker && singleErrors.speaker ? (
-                  <p
-                    className="dialogue-authoring-error"
-                    id="dialogue-add-speaker-error"
-                    role="alert"
-                  >
-                    {singleErrors.speaker}
-                  </p>
-                ) : null}
-              </section>
-
-              <section className="dialogue-authoring-section">
-                <label htmlFor="dialogue-add-text">
-                  台词内容 <span aria-hidden="true">*</span>
-                </label>
-                <textarea
-                  aria-describedby="dialogue-add-text-message dialogue-add-text-count"
-                  aria-invalid={Boolean(singleTouched.text && singleErrors.text)}
-                  data-testid="dialogue-add-text"
-                  id="dialogue-add-text"
-                  placeholder="请输入台词内容…"
-                  rows={5}
-                  value={draftState.singleText}
-                  onBlur={() =>
-                    setSingleTouched((current) => ({
-                      ...current,
-                      text: true,
-                    }))
-                  }
-                  onChange={(event) => {
-                    setSingleSubmitError(null);
-                    draft.setSingleText(event.target.value);
-                  }}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === 'Enter' &&
-                      (event.ctrlKey || event.metaKey)
-                    ) {
-                      event.preventDefault();
-                      handleAdd();
+              <div
+                className="dialogue-authoring-single-grid"
+                data-testid="dialogue-authoring-single-grid"
+              >
+                <section className="dialogue-authoring-section dialogue-authoring-copy-section">
+                  <label htmlFor="dialogue-add-text">
+                    台词内容 <span aria-hidden="true">*</span>
+                  </label>
+                  <textarea
+                    aria-describedby="dialogue-add-text-message dialogue-add-text-count"
+                    aria-invalid={Boolean(singleTouched.text && singleErrors.text)}
+                    data-testid="dialogue-add-text"
+                    id="dialogue-add-text"
+                    placeholder="请输入台词内容…"
+                    rows={5}
+                    value={draftState.singleText}
+                    onBlur={() =>
+                      setSingleTouched((current) => ({
+                        ...current,
+                        text: true,
+                      }))
                     }
-                  }}
-                />
-                <div className="dialogue-authoring-field-meta">
-                  <span id="dialogue-add-text-message">
-                    {singleTouched.text && singleErrors.text
-                      ? singleErrors.text
-                      : '普通 Enter 换行，Ctrl/Cmd + Enter 提交'}
-                  </span>
-                  <output id="dialogue-add-text-count">
-                    {`${draftState.singleText.length} / ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH}`}
-                  </output>
-                </div>
-              </section>
+                    onChange={(event) => {
+                      setSingleSubmitError(null);
+                      draft.setSingleText(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === 'Enter' &&
+                        (event.ctrlKey || event.metaKey)
+                      ) {
+                        event.preventDefault();
+                        handleAdd();
+                      }
+                    }}
+                  />
+                  <div className="dialogue-authoring-field-meta">
+                    <span id="dialogue-add-text-message">
+                      {singleTouched.text && singleErrors.text
+                        ? singleErrors.text
+                        : '普通 Enter 换行，Ctrl/Cmd + Enter 提交'}
+                    </span>
+                    <output id="dialogue-add-text-count">
+                      {`${draftState.singleText.length} / ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH}`}
+                    </output>
+                  </div>
+                </section>
 
-              <section className="dialogue-authoring-section dialogue-authoring-placement">
-                <div>
-                  <h4>创建位置</h4>
-                  <p>将在当前播放头处创建未定时字幕。</p>
-                </div>
-                <div>
-                  <span>当前播放头</span>
-                  <output
-                    data-current-time={timelineUi.currentTimeMs}
-                    data-testid="dialogue-authoring-playhead"
+                <section className="dialogue-authoring-section dialogue-authoring-speaker-section">
+                  <label htmlFor="dialogue-add-speaker">角色（说话人）</label>
+                  <select
+                    aria-describedby={
+                      singleTouched.speaker && singleErrors.speaker
+                        ? 'dialogue-add-speaker-error'
+                        : undefined
+                    }
+                    aria-invalid={Boolean(
+                      singleTouched.speaker && singleErrors.speaker,
+                    )}
+                    data-testid="dialogue-add-speaker"
+                    id="dialogue-add-speaker"
+                    value={draftState.singleCharacterId}
+                    onBlur={() =>
+                      setSingleTouched((current) => ({
+                        ...current,
+                        speaker: true,
+                      }))
+                    }
+                    onChange={(event) => {
+                      setSingleSubmitError(null);
+                      draft.setSingleCharacterId(event.target.value);
+                    }}
                   >
-                    {formatTimecode(timelineUi.currentTimeMs)}
-                  </output>
-                </div>
-              </section>
+                    <option value="">选择现有角色</option>
+                    {characters.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </select>
+                  {singleTouched.speaker && singleErrors.speaker ? (
+                    <p
+                      className="dialogue-authoring-error"
+                      id="dialogue-add-speaker-error"
+                      role="alert"
+                    >
+                      {singleErrors.speaker}
+                    </p>
+                  ) : null}
+                </section>
+
+                <section className="dialogue-authoring-section dialogue-authoring-placement">
+                  <div>
+                    <h4>创建位置</h4>
+                    <p>将在当前播放头处创建未定时字幕。</p>
+                  </div>
+                  <div>
+                    <span>当前播放头</span>
+                    <output
+                      data-current-time={timelineUi.currentTimeMs}
+                      data-testid="dialogue-authoring-playhead"
+                    >
+                      {formatTimecode(timelineUi.currentTimeMs)}
+                    </output>
+                  </div>
+                </section>
+
+                <section
+                  aria-label="音频绑定状态"
+                  className="dialogue-authoring-section dialogue-authoring-audio-section"
+                  data-audio-state="unbound"
+                  data-testid="dialogue-authoring-audio"
+                >
+                  <h4>音频绑定</h4>
+                  <p data-testid="dialogue-authoring-audio-summary">
+                    暂无绑定音频
+                  </p>
+                </section>
+              </div>
 
               {singleSubmitError ? (
                 <p className="dialogue-authoring-error" role="alert">
@@ -811,7 +828,10 @@ export function DialogueSheet({
                 </p>
               ) : null}
 
-              <footer className="dialogue-authoring-footer">
+              <footer
+                className="dialogue-authoring-footer"
+                data-testid="dialogue-authoring-footer"
+              >
                 <button
                   className="dialogue-authoring-cancel"
                   data-testid="dialogue-authoring-cancel"

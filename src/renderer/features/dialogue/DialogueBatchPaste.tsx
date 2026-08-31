@@ -77,10 +77,9 @@ export function DialogueBatchPaste({
       id="dialogue-authoring-panel-batch"
       role="tabpanel"
     >
-      <section className="dialogue-authoring-section">
+      <section className="dialogue-authoring-section dialogue-batch-input-section">
         <label htmlFor="dialogue-batch-input">
-          <span className="dialogue-authoring-step">1</span>
-          粘贴原始文本
+          批量文本
           <small>每行：角色：台词</small>
         </label>
         <textarea
@@ -102,9 +101,8 @@ export function DialogueBatchPaste({
         </p>
       </section>
 
-      <section className="dialogue-authoring-section">
+      <section className="dialogue-authoring-section dialogue-batch-preview-section">
         <h4>
-          <span className="dialogue-authoring-step">2</span>
           解析结果
           <small>{`共 ${parsed.lines.length} 条`}</small>
         </h4>
@@ -160,7 +158,6 @@ export function DialogueBatchPaste({
           data-testid="dialogue-batch-mapping"
         >
           <h4>
-            <span className="dialogue-authoring-step">3</span>
             未知角色映射
             <small>{unknownLines.length}</small>
           </h4>
@@ -195,9 +192,6 @@ export function DialogueBatchPaste({
         data-testid="dialogue-batch-stats"
       >
         <h4>
-          <span className="dialogue-authoring-step">
-            {unknownLines.length > 0 ? '4' : '3'}
-          </span>
           解析统计
         </h4>
         <dl>
@@ -231,7 +225,10 @@ export function DialogueBatchPaste({
         </p>
       ) : null}
 
-      <footer className="dialogue-authoring-footer">
+      <footer
+        className="dialogue-authoring-footer"
+        data-testid="dialogue-authoring-footer"
+      >
         <button
           className="dialogue-authoring-cancel"
           data-testid="dialogue-authoring-cancel"
