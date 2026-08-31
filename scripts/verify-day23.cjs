@@ -94,11 +94,23 @@ async function setInput(window, selector, value) {
 }
 
 async function openProject(window) {
-  await window.webContents.executeJavaScript(`(() => {
-    if (document.querySelector('[data-editor-page="editor"]')) {
-      document.querySelector('[data-testid="open-project-center"]').click();
-    }
-  })()`);
+  const editorOpen = await window.webContents.executeJavaScript(
+    `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
+  );
+  if (editorOpen) {
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="compact-project-more"]').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="compact-project-menu"]')`,
+        'Project menu did not open for a project switch.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="menu-open-project-center"]').click()
+    `);
+  }
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-editor-page="project-center"]')`,
@@ -115,7 +127,7 @@ async function openProject(window) {
   );
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('.project-canvas-heading > span')` +
+      `document.querySelector('.shot-list-item-selected strong')` +
         `?.textContent?.trim() === 'Opening'`,
       'Day 23 project did not open.',
     ),
@@ -711,11 +723,14 @@ async function verifyDay23() {
     );
 
     await window.webContents.executeJavaScript(
-      `document.querySelector('.recovery-status-row button').click()`,
+      `document.querySelector('[data-testid="compact-project-save"]').click()`,
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('.clean-state')`,
+        `document.querySelector('[data-testid="compact-project-bar"]')` +
+          `?.dataset?.saveState === 'saved' && ` +
+          `document.querySelector('[data-testid="project-save-state"]')` +
+          `?.textContent?.trim() === '已保存'`,
         'Day 23 project did not save cleanly.',
       ),
     );
