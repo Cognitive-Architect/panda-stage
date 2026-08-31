@@ -92,7 +92,8 @@
           "tests/unit/migrations/**",
           "tests/integration/schema-*.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
-          "tests/unit/ipc-contracts.test.ts"
+          "tests/unit/ipc-contracts.test.ts",
+          "tests/unit/application-menu-policy.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*"],
         "suites": [],
@@ -235,6 +236,7 @@
         "sourcePatterns": ["src/renderer/features/timeline/**"],
         "testPatterns": [
           "tests/unit/features/timeline/**",
+          "tests/integration/timeline-selection.test.ts",
           "tests/contract/*timeline*.test.ts",
           "tests/contract/day26-*.test.ts"
         ],

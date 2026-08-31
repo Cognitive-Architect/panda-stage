@@ -54,6 +54,22 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.areas).not.toContain('unknown');
   });
 
+  it('routes the Timeline selection integration through the existing Timeline owner', () => {
+    const result = draft([change('tests/integration/timeline-selection.test.ts')]);
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toEqual(['timeline']);
+    expect(result.suites).toEqual(['timeline']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps the Main Process application menu policy test on the Full-risk core owner', () => {
+    const result = draft([change('tests/unit/application-menu-policy.test.ts')]);
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toEqual(['cross-process-core']);
+    expect(result.areas).toContain('cross-process-core');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it('unions dialogue and subtitle suites without duplicates', () => {
     const result = draft([
       change('src/renderer/features/dialogue/DialogueTrack.tsx'),
@@ -320,6 +336,17 @@ describe('RH-07 FAST Draft policy', () => {
 });
 
 describe('RH-07 FULL delivery policy', () => {
+  it('routes both PR #319 blocker paths into the cumulative Ready/Full gate', () => {
+    const result = ready([
+      change('tests/integration/timeline-selection.test.ts'),
+      change('tests/unit/application-menu-policy.test.ts'),
+    ]);
+    expect(result.tier).toBe('full');
+    expect(result.matchedRouteIds).toEqual(['timeline', 'cross-process-core']);
+    expect(result.suites).toEqual(manifest.routing.fullRegressionSuites);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it.each([
     'src/renderer/features/dialogue/DialogueTrack.tsx',
     'src/domain/services/DialogueService.ts',
