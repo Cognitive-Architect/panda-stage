@@ -74,7 +74,7 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('commitSelected');
     expect(component).toContain('confirmed: true');
     expect(component).toContain('data-testid="fla-review-commit-action"');
-    expect(component).toContain('className="fla-review-commit-primary"');
+    expect(component).toContain('className="fla-review-commit-primary fla-review-primary-action"');
     expect(component).toContain('data-testid="fla-review-commit"');
     expect(component).toContain('data-testid="fla-review-commit-status"');
     expect(component).toContain('data-testid="fla-review-commit-success"');
@@ -94,7 +94,8 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('全选');
     expect(component).toContain('清空');
     expect(component).toContain('确认选择');
-    expect(component).toContain('这是导入前预览');
+    expect(component).toContain('只读导入预览');
+    expect(component).toContain('在确认导入前，不会修改项目或原文件。');
     expect(component).toContain('正在读取所选 FLA');
     expect(component).toContain('正在检查源文件');
     expect(component).toContain('源文件');
@@ -104,8 +105,8 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('仅素材库');
     expect(component).toContain('兼容性说明');
     expect(component).toContain('导入前检查');
-    expect(component).toContain('这是导入前预览');
-    expect(component).toContain('目标文件名：');
+    expect(component).toContain('FLA 素材工作台');
+    expect(component).toContain('<dt>目标文件名</dt>');
     expect(component).not.toContain('FLA V1 · Slice 2');
     expect(component).not.toContain('第 3 阶段');
     expect(component).not.toContain('Slice 3');

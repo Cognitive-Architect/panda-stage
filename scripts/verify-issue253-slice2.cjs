@@ -53,6 +53,30 @@ async function waitForSelector(window, selector, timeoutMs = 60_000) {
   throw new Error(`Timed out waiting for ${selector}`);
 }
 
+const FLA_IMPORT_SELECTOR =
+  '[data-testid="asset-import-fla"], [data-testid="resource-asset-import-fla"]';
+
+async function selectAssetsActivity(window) {
+  const selected = await window.webContents.executeJavaScript(`(() => {
+    const control = document.querySelector(
+      '[data-testid="resource-activity-tabs"] [data-activity="assets"], ' +
+      '[data-testid="resource-activity-rail-assets"]',
+    );
+    control?.click();
+    return Boolean(control);
+  })()`);
+  if (!selected) throw new Error('Could not select the Assets activity');
+}
+
+async function clickFlaImport(window) {
+  const clicked = await window.webContents.executeJavaScript(`(() => {
+    const control = document.querySelector(${JSON.stringify(FLA_IMPORT_SELECTOR)});
+    control?.click();
+    return Boolean(control);
+  })()`);
+  if (!clicked) throw new Error('Could not find the FLA import action');
+}
+
 async function waitForExpression(window, expression, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -107,16 +131,12 @@ async function run() {
   if (!initialDocument.ok) throw new Error(`Could not read acceptance project: ${JSON.stringify(initialDocument)}`);
   const assetCountBefore = initialDocument.value.project.assets.length;
 
-  await mainWindow.webContents.executeJavaScript(
-    `document.querySelector('[data-activity="assets"]')?.click()`,
-  );
-  await waitForSelector(mainWindow, '[data-testid="asset-import-fla"]');
+  await selectAssetsActivity(mainWindow);
+  await waitForSelector(mainWindow, FLA_IMPORT_SELECTOR);
   const assetCountTextBefore = await mainWindow.webContents.executeJavaScript(
     `document.querySelector('[data-testid="asset-library"] .asset-library-heading output')?.textContent || ''`,
   );
-  await mainWindow.webContents.executeJavaScript(
-    `document.querySelector('[data-testid="asset-import-fla"]')?.click()`,
-  );
+  await clickFlaImport(mainWindow);
   await waitForSelector(mainWindow, '[data-testid="fla-review-summary"]');
 
   await waitForSelector(mainWindow, '[data-testid="fla-review-media-grid"] img', 60_000);
@@ -127,7 +147,13 @@ async function run() {
     const portal = document.querySelector('[data-testid="fla-review-portal"]');
     const reviewBody = document.querySelector('[data-testid="fla-review-body"]');
     const mediaGrid = document.querySelector('[data-testid="fla-review-media-grid"]');
+    const overview = document.querySelector('[data-testid="fla-raster-overview"]');
+    const selection = document.querySelector('[data-testid="fla-raster-selection"]');
+    const detail = document.querySelector('[data-testid="fla-raster-detail"]');
     const sessionRect = session?.getBoundingClientRect();
+    const overviewRect = overview?.getBoundingClientRect();
+    const selectionRect = selection?.getBoundingClientRect();
+    const detailRect = detail?.getBoundingClientRect();
     const portalStyle = portal ? getComputedStyle(portal) : null;
     const reviewBodyStyle = reviewBody ? getComputedStyle(reviewBody) : null;
     const mediaGridStyle = mediaGrid ? getComputedStyle(mediaGrid) : null;
@@ -135,16 +161,19 @@ async function run() {
     const firstCard = cards[0];
     const firstCardRect = firstCard?.getBoundingClientRect();
     const toolbarRect = toolbar?.getBoundingClientRect();
+    const reviewBodyRect = reviewBody?.getBoundingClientRect();
     const visibleReviewText = session?.textContent || '';
-    const firstCardClearOfToolbar = Boolean(
-      firstCardRect && toolbarRect && firstCardRect.top >= toolbarRect.bottom,
+    const contentClearOfToolbar = Boolean(
+      firstCardRect && toolbarRect && reviewBodyRect && (
+        firstCardRect.top >= toolbarRect.bottom ||
+        toolbarRect.top >= reviewBodyRect.bottom - 1
+      ),
     );
     const root = document.getElementById('root');
     const compatibilityNotes = document.querySelector('[data-testid="fla-compatibility-notes"]');
     if (reviewBody) reviewBody.scrollTop = reviewBody.scrollHeight;
     const lastCard = cards[cards.length - 1];
     const lastCardRect = lastCard?.getBoundingClientRect();
-    const reviewBodyRect = reviewBody?.getBoundingClientRect();
     const actionSelectors = [
       '[data-testid="fla-review-selected-count"]',
       '[data-testid="fla-review-select-all"]',
@@ -158,7 +187,7 @@ async function run() {
       cardCount: cards.length,
       thumbnailCount: document.querySelectorAll('[data-testid="fla-review-media-grid"] img').length,
       transparentCardCount: cards.filter((card) => Number(card.getAttribute('data-zero-alpha-pixels') || 0) > 0).length,
-      jpegOriginCardCount: cards.filter((card) => /source\\s+(jpg|jpeg)|格式\\s+(jpg|jpeg)/i.test(card.textContent || '')).length,
+      jpegOriginCardCount: cards.filter((card) => /^(jpg|jpeg)$/i.test(card.getAttribute('data-source-format') || '')).length,
       a1Present: cards.some((card) => card.querySelector('strong')?.textContent === 'a1.png'),
       statusCounts: Object.fromEntries([...document.querySelectorAll('[data-testid="fla-compatibility-summary"] li')].map((node) => [node.getAttribute('data-status'), node.textContent?.trim() || ''])),
       selectedText: count('[data-testid="fla-review-selected-count"]'),
@@ -167,6 +196,21 @@ async function run() {
       compatibilityNotes: {
         present: Boolean(compatibilityNotes),
         collapsedByDefault: compatibilityNotes ? !compatibilityNotes.open : false,
+      },
+      workbench: {
+        route: session?.getAttribute('data-workbench-route') || '',
+        threeZonesPresent: Boolean(overview && selection && detail),
+        gridDominant: Boolean(
+          overviewRect && selectionRect && detailRect &&
+          selectionRect.width > overviewRect.width &&
+          selectionRect.width > detailRect.width
+        ),
+        detailPreviewPresent: Boolean(detail?.querySelector('.fla-review-detail-preview img')),
+        detailTargetFilenamePresent: (detail?.textContent || '').includes('目标文件名'),
+        progressText: document.querySelector('.fla-workbench-progress')?.textContent?.trim() || '',
+        currentStep: document.querySelector('.fla-workbench-progress [aria-current="step"]')?.textContent?.trim() || '',
+        primaryActionCount: [...document.querySelectorAll('.fla-review-primary-action')]
+          .filter((button) => !button.disabled && button.getBoundingClientRect().height > 0).length,
       },
       overlay: {
         width: sessionRect?.width ?? 0,
@@ -193,13 +237,25 @@ async function run() {
         lastCardTop: lastCardRect?.top ?? 0,
         lastCardBottom: lastCardRect?.bottom ?? 0,
         lateItemReachable: Boolean(lastCardRect && reviewBodyRect && lastCardRect.top >= reviewBodyRect.top - 1 && lastCardRect.bottom <= reviewBodyRect.bottom + 1),
-        firstCardClearOfToolbar,
+        contentClearOfToolbar,
       },
       actionsReachable: Boolean(sessionRect && actionSelectors.every((selector) => {
         const element = document.querySelector(selector);
         const rect = element?.getBoundingClientRect();
         return Boolean(rect && rect.width > 0 && rect.height > 0 && rect.top >= sessionRect.top && rect.bottom <= sessionRect.bottom);
       })),
+    };
+  })()`);
+
+  const focusEvidence = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const cards = [...document.querySelectorAll('[data-fla-media-id]')];
+    const target = cards[1];
+    target?.focus();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return {
+      expectedMediaId: target?.getAttribute('data-fla-media-id') || '',
+      focusedMediaId: document.querySelector('[data-focused-media-id]')?.getAttribute('data-focused-media-id') || '',
+      focusedCardMatches: target?.classList.contains('fla-review-media-card-focused') || false,
     };
   })()`);
 
@@ -280,7 +336,7 @@ async function run() {
     const cards = [...document.querySelectorAll('[data-fla-media-id]')];
     const transparent = cards.find((card) => Number(card.getAttribute('data-zero-alpha-pixels') || 0) > 0);
     const non350 = cards.find((card) => card.querySelector('strong')?.textContent === 'a1.png');
-    const jpeg = cards.find((card) => /source\\s+(jpg|jpeg)|格式\\s+(jpg|jpeg)/i.test(card.textContent || ''));
+    const jpeg = cards.find((card) => /^(jpg|jpeg)$/i.test(card.getAttribute('data-source-format') || ''));
     [transparent, non350, jpeg]
       .filter((card, index, selected) => card && selected.indexOf(card) === index)
       .forEach((card) => card.querySelector('input[type="checkbox"]')?.click());
@@ -300,6 +356,9 @@ async function run() {
     intentText: document.querySelector('[data-testid="fla-review-intent-status"]')?.textContent?.trim() || '',
     selectedText: document.querySelector('[data-testid="fla-review-selected-count"]')?.textContent?.trim() || '',
     assetCountText: document.querySelector('[data-testid="asset-library"] .asset-library-heading output')?.textContent || '',
+    commitPresent: Boolean(document.querySelector('[data-testid="fla-review-commit"]')),
+    primaryActionCount: [...document.querySelectorAll('.fla-review-primary-action')]
+      .filter((button) => !button.disabled && button.getBoundingClientRect().height > 0).length,
   })`);
   const afterDocument = await mainWindow.webContents.executeJavaScript(
     `window.pandaStage.project.open({ projectRoot: ${JSON.stringify(projectRoot)} })`,
@@ -313,9 +372,7 @@ async function run() {
     `!document.querySelector('[data-testid="fla-review-session"]') && Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`,
   );
 
-  await mainWindow.webContents.executeJavaScript(
-    `document.querySelector('[data-testid="asset-import-fla"]')?.click()`,
-  );
+  await clickFlaImport(mainWindow);
   await waitForSelector(mainWindow, '[data-testid="fla-review-session"]');
   const cancelBeforeReadyStatus = await mainWindow.webContents.executeJavaScript(
     `document.querySelector('[data-testid="fla-review-status"]')?.textContent?.trim() || ''`,
@@ -328,9 +385,7 @@ async function run() {
     `!document.querySelector('[data-testid="fla-review-session"]') && Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`,
   );
 
-  await mainWindow.webContents.executeJavaScript(
-    `document.querySelector('[data-testid="asset-import-fla"]')?.click()`,
-  );
+  await clickFlaImport(mainWindow);
   await waitForSelector(mainWindow, '[data-testid="fla-review-session"]');
   await mainWindow.webContents.executeJavaScript(
     `document.querySelector('[data-testid="resource-activity-close"]')?.click()`,
@@ -361,6 +416,10 @@ async function run() {
       diagnosticsVisible: review.diagnosticsVisible,
       scrollStability,
     },
+    issue390: {
+      focusEvidence,
+      businessRoute: 'media.length > 0 -> v1-raster-review',
+    },
     selectAllText,
     clearAllText,
     interactionText,
@@ -372,7 +431,7 @@ async function run() {
     mutationContract: 'Continue/Confirm produced only a read-only selection intent; no Asset/Project mutation API was called by the review component.',
   };
   if (!result.sourceUnchanged) throw new Error('The real FLA sample changed during Slice 2 review');
-  if (result.review.mediaCount !== '158' || result.review.cardCount !== 158 || result.review.thumbnailCount !== 158) {
+  if (Number.parseInt(result.review.mediaCount, 10) !== 158 || result.review.cardCount !== 158 || result.review.thumbnailCount !== 158) {
     throw new Error(`Unexpected review media evidence: ${JSON.stringify(result.review)}`);
   }
   if (result.review.transparentCardCount < 1 || result.review.jpegOriginCardCount < 1) {
@@ -389,10 +448,17 @@ async function run() {
     !result.review.scrollRegion.primary ||
     result.review.scrollRegion.mediaSecondScroll ||
     !result.review.scrollRegion.lateItemReachable ||
-    !result.review.scrollRegion.firstCardClearOfToolbar ||
+    !result.review.scrollRegion.contentClearOfToolbar ||
     !result.review.actionsReachable ||
     !result.review.compatibilityNotes.present ||
     !result.review.compatibilityNotes.collapsedByDefault ||
+    result.review.workbench.route !== 'raster' ||
+    !result.review.workbench.threeZonesPresent ||
+    !result.review.workbench.gridDominant ||
+    !result.review.workbench.detailPreviewPresent ||
+    !result.review.workbench.detailTargetFilenamePresent ||
+    result.review.workbench.currentStep !== '选择素材' ||
+    result.review.workbench.primaryActionCount !== 1 ||
     !['完全兼容', '部分兼容', '暂不支持', '未知', '未出现'].every((label) => result.review.compatibilityLabels.includes(label)) ||
     result.review.diagnosticsVisible
   ) {
@@ -405,6 +471,13 @@ async function run() {
     scrollStability.deepTarget < 1
   ) {
     throw new Error(`Review scroll position was not preserved: ${JSON.stringify(scrollStability)}`);
+  }
+  if (
+    focusEvidence.expectedMediaId === '' ||
+    focusEvidence.focusedMediaId !== focusEvidence.expectedMediaId ||
+    !focusEvidence.focusedCardMatches
+  ) {
+    throw new Error(`Contextual detail did not follow keyboard focus: ${JSON.stringify(focusEvidence)}`);
   }
   if (
     !result.interactionText.cardTargetPresent ||
@@ -423,7 +496,7 @@ async function run() {
   if (result.subsetText.representativeCount !== 3 || result.subsetText.thumbnailIdentityCount !== 158) {
     throw new Error(`Representative selection or thumbnail identity evidence is incomplete: ${JSON.stringify(result)}`);
   }
-  if (!afterConfirm.intentText || !afterConfirm.selectedText.includes('3')) {
+  if (!afterConfirm.intentText || !afterConfirm.selectedText.includes('3') || !afterConfirm.commitPresent || afterConfirm.primaryActionCount !== 1) {
     throw new Error(`Read-only selection intent was not confirmed: ${JSON.stringify(afterConfirm)}`);
   }
   if (result.assetCountBefore !== result.assetCountAfter || result.assetCountTextBefore !== result.assetCountTextAfter) {

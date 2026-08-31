@@ -73,6 +73,7 @@ export function FlaCompatibilityReviewSession({
   const [intent, setIntent] = useState<FlaRasterSelectionIntent | null>(null);
   const [commitResponse, setCommitResponse] = useState<FlaAssetCommitResponse | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
+  const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null);
   const [compatibilityNotesOpen, setCompatibilityNotesOpen] = useState(false);
   const reviewBodyRef = useRef<HTMLDivElement | null>(null);
   const reviewScrollTop = useRef(0);
@@ -87,6 +88,7 @@ export function FlaCompatibilityReviewSession({
           setSelectedMediaIds(
             new Set(nextResponse.ir.media.map((media) => media.id)),
           );
+          setFocusedMediaId(nextResponse.ir.media[0]?.id ?? null);
           setPhase('ready');
         } else {
           setPhase('error');
@@ -114,7 +116,22 @@ export function FlaCompatibilityReviewSession({
   const selectedCount = reviewItems.filter(({ media }) =>
     selectedMediaIds.has(media.id),
   ).length;
+  const usedMediaCount = reviewItems.filter((item) => !item.libraryOnly).length;
+  const libraryOnlyMediaCount = reviewItems.length - usedMediaCount;
+  const focusedItem = reviewItems.find(({ media }) => media.id === focusedMediaId)
+    ?? reviewItems[0]
+    ?? null;
   const selectionLocked = phase === 'committing' || phase === 'success';
+
+  useEffect(() => {
+    if (reviewItems.length === 0) {
+      setFocusedMediaId(null);
+      return;
+    }
+    if (!reviewItems.some(({ media }) => media.id === focusedMediaId)) {
+      setFocusedMediaId(reviewItems[0]!.media.id);
+    }
+  }, [focusedMediaId, reviewItems]);
 
   useEffect(() => {
     if (!ir) return undefined;
@@ -225,6 +242,12 @@ export function FlaCompatibilityReviewSession({
 
   const counts = compatibilityCounts(ir);
   const warnings = compatibilityWarnings(ir);
+  const rasterRoute = contentRoute === 'v1-raster-review';
+  const progressStep = phase === 'ready'
+    ? 'select'
+    : phase === 'confirmed'
+      ? 'confirm'
+      : 'import';
   const toggle = (mediaId: string): void => {
     if (selectionLocked) return;
     rememberReviewScroll();
@@ -308,15 +331,22 @@ export function FlaCompatibilityReviewSession({
         className="fla-review-session"
         data-review-layout="portal"
         data-testid="fla-review-session"
+        data-workbench-route={rasterRoute ? 'raster' : 'render'}
         role="dialog"
       >
         <header className="fla-review-heading" data-testid="fla-review-header">
-          <div>
-            <p className="eyebrow">导入前检查</p>
-            <h2>FLA 兼容性预览</h2>
+          <div className="fla-review-heading-copy">
+            <p className="eyebrow">{rasterRoute ? '只读导入预览' : '导入前检查'}</p>
+            <h2>{rasterRoute ? 'FLA 素材工作台' : 'FLA 兼容性预览'}</h2>
+            {rasterRoute ? (
+              <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
+                <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
+                <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
+                <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
+              </ol>
+            ) : null}
           </div>
           <button
-            autoFocus
             disabled={phase === 'committing'}
             data-testid="fla-review-cancel"
             onClick={() => void closeSession()}
@@ -326,79 +356,19 @@ export function FlaCompatibilityReviewSession({
           </button>
         </header>
 
-        <div className="fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
-          <div>
-            <strong data-testid="fla-review-selected-count">已选择：{selectedCount} / {reviewItems.length}</strong>
-            {intent ? <output data-testid="fla-review-intent-status">已确认选择；尚未创建素材。</output> : null}
-          </div>
-          <div>
-            <button
-              data-testid="fla-review-select-all"
-              disabled={selectionLocked}
-              onClick={selectAll}
-              type="button"
-            >
-              全选
-            </button>
-            <button
-              data-testid="fla-review-clear-all"
-              disabled={selectionLocked}
-              onClick={clearAll}
-              type="button"
-            >
-              清空
-            </button>
-            <button
-              data-testid="fla-review-confirm"
-              disabled={
-                selectedCount === 0 ||
-                phase === 'confirmed' ||
-                phase === 'committing' ||
-                phase === 'success'
-              }
-              onClick={confirm}
-              type="button"
-            >
-              {phase === 'confirmed' ? '已确认选择' : '确认选择'}
-            </button>
-          </div>
-        </div>
-
-        <div className="fla-review-action-stack">
-          {intent && phase === 'confirmed' ? (
-            <div className="fla-review-commit-action" data-testid="fla-review-commit-action">
-              <div className="fla-review-commit-copy">
-                <strong data-testid="fla-review-commit-copy">已确认 {intent.selectedCount} 项</strong>
-                <span>确认选择仅保留选择信息；点击导入后才会创建普通图片素材。</span>
-              </div>
-              <button
-                className="fla-review-commit-primary"
-                data-testid="fla-review-commit"
-                disabled={phase !== 'confirmed'}
-                onClick={() => void commit()}
-                type="button"
-              >
-                导入这 {intent.selectedCount} 项
-              </button>
+        {!rasterRoute ? (
+          <div className="fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
+            <div>
+              <strong data-testid="fla-review-selected-count">已选择：{selectedCount} / {reviewItems.length}</strong>
             </div>
-          ) : null}
-          {phase === 'committing' ? (
-            <output data-testid="fla-review-commit-status">正在导入已选择的素材…</output>
-          ) : null}
-          {commitResponse && !commitResponse.ok ? (
-            <output data-testid="fla-review-commit-error" role="alert">{commitResponse.error.message}</output>
-          ) : null}
-          {phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
-            <output
-              data-testid="fla-review-commit-success"
-              data-imported-count={commitResponse.summary.importedCount}
-              data-duplicate-count={commitResponse.summary.duplicateCount}
-              data-renamed-count={commitResponse.summary.renamedCount}
-            >
-              导入完成：{commitResponse.summary.importedCount} 项；已复用重复素材：{commitResponse.summary.duplicateCount} 项。
-            </output>
-          ) : null}
-        </div>
+            <div>
+              <button data-testid="fla-review-select-all" disabled type="button">全选</button>
+              <button data-testid="fla-review-clear-all" disabled type="button">清空</button>
+              <button data-testid="fla-review-confirm" disabled type="button">确认选择</button>
+            </div>
+          </div>
+        ) : null}
+
         <div
           className="fla-review-body"
           data-preserves-scroll-position="true"
@@ -408,9 +378,6 @@ export function FlaCompatibilityReviewSession({
           }}
           ref={reviewBodyRef}
         >
-          <p className="fla-review-readonly-note">
-            这是导入前预览。确认选择只会记录本次选择；点击“导入”后才会创建项目素材。
-          </p>
           {response?.ok === true && response.trace?.recoveryApplied ? (
             <output
               className="fla-review-recovery-notice"
@@ -420,56 +387,109 @@ export function FlaCompatibilityReviewSession({
               Panda 已处理一个兼容性问题；原 FLA 文件没有被修改。
             </output>
           ) : null}
+          {rasterRoute ? (
+            <div className="fla-raster-workbench" data-testid="fla-raster-workbench">
+              <aside className="fla-raster-overview" data-testid="fla-raster-overview">
+                <span className="fla-raster-readonly-badge">只读预览</span>
+                <div>
+                  <p className="fla-raster-panel-kicker">FLA 文件</p>
+                  <h3 title={ir.source.basename}>{ir.source.basename}</h3>
+                  <p>在确认导入前，不会修改项目或原文件。</p>
+                </div>
+                <dl className="fla-review-summary" data-testid="fla-review-summary">
+                  <div><dt>舞台</dt><dd>{ir.document.width} × {ir.document.height} · {ir.document.frameRate} fps</dd></div>
+                  <div><dt>位图素材</dt><dd data-testid="fla-review-media-count">{ir.media.length} 项</dd></div>
+                  <div><dt>使用情况</dt><dd>{usedMediaCount} 已使用 · {libraryOnlyMediaCount} 仅素材库</dd></div>
+                </dl>
+                {ir.structure ? (
+                  <details className="fla-raster-structure" data-testid="fla-raster-structure">
+                    <summary>结构信息</summary>
+                    <dl className="fla-review-summary">
+                      <FlaStructuralSummaryReadOnly summary={ir.structure} />
+                    </dl>
+                  </details>
+                ) : null}
+                <section aria-labelledby="fla-compatibility-heading" className="fla-review-compatibility">
+                  <h3 id="fla-compatibility-heading">兼容性概览</h3>
+                  <ul data-testid="fla-compatibility-summary">
+                    {FLA_COMPATIBILITY_STATUSES.map((status) => (
+                      <li data-status={status} key={status}>
+                        <strong>{FLA_COMPATIBILITY_LABELS[status]}</strong>
+                        <span>{counts[status]}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {warnings.length > 0 ? (
+                    <details
+                      className="fla-review-compatibility-notes"
+                      data-testid="fla-compatibility-notes"
+                      open={compatibilityNotesOpen}
+                    >
+                      <summary
+                        onClick={(event) => {
+                          event.preventDefault();
+                          rememberReviewScroll();
+                          setCompatibilityNotesOpen((current) => !current);
+                        }}
+                      >
+                        兼容性说明（{warnings.length}）
+                      </summary>
+                      <ul className="fla-review-warnings" data-testid="fla-compatibility-warnings">
+                        {warnings.map((warning) => (
+                          <li key={`${warning.feature}:${warning.status}`}>
+                            <strong>{FLA_COMPATIBILITY_LABELS[warning.status]} · {compatibilityFeatureLabel(warning.feature)}</strong>
+                            <span>{compatibilityReason(warning.feature, warning.status, warning.reason)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </section>
+              </aside>
 
-          <dl className="fla-review-summary" data-testid="fla-review-summary">
-            <div><dt>源文件</dt><dd>{ir.source.basename}</dd></div>
-            <div><dt>舞台</dt><dd>{ir.document.width} × {ir.document.height} · {ir.document.frameRate} fps</dd></div>
-            <div><dt>素材</dt><dd data-testid="fla-review-media-count">{ir.media.length}</dd></div>
-            <div><dt>已使用</dt><dd>{ir.summary.placedInstanceCount}</dd></div>
-            <div><dt>仅素材库</dt><dd>{ir.summary.libraryOnlyMediaCount}</dd></div>
-            {ir.structure ? (
-              <FlaStructuralSummaryReadOnly summary={ir.structure} />
-            ) : null}
-          </dl>
-
-          <section aria-labelledby="fla-compatibility-heading" className="fla-review-compatibility">
-            <h3 id="fla-compatibility-heading">兼容性</h3>
-            <ul data-testid="fla-compatibility-summary">
-              {FLA_COMPATIBILITY_STATUSES.map((status) => (
-                <li data-status={status} key={status}>
-                  <strong>{FLA_COMPATIBILITY_LABELS[status]}</strong>
-                  <span>{counts[status]}</span>
-                </li>
-              ))}
-            </ul>
-            {warnings.length > 0 ? (
-              <details
-                className="fla-review-compatibility-notes"
-                data-testid="fla-compatibility-notes"
-                open={compatibilityNotesOpen}
-              >
-                <summary
-                  onClick={(event) => {
-                    event.preventDefault();
-                    rememberReviewScroll();
-                    setCompatibilityNotesOpen((current) => !current);
-                  }}
+              <section aria-labelledby="fla-raster-grid-heading" className="fla-raster-selection" data-testid="fla-raster-selection">
+                <header>
+                  <div>
+                    <p className="fla-raster-panel-kicker">选择素材</p>
+                    <h3 id="fla-raster-grid-heading">位图素材</h3>
+                  </div>
+                  <span>{reviewItems.length} 项</span>
+                </header>
+                <div
+                  aria-label="FLA 位图素材"
+                  className="fla-review-media-grid"
+                  data-scroll-region="fla-media-grid"
+                  data-testid="fla-review-media-grid"
                 >
-                  兼容性说明（{warnings.length}）
-                </summary>
-                <ul className="fla-review-warnings" data-testid="fla-compatibility-warnings">
-                  {warnings.map((warning) => (
-                    <li key={`${warning.feature}:${warning.status}`}>
-                      <strong>{FLA_COMPATIBILITY_LABELS[warning.status]} · {compatibilityFeatureLabel(warning.feature)}</strong>
-                      <span>{compatibilityReason(warning.feature, warning.status, warning.reason)}</span>
-                    </li>
+                  {reviewItems.map((item) => (
+                    <FlaReviewMediaCard
+                      focused={focusedItem?.media.id === item.media.id}
+                      item={item}
+                      key={item.media.id}
+                      selected={selectedMediaIds.has(item.media.id)}
+                      selectionLocked={selectionLocked}
+                      thumbnailUrl={thumbnailUrls[item.media.id]}
+                      onFocus={() => setFocusedMediaId(item.media.id)}
+                      onToggle={() => toggle(item.media.id)}
+                    />
                   ))}
-                </ul>
-              </details>
-            ) : null}
-          </section>
+                </div>
+              </section>
 
-          {contentRoute === 'v2r-target-discovery' ? (
+              <aside className="fla-raster-detail" data-testid="fla-raster-detail">
+                <p className="fla-raster-panel-kicker">素材详情</p>
+                {focusedItem ? (
+                  <FlaReviewMediaDetail
+                    item={focusedItem}
+                    selected={selectedMediaIds.has(focusedItem.media.id)}
+                    thumbnailUrl={thumbnailUrls[focusedItem.media.id]}
+                  />
+                ) : (
+                  <p>聚焦一个位图素材以查看详情。</p>
+                )}
+              </aside>
+            </div>
+          ) : (
             <div
               className="fla-review-zero-raster"
               data-testid="fla-review-zero-raster"
@@ -492,42 +512,103 @@ export function FlaCompatibilityReviewSession({
                 onClose={() => onClose()}
               />
             </div>
-          ) : (
-            <div
-              aria-label="FLA 位图素材"
-              className="fla-review-media-grid"
-              data-scroll-region="fla-media-grid"
-              data-testid="fla-review-media-grid"
-            >
-              {reviewItems.map((item) => (
-                <FlaReviewMediaCard
-                  item={item}
-                  key={item.media.id}
-                  selected={selectedMediaIds.has(item.media.id)}
-                  selectionLocked={selectionLocked}
-                  thumbnailUrl={thumbnailUrls[item.media.id]}
-                  onToggle={() => toggle(item.media.id)}
-                />
-              ))}
-            </div>
           )}
         </div>
+
+        {rasterRoute ? (
+          <div className="fla-review-action-stack">
+            <div className="fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
+              <div>
+                <strong data-testid="fla-review-selected-count">已选择 {selectedCount} / {reviewItems.length}</strong>
+                {intent ? <output data-testid="fla-review-intent-status">已确认选择；尚未创建素材。</output> : null}
+              </div>
+              <div className="fla-review-selection-actions">
+                <div className="fla-review-selection-utilities">
+                  <button
+                    data-testid="fla-review-select-all"
+                    disabled={selectionLocked}
+                    onClick={selectAll}
+                    type="button"
+                  >
+                    全选
+                  </button>
+                  <button
+                    data-testid="fla-review-clear-all"
+                    disabled={selectionLocked}
+                    onClick={clearAll}
+                    type="button"
+                  >
+                    清空
+                  </button>
+                </div>
+                {phase === 'ready' ? (
+                  <button
+                    className="fla-review-primary-action"
+                    data-testid="fla-review-confirm"
+                    disabled={selectedCount === 0}
+                    onClick={confirm}
+                    type="button"
+                  >
+                    确认 {selectedCount} 项
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {intent && phase === 'confirmed' ? (
+              <div className="fla-review-commit-action" data-testid="fla-review-commit-action">
+                <div className="fla-review-commit-copy">
+                  <strong data-testid="fla-review-commit-copy">已确认 {intent.selectedCount} 项</strong>
+                  <span>选择已确认，但尚未创建项目素材；修改选择会返回上一步。</span>
+                </div>
+                <button
+                  className="fla-review-commit-primary fla-review-primary-action"
+                  data-testid="fla-review-commit"
+                  disabled={phase !== 'confirmed'}
+                  onClick={() => void commit()}
+                  type="button"
+                >
+                  导入这 {intent.selectedCount} 项
+                </button>
+              </div>
+            ) : null}
+            {phase === 'committing' ? (
+              <output data-testid="fla-review-commit-status">正在导入已选择的素材…</output>
+            ) : null}
+            {commitResponse && !commitResponse.ok ? (
+              <output data-testid="fla-review-commit-error" role="alert">{commitResponse.error.message}</output>
+            ) : null}
+            {phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
+              <output
+                data-testid="fla-review-commit-success"
+                data-imported-count={commitResponse.summary.importedCount}
+                data-duplicate-count={commitResponse.summary.duplicateCount}
+                data-renamed-count={commitResponse.summary.renamedCount}
+              >
+                导入完成：{commitResponse.summary.importedCount} 项；已复用重复素材：{commitResponse.summary.duplicateCount} 项。
+              </output>
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </FlaReviewPortal>
   );
 }
 
 function FlaReviewMediaCard({
+  focused,
   item,
   selected,
   selectionLocked,
   thumbnailUrl,
+  onFocus,
   onToggle,
 }: {
+  focused: boolean;
   item: FlaReviewMedia;
   selected: boolean;
   selectionLocked: boolean;
   thumbnailUrl?: string;
+  onFocus: () => void;
   onToggle: () => void;
 }): React.JSX.Element {
   const { media } = item;
@@ -535,7 +616,7 @@ function FlaReviewMediaCard({
     <article
       aria-label={`${selected ? '取消选择' : '选择'} ${media.name}`}
       aria-pressed={selected}
-      className={`fla-review-media-card${selected ? ' fla-review-media-card-selected' : ''}`}
+      className={`fla-review-media-card${selected ? ' fla-review-media-card-selected' : ''}${focused ? ' fla-review-media-card-focused' : ''}`}
       data-alpha-kind={media.payload.alpha.kind}
       data-fla-media-id={media.id}
       data-library-only={item.libraryOnly ? 'true' : 'false'}
@@ -543,10 +624,12 @@ function FlaReviewMediaCard({
       data-target-file-name={item.name.targetFileName}
       data-testid={`fla-review-media-card-${media.id}`}
       data-zero-alpha-pixels={media.payload.alpha.zeroAlphaPixels}
+      onClickCapture={onFocus}
       onClick={(event: ReactMouseEvent<HTMLElement>) => {
         if (isNestedInteractiveTarget(event.target)) return;
         onToggle();
       }}
+      onFocus={onFocus}
       onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) => {
         if (isNestedInteractiveTarget(event.target)) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -578,16 +661,50 @@ function FlaReviewMediaCard({
         )}
       </div>
       <strong title={media.name}>{media.name}</strong>
-      <span title={media.sourceReference}>来源：{media.sourceReference}</span>
-      <span>{media.width} × {media.height} · 格式 {media.sourceFormat.toUpperCase()}</span>
-      <span>{item.libraryOnly ? '仅素材库' : '已使用'}</span>
-      <span>目标文件名：{item.name.targetFileName}</span>
-      {item.warnings.length > 0 ? (
-        <ul className="fla-review-name-warnings">
-          {item.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-        </ul>
-      ) : null}
+      <span>{media.width} × {media.height} · {item.libraryOnly ? '仅素材库' : '已使用'}</span>
+      {item.warnings.length > 0 ? <span className="fla-review-card-warning">需确认文件名</span> : null}
     </article>
+  );
+}
+
+function FlaReviewMediaDetail({
+  item,
+  selected,
+  thumbnailUrl,
+}: {
+  item: FlaReviewMedia;
+  selected: boolean;
+  thumbnailUrl?: string;
+}): React.JSX.Element {
+  const { media } = item;
+  return (
+    <div className="fla-review-media-detail-content" data-focused-media-id={media.id}>
+      <div className="fla-review-detail-preview">
+        {thumbnailUrl ? (
+          <img alt={media.name} src={thumbnailUrl} />
+        ) : (
+          <span>预览不可用</span>
+        )}
+      </div>
+      <div className="fla-review-detail-heading">
+        <h3 title={media.name}>{media.name}</h3>
+        <span data-selected={selected ? 'true' : 'false'}>{selected ? '已选择' : '未选择'}</span>
+      </div>
+      <dl>
+        <div><dt>尺寸与格式</dt><dd>{media.width} × {media.height} · {media.sourceFormat.toUpperCase()}</dd></div>
+        <div><dt>使用状态</dt><dd>{item.libraryOnly ? '仅素材库' : '已在舞台中使用'}</dd></div>
+        <div><dt>来源</dt><dd title={media.sourceReference}>{media.sourceReference}</dd></div>
+        <div><dt>目标文件名</dt><dd>{item.name.targetFileName}</dd></div>
+      </dl>
+      {item.warnings.length > 0 ? (
+        <div className="fla-review-detail-warnings" role="note">
+          <strong>文件名提醒</strong>
+          <ul className="fla-review-name-warnings">
+            {item.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

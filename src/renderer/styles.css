@@ -2112,6 +2112,422 @@ button:disabled {
   scroll-behavior: auto;
 }
 
+/* Issue #390: Stage B direct-raster review uses one landscape workbench.
+   The review body remains the only wheel-scroll owner; the three zones and
+   bitmap grid are content-sized inside it. */
+.fla-review-portal .fla-review-session[data-workbench-route='raster'] {
+  width: min(1380px, 100%);
+  height: min(calc(100vh - 24px), 920px);
+  max-height: calc(100vh - 24px);
+  padding: 16px 18px;
+  border-color: rgb(131 211 154 / 38%);
+  background:
+    radial-gradient(circle at 64% 0%, rgb(61 126 79 / 13%), transparent 36%),
+    #101a14;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.fla-review-portal .fla-review-session[data-workbench-route='render'] {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.fla-review-heading-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.fla-workbench-progress {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  margin: 3px 0 0;
+  color: #718279;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 8px;
+  list-style: none;
+}
+
+.fla-workbench-progress li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fla-workbench-progress li:not(:last-child)::after {
+  color: #4d5f55;
+  content: '\2192';
+}
+
+.fla-workbench-progress li[aria-current='step'] {
+  color: #a9e8b8;
+}
+
+.fla-review-session[data-workbench-route='raster'] .fla-review-body {
+  padding: 0 8px 12px 0;
+  gap: 10px;
+}
+
+.fla-raster-workbench {
+  display: grid;
+  min-width: 0;
+  align-items: start;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(460px, 2fr) minmax(240px, 0.94fr);
+  gap: 12px;
+}
+
+.fla-raster-overview,
+.fla-raster-selection,
+.fla-raster-detail {
+  min-width: 0;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 14px;
+  background: rgb(7 12 9 / 45%);
+}
+
+.fla-raster-overview,
+.fla-raster-detail {
+  position: sticky;
+  top: 0;
+  display: grid;
+  padding: 12px;
+  gap: 12px;
+}
+
+.fla-raster-readonly-badge {
+  width: max-content;
+  padding: 4px 8px;
+  border: 1px solid rgb(131 211 154 / 24%);
+  border-radius: 999px;
+  background: rgb(45 104 62 / 18%);
+  color: #a9dcb5;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.fla-raster-panel-kicker {
+  margin: 0 0 3px;
+  color: #718279;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.fla-raster-overview h3,
+.fla-raster-selection h3,
+.fla-raster-detail h3 {
+  margin: 0;
+  overflow: hidden;
+  color: #edf6ef;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fla-raster-overview > div > p:last-child,
+.fla-raster-detail > p:last-child {
+  margin: 5px 0 0;
+  color: #8fa096;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.fla-raster-overview .fla-review-summary {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.fla-raster-overview .fla-review-summary > div {
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.fla-raster-structure summary,
+.fla-raster-overview .fla-review-compatibility > h3 {
+  color: #a8b6ad;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.fla-raster-structure[open] summary {
+  margin-bottom: 8px;
+}
+
+.fla-raster-overview .fla-review-compatibility > ul:first-of-type {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fla-raster-overview .fla-review-compatibility > ul:first-of-type li {
+  padding: 6px;
+  font-size: 10px;
+}
+
+.fla-raster-selection {
+  display: grid;
+  padding: 12px;
+  gap: 10px;
+}
+
+.fla-raster-selection > header {
+  display: flex;
+  min-width: 0;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fla-raster-selection > header > span {
+  color: #87988e;
+  font-size: 11px;
+}
+
+.fla-review-body .fla-raster-selection .fla-review-media-grid {
+  grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+  gap: 8px;
+}
+
+.fla-raster-selection .fla-review-media-card {
+  position: relative;
+  padding: 7px;
+  border-radius: 9px;
+  background: #151f19;
+  gap: 5px;
+}
+
+.fla-raster-selection .fla-review-media-card-selected {
+  border-color: #6fc988;
+  background: #18291e;
+  box-shadow: inset 0 0 0 1px rgb(111 201 136 / 16%);
+}
+
+.fla-raster-selection .fla-review-media-card-focused {
+  outline: 2px solid rgb(173 232 189 / 72%);
+  outline-offset: 1px;
+}
+
+.fla-raster-selection .fla-review-media-card label {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  right: 12px;
+  min-height: 30px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgb(8 14 10 / 82%);
+  color: #dce8df;
+  font-size: 10px;
+  backdrop-filter: blur(6px);
+}
+
+.fla-raster-selection .fla-review-media-card label input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #6fc988;
+}
+
+.fla-raster-selection .fla-review-thumbnail {
+  aspect-ratio: 1 / 0.78;
+  border-radius: 6px;
+}
+
+.fla-raster-selection .fla-review-media-card > strong {
+  color: #e7f0e9;
+  font-size: 11px;
+}
+
+.fla-review-card-warning {
+  color: #dfbd7c !important;
+}
+
+.fla-review-media-detail-content {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.fla-review-detail-preview {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 10px;
+  background-color: #dce8df;
+  background-image:
+    linear-gradient(45deg, #aebdb2 25%, transparent 25%),
+    linear-gradient(-45deg, #aebdb2 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #aebdb2 75%),
+    linear-gradient(-45deg, transparent 75%, #aebdb2 75%);
+  background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+  background-size: 14px 14px;
+  place-items: center;
+}
+
+.fla-review-detail-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.fla-review-detail-preview span {
+  color: #4e5e54;
+  font-size: 11px;
+}
+
+.fla-review-detail-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fla-review-detail-heading h3 {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.fla-review-detail-heading span {
+  flex: none;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 6%);
+  color: #87988e;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.fla-review-detail-heading span[data-selected='true'] {
+  background: rgb(61 129 80 / 32%);
+  color: #b7eac3;
+}
+
+.fla-review-media-detail-content > dl {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 7px;
+}
+
+.fla-review-media-detail-content > dl > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.fla-review-media-detail-content dt,
+.fla-review-media-detail-content dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.fla-review-media-detail-content dt {
+  color: #718279;
+}
+
+.fla-review-media-detail-content dd {
+  overflow: hidden;
+  color: #c6d3ca;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fla-review-detail-warnings {
+  display: grid;
+  padding: 8px;
+  border-left: 3px solid #d5a85c;
+  border-radius: 6px;
+  background: rgb(213 168 92 / 8%);
+  color: #dfbd7c;
+  font-size: 10px;
+  gap: 5px;
+}
+
+.fla-review-detail-warnings .fla-review-name-warnings {
+  color: #b9c5bd;
+  line-height: 1.4;
+}
+
+.fla-review-session[data-workbench-route='raster'] .fla-review-action-stack {
+  gap: 7px;
+}
+
+.fla-review-session[data-workbench-route='raster'] .fla-review-selection-toolbar {
+  padding: 8px 10px;
+  border-color: rgb(255 255 255 / 9%);
+  background: rgb(7 12 9 / 74%);
+}
+
+.fla-review-selection-actions,
+.fla-review-selection-utilities {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.fla-review-selection-utilities button {
+  min-height: 44px;
+  border-color: rgb(255 255 255 / 10%);
+  background: transparent;
+  color: #a8b6ad;
+}
+
+.fla-review-primary-action {
+  min-width: 132px;
+  min-height: 44px;
+  border-color: #83d39a;
+  background: #2d683e;
+  color: #f2fff4;
+  font-weight: 800;
+}
+
+.fla-review-primary-action:hover:not(:disabled),
+.fla-review-primary-action:focus-visible:not(:disabled) {
+  border-color: #b0f0bf;
+  background: #3d8150;
+}
+
+.fla-review-primary-action:disabled {
+  border-color: rgb(131 211 154 / 24%);
+  background: rgb(45 104 62 / 32%);
+  color: #7f9185;
+}
+
+@media (max-width: 1040px) {
+  .fla-raster-workbench {
+    grid-template-columns: minmax(160px, 0.66fr) minmax(380px, 1.8fr) minmax(210px, 0.82fr);
+  }
+
+  .fla-review-body .fla-raster-selection .fla-review-media-grid {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .fla-raster-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fla-raster-overview,
+  .fla-raster-detail {
+    position: static;
+  }
+
+  .fla-review-body .fla-raster-selection .fla-review-media-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .fla-review-portal {
     padding: 10px;
