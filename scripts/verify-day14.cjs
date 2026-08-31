@@ -117,27 +117,6 @@ async function verifyDay14Ui() {
         poll();
       })
     `);
-    await window.webContents.executeJavaScript(`
-      (() => {
-        document.querySelector(
-          '.recent-projects-list li:first-child button'
-        ).click();
-        return new Promise((resolve, reject) => {
-          const deadline = Date.now() + 10000;
-          const poll = () => {
-            const status = document.querySelector(
-              '.recovery-status-row output'
-            )?.textContent;
-            if (status?.includes('已从最近项目打开')) return resolve();
-            if (Date.now() >= deadline) {
-              return reject(new Error('Recent project did not reopen.'));
-            }
-            setTimeout(poll, 25);
-          };
-          poll();
-        });
-      })()
-    `);
     const result = await window.webContents.executeJavaScript(`(() => {
       const panel = document.querySelector('.recent-projects-panel');
       const rows = [...panel.querySelectorAll('.recent-projects-list li')];
@@ -156,15 +135,44 @@ async function verifyDay14Ui() {
           }))
         })),
         recentProjectsApi: Object.keys(window.pandaStage.recentProjects).sort(),
-        recoveryStatus: document.querySelector(
-          '.recovery-status-row output'
-        )?.textContent?.trim(),
-        activeProjectRoot: document.querySelector(
-          '[data-testid="active-project-path"] code'
-        )?.textContent,
         rendererHasNodeRequire: typeof window.require !== 'undefined'
       };
     })()`);
+    await window.webContents.executeJavaScript(`
+      (() => {
+        const open = document.querySelector(
+          '[data-project-status="available"] [data-task4-core="recent-open"]'
+        );
+        if (!(open instanceof HTMLElement)) {
+          throw new Error('Available recent project action did not render.');
+        }
+        open.click();
+        return new Promise((resolve, reject) => {
+          const deadline = Date.now() + 10000;
+          const poll = () => {
+            const activeProjectRoot = document.querySelector(
+              '[data-testid="active-project-path"] code'
+            )?.textContent;
+            if (activeProjectRoot === ${JSON.stringify(availableRoot)}) {
+              return resolve();
+            }
+            if (Date.now() >= deadline) {
+              return reject(new Error('Recent project did not reopen.'));
+            }
+            setTimeout(poll, 25);
+          };
+          poll();
+        });
+      })()
+    `);
+    Object.assign(result, await window.webContents.executeJavaScript(`(() => ({
+      recoveryStatus: document.querySelector(
+        '[data-testid="editor-action-status"]'
+      )?.textContent?.trim(),
+      activeProjectRoot: document.querySelector(
+        '[data-testid="active-project-path"] code'
+      )?.textContent
+    }))()`));
     const closeOptions =
       createUnsavedCloseDialogOptions('等待保存的项目');
     const evidence = {
@@ -203,7 +211,7 @@ async function verifyDay14Ui() {
       result.recentProjectsApi.join(',') !== 'list,open,relocate,remove' ||
       openedRecentRoot !== availableRoot ||
       result.activeProjectRoot !== availableRoot ||
-      !result.recoveryStatus?.includes('已从最近项目打开') ||
+      result.recoveryStatus !== undefined ||
       !evidence.configOutsideProject ||
       result.rendererHasNodeRequire ||
       closeOptions.buttons.join(',') !== '保存并退出,不保存,取消' ||
