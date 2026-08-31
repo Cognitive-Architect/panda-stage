@@ -706,8 +706,10 @@ async function verifyDay19() {
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.recovery-status-row output')" +
-          "?.textContent?.includes('项目已保存')",
+        "document.querySelector('[data-testid=\"compact-project-bar\"]')" +
+          "?.dataset?.saveState === 'saved' && " +
+          "document.querySelector('[data-testid=\"project-save-state\"]')" +
+          "?.textContent?.trim() === '已保存'",
         'Character project did not save.',
       ),
     );
