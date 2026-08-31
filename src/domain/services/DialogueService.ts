@@ -59,6 +59,13 @@ export interface ArrangeDialogueInput {
   shotId: string;
   dialogueId: string;
   frameSpanMs: number;
+  /** Optional explicit start point used by Timeline direct manipulation. */
+  startMs?: number;
+}
+
+export interface DialogueArrangementTiming {
+  startMs: number;
+  endMs: number;
 }
 
 export interface MoveDialogueInput {
@@ -183,6 +190,16 @@ export class DialogueService {
    * Day26 frameDurationMs()/snapToFrame() and passes the integer span as data.
    */
   arrange(project: Project, input: ArrangeDialogueInput): Project {
+    const timing = this.getArrangementTiming(project, input);
+    const shot = this.shot(project, input.shotId);
+    return this.replaceDialogueTiming(project, shot, input.dialogueId, timing);
+  }
+
+  /** Resolve an arrangement without changing Project, History, or revision. */
+  getArrangementTiming(
+    project: Project,
+    input: ArrangeDialogueInput,
+  ): DialogueArrangementTiming {
     const shot = this.shot(project, input.shotId);
     const dialogue = this.dialogue(shot, input.dialogueId);
     if (dialogue.endMs !== dialogue.startMs) {
@@ -199,7 +216,10 @@ export class DialogueService {
         '镜头时长不足，无法安排对白。',
       );
     }
-    const pointMs = dialogue.startMs;
+    const pointMs =
+      input.startMs === undefined
+        ? dialogue.startMs
+        : this.clampTime(shot, input.startMs);
     const timing =
       pointMs + spanMs <= shot.durationMs
         ? { startMs: pointMs, endMs: pointMs + spanMs }
@@ -211,7 +231,7 @@ export class DialogueService {
       shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
       timing,
     );
-    return this.replaceDialogueTiming(project, shot, dialogue.id, timing);
+    return timing;
   }
 
   move(project: Project, input: MoveDialogueInput): Project {

@@ -540,9 +540,8 @@ async function run() {
       'task4-menu-1024.png',
     );
     await capture(window, 'task4-menu-1024.png');
-    await click(window, '[data-testid="compact-project-more"]');
 
-    await click(window, '[data-testid="open-project-center"]');
+    await click(window, '[data-testid="menu-open-project-center"]');
     await waitForDom(
       window,
       `document.querySelector('[data-editor-page="project-center"]')`,

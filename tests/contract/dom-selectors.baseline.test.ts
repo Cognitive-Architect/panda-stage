@@ -65,9 +65,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     );
     expect(newProjectEntry).toContain('disabled={busy || newProjectDialogOpen}');
     expect(newProjectEntry).toContain('onClick={onRequestNewProject}');
-    expect(recentProjects).toContain(
-      'className="recent-projects-panel"',
-    );
+    expect(recentProjects).toContain('recent-projects-panel');
     expect(
       (startScreen + newProjectEntry)
         .match(/className="recovery-open-row"/gu),

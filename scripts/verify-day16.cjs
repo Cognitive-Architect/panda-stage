@@ -108,6 +108,7 @@ async function verifyDay16() {
 
   const window = await createMainWindow({ show: false });
   try {
+    window.setSize(1440, 1000);
     await window.webContents.executeJavaScript(`
       new Promise((resolve, reject) => {
         const deadline = Date.now() + 10000;

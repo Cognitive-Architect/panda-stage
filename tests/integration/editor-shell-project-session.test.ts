@@ -71,6 +71,8 @@ function renderCompactProjectBar(
       onSaveProject: vi.fn(),
       onOpenProductPreview: vi.fn(),
       onRequestCloseProject: vi.fn(),
+      deviceMode: 'auto',
+      onDeviceModeChange: vi.fn(),
     }),
   );
 }
@@ -423,8 +425,7 @@ describe('EditorShell project session integration', () => {
     expect(markup.match(/class="editor-save-button"/gu)).toHaveLength(1);
     expect(bannerMarkup).toContain('role="alert"');
     expect(markup).toContain(PROJECT.name);
-    expect(markup).toContain('data-testid="active-project-path"');
-    expect(markup).toContain(PROJECT_ROOT);
+    expect(markup).toContain(`title="${PROJECT_ROOT}"`);
     expect(bannerMarkup).toContain(recoveryCandidate.recoveryFilePath);
     expect(bannerMarkup).toContain('恢复');
     expect(bannerMarkup).toContain('忽略');
@@ -636,14 +637,11 @@ describe('EditorShell project session integration', () => {
         onSaveProject: vi.fn(),
         onOpenProductPreview: vi.fn(),
         onRequestCloseProject: vi.fn(),
+        deviceMode: 'auto',
+        onDeviceModeChange: vi.fn(),
       }),
     );
-    expect(markup).toMatch(
-      new RegExp(
-        `data-testid="active-project-path"[\\s\\S]*?${PROJECT_ROOT.replaceAll('\\', '\\\\')}`,
-        'u',
-      ),
-    );
+    expect(markup).toContain(`title="${PROJECT_ROOT}"`);
   });
 
   it('keeps restore, save, and ignore semantics behind shell-owned actions', async () => {
@@ -680,9 +678,7 @@ describe('EditorShell project session integration', () => {
       restoreHarness.session.getSnapshot().recoveryCandidate,
       '项目已保存。',
     );
-    expect(savedMarkup).toContain(
-      '项目已保存。',
-    );
+    expect(savedMarkup).not.toContain('data-testid="editor-action-status"');
     expect(savedMarkup).toMatch(
       /class="editor-save-button"[^>]*disabled/u,
     );
@@ -771,9 +767,7 @@ describe('EditorShell project session integration', () => {
       true,
     );
 
-    expect(markup).toMatch(
-      /data-testid="open-project-center"[^>]*disabled=""/u,
-    );
+    expect(markup).not.toContain('data-testid="open-project-center"');
     // Confirming a close must not pre-emptively change project state.
     expect(markup).toContain('已保存');
     expect(markup).toContain(PROJECT_ROOT);

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { ProjectSchema, migrateProject } from '../../src/domain';
 import {
   assetCategoryCounts,
+  assetLibraryFilterCounts,
+  filterAssetLibraryEntries,
   selectAssetLibraryEntries,
 } from '../../src/renderer/stores/assetLibrarySelectors';
 import exampleProject from '../../demo-project/project-v1.example.json';
@@ -20,6 +22,24 @@ describe('asset library selectors', () => {
         (entry) => entry.asset.name,
       ),
     ).toEqual(['Panda happy', 'Panda neutral']);
+  });
+
+  it('provides an all filter and simple name search over the same entries', () => {
+    const project = migrateProject(exampleProject);
+    const entries = selectAssetLibraryEntries(project, 'all');
+
+    expect(assetLibraryFilterCounts(project)).toEqual({
+      all: 4,
+      character: 2,
+      background: 1,
+      audio: 1,
+    });
+    expect(
+      filterAssetLibraryEntries(entries, 'happy').map(
+        (entry) => entry.asset.name,
+      ),
+    ).toEqual(['Panda happy']);
+    expect(filterAssetLibraryEntries(entries, '  ')).toEqual(entries);
   });
 
   it('classifies a configured mouth image as a character image', () => {

@@ -92,7 +92,8 @@
           "tests/unit/migrations/**",
           "tests/integration/schema-*.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
-          "tests/unit/ipc-contracts.test.ts"
+          "tests/unit/ipc-contracts.test.ts",
+          "tests/unit/application-menu-policy.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*"],
         "suites": [],
@@ -235,6 +236,7 @@
         "sourcePatterns": ["src/renderer/features/timeline/**"],
         "testPatterns": [
           "tests/unit/features/timeline/**",
+          "tests/integration/timeline-selection.test.ts",
           "tests/contract/*timeline*.test.ts",
           "tests/contract/day26-*.test.ts"
         ],
@@ -273,15 +275,20 @@
           "src/renderer/features/actions/**",
           "src/renderer/features/editor/**",
           "src/renderer/shell/**",
-          "src/renderer/styles.css"
+          "src/renderer/styles.css",
+          "src/renderer/styles/**",
+          "src/renderer/ui/**"
         ],
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
           "tests/unit/left-workspace.test.ts",
           "tests/unit/right-inspector*.test.ts",
+          "tests/unit/ui-m1-*.test.ts",
           "tests/integration/editor-shell-*.test.ts",
           "tests/integration/left-workspace.test.ts",
-          "tests/integration/right-inspector*.test.ts"
+          "tests/integration/right-inspector*.test.ts",
+          "tests/contract/ui-m1-*.test.ts",
+          "tests/contract/dom-selectors.baseline.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-issue102-task2*",
@@ -292,7 +299,7 @@
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell and actions use editor plus timeline regression without embedding subsystem names in the workflow."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit."
       }
     ]
   },

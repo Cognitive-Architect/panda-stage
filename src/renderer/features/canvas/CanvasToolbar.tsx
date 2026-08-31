@@ -3,6 +3,7 @@ import type {
   Point,
   ViewportTransform,
 } from '../../../domain';
+import { Maximize2, ScanLine } from 'lucide-react';
 
 export interface CanvasToolbarProps {
   mode: CanvasViewportMode;
@@ -22,14 +23,17 @@ export function CanvasToolbar({
       <div className="canvas-mode-switch" role="group" aria-label="缩放模式">
         <button
           aria-pressed={mode === 'fit'}
+          className="canvas-mode-button ui-icon-label"
           data-testid="canvas-mode-fit"
           onClick={() => onModeChange('fit')}
           type="button"
         >
-          适应窗口
+          <Maximize2 aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+          <span>适应窗口</span>
         </button>
         <button
           aria-pressed={mode === 'half'}
+          className="canvas-mode-button ui-icon-label"
           data-testid="canvas-mode-half"
           onClick={() => onModeChange('half')}
           type="button"
@@ -38,11 +42,13 @@ export function CanvasToolbar({
         </button>
         <button
           aria-pressed={mode === 'actual'}
+          className="canvas-mode-button ui-icon-label"
           data-testid="canvas-mode-actual"
           onClick={() => onModeChange('actual')}
           type="button"
         >
-          实际尺寸
+          <ScanLine aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+          <span>实际尺寸</span>
         </button>
       </div>
       <output
@@ -57,7 +63,6 @@ export function CanvasToolbar({
         {' · '}
         {(transform.scale * 100).toFixed(1)}%
       </output>
-      <span>逻辑画布 1920 × 1080</span>
       <output data-testid="canvas-pointer-coordinate">
         {point
           ? `x ${point.x.toFixed(1)} · y ${point.y.toFixed(1)}`

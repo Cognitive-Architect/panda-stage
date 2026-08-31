@@ -110,11 +110,23 @@ async function clickElement(window, selector) {
 }
 
 async function openProject(window, projectRoot) {
-  await window.webContents.executeJavaScript(`(() => {
-    if (document.querySelector('[data-editor-page="editor"]')) {
-      document.querySelector('[data-testid="open-project-center"]').click();
-    }
-  })()`);
+  const editorOpen = await window.webContents.executeJavaScript(
+    `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
+  );
+  if (editorOpen) {
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="compact-project-more"]').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="compact-project-menu"]')`,
+        'Project menu did not open for a project switch.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="menu-open-project-center"]').click()
+    `);
+  }
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-editor-page="project-center"]')`,
@@ -134,6 +146,42 @@ async function openProject(window, projectRoot) {
       `document.querySelector('[data-testid="active-project-path"] code')` +
         `?.textContent === ${JSON.stringify(projectRoot)}`,
       `Project did not become active: ${projectRoot}`,
+    ),
+  );
+}
+
+async function ensureDesktopEditor(window) {
+  const desktop = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-editor-shell-layout="desktop"]') !== null`,
+  );
+  if (desktop) return;
+
+  await window.webContents.executeJavaScript(`
+    document.querySelector('[data-testid="compact-project-more"]').click()
+  `);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="editor-device-mode-desktop"]')`,
+      'Editor device mode menu did not expose the Desktop option.',
+    ),
+  );
+  await window.webContents.executeJavaScript(`
+    document.querySelector('[data-testid="editor-device-mode-desktop"]').click()
+  `);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-editor-shell-layout="desktop"]') && ` +
+        `document.querySelector('.shot-fields')`,
+      'Explicit Desktop mode did not restore the desktop Shot editor surface.',
+    ),
+  );
+  await window.webContents.executeJavaScript(`
+    document.querySelector('[data-testid="compact-project-more"]').click()
+  `);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `!document.querySelector('[data-testid="compact-project-menu"]')`,
+      'Editor device mode menu did not close after selecting Desktop.',
     ),
   );
 }
@@ -176,9 +224,9 @@ async function snapshot(window) {
       shotNameDraft: document.querySelector(
         '.shot-fields label:nth-of-type(1) input'
       )?.value,
-      shotDurationDraft: Number(document.querySelector(
-        '.shot-fields label:nth-of-type(2) input'
-      )?.value)
+      shotDurationDraft: Math.round(Number(document.querySelector(
+        '.shot-duration-input input'
+      )?.value) * 1_000)
     };
   })()`);
 }
@@ -285,7 +333,7 @@ async function blurWithoutChangingSelection(window, expectedLayerId) {
     );
   }
   const point = await window.webContents.executeJavaScript(`(() => {
-    const target = document.querySelector('.project-canvas-heading h2');
+    const target = document.querySelector('[data-testid="compact-project-bar"]');
     const form = document.querySelector(
       '[data-testid="layer-transform-panel"] form'
     );
@@ -314,8 +362,8 @@ async function blurWithoutChangingSelection(window, expectedLayerId) {
     });
   }
   await window.webContents.executeJavaScript(
-    `document.querySelector('.project-canvas-heading h2')` +
-      `.focus({ preventScroll: true })`,
+      `document.querySelector('[data-testid="compact-project-bar"]')` +
+        `.focus({ preventScroll: true })`,
   );
   await new Promise((resolve) => setTimeout(resolve, 100));
   const after = await snapshot(window);
@@ -503,6 +551,7 @@ async function verifyDay24() {
       ),
     );
     await openProject(window, firstRoot);
+    await ensureDesktopEditor(window);
     window.showInactive();
     await window.webContents.executeJavaScript(
       waitFor(
@@ -902,11 +951,17 @@ async function verifyDay24() {
     const deleteRedone = await snapshot(window);
 
     await window.webContents.executeJavaScript(
-      `document.querySelector('.recovery-status-row button').click()`,
+      `document.querySelector('[data-testid="compact-project-save"]').click()`,
     );
     await window.webContents.executeJavaScript(
-      waitFor(`Boolean(${() => saveRequest})`, 'Save did not complete.'),
-    ).catch(() => undefined);
+      waitFor(
+        `document.querySelector('[data-testid="compact-project-bar"]')` +
+          `?.dataset?.saveState === 'saved' && ` +
+          `document.querySelector('[data-testid="project-save-state"]')` +
+          `?.textContent?.trim() === '已保存'`,
+        'Save did not complete.',
+      ),
+    );
     await new Promise((resolve) => setTimeout(resolve, 200));
     await openProject(window, secondRoot);
     await window.webContents.executeJavaScript(

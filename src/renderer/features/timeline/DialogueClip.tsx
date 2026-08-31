@@ -6,7 +6,9 @@ import { dialogueStore } from '../../stores/dialogueStore';
 import { shotStore } from '../../stores/shotStore';
 import {
   commitDialogueGesture,
+  hasDialogueGestureMoved,
   isolateDialoguePointerEvent,
+  shouldClearDialogueSelectionOnClick,
   shouldCommitDialogueGesture,
   type DialogueGestureIdentity,
   type DialogueGestureKind,
@@ -22,6 +24,8 @@ interface DragState {
   kind: DialogueGestureKind;
   pointerId: number;
   identity: DialogueGestureIdentity;
+  wasSelected: boolean;
+  didMove: boolean;
   originClientX: number;
   originStartMs: number;
   originEndMs: number;
@@ -59,6 +63,11 @@ export function DialogueClip({
   selected,
 }: DialogueClipProps): React.JSX.Element {
   const dragRef = useRef<DragState | null>(null);
+  const untimedPointerRef = useRef<{
+    pointerId: number;
+    wasSelected: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState({
     startMs: dialogue.startMs,
@@ -94,7 +103,15 @@ export function DialogueClip({
     const drag = dragRef.current;
     if (drag) releaseCapture(drag.pointerId);
     dragRef.current = null;
+    untimedPointerRef.current = null;
     setPreview({ startMs: dialogue.startMs, endMs: dialogue.endMs });
+  };
+
+  const markPointerClickHandled = (): void => {
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
   };
 
   useEffect(() => {
@@ -114,7 +131,7 @@ export function DialogueClip({
 
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && dragRef.current) {
+      if (event.key === 'Escape' && (dragRef.current || untimedPointerRef.current)) {
         event.preventDefault();
         discardDrag();
       }
@@ -125,6 +142,7 @@ export function DialogueClip({
       const drag = dragRef.current;
       if (drag) releaseCapture(drag.pointerId);
       dragRef.current = null;
+      untimedPointerRef.current = null;
     };
   }, [dialogue.id]);
 
@@ -138,6 +156,9 @@ export function DialogueClip({
       (event.clientX - drag.originClientX) /
         Math.max(pixelsPerMs, 0.0001),
     );
+    if (hasDialogueGestureMoved(drag.originClientX, event.clientX)) {
+      drag.didMove = true;
+    }
     let next: { startMs: number; endMs: number };
     if (drag.kind === 'move') {
       const duration = drag.originEndMs - drag.originStartMs;
@@ -175,12 +196,21 @@ export function DialogueClip({
     kind: DialogueGestureKind,
   ): void => {
     isolateDialoguePointerEvent(event);
+    const wasSelected = selected;
     dialogueSelectionStore.select(dialogue.id);
-    if (!timed) return;
+    if (!timed) {
+      untimedPointerRef.current = {
+        pointerId: event.pointerId,
+        wasSelected,
+      };
+      return;
+    }
     dragRef.current = {
       kind,
       pointerId: event.pointerId,
       identity: { projectRoot, shotId, dialogueId: dialogue.id },
+      wasSelected,
+      didMove: false,
       originClientX: event.clientX,
       originStartMs: dialogue.startMs,
       originEndMs: dialogue.endMs,
@@ -212,10 +242,37 @@ export function DialogueClip({
     event: React.PointerEvent<HTMLDivElement>,
   ): void => {
     const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag) {
+      const untimedPointer = untimedPointerRef.current;
+      if (!untimedPointer || untimedPointer.pointerId !== event.pointerId) {
+        return;
+      }
+      isolateDialoguePointerEvent(event);
+      untimedPointerRef.current = null;
+      if (
+        shouldClearDialogueSelectionOnClick(
+          untimedPointer.wasSelected,
+          false,
+        )
+      ) {
+        dialogueSelectionStore.clear();
+      }
+      markPointerClickHandled();
+      return;
+    }
+    if (drag.pointerId !== event.pointerId) return;
     isolateDialoguePointerEvent(event);
     dragRef.current = null;
     releaseCapture(event.pointerId);
+    if (!drag.didMove) {
+      setPreview({ startMs: dialogue.startMs, endMs: dialogue.endMs });
+      if (shouldClearDialogueSelectionOnClick(drag.wasSelected, false)) {
+        dialogueSelectionStore.clear();
+      }
+      markPointerClickHandled();
+      return;
+    }
+    markPointerClickHandled();
     try {
       const committed = commitDialogueGesture(
         drag.identity,
@@ -259,7 +316,13 @@ export function DialogueClip({
   const cancelDrag = (
     event: React.PointerEvent<HTMLDivElement>,
   ): void => {
-    if (!dragRef.current) return;
+    if (
+      !dragRef.current &&
+      (!untimedPointerRef.current ||
+        untimedPointerRef.current.pointerId !== event.pointerId)
+    ) {
+      return;
+    }
     isolateDialoguePointerEvent(event);
     discardDrag();
   };
@@ -283,7 +346,11 @@ export function DialogueClip({
       ref={rootRef}
       onClick={(event) => {
         event.stopPropagation();
-        dialogueSelectionStore.select(dialogue.id);
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+        dialogueSelectionStore.toggle(dialogue.id);
       }}
       onPointerCancel={cancelDrag}
       onPointerDown={(event) => beginDrag(event, 'move')}

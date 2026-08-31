@@ -3,6 +3,7 @@ import type { Character } from '../../src/domain';
 import {
   isBatchSubmittable,
   parseDialoguePaste,
+  resolveDialoguePaste,
 } from '../../src/renderer/features/dialogue/parseDialoguePaste';
 
 function character(id: string, name: string): Character {
@@ -128,5 +129,38 @@ describe('parseDialoguePaste', () => {
     expect(isBatchSubmittable(withUnknown)).toBe(false);
     const empty = parseDialoguePaste('', characters);
     expect(isBatchSubmittable(empty)).toBe(false);
+  });
+
+  it('resolves unknown speakers through draft-only mappings and reports stats', () => {
+    const parsed = parseDialoguePaste(
+      '熊猫：有效\n小猫：待映射\n没有分隔符',
+      characters,
+    );
+    const unresolved = resolveDialoguePaste(parsed, {}, characters);
+    expect(unresolved).toMatchObject({
+      readyCount: 1,
+      failureCount: 1,
+      unknownCount: 1,
+      allResolved: false,
+    });
+
+    const mapped = resolveDialoguePaste(parsed, { 2: 'c-tiger' }, characters);
+    expect(mapped).toMatchObject({
+      readyCount: 2,
+      failureCount: 1,
+      unknownCount: 1,
+      allResolved: false,
+    });
+    expect(mapped.resolvedLines[1]).toEqual({
+      characterId: 'c-tiger',
+      text: '待映射',
+    });
+  });
+
+  it('rejects a stale speaker mapping to a character that no longer exists', () => {
+    const parsed = parseDialoguePaste('小猫：喵', characters);
+    expect(
+      resolveDialoguePaste(parsed, { 1: 'deleted-character' }, characters),
+    ).toMatchObject({ readyCount: 0, allResolved: false });
   });
 });

@@ -19,9 +19,15 @@ describe('Stage 2-B left workspace composition contract', () => {
     expect(left).toContain('<ResourceActivityDock');
     expect(dock).toContain("useState<ResourceActivity>('shots')");
     expect(dock).toContain('data-testid="resource-activity-tabs"');
-    expect(dock).toContain("{ id: 'shots', label: '镜头' }");
-    expect(dock).toContain("{ id: 'assets', label: '素材' }");
-    expect(dock).toContain("{ id: 'characters', label: '角色' }");
+    expect(dock).toContain(
+      "{ id: 'shots', label: '镜头', icon: Clapperboard }",
+    );
+    expect(dock).toContain(
+      "{ id: 'assets', label: '素材', icon: Images }",
+    );
+    expect(dock).toContain(
+      "{ id: 'characters', label: '角色', icon: Smile }",
+    );
     expect(dock).toContain('<ShotManager');
     expect(dock).toContain('<AssetLibrary');
     expect(dock).toContain('<CharacterManager');

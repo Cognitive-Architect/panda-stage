@@ -1,9 +1,13 @@
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
-import { RecentProjectsPanel } from '../welcome/RecentProjectsPanel';
+import {
+  RecentProjectsPanel,
+  type RecentProjectsPanelPresentation,
+} from '../welcome/RecentProjectsPanel';
 
 export interface ProjectRecoveryPanelProps {
   projectSnapshot: EditorProjectSnapshot;
   recentRefreshToken: number;
+  presentation?: RecentProjectsPanelPresentation;
   onOpenRecentProject(
     projectRoot: string,
     expectedProjectId: string,
@@ -17,6 +21,7 @@ export function ProjectRecoveryPanel(
     <>
       <RecentProjectsPanel
         onOpenProject={props.onOpenRecentProject}
+        presentation={props.presentation}
         refreshToken={props.recentRefreshToken}
       />
     </>

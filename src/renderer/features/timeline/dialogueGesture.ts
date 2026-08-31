@@ -19,6 +19,24 @@ export type DialogueGestureCompletion =
   | 'escape'
   | 'unmount';
 
+export const DIALOGUE_DRAG_THRESHOLD_PX = 4;
+
+/** Ignore small pointer jitter so a tap is not mistaken for a drag. */
+export function hasDialogueGestureMoved(
+  originClientX: number,
+  clientX: number,
+): boolean {
+  return Math.abs(clientX - originClientX) >= DIALOGUE_DRAG_THRESHOLD_PX;
+}
+
+/** A selected clip may clear only when the pointer interaction stayed a click. */
+export function shouldClearDialogueSelectionOnClick(
+  wasSelected: boolean,
+  moved: boolean,
+): boolean {
+  return wasSelected && !moved;
+}
+
 /** Full stale-target guard required before a pointer gesture may commit. */
 export function canCommitDialogueGesture(
   identity: DialogueGestureIdentity,

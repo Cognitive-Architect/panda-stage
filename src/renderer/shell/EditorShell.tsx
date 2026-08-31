@@ -28,6 +28,7 @@ import {
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
 import { BottomWorkspace } from './BottomWorkspace';
 import { CanvasWorkspace } from './CanvasWorkspace';
 import {
@@ -40,6 +41,13 @@ import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
+import type { ResourceActivity } from './ResourceActivityDock';
+import {
+  reconcileEditorWorkspace,
+  useEditorShellLayoutMode,
+  type EditorDeviceMode,
+  type EditorWorkspace,
+} from './adaptiveEditorShell';
 import { useDebugFlag } from './useDebugFlag';
 import {
   CLOSE_PROJECT_DIRTY_PROMPT,
@@ -64,6 +72,7 @@ export type EditorShellSessionRegion =
   | 'start-screen'
   | 'editor-layout';
 export type EditorShellPage = 'project-center' | 'editor';
+type PortraitCanvasSurface = 'none' | 'shots';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
@@ -418,6 +427,16 @@ export function EditorShell({
   }>({ phase: 'idle', revision: null });
   const [requestedPage, setRequestedPage] =
     useState<EditorShellPage>('project-center');
+  // This is presentation/session state only. It never enters Project,
+  // History, autosave, or any cross-process contract.
+  const [deviceMode, setDeviceMode] = useState<EditorDeviceMode>('auto');
+  const layoutMode = useEditorShellLayoutMode(deviceMode);
+  const [portraitWorkspace, setPortraitWorkspace] =
+    useState<EditorWorkspace>('canvas');
+  const [portraitResourceActivity, setPortraitResourceActivity] =
+    useState<ResourceActivity>('shots');
+  const [portraitCanvasSurface, setPortraitCanvasSurface] =
+    useState<PortraitCanvasSurface>('none');
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
   const page = getEditorShellPage(requestedPage, projectSnapshot);
@@ -437,6 +456,19 @@ export function EditorShell({
           : 'saved';
   const { debug, gateA } = useDebugFlag();
   const renderProductSurface = shouldRenderProductSurface(gateA);
+  const isPortrait = layoutMode === 'portrait';
+
+  useEffect(() => {
+    setPortraitWorkspace((current) =>
+      reconcileEditorWorkspace(layoutMode, current),
+    );
+  }, [layoutMode]);
+
+  useEffect(() => {
+    setPortraitCanvasSurface(
+      isPortrait && portraitWorkspace === 'canvas' ? 'shots' : 'none',
+    );
+  }, [isPortrait, portraitWorkspace]);
 
   useEffect(() => {
     session.activateAutosaveErrors((error) => setStatus(error.message));
@@ -851,10 +883,65 @@ export function EditorShell({
     }
   };
 
+  const selectPortraitWorkspace = (workspace: EditorWorkspace): void => {
+    setPortraitWorkspace(workspace);
+    setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none');
+    if (workspace === 'assets') {
+      setPortraitResourceActivity('assets');
+    } else if (workspace === 'canvas') {
+      setPortraitResourceActivity('shots');
+    }
+  };
+
+  const closePortraitCanvasSurface = (): void => {
+    setPortraitCanvasSurface('none');
+  };
+
+  const handlePortraitResourceActivityChange = (
+    activity: ResourceActivity,
+  ): void => {
+    if (!isPortrait) return;
+    setPortraitResourceActivity(activity);
+    if (activity === 'assets') {
+      setPortraitWorkspace('assets');
+      setPortraitCanvasSurface('none');
+    } else {
+      setPortraitWorkspace('canvas');
+      setPortraitCanvasSurface('shots');
+    }
+  };
+
+  const portraitCanvasVisible =
+    !isPortrait ||
+    portraitWorkspace === 'canvas' ||
+    portraitWorkspace === 'properties' ||
+    portraitWorkspace === 'timeline';
+  const portraitResourcesVisible =
+    !isPortrait ||
+    portraitWorkspace === 'assets' ||
+    (portraitWorkspace === 'canvas' && portraitCanvasSurface === 'shots');
+  const portraitPropertiesVisible =
+    !isPortrait ||
+    portraitWorkspace === 'properties';
+  const portraitContextSurface =
+    isPortrait && portraitWorkspace === 'canvas'
+      ? portraitCanvasSurface
+      : isPortrait && portraitWorkspace === 'properties'
+        ? 'properties'
+        : isPortrait && portraitWorkspace === 'timeline'
+          ? 'timeline'
+        : 'none';
+  // Keep the CanvasStage mounted as the sole Canvas owner, but expose its
+  // existing toolbar only for the active portrait Canvas workspace.
+  const canvasToolbarVisible =
+    !isPortrait || portraitWorkspace === 'canvas';
+
   return (
     <main
       className="app-shell editor-shell"
       data-debug={debug ? 'enabled' : 'disabled'}
+      data-editor-device-mode={deviceMode}
+      data-editor-shell-layout={layoutMode}
       data-editor-shell-state={shellState}
       data-editor-shell-region={sessionRegion}
       data-editor-page={page}
@@ -886,7 +973,12 @@ export function EditorShell({
           status={status}
         />
       ) : projectSnapshot ? (
-        <div className="editor-layout" data-testid="editor-layout">
+        <div
+          className="editor-layout"
+          data-active-workspace={portraitWorkspace}
+          data-shell-mode={layoutMode}
+          data-testid="editor-layout"
+        >
           <div className="editor-top-region" data-testid="editor-top-region">
             <CompactProjectBar
               busy={busy}
@@ -896,10 +988,13 @@ export function EditorShell({
               onOpenProjectFolder={openProjectFolder}
               onRequestCloseProject={requestCloseProject}
               onSaveProject={saveProject}
+              onDeviceModeChange={setDeviceMode}
               productPreviewOpen={productPreviewOpen}
               projectSnapshot={projectSnapshot}
               saveState={saveState}
               status={status}
+              deviceMode={deviceMode}
+              presentation={layoutMode}
             />
             {recoveryCandidate ? (
               <RecoveryCandidateBanner
@@ -909,18 +1004,96 @@ export function EditorShell({
                 onRestore={restoreRecovery}
               />
             ) : null}
+            {isPortrait ? (
+              <AdaptiveWorkspaceSwitcher
+                onChange={selectPortraitWorkspace}
+                value={portraitWorkspace}
+              />
+            ) : null}
           </div>
-          <div className="editor-body" data-testid="editor-body">
-            <LeftWorkspace
-              onOpenRecentProject={switchToRecentProject}
-              projectSnapshot={projectSnapshot}
-              recentRefreshToken={recentRefreshToken}
-            />
-            <CanvasWorkspace />
-            <RightInspector />
+          <div
+            className="editor-body"
+            data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
+            data-portrait-surface={portraitContextSurface}
+            data-shell-mode={layoutMode}
+            data-testid="editor-body"
+          >
+            <div
+              aria-hidden={!portraitResourcesVisible}
+              className="editor-workspace-slot editor-workspace-slot-resources"
+              data-active={portraitResourcesVisible}
+              data-workspace-owner="resources"
+              hidden={!portraitResourcesVisible}
+            >
+              <LeftWorkspace
+                activeActivity={
+                  isPortrait ? portraitResourceActivity : undefined
+                }
+                drawerOpen={
+                  isPortrait && portraitResourcesVisible ? true : undefined
+                }
+                onDrawerOpenChange={(open) => {
+                  if (!isPortrait || open) return;
+                  if (portraitWorkspace === 'assets') {
+                    setPortraitWorkspace('canvas');
+                    setPortraitResourceActivity('shots');
+                  } else {
+                    closePortraitCanvasSurface();
+                  }
+                }}
+                onActiveActivityChange={handlePortraitResourceActivityChange}
+                onOpenRecentProject={switchToRecentProject}
+                projectSnapshot={projectSnapshot}
+                recentRefreshToken={recentRefreshToken}
+                shellMode={layoutMode}
+              />
+            </div>
+            <div
+              aria-hidden={!portraitCanvasVisible}
+              className="editor-workspace-slot editor-workspace-slot-canvas"
+              data-active={portraitCanvasVisible}
+              data-workspace-owner="canvas"
+              hidden={!portraitCanvasVisible}
+            >
+              <CanvasWorkspace
+                showHeading={false}
+                showToolbar={canvasToolbarVisible}
+              />
+            </div>
+            <div
+              aria-hidden={!portraitPropertiesVisible}
+              className="editor-workspace-slot editor-workspace-slot-properties"
+              data-active={portraitPropertiesVisible}
+              data-workspace-owner="properties"
+              hidden={!portraitPropertiesVisible}
+            >
+              <RightInspector
+                compact={isPortrait ? portraitPropertiesVisible : undefined}
+                dialogueSelectionVisible={
+                  !isPortrait || portraitWorkspace !== 'timeline'
+                }
+                drawerOpen={
+                  isPortrait && portraitPropertiesVisible ? true : undefined
+                }
+                onDrawerOpenChange={(open) => {
+                  if (!isPortrait || open) return;
+                  if (portraitWorkspace === 'properties') {
+                    setPortraitWorkspace('canvas');
+                  } else {
+                    closePortraitCanvasSurface();
+                  }
+                }}
+                shellMode={layoutMode}
+              />
+            </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
           </div>
-          <BottomWorkspace />
+          <BottomWorkspace
+            hidden={isPortrait && portraitWorkspace !== 'timeline'}
+            presentation={layoutMode}
+            resizable={deviceMode === 'cloud-touch' && layoutMode === 'landscape'}
+            showHistoryControls={false}
+          />
           {productPreviewOpen ? (
             <ProductPreviewOverlay
               onClose={closeProductPreview}

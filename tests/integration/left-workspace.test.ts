@@ -147,6 +147,14 @@ projectB.shots = projectB.shots.map((shot) => ({
   id: '50000000-0000-4000-8000-000000000099',
 }));
 
+const missingProjectEntry = {
+  projectId: '20000000-0000-4000-8000-000000000099',
+  projectName: 'Issue 81 missing project',
+  projectRoot: 'D:\\Projects\\Issue 81 Missing.pandastage',
+  lastOpenedAt: '2026-08-01T00:02:00.000Z',
+  status: 'missing',
+};
+
 const projects = new Map([
   [projectARoot, projectA],
   [projectBRoot, projectB],
@@ -226,6 +234,33 @@ async function click(window, selector) {
   );
 }
 
+async function openProjectCenter(window) {
+  const editorOpen = await window.webContents.executeJavaScript(
+    '(() => {' +
+      'if (!document.querySelector(' +
+        JSON.stringify('[data-editor-page="editor"]') +
+      ')) return false;' +
+      'const more = document.querySelector(' +
+        JSON.stringify('[data-testid="compact-project-more"]') +
+      ');' +
+      'if (!(more instanceof HTMLElement)) {' +
+        'throw new Error("Project More menu was not found.");' +
+      '}' +
+      'more.click();' +
+      'return true;' +
+    '})()',
+  );
+  if (!editorOpen) return;
+  await waitFor(
+    window,
+    'document.querySelector(' +
+      JSON.stringify('[data-testid="menu-open-project-center"]') +
+    ')',
+    'Project Center menu entry did not open.',
+  );
+  await click(window, '[data-testid="menu-open-project-center"]');
+}
+
 async function snapshot(window) {
   const script =
     '(() => ({' +
@@ -237,10 +272,13 @@ async function snapshot(window) {
     ) +
     '))?.textContent ?? null,' +
     'activity: document.querySelector(' +
-    JSON.stringify('[data-testid="resource-activity-panel"]') +
+      JSON.stringify('[data-testid="resource-activity-panel"]') +
     ')?.getAttribute("data-active-activity") ?? null,' +
+    'resourceRail: Boolean(document.querySelector(' +
+      JSON.stringify('[data-testid="resource-activity-rail"]') +
+    ')),' +
     'assetCategory: [...document.querySelectorAll(' +
-    JSON.stringify('.asset-category-tabs button') +
+      JSON.stringify('.asset-category-tabs button') +
     ')].findIndex((button) => button.getAttribute("aria-pressed") === "true"),' +
     'assetResultCount: document.querySelectorAll(' +
     JSON.stringify('.asset-import-results li') +
@@ -259,7 +297,9 @@ async function snapshot(window) {
     JSON.stringify('.character-create-form input') +
     ')?.value ?? null,' +
     'charEditorDraft: document.querySelector(' +
-    JSON.stringify('.character-settings input') +
+    JSON.stringify(
+      '.character-rename-form input, .character-settings input',
+    ) +
     ')?.value ?? null,' +
     'shotId: document.querySelector(' +
     JSON.stringify('.shot-list-item-selected') +
@@ -307,17 +347,7 @@ async function waitForActivity(window, activity) {
 }
 
 async function openProject(window, projectRoot) {
-  await window.webContents.executeJavaScript(
-    '(() => {' +
-      'if (document.querySelector(' +
-        JSON.stringify('[data-editor-page="editor"]') +
-        ')) {' +
-        'document.querySelector(' +
-        JSON.stringify('[data-testid="open-project-center"]') +
-        ').click();' +
-      '}' +
-    '})()',
-  );
+  await openProjectCenter(window);
   await waitFor(
     window,
     'document.querySelector(' +
@@ -347,17 +377,7 @@ async function openProject(window, projectRoot) {
 }
 
 async function requestProjectSwitch(window, projectRoot) {
-  await window.webContents.executeJavaScript(
-    '(() => {' +
-      'if (document.querySelector(' +
-        JSON.stringify('[data-editor-page="editor"]') +
-        ')) {' +
-        'document.querySelector(' +
-        JSON.stringify('[data-testid="open-project-center"]') +
-        ').click();' +
-      '}' +
-    '})()',
-  );
+  await openProjectCenter(window);
   await waitFor(
     window,
     'document.querySelector(' +
@@ -390,18 +410,38 @@ async function switchActivity(window, activity) {
     window,
     '[data-testid="resource-activity-tabs"] button[data-activity="' +
       activity +
+      '"], [data-testid="resource-activity-rail"] button[data-activity="' +
+      activity +
       '"]',
   );
   await waitForActivity(window, activity);
 }
 
-async function applyShotName(window, name) {
-  await setInput(
-    window,
-    '.shot-fields label:nth-of-type(1) input',
-    name,
+async function makeProjectDirty(window, name) {
+  const hasShotEditor = await window.webContents.executeJavaScript(
+    'Boolean(document.querySelector(".shot-fields label:nth-of-type(1) input"))',
   );
-  await click(window, '.shot-fields label:nth-of-type(1) button');
+  if (hasShotEditor) {
+    await setInput(
+      window,
+      '.shot-fields label:nth-of-type(1) input',
+      name,
+    );
+    await click(window, '.shot-fields label:nth-of-type(1) button');
+  } else {
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitFor(
+      window,
+      'document.querySelector(".shot-create-view")',
+      'Shot create subview did not open while preparing a dirty project.',
+    );
+    await setInput(
+      window,
+      '.shot-create-form label:nth-of-type(1) input',
+      name,
+    );
+    await click(window, '.shot-create-form button[type="submit"]');
+  }
   await waitFor(
     window,
     'Boolean(document.querySelector(".dirty-state"))',
@@ -448,6 +488,7 @@ async function verifyIssue81() {
         lastOpenedAt: '2026-08-01T00:01:00.000Z',
         status: 'available',
       },
+      missingProjectEntry,
     ],
   }));
   register(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => ({
@@ -467,6 +508,19 @@ async function verifyIssue81() {
   register(IPC_CHANNELS.RECOVERY_IGNORE, () => ({
     ok: true,
     retained: true,
+  }));
+  register(IPC_CHANNELS.ASSET_THUMBNAIL_READ, (_event, request) => ({
+    ok: true,
+    status: 'missing',
+    assetId: request.assetId,
+  }));
+  register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, (_event, request) => ({
+    ok: false,
+    error: {
+      code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+      message: 'Issue 81 test fixture does not provide canvas image bytes.',
+      assetId: request.assetId,
+    },
   }));
   register(IPC_CHANNELS.ASSET_IMPORT_CHOOSE, (_event, request) => ({
     ok: true,
@@ -491,6 +545,7 @@ async function verifyIssue81() {
   }));
 
   const window = await createMainWindow({ show: false });
+  window.setSize(1000, 760);
   try {
     await waitFor(
       window,
@@ -501,6 +556,104 @@ async function verifyIssue81() {
     );
     await openProject(window, projectARoot);
     await waitForActivity(window, 'shots');
+
+    // Issue #369: Project Tools shares the landscape rail/drawer contract,
+    // keeps Recent Projects compact, and only exposes ActionPreset at level 2.
+    const projectToolsBefore = await snapshot(window);
+    await click(window, '[data-testid="resource-activity-rail-project-tools"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-drawer"]') +
+        ') && document.querySelector(' +
+        JSON.stringify('[data-testid="recent-projects-panel"][data-presentation="compact"]') +
+        ')',
+      'Project Tools drawer did not open with compact Recent Projects.',
+    );
+    const projectToolsHome = await window.webContents.executeJavaScript(
+      '(() => {' +
+        'const panel = document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-drawer"]') +
+        ');' +
+        'return {' +
+        'active: document.querySelector(' +
+        JSON.stringify('[data-testid="resource-activity-rail-project-tools"]') +
+        ')?.getAttribute("aria-pressed") === "true",' +
+        'hasPath: Boolean(panel?.querySelector(' +
+        JSON.stringify('.recent-projects-path') +
+        ')),' +
+        'hasCapacity: panel?.textContent?.includes("/12") ?? false,' +
+        'hasImplementationCopy: panel?.textContent?.includes(' +
+        JSON.stringify('最近项目保存在应用配置中') +
+        ') ?? false,' +
+        'hasMissingRelocate: Boolean(panel?.querySelector(' +
+        JSON.stringify('[data-project-status="missing"] [data-task4-core="recent-relocate"]') +
+        ')),' +
+        'hasActionPresetLauncher: Boolean(panel?.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-action-presets"]') +
+        '))' +
+        '};' +
+      '})()',
+    );
+    if (
+      !projectToolsHome.active ||
+      projectToolsHome.hasPath ||
+      projectToolsHome.hasCapacity ||
+      projectToolsHome.hasImplementationCopy ||
+      !projectToolsHome.hasMissingRelocate ||
+      !projectToolsHome.hasActionPresetLauncher
+    ) {
+      throw new Error(
+        'Issue #369 Project Tools home presentation regressed: ' +
+          JSON.stringify(projectToolsHome),
+      );
+    }
+    await click(window, '[data-testid="recent-project-more"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="recent-project-maintenance-menu"]') +
+        ')',
+      'Project Tools recent-project maintenance menu did not open.',
+    );
+    await click(window, '[data-testid="project-tools-action-presets"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-action-presets-view"]') +
+        ') && document.querySelector(' +
+        JSON.stringify('[data-testid="action-preset-panel"]') +
+        ')',
+      'Project Tools did not enter the second-level Action Preset view.',
+    );
+    await click(window, '[data-testid="project-tools-back"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-home"]') +
+        ')',
+      'Project Tools did not return to its home view.',
+    );
+    const projectToolsAfter = await snapshot(window);
+    if (
+      projectToolsAfter.dirty !== projectToolsBefore.dirty ||
+      projectToolsAfter.revision !== projectToolsBefore.revision ||
+      projectToolsAfter.undo !== projectToolsBefore.undo ||
+      projectToolsAfter.redo !== projectToolsBefore.redo
+    ) {
+      throw new Error(
+        'Issue #369 presentation navigation changed editor state: ' +
+          JSON.stringify({ before: projectToolsBefore, after: projectToolsAfter }),
+      );
+    }
+    await click(window, '[data-testid="project-tools-close"]');
+    await waitFor(
+      window,
+      '!document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-drawer"]') +
+        ')',
+      'Project Tools close did not return to the canvas-first shell.',
+    );
 
     // T1: leave local asset state and import results in A, then switch to B.
     await switchActivity(window, 'assets');
@@ -519,6 +672,7 @@ async function verifyIssue81() {
     const aAssetBrowser = await snapshot(window);
     await click(window, '.asset-card');
     const aAsset = await snapshot(window);
+    const landscapeResource = Boolean(aAsset.resourceRail);
     await openProject(window, projectBRoot);
     await waitForActivity(window, 'shots');
     const bAfterA = await snapshot(window);
@@ -548,12 +702,25 @@ async function verifyIssue81() {
     await click(window, '.character-list-items button');
     await waitFor(
       window,
-      'document.querySelector(".character-settings input")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-detail-view"]') +
+      ')',
       'Character detail subview did not open.',
+    );
+    await window.webContents.executeJavaScript(
+      '(() => {' +
+        'document.querySelector(".character-rename-trigger")?.click();' +
+        'return true;' +
+      '})()',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'Character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-settings input',
+      '.character-rename-form input, .character-settings input',
       'B editor draft must not return',
     );
     await openProject(window, projectARoot);
@@ -578,12 +745,25 @@ async function verifyIssue81() {
     await click(window, '.character-list-items button');
     await waitFor(
       window,
-      'document.querySelector(".character-settings input")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-detail-view"]') +
+      ')',
       'A character detail subview did not open.',
+    );
+    await window.webContents.executeJavaScript(
+      '(() => {' +
+        'document.querySelector(".character-rename-trigger")?.click();' +
+        'return true;' +
+      '})()',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'A character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-settings input',
+      '.character-rename-form input, .character-settings input',
       'A editor draft must not enter B',
     );
     await openProject(window, projectBRoot);
@@ -607,12 +787,25 @@ async function verifyIssue81() {
     await click(window, '.character-list-items button');
     await waitFor(
       window,
-      'document.querySelector(".character-settings input")',
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="character-detail-view"]') +
+      ')',
       'B second character detail subview did not open.',
+    );
+    await window.webContents.executeJavaScript(
+      '(() => {' +
+        'document.querySelector(".character-rename-trigger")?.click();' +
+        'return true;' +
+      '})()',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'B second character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-settings input',
+      '.character-rename-form input, .character-settings input',
       'B second editor draft must not enter A',
     );
     await openProject(window, projectARoot);
@@ -626,7 +819,7 @@ async function verifyIssue81() {
     const aFinalAfterTabs = await snapshot(window);
 
     // T7: the existing Dirty Guard still has cancel, discard, and save paths.
-    await applyShotName(window, 'A dirty cancel branch');
+    await makeProjectDirty(window, 'A dirty cancel branch');
     await requestProjectSwitch(window, projectBRoot);
     await waitFor(
       window,
@@ -648,7 +841,7 @@ async function verifyIssue81() {
     await openProject(window, projectBRoot);
     const discardedSwitch = await snapshot(window);
     await openProject(window, projectARoot);
-    await applyShotName(window, 'A dirty save branch');
+    await makeProjectDirty(window, 'A dirty save branch');
     await openProject(window, projectBRoot);
     const savedSwitch = await snapshot(window);
 
@@ -680,9 +873,9 @@ async function verifyIssue81() {
       aAssetBrowser.assetCategory !== 2 ||
       aAssetBrowser.assetResultCount !== 1 ||
       aAsset.activity !== 'assets' ||
-      aAsset.assetResultCount !== 0 ||
+      aAsset.assetResultCount !== (landscapeResource ? 1 : 0) ||
       aAsset.assetSelectedCount !== 1 ||
-      !aAsset.assetDetailsView ||
+      (!landscapeResource && !aAsset.assetDetailsView) ||
       aAsset.dirty ||
       aAsset.revision !== 0
     ) {
@@ -701,7 +894,7 @@ async function verifyIssue81() {
       failures.push('A local asset state leaked into B.');
     }
     if (
-      bAssetsClean.assetCategory !== 1 ||
+      bAssetsClean.assetCategory !== (landscapeResource ? 0 : 1) ||
       bAssetsClean.assetResultCount !== 0 ||
       bAssetsClean.assetSelectedCount !== 0
     ) {

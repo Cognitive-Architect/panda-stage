@@ -70,6 +70,15 @@ export class DialogueSelectionStore {
     this.layerSelection.clear();
   }
 
+  /** Toggle one existing dialogue without introducing another selection owner. */
+  toggle(dialogueId: string): void {
+    if (this.selectedDialogueId === dialogueId) {
+      this.clear();
+      return;
+    }
+    this.select(dialogueId);
+  }
+
   clear(): void {
     this.setSelectedDialogueId(null, null);
   }

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FileArchive } from 'lucide-react';
 import type {
   AssetImportResult,
 } from '../../../shared/asset-import-api';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { DecorativeIcon } from '../../ui';
 import { applyAssetImportResponse } from './applyAssetImportResponse';
 import { useAssetDrop } from './useAssetDrop';
 
@@ -11,6 +13,8 @@ export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
   importRequestToken?: number;
   onImportFla: () => void;
+  compact?: boolean;
+  showFlaAction?: boolean;
 }
 
 function resultClass(result: AssetImportResult): string {
@@ -21,12 +25,18 @@ export function AssetImportPanel({
   snapshot,
   importRequestToken,
   onImportFla,
+  compact = false,
+  showFlaAction = true,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
-    '打开项目后，可把 PNG、JPG、MP3 或 WAV 安全复制到项目中。',
+    compact ? '' : '打开项目后，可把 PNG、JPG、MP3 或 WAV 安全复制到项目中。',
   );
   const [results, setResults] = useState<AssetImportResult[]>([]);
+
+  useEffect(() => {
+    if (compact) setStatus('');
+  }, [compact]);
 
   const applyResponse = useCallback(
     (response: Awaited<
@@ -104,7 +114,10 @@ export function AssetImportPanel({
 
   return (
     <section
-      className="asset-import-panel"
+      className={[
+        'asset-import-panel',
+        compact ? 'asset-import-panel-compact' : '',
+      ].filter(Boolean).join(' ')}
       aria-labelledby="asset-import-heading"
       {...dropHandlers}
     >
@@ -115,20 +128,26 @@ export function AssetImportPanel({
         </div>
         <span className="asset-import-header-note">使用工作区顶部“导入素材”</span>
       </div>
-      <div className="asset-import-actions">
-        <button
-          data-testid="asset-import-fla"
-          disabled={snapshot === null || busy}
-          onClick={onImportFla}
-          type="button"
-        >
-          导入 FLA
-        </button>
-        <span>打开 FLA 后可先预览并选择需要的素材，确认导入前不会修改项目。</span>
-      </div>
+      {showFlaAction ? (
+        <div className="asset-import-actions">
+          <button
+            className="asset-import-fla-button"
+            data-testid="asset-import-fla"
+            disabled={snapshot === null || busy}
+            onClick={onImportFla}
+            type="button"
+          >
+            <DecorativeIcon icon={FileArchive} size={18} />
+            <span>导入 FLA</span>
+          </button>
+          <span>打开 FLA 后可先预览并选择需要的素材，确认导入前不会修改项目。</span>
+        </div>
+      ) : null}
       <p className="asset-import-drop">
         {snapshot
-          ? '也可以把素材文件拖到这里导入项目。'
+          ? compact
+            ? '也可直接拖入 PNG、JPG、MP3 或 WAV'
+            : '也可以把素材文件拖到这里导入项目。'
           : '请先打开一个 .pandastage 项目。'}
       </p>
       {results.length > 0 ? (
@@ -144,7 +163,9 @@ export function AssetImportPanel({
           ))}
         </ul>
       ) : null}
-      <output className="asset-import-status">{status}</output>
+      {status ? (
+        <output className="asset-import-status">{status}</output>
+      ) : null}
     </section>
   );
 }

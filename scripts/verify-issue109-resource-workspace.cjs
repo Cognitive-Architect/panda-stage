@@ -159,6 +159,7 @@ async function measure(window) {
       drawerVisible: visible(drawer),
       drawer: box('[data-testid="resource-activity-drawer"]'),
       handle: box('[data-testid="resource-workspace-handle"]'),
+      rail: box('[data-testid="resource-activity-rail"]'),
       left: box('[data-testid="left-workspace-scroll"]'),
       body: box('[data-testid="editor-body"]'),
       canvas: box('[data-testid="canvas-workspace-scroll"]'),
@@ -173,6 +174,7 @@ async function measure(window) {
       shotCreateView: visible(document.querySelector('[data-testid="shot-create-view"]')),
       assetBrowserView: visible(document.querySelector('[data-testid="asset-browser-view"]')),
       assetDetailsView: visible(document.querySelector('[data-testid="asset-details-view"]')),
+      assetSelectedCount: document.querySelectorAll('.asset-card-selected').length,
       characterListView: visible(document.querySelector('[data-testid="character-list-view"]')),
       characterCreateView: visible(document.querySelector('[data-testid="character-create-view"]')),
       characterDetailView: visible(document.querySelector('[data-testid="character-detail-view"]')),
@@ -297,6 +299,12 @@ function assertButtons(sample, label) {
     vertical.length === 0,
     `${label} has vertically written button labels: ${JSON.stringify(vertical)}`,
   );
+}
+
+function activitySelector(activity, landscapeRail) {
+  return landscapeRail
+    ? `[data-testid="resource-activity-rail-${activity}"]`
+    : `[data-testid="resource-activity-tabs"] button[data-activity="${activity}"]`;
 }
 
 function documentFor(root, project) {
@@ -467,13 +475,30 @@ async function run() {
       'The narrow resource handle did not close the drawer by default.',
     );
     sample = await measure(window);
+    const landscapeRail = Boolean(sample.rail);
     assertNoPageOverflow(sample, '1024px closed drawer');
     assertRegions(sample, '1024px closed drawer');
-    assert(sample.handle && sample.handle.width >= 48 && sample.handle.width <= 56, 'Narrow resource handle is not 48–56px wide.');
+    assert(
+      landscapeRail
+        ? sample.rail && sample.rail.width >= 48 && sample.rail.width <= 56
+        : sample.handle && sample.handle.width >= 48 && sample.handle.width <= 56,
+      landscapeRail
+        ? 'Landscape resource rail is not 48–56px wide.'
+        : 'Narrow resource handle is not 48–56px wide.',
+    );
     result.snapshots.narrowClosed = sample;
-    result.checks.push('1024x720 keeps a 48–56px resource handle while canvas, inspector, and bottom workspace remain available');
+    result.checks.push(
+      landscapeRail
+        ? '1024x720 keeps a 48–56px resource rail while canvas, inspector, and bottom workspace remain available'
+        : '1024x720 keeps a 48–56px resource handle while canvas, inspector, and bottom workspace remain available',
+    );
 
-    await click(window, '[data-testid="resource-workspace-handle"]');
+    await click(
+      window,
+      landscapeRail
+        ? '[data-testid="resource-activity-rail-shots"]'
+        : '[data-testid="resource-workspace-handle"]',
+    );
     await waitForDom(
       window,
       `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true' &&
@@ -505,7 +530,7 @@ async function run() {
     result.screenshots.shotList1024 = path.join(evidenceRoot, 'issue109-shot-list-1024.png');
     await capture(window, 'issue109-shot-list-1024.png');
 
-    await click(window, '[data-testid="resource-activity-tabs"] button[data-activity="assets"]');
+    await click(window, activitySelector('assets', landscapeRail));
     await waitForDom(window, `document.querySelector('[data-testid="asset-browser-view"]')`, 'The asset browser did not open.');
     sample = await measure(window);
     assertNoPageOverflow(sample, '1024px asset browser');
@@ -516,16 +541,33 @@ async function run() {
     await capture(window, 'issue109-asset-browser-1024.png');
 
     await click(window, '.asset-card');
-    await waitForDom(window, `document.querySelector('[data-testid="asset-details-view"]')`, 'Selecting an asset did not open its details subview.');
+    await waitForDom(
+      window,
+      landscapeRail
+        ? `document.querySelector('[data-testid="asset-browser-view"]') && document.querySelector('.asset-card-selected')`
+        : `document.querySelector('[data-testid="asset-details-view"]')`,
+      landscapeRail
+        ? 'Selecting an asset did not keep its selected browser card visible.'
+        : 'Selecting an asset did not open its details subview.',
+    );
     sample = await measure(window);
     assertNoPageOverflow(sample, '1024px asset details');
     assertDrawer(sample, '1024px asset details');
-    assert(sample.assetDetailsView && !sample.assetBrowserView, 'Asset details still overlaps the browser.');
+    assert(
+      landscapeRail
+        ? sample.assetBrowserView && !sample.assetDetailsView && sample.assetSelectedCount === 1
+        : sample.assetDetailsView && !sample.assetBrowserView,
+      landscapeRail
+        ? 'Landscape asset selection did not keep a single selected browser card.'
+        : 'Asset details still overlaps the browser.',
+    );
     result.snapshots.assetDetails1024 = sample;
     result.screenshots.assetDetails1024 = path.join(evidenceRoot, 'issue109-asset-details-1024.png');
     await capture(window, 'issue109-asset-details-1024.png');
 
-    await click(window, '[data-testid="asset-details-back"]');
+    if (!landscapeRail) {
+      await click(window, '[data-testid="asset-details-back"]');
+    }
     await click(window, '[data-testid="resource-primary-action"]');
     await delay(180);
     assert(importCalls.length === 1, 'The asset header import action did not reach the existing import owner.');
@@ -533,7 +575,7 @@ async function run() {
     assert(!sample.dirty && sample.revision === 0, 'Asset tab, details, or import UI changed project dirty state.');
     result.checks.push('1024px asset browser/details states fit the drawer, use a two-column category/grid layout, and keep import in the sticky header');
 
-    await click(window, '[data-testid="resource-activity-tabs"] button[data-activity="characters"]');
+    await click(window, activitySelector('characters', landscapeRail));
     await waitForDom(window, `document.querySelector('[data-testid="character-list-view"]')`, 'The character list did not open.');
     sample = await measure(window);
     assertNoPageOverflow(sample, '1024px character list');
@@ -577,11 +619,21 @@ async function run() {
     const beforeClose = await measure(window);
     await click(window, '[data-testid="resource-activity-close"]');
     await waitForDom(window, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`, 'Close button did not close the drawer.');
-    await click(window, '[data-testid="resource-workspace-handle"]');
+    await click(
+      window,
+      landscapeRail
+        ? '[data-testid="resource-activity-rail-characters"]'
+        : '[data-testid="resource-workspace-handle"]',
+    );
     await window.webContents.executeJavaScript(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
     await waitForDom(window, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`, 'Escape did not close the drawer.');
-    await click(window, '[data-testid="resource-workspace-handle"]');
-    await click(window, '[data-testid="resource-activity-tabs"] button[data-activity="characters"]');
+    await click(
+      window,
+      landscapeRail
+        ? '[data-testid="resource-activity-rail-characters"]'
+        : '[data-testid="resource-workspace-handle"]',
+    );
+    await click(window, activitySelector('characters', landscapeRail));
     await waitForDom(window, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`, 'Clicking the active narrow tab did not close the drawer.');
     const afterClose = await measure(window);
     assert(!afterClose.dirty && afterClose.revision === beforeClose.revision, 'Drawer open/close changed dirty or revision state.');

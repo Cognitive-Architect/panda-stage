@@ -96,11 +96,23 @@ async function captureSection(window, selector) {
 }
 
 async function openProject(window, root = projectRoot) {
-  await window.webContents.executeJavaScript(`(() => {
-    if (document.querySelector('[data-editor-page="editor"]')) {
-      document.querySelector('[data-testid="open-project-center"]').click();
-    }
-  })()`);
+  const editorOpen = await window.webContents.executeJavaScript(
+    `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
+  );
+  if (editorOpen) {
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="compact-project-more"]').click()
+    `);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="compact-project-menu"]')`,
+        'Project menu did not open for a project switch.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="menu-open-project-center"]').click()
+    `);
+  }
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-editor-page="project-center"]')`,
@@ -628,20 +640,18 @@ async function verifyDay20() {
     );
     await setInput(
       window,
-      '.shot-fields label:nth-of-type(2) input',
-      3_500,
+      '[aria-label="镜头时长（秒）"]',
+      3.5,
     );
     await window.webContents.executeJavaScript(`
-      document.querySelector(
-        '.shot-fields label:nth-of-type(2) button'
-      ).click()
+      document.querySelector('[aria-label="应用时长修改"]').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-editor-body input[type=number]')" +
-          "?.value === '3500' && " +
+        "document.querySelector('[aria-label=\"镜头时长（秒）\"]')" +
+          "?.value === '3.500' && " +
           "document.querySelector('.shot-manager-status')" +
-          "?.textContent?.includes('3500ms')",
+          "?.textContent?.includes('3.500 秒')",
         'Duplicated shot duration was not updated.',
       ),
     );
@@ -681,24 +691,20 @@ async function verifyDay20() {
     await selectShot(window, 'Scene 3');
     await setInput(
       window,
-      '.shot-fields label:nth-of-type(2) input',
-      499,
+      '[aria-label="镜头时长（秒）"]',
+      0.499,
     );
-    await window.webContents.executeJavaScript(`
-      document.querySelector(
-        '.shot-fields label:nth-of-type(2) button'
-      ).click()
-    `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager-status')" +
-          "?.textContent?.includes('不少于 500ms')",
-        'Invalid duration did not produce a clear error.',
+        "document.querySelector('[aria-label=\"镜头时长（秒）\"]')" +
+          "?.getAttribute('aria-invalid') === 'true' && " +
+          "document.querySelector('.shot-duration-help[open]')",
+        'Invalid duration did not surface contextual validation.',
       ),
     );
     const invalidDurationStatus =
       await window.webContents.executeJavaScript(`
-        document.querySelector('.shot-manager-status').textContent.trim()
+        document.querySelector('.shot-duration-help p').textContent.trim()
       `);
 
     await selectShot(window, 'Scene 5');
@@ -731,7 +737,7 @@ async function verifyDay20() {
           .map((node) => node.textContent.trim()),
         durations: [...document.querySelectorAll(
           '.shot-list-item > button > span:nth-child(2) small'
-        )].map((node) => Number.parseInt(node.textContent, 10)),
+        )].map((node) => Number.parseFloat(node.textContent) * 1000),
         currentName: document.querySelector(
           '.shot-editor-heading h3'
         ).textContent.trim(),
@@ -768,8 +774,10 @@ async function verifyDay20() {
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.recovery-status-row output')" +
-          "?.textContent?.includes('项目已保存')",
+        "document.querySelector('[data-testid=\"compact-project-bar\"]')" +
+          "?.dataset?.saveState === 'saved' && " +
+          "document.querySelector('[data-testid=\"project-save-state\"]')" +
+          "?.textContent?.trim() === '已保存'",
         'Five-shot project did not save.',
       ),
     );
@@ -796,7 +804,7 @@ async function verifyDay20() {
           .map((node) => node.textContent.trim()),
         durations: [...document.querySelectorAll(
           '.shot-list-item > button > span:nth-child(2) small'
-        )].map((node) => Number.parseInt(node.textContent, 10)),
+        )].map((node) => Number.parseFloat(node.textContent) * 1000),
         currentName: document.querySelector(
           '.shot-editor-heading h3'
         ).textContent.trim(),

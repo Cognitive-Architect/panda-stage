@@ -65,6 +65,31 @@ describe('DialogueSelectionStore', () => {
     expect(() => dialogueSelection.select('missing-dialogue')).toThrow();
   });
 
+  it('toggles the same dialogue off while selecting a different one', () => {
+    const { dialogueSelection, dialogueId, editor, svc } = setup();
+
+    dialogueSelection.toggle(dialogueId);
+    expect(dialogueSelection.getSelectedDialogueId()).toBe(dialogueId);
+
+    dialogueSelection.toggle(dialogueId);
+    expect(dialogueSelection.getSelectedDialogueId()).toBeNull();
+
+    const project = svc.create(editor.getSnapshot()!.project, {
+      shotId: IDS.shot,
+      characterId: IDS.character,
+      text: '第二句',
+      pointTimeMs: 200,
+    });
+    editor.updateProject(project, 'Add second dialogue');
+    const secondDialogueId =
+      editor.getSnapshot()!.project.shots[0]!.dialogues[1]!.id;
+
+    dialogueSelection.toggle(secondDialogueId);
+    expect(dialogueSelection.getSelectedDialogueId()).toBe(secondDialogueId);
+    dialogueSelection.toggle(dialogueId);
+    expect(dialogueSelection.getSelectedDialogueId()).toBe(dialogueId);
+  });
+
   it('clears the selection when the dialogue is removed', () => {
     const { editor, svc, dialogueSelection, dialogueId } = setup();
     dialogueSelection.select(dialogueId);

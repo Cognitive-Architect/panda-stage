@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DialogueAuthoringDraft } from '../../src/renderer/features/dialogue/dialogueAuthoringDraft';
+import {
+  DIALOGUE_AUTHORING_TEXT_MAX_LENGTH,
+  DialogueAuthoringDraft,
+  validateSingleDialogueDraft,
+} from '../../src/renderer/features/dialogue/dialogueAuthoringDraft';
 
 const SHOT_A = { projectRoot: '/p/a.pandastage', shotId: 'shot-a' };
 const SHOT_B = { projectRoot: '/p/a.pandastage', shotId: 'shot-b' };
@@ -11,7 +15,6 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     expect(draft.getSnapshot()).toEqual({
       singleCharacterId: '',
       singleText: '',
-      batchOpen: false,
       batchRaw: '',
       batchMapping: {},
     });
@@ -26,7 +29,6 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     draft.bindIdentity(SHOT_A);
     draft.setSingleCharacterId('char-1');
     draft.setSingleText('第一句');
-    draft.openBatch();
     draft.setBatchRaw('角色：台词\n未知：别的');
     draft.setBatchMapping(2, 'char-1');
 
@@ -34,7 +36,6 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     expect(draft.getSnapshot()).toEqual({
       singleCharacterId: '',
       singleText: '',
-      batchOpen: false,
       batchRaw: '',
       batchMapping: {},
     });
@@ -43,7 +44,6 @@ describe('DialogueAuthoringDraft identity isolation', () => {
   it('destroys the draft when the project changes', () => {
     const draft = new DialogueAuthoringDraft();
     draft.bindIdentity(SHOT_A);
-    draft.openBatch();
     draft.setBatchRaw('角色：台词');
     draft.setSingleCharacterId('char-1');
 
@@ -51,13 +51,11 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     const state = draft.getSnapshot();
     expect(state.batchRaw).toBe('');
     expect(state.singleCharacterId).toBe('');
-    expect(state.batchOpen).toBe(false);
   });
 
   it('does not resurrect a Shot A draft after A -> B -> A', () => {
     const draft = new DialogueAuthoringDraft();
     draft.bindIdentity(SHOT_A);
-    draft.openBatch();
     draft.setBatchRaw('熊猫：你好');
     draft.setSingleText('单行');
 
@@ -70,7 +68,6 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     expect(draft.getSnapshot()).toEqual({
       singleCharacterId: '',
       singleText: '',
-      batchOpen: false,
       batchRaw: '',
       batchMapping: {},
     });
@@ -80,13 +77,60 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     const draft = new DialogueAuthoringDraft();
     draft.bindIdentity(SHOT_A);
     draft.setSingleText('稳定');
-    draft.openBatch();
     draft.setBatchRaw('熊猫：台词');
 
     expect(draft.bindIdentity(SHOT_A)).toBe(false);
     const state = draft.getSnapshot();
     expect(state.singleText).toBe('稳定');
     expect(state.batchRaw).toBe('熊猫：台词');
-    expect(state.batchOpen).toBe(true);
+  });
+
+  it('preserves both mode drafts until the whole authoring shell closes', () => {
+    const draft = new DialogueAuthoringDraft();
+    draft.bindIdentity(SHOT_A);
+    draft.setSingleCharacterId('char-1');
+    draft.setSingleText('保留单条草稿');
+    draft.setBatchRaw('熊猫：批量台词');
+    draft.setBatchMapping(1, 'char-1');
+
+    expect(draft.getSnapshot()).toEqual({
+      singleCharacterId: 'char-1',
+      singleText: '保留单条草稿',
+      batchRaw: '熊猫：批量台词',
+      batchMapping: { 1: 'char-1' },
+    });
+
+    draft.clear();
+
+    expect(draft.getSnapshot()).toEqual({
+      singleCharacterId: '',
+      singleText: '',
+      batchRaw: '',
+      batchMapping: {},
+    });
+  });
+
+  it('validates blank, stale-speaker and authoritative text-length drafts', () => {
+    expect(
+      validateSingleDialogueDraft(
+        { singleCharacterId: '', singleText: '   ' },
+        ['char-1'],
+      ),
+    ).toEqual({ speaker: '请选择角色。', text: '请输入台词内容。' });
+    expect(
+      validateSingleDialogueDraft(
+        { singleCharacterId: 'deleted', singleText: '有效台词' },
+        ['char-1'],
+      ).speaker,
+    ).toContain('已不存在');
+    expect(
+      validateSingleDialogueDraft(
+        {
+          singleCharacterId: 'char-1',
+          singleText: 'a'.repeat(DIALOGUE_AUTHORING_TEXT_MAX_LENGTH + 1),
+        },
+        ['char-1'],
+      ).text,
+    ).toContain(String(DIALOGUE_AUTHORING_TEXT_MAX_LENGTH));
   });
 });

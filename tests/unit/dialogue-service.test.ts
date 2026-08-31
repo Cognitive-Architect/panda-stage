@@ -152,6 +152,56 @@ describe('DialogueService Day28 timing contract', () => {
     });
   });
 
+  it('reuses the same one-frame rule for an explicit Timeline drop start', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 100, 'drag to place');
+    const id = project.shots[0]!.dialogues[0]!.id;
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: id,
+      frameSpanMs: 42,
+      startMs: 1200,
+    });
+    expect(project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 1200,
+      endMs: 1242,
+    });
+  });
+
+  it('keeps explicit drop starts inside the shot by using the incumbent end backfill', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 100, 'drag at end');
+    const id = project.shots[0]!.dialogues[0]!.id;
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: id,
+      frameSpanMs: 42,
+      startMs: 3000,
+    });
+    expect(project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 2958,
+      endMs: 3000,
+    });
+  });
+
+  it('validates an explicit drop preview without returning a Project mutation', () => {
+    const service = dialogueService();
+    const project = createAt(service, buildProject(), 100, 'preview only');
+    const id = project.shots[0]!.dialogues[0]!.id;
+    expect(
+      service.getArrangementTiming(project, {
+        shotId: IDS.shot,
+        dialogueId: id,
+        frameSpanMs: 42,
+        startMs: 1800,
+      }),
+    ).toEqual({ startMs: 1800, endMs: 1842 });
+    expect(project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 100,
+      endMs: 100,
+    });
+  });
+
   it('backfills one frame to the left when arranging at shot end', () => {
     const service = dialogueService();
     let project = createAt(service, buildProject(), 3000, 'shot end');

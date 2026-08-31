@@ -33,8 +33,31 @@ describe('shot management components', () => {
     expect(markup).not.toMatch(/<button[^>]*>保存整个项目/u);
     expect(markup).toContain('复制镜头');
     expect(markup).toContain('移除镜头');
-    expect(markup).toContain('画布预览将在后续版本提供');
+    expect(markup).not.toContain('画布预览将在后续版本提供');
     expect(markup).not.toContain('时间轴编辑器');
+  });
+
+  it('renders compact selected-shot actions only in the landscape presentation', () => {
+    const project = migrateProject(exampleProject);
+    const markup = renderToStaticMarkup(
+      createElement(ShotManager, {
+        presentation: 'landscape',
+        snapshot: {
+          projectRoot: 'D:\\景别项目.pandastage',
+          project,
+          dirty: false,
+          revision: 0,
+        },
+      }),
+    );
+
+    expect(markup).toContain('data-testid="shot-quick-actions"');
+    expect(markup).toContain('data-testid="shot-quick-rename"');
+    expect(markup).toContain('data-testid="shot-quick-duration"');
+    expect(markup).toContain('data-testid="shot-quick-more"');
+    expect(markup).toContain('3.0 秒');
+    expect(markup).not.toContain('data-testid="shot-editor"');
+    expect(markup).not.toContain('画布预览将在后续版本提供');
   });
 
   it('renders an explicit empty-project creation path', () => {
@@ -87,7 +110,7 @@ describe('shot management components', () => {
         onSetDuration: noop,
       }),
     );
-    expect(markup).toContain('不少于 500ms');
+    expect(markup).toContain('最短 0.500 秒');
     expect(markup).toContain('不能短于镜头内已有内容');
     expect(markup).toContain('缩略图占位');
     expect(markup).not.toContain('<img');

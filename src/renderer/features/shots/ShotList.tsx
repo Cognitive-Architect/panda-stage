@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Shot } from '../../../domain';
 import { ShotCreateForm } from './ShotCreateForm';
 import { ShotListItem } from './ShotListItem';
@@ -22,6 +23,9 @@ export interface ShotListProps {
   onSelect: (shotId: string) => void;
   onBack?: () => void;
   showCreateForm?: boolean;
+  showHeading?: boolean;
+  selectedActions?: ReactNode;
+  compactDuration?: boolean;
 }
 
 export function ShotList({
@@ -33,12 +37,25 @@ export function ShotList({
   onSelect,
   onBack = () => undefined,
   showCreateForm = true,
+  showHeading = true,
+  selectedActions,
+  compactDuration = false,
 }: ShotListProps): React.JSX.Element {
   const suggestedName = nextAvailableShotName(shots);
 
   return (
-    <aside className="shot-list" data-testid="shot-list-view">
-      <div className="shot-list-heading">
+    <aside
+      aria-label={showHeading ? undefined : '镜头列表'}
+      className="shot-list"
+      data-testid="shot-list-view"
+    >
+      <div
+        className={
+          showHeading
+            ? 'shot-list-heading'
+            : 'shot-list-heading shot-list-heading-visually-hidden'
+        }
+      >
         <h3>镜头列表</h3>
         <span>{shots.length} 个镜头</span>
       </div>
@@ -57,7 +74,11 @@ export function ShotList({
               onDropShot={onMove}
               onSelect={onSelect}
               selected={shot.id === selectedShotId}
+              selectedActions={
+                shot.id === selectedShotId ? selectedActions : undefined
+              }
               shot={shot}
+              compactDuration={compactDuration}
             />
           ))}
         </ol>

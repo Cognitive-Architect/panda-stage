@@ -94,6 +94,30 @@ async function openProjectMenu(window) {
   );
 }
 
+async function ensureDesktopEditor(window) {
+  const desktop = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-editor-shell-layout="desktop"]') !== null`,
+  );
+  if (desktop) return;
+
+  await openProjectMenu(window);
+  await click(window, '[data-testid="editor-device-mode-desktop"]');
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-editor-shell-layout="desktop"]') && ` +
+        `document.querySelector('.shot-fields')`,
+      'Explicit Desktop mode did not restore the desktop Shot editor surface.',
+    ),
+  );
+  await click(window, '[data-testid="compact-project-more"]');
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `!document.querySelector('[data-testid="compact-project-menu"]')`,
+      'Editor device mode menu did not close after selecting Desktop.',
+    ),
+  );
+}
+
 async function clickProjectMenuAction(window, selector) {
   await openProjectMenu(window);
   await click(window, selector);
@@ -355,6 +379,7 @@ async function verifyIssue76() {
         'Created project did not open in the editor.',
       ),
     );
+    await ensureDesktopEditor(window);
     const created = await snapshot(window);
     const stopsAfterCreate = stopRequests.length;
     const updatesBeforeCleanClose = autosaveUpdates.length;
