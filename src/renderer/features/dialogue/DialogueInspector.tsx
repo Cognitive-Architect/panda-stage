@@ -790,21 +790,234 @@ export function DialogueInspector({
 
   if (landscapePresentation) {
     return (
-      <>
-        <section
-          className="dialogue-inspector-context-summary"
-          data-testid="dialogue-inspector-context"
+      <div
+        className="dialogue-inspector dialogue-inspector-landscape dialogue-inspector-landscape-properties"
+        data-dialogue-id={dialogue.id}
+        data-testid="dialogue-inspector"
+      >
+        <header
+          aria-live="polite"
+          className="dialogue-properties-header dialogue-inspector-context-summary"
+          data-testid="dialogue-properties-header"
         >
-          <div className="dialogue-inspector-context-copy">
-            <strong>{character?.name ?? '未知角色'}</strong>
-            <span data-testid="dialogue-inspector-status">
-              {timed ? '已定时' : '待安排'}
-            </span>
+          <div
+            className="dialogue-properties-heading-copy dialogue-inspector-context-copy"
+            data-testid="dialogue-inspector-context"
+          >
+            <p className="eyebrow">{timed ? '已安排字幕' : '待安排字幕'}</p>
+            <div className="dialogue-landscape-properties-identity-row">
+              <strong data-testid="dialogue-inspector-speaker-name">
+                {character?.name ?? '未知角色'}
+              </strong>
+              <span
+                className="dialogue-properties-status"
+                data-testid="dialogue-inspector-status"
+                data-timed={String(timed)}
+              >
+                {timed ? '已定时' : '待安排'}
+              </span>
+            </div>
+            <p
+              className="dialogue-properties-identity"
+              data-testid="dialogue-properties-identity"
+              title={dialogue.text}
+            >
+              {dialogue.text}
+            </p>
           </div>
-          <label className="dialogue-field dialogue-inspector-speaker">
-            <span>角色</span>
+        </header>
+
+        <section
+          className="dialogue-properties-section dialogue-landscape-properties-section dialogue-landscape-properties-copy-section"
+          data-testid="dialogue-inspector-copy-section"
+        >
+          <div className="dialogue-properties-section-heading">
+            <DecorativeIcon icon={MessageSquareText} size={18} />
+            <h3>台词</h3>
+          </div>
+          <label className="dialogue-field">
+            <span>内容</span>
+            <textarea
+              aria-label="台词内容"
+              className="dialogue-landscape-properties-textarea"
+              data-testid="dialogue-inspector-text"
+              value={text}
+              rows={3}
+              onChange={(event) => setText(event.target.value)}
+              onFocus={() => {
+                focusedRef.current = true;
+              }}
+              onBlur={commitText}
+            />
+          </label>
+          {subtitleWarning ? (
+            <p
+              className="dialogue-editor-error"
+              data-testid="dialogue-subtitle-warning"
+              role="status"
+            >
+              {subtitleWarning}
+            </p>
+          ) : null}
+          {error?.scope === 'text' ? (
+            <p
+              className="dialogue-editor-error"
+              data-error-scope="text"
+              data-testid="dialogue-editor-error"
+              role="alert"
+            >
+              {error.message}
+            </p>
+          ) : null}
+        </section>
+
+        <section
+          className="dialogue-properties-section dialogue-landscape-properties-section dialogue-landscape-properties-timing-section"
+          data-testid="dialogue-inspector-time-section"
+        >
+          <div className="dialogue-properties-section-heading">
+            <DecorativeIcon icon={Clock3} size={18} />
+            <h3>时间</h3>
+          </div>
+          {timed ? (
+            <>
+              <div className="dialogue-timing-fields dialogue-landscape-properties-timing-fields">
+                <label className="dialogue-field">
+                  <span className="dialogue-timing-label">
+                    <span>开始</span>
+                    <time
+                      data-testid="dialogue-inspector-start-readable"
+                      dateTime={
+                        'PT' + Math.max(0, dialogue.startMs) / 1000 + 'S'
+                      }
+                    >
+                      {formatTimecode(dialogue.startMs)}
+                    </time>
+                  </span>
+                  <span className="dialogue-timing-input">
+                    <input
+                      aria-label="开始时间（毫秒）"
+                      className="dialogue-landscape-properties-time-input"
+                      data-testid="dialogue-inspector-start"
+                      data-display-time={formatTimecode(dialogue.startMs)}
+                      inputMode="numeric"
+                      min={0}
+                      onChange={(event) => setStartMs(event.target.value)}
+                      type="number"
+                      value={startMs}
+                    />
+                    <span aria-hidden="true">ms</span>
+                  </span>
+                </label>
+                <label className="dialogue-field">
+                  <span className="dialogue-timing-label">
+                    <span>结束</span>
+                    <time
+                      data-testid="dialogue-inspector-end-readable"
+                      dateTime={
+                        'PT' + Math.max(0, dialogue.endMs) / 1000 + 'S'
+                      }
+                    >
+                      {formatTimecode(dialogue.endMs)}
+                    </time>
+                  </span>
+                  <span className="dialogue-timing-input">
+                    <input
+                      aria-label="结束时间（毫秒）"
+                      className="dialogue-landscape-properties-time-input"
+                      data-testid="dialogue-inspector-end"
+                      data-display-time={formatTimecode(dialogue.endMs)}
+                      inputMode="numeric"
+                      min={0}
+                      onChange={(event) => setEndMs(event.target.value)}
+                      type="number"
+                      value={endMs}
+                    />
+                    <span aria-hidden="true">ms</span>
+                  </span>
+                </label>
+              </div>
+              <div className="dialogue-timing-footer dialogue-landscape-properties-timing-footer">
+                <p
+                  className="dialogue-point-time"
+                  data-duration-ms={Math.max(
+                    0,
+                    dialogue.endMs - dialogue.startMs,
+                  )}
+                  data-testid="dialogue-inspector-timing-summary"
+                >
+                  <span>持续</span>
+                  <time
+                    dateTime={
+                      'PT' +
+                      Math.max(0, dialogue.endMs - dialogue.startMs) / 1000 +
+                      'S'
+                    }
+                  >
+                    {formatTimecode(dialogue.endMs - dialogue.startMs)}
+                  </time>
+                </p>
+                <button
+                  className="dialogue-properties-apply-timing"
+                  data-testid="dialogue-inspector-apply-timing"
+                  disabled={!timingInputValid}
+                  onClick={commitTiming}
+                  type="button"
+                >
+                  应用时间
+                </button>
+              </div>
+              {error?.scope === 'timing' ? (
+                <p
+                  className="dialogue-editor-error"
+                  data-error-scope="timing"
+                  data-testid="dialogue-editor-error"
+                  role="alert"
+                >
+                  {error.message}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <button
+                className="dialogue-properties-arrange"
+                data-testid="dialogue-inspector-arrange"
+                onClick={() =>
+                  report(
+                    'timing',
+                    () =>
+                      dialogueStore.arrange(
+                        dialogue.id,
+                        integerFrameSpanMs(),
+                      ),
+                    '未定时对白安排失败。',
+                  )
+                }
+                type="button"
+              >
+                安排为一帧
+              </button>
+              <p className="dialogue-point-time">
+                待安排字幕尚未产生显示时间窗。
+              </p>
+            </>
+          )}
+        </section>
+
+        <section
+          className="dialogue-properties-section dialogue-landscape-properties-section dialogue-landscape-properties-speaker-section"
+          data-testid="dialogue-inspector-speaker-section"
+        >
+          <div className="dialogue-properties-section-heading">
+            <DecorativeIcon icon={UserRound} size={18} />
+            <h3>角色（说话人）</h3>
+          </div>
+          <label className="dialogue-field">
+            <span>角色（说话人）</span>
             <select
               aria-label="字幕角色"
+              className="dialogue-landscape-properties-speaker-select"
               data-testid="dialogue-inspector-speaker"
               value={dialogue.characterId}
               onChange={(event) =>
@@ -825,165 +1038,55 @@ export function DialogueInspector({
               ))}
             </select>
           </label>
-        </section>
-        <div
-          className="dialogue-inspector dialogue-inspector-landscape"
-          data-testid="dialogue-inspector"
-        >
-          <section
-            className="dialogue-inspector-section"
-            data-testid="dialogue-inspector-copy-section"
-          >
-            <h3>台词</h3>
-            <label className="dialogue-field">
-              <span>内容</span>
-              <textarea
-                data-testid="dialogue-inspector-text"
-                value={text}
-                rows={4}
-                onChange={(event) => setText(event.target.value)}
-                onFocus={() => {
-                  focusedRef.current = true;
-                }}
-                onBlur={commitText}
-              />
-            </label>
-            {subtitleWarning ? (
-              <p
-                className="dialogue-editor-error"
-                data-testid="dialogue-subtitle-warning"
-                role="status"
-              >
-                {subtitleWarning}
-              </p>
-            ) : null}
-          </section>
-          <section
-            className="dialogue-inspector-section"
-            data-testid="dialogue-inspector-time-section"
-          >
-            <h3>时间</h3>
-            {timed ? (
-              <>
-                <div className="dialogue-timing-fields">
-                  <label className="dialogue-field">
-                    <span>
-                      开始{' '}
-                      <time
-                        data-testid="dialogue-inspector-start-readable"
-                        dateTime={
-                          'PT' + Math.max(0, dialogue.startMs) / 1000 + 'S'
-                        }
-                      >
-                        {formatTimecode(dialogue.startMs)}
-                      </time>
-                    </span>
-                    <input
-                      aria-label="开始时间（毫秒）"
-                      data-testid="dialogue-inspector-start"
-                      data-display-time={formatTimecode(dialogue.startMs)}
-                      inputMode="numeric"
-                      min={0}
-                      onChange={(event) => setStartMs(event.target.value)}
-                      type="number"
-                      value={startMs}
-                    />
-                  </label>
-                  <label className="dialogue-field">
-                    <span>
-                      结束{' '}
-                      <time
-                        data-testid="dialogue-inspector-end-readable"
-                        dateTime={
-                          'PT' + Math.max(0, dialogue.endMs) / 1000 + 'S'
-                        }
-                      >
-                        {formatTimecode(dialogue.endMs)}
-                      </time>
-                    </span>
-                    <input
-                      aria-label="结束时间（毫秒）"
-                      data-testid="dialogue-inspector-end"
-                      data-display-time={formatTimecode(dialogue.endMs)}
-                      inputMode="numeric"
-                      min={0}
-                      onChange={(event) => setEndMs(event.target.value)}
-                      type="number"
-                      value={endMs}
-                    />
-                  </label>
-                </div>
-                <button
-                  data-testid="dialogue-inspector-apply-timing"
-                  onClick={commitTiming}
-                  type="button"
-                >
-                  应用时间
-                </button>
-              </>
-            ) : (
-              <button
-                className="dialogue-arrange"
-                data-testid="dialogue-inspector-arrange"
-                onClick={() =>
-                  report(
-                    'timing',
-                    () =>
-                      dialogueStore.arrange(
-                        dialogue.id,
-                        integerFrameSpanMs(),
-                      ),
-                    '未定时对白安排失败。',
-                  )
-                }
-                type="button"
-              >
-                安排为一帧
-              </button>
-            )}
-            <p
-              className="dialogue-point-time"
-              data-testid="dialogue-inspector-timing-summary"
-            >
-              {timed
-                ? '字幕持续 ' +
-                  formatTimecode(dialogue.endMs - dialogue.startMs)
-                : '待安排字幕尚未产生显示时间窗。'}
-            </p>
-          </section>
-          <section
-            className="dialogue-inspector-section dialogue-inspector-audio-section"
-            data-testid="dialogue-inspector-audio-section"
-          >
-            <h3>音频与口型</h3>
-            <p data-testid="dialogue-inspector-audio-summary">
-              {audioSummary}
-            </p>
-            <span className="dialogue-inspector-audio-note">
-              音频播放区间独立于字幕时间；当前仅展示已有绑定状态。
-            </span>
-          </section>
-          {error ? (
+          {error?.scope === 'speaker' ? (
             <p
               className="dialogue-editor-error"
+              data-error-scope="speaker"
               data-testid="dialogue-editor-error"
               role="alert"
             >
               {error.message}
             </p>
           ) : null}
-          <div className="dialogue-inspector-actions">
-            <button
-              type="button"
-              className="dialogue-delete"
-              data-testid="dialogue-inspector-delete"
-              onClick={() => dialogueStore.remove(dialogue.id)}
-            >
-              删除字幕
-            </button>
+        </section>
+
+        <section
+          className="dialogue-properties-section dialogue-properties-audio-section dialogue-landscape-properties-section dialogue-landscape-properties-audio-section"
+          data-testid="dialogue-inspector-audio-section"
+        >
+          <div className="dialogue-properties-section-heading">
+            <DecorativeIcon icon={Volume2} size={18} />
+            <h3>音频</h3>
           </div>
+          <div
+            className="dialogue-landscape-properties-audio-state"
+            data-audio-bound={String(Boolean(audioClip))}
+          >
+            <strong>{audioClip ? '已绑定音频' : '未绑定音频'}</strong>
+            <p data-testid="dialogue-inspector-audio-summary">
+              {audioSummary}
+            </p>
+          </div>
+          <span className="dialogue-inspector-audio-note">
+            音频播放区间独立于字幕时间；当前仅展示已有绑定状态。
+          </span>
+        </section>
+
+        <div className="dialogue-properties-actions dialogue-landscape-properties-actions">
+          <button
+            aria-label={`删除字幕：${character?.name ?? '未知角色'}：${dialogue.text}`}
+            className="dialogue-delete"
+            data-testid="dialogue-inspector-delete"
+            onClick={() => dialogueStore.remove(dialogue.id)}
+            type="button"
+          >
+            <span className="ui-icon-label">
+              <DecorativeIcon icon={Trash2} size={16} />
+              <span>删除字幕</span>
+            </span>
+          </button>
         </div>
-      </>
+      </div>
     );
   }
 

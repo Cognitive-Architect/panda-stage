@@ -326,7 +326,11 @@ export function RightInspector({
   const dialogueMode = Boolean(
     selectedDialogueId && dialogueSelectionVisible,
   );
-  const inspectorModeLabel = dialogueMode ? '字幕' : '属性';
+  const inspectorModeLabel = dialogueMode
+    ? landscapePresentation
+      ? '字幕属性'
+      : '字幕'
+    : '属性';
   const selection = getRightInspectorSelection(
     snapshot,
     currentShotId,
@@ -428,7 +432,13 @@ export function RightInspector({
 
   const inspectorHeading = (
     <div className="right-inspector-heading">
-      <h2 id="right-inspector-heading">{dialogueMode ? '字幕' : '属性'}</h2>
+      <h2 id="right-inspector-heading">
+        {dialogueMode && landscapePresentation
+          ? '字幕属性'
+          : dialogueMode
+            ? '字幕'
+            : '属性'}
+      </h2>
       {(compact || landscapePresentation) && !dialogueMode ? (
         <button
           aria-label="关闭属性"
