@@ -27,6 +27,10 @@ export const FLA_COMPATIBILITY_LABELS: Readonly<
   'not-present': '未出现',
 };
 
+export type FlaRasterReviewFilter = 'all' | 'selected' | 'unselected';
+
+export const FLA_RASTER_REVIEW_PAGE_SIZES = [16, 32, 64] as const;
+
 export interface ExistingAssetName {
   relativePath: string;
 }
@@ -37,6 +41,45 @@ export interface FlaReviewMedia {
   libraryOnly: boolean;
   name: AssetNameAnalysis;
   warnings: readonly string[];
+}
+
+export function filterFlaReviewMedia(
+  items: readonly FlaReviewMedia[],
+  filter: FlaRasterReviewFilter,
+  search: string,
+  selectedMediaIds: ReadonlySet<string>,
+): FlaReviewMedia[] {
+  const normalizedSearch = search.trim().toLocaleLowerCase('en-US');
+  return items.filter((item) => {
+    const matchesFilter = filter === 'all'
+      || (filter === 'selected'
+        ? selectedMediaIds.has(item.media.id)
+        : !selectedMediaIds.has(item.media.id));
+    if (!matchesFilter) return false;
+    if (!normalizedSearch) return true;
+    return item.media.name.toLocaleLowerCase('en-US').includes(normalizedSearch)
+      || item.name.targetFileName.toLocaleLowerCase('en-US').includes(normalizedSearch);
+  });
+}
+
+export function flaReviewPageCount(itemCount: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(itemCount / pageSize));
+}
+
+export function allFlaReviewMediaIds(
+  items: readonly FlaReviewMedia[],
+): Set<string> {
+  return new Set(items.map(({ media }) => media.id));
+}
+
+export function paginateFlaReviewMedia<T>(
+  items: readonly T[],
+  page: number,
+  pageSize: number,
+): T[] {
+  const safePage = Math.max(1, Math.floor(page));
+  const pageStart = (safePage - 1) * pageSize;
+  return items.slice(pageStart, pageStart + pageSize);
 }
 
 export function reviewMedia(

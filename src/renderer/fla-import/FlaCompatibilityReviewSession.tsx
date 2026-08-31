@@ -23,10 +23,16 @@ import {
   compatibilityCounts,
   compatibilityWarnings,
   createFlaRasterSelectionIntent,
+  allFlaReviewMediaIds,
+  filterFlaReviewMedia,
+  flaReviewPageCount,
+  FLA_RASTER_REVIEW_PAGE_SIZES,
   FLA_COMPATIBILITY_LABELS,
   FLA_COMPATIBILITY_STATUSES,
+  paginateFlaReviewMedia,
   reviewMedia,
   toggleFlaMediaSelection,
+  type FlaRasterReviewFilter,
   type FlaReviewMedia,
 } from './fla-review';
 import {
@@ -75,6 +81,10 @@ export function FlaCompatibilityReviewSession({
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null);
   const [compatibilityNotesOpen, setCompatibilityNotesOpen] = useState(false);
+  const [rasterPage, setRasterPage] = useState(1);
+  const [rasterPageSize, setRasterPageSize] = useState<number>(FLA_RASTER_REVIEW_PAGE_SIZES[0]);
+  const [rasterFilter, setRasterFilter] = useState<FlaRasterReviewFilter>('all');
+  const [rasterSearch, setRasterSearch] = useState('');
   const reviewBodyRef = useRef<HTMLDivElement | null>(null);
   const reviewScrollTop = useRef(0);
 
@@ -89,6 +99,12 @@ export function FlaCompatibilityReviewSession({
             new Set(nextResponse.ir.media.map((media) => media.id)),
           );
           setFocusedMediaId(nextResponse.ir.media[0]?.id ?? null);
+          setRasterPage(1);
+          setRasterPageSize(16);
+          setRasterFilter('all');
+          setRasterSearch('');
+          setCompatibilityNotesOpen(false);
+          reviewScrollTop.current = 0;
           setPhase('ready');
         } else {
           setPhase('error');
@@ -116,22 +132,35 @@ export function FlaCompatibilityReviewSession({
   const selectedCount = reviewItems.filter(({ media }) =>
     selectedMediaIds.has(media.id),
   ).length;
+  const filteredReviewItems = useMemo(() => {
+    return filterFlaReviewMedia(reviewItems, rasterFilter, rasterSearch, selectedMediaIds);
+  }, [rasterFilter, rasterSearch, reviewItems, selectedMediaIds]);
+  const rasterPageCount = flaReviewPageCount(filteredReviewItems.length, rasterPageSize);
+  const pagedReviewItems = useMemo(() => {
+    return paginateFlaReviewMedia(filteredReviewItems, rasterPage, rasterPageSize);
+  }, [filteredReviewItems, rasterPage, rasterPageSize]);
   const usedMediaCount = reviewItems.filter((item) => !item.libraryOnly).length;
   const libraryOnlyMediaCount = reviewItems.length - usedMediaCount;
-  const focusedItem = reviewItems.find(({ media }) => media.id === focusedMediaId)
-    ?? reviewItems[0]
+  const focusedItem = pagedReviewItems.find(({ media }) => media.id === focusedMediaId)
+    ?? pagedReviewItems[0]
     ?? null;
   const selectionLocked = phase === 'committing' || phase === 'success';
 
   useEffect(() => {
-    if (reviewItems.length === 0) {
+    if (pagedReviewItems.length === 0) {
       setFocusedMediaId(null);
       return;
     }
-    if (!reviewItems.some(({ media }) => media.id === focusedMediaId)) {
-      setFocusedMediaId(reviewItems[0]!.media.id);
+    if (!pagedReviewItems.some(({ media }) => media.id === focusedMediaId)) {
+      setFocusedMediaId(pagedReviewItems[0]!.media.id);
     }
-  }, [focusedMediaId, reviewItems]);
+  }, [focusedMediaId, pagedReviewItems]);
+
+  useEffect(() => {
+    if (rasterPage <= rasterPageCount) return;
+    reviewScrollTop.current = 0;
+    setRasterPage(rasterPageCount);
+  }, [rasterPage, rasterPageCount]);
 
   useEffect(() => {
     if (!ir) return undefined;
@@ -160,10 +189,54 @@ export function FlaCompatibilityReviewSession({
     if (Math.abs(body.scrollTop - nextScrollTop) > 0.5) {
       body.scrollTop = nextScrollTop;
     }
-  }, [compatibilityNotesOpen, intent, phase, reviewItems, selectedMediaIds, thumbnailUrls]);
+  }, [
+    compatibilityNotesOpen,
+    intent,
+    pagedReviewItems,
+    phase,
+    rasterPage,
+    rasterPageSize,
+    rasterSearch,
+    selectedMediaIds,
+    thumbnailUrls,
+  ]);
 
   const rememberReviewScroll = (): void => {
     if (reviewBodyRef.current) reviewScrollTop.current = reviewBodyRef.current.scrollTop;
+  };
+
+  const resetRasterBrowsePosition = (): void => {
+    reviewScrollTop.current = 0;
+    setRasterPage(1);
+  };
+
+  const changeRasterFilter = (nextFilter: FlaRasterReviewFilter): void => {
+    if (nextFilter === rasterFilter) return;
+    resetRasterBrowsePosition();
+    setRasterFilter(nextFilter);
+  };
+
+  const changeRasterSearch = (nextSearch: string): void => {
+    resetRasterBrowsePosition();
+    setRasterSearch(nextSearch);
+  };
+
+  const changeRasterPageSize = (nextPageSize: number): void => {
+    if (!FLA_RASTER_REVIEW_PAGE_SIZES.includes(nextPageSize as (typeof FLA_RASTER_REVIEW_PAGE_SIZES)[number])) {
+      return;
+    }
+    resetRasterBrowsePosition();
+    setRasterPageSize(nextPageSize);
+  };
+
+  const changeRasterPage = (delta: number): void => {
+    const nextPage = Math.min(
+      Math.max(1, rasterPage + delta),
+      rasterPageCount,
+    );
+    if (nextPage === rasterPage) return;
+    resetRasterBrowsePosition();
+    setRasterPage(nextPage);
   };
 
   const closeSession = (): void => {
@@ -258,7 +331,7 @@ export function FlaCompatibilityReviewSession({
   const selectAll = (): void => {
     if (selectionLocked) return;
     rememberReviewScroll();
-    setSelectedMediaIds(new Set(reviewItems.map(({ media }) => media.id)));
+    setSelectedMediaIds(allFlaReviewMediaIds(reviewItems));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
@@ -398,9 +471,16 @@ export function FlaCompatibilityReviewSession({
                 </div>
                 <dl className="fla-review-summary" data-testid="fla-review-summary">
                   <div><dt>舞台</dt><dd>{ir.document.width} × {ir.document.height} · {ir.document.frameRate} fps</dd></div>
-                  <div><dt>位图素材</dt><dd data-testid="fla-review-media-count">{ir.media.length} 项</dd></div>
-                  <div><dt>使用情况</dt><dd>{usedMediaCount} 已使用 · {libraryOnlyMediaCount} 仅素材库</dd></div>
+                  <div><dt>位图摘要</dt><dd data-testid="fla-review-media-count">{ir.media.length} 项位图 · {usedMediaCount} 已使用 · {libraryOnlyMediaCount} 仅素材库</dd></div>
                 </dl>
+                <details className="fla-raster-file-details" data-testid="fla-raster-file-details">
+                  <summary>文件详情</summary>
+                  <dl className="fla-review-summary">
+                    <div><dt>格式</dt><dd>{ir.source.format.toUpperCase()}</dd></div>
+                    <div><dt>文件大小</dt><dd>{ir.source.byteLength.toLocaleString('en-US')} bytes</dd></div>
+                    <div><dt>解析器</dt><dd>{ir.source.parser.entrypoint}</dd></div>
+                  </dl>
+                </details>
                 {ir.structure ? (
                   <details className="fla-raster-structure" data-testid="fla-raster-structure">
                     <summary>结构信息</summary>
@@ -411,29 +491,33 @@ export function FlaCompatibilityReviewSession({
                 ) : null}
                 <section aria-labelledby="fla-compatibility-heading" className="fla-review-compatibility">
                   <h3 id="fla-compatibility-heading">兼容性概览</h3>
-                  <ul data-testid="fla-compatibility-summary">
-                    {FLA_COMPATIBILITY_STATUSES.map((status) => (
-                      <li data-status={status} key={status}>
-                        <strong>{FLA_COMPATIBILITY_LABELS[status]}</strong>
-                        <span>{counts[status]}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {warnings.length > 0 ? (
-                    <details
-                      className="fla-review-compatibility-notes"
-                      data-testid="fla-compatibility-notes"
-                      open={compatibilityNotesOpen}
+                  <div className="fla-raster-compatibility-summary" data-testid="fla-raster-compatibility-summary">
+                    <strong>{warnings.length > 0 ? `⚠ ${warnings.length} 个兼容性提示` : '无兼容性提示'}</strong>
+                    <span>详细状态按需查看</span>
+                  </div>
+                  <details
+                    className="fla-review-compatibility-notes"
+                    data-testid="fla-compatibility-notes"
+                    open={compatibilityNotesOpen}
+                  >
+                    <summary
+                      onClick={(event) => {
+                        event.preventDefault();
+                        rememberReviewScroll();
+                        setCompatibilityNotesOpen((current) => !current);
+                      }}
                     >
-                      <summary
-                        onClick={(event) => {
-                          event.preventDefault();
-                          rememberReviewScroll();
-                          setCompatibilityNotesOpen((current) => !current);
-                        }}
-                      >
-                        兼容性说明（{warnings.length}）
-                      </summary>
+                      查看兼容性说明（{warnings.length}）
+                    </summary>
+                    <ul data-testid="fla-compatibility-summary">
+                      {FLA_COMPATIBILITY_STATUSES.map((status) => (
+                        <li data-status={status} key={status}>
+                          <strong>{FLA_COMPATIBILITY_LABELS[status]}</strong>
+                          <span>{counts[status]}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {warnings.length > 0 ? (
                       <ul className="fla-review-warnings" data-testid="fla-compatibility-warnings">
                         {warnings.map((warning) => (
                           <li key={`${warning.feature}:${warning.status}`}>
@@ -442,26 +526,116 @@ export function FlaCompatibilityReviewSession({
                           </li>
                         ))}
                       </ul>
-                    </details>
-                  ) : null}
+                    ) : null}
+                  </details>
                 </section>
               </aside>
 
               <section aria-labelledby="fla-raster-grid-heading" className="fla-raster-selection" data-testid="fla-raster-selection">
-                <header>
+                <header className="fla-raster-selection-header">
                   <div>
                     <p className="fla-raster-panel-kicker">选择素材</p>
                     <h3 id="fla-raster-grid-heading">位图素材</h3>
                   </div>
-                  <span>{reviewItems.length} 项</span>
+                  <div className="fla-raster-grid-count" data-testid="fla-raster-grid-count">
+                    <strong>{filteredReviewItems.length} / {reviewItems.length}</strong>
+                    <span>{selectedCount} 已选</span>
+                  </div>
                 </header>
+                <div className="fla-raster-browse-controls" data-testid="fla-raster-browse-controls">
+                  <div
+                    aria-label="筛选位图素材"
+                    className="fla-raster-filter-group"
+                    role="group"
+                  >
+                    {([
+                      ['all', '全部'],
+                      ['selected', '已选'],
+                      ['unselected', '未选'],
+                    ] as const).map(([filter, label]) => (
+                      <button
+                        aria-pressed={rasterFilter === filter}
+                        className={rasterFilter === filter ? 'is-active' : undefined}
+                        data-testid={`fla-review-filter-${filter}`}
+                        key={filter}
+                        onClick={() => changeRasterFilter(filter)}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="fla-raster-search">
+                    <span>搜索文件名</span>
+                    <input
+                      aria-label="搜索文件名"
+                      data-testid="fla-review-search"
+                      onChange={(event) => changeRasterSearch(event.currentTarget.value)}
+                      placeholder="搜索文件名"
+                      type="search"
+                      value={rasterSearch}
+                    />
+                  </label>
+                  <div className="fla-raster-browse-secondary">
+                    <div className="fla-raster-selection-utilities" aria-label="全局选择工具">
+                      <button
+                        data-testid="fla-review-select-all"
+                        disabled={selectionLocked}
+                        onClick={selectAll}
+                        type="button"
+                      >
+                        全选
+                      </button>
+                      <button
+                        data-testid="fla-review-clear-all"
+                        disabled={selectionLocked}
+                        onClick={clearAll}
+                        type="button"
+                      >
+                        清空
+                      </button>
+                    </div>
+                    <label className="fla-raster-page-size">
+                      <span>每页</span>
+                      <select
+                        aria-label="每页数量"
+                        data-testid="fla-review-page-size"
+                        onChange={(event) => changeRasterPageSize(Number(event.currentTarget.value))}
+                        value={rasterPageSize}
+                      >
+                        {FLA_RASTER_REVIEW_PAGE_SIZES.map((size) => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <nav aria-label="位图素材分页" className="fla-raster-pagination" data-testid="fla-review-pagination">
+                      <button
+                        aria-label="上一页"
+                        disabled={rasterPage <= 1}
+                        onClick={() => changeRasterPage(-1)}
+                        type="button"
+                      >
+                        ‹
+                      </button>
+                      <span data-testid="fla-review-page-status">{rasterPage} / {rasterPageCount}</span>
+                      <button
+                        aria-label="下一页"
+                        disabled={rasterPage >= rasterPageCount}
+                        onClick={() => changeRasterPage(1)}
+                        type="button"
+                      >
+                        ›
+                      </button>
+                    </nav>
+                  </div>
+                </div>
                 <div
                   aria-label="FLA 位图素材"
                   className="fla-review-media-grid"
                   data-scroll-region="fla-media-grid"
                   data-testid="fla-review-media-grid"
                 >
-                  {reviewItems.map((item) => (
+                  {pagedReviewItems.length > 0 ? pagedReviewItems.map((item) => (
                     <FlaReviewMediaCard
                       focused={focusedItem?.media.id === item.media.id}
                       item={item}
@@ -472,7 +646,11 @@ export function FlaCompatibilityReviewSession({
                       onFocus={() => setFocusedMediaId(item.media.id)}
                       onToggle={() => toggle(item.media.id)}
                     />
-                  ))}
+                  )) : (
+                    <p className="fla-raster-empty" data-testid="fla-review-empty-state">
+                      没有匹配的位图素材，请清除搜索或筛选条件。
+                    </p>
+                  )}
                 </div>
               </section>
 
@@ -517,30 +695,21 @@ export function FlaCompatibilityReviewSession({
 
         {rasterRoute ? (
           <div className="fla-review-action-stack">
-            <div className="fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
+            <div className="fla-review-action-bar fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
               <div>
-                <strong data-testid="fla-review-selected-count">已选择 {selectedCount} / {reviewItems.length}</strong>
+                <strong data-testid="fla-review-selected-count">{selectedCount} 项将进入确认步骤</strong>
                 {intent ? <output data-testid="fla-review-intent-status">已确认选择；尚未创建素材。</output> : null}
               </div>
-              <div className="fla-review-selection-actions">
-                <div className="fla-review-selection-utilities">
-                  <button
-                    data-testid="fla-review-select-all"
-                    disabled={selectionLocked}
-                    onClick={selectAll}
-                    type="button"
-                  >
-                    全选
-                  </button>
-                  <button
-                    data-testid="fla-review-clear-all"
-                    disabled={selectionLocked}
-                    onClick={clearAll}
-                    type="button"
-                  >
-                    清空
-                  </button>
-                </div>
+              <div className="fla-review-action-buttons">
+                <button
+                  className="fla-review-action-cancel"
+                  data-testid="fla-review-action-cancel"
+                  disabled={phase === 'committing'}
+                  onClick={() => void closeSession()}
+                  type="button"
+                >
+                  取消
+                </button>
                 {phase === 'ready' ? (
                   <button
                     className="fla-review-primary-action"
@@ -661,7 +830,9 @@ function FlaReviewMediaCard({
         )}
       </div>
       <strong title={media.name}>{media.name}</strong>
-      <span>{media.width} × {media.height} · {item.libraryOnly ? '仅素材库' : '已使用'}</span>
+      <span className="fla-review-media-usage" data-usage-state={item.libraryOnly ? 'library-only' : 'used'}>
+        {item.libraryOnly ? '仅素材库' : '已使用'}
+      </span>
       {item.warnings.length > 0 ? <span className="fla-review-card-warning">需确认文件名</span> : null}
     </article>
   );
@@ -677,6 +848,12 @@ function FlaReviewMediaDetail({
   thumbnailUrl?: string;
 }): React.JSX.Element {
   const { media } = item;
+  const normalizedSourceReference = media.sourceReference.replaceAll('\\', '/');
+  const sourceBasename = normalizedSourceReference.slice(
+    normalizedSourceReference.lastIndexOf('/') + 1,
+  );
+  const sourceMatchesTarget = sourceBasename.toLocaleLowerCase('en-US') ===
+    item.name.targetFileName.toLocaleLowerCase('en-US');
   return (
     <div className="fla-review-media-detail-content" data-focused-media-id={media.id}>
       <div className="fla-review-detail-preview">
@@ -693,11 +870,17 @@ function FlaReviewMediaDetail({
       <dl>
         <div><dt>尺寸与格式</dt><dd>{media.width} × {media.height} · {media.sourceFormat.toUpperCase()}</dd></div>
         <div><dt>使用状态</dt><dd>{item.libraryOnly ? '仅素材库' : '已在舞台中使用'}</dd></div>
-        <div><dt>来源</dt><dd title={media.sourceReference}>{media.sourceReference}</dd></div>
-        <div><dt>目标文件名</dt><dd>{item.name.targetFileName}</dd></div>
+        {sourceMatchesTarget ? (
+          <div><dt>来源与目标</dt><dd title={media.sourceReference}>{media.sourceReference}（保持文件名）</dd></div>
+        ) : (
+          <>
+            <div><dt>来源</dt><dd title={media.sourceReference}>{media.sourceReference}</dd></div>
+            <div><dt>目标文件名</dt><dd>{item.name.targetFileName}</dd></div>
+          </>
+        )}
       </dl>
       {item.warnings.length > 0 ? (
-        <div className="fla-review-detail-warnings" role="note">
+        <div className="fla-review-detail-warnings" data-testid="fla-review-detail-warnings" role="note">
           <strong>文件名提醒</strong>
           <ul className="fla-review-name-warnings">
             {item.warnings.map((warning) => <li key={warning}>{warning}</li>)}

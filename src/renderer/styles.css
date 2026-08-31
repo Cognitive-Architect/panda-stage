@@ -2549,6 +2549,331 @@ button:disabled {
   }
 }
 
+/* Issue #392: keep the Stage B workbench three-zone, but make the bitmap
+   collection a quiet, pageable browser instead of one tall scan surface. */
+.fla-raster-overview .fla-raster-file-details,
+.fla-raster-overview .fla-raster-structure,
+.fla-raster-overview .fla-review-compatibility-notes {
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 2%);
+}
+
+.fla-raster-overview .fla-raster-file-details summary,
+.fla-raster-overview .fla-raster-structure summary,
+.fla-raster-overview .fla-review-compatibility-notes summary {
+  padding: 8px 9px;
+  color: #a8b6ad;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.fla-raster-overview .fla-raster-file-details[open] summary,
+.fla-raster-overview .fla-raster-structure[open] summary,
+.fla-raster-overview .fla-review-compatibility-notes[open] summary {
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.fla-raster-overview .fla-raster-file-details .fla-review-summary,
+.fla-raster-overview .fla-raster-structure .fla-review-summary {
+  padding: 8px;
+}
+
+.fla-raster-compatibility-summary {
+  display: grid;
+  padding: 8px 9px;
+  border: 1px solid rgb(213 168 92 / 25%);
+  border-radius: 8px;
+  background: rgb(213 168 92 / 7%);
+  gap: 3px;
+}
+
+.fla-raster-compatibility-summary strong {
+  color: #e7c78a;
+  font-size: 10px;
+}
+
+.fla-raster-compatibility-summary span {
+  color: #9daaa1;
+  font-size: 9px;
+}
+
+.fla-raster-overview .fla-review-compatibility-notes {
+  border-color: rgb(255 255 255 / 9%);
+  background: rgb(255 255 255 / 2%);
+}
+
+.fla-raster-overview .fla-review-compatibility-notes summary {
+  color: #a8b6ad;
+}
+
+.fla-raster-overview .fla-review-compatibility-notes > ul[data-testid='fla-compatibility-summary'] {
+  display: grid;
+  padding: 8px;
+  margin: 0;
+  gap: 5px;
+  list-style: none;
+}
+
+.fla-raster-overview .fla-review-compatibility-notes > ul[data-testid='fla-compatibility-summary'] li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 3%);
+  color: #a8b6ad;
+  font-size: 10px;
+}
+
+.fla-raster-overview .fla-review-compatibility-notes > ul[data-testid='fla-compatibility-summary'] strong {
+  font-size: 10px;
+}
+
+.fla-raster-overview .fla-review-compatibility-notes .fla-review-warnings {
+  display: grid;
+  padding: 0 8px 8px;
+  margin: 0;
+  gap: 5px;
+}
+
+.fla-raster-selection-header {
+  align-items: center !important;
+}
+
+.fla-raster-grid-count {
+  display: grid;
+  flex: none;
+  justify-items: end;
+  gap: 2px;
+}
+
+.fla-raster-grid-count strong {
+  color: #dce8df;
+  font-size: 11px;
+}
+
+.fla-raster-grid-count span {
+  color: #87988e;
+  font-size: 9px;
+}
+
+.fla-raster-browse-controls {
+  display: grid;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 10px;
+  background: rgb(7 12 9 / 42%);
+  gap: 8px;
+}
+
+.fla-raster-filter-group {
+  display: flex;
+  min-width: 0;
+  gap: 5px;
+}
+
+.fla-raster-filter-group button,
+.fla-raster-selection-utilities button,
+.fla-raster-pagination button {
+  min-height: 36px;
+  border-color: rgb(255 255 255 / 11%);
+  background: transparent;
+  color: #a8b6ad;
+  font-size: 10px;
+}
+
+.fla-raster-filter-group button {
+  min-width: 48px;
+  padding: 0 8px;
+}
+
+.fla-raster-filter-group button.is-active {
+  border-color: rgb(131 211 154 / 56%);
+  background: rgb(45 104 62 / 40%);
+  color: #dff6e4;
+}
+
+.fla-raster-search {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.fla-raster-search > span,
+.fla-raster-page-size > span {
+  color: #87988e;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.fla-raster-search input,
+.fla-raster-page-size select {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 8px;
+  outline: none;
+  background: #111b15;
+  color: #e7f0e9;
+  font: inherit;
+  font-size: 10px;
+}
+
+.fla-raster-search input::placeholder {
+  color: #6f8075;
+}
+
+.fla-raster-search input:focus,
+.fla-raster-page-size select:focus {
+  border-color: #83d39a;
+  box-shadow: 0 0 0 2px rgb(131 211 154 / 16%);
+}
+
+.fla-raster-browse-secondary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.fla-raster-selection-utilities,
+.fla-raster-page-size,
+.fla-raster-pagination {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fla-raster-selection-utilities button {
+  padding: 0 9px;
+}
+
+.fla-raster-page-size select {
+  padding-right: 26px;
+}
+
+.fla-raster-pagination button {
+  width: 36px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.fla-raster-pagination span {
+  min-width: 42px;
+  color: #dce8df;
+  font-size: 10px;
+  text-align: center;
+}
+
+.fla-review-body .fla-raster-selection .fla-review-media-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.fla-raster-selection .fla-review-media-card > strong {
+  font-size: 10px;
+}
+
+.fla-raster-selection .fla-review-media-usage {
+  color: #9aaca0;
+  font-size: 9px;
+}
+
+.fla-raster-selection .fla-review-media-usage[data-usage-state='used'] {
+  color: #a9dcb5;
+}
+
+.fla-raster-empty {
+  grid-column: 1 / -1;
+  padding: 28px 12px;
+  margin: 0;
+  border: 1px dashed rgb(255 255 255 / 12%);
+  border-radius: 9px;
+  color: #9aaca0;
+  font-size: 11px;
+  text-align: center;
+}
+
+.fla-review-session[data-workbench-route='raster'] .fla-review-action-bar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fla-review-action-bar > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.fla-review-action-bar > div:first-child strong {
+  color: #e4f7e8;
+  font-size: 12px;
+}
+
+.fla-review-action-buttons {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+}
+
+.fla-review-action-cancel {
+  min-height: 44px;
+  border-color: rgb(255 255 255 / 12%);
+  background: transparent;
+  color: #a8b6ad;
+}
+
+@media (max-width: 1040px) {
+  .fla-review-body .fla-raster-selection .fla-review-media-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .fla-review-body .fla-raster-selection .fla-review-media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .fla-raster-browse-secondary,
+  .fla-review-session[data-workbench-route='raster'] .fla-review-action-bar {
+    align-items: stretch;
+  }
+
+  .fla-raster-browse-secondary > *,
+  .fla-review-action-buttons {
+    flex: 1 1 auto;
+  }
+
+  .fla-raster-pagination,
+  .fla-raster-page-size,
+  .fla-review-action-buttons {
+    justify-content: center;
+  }
+
+  .fla-review-session[data-workbench-route='raster'] .fla-review-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fla-review-action-buttons > button {
+    flex: 1 1 0;
+  }
+}
+
 .asset-library {
   display: grid;
   max-width: 1180px;
