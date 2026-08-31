@@ -139,12 +139,44 @@ async function snapshot(window) {
   })()`);
 }
 
+async function openProjectMenu(window) {
+  await click(window, '[data-testid="compact-project-more"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="compact-project-menu"]')`,
+    'Compact project menu did not open.',
+  );
+}
+
 async function openProjectCenter(window) {
-  await click(window, '[data-testid="open-project-center"]');
+  await openProjectMenu(window);
+  await click(window, '[data-testid="menu-open-project-center"]');
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="project-center"]')`,
     'Project Center did not open from the compact project bar.',
+  );
+}
+
+async function ensureDesktopEditor(window) {
+  const desktop = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-editor-shell-layout="desktop"]') !== null`,
+  );
+  if (desktop) return;
+
+  await openProjectMenu(window);
+  await click(window, '[data-testid="editor-device-mode-desktop"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-editor-shell-layout="desktop"]') && ` +
+      `document.querySelector('.shot-fields')`,
+    'Explicit Desktop mode did not restore the desktop Shot editor surface.',
+  );
+  await click(window, '[data-testid="compact-project-more"]');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="compact-project-menu"]')`,
+    'Editor device mode menu did not close after selecting Desktop.',
   );
 }
 
@@ -497,6 +529,7 @@ async function run() {
       `document.querySelector('[data-testid="project-canvas-stage"]')`,
       'Project A editor did not render.',
     );
+    await ensureDesktopEditor(window);
     const selectedLayerId = await selectContentLayer(window);
     await applyShotName(window, 'Task 3 roundtrip dirty shot');
     const beforeRoundtrip = await snapshot(window);

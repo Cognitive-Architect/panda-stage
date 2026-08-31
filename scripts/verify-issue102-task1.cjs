@@ -139,6 +139,16 @@ async function clickCardButton(window, status, label) {
   await delay(180);
 }
 
+async function openProjectCenter(window) {
+  await clickSelector(window, '[data-testid="compact-project-more"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="compact-project-menu"]')`,
+    'Compact project menu did not open.',
+  );
+  await clickSelector(window, '[data-testid="menu-open-project-center"]');
+}
+
 async function snapshot(window) {
   return window.webContents.executeJavaScript(`(() => ({
     page: document.querySelector('.editor-shell')?.dataset.editorPage ?? null,
@@ -272,7 +282,7 @@ async function run(window, fixture) {
   result.snapshots.opened = opened;
   result.checks.push('Recent available project opens through the existing session flow');
 
-  await clickSelector(window, '[data-testid="open-project-center"]');
+  await openProjectCenter(window);
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="project-center"]') &&
