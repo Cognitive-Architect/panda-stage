@@ -18728,6 +18728,7 @@ h1 {
   display: grid;
   min-width: 0;
   align-content: start;
+  align-items: start;
   grid-template-columns: minmax(0, 1.28fr) minmax(280px, 0.72fr);
   gap: 12px 16px;
   padding: 0 0 16px;
@@ -18788,7 +18789,8 @@ h1 {
   .dialogue-timed-editor
   > .dialogue-timed-timing-section {
   grid-column: 2;
-  grid-row: 1 / span 3;
+  grid-row: 1;
+  align-self: start;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -18805,8 +18807,8 @@ h1 {
   .timeline-task-tray
   .dialogue-timed-editor
   > .dialogue-timed-audio-section {
-  grid-column: 1;
-  grid-row: 3;
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -19116,7 +19118,7 @@ h1 {
   display: flex;
   min-width: 0;
   grid-column: 1 / -1;
-  grid-row: 4;
+  grid-row: 3;
   justify-content: flex-start;
   padding-top: 10px;
   border-top: 1px solid var(--ui-color-separator);
@@ -19261,5 +19263,39 @@ h1 {
     min-height: 96px;
     max-height: 132px;
     padding: 10px 12px;
+  }
+}
+
+/* Issue #385: even at the minimum expanded height, keep the selected Timed
+   task body mounted and scrollable. The existing Timeline dock remains the
+   outer scroll owner; this override only lets the Timed tray grow to its
+   bounded content height while Pending, Empty, and Authoring retain the
+   accepted shallow presentation. */
+@container stage-e-timeline (max-height: 220px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    > .dialogue-sheet.dialogue-sheet-timeline {
+    height: auto;
+    overflow: visible;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-task-tray
+    .dialogue-task-body-timed {
+    display: block;
+    flex: 0 0 auto;
+    min-height: 0;
+    max-height: 320px;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 }

@@ -65,6 +65,17 @@ describe('Issue #384 Stage A Timed Task Tray polish', () => {
     expect(stageA).toContain('.dialogue-timed-task-context');
     expect(stageA).toContain('.dialogue-timed-status-chip');
     expect(stageA).toContain('grid-template-columns: minmax(0, 1.28fr)');
+    expect(stageA).toContain('align-items: start;');
+    expect(stageA).toMatch(
+      /> \.dialogue-timed-timing-section \{\s+grid-column: 2;\s+grid-row: 1;\s+align-self: start;/,
+    );
+    expect(stageA).toMatch(
+      /> \.dialogue-timed-audio-section \{\s+grid-column: 2;\s+grid-row: 2;/,
+    );
+    expect(stageA).toMatch(
+      /\.dialogue-timed-actions \{\s+display: flex;[\s\S]*?grid-row: 3;/,
+    );
+    expect(stageA).not.toContain('grid-row: 1 / span 3;');
     expect(stageA).toContain('var(--ui-color-surface-work)');
     expect(stageA).toContain('var(--ui-color-selected-border)');
     expect(stageA).toContain('overflow-y: auto;');
