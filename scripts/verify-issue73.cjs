@@ -74,6 +74,7 @@ async function click(window, selector) {
 }
 
 async function clickRecent(window, projectRoot) {
+  await ensureProjectCenter(window);
   await window.webContents.executeJavaScript(`(() => {
     const item = [...document.querySelectorAll('.recent-projects-list li')]
       .find((candidate) =>
@@ -89,11 +90,19 @@ async function clickRecent(window, projectRoot) {
 }
 
 async function ensureProjectCenter(window) {
-  await window.webContents.executeJavaScript(`(() => {
-    if (document.querySelector('[data-editor-page="editor"]')) {
-      document.querySelector('[data-testid="open-project-center"]').click();
-    }
-  })()`);
+  const editorOpen = await window.webContents.executeJavaScript(
+    `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
+  );
+  if (editorOpen) {
+    await click(window, '[data-testid="compact-project-more"]');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="menu-open-project-center"]')`,
+        'Project More menu did not expose the Project Center entry.',
+      ),
+    );
+    await click(window, '[data-testid="menu-open-project-center"]');
+  }
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-editor-page="project-center"]')`,
@@ -131,11 +140,11 @@ async function snapshot(window) {
     nameDraft: document.querySelector(
       '.shot-fields label:nth-of-type(1) input'
     )?.value ?? null,
-    durationDraft: Number(document.querySelector(
-      '.shot-fields label:nth-of-type(2) input'
-    )?.value ?? NaN),
+    durationDraft: Math.round(Number(document.querySelector(
+      '.shot-duration-input input'
+    )?.value ?? NaN) * 1000),
     topStatus: document.querySelector(
-      '.recovery-status-row output'
+      '[data-testid="editor-action-status"]'
     )?.textContent?.trim() ?? '',
     recentStatus: document.querySelector(
       '.recent-projects-status'
@@ -330,6 +339,15 @@ async function verifyIssue73() {
         'Recent-project cancel outcome was not reported.',
       ),
     );
+    await click(window, '[data-testid="return-to-editor"]');
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-editor-page="editor"]') && ` +
+          `document.querySelector('[data-testid="active-project-path"] code')` +
+          `?.textContent === ${JSON.stringify(projectARoot)}`,
+        'Cancelled switch did not retain project A in the editor.',
+      ),
+    );
     const cancelledSwitch = await snapshot(window);
 
     nextGuardOutcome = 'discarded';
@@ -362,7 +380,7 @@ async function verifyIssue73() {
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('.recovery-status-row output, ` +
+        `document.querySelector('[data-testid="editor-action-status"], ` +
           `[data-testid="project-center-screen"] .recovery-panel output')` +
           `?.textContent?.includes('保存当前项目失败')`,
         'Save-failed switch outcome was not reported.',
