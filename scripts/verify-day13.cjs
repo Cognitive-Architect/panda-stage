@@ -140,6 +140,18 @@ async function verifyDay13Ui() {
       };
     })()`);
     result.invalidCandidate = invalidCandidate;
+    result.projectMenuActions = await window.webContents.executeJavaScript(`(() => {
+      const more = document.querySelector('[data-testid="compact-project-more"]');
+      if (!(more instanceof HTMLElement)) {
+        throw new Error('Project More menu trigger did not render.');
+      }
+      more.click();
+      return new Promise((resolve) => requestAnimationFrame(() => {
+        const menu = document.querySelector('[data-testid="compact-project-menu"]');
+        resolve([...(menu?.querySelectorAll('[role="menuitem"]') ?? [])]
+          .map((item) => item.textContent?.trim()));
+      }));
+    })()`);
     await window.webContents.executeJavaScript(`
       document.fonts.ready.then(
         () => new Promise((resolve) =>
@@ -153,9 +165,10 @@ async function verifyDay13Ui() {
       result.projectName !== exampleProject.name ||
       result.defaultState !== '已保存' ||
       result.hasEditorPathInput ||
-      !result.actions.includes('项目中心') ||
+      result.actions.includes('项目中心') ||
       !result.actions.includes('保存') ||
       !result.actions.some((action) => action?.includes('更多')) ||
+      !result.projectMenuActions.includes('打开项目中心') ||
       !result.invalidCandidate.disabled ||
       result.invalidCandidate.hint !==
         '项目文件夹路径包含 Windows 不允许的字符。' ||
