@@ -236,8 +236,9 @@ export function DialogueInspector({
   if (timelinePresentation) {
     return (
       <div
-        className="dialogue-inspector dialogue-inspector-timeline"
+        className="dialogue-inspector dialogue-inspector-timeline dialogue-timed-editor"
         data-dialogue-id={dialogue.id}
+        data-timed-editor-layout="two-column"
         data-testid="dialogue-inspector"
       >
         <header
@@ -262,7 +263,7 @@ export function DialogueInspector({
         </header>
 
         <section
-          className="dialogue-inspector-section"
+          className="dialogue-inspector-section dialogue-timed-copy-section"
           data-testid="dialogue-inspector-copy-section"
         >
           <h3>台词</h3>
@@ -270,6 +271,7 @@ export function DialogueInspector({
             <span>内容</span>
             <textarea
               aria-label="台词内容"
+              className="dialogue-timed-textarea"
               data-testid="dialogue-inspector-text"
               value={text}
               rows={3}
@@ -302,7 +304,7 @@ export function DialogueInspector({
         </section>
 
         <section
-          className="dialogue-inspector-section"
+          className="dialogue-inspector-section dialogue-timed-timing-section"
           data-testid="dialogue-inspector-time-section"
         >
           <h3>时间</h3>
@@ -324,6 +326,7 @@ export function DialogueInspector({
                   <span className="dialogue-timing-input">
                     <input
                       aria-label="开始时间（毫秒）"
+                      className="dialogue-timed-time-input"
                       data-display-time={formatTimecode(dialogue.startMs)}
                       data-testid="dialogue-inspector-start"
                       inputMode="numeric"
@@ -348,6 +351,7 @@ export function DialogueInspector({
                   <span className="dialogue-timing-input">
                     <input
                       aria-label="结束时间（毫秒）"
+                      className="dialogue-timed-time-input"
                       data-display-time={formatTimecode(dialogue.endMs)}
                       data-testid="dialogue-inspector-end"
                       inputMode="numeric"
@@ -381,7 +385,7 @@ export function DialogueInspector({
                   </time>
                 </p>
                 <button
-                  className="dialogue-timeline-apply-timing"
+                  className="dialogue-timeline-apply-timing dialogue-timed-apply-timing"
                   data-testid="dialogue-inspector-apply-timing"
                   disabled={!timingInputValid}
                   onClick={commitTiming}
@@ -429,7 +433,7 @@ export function DialogueInspector({
         </section>
 
         <section
-          className="dialogue-inspector-section dialogue-inspector-speaker-section"
+          className="dialogue-inspector-section dialogue-inspector-speaker-section dialogue-timed-speaker-section"
           data-testid="dialogue-inspector-speaker-section"
         >
           <h3>角色</h3>
@@ -437,6 +441,7 @@ export function DialogueInspector({
             <span>说话人</span>
             <select
               aria-label="字幕角色"
+              className="dialogue-timed-speaker-select"
               data-testid="dialogue-inspector-speaker"
               value={dialogue.characterId}
               onChange={(event) =>
@@ -470,7 +475,7 @@ export function DialogueInspector({
         </section>
 
         <section
-          className="dialogue-inspector-section dialogue-inspector-audio-section"
+          className="dialogue-inspector-section dialogue-inspector-audio-section dialogue-timed-audio-section"
           data-testid="dialogue-inspector-audio-section"
         >
           <h3>音频</h3>
@@ -480,11 +485,11 @@ export function DialogueInspector({
           </span>
         </section>
 
-        <div className="dialogue-inspector-actions">
+        <div className="dialogue-inspector-actions dialogue-timed-actions">
           <button
             aria-label={`删除字幕：${character?.name ?? '未知角色'}：${dialogue.text}`}
             type="button"
-            className="dialogue-delete"
+            className="dialogue-delete dialogue-timed-delete"
             data-testid="dialogue-inspector-delete"
             onClick={() => dialogueStore.remove(dialogue.id)}
           >

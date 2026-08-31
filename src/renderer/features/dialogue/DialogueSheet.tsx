@@ -557,7 +557,26 @@ export function DialogueSheet({
             showTimedEditor ? ' dialogue-sheet-header-timed' : ''
           }`}
         >
-          {!showTimedEditor ? (
+          {showTimedEditor && unifiedTaskTray && selectedTimedDialogue ? (
+            <div
+              aria-live="polite"
+              className="dialogue-timed-task-context"
+              data-testid="dialogue-timed-task-context"
+            >
+              <span className="dialogue-timed-task-context-label">
+                已安排字幕
+              </span>
+              <strong data-testid="dialogue-timed-task-identity">
+                {characterName(selectedTimedDialogue.characterId)}
+              </strong>
+              <span
+                className="dialogue-timed-status-chip"
+                data-testid="dialogue-timed-task-status"
+              >
+                已定时
+              </span>
+            </div>
+          ) : !showTimedEditor ? (
             <div className="dialogue-sheet-heading">
               <p className="eyebrow">字幕任务</p>
               <h3>
