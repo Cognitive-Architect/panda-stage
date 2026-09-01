@@ -413,21 +413,17 @@ export function FlaCompatibilityReviewSession({
         data-workbench-route={rasterRoute ? 'raster' : 'render'}
         role="dialog"
       >
-        <header className="fla-review-heading" data-testid="fla-review-header">
-          <div className="fla-review-heading-copy">
-            <p className="eyebrow">{rasterRoute ? '只读导入预览' : '导入前检查'}</p>
-            <h2 className={rasterRoute ? undefined : 'sr-only'}>
-              {rasterRoute ? 'FLA 素材工作台' : 'FLA 渲染工作台'}
-            </h2>
-            {rasterRoute ? (
+        {rasterRoute ? (
+          <header className="fla-review-heading" data-testid="fla-review-header">
+            <div className="fla-review-heading-copy">
+              <p className="eyebrow">只读导入预览</p>
+              <h2>FLA 素材工作台</h2>
               <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
                 <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
                 <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
                 <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
               </ol>
-            ) : null}
-          </div>
-          {rasterRoute ? (
+            </div>
             <button
               disabled={phase === 'committing'}
               data-testid="fla-review-cancel"
@@ -436,8 +432,8 @@ export function FlaCompatibilityReviewSession({
             >
               取消
             </button>
-          ) : null}
-        </header>
+          </header>
+        ) : null}
 
         <div
           className="fla-review-body"
@@ -448,7 +444,7 @@ export function FlaCompatibilityReviewSession({
           }}
           ref={reviewBodyRef}
         >
-          {response?.ok === true && response.trace?.recoveryApplied ? (
+          {rasterRoute && response?.ok === true && response.trace?.recoveryApplied ? (
             <output
               className="fla-review-recovery-notice"
               data-testid="fla-review-recovery-notice"
@@ -665,18 +661,7 @@ export function FlaCompatibilityReviewSession({
               </aside>
             </div>
           ) : (
-            <div
-              className="fla-review-zero-raster"
-              data-testid="fla-review-zero-raster"
-              role="note"
-            >
-              <p
-                className="fla-review-zero-raster-summary"
-                data-testid="fla-review-zero-raster-summary"
-                title={flaZeroRasterUserMessage(response, ir.structure) ?? undefined}
-              >
-                没有找到可直接导入的位图素材；请从渲染目标生成图片素材。
-              </p>
+            <div className="fla-review-zero-raster" data-testid="fla-review-zero-raster">
               <FlaRenderWorkbench
                 mode={renderMode}
                 onModeChange={setRenderMode}
@@ -924,59 +909,6 @@ function flaDiagnosticUserMessage(response: FlaInspectionResponse | null): strin
     (diagnostic) => diagnostic.category === 'archive-malformed',
   );
   return (archive ?? diagnostics[0]!).userMessage;
-}
-
-/**
- * V1.5-B1 zero-raster copy that explicitly links the missing-raster fact to
- * the present-but-not-importable structure summary. Never claims that symbols,
- * layers, frames, or tweens are currently editable in Panda; says "detected"
- * (检测到) only.
- */
-function flaZeroRasterUserMessage(
-  response: FlaInspectionResponse | null,
-  structure: FlaStructuralSummary | undefined,
-): string | null {
-  if (!structure) return null;
-  const parts: string[] = [];
-  if (structure.sceneCount > 0) {
-    parts.push(
-      structure.sceneCount === 1
-        ? '1 个场景'
-        : `${structure.sceneCount} 个场景`,
-    );
-  }
-  if (structure.symbolCount > 0) {
-    const breakdown: string[] = [];
-    if (structure.graphicCount > 0) breakdown.push(`图形 ${structure.graphicCount}`);
-    if (structure.movieClipCount > 0) breakdown.push(`影片剪辑 ${structure.movieClipCount}`);
-    if (structure.buttonCount > 0) breakdown.push(`按钮 ${structure.buttonCount}`);
-    const inner =
-      breakdown.length > 0 ? `（${breakdown.join('、')}）` : '';
-    parts.push(
-      structure.symbolCount === 1
-        ? `1 个元件${inner}`
-        : `${structure.symbolCount} 个元件${inner}`,
-    );
-  }
-  if (structure.layerCount > 0) {
-    parts.push(
-      structure.layerCount === 1
-        ? '1 层'
-        : `${structure.layerCount} 层`,
-    );
-  }
-  if (structure.frameCount > 0) {
-    parts.push(
-      structure.frameCount === 1
-        ? '1 帧'
-        : `${structure.frameCount} 帧`,
-    );
-  }
-  if (parts.length === 0) {
-    return flaDiagnosticUserMessage(response) ??
-      '文件已读取；没有可直接导入的位图。';
-  }
-  return `文件已读取；没有可直接导入的位图，不过检测到可读的 FLA 结构：${parts.join('、')}。Panda 目前不会导入这些结构信息。`;
 }
 
 function FlaStructuralSummaryReadOnly({

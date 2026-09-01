@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Issue #397 real Windows/Electron Stage D v1.1 acceptance.
+ * Issue #398 real Windows/Electron Stage D deletion-first acceptance.
  *
  * The verifier creates an external zero-raster FLA/XFL sample with a long
  * render-target list and drives the production renderer through the shared
@@ -17,7 +17,7 @@ const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs'
 const { join, resolve } = require('node:path');
 const JSZip = require('jszip');
 
-const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue397-stage-d';
+const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue398-stage-d';
 const SYNTHETIC_TARGET_COUNT = 25;
 const SIMPLE_RECT_CUBICS = '!0 0|100 0|100 100|0 100|0 0';
 
@@ -78,8 +78,8 @@ async function writeSyntheticZeroRasterFla(sourcePath) {
   const targetNames = Array.from({ length: SYNTHETIC_TARGET_COUNT }, (_, index) => {
     const ordinal = String(index + 1).padStart(2, '0');
     return index === SYNTHETIC_TARGET_COUNT - 1
-      ? `issue397-target-${ordinal}-long-readable-name`
-      : `issue397-target-${ordinal}`;
+      ? `issue398-target-${ordinal}-long-readable-name`
+      : `issue398-target-${ordinal}`;
   });
   zip.file('DOMDocument.xml', `<?xml version="1.0" encoding="UTF-8"?>
  <DOMDocument xmlns="http://ns.adobe.com/xfl/2008/" width="640" height="360" frameRate="30">
@@ -134,13 +134,13 @@ async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathSta
   while (Date.now() < deadline) {
     if (pathState?.error) throw pathState.error;
     const currentMarker = await mainWindow.webContents.executeJavaScript(
-      'document.documentElement.dataset.issue397CaptureMarker || ""',
+      'document.documentElement.dataset.issue398CaptureMarker || ""',
     );
     if (currentMarker === marker) {
       const image = await mainWindow.capturePage();
       writeFileSync(outputPath, image.toPNG());
       await mainWindow.webContents.executeJavaScript(
-        `document.documentElement.dataset.issue397CaptureDone = ${JSON.stringify(marker)}; true;`,
+        `document.documentElement.dataset.issue398CaptureDone = ${JSON.stringify(marker)}; true;`,
       );
       const size = image.getSize();
       return { path: outputPath, width: size.width, height: size.height };
@@ -186,12 +186,12 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       };
 
       const waitForCapture = async (marker) => {
-        document.documentElement.dataset.issue397CaptureMarker = marker;
-        while (document.documentElement.dataset.issue397CaptureDone !== marker) {
+        document.documentElement.dataset.issue398CaptureMarker = marker;
+        while (document.documentElement.dataset.issue398CaptureDone !== marker) {
           await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
         }
-        delete document.documentElement.dataset.issue397CaptureMarker;
-        delete document.documentElement.dataset.issue397CaptureDone;
+        delete document.documentElement.dataset.issue398CaptureMarker;
+        delete document.documentElement.dataset.issue398CaptureDone;
       };
 
       const readProjectState = () => {
@@ -369,17 +369,37 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       const workbenchText = document.querySelector('[data-testid="fla-render-workbench"]')?.textContent ?? '';
       const stageFactsText = document.querySelector('[data-testid="fla-snapshot-source-facts"]')?.textContent ?? '';
       const targetCount = Number((document.querySelector('[data-testid="fla-snapshot-target-count"]')?.textContent ?? '').match(/\\d+/u)?.[0] ?? 0);
+      const reviewBodyText = document.querySelector('[data-testid="fla-review-body"]')?.textContent ?? '';
+      const sourceBasename = document.querySelector('[data-testid="fla-render-workbench-source"] strong')?.textContent?.trim() ?? '';
+      const countOccurrences = (value, needle) => needle ? value.split(needle).length - 1 : 0;
       const noRasterChrome = document.querySelectorAll(
         '[data-testid="fla-review-select-all"], [data-testid="fla-review-clear-all"], [data-testid="fla-review-selection-toolbar"]',
       ).length === 0;
       const zeroRasterRoute = document.querySelector('[data-workbench-route="render"]') !== null &&
-        document.querySelector('[data-testid="fla-review-zero-raster-summary"]') !== null;
+        document.querySelector('[data-testid="fla-render-workbench"]') !== null &&
+        document.querySelector('[data-testid="fla-review-zero-raster-summary"]') === null;
+      const deletionChecks = {
+        renderHeaderRemoved: document.querySelector('[data-workbench-route="render"] [data-testid="fla-review-header"]') === null,
+        genericRecoveryNoticeRemoved: document.querySelector('[data-testid="fla-review-recovery-notice"]') === null,
+        zeroRasterSummaryRemoved: document.querySelector('[data-testid="fla-review-zero-raster-summary"]') === null,
+        sourceFilenameSingle: sourceBasename.length > 0 && countOccurrences(reviewBodyText, sourceBasename) === 1,
+        readOnlySafetySingle: countOccurrences(reviewBodyText, '只读') === 1 && !reviewBodyText.includes('源 FLA 保持不变'),
+        targetCountSingle: document.querySelectorAll('[data-testid="fla-snapshot-target-count"]').length === 1 &&
+          document.querySelectorAll('[data-testid="fla-snapshot-visible-target-count"]').length === 0,
+        rightDetailsMerged: document.querySelectorAll('[data-testid="fla-snapshot-details"] > div').length === 2 &&
+          [...document.querySelectorAll('[data-testid="fla-snapshot-details"] dt')].every((element) => element.textContent?.trim() !== '来源'),
+        moreDetailsCollapsed: document.querySelector('[data-testid="fla-snapshot-compatibility-details"]')?.hasAttribute('open') === false,
+        defaultExplanatoryBlocksRemoved: document.querySelectorAll(
+          '[data-testid="fla-review-zero-raster-summary"], [data-testid="fla-snapshot-zero-raster"], [data-testid="fla-snapshot-readonly-note"], [data-testid="fla-snapshot-fidelity"]',
+        ).length === 0,
+        footerGuidanceMerged: document.querySelector('[data-testid="fla-snapshot-action-guidance"]') === null,
+      };
       const shellFacts = {
         mode: document.querySelector('[data-testid="fla-render-workbench"]')?.getAttribute('data-render-mode') ?? '',
         snapshotTabSelected: document.querySelector('[data-testid="fla-render-mode-snapshot"]')?.getAttribute('aria-selected') === 'true',
         targetCount,
         noRasterChrome,
-        sourceMentionsNoBitmap: /位图|bitmap/iu.test(workbenchText),
+        sourceHasReadOnlyIdentity: /只读/u.test(workbenchText),
         stageFactsVisible: /\\d+\\s*[×x]\\s*\\d+[\\s\\S]*\\d+\\s*fps/iu.test(stageFactsText),
         stageFactsText: stageFactsText.trim(),
       };
@@ -524,6 +544,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         zeroRasterRoute,
         stageDSourcePreviewDetails: detailsVisible,
         stageDv11Layout: Object.values(layoutChecks).every(Boolean),
+        stageDv12Deletion: Object.values(deletionChecks).every(Boolean),
         shellSnapshotMode: shellFacts.mode === 'snapshot' && shellFacts.snapshotTabSelected,
         stageTargetFacts: shellFacts.targetCount >= 2 && shellFacts.stageFactsVisible,
         noRasterChrome: shellFacts.noRasterChrome,
@@ -552,6 +573,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         supportedTargetCount: targetChoice.supportedTargetCount,
         stageFacts: shellFacts.stageFactsText,
         checks,
+        deletionChecks,
         initial,
         beforePreview,
         afterFirstPreview,
@@ -579,11 +601,11 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
 async function main() {
   const args = parseArgs(process.argv.slice(1));
   const acceptanceRoot = resolve(args.acceptanceRoot || DEFAULT_ACCEPTANCE_ROOT);
-  const outPath = resolve(args.out || join(acceptanceRoot, 'issue397-stage-d-receipt.json'));
+   const outPath = resolve(args.out || join(acceptanceRoot, 'issue398-stage-d-receipt.json'));
   const evidenceDir = resolve(args.evidenceDir || join(acceptanceRoot, 'layout-evidence'));
   const userData = resolve(args.userData || join(acceptanceRoot, 'electron-user-data'));
-  const sourcePath = resolve(args.source || join(acceptanceRoot, 'issue397-stage-d-zero-raster.fla'));
-  const projectName = `Issue397 Stage D UI ${Date.now()}`;
+   const sourcePath = resolve(args.source || join(acceptanceRoot, 'issue398-stage-d-zero-raster.fla'));
+   const projectName = `Issue398 Stage D UI ${Date.now()}`;
   mkdirSync(acceptanceRoot, { recursive: true });
   mkdirSync(resolve(outPath, '..'), { recursive: true });
   mkdirSync(evidenceDir, { recursive: true });
@@ -630,7 +652,7 @@ async function main() {
       ? JSON.parse(readFileSync(projectFile, 'utf8'))
       : null;
     const receipt = {
-      schemaVersion: 'issue397-stage-d-electron-acceptance/1',
+      schemaVersion: 'issue398-stage-d-electron-acceptance/1',
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,
@@ -645,7 +667,7 @@ async function main() {
           : null,
         privateVisualBytesRecorded: false,
       },
-      parserPath: 'real Windows Electron Main + production Renderer UI -> V2-R catalog -> bounded v1.1 R1/R2 workbench -> static preview/explicit ImageAsset commit',
+      parserPath: 'real Windows Electron Main + production Renderer UI -> V2-R catalog -> bounded v1.2 deletion-first R1/R2 workbench -> static preview/explicit ImageAsset commit',
       response,
     };
     writeFileSync(outPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
@@ -656,7 +678,7 @@ async function main() {
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
     const receipt = {
-      schemaVersion: 'issue397-stage-d-electron-acceptance/1',
+      schemaVersion: 'issue398-stage-d-electron-acceptance/1',
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,

@@ -130,8 +130,8 @@ describe('FLA Slice 2 review UX contract', () => {
     // Archive-malformed error state gets its own beginner-facing testid.
     expect(component).toContain('data-testid="fla-review-diagnostic"');
     expect(component).toContain('data-testid="fla-review-zero-raster"');
-    // Zero-raster copy is explicit and non-alarming.
-    expect(component).toContain('没有找到可直接导入的位图素材');
+    // Issue #398 keeps the route marker but removes the duplicated zero-raster paragraph.
+    expect(component).not.toContain('data-testid="fla-review-zero-raster-summary"');
     // Primary copy must not surface developer-only archive internals.
     expect(component).not.toContain('centralDirectorySize');
     expect(component).not.toContain('EOCD');

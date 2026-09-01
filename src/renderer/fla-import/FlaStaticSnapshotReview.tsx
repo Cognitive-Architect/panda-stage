@@ -295,10 +295,6 @@ export function FlaStaticSnapshotReview({
     onClose();
   };
 
-  const compatibilityNote = selecting.compatibility
-    .map((status) => COMPATIBILITY_NOTE[status])
-    .filter(Boolean)
-    .join(' ');
   const previewStatus = snapshotPreviewStatus(phase, previewIsCurrent);
   const canPreview = supported && Boolean(snapshot) && phase !== 'previewing' && phase !== 'committing' && phase !== 'committed';
   const canImport = previewIsCurrent && phase === 'preview-ready';
@@ -312,32 +308,21 @@ export function FlaStaticSnapshotReview({
     >
       <div className="fla-snapshot-workbench" data-testid="fla-snapshot-workbench">
         <aside className="fla-snapshot-source-region" data-testid="fla-snapshot-source-region">
-          <span className="fla-snapshot-badge">零位图 · 只读</span>
-          <div>
-            <p className="fla-render-panel-kicker">来源文件</p>
-            <h3 title={source.basename}>{source.basename}</h3>
-            <p data-testid="fla-snapshot-zero-raster">从可渲染目标生成 PNG 图片素材</p>
-          </div>
-          <dl className="fla-snapshot-facts" data-testid="fla-snapshot-source-facts">
-            {stage ? (
-              <div>
-                <dt>舞台</dt>
-                <dd>{stage.width} × {stage.height} · {stage.frameRate} fps</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt>可渲染目标</dt>
-              <dd data-testid="fla-snapshot-target-count">{entries.length} 个</dd>
-            </div>
-          </dl>
+          {stage ? (
+            <p className="fla-snapshot-stage-fact" data-testid="fla-snapshot-source-facts">
+              {stage.width} × {stage.height} · {stage.frameRate} fps
+            </p>
+          ) : null}
 
           <section className="fla-snapshot-target-region" aria-labelledby="fla-snapshot-target-heading">
             <header>
               <div>
-                <p className="fla-render-panel-kicker">第一步</p>
-                <h3 id="fla-snapshot-target-heading">选择目标</h3>
+                <p className="fla-render-panel-kicker">目标</p>
+                <h3 id="fla-snapshot-target-heading">可渲染目标</h3>
               </div>
-              <span data-testid="fla-snapshot-visible-target-count">{visibleEntries.length} / {entries.length}</span>
+              <span data-testid="fla-snapshot-target-count">
+                {targetSearch.trim() ? `${visibleEntries.length} / ${entries.length}` : `${entries.length} 个`}
+              </span>
             </header>
             <label className="fla-snapshot-target-search">
               <span>搜索目标</span>
@@ -403,10 +388,7 @@ export function FlaStaticSnapshotReview({
 
         <section className="fla-snapshot-preview-region" data-testid="fla-snapshot-preview-region">
           <header className="fla-snapshot-region-heading">
-            <div>
-              <p className="fla-render-panel-kicker">第二步 · 视觉焦点</p>
-              <h3>预览当前帧</h3>
-            </div>
+            <h3>预览当前帧</h3>
             <output
               aria-live="polite"
               data-preview-state={previewState}
@@ -437,10 +419,6 @@ export function FlaStaticSnapshotReview({
 
           {supported ? (
             <div className="fla-snapshot-frame" data-testid="fla-snapshot-frame-controls">
-              <div>
-                <p className="fla-render-panel-kicker">帧选择</p>
-                <strong>当前帧</strong>
-              </div>
               <div className="fla-snapshot-frame-controls">
                 <button
                   type="button"
@@ -479,20 +457,13 @@ export function FlaStaticSnapshotReview({
               </div>
             </div>
           ) : null}
-
-          <p className="fla-snapshot-fidelity" role="note" data-testid="fla-snapshot-fidelity">
-            {compatibilityNote || '当前预览遵循 Panda 的安全渲染范围。'}
-          </p>
         </section>
 
         <aside className="fla-snapshot-details-region" data-testid="fla-snapshot-details-region">
-          <p className="fla-render-panel-kicker">第三步 · 结果详情</p>
           <h3>{selecting.userLabel}</h3>
           <dl className="fla-snapshot-details" data-testid="fla-snapshot-details">
-            <div><dt>目标类型</dt><dd>{renderTargetKindLabel(selecting.kind)}</dd></div>
-            <div><dt>可用帧</dt><dd>0 – {Math.max(0, frameCount - 1)}</dd></div>
-            <div><dt>输出</dt><dd>ImageAsset（PNG）</dd></div>
-            <div><dt>来源</dt><dd title={source.basename}>{source.basename}</dd></div>
+            <div><dt>素材</dt><dd>{renderTargetKindLabel(selecting.kind)} · {frameCount} 帧</dd></div>
+            <div><dt>输出</dt><dd>PNG · ImageAsset</dd></div>
           </dl>
           <p className="fla-snapshot-detail-warning" role="note">
             保真度：{snapshotFidelityLabel(selecting.compatibility)}
@@ -515,21 +486,14 @@ export function FlaStaticSnapshotReview({
             </dl>
             {!supported ? <p className="fla-snapshot-unsupported">{selectedEntry.unsupportedReason}</p> : null}
           </details>
-          <p className="fla-snapshot-readonly-note" data-testid="fla-snapshot-readonly-note">
-            导入只创建当前帧的 PNG 图片素材。
-          </p>
         </aside>
       </div>
 
       <div className="fla-snapshot-action-bar" data-testid="fla-snapshot-action-bar">
         <div className="fla-snapshot-action-status">
-          <p className="fla-render-panel-kicker">当前选择</p>
           <strong data-testid="fla-snapshot-action-state" title={selecting.userLabel}>
-            {selecting.userLabel} · 第 {selectedFrameIndex + 1} 帧
+            {selecting.userLabel} · 第 {selectedFrameIndex + 1} 帧 · {snapshotFooterState(phase, supported, previewIsCurrent)}
           </strong>
-          <span data-testid="fla-snapshot-action-guidance">
-            {snapshotActionLabel(phase, supported, previewIsCurrent)}
-          </span>
           {errorMessage ? <span role="alert" data-testid="fla-snapshot-error">{errorMessage}</span> : null}
           {phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed' ? (
             <span data-testid="fla-snapshot-committed">已导入：{commitResponse.result.targetFileName}</span>
@@ -601,15 +565,15 @@ function snapshotPreviewStatus(phase: SnapshotPhase, previewIsCurrent: boolean):
   return previewIsCurrent ? '有效预览' : '需要重新预览';
 }
 
-function snapshotActionLabel(
+function snapshotFooterState(
   phase: SnapshotPhase,
   supported: boolean,
   previewIsCurrent: boolean,
 ): string {
-  if (!supported) return '当前目标暂不可预览';
-  if (phase === 'previewing') return '等待当前帧预览完成';
-  if (phase === 'committing') return '正在创建图片素材';
-  if (phase === 'committed') return '当前帧已导入项目';
-  if (previewIsCurrent) return '预览有效，可以导入当前帧';
-  return '先生成当前帧预览';
+  if (!supported) return '不可预览';
+  if (phase === 'previewing') return '生成中';
+  if (phase === 'committing') return '导入中';
+  if (phase === 'committed') return '已导入';
+  if (previewIsCurrent) return '可导入';
+  return '需预览';
 }

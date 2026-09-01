@@ -33,16 +33,12 @@ export function FlaRenderWorkbench({
     >
       <header className="fla-render-workbench-header" data-testid="fla-render-workbench-header">
         <div>
-          <p className="fla-render-workbench-kicker">FLA 渲染工作台</p>
-          <h3>{snapshotActive ? '选择目标 → 预览单帧 → 导入素材' : '选择目标 → 生成帧序列 → 导入素材'}</h3>
+          <h3>FLA 渲染工作台</h3>
           <p className="fla-render-workbench-source" data-testid="fla-render-workbench-source">
             <strong title={sourceBasename}>{sourceBasename}</strong>
             <span> · 只读</span>
           </p>
         </div>
-        <p className="fla-render-workbench-safety" data-testid="fla-render-workbench-safety">
-          源 FLA 保持不变
-        </p>
       </header>
 
       <div

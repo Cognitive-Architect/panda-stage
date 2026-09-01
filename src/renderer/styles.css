@@ -22930,11 +22930,11 @@ h1 {
   }
 }
 
-/* Issue #397 final cascade: these route-scoped values intentionally come
-   after the historical Stage B/R1 rules above so the v1.1 scroll contract is
-   the active presentation without changing those business paths. */
+/* Issue #398 final cascade: these route-scoped values intentionally come
+   after the historical Stage B/R1 rules above so the deletion-first surface
+   keeps the v1.1 scroll contract without changing business paths. */
 .fla-review-portal .fla-review-session[data-workbench-route='render'] {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -22951,7 +22951,7 @@ h1 {
   height: 100%;
   min-height: 0;
   flex: 1 1 auto;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   align-content: stretch;
   gap: 6px;
 }
@@ -22996,8 +22996,16 @@ h1 {
 }
 
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-source-region {
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-stage-fact {
+  padding: 0;
+  margin: 0;
+  color: #87988e;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-target-region {
@@ -23018,7 +23026,7 @@ h1 {
 }
 
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-region {
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
 }
 
@@ -23029,6 +23037,14 @@ h1 {
   aspect-ratio: 16 / 9;
 }
 
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-frame {
+  justify-content: flex-end;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-frame-controls {
+  margin-left: auto;
+}
+
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-details-region {
   min-height: 0;
   overflow-x: hidden;
@@ -23036,6 +23052,7 @@ h1 {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-color: #3f6d4e transparent;
+  gap: 8px;
 }
 
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-facts > div,
@@ -23158,7 +23175,7 @@ h1 {
 }
 
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-action-status {
-  max-width: min(52%, 520px);
+  max-width: min(58%, 560px);
 }
 
 @media (max-width: 900px) {
@@ -23166,7 +23183,7 @@ h1 {
     height: calc(100vh - 24px);
     max-height: calc(100vh - 24px);
     overflow-y: auto;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .fla-review-session[data-workbench-route='render'] .fla-review-body {

@@ -59,8 +59,10 @@ describe('Issue #396 Stage D render workbench contract', () => {
       expect(snapshot).toContain(`data-testid="${testId}"`);
     }
     expect(snapshot).toContain('ImageAsset');
-    expect(snapshot).toContain('data-testid="fla-snapshot-zero-raster"');
-    expect(snapshot).toContain('data-testid="fla-snapshot-readonly-note"');
+    expect(snapshot).toContain('data-testid="fla-snapshot-source-facts"');
+    expect(snapshot).toContain('data-testid="fla-snapshot-target-count"');
+    expect(snapshot).not.toContain('data-testid="fla-snapshot-zero-raster"');
+    expect(snapshot).not.toContain('data-testid="fla-snapshot-readonly-note"');
     expect(snapshot).not.toContain('fla-review-select-all');
     expect(snapshot).not.toContain('fla-review-clear-all');
   });
