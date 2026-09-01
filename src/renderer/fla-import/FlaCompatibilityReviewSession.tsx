@@ -416,7 +416,9 @@ export function FlaCompatibilityReviewSession({
         <header className="fla-review-heading" data-testid="fla-review-header">
           <div className="fla-review-heading-copy">
             <p className="eyebrow">{rasterRoute ? '只读导入预览' : '导入前检查'}</p>
-            <h2>{rasterRoute ? 'FLA 素材工作台' : 'FLA 兼容性预览'}</h2>
+            <h2 className={rasterRoute ? undefined : 'sr-only'}>
+              {rasterRoute ? 'FLA 素材工作台' : 'FLA 渲染工作台'}
+            </h2>
             {rasterRoute ? (
               <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
                 <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
@@ -425,14 +427,16 @@ export function FlaCompatibilityReviewSession({
               </ol>
             ) : null}
           </div>
-          <button
-            disabled={phase === 'committing'}
-            data-testid="fla-review-cancel"
-            onClick={() => void closeSession()}
-            type="button"
-          >
-            取消
-          </button>
+          {rasterRoute ? (
+            <button
+              disabled={phase === 'committing'}
+              data-testid="fla-review-cancel"
+              onClick={() => void closeSession()}
+              type="button"
+            >
+              取消
+            </button>
+          ) : null}
         </header>
 
         <div
@@ -666,9 +670,12 @@ export function FlaCompatibilityReviewSession({
               data-testid="fla-review-zero-raster"
               role="note"
             >
-              <p className="fla-review-zero-raster-summary" data-testid="fla-review-zero-raster-summary">
-                {flaZeroRasterUserMessage(response, ir.structure) ??
-                  '文件已成功读取，但没有找到可直接导入的位图素材。'}
+              <p
+                className="fla-review-zero-raster-summary"
+                data-testid="fla-review-zero-raster-summary"
+                title={flaZeroRasterUserMessage(response, ir.structure) ?? undefined}
+              >
+                没有找到可直接导入的位图素材；请从渲染目标生成图片素材。
               </p>
               <FlaRenderWorkbench
                 mode={renderMode}

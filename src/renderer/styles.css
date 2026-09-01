@@ -2874,6 +2874,305 @@ button:disabled {
   }
 }
 
+/* Issue #397: Stage D v1.1 keeps the render task in one bounded landscape
+   surface. The outer review body is no longer the scroll owner for this route:
+   only the target list (and, when necessary, the detail column) may scroll. */
+.fla-review-portal .fla-review-session[data-workbench-route='render'] {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-review-heading {
+  min-height: 0;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-review-body {
+  display: flex;
+  min-height: 0;
+  padding: 0 8px 0 0;
+  overflow: hidden;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-review-recovery-notice {
+  flex: none;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-review-zero-raster {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+  gap: 6px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-review-zero-raster-summary {
+  min-width: 0;
+  padding: 4px 2px;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #8fa096;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench,
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel-slot,
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel,
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-review,
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+  height: 100%;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 7px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel-slot {
+  overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-review {
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+  grid-template-columns: minmax(210px, 0.86fr) minmax(360px, 1.7fr) minmax(210px, 0.84fr);
+  gap: 8px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-source-region {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-region {
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-targets {
+  min-height: 0;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-region {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-details-region {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-facts > div,
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-details > div {
+  padding: 5px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 0;
+  background: transparent;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-search {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  padding: 5px 7px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 3%);
+  color: #87988e;
+  font-size: 9px;
+  gap: 6px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 7px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 5px;
+  outline: none;
+  background: #111b15;
+  color: #e7f0e9;
+  font: inherit;
+  font-size: 10px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-search input:focus {
+  border-color: #83d39a;
+  box-shadow: 0 0 0 2px rgb(131 211 154 / 16%);
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-targets li {
+  border-radius: 7px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-targets label {
+  min-height: 40px;
+  padding: 5px 7px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-copy {
+  gap: 1px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-copy small {
+  font-size: 9px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-targets-empty {
+  padding: 12px 8px;
+  border: 0;
+  background: transparent;
+  color: #87988e;
+  font-size: 10px;
+  text-align: center;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-warning {
+  padding: 6px 8px;
+  margin: 0;
+  border-left: 2px solid #d5a85c;
+  border-radius: 5px;
+  background: rgb(213 168 92 / 8%);
+  color: #dfbd7c;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more {
+  display: grid;
+  padding: 8px 9px;
+  margin: 0;
+  gap: 5px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more dt,
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more dd {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more dt {
+  color: #718279;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more dd {
+  overflow: hidden;
+  color: #c6d3ca;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-action-bar {
+  position: relative;
+  z-index: 2;
+  min-height: 0;
+  padding: 7px 9px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-action-status {
+  max-width: min(52%, 520px);
+}
+
+@media (max-width: 900px) {
+  .fla-review-portal .fla-review-session[data-workbench-route='render'] {
+    height: calc(100vh - 24px);
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-review-body {
+    overflow-y: auto;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-review-zero-raster,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel-slot,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-review,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+    height: auto;
+    flex: none;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-source-region,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-details-region {
+    overflow: visible;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-targets {
+    max-height: 280px;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-region {
+    min-height: 440px;
+  }
+}
+
+/* The shared shell also hosts R2. Keep its existing content/state owner
+   intact by giving the sequence sibling its own bounded panel scroll when its
+   preview grows, rather than clipping it with the R1 snapshot grid. */
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench[data-render-mode='sequence']
+  .fla-render-workbench-panel-slot {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench[data-render-mode='sequence']
+  .fla-render-workbench-panel,
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench[data-render-mode='sequence']
+  .fla-frame-sequence-review {
+  height: auto;
+  min-height: 100%;
+}
+
 /* Issue #396: Stage D zero-raster render workbench. The shell is shared with
    the existing R2 sequence panel, while R1 owns the three-zone single-frame
    task surface. The review body remains the only wheel-scroll owner. */
@@ -22628,5 +22927,276 @@ h1 {
     .dialogue-authoring-batch
     .dialogue-batch-table {
     min-width: 480px;
+  }
+}
+
+/* Issue #397 final cascade: these route-scoped values intentionally come
+   after the historical Stage B/R1 rules above so the v1.1 scroll contract is
+   the active presentation without changing those business paths. */
+.fla-review-portal .fla-review-session[data-workbench-route='render'] {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-review-body {
+  display: flex;
+  min-height: 0;
+  padding: 0 8px 0 0;
+  overflow: hidden;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-review-zero-raster {
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+  gap: 6px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-review-zero-raster-summary {
+  min-width: 0;
+  padding: 4px 2px;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #8fa096;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench,
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel-slot,
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel,
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-review,
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+  height: 100%;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 7px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel-slot {
+  overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-review {
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+  grid-template-columns: minmax(210px, 0.86fr) minmax(360px, 1.7fr) minmax(210px, 0.84fr);
+  gap: 8px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-source-region {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-region {
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-targets {
+  min-height: 0;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-region {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  overflow: hidden;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-details-region {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-facts > div,
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-details > div {
+  padding: 5px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 0;
+  background: transparent;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-search {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  padding: 5px 7px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 3%);
+  color: #87988e;
+  font-size: 9px;
+  gap: 6px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 7px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 5px;
+  outline: none;
+  background: #111b15;
+  color: #e7f0e9;
+  font: inherit;
+  font-size: 10px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-search input:focus {
+  border-color: #83d39a;
+  box-shadow: 0 0 0 2px rgb(131 211 154 / 16%);
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-targets li {
+  border-radius: 7px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-targets label {
+  min-height: 40px;
+  padding: 5px 7px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-copy {
+  gap: 1px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-target-copy small {
+  font-size: 9px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-targets-empty {
+  padding: 12px 8px;
+  border: 0;
+  background: transparent;
+  color: #87988e;
+  font-size: 10px;
+  text-align: center;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-warning {
+  padding: 6px 8px;
+  margin: 0;
+  border-left: 2px solid #d5a85c;
+  border-radius: 5px;
+  background: rgb(213 168 92 / 8%);
+  color: #dfbd7c;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more {
+  display: grid;
+  padding: 8px 9px;
+  margin: 0;
+  gap: 5px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more dt,
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more dd {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more dt {
+  color: #718279;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-detail-more dd {
+  overflow: hidden;
+  color: #c6d3ca;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-action-bar {
+  position: relative;
+  z-index: 2;
+  min-height: 0;
+  padding: 7px 9px;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-action-status {
+  max-width: min(52%, 520px);
+}
+
+@media (max-width: 900px) {
+  .fla-review-portal .fla-review-session[data-workbench-route='render'] {
+    height: calc(100vh - 24px);
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-review-body {
+    overflow-y: auto;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-review-zero-raster,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel-slot,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-review,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+    height: auto;
+    flex: none;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-source-region,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-details-region {
+    overflow: visible;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-targets {
+    max-height: 280px;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-region {
+    min-height: 440px;
   }
 }

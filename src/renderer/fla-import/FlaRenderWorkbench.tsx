@@ -37,11 +37,11 @@ export function FlaRenderWorkbench({
           <h3>{snapshotActive ? '选择目标 → 预览单帧 → 导入素材' : '选择目标 → 生成帧序列 → 导入素材'}</h3>
           <p className="fla-render-workbench-source" data-testid="fla-render-workbench-source">
             <strong title={sourceBasename}>{sourceBasename}</strong>
-            <span> · 未发现可直接导入的位图素材</span>
+            <span> · 只读</span>
           </p>
         </div>
         <p className="fla-render-workbench-safety" data-testid="fla-render-workbench-safety">
-          只读检查；确认导入前不会修改源 FLA 或项目素材
+          源 FLA 保持不变
         </p>
       </header>
 

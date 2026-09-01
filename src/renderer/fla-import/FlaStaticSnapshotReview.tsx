@@ -59,7 +59,7 @@ export function FlaStaticSnapshotReview({
 }: FlaStaticSnapshotReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<SnapshotPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
-  const [summary, setSummary] = useState('');
+  const [targetSearch, setTargetSearch] = useState('');
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
   const [preview, setPreview] = useState<FlaStaticSnapshotPreviewResponse | null>(null);
@@ -72,6 +72,11 @@ export function FlaStaticSnapshotReview({
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
     [entries, selectedTargetId],
   );
+  const visibleEntries = useMemo(() => {
+    const query = targetSearch.trim().toLocaleLowerCase();
+    if (!query) return entries;
+    return entries.filter((entry) => entry.target.userLabel.toLocaleLowerCase().includes(query));
+  }, [entries, targetSearch]);
   const selecting = selectedEntry?.target ?? null;
   const frameCount = selecting?.frameCount ?? 0;
   const supported = selectedEntry?.previewSupported === true;
@@ -102,7 +107,6 @@ export function FlaStaticSnapshotReview({
           return;
         }
         setEntries(response.entries);
-        setSummary(response.summary);
         const firstEntry = response.entries[0];
         setSelectedTargetId(firstEntry?.target.renderTargetId ?? null);
         setSelectedFrameIndex(0);
@@ -312,7 +316,7 @@ export function FlaStaticSnapshotReview({
           <div>
             <p className="fla-render-panel-kicker">来源文件</p>
             <h3 title={source.basename}>{source.basename}</h3>
-            <p data-testid="fla-snapshot-zero-raster">未发现可直接导入的位图素材</p>
+            <p data-testid="fla-snapshot-zero-raster">从可渲染目标生成 PNG 图片素材</p>
           </div>
           <dl className="fla-snapshot-facts" data-testid="fla-snapshot-source-facts">
             {stage ? (
@@ -325,34 +329,44 @@ export function FlaStaticSnapshotReview({
               <dt>可渲染目标</dt>
               <dd data-testid="fla-snapshot-target-count">{entries.length} 个</dd>
             </div>
-            <div>
-              <dt>目录状态</dt>
-              <dd data-testid="fla-snapshot-summary">{summary}</dd>
-            </div>
           </dl>
 
           <section className="fla-snapshot-target-region" aria-labelledby="fla-snapshot-target-heading">
             <header>
               <div>
                 <p className="fla-render-panel-kicker">第一步</p>
-                <h3 id="fla-snapshot-target-heading">选择可渲染目标</h3>
+                <h3 id="fla-snapshot-target-heading">选择目标</h3>
               </div>
-              <span>{entries.length}</span>
+              <span data-testid="fla-snapshot-visible-target-count">{visibleEntries.length} / {entries.length}</span>
             </header>
+            <label className="fla-snapshot-target-search">
+              <span>搜索目标</span>
+              <input
+                aria-label="搜索目标名称"
+                data-testid="fla-snapshot-target-search"
+                onChange={(event) => setTargetSearch(event.currentTarget.value)}
+                placeholder="按名称搜索"
+                type="search"
+                value={targetSearch}
+              />
+            </label>
             <ul className="fla-snapshot-targets" data-testid="fla-snapshot-targets">
-              {entries.map((entry) => {
+              {visibleEntries.map((entry) => {
                 const target = entry.target;
                 const compatibility = target.compatibility
                   .map((status) => COMPATIBILITY_NOTE[status])
                   .filter(Boolean)
                   .join(' ');
+                const showException = !entry.previewSupported || target.compatibility.some(
+                  (status) => status === 'unsupported' || status === 'unknown',
+                );
                 return (
                   <li
                     className={target.renderTargetId === selectedTargetId ? 'is-selected' : undefined}
                     data-preview-supported={entry.previewSupported ? 'true' : 'false'}
                     key={target.renderTargetId}
                   >
-                    <label>
+                    <label aria-label={`${target.userLabel}，${target.frameCount} 帧`} title={target.userLabel}>
                       <input
                         type="radio"
                         name="fla-snapshot-target"
@@ -366,17 +380,23 @@ export function FlaStaticSnapshotReview({
                       />
                       <span className="fla-snapshot-target-copy">
                         <strong title={target.userLabel}>{target.userLabel}</strong>
-                        <small>{renderTargetKindLabel(target.kind)} · {target.frameCount} 帧</small>
-                        {entry.previewSupported ? (
-                          <small className="fla-snapshot-target-fidelity" title={compatibility}>可预览</small>
-                        ) : (
-                          <small className="fla-snapshot-unsupported">暂不可预览：{entry.unsupportedReason}</small>
-                        )}
+                        <small>{target.frameCount} 帧</small>
+                        {showException ? (
+                          <small
+                            className={entry.previewSupported ? 'fla-snapshot-target-fidelity' : 'fla-snapshot-unsupported'}
+                            title={entry.previewSupported ? compatibility : entry.unsupportedReason}
+                          >
+                            {entry.previewSupported ? '需注意' : '暂不可预览'}
+                          </small>
+                        ) : null}
                       </span>
                     </label>
                   </li>
                 );
               })}
+              {visibleEntries.length === 0 ? (
+                <li className="fla-snapshot-targets-empty">没有匹配的目标，请清除搜索。</li>
+              ) : null}
             </ul>
           </section>
         </aside>
@@ -474,25 +494,42 @@ export function FlaStaticSnapshotReview({
             <div><dt>输出</dt><dd>ImageAsset（PNG）</dd></div>
             <div><dt>来源</dt><dd title={source.basename}>{source.basename}</dd></div>
           </dl>
+          <p className="fla-snapshot-detail-warning" role="note">
+            保真度：{snapshotFidelityLabel(selecting.compatibility)}
+          </p>
           <details className="fla-snapshot-compatibility" data-testid="fla-snapshot-compatibility-details">
-            <summary>兼容性与保真度</summary>
+            <summary>更多详情</summary>
             <ul>
               {selecting.compatibility.map((status) => (
                 <li data-status={status} key={status}>{COMPATIBILITY_NOTE[status]}</li>
               ))}
             </ul>
+            <dl className="fla-snapshot-detail-more">
+              <div><dt>目标标识</dt><dd title={selecting.renderTargetId}>{selecting.renderTargetId}</dd></div>
+              {selecting.sourceLibraryItemName ? (
+                <div><dt>源元件</dt><dd title={selecting.sourceLibraryItemName}>{selecting.sourceLibraryItemName}</dd></div>
+              ) : null}
+              {selecting.sourceTimelineIndex !== undefined ? (
+                <div><dt>源时间线</dt><dd>{selecting.sourceTimelineIndex}</dd></div>
+              ) : null}
+            </dl>
             {!supported ? <p className="fla-snapshot-unsupported">{selectedEntry.unsupportedReason}</p> : null}
           </details>
           <p className="fla-snapshot-readonly-note" data-testid="fla-snapshot-readonly-note">
-            选择与预览不会创建项目素材；只有确认导入才会写入一个普通图片素材。
+            导入只创建当前帧的 PNG 图片素材。
           </p>
         </aside>
       </div>
 
       <div className="fla-snapshot-action-bar" data-testid="fla-snapshot-action-bar">
         <div className="fla-snapshot-action-status">
-          <p className="fla-render-panel-kicker">下一步</p>
-          <strong data-testid="fla-snapshot-action-state">{snapshotActionLabel(phase, supported, previewIsCurrent)}</strong>
+          <p className="fla-render-panel-kicker">当前选择</p>
+          <strong data-testid="fla-snapshot-action-state" title={selecting.userLabel}>
+            {selecting.userLabel} · 第 {selectedFrameIndex + 1} 帧
+          </strong>
+          <span data-testid="fla-snapshot-action-guidance">
+            {snapshotActionLabel(phase, supported, previewIsCurrent)}
+          </span>
           {errorMessage ? <span role="alert" data-testid="fla-snapshot-error">{errorMessage}</span> : null}
           {phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed' ? (
             <span data-testid="fla-snapshot-committed">已导入：{commitResponse.result.targetFileName}</span>
@@ -545,6 +582,14 @@ function renderTargetKindLabel(kind: FlaRenderTarget['kind']): string {
     default:
       return '未知目标';
   }
+}
+
+function snapshotFidelityLabel(compatibility: FlaRenderTarget['compatibility']): string {
+  if (compatibility.some((status) => status === 'unsupported' || status === 'unknown')) {
+    return '需要注意兼容性';
+  }
+  if (compatibility.includes('degraded')) return '部分兼容';
+  return '当前支持范围内';
 }
 
 function snapshotPreviewStatus(phase: SnapshotPhase, previewIsCurrent: boolean): string {

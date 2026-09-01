@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Issue #396 real Windows/Electron Stage D acceptance.
+ * Issue #397 real Windows/Electron Stage D v1.1 acceptance.
  *
- * The verifier creates a small, external zero-raster FLA/XFL sample and
- * drives the production renderer through the shared R1/R2 workbench. The
- * receipt records bounded UI/project metadata only; source and rendered
- * visual bytes remain outside the repository and are never serialized.
+ * The verifier creates an external zero-raster FLA/XFL sample with a long
+ * render-target list and drives the production renderer through the shared
+ * R1/R2 workbench. The receipt records bounded UI/project metadata only;
+ * source and rendered visual bytes remain outside the repository. Layout
+ * screenshots are written to the caller-provided acceptance directory.
  */
 
 'use strict';
@@ -16,7 +17,8 @@ const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs'
 const { join, resolve } = require('node:path');
 const JSZip = require('jszip');
 
-const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue396-stage-d';
+const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue397-stage-d';
+const SYNTHETIC_TARGET_COUNT = 25;
 const SIMPLE_RECT_CUBICS = '!0 0|100 0|100 100|0 100|0 0';
 
 function parseArgs(argv) {
@@ -26,6 +28,7 @@ function parseArgs(argv) {
     else if (argv[index] === '--out') args.out = argv[++index];
     else if (argv[index] === '--acceptance-root') args.acceptanceRoot = argv[++index];
     else if (argv[index] === '--user-data') args.userData = argv[++index];
+    else if (argv[index] === '--evidence-dir') args.evidenceDir = argv[++index];
   }
   return args;
 }
@@ -72,37 +75,34 @@ function buildSymbolXml(symbolName, color, offset) {
 
 async function writeSyntheticZeroRasterFla(sourcePath) {
   const zip = new JSZip();
+  const targetNames = Array.from({ length: SYNTHETIC_TARGET_COUNT }, (_, index) => {
+    const ordinal = String(index + 1).padStart(2, '0');
+    return index === SYNTHETIC_TARGET_COUNT - 1
+      ? `issue397-target-${ordinal}-long-readable-name`
+      : `issue397-target-${ordinal}`;
+  });
   zip.file('DOMDocument.xml', `<?xml version="1.0" encoding="UTF-8"?>
-<DOMDocument xmlns="http://ns.adobe.com/xfl/2008/" width="640" height="360" frameRate="30">
-  <timelines>
-    <DOMTimeline name="scene1">
-      <layers>
-        <DOMLayer name="scene-layer">
-          <frames>
-            <DOMFrame index="0">
-              <elements>
-                <DOMSymbolInstance libraryItemName="issue396-stage-d-target-a">
-                  <matrix a="1" d="1" tx="30" ty="40"/>
-                </DOMSymbolInstance>
-                <DOMSymbolInstance libraryItemName="issue396-stage-d-target-b">
-                  <matrix a="1" d="1" tx="180" ty="40"/>
-                </DOMSymbolInstance>
-              </elements>
-            </DOMFrame>
-          </frames>
-        </DOMLayer>
-      </layers>
-    </DOMTimeline>
-  </timelines>
-</DOMDocument>`);
-  zip.file(
-    'LIBRARY/issue396-stage-d-target-a.xml',
-    buildSymbolXml('issue396-stage-d-target-a', '#3d9b62', 0),
-  );
-  zip.file(
-    'LIBRARY/issue396-stage-d-target-b.xml',
-    buildSymbolXml('issue396-stage-d-target-b', '#4d82c4', 12),
-  );
+ <DOMDocument xmlns="http://ns.adobe.com/xfl/2008/" width="640" height="360" frameRate="30">
+   <timelines>
+     <DOMTimeline name="scene1">
+       <layers>
+         <DOMLayer name="scene-layer">
+           <frames>
+             <DOMFrame index="0">
+               <elements/>
+             </DOMFrame>
+           </frames>
+         </DOMLayer>
+       </layers>
+     </DOMTimeline>
+   </timelines>
+ </DOMDocument>`);
+  targetNames.forEach((targetName, index) => {
+    zip.file(
+      `LIBRARY/${targetName}.xml`,
+      buildSymbolXml(targetName, index % 2 === 0 ? '#3d9b62' : '#4d82c4', index * 3),
+    );
+  });
   const bytes = await zip.generateAsync({ type: 'nodebuffer' });
   writeFileSync(sourcePath, bytes);
   return sha256(sourcePath);
@@ -127,6 +127,27 @@ async function waitForMainWindow() {
     await delay(100);
   }
   throw new Error('Panda Stage main window did not expose the Stage D APIs');
+}
+
+async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathState) {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    if (pathState?.error) throw pathState.error;
+    const currentMarker = await mainWindow.webContents.executeJavaScript(
+      'document.documentElement.dataset.issue397CaptureMarker || ""',
+    );
+    if (currentMarker === marker) {
+      const image = await mainWindow.capturePage();
+      writeFileSync(outputPath, image.toPNG());
+      await mainWindow.webContents.executeJavaScript(
+        `document.documentElement.dataset.issue397CaptureDone = ${JSON.stringify(marker)}; true;`,
+      );
+      const size = image.getSize();
+      return { path: outputPath, width: size.width, height: size.height };
+    }
+    await delay(100);
+  }
+  throw new Error(`Timed out waiting for Stage D screenshot marker ${marker}`);
 }
 
 async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
@@ -164,6 +185,15 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         element.click();
       };
 
+      const waitForCapture = async (marker) => {
+        document.documentElement.dataset.issue397CaptureMarker = marker;
+        while (document.documentElement.dataset.issue397CaptureDone !== marker) {
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+        }
+        delete document.documentElement.dataset.issue397CaptureMarker;
+        delete document.documentElement.dataset.issue397CaptureDone;
+      };
+
       const readProjectState = () => {
         const heading = document.querySelector('.asset-library-heading output')?.textContent?.trim() ?? '';
         const countMatch = heading.match(/(\\d+)/u);
@@ -182,7 +212,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       const waitForSnapshotTargets = async () => {
         await waitFor('[data-testid="fla-render-workbench"]');
         await waitFor('[data-testid="fla-snapshot-targets"]', (element) =>
-          element.querySelectorAll('input[data-testid^="fla-snapshot-target-"]').length > 0,
+          element.querySelectorAll('input[type="radio"][data-testid^="fla-snapshot-target-"]').length > 0,
         );
       };
 
@@ -239,7 +269,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       };
 
       const chooseTwoFrameTarget = async () => {
-        const radios = [...document.querySelectorAll('input[data-testid^="fla-snapshot-target-"]')];
+        const radios = [...document.querySelectorAll('input[type="radio"][data-testid^="fla-snapshot-target-"]')];
         for (const radio of radios) {
           if (radio.disabled) continue;
           radio.click();
@@ -276,6 +306,66 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       const initial = readProjectState();
       await openStageDReview();
 
+      const rectData = (element) => {
+        if (!(element instanceof Element)) return null;
+        const rect = element.getBoundingClientRect();
+        return {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        };
+      };
+      const isViewportVisible = (rect) => Boolean(
+        rect && rect.top >= -1 && rect.bottom <= window.innerHeight + 1 &&
+        rect.left >= -1 && rect.right <= window.innerWidth + 1,
+      );
+      const isInside = (child, parent) => Boolean(
+        child && parent && child.top >= parent.top - 1 && child.bottom <= parent.bottom + 1,
+      );
+      const readLayout = () => {
+        const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
+        const targetRows = targetList ? [...targetList.querySelectorAll('li')].filter(
+          (row) => row.querySelector('input[data-testid^="fla-snapshot-target-"]'),
+        ) : [];
+        const firstTarget = targetRows[0] ?? null;
+        const lastTarget = targetRows[targetRows.length - 1] ?? null;
+        const reviewBody = document.querySelector('[data-testid="fla-review-body"]');
+        const listStyle = targetList ? getComputedStyle(targetList) : null;
+        const bodyStyle = reviewBody ? getComputedStyle(reviewBody) : null;
+        return {
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          session: rectData(document.querySelector('[data-testid="fla-review-session"]')),
+          workbench: rectData(document.querySelector('[data-testid="fla-render-workbench"]')),
+          header: rectData(document.querySelector('[data-testid="fla-render-workbench-header"]')),
+          preview: rectData(document.querySelector('[data-testid="fla-snapshot-preview-area"]')),
+          actionBar: rectData(document.querySelector('[data-testid="fla-snapshot-action-bar"]')),
+          targetList: {
+            rect: rectData(targetList),
+            scrollHeight: targetList?.scrollHeight ?? 0,
+            clientHeight: targetList?.clientHeight ?? 0,
+            scrollTop: targetList?.scrollTop ?? 0,
+            overflowY: listStyle?.overflowY ?? '',
+            firstTarget: rectData(firstTarget),
+            lastTarget: rectData(lastTarget),
+            rowCount: targetRows.length,
+          },
+          reviewBody: {
+            rect: rectData(reviewBody),
+            scrollHeight: reviewBody?.scrollHeight ?? 0,
+            clientHeight: reviewBody?.clientHeight ?? 0,
+            overflowY: bodyStyle?.overflowY ?? '',
+          },
+          documentScrollHeight: document.documentElement.scrollHeight,
+          documentClientHeight: document.documentElement.clientHeight,
+          primaryActionCount: document.querySelectorAll(
+            '.fla-snapshot-action-bar .fla-render-primary-action:not(:disabled)',
+          ).length,
+        };
+      };
+
       const workbenchText = document.querySelector('[data-testid="fla-render-workbench"]')?.textContent ?? '';
       const stageFactsText = document.querySelector('[data-testid="fla-snapshot-source-facts"]')?.textContent ?? '';
       const targetCount = Number((document.querySelector('[data-testid="fla-snapshot-target-count"]')?.textContent ?? '').match(/\\d+/u)?.[0] ?? 0);
@@ -292,6 +382,72 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         sourceMentionsNoBitmap: /位图|bitmap/iu.test(workbenchText),
         stageFactsVisible: /\\d+\\s*[×x]\\s*\\d+[\\s\\S]*\\d+\\s*fps/iu.test(stageFactsText),
         stageFactsText: stageFactsText.trim(),
+      };
+
+      const topLayout = readLayout();
+      const targetLabels = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] li strong')]
+        .map((element) => element.textContent?.trim() ?? '')
+        .filter(Boolean);
+      await waitForCapture('top');
+
+      const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
+      if (!(targetList instanceof HTMLElement)) throw new Error('Stage D target list is not scrollable');
+      targetList.scrollTop = targetList.scrollHeight;
+      targetList.dispatchEvent(new Event('scroll', { bubbles: true }));
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+      const bottomLayout = readLayout();
+      await waitForCapture('bottom');
+
+      const targetSearch = document.querySelector('[data-testid="fla-snapshot-target-search"]');
+      const searchQuery = targetLabels[targetLabels.length - 1] ?? '';
+      let searchMatches = false;
+      if (targetSearch instanceof HTMLInputElement && searchQuery) {
+        setControlledInput('[data-testid="fla-snapshot-target-search"]', searchQuery);
+        await waitFor('[data-testid="fla-snapshot-targets"]', (element) =>
+          element.querySelectorAll('input[data-testid^="fla-snapshot-target-"]').length === 1,
+        );
+        searchMatches = document.querySelectorAll(
+          '[data-testid="fla-snapshot-targets"] input[data-testid^="fla-snapshot-target-"]',
+        ).length === 1;
+        setControlledInput('[data-testid="fla-snapshot-target-search"]', '');
+        await waitFor('[data-testid="fla-snapshot-targets"]', (element) =>
+          element.querySelectorAll('input[data-testid^="fla-snapshot-target-"]').length === targetCount,
+        );
+      }
+
+      const topListRect = topLayout.targetList.rect;
+      const bottomListRect = bottomLayout.targetList.rect;
+      const layoutChecks = {
+        targetCountAtLeast25: targetCount >= 25,
+        workbenchBounded: Boolean(
+          topLayout.session && topLayout.workbench &&
+          topLayout.workbench.height <= topLayout.session.height + 1 &&
+          topLayout.workbench.bottom <= topLayout.session.bottom + 1,
+        ),
+        pageNotStretched: topLayout.reviewBody.overflowY === 'hidden' &&
+          topLayout.reviewBody.scrollHeight <= topLayout.reviewBody.clientHeight + 1 &&
+          topLayout.documentScrollHeight <= topLayout.documentClientHeight + 1,
+        targetListOwnsScroll: topLayout.targetList.overflowY === 'auto' &&
+          topLayout.targetList.scrollHeight > topLayout.targetList.clientHeight + 1,
+        headerPreviewActionVisibleAtTop: isViewportVisible(topLayout.header) &&
+          isViewportVisible(topLayout.preview) && isViewportVisible(topLayout.actionBar),
+        headerPreviewActionVisibleAtBottom: isViewportVisible(bottomLayout.header) &&
+          isViewportVisible(bottomLayout.preview) && isViewportVisible(bottomLayout.actionBar),
+        firstTargetReachable: isInside(topLayout.targetList.firstTarget, topListRect),
+        lastTargetReachable: isInside(bottomLayout.targetList.lastTarget, bottomListRect),
+        previewStableWhileListScrolls: Boolean(
+          topLayout.preview && bottomLayout.preview &&
+          Math.abs(topLayout.preview.top - bottomLayout.preview.top) <= 1 &&
+          Math.abs(topLayout.preview.bottom - bottomLayout.preview.bottom) <= 1,
+        ),
+        footerStableWhileListScrolls: Boolean(
+          topLayout.actionBar && bottomLayout.actionBar &&
+          Math.abs(topLayout.actionBar.top - bottomLayout.actionBar.top) <= 1 &&
+          Math.abs(topLayout.actionBar.bottom - bottomLayout.actionBar.bottom) <= 1,
+        ),
+        onePrimaryActionAtTop: topLayout.primaryActionCount === 1,
+        onePrimaryActionAtBottom: bottomLayout.primaryActionCount === 1,
+        targetSearchWorks: searchMatches,
       };
 
       const modeSwitchPassed = await switchModeAndBack();
@@ -319,7 +475,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       };
       await previewCurrentFrame();
 
-      const radiosAfterFrame = [...document.querySelectorAll('input[data-testid^="fla-snapshot-target-"]')]
+      const radiosAfterFrame = [...document.querySelectorAll('input[type="radio"][data-testid^="fla-snapshot-target-"]')]
         .filter((radio) => !radio.disabled);
       const otherTarget = radiosAfterFrame.find(
         (radio) => radio.getAttribute('data-testid') !== targetChoice.id,
@@ -367,6 +523,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       const checks = {
         zeroRasterRoute,
         stageDSourcePreviewDetails: detailsVisible,
+        stageDv11Layout: Object.values(layoutChecks).every(Boolean),
         shellSnapshotMode: shellFacts.mode === 'snapshot' && shellFacts.snapshotTabSelected,
         stageTargetFacts: shellFacts.targetCount >= 2 && shellFacts.stageFactsVisible,
         noRasterChrome: shellFacts.noRasterChrome,
@@ -403,6 +560,13 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         libraryAfterClose,
         frameInvalidation,
         targetInvalidation,
+        layout: {
+          checks: layoutChecks,
+          top: topLayout,
+          bottom: bottomLayout,
+          targetCount,
+          searchQuery,
+        },
         committedAssetCount,
         revisionAdvanced,
         committedText,
@@ -415,12 +579,14 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
 async function main() {
   const args = parseArgs(process.argv.slice(1));
   const acceptanceRoot = resolve(args.acceptanceRoot || DEFAULT_ACCEPTANCE_ROOT);
-  const outPath = resolve(args.out || join(acceptanceRoot, 'issue396-stage-d-receipt.json'));
+  const outPath = resolve(args.out || join(acceptanceRoot, 'issue397-stage-d-receipt.json'));
+  const evidenceDir = resolve(args.evidenceDir || join(acceptanceRoot, 'layout-evidence'));
   const userData = resolve(args.userData || join(acceptanceRoot, 'electron-user-data'));
-  const sourcePath = resolve(args.source || join(acceptanceRoot, 'issue396-stage-d-zero-raster.fla'));
-  const projectName = `Issue396 Stage D UI ${Date.now()}`;
+  const sourcePath = resolve(args.source || join(acceptanceRoot, 'issue397-stage-d-zero-raster.fla'));
+  const projectName = `Issue397 Stage D UI ${Date.now()}`;
   mkdirSync(acceptanceRoot, { recursive: true });
   mkdirSync(resolve(outPath, '..'), { recursive: true });
+  mkdirSync(evidenceDir, { recursive: true });
   mkdirSync(userData, { recursive: true });
 
   let sourceWasGenerated = false;
@@ -437,14 +603,34 @@ async function main() {
     require('../dist-electron/main/index.js');
     const sourceSha256Before = sha256(sourcePath);
     const mainWindow = await waitForMainWindow();
-    response = await runStageDPath(mainWindow, acceptanceRoot, projectName);
+    const pathState = { error: null };
+    const pathPromise = runStageDPath(mainWindow, acceptanceRoot, projectName).catch((error) => {
+      pathState.error = error;
+      throw error;
+    });
+    const layoutEvidence = {
+      top: await captureScreenshotAtMarker(
+        mainWindow,
+        'top',
+        join(evidenceDir, 'stage-d-top-target.png'),
+        pathState,
+      ),
+      bottom: await captureScreenshotAtMarker(
+        mainWindow,
+        'bottom',
+        join(evidenceDir, 'stage-d-bottom-target.png'),
+        pathState,
+      ),
+    };
+    response = await pathPromise;
+    response.layoutEvidence = layoutEvidence;
     const sourceSha256After = sha256(sourcePath);
     const projectFile = join(acceptanceRoot, `${projectName}.pandastage`, 'project.json');
     const persistedProject = existsSync(projectFile)
       ? JSON.parse(readFileSync(projectFile, 'utf8'))
       : null;
     const receipt = {
-      schemaVersion: 'issue396-stage-d-electron-acceptance/1',
+      schemaVersion: 'issue397-stage-d-electron-acceptance/1',
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,
@@ -459,7 +645,7 @@ async function main() {
           : null,
         privateVisualBytesRecorded: false,
       },
-      parserPath: 'real Windows Electron Main + production Renderer UI -> V2-R catalog -> shared R1/R2 workbench -> static preview/explicit ImageAsset commit',
+      parserPath: 'real Windows Electron Main + production Renderer UI -> V2-R catalog -> bounded v1.1 R1/R2 workbench -> static preview/explicit ImageAsset commit',
       response,
     };
     writeFileSync(outPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
@@ -470,7 +656,7 @@ async function main() {
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
     const receipt = {
-      schemaVersion: 'issue396-stage-d-electron-acceptance/1',
+      schemaVersion: 'issue397-stage-d-electron-acceptance/1',
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,
