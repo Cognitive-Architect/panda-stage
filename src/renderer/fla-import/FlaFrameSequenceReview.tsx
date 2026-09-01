@@ -49,6 +49,7 @@ interface FlaFrameSequenceReviewProps {
   sessionId: string;
   source: { basename: string; sha256: string };
   snapshot: EditorProjectSnapshot | null;
+  embedded?: boolean;
   onImported: (response: FlaFrameSequenceCommitResponse) => void;
   onClose: () => void;
 }
@@ -67,6 +68,7 @@ export function FlaFrameSequenceReview({
   sessionId,
   source,
   snapshot,
+  embedded = false,
   onImported,
   onClose,
 }: FlaFrameSequenceReviewProps): React.JSX.Element {
@@ -97,6 +99,9 @@ export function FlaFrameSequenceReview({
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
     [entries, selectedTargetId],
   );
+  const reviewClassName = embedded
+    ? 'fla-frame-sequence-review fla-render-workbench-panel'
+    : 'fla-frame-sequence-review';
   const targetFrameCount = selectedEntry?.target.frameCount ?? 0;
 
   const validation = useMemo(
@@ -356,7 +361,7 @@ export function FlaFrameSequenceReview({
 
   if (!selectedEntry) {
     return (
-      <div className="fla-frame-sequence-review" data-testid="fla-frame-sequence-review" role="note">
+      <div className={reviewClassName} data-testid="fla-frame-sequence-review" data-workbench-panel={embedded ? 'sequence' : undefined} role="note">
         {phase === 'loading' ? (
           <p data-testid="fla-frame-sequence-loading">正在分析可渲染的图形…</p>
         ) : phase === 'error' ? (
@@ -372,7 +377,7 @@ export function FlaFrameSequenceReview({
   const canRender = supported && validation.valid && phase === 'selecting';
 
   return (
-    <div className="fla-frame-sequence-review" data-testid="fla-frame-sequence-review">
+    <div className={reviewClassName} data-testid="fla-frame-sequence-review" data-workbench-panel={embedded ? 'sequence' : undefined}>
       <p className="fla-frame-sequence-intro" data-testid="fla-frame-sequence-summary">
         {summary}
       </p>

@@ -41,6 +41,10 @@ import {
 } from './fla-inspection-lifecycle';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
 import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
+import {
+  FlaRenderWorkbench,
+  type FlaRenderWorkbenchMode,
+} from './FlaRenderWorkbench';
 import { routeFlaInspection } from './fla-content-route';
 
 interface FlaCompatibilityReviewSessionProps {
@@ -85,6 +89,7 @@ export function FlaCompatibilityReviewSession({
   const [rasterPageSize, setRasterPageSize] = useState<number>(FLA_RASTER_REVIEW_PAGE_SIZES[0]);
   const [rasterFilter, setRasterFilter] = useState<FlaRasterReviewFilter>('all');
   const [rasterSearch, setRasterSearch] = useState('');
+  const [renderMode, setRenderMode] = useState<FlaRenderWorkbenchMode>('snapshot');
   const reviewBodyRef = useRef<HTMLDivElement | null>(null);
   const reviewScrollTop = useRef(0);
 
@@ -104,6 +109,7 @@ export function FlaCompatibilityReviewSession({
           setRasterFilter('all');
           setRasterSearch('');
           setCompatibilityNotesOpen(false);
+          setRenderMode('snapshot');
           reviewScrollTop.current = 0;
           setPhase('ready');
         } else {
@@ -429,19 +435,6 @@ export function FlaCompatibilityReviewSession({
           </button>
         </header>
 
-        {!rasterRoute ? (
-          <div className="fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
-            <div>
-              <strong data-testid="fla-review-selected-count">已选择：{selectedCount} / {reviewItems.length}</strong>
-            </div>
-            <div>
-              <button data-testid="fla-review-select-all" disabled type="button">全选</button>
-              <button data-testid="fla-review-clear-all" disabled type="button">清空</button>
-              <button data-testid="fla-review-confirm" disabled type="button">确认选择</button>
-            </div>
-          </div>
-        ) : null}
-
         <div
           className="fla-review-body"
           data-preserves-scroll-position="true"
@@ -673,22 +666,35 @@ export function FlaCompatibilityReviewSession({
               data-testid="fla-review-zero-raster"
               role="note"
             >
-              {flaZeroRasterUserMessage(response, ir.structure) ??
-                '文件已成功读取，但没有找到可直接导入的位图素材。'}
-              <FlaStaticSnapshotReview
-                sessionId={sessionId}
-                source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
-                snapshot={snapshot}
-                onImported={(response) => onSnapshotImported?.(response)}
-                onClose={() => onClose()}
-              />
-              <FlaFrameSequenceReview
-                sessionId={sessionId}
-                source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
-                snapshot={snapshot}
-                onImported={(response) => onSequenceImported?.(response)}
-                onClose={() => onClose()}
-              />
+              <p className="fla-review-zero-raster-summary" data-testid="fla-review-zero-raster-summary">
+                {flaZeroRasterUserMessage(response, ir.structure) ??
+                  '文件已成功读取，但没有找到可直接导入的位图素材。'}
+              </p>
+              <FlaRenderWorkbench
+                mode={renderMode}
+                onModeChange={setRenderMode}
+                sourceBasename={ir.source.basename}
+              >
+                {renderMode === 'snapshot' ? (
+                  <FlaStaticSnapshotReview
+                    sessionId={sessionId}
+                    source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+                    stage={ir.document}
+                    snapshot={snapshot}
+                    onImported={(response) => onSnapshotImported?.(response)}
+                    onClose={() => onClose()}
+                  />
+                ) : (
+                  <FlaFrameSequenceReview
+                    sessionId={sessionId}
+                    source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+                    embedded
+                    snapshot={snapshot}
+                    onImported={(response) => onSequenceImported?.(response)}
+                    onClose={() => onClose()}
+                  />
+                )}
+              </FlaRenderWorkbench>
             </div>
           )}
         </div>

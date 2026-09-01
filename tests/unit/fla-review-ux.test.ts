@@ -41,8 +41,8 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('data-testid="fla-review-header"');
     expect(component).toContain('data-testid="fla-review-selection-toolbar"');
     expect(component).toContain('data-testid="fla-review-body"');
-    expect(component.indexOf('data-testid="fla-review-selection-toolbar"')).toBeLessThan(
-      component.indexOf('data-testid="fla-review-body"'),
+    expect(component.indexOf('data-testid="fla-review-body"')).toBeLessThan(
+      component.indexOf('data-testid="fla-review-selection-toolbar"'),
     );
     expect(issue255Styles).toMatch(
       /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?grid-template-rows:\s*auto auto auto minmax\(0, 1fr\);/u,
@@ -90,7 +90,7 @@ describe('FLA Slice 2 review UX contract', () => {
   it('uses Chinese-first copy for the normal review surface', () => {
     expect(component).toContain('FLA 兼容性预览');
     expect(component).toContain('取消');
-    expect(component).toContain('已选择：');
+    expect(component).toContain('项将进入确认步骤');
     expect(component).toContain('全选');
     expect(component).toContain('清空');
     expect(component).toContain('确认选择');

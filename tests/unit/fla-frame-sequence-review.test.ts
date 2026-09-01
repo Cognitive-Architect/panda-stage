@@ -22,7 +22,7 @@ describe('R2-H.2 component mounts (static render)', () => {
   });
 });
 
-describe('R2-H.2 is mounted in the compatibility review (zero-raster path)', () => {
+describe('R2-H.2 shares the compatibility review render workbench (zero-raster path)', () => {
   const session = readFileSync(
     'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
     'utf8',
@@ -31,9 +31,11 @@ describe('R2-H.2 is mounted in the compatibility review (zero-raster path)', () 
     'src/renderer/features/assets/AssetLibrary.tsx',
     'utf8',
   );
-  it('renders the frame sequence review alongside the R1 snapshot review', () => {
+  it('keeps the R1/R2 siblings behind one shared mode shell', () => {
     expect(session).toContain('FlaFrameSequenceReview');
     expect(session).toContain('FlaStaticSnapshotReview');
+    expect(session).toContain('FlaRenderWorkbench');
+    expect(session).toContain("renderMode === 'snapshot'");
     expect(session).toContain('FlaFrameSequenceCommitResponse');
     // Both are rendered inside the zero-raster branch.
     expect(session).toContain('onImported={(response) => onSequenceImported?.(response)}');
