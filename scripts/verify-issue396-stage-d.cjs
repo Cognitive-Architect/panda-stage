@@ -202,8 +202,26 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       };
 
       const openStageDReview = async () => {
-        await waitFor('[data-testid="asset-import-fla"]', (element) => !element.disabled);
-        click('[data-testid="asset-import-fla"]');
+        await waitFor(
+          '[data-testid="asset-import-fla"], [data-testid="resource-asset-import-fla"]',
+          (element) => {
+            const directAction = document.querySelector('[data-testid="asset-import-fla"]');
+            const resourceAction = document.querySelector('[data-testid="resource-asset-import-fla"]');
+            return Boolean(
+              (directAction instanceof HTMLButtonElement && !directAction.disabled) ||
+              (resourceAction instanceof HTMLButtonElement && !resourceAction.disabled),
+            );
+          },
+        );
+        const directAction = document.querySelector('[data-testid="asset-import-fla"]');
+        const resourceAction = document.querySelector('[data-testid="resource-asset-import-fla"]');
+        const action = directAction instanceof HTMLButtonElement && !directAction.disabled
+          ? directAction
+          : resourceAction;
+        if (!(action instanceof HTMLButtonElement) || action.disabled) {
+          throw new Error('No enabled FLA import action is available');
+        }
+        action.click();
         await waitFor('[data-testid="fla-review-zero-raster"]');
         await waitForSnapshotTargets();
       };
