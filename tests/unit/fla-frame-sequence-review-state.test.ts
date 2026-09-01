@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRange,
+  getDefaultSequenceRange,
   intentChangeReset,
   isCommitEligible,
   isCurrentResponse,
@@ -15,6 +16,31 @@ import {
 } from '../../src/shared/fla-frame-sequence-api';
 
 const targetFrameCount = 12;
+
+describe('R2-H.2 bounded default range (Issue #400)', () => {
+  it.each([
+    [1, 0],
+    [10, 9],
+    [24, 23],
+    [30, 23],
+    [100, 23],
+  ])('selects 0–%i for a %i-frame target', (frameCount, expectedEnd) => {
+    expect(getDefaultSequenceRange(frameCount)).toEqual({
+      startFrameIndex: 0,
+      endFrameIndex: expectedEnd,
+    });
+    const validation = validateRange(0, expectedEnd, frameCount);
+    expect(validation.valid).toBe(true);
+    expect(validation.frameCount).toBe(Math.min(frameCount, MAX_SEQUENCE_FRAMES));
+  });
+
+  it('does not change explicit over-cap input into a valid range', () => {
+    const defaultRange = getDefaultSequenceRange(30);
+    expect(defaultRange).toEqual({ startFrameIndex: 0, endFrameIndex: 23 });
+    expect(validateRange(0, 29, 30).valid).toBe(false);
+    expect(validateRange(0, 23, 30).valid).toBe(true);
+  });
+});
 
 describe('R2-H.2 range validation (Corrective D)', () => {
   it('initializes a valid bounded inclusive range', () => {

@@ -6,6 +6,7 @@ const sequence = readFileSync(
   'utf8',
 );
 const styles = readFileSync('src/renderer/styles.css', 'utf8');
+const verifier = readFileSync('scripts/verify-issue399-stage-e.cjs', 'utf8');
 
 describe('Issue #399 Stage E frame-sequence workbench contract', () => {
   it('keeps sequence review in one three-zone task surface', () => {
@@ -32,6 +33,8 @@ describe('Issue #399 Stage E frame-sequence workbench contract', () => {
   it('preserves local range validation and state-driven R2 boundaries', () => {
     expect(sequence).toContain('validateRange(startFrameIndex, endFrameIndex, targetFrameCount)');
     expect(sequence).toContain('buildRange(renderTargetId, startFrameIndex, endFrameIndex)');
+    expect(sequence).toContain('getDefaultSequenceRange(firstSupported.target.frameCount)');
+    expect(sequence).toContain('getDefaultSequenceRange(entryTarget.frameCount)');
     expect(sequence).toContain('intentChangeReset');
     expect(sequence).toContain('rerenderReset');
     expect(sequence).toContain('isCurrentResponse(activeRequestIdRef.current, response)');
@@ -55,5 +58,13 @@ describe('Issue #399 Stage E frame-sequence workbench contract', () => {
     expect(styles).toMatch(
       /\.fla-frame-sequence-action-bar\s*\{[\s\S]*?position:\s*relative;[\s\S]*?z-index:\s*2;/u,
     );
+  });
+
+  it('separates automated and maintainer acceptance receipts', () => {
+    expect(verifier).toContain("args.manual = true");
+    expect(verifier).toContain("acceptanceKind: 'maintainer-manual-acceptance'");
+    expect(verifier).toContain("kind: args.manual ? 'maintainer-manual-acceptance' : 'automated-synthetic-verifier'");
+    expect(verifier).toContain('dedicatedUserData: Boolean(args.userData)');
+    expect(verifier).toContain('if (startupArgs.keepOpen) return;');
   });
 });

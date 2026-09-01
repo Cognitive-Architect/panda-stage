@@ -35,6 +35,7 @@ import { flaFrameSequenceClient } from './fla-frame-sequence-render';
 import { formatFlaFrameSequenceCommitResult } from './formatFlaFrameSequenceCommitResult';
 import {
   buildRange,
+  getDefaultSequenceRange,
   intentChangeReset,
   isCommitEligible,
   isCurrentResponse,
@@ -158,9 +159,10 @@ export function FlaFrameSequenceReview({
           catalogInitializedRef.current = true;
           const firstSupported = response.entries.find((entry) => entry.previewSupported);
           if (firstSupported) {
+            const defaultRange = getDefaultSequenceRange(firstSupported.target.frameCount);
             setSelectedTargetId(firstSupported.target.renderTargetId);
-            setStartFrameIndex(0);
-            setEndFrameIndex(Math.max(0, firstSupported.target.frameCount - 1));
+            setStartFrameIndex(defaultRange.startFrameIndex);
+            setEndFrameIndex(defaultRange.endFrameIndex);
           }
         }
         setPhase('selecting');
@@ -464,9 +466,10 @@ export function FlaFrameSequenceReview({
                         checked={entryTarget.renderTargetId === selectedTargetId}
                         disabled={!entry.previewSupported || intentLocked}
                         onChange={() => {
+                          const defaultRange = getDefaultSequenceRange(entryTarget.frameCount);
                           setSelectedTargetId(entryTarget.renderTargetId);
-                          setStartFrameIndex(0);
-                          setEndFrameIndex(Math.max(0, entryTarget.frameCount - 1));
+                          setStartFrameIndex(defaultRange.startFrameIndex);
+                          setEndFrameIndex(defaultRange.endFrameIndex);
                         }}
                         data-testid={`fla-frame-sequence-target-${entryTarget.renderTargetId}`}
                       />

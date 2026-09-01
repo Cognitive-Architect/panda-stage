@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Issue #399 real Windows/Electron Stage E acceptance.
+ * Issue #399 real Windows/Electron Stage E acceptance, extended by Issue #400
+ * with bounded default-range assertions and a separate manual handoff mode.
  *
  * Creates an external zero-raster FLA with a long render-target catalog and
  * drives the production sequence workbench through the real Electron UI. The
@@ -29,6 +30,8 @@ function parseArgs(argv) {
     else if (argv[index] === '--acceptance-root') args.acceptanceRoot = argv[++index];
     else if (argv[index] === '--user-data') args.userData = argv[++index];
     else if (argv[index] === '--evidence-dir') args.evidenceDir = argv[++index];
+    else if (argv[index] === '--manual') args.manual = true;
+    else if (argv[index] === '--keep-open') args.keepOpen = true;
   }
   return args;
 }
@@ -223,11 +226,13 @@ async function pumpRealInputRequests(mainWindow, pathState) {
   }
 }
 
-async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
+async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAcceptance = false } = {}) {
   return mainWindow.webContents.executeJavaScript(`
     (async () => {
       const acceptanceRoot = ${JSON.stringify(acceptanceRoot)};
       const projectName = ${JSON.stringify(projectName)};
+      const isManualAcceptance = ${manualAcceptance ? 'true' : 'false'};
+      const maxSequenceFrames = ${MAX_SEQUENCE_FRAMES_PLACEHOLDER};
       const delay = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 
       const waitFor = async (selector, predicate = () => true, timeoutMs = 60_000) => {
@@ -444,6 +449,36 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
 
       const reviewState = () => document.querySelector('[data-testid="fla-frame-sequence-review"]')?.getAttribute('data-preview-state') ?? '';
       const importButtonCount = () => document.querySelectorAll('[data-testid="fla-frame-sequence-import"]').length;
+      const readRangeState = () => {
+        const startInput = document.querySelector('[data-testid="fla-frame-sequence-start"]');
+        const endInput = document.querySelector('[data-testid="fla-frame-sequence-end"]');
+        const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+        const rangeError = document.querySelector('[data-testid="fla-frame-sequence-range-error"]');
+        const renderButton = document.querySelector('[data-testid="fla-frame-sequence-render"]');
+        const selectedRadio = document.querySelector('[data-testid^="fla-frame-sequence-target-"]:checked');
+        const selectedRow = selectedRadio?.closest('li');
+        const frameCountText = selectedRow?.querySelector('.fla-frame-sequence-target-copy small')?.textContent ?? '';
+        const targetFrameCount = Number(frameCountText.match(/\\d+/u)?.[0] ?? NaN);
+        const startValue = startInput instanceof HTMLInputElement ? startInput.value : '';
+        const endValue = endInput instanceof HTMLInputElement ? endInput.value : '';
+        const startFrameIndex = Number(startValue);
+        const endFrameIndex = Number(endValue);
+        const rangeValid = Number.isInteger(startFrameIndex) && Number.isInteger(endFrameIndex) &&
+          startFrameIndex >= 0 && endFrameIndex >= startFrameIndex && endFrameIndex < targetFrameCount &&
+          endFrameIndex - startFrameIndex + 1 <= maxSequenceFrames && rangeError === null;
+        return {
+          startFrameIndex,
+          endFrameIndex,
+          startValue,
+          endValue,
+          targetFrameCount,
+          rangeValid,
+          renderButtonEnabled: renderButton instanceof HTMLButtonElement && !renderButton.disabled,
+          rangeError: rangeError?.textContent?.trim() ?? null,
+          stateStart: range instanceof HTMLElement ? range.dataset.rangeStart ?? null : null,
+          stateEnd: range instanceof HTMLElement ? range.dataset.rangeEnd ?? null : null,
+        };
+      };
       const importButtonEnabled = () => {
         const button = document.querySelector('[data-testid="fla-frame-sequence-import"]');
         return button instanceof HTMLButtonElement && !button.disabled;
@@ -460,6 +495,29 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
       await createProjectThroughUi();
       const initial = readProjectState();
       await openSequenceReview();
+      await delay(100);
+      const initialDefaultRange = readRangeState();
+
+      if (isManualAcceptance) {
+        await waitFor('[data-testid="fla-frame-sequence-render"]', (element) =>
+          element instanceof HTMLButtonElement && !element.disabled,
+          10_000,
+        );
+        const manualInitialRange = readRangeState();
+        const selectedRadio = document.querySelector('[data-testid^="fla-frame-sequence-target-"]:checked');
+        const selectedRow = selectedRadio?.closest('li');
+        return {
+          ok: manualInitialRange.rangeValid && manualInitialRange.renderButtonEnabled,
+          acceptanceKind: 'maintainer-manual-acceptance',
+          selectedTargetId: selectedRadio?.getAttribute('data-testid') ?? null,
+          selectedTargetLabel: selectedRow?.querySelector('strong')?.textContent?.trim() ?? null,
+          targetFrameCount: manualInitialRange.targetFrameCount,
+          initialRange: manualInitialRange,
+          projectName,
+          projectRoot: acceptanceRoot + '\\\\' + projectName + '.pandastage',
+          projectMutation: 'NO_PREVIEW; NO_IMPORT; MANUAL_ACCEPTANCE_WINDOW_LEFT_OPEN',
+        };
+      }
 
       const targetCount = Number((document.querySelector('[data-testid="fla-frame-sequence-target-count"]')?.textContent ?? '').match(/\\d+/u)?.[0] ?? 0);
       const targetLabels = [...document.querySelectorAll('[data-testid="fla-frame-sequence-targets"] li strong')]
@@ -544,6 +602,7 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
       const firstRadio = supportedRadios()[0];
       if (!(firstRadio instanceof HTMLInputElement)) throw new Error('No supported Stage E target was exposed');
       const firstTargetId = firstRadio.getAttribute('data-testid');
+      const firstTargetLabel = firstRadio.closest('li')?.querySelector('strong')?.textContent?.trim() ?? null;
       firstRadio.click();
       await delay(100);
       const endInput = await waitFor('[data-testid="fla-frame-sequence-end"]');
@@ -556,6 +615,16 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
       await waitFor('[data-testid="fla-frame-sequence-range-error"]');
       const overCapRange = {
         valid: false,
+        renderDisabled: document.querySelector('[data-testid="fla-frame-sequence-render"]')?.disabled === true,
+        importAbsent: importButtonCount() === 0,
+        errorVisible: document.querySelector('[data-testid="fla-frame-sequence-range-error"]') !== null,
+      };
+
+      await setControlledInput('[data-testid="fla-frame-sequence-end"]', '29');
+      await waitFor('[data-testid="fla-frame-sequence-range-error"]');
+      const explicitThirtyFrameOverCapRange = {
+        valid: false,
+        requestedEndFrameIndex: 29,
         renderDisabled: document.querySelector('[data-testid="fla-frame-sequence-render"]')?.disabled === true,
         importAbsent: importButtonCount() === 0,
         errorVisible: document.querySelector('[data-testid="fla-frame-sequence-range-error"]') !== null,
@@ -689,6 +758,8 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
         importAbsent: true,
         projectUnchanged: true,
         changedTarget: false,
+        targetFrameCount: null,
+        defaultRange: null,
       };
       if (otherRadio) {
         const otherId = otherRadio.getAttribute('data-testid');
@@ -702,6 +773,14 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
           importAbsent: importButtonCount() === 0,
           projectUnchanged: readProjectState().assetCount === beforePreview.assetCount,
           changedTarget: document.querySelector('[data-testid="fla-frame-sequence-targets"] input:checked')?.getAttribute('data-testid') === otherId,
+        };
+        const switchedTargetRange = readRangeState();
+        targetInvalidation.targetFrameCount = switchedTargetRange.targetFrameCount;
+        targetInvalidation.defaultRange = {
+          startFrameIndex: switchedTargetRange.startFrameIndex,
+          endFrameIndex: switchedTargetRange.endFrameIndex,
+          rangeValid: switchedTargetRange.rangeValid,
+          renderButtonEnabled: switchedTargetRange.renderButtonEnabled,
         };
         const originalRadio = document.querySelector('[data-testid="' + firstTargetId + '"]');
         if (!(originalRadio instanceof HTMLInputElement)) throw new Error('Original Stage E target could not be restored');
@@ -749,9 +828,16 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
       const checks = {
         zeroRasterSequenceRoute,
         stageESharedMode: modeSwitchPassed,
+        initialDefaultRange: initialDefaultRange.rangeValid &&
+          initialDefaultRange.startFrameIndex === 0 &&
+          initialDefaultRange.endFrameIndex === ${MAX_SEQUENCE_FRAMES_PLACEHOLDER - 1} &&
+          initialDefaultRange.targetFrameCount === ${RANGE_TARGET_FRAME_COUNT} &&
+          initialDefaultRange.renderButtonEnabled,
         targetSelectionWorks: targetInvalidation.applicable && targetInvalidation.changedTarget,
         stageELayout: Object.values(layoutChecks).every(Boolean),
         rangeValidation: overCapRange.valid === false && overCapRange.renderDisabled && overCapRange.importAbsent && overCapRange.errorVisible &&
+          explicitThirtyFrameOverCapRange.valid === false && explicitThirtyFrameOverCapRange.renderDisabled &&
+          explicitThirtyFrameOverCapRange.importAbsent && explicitThirtyFrameOverCapRange.errorVisible &&
           outOfRange.valid === false && outOfRange.renderDisabled && outOfRange.importAbsent && outOfRange.errorVisible &&
           reversedRange.valid === false && reversedRange.renderDisabled && reversedRange.importAbsent && reversedRange.errorVisible,
         previewAbsentBefore,
@@ -768,6 +854,10 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
           rangeInvalidation.filmstripCleared && rangeInvalidation.projectUnchanged,
         targetInvalidation: targetInvalidation.applicable && targetInvalidation.state === 'needs-preview' &&
           targetInvalidation.importAbsent && targetInvalidation.projectUnchanged,
+        targetChangeDefaultRange: targetInvalidation.applicable &&
+          targetInvalidation.defaultRange?.startFrameIndex === 0 &&
+          targetInvalidation.defaultRange?.endFrameIndex === Math.min(targetInvalidation.targetFrameCount - 1, maxSequenceFrames - 1) &&
+          targetInvalidation.defaultRange?.rangeValid && targetInvalidation.defaultRange?.renderButtonEnabled,
         rerenderInvalidation: rerenderInvalidation.importAbsent && rerenderInvalidation.primaryActionDuringRerender,
         staleLateGuard: rangeInvalidation.importAbsent && rerenderInvalidation.importAbsent && finalSequenceReady,
         explicitImportOnly: addedAssets === 24 && revisionAdvanced,
@@ -783,8 +873,10 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
         targetCount,
         supportedTargetCount,
         selectedTargetId: firstTargetId,
+        selectedTargetLabel: firstTargetLabel,
         selectedRange: { startFrameIndex: 0, endFrameIndex: 23 },
         requestedFrameCount: 24,
+        initialDefaultRange,
         checks,
         layout: {
           checks: layoutChecks,
@@ -793,7 +885,7 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName) {
           filmstrip: filmstripLayout,
           searchQuery,
         },
-        rangeValidation: { overCapRange, outOfRange, reversedRange },
+        rangeValidation: { overCapRange, explicitThirtyFrameOverCapRange, outOfRange, reversedRange },
         validRender,
         progress: { visibleDuringRender: progressVisibleDuringRender, renderingPrimaryAction },
         cancel: { works: cancelWorks },
@@ -826,7 +918,7 @@ async function main() {
   const evidenceDir = resolve(args.evidenceDir || join(acceptanceRoot, 'layout-evidence'));
   const userData = resolve(args.userData || join(acceptanceRoot, 'electron-user-data'));
   const sourcePath = resolve(args.source || join(acceptanceRoot, 'issue399-stage-e-zero-raster.fla'));
-  const projectName = `Issue399 Stage E UI ${Date.now()}`;
+  const projectName = `${args.manual ? 'Issue400 Stage E Manual' : 'Issue399 Stage E UI'} ${Date.now()}`;
   mkdirSync(acceptanceRoot, { recursive: true });
   mkdirSync(resolve(outPath, '..'), { recursive: true });
   mkdirSync(evidenceDir, { recursive: true });
@@ -848,7 +940,9 @@ async function main() {
     const mainWindow = await waitForMainWindow();
     const pathState = { error: null };
     const inputPump = pumpRealInputRequests(mainWindow, pathState);
-    const pathPromise = runStageEPath(mainWindow, acceptanceRoot, projectName).catch((error) => {
+    const pathPromise = runStageEPath(mainWindow, acceptanceRoot, projectName, {
+      manualAcceptance: Boolean(args.manual),
+    }).catch((error) => {
       pathState.error = error;
       throw error;
     });
@@ -856,20 +950,22 @@ async function main() {
       () => { pathState.done = true; },
       () => { pathState.done = true; },
     );
-    const layoutEvidence = {
-      top: await captureScreenshotAtMarker(
-        mainWindow,
-        'top',
-        join(evidenceDir, 'stage-e-top-target.png'),
-        pathState,
-      ),
-      bottom: await captureScreenshotAtMarker(
-        mainWindow,
-        'bottom',
-        join(evidenceDir, 'stage-e-bottom-target.png'),
-        pathState,
-      ),
-    };
+    const layoutEvidence = args.manual
+      ? null
+      : {
+        top: await captureScreenshotAtMarker(
+          mainWindow,
+          'top',
+          join(evidenceDir, 'stage-e-top-target.png'),
+          pathState,
+        ),
+        bottom: await captureScreenshotAtMarker(
+          mainWindow,
+          'bottom',
+          join(evidenceDir, 'stage-e-bottom-target.png'),
+          pathState,
+        ),
+      };
     response = await pathPromise;
     pathState.done = true;
     await inputPump;
@@ -880,7 +976,20 @@ async function main() {
       ? JSON.parse(readFileSync(projectFile, 'utf8'))
       : null;
     const receipt = {
-      schemaVersion: 'issue399-stage-e-electron-acceptance/1',
+      schemaVersion: args.manual
+        ? 'issue400-stage-e-manual-electron-acceptance/1'
+        : 'issue399-stage-e-electron-acceptance/1',
+      acceptance: {
+        kind: args.manual ? 'maintainer-manual-acceptance' : 'automated-synthetic-verifier',
+        sourceKind: sourceWasGenerated ? 'synthetic' : 'external',
+        sourceBasename: sourcePath.split(/[\\/]/u).pop(),
+        selectedTargetId: response?.selectedTargetId ?? null,
+        selectedTargetLabel: response?.selectedTargetLabel ?? null,
+        initialRange: response?.initialRange ?? response?.initialDefaultRange ?? null,
+        rangeValid: response?.initialRange?.rangeValid ?? response?.initialDefaultRange?.rangeValid ?? null,
+        renderButtonEnabled: response?.initialRange?.renderButtonEnabled ?? response?.initialDefaultRange?.renderButtonEnabled ?? null,
+        dedicatedUserData: Boolean(args.userData),
+      },
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,
@@ -900,13 +1009,22 @@ async function main() {
     };
     writeFileSync(outPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
-    if (!receipt.source.hashInvariant || !response?.ok || receipt.project.persistedAssetCount !== 24) {
+    const expectedPersistedAssetCount = args.manual ? 0 : 24;
+    if (!receipt.source.hashInvariant || !response?.ok || receipt.project.persistedAssetCount !== expectedPersistedAssetCount) {
       process.exitCode = 1;
     }
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
     const receipt = {
-      schemaVersion: 'issue399-stage-e-electron-acceptance/1',
+      schemaVersion: args.manual
+        ? 'issue400-stage-e-manual-electron-acceptance/1'
+        : 'issue399-stage-e-electron-acceptance/1',
+      acceptance: {
+        kind: args.manual ? 'maintainer-manual-acceptance' : 'automated-synthetic-verifier',
+        sourceKind: sourceWasGenerated ? 'synthetic' : 'external',
+        sourceBasename: sourcePath.split(/[\\/]/u).pop(),
+        dedicatedUserData: Boolean(args.userData),
+      },
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,
@@ -925,7 +1043,10 @@ async function main() {
 app.on('window-all-closed', () => {});
 app.whenReady()
   .then(main)
-  .then(() => setTimeout(() => app.exit(process.exitCode || 0), 300))
+  .then(() => {
+    if (startupArgs.keepOpen) return;
+    setTimeout(() => app.exit(process.exitCode || 0), 300);
+  })
   .catch((caught) => {
     process.stderr.write(`${caught.stack || caught.message}\n`);
     setTimeout(() => app.exit(1), 300);
