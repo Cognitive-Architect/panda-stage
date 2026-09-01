@@ -164,7 +164,7 @@
         "id": "fla-import",
         "sourcePatterns": ["src/renderer/fla-import/**", "fla-parser.html", "fla-static-snapshot.html", "src/renderer/fla-static-snapshot-renderer.ts", "docs/research/fla-corpus-manifest.json", "docs/research/fla-v1.5-c1-recovery-evidence.json", "docs/research/fla-v1.5-c2-safe-recovery-envelope.json", "docs/research/fla-v1.5-c3-compatibility-recovery.json", "docs/research/fla-v1.5-c4-recovered-content-routing.json", "docs/evidence/issue-284-r0/.gitignore", "docs/evidence/issue-284-r0/r0-budget.json", "docs/evidence/issue-284-r0/r0-determinism.json", "docs/evidence/issue-284-r0/r0-extract.json", "docs/evidence/issue-284-r0/r0-render-sword.png", "docs/evidence/issue-284-r0/r0-render-sword.svg", "docs/evidence/issue-294-r2/r2-summary.json"],
         "testPatterns": ["tests/unit/fla-*.test.ts", "tests/unit/fla-static-snapshot-render-session.test.ts", "tests/unit/fla-static-snapshot-commit.test.ts", "tests/unit/fla-static-snapshot-api.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts", "tests/unit/apply-fla-frame-sequence-commit-response.test.ts", "tests/helpers/fla-structural-probe.ts", "tests/helpers/fla-render-fixture.ts", "tests/integration/fla-b0-structural-probe.test.ts", "tests/unit/fla-derive-structure-summary.test.ts", "tests/integration/fla-b1-structural-fields.test.ts", "tests/unit/fla-corpus-probe.test.ts", "tests/integration/fla-corpus-collector.test.ts", "tests/helpers/fla-corpus-probe.cjs", "tests/helpers/fla-corpus-probe.d.ts"],
-        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*", "scripts/verify-issue396-stage-d*"],
+        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*", "scripts/verify-issue396-stage-d*", "scripts/verify-issue399-stage-e*"],
         "suites": ["assets"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -303,7 +303,7 @@
       }
     ]
   },
-  "count": 52,
+  "count": 53,
   "gates": [
     {
       "id": "assets",
@@ -376,6 +376,18 @@
       "owner": "fla-import",
       "supersedes": null,
       "notes": "Real Windows Electron UI verifier for the Stage D zero-raster static snapshot workbench: shared R1/R2 mode shell, three-zone read-only presentation, preview-before-import and target/frame stale invalidation, explicit ImageAsset commit, store/disk synchronization, and source hash invariance."
+    },
+    {
+      "id": "issue399-stage-e",
+      "script": "verify:issue399-stage-e",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Real Windows Electron UI verifier for the Stage E bounded frame-sequence workbench: target/range validation, ordered filmstrip review, progress/cancel, stale invalidation, explicit sequence commit, store/disk synchronization, and source hash invariance."
     },
     {
       "id": "fla-v1-5-c3",
