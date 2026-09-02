@@ -461,3 +461,179 @@ A useful mental model is a restaurant receiving an unfamiliar sealed ingredient 
 - the front desk must not invent **"63% complete"** merely because it overheard a cook saying **"I am cutting vegetables"**.
 
 That is the Stage A product model this document freezes.
+
+---
+
+## 18. Maintainer-selected landscape visual direction — Quiet Inspection Chamber
+
+The preferred landscape direction for the Stage A high-fidelity blueprint is a **quiet inspection chamber inside the existing FLA Workbench shell**.
+
+The purpose is to make Stage A feel like the first state of the same product surface used by B/D/E/F/G, rather than a temporary engineering status modal.
+
+### 18.1 Structural thesis
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ FLA WORKBENCH                         检查中       [取消]    │
+├───────────────────┬──────────────────────────────────────────┤
+│                   │                                          │
+│  waiting content  │             indeterminate               │
+│  structure        │             scan core                   │
+│                   │                                          │
+│                   │             正在检查 FLA                │
+│                   │       不会修改原文件或当前项目            │
+│                   │                                          │
+├───────────────────┴──────────────────────────────────────────┤
+│                  检查完成后自动进入下一步                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+This is a structural direction, not a frozen pixel specification.
+
+### 18.2 Information hierarchy
+
+Stage A should intentionally contain very little information:
+
+1. `正在检查 FLA` — primary state;
+2. one Panda-green indeterminate scan core — primary visual;
+3. `不会修改原文件或当前项目` — trust statement;
+4. `FLA WORKBENCH` + low-emphasis `检查中` — surface identity;
+5. `取消` — secondary action;
+6. an optional extremely low-emphasis waiting layout, only if it cannot be mistaken for discovered content.
+
+The current repeated loading hierarchy should be removed/demoted:
+
+```text
+导入前检查
+FLA 兼容性预览
+正在读取所选 FLA
+正在检查源文件…
+```
+
+The inspection state should tell the user once, clearly, what is happening.
+
+### 18.3 Scan-core motion
+
+Prefer a product-specific indeterminate activity mark rather than a generic spinner:
+
+- small Panda-green center/core;
+- two or three very low-contrast rings;
+- slow scanning sweep / rotation;
+- restrained breathing / glow;
+- never fills to completion;
+- never implies a percentage or numbered stage.
+
+The visual meaning is only:
+
+> Panda is active and inspection is still running.
+
+It must not imply how much work is complete.
+
+### 18.4 Workbench continuity
+
+Keep the normal FLA Workbench shell visible during Stage A.
+
+Preferred transition:
+
+```text
+Stage A inspecting
+-> same shell wakes into B/C/D/E content
+```
+
+Do not insert:
+
+```text
+检查完成
+[继续]
+```
+
+Likewise, genuine failure should allow F3 to take over the same Workbench content area instead of appearing as an unrelated error tool.
+
+### 18.5 Waiting-content rule
+
+A very low-emphasis skeleton or placeholder layout may be used only to preserve spatial continuity with the downstream Workbench.
+
+Hard rule:
+
+> It must clearly read as an empty waiting layout, never as evidence that Panda has already discovered real assets or targets.
+
+If high-fidelity review shows that the placeholder reads as fake discovered content, remove it and use a quiet empty pane instead.
+
+### 18.6 Cancel treatment
+
+`取消` remains visually secondary but must remain touch-safe for the real Windows Electron / Aliyun Wuying / Redmi K60 Ultra Cloud Touch landscape environment.
+
+Do not style Cancel as the green primary CTA. The scanning state is the primary content.
+
+Both user-visible cancellation cases converge on the same outcome:
+
+```text
+native picker cancel
+or
+active inspection cancel
+-> close/dismiss Workbench
+-> Asset Library
+-> no error banner
+-> never F3
+```
+
+A cancellation-success toast is unnecessary merely to repeat the action the user just performed.
+
+### 18.7 Safety communication
+
+Do not expose detailed engineering checks in the normal Stage A surface.
+
+Avoid UI such as:
+
+```text
+✓ ZIP structure
+✓ XML security
+✓ ActionScript scan
+✓ parser isolation
+```
+
+One truthful trust statement is enough. Stage A should feel like a creative-tool inspection state, not antivirus software.
+
+### 18.8 Motion and tone
+
+Allowed:
+
+- slow scan-core rotation / sweep;
+- subtle breathing;
+- faint radial glow consistent with the existing dark-green Panda Stage visual world;
+- soft content reveal when the authoritative next Workbench is ready.
+
+Avoid:
+
+- particle effects;
+- fake terminal output;
+- animated file trees;
+- rapidly changing numbers;
+- fake `AI analysing` theatrics;
+- cyber-security scanner aesthetics.
+
+### 18.9 High-fidelity acceptance questions
+
+The landscape blueprint is accepted only if all are true:
+
+- it visibly belongs to the same FLA Workbench family as B/D/E/F/G;
+- a beginner can tell Panda is still working without fake progress;
+- the surface feels calm rather than empty or debug-like;
+- `取消` is obvious and touch-safe without becoming the main visual action;
+- the trust statement communicates safety without exposing security internals;
+- any waiting structure does not imply real assets have already been discovered;
+- Stage A can transition directly into B/C/D/E without a success page;
+- genuine failure can transition into F3 inside the same shell;
+- the design depends on no new filename/progress/parser contract.
+
+### 18.10 Next artifact
+
+Produce one Stage A / Inspecting **landscape high-fidelity blueprint** using this direction.
+
+After maintainer visual acceptance, freeze the final blueprint and open the Stage A v1 implementation issue for only:
+
+- presentation convergence;
+- `USER_CANCELLED` clean-dismiss correction;
+- required tests / Windows Electron acceptance.
+
+This direction does not authorize production behavior changes beyond the already-frozen Stage A v1 scope.
