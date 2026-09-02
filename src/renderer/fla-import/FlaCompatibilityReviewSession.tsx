@@ -45,6 +45,7 @@ import {
   FlaRenderWorkbench,
   type FlaRenderWorkbenchMode,
 } from './FlaRenderWorkbench';
+import { FlaStageF3Blocked } from './FlaStageF';
 import { routeFlaInspection } from './fla-content-route';
 
 interface FlaCompatibilityReviewSessionProps {
@@ -284,6 +285,14 @@ export function FlaCompatibilityReviewSession({
     );
   }
 
+  if (response && !response.ok) {
+    return (
+      <FlaReviewPortal>
+        <FlaStageF3Blocked response={response} onClose={onClose} />
+      </FlaReviewPortal>
+    );
+  }
+
   if (!ir || !sessionId) {
     const diagnostic = flaDiagnosticUserMessage(response);
     return (
@@ -482,8 +491,16 @@ export function FlaCompatibilityReviewSession({
                     </dl>
                   </details>
                 ) : null}
-                <section aria-labelledby="fla-compatibility-heading" className="fla-review-compatibility">
+                <section
+                  aria-labelledby="fla-compatibility-heading"
+                  className="fla-review-compatibility fla-stage-f1-notice"
+                  data-stage-f-severity={warnings.length > 0 ? 'warning' : 'clear'}
+                  data-testid="fla-stage-f1-raster-warning"
+                >
                   <h3 id="fla-compatibility-heading">兼容性概览</h3>
+                  {warnings.length > 0 ? (
+                    <p className="fla-stage-f1-copy">部分内容可能与原 FLA 有差异</p>
+                  ) : null}
                   <div className="fla-raster-compatibility-summary" data-testid="fla-raster-compatibility-summary">
                     <strong>{warnings.length > 0 ? `⚠ ${warnings.length} 个兼容性提示` : '无兼容性提示'}</strong>
                     <span>详细状态按需查看</span>
@@ -663,6 +680,7 @@ export function FlaCompatibilityReviewSession({
           ) : (
             <div className="fla-review-zero-raster" data-testid="fla-review-zero-raster">
               <FlaRenderWorkbench
+                compatibility={ir.compatibility}
                 mode={renderMode}
                 onModeChange={setRenderMode}
                 sourceBasename={ir.source.basename}

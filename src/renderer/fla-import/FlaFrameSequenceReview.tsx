@@ -33,6 +33,7 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
 import { flaFrameSequenceClient } from './fla-frame-sequence-render';
 import { formatFlaFrameSequenceCommitResult } from './formatFlaFrameSequenceCommitResult';
+import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
 import {
   buildRange,
   getDefaultSequenceRange,
@@ -76,6 +77,9 @@ export function FlaFrameSequenceReview({
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
   const [targetSearch, setTargetSearch] = useState('');
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  // F2 detail focus is separate from the R2 render/commit authority. Focusing
+  // an unavailable entry must preserve the last valid supported sequence.
+  const [focusedTargetId, setFocusedTargetId] = useState<string | null>(null);
   const [startFrameIndex, setStartFrameIndex] = useState(0);
   const [endFrameIndex, setEndFrameIndex] = useState(0);
   const [completedFrameCount, setCompletedFrameCount] = useState(0);
@@ -99,6 +103,10 @@ export function FlaFrameSequenceReview({
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
     [entries, selectedTargetId],
+  );
+  const focusedEntry = useMemo(
+    () => entries.find((entry) => entry.target.renderTargetId === focusedTargetId) ?? selectedEntry,
+    [entries, focusedTargetId, selectedEntry],
   );
   const reviewClassName = embedded
     ? 'fla-frame-sequence-review fla-render-workbench-panel'
@@ -161,8 +169,18 @@ export function FlaFrameSequenceReview({
           if (firstSupported) {
             const defaultRange = getDefaultSequenceRange(firstSupported.target.frameCount);
             setSelectedTargetId(firstSupported.target.renderTargetId);
+            setFocusedTargetId(firstSupported.target.renderTargetId);
             setStartFrameIndex(defaultRange.startFrameIndex);
             setEndFrameIndex(defaultRange.endFrameIndex);
+          } else {
+            const firstEntry = response.entries[0];
+            if (firstEntry) {
+              const defaultRange = getDefaultSequenceRange(firstEntry.target.frameCount);
+              setSelectedTargetId(firstEntry.target.renderTargetId);
+              setFocusedTargetId(firstEntry.target.renderTargetId);
+              setStartFrameIndex(defaultRange.startFrameIndex);
+              setEndFrameIndex(defaultRange.endFrameIndex);
+            }
           }
         }
         setPhase('selecting');
@@ -450,12 +468,11 @@ export function FlaFrameSequenceReview({
             <ul className="fla-frame-sequence-targets" data-testid="fla-frame-sequence-targets">
               {visibleEntries.map((entry) => {
                 const entryTarget = entry.target;
-                const showException = !entry.previewSupported || entryTarget.compatibility.some(
-                  (status) => status === 'unsupported' || status === 'unknown' || status === 'degraded',
-                );
+                const showException = !entry.previewSupported;
                 return (
                   <li
                     className={entryTarget.renderTargetId === selectedTargetId ? 'is-selected' : undefined}
+                    data-focused={entryTarget.renderTargetId === focusedTargetId ? 'true' : 'false'}
                     data-preview-supported={entry.previewSupported ? 'true' : 'false'}
                     key={entryTarget.renderTargetId}
                   >
@@ -468,6 +485,7 @@ export function FlaFrameSequenceReview({
                         onChange={() => {
                           const defaultRange = getDefaultSequenceRange(entryTarget.frameCount);
                           setSelectedTargetId(entryTarget.renderTargetId);
+                          setFocusedTargetId(entryTarget.renderTargetId);
                           setStartFrameIndex(defaultRange.startFrameIndex);
                           setEndFrameIndex(defaultRange.endFrameIndex);
                         }}
@@ -479,13 +497,25 @@ export function FlaFrameSequenceReview({
                         {showException ? (
                           <small
                             className={entry.previewSupported ? 'fla-frame-sequence-target-fidelity' : 'fla-frame-sequence-unsupported'}
-                            title={entry.previewSupported ? compatibilitySummary(entryTarget.compatibility) : entry.unsupportedReason}
+                            title={entry.previewSupported ? compatibilitySummary(entryTarget.compatibility) : boundedUnsupportedReason(entry.unsupportedReason)}
                           >
                             {entry.previewSupported ? '需注意兼容性' : '暂不可预览'}
                           </small>
                         ) : null}
                       </span>
                     </label>
+                    {!entry.previewSupported ? (
+                      <button
+                        aria-pressed={entryTarget.renderTargetId === focusedTargetId}
+                        className="fla-stage-f2-focus"
+                        data-testid={`fla-frame-sequence-f2-focus-${entryTarget.renderTargetId}`}
+                        disabled={intentLocked}
+                        onClick={() => setFocusedTargetId(entryTarget.renderTargetId)}
+                        type="button"
+                      >
+                        查看说明
+                      </button>
+                    ) : null}
                   </li>
                 );
               })}
@@ -629,7 +659,16 @@ export function FlaFrameSequenceReview({
           </div>
         </section>
 
-        <aside className="fla-frame-sequence-details-region" data-testid="fla-frame-sequence-details-region">
+        <aside
+          className="fla-frame-sequence-details-region"
+          data-focused-target-id={focusedEntry?.target.renderTargetId}
+          data-testid="fla-frame-sequence-details-region"
+        >
+          {focusedEntry && !focusedEntry.previewSupported ? (
+            <FlaStageF2UnavailableDetails entry={focusedEntry} />
+          ) : null}
+          {focusedEntry?.previewSupported !== false ? (
+            <>
           <p className="fla-render-panel-kicker">序列详情</p>
           <h3 title={target.userLabel}>{target.userLabel}</h3>
           <dl className="fla-frame-sequence-details" data-testid="fla-frame-sequence-details">
@@ -638,12 +677,7 @@ export function FlaFrameSequenceReview({
             <div><dt>范围</dt><dd>{startFrameIndex}–{endFrameIndex} · {validation.valid ? `${validation.frameCount} 帧` : '无效'}</dd></div>
             <div><dt>结果</dt><dd>{orderedSequenceItems.length > 0 ? `${orderedSequenceItems.length} 帧已生成` : '待生成'}</dd></div>
           </dl>
-          {hasFidelityCaveat(target.compatibility) ? (
-            <p className="fla-frame-sequence-detail-warning" role="note">
-              保真度：{sequenceFidelityLabel(target.compatibility)}
-            </p>
-          ) : null}
-          <details className="fla-frame-sequence-more" data-testid="fla-frame-sequence-more-details">
+           <details className="fla-frame-sequence-more" data-testid="fla-frame-sequence-more-details">
             <summary>更多详情</summary>
             <ul>
               {target.compatibility.map((status) => (
@@ -659,8 +693,10 @@ export function FlaFrameSequenceReview({
                 <div><dt>源时间线</dt><dd>{target.sourceTimelineIndex}</dd></div>
               ) : null}
             </dl>
-            {!supported ? <p className="fla-frame-sequence-unsupported">{selectedEntry.unsupportedReason}</p> : null}
+            {!supported ? <p className="fla-frame-sequence-unsupported">{boundedUnsupportedReason(selectedEntry.unsupportedReason)}</p> : null}
           </details>
+            </>
+          ) : null}
         </aside>
       </div>
 
@@ -776,18 +812,6 @@ function compatibilityNote(status: FlaRenderTarget['compatibility'][number]): st
     default:
       return '暂时无法确定此类内容的兼容性。';
   }
-}
-
-function hasFidelityCaveat(compatibility: FlaRenderTarget['compatibility']): boolean {
-  return compatibility.some((status) => status === 'degraded' || status === 'unsupported' || status === 'unknown');
-}
-
-function sequenceFidelityLabel(compatibility: FlaRenderTarget['compatibility']): string {
-  if (compatibility.some((status) => status === 'unsupported' || status === 'unknown')) {
-    return '需要注意兼容性';
-  }
-  if (compatibility.includes('degraded')) return '部分兼容';
-  return '当前支持范围内';
 }
 
 function sequencePreviewStatus(phase: RenderPhase, hasPreview: boolean): string {

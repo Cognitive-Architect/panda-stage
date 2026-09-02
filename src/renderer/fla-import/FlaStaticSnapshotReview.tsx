@@ -16,6 +16,7 @@ import type {
 } from '../../shared/fla-static-snapshot-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
+import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
 
 interface FlaStaticSnapshotStageFacts {
   width: number;
@@ -61,6 +62,10 @@ export function FlaStaticSnapshotReview({
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
   const [targetSearch, setTargetSearch] = useState('');
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  // F2 detail focus is intentionally separate from the R1 render authority.
+  // Focusing an unavailable entry must not invalidate or replace the last
+  // valid supported preview.
+  const [focusedTargetId, setFocusedTargetId] = useState<string | null>(null);
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
   const [preview, setPreview] = useState<FlaStaticSnapshotPreviewResponse | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -71,6 +76,10 @@ export function FlaStaticSnapshotReview({
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
     [entries, selectedTargetId],
+  );
+  const focusedEntry = useMemo(
+    () => entries.find((entry) => entry.target.renderTargetId === focusedTargetId) ?? selectedEntry,
+    [entries, focusedTargetId, selectedEntry],
   );
   const visibleEntries = useMemo(() => {
     const query = targetSearch.trim().toLocaleLowerCase();
@@ -107,8 +116,9 @@ export function FlaStaticSnapshotReview({
           return;
         }
         setEntries(response.entries);
-        const firstEntry = response.entries[0];
+        const firstEntry = response.entries.find((entry) => entry.previewSupported) ?? response.entries[0];
         setSelectedTargetId(firstEntry?.target.renderTargetId ?? null);
+        setFocusedTargetId(firstEntry?.target.renderTargetId ?? null);
         setSelectedFrameIndex(0);
         setPhase('selecting');
       } catch (error) {
@@ -342,12 +352,11 @@ export function FlaStaticSnapshotReview({
                   .map((status) => COMPATIBILITY_NOTE[status])
                   .filter(Boolean)
                   .join(' ');
-                const showException = !entry.previewSupported || target.compatibility.some(
-                  (status) => status === 'unsupported' || status === 'unknown',
-                );
+                const showException = !entry.previewSupported;
                 return (
                   <li
                     className={target.renderTargetId === selectedTargetId ? 'is-selected' : undefined}
+                    data-focused={target.renderTargetId === focusedTargetId ? 'true' : 'false'}
                     data-preview-supported={entry.previewSupported ? 'true' : 'false'}
                     key={target.renderTargetId}
                   >
@@ -359,6 +368,7 @@ export function FlaStaticSnapshotReview({
                         disabled={!entry.previewSupported || phase === 'committing' || phase === 'committed'}
                         onChange={() => {
                           setSelectedTargetId(target.renderTargetId);
+                          setFocusedTargetId(target.renderTargetId);
                           setSelectedFrameIndex(0);
                         }}
                         data-testid={`fla-snapshot-target-${target.renderTargetId}`}
@@ -369,13 +379,25 @@ export function FlaStaticSnapshotReview({
                         {showException ? (
                           <small
                             className={entry.previewSupported ? 'fla-snapshot-target-fidelity' : 'fla-snapshot-unsupported'}
-                            title={entry.previewSupported ? compatibility : entry.unsupportedReason}
+                            title={entry.previewSupported ? compatibility : boundedUnsupportedReason(entry.unsupportedReason)}
                           >
                             {entry.previewSupported ? '需注意' : '暂不可预览'}
                           </small>
                         ) : null}
                       </span>
                     </label>
+                    {!entry.previewSupported ? (
+                      <button
+                        aria-pressed={target.renderTargetId === focusedTargetId}
+                        className="fla-stage-f2-focus"
+                        data-testid={`fla-snapshot-f2-focus-${target.renderTargetId}`}
+                        disabled={phase === 'committing' || phase === 'committed'}
+                        onClick={() => setFocusedTargetId(target.renderTargetId)}
+                        type="button"
+                      >
+                        查看说明
+                      </button>
+                    ) : null}
                   </li>
                 );
               })}
@@ -459,16 +481,22 @@ export function FlaStaticSnapshotReview({
           ) : null}
         </section>
 
-        <aside className="fla-snapshot-details-region" data-testid="fla-snapshot-details-region">
+        <aside
+          className="fla-snapshot-details-region"
+          data-focused-target-id={focusedEntry?.target.renderTargetId}
+          data-testid="fla-snapshot-details-region"
+        >
+          {focusedEntry && !focusedEntry.previewSupported ? (
+            <FlaStageF2UnavailableDetails entry={focusedEntry} />
+          ) : null}
+          {focusedEntry?.previewSupported !== false ? (
+            <>
           <h3>{selecting.userLabel}</h3>
           <dl className="fla-snapshot-details" data-testid="fla-snapshot-details">
             <div><dt>素材</dt><dd>{renderTargetKindLabel(selecting.kind)} · {frameCount} 帧</dd></div>
             <div><dt>输出</dt><dd>PNG · ImageAsset</dd></div>
           </dl>
-          <p className="fla-snapshot-detail-warning" role="note">
-            保真度：{snapshotFidelityLabel(selecting.compatibility)}
-          </p>
-          <details className="fla-snapshot-compatibility" data-testid="fla-snapshot-compatibility-details">
+           <details className="fla-snapshot-compatibility" data-testid="fla-snapshot-compatibility-details">
             <summary>更多详情</summary>
             <ul>
               {selecting.compatibility.map((status) => (
@@ -484,8 +512,10 @@ export function FlaStaticSnapshotReview({
                 <div><dt>源时间线</dt><dd>{selecting.sourceTimelineIndex}</dd></div>
               ) : null}
             </dl>
-            {!supported ? <p className="fla-snapshot-unsupported">{selectedEntry.unsupportedReason}</p> : null}
+            {!supported ? <p className="fla-snapshot-unsupported">{boundedUnsupportedReason(selectedEntry.unsupportedReason)}</p> : null}
           </details>
+            </>
+          ) : null}
         </aside>
       </div>
 
@@ -546,14 +576,6 @@ function renderTargetKindLabel(kind: FlaRenderTarget['kind']): string {
     default:
       return '未知目标';
   }
-}
-
-function snapshotFidelityLabel(compatibility: FlaRenderTarget['compatibility']): string {
-  if (compatibility.some((status) => status === 'unsupported' || status === 'unknown')) {
-    return '需要注意兼容性';
-  }
-  if (compatibility.includes('degraded')) return '部分兼容';
-  return '当前支持范围内';
 }
 
 function snapshotPreviewStatus(phase: SnapshotPhase, previewIsCurrent: boolean): string {

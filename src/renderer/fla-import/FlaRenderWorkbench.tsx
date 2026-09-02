@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
+import type { AnimationImportIR } from '../../shared/fla-import-api';
+import { FlaStageF1Notice, getFlaStageF1Warnings } from './FlaStageF';
 
 export type FlaRenderWorkbenchMode = 'snapshot' | 'sequence';
 
 interface FlaRenderWorkbenchProps {
   mode: FlaRenderWorkbenchMode;
   sourceBasename: string;
+  compatibility: ReadonlyArray<AnimationImportIR['compatibility'][number]>;
   onModeChange: (mode: FlaRenderWorkbenchMode) => void;
   children: ReactNode;
 }
@@ -19,15 +22,18 @@ interface FlaRenderWorkbenchProps {
 export function FlaRenderWorkbench({
   mode,
   sourceBasename,
+  compatibility,
   onModeChange,
   children,
 }: FlaRenderWorkbenchProps): React.JSX.Element {
   const snapshotActive = mode === 'snapshot';
+  const hasStageF1Warning = getFlaStageF1Warnings(compatibility).length > 0;
 
   return (
     <section
       aria-label="FLA 渲染工作台"
       className="fla-render-workbench"
+      data-stage-f1={hasStageF1Warning ? 'true' : 'false'}
       data-render-mode={mode}
       data-testid="fla-render-workbench"
     >
@@ -40,6 +46,8 @@ export function FlaRenderWorkbench({
           </p>
         </div>
       </header>
+
+      <FlaStageF1Notice compatibility={compatibility} />
 
       <div
         aria-label="渲染方式"
