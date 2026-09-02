@@ -2874,15 +2874,13 @@ button:disabled {
   }
 }
 
-/* Issue #402: Stage F severity presentation. F1 is a compact, non-primary
-   notice; F2 keeps an unavailable target visible without making it a render
-   authority; F3 is a dedicated fail-closed composition. */
-.fla-render-workbench[data-stage-f1='true'] {
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-}
-
-.fla-render-workbench > .fla-stage-f1-notice {
+/* Issue #402 / #403 Problem 1: Stage F severity presentation. F1 is a
+   compact, non-primary header disclosure; F2 keeps an unavailable target
+   visible without making it a render authority; F3 is a dedicated fail-closed
+   composition. */
+.fla-render-workbench-header > .fla-stage-f1-render-notice {
   display: grid;
+  width: min(100%, 430px);
   min-width: 0;
   padding: 7px 10px;
   border: 1px solid rgb(213 168 92 / 30%);
@@ -2897,17 +2895,13 @@ button:disabled {
   display: flex;
   min-width: 0;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.fla-stage-f1-summary > div {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
 .fla-stage-f1-summary strong {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   color: #f0d79c;
   font-size: 11px;
@@ -2916,7 +2910,8 @@ button:disabled {
   white-space: nowrap;
 }
 
-.fla-stage-f1-summary span:not(.fla-stage-f1-icon) {
+.fla-stage-f1-disclosure {
+  flex: none;
   color: #bca878;
   font-size: 9px;
   line-height: 1.35;
@@ -2939,19 +2934,28 @@ button:disabled {
   min-width: 0;
 }
 
-.fla-stage-f1-notice details summary {
-  width: max-content;
+.fla-stage-f1-render-notice details summary {
+  display: flex;
+  width: 100%;
   max-width: 100%;
+  align-items: center;
+  gap: 8px;
   color: #f0d79c;
   cursor: pointer;
   font-size: 9px;
   font-weight: 700;
 }
 
+.fla-stage-f1-render-notice details summary::marker {
+  color: #bca878;
+}
+
 .fla-stage-f1-detail-list {
   display: grid;
-  padding: 6px 0 0 24px;
+  max-height: 180px;
+  padding: 7px 0 0 28px;
   margin: 0;
+  overflow-y: auto;
   color: #cbb987;
   font-size: 9px;
   gap: 4px;
@@ -4322,10 +4326,10 @@ button:disabled {
 }
 
 .fla-render-workbench-header {
-  display: flex;
+  display: grid;
   min-width: 0;
-  align-items: end;
-  justify-content: space-between;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, auto);
+  align-items: center;
   gap: 16px;
 }
 
@@ -4978,8 +4982,13 @@ button:disabled {
 @media (max-width: 900px) {
   .fla-render-workbench-header {
     align-items: start;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
+  }
+
+  .fla-render-workbench-header > .fla-stage-f1-render-notice {
+    width: auto;
+    justify-self: stretch;
   }
 
   .fla-render-workbench-safety {
@@ -24276,12 +24285,6 @@ h1 {
 
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-action-status {
   max-width: min(58%, 560px);
-}
-
-/* Issue #402 final cascade: add the fourth F1 row only when the shared notice
-   is actually present. */
-.fla-review-session[data-workbench-route='render'] .fla-render-workbench[data-stage-f1='true'] {
-  grid-template-rows: auto auto auto minmax(0, 1fr);
 }
 
 @media (max-width: 900px) {

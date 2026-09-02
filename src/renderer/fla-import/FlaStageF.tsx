@@ -65,20 +65,17 @@ export function FlaStageF1Notice({
   return (
     <section
       aria-labelledby="fla-stage-f1-warning-heading"
-      className="fla-stage-f1-notice"
+      className="fla-stage-f1-notice fla-stage-f1-render-notice"
       data-stage-f-severity="warning"
       data-testid="fla-stage-f1-warning"
       role="note"
     >
-      <div className="fla-stage-f1-summary">
-        <span aria-hidden="true" className="fla-stage-f1-icon">⚠</span>
-        <div>
-          <strong id="fla-stage-f1-warning-heading">部分内容可能与原 FLA 有差异</strong>
-          <span>当前流程仍可继续，详情按需查看。</span>
-        </div>
-      </div>
       <details data-testid="fla-stage-f1-details">
-        <summary data-testid="fla-stage-f1-details-toggle">查看 {warnings.length} 项说明</summary>
+        <summary className="fla-stage-f1-summary" data-testid="fla-stage-f1-details-toggle">
+          <span aria-hidden="true" className="fla-stage-f1-icon">⚠</span>
+          <strong id="fla-stage-f1-warning-heading">部分内容可能与原 FLA 有差异</strong>
+          <span className="fla-stage-f1-disclosure">· 查看 {warnings.length} 项说明</span>
+        </summary>
         <ul data-testid="fla-stage-f1-detail-list">
           {warnings.map((entry) => (
             <li key={`${entry.feature}:${entry.status}`}>

@@ -38,16 +38,15 @@ export function FlaRenderWorkbench({
       data-testid="fla-render-workbench"
     >
       <header className="fla-render-workbench-header" data-testid="fla-render-workbench-header">
-        <div>
+        <div className="fla-render-workbench-header-copy">
           <h3>FLA 渲染工作台</h3>
           <p className="fla-render-workbench-source" data-testid="fla-render-workbench-source">
             <strong title={sourceBasename}>{sourceBasename}</strong>
             <span> · 只读</span>
           </p>
         </div>
+        <FlaStageF1Notice compatibility={compatibility} />
       </header>
-
-      <FlaStageF1Notice compatibility={compatibility} />
 
       <div
         aria-label="渲染方式"

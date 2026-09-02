@@ -71,9 +71,10 @@ describe('Issue #402 Stage F presentation contract', () => {
     );
     expect(html).toContain('data-testid="fla-stage-f1-warning"');
     expect(html).toContain('部分内容可能与原 FLA 有差异');
-    expect(html).toContain('当前流程仍可继续');
     expect(html).toContain('查看 3 项说明');
     expect(html).toContain('data-testid="fla-stage-f1-details"');
+    expect(html).toContain('fla-stage-f1-render-notice');
+    expect(html).not.toContain('<span>当前流程仍可继续，详情按需查看。</span>');
     expect(html).not.toContain('>F1<');
     expect(html).not.toContain('>not-present<');
   });
@@ -147,11 +148,12 @@ describe('Issue #402 integration/source contracts', () => {
     expect(builder).toContain('entries.push({ target, previewSupported: true });');
   });
 
-  it('keeps Stage F styling bounded and adds the conditional fourth Workbench row', () => {
-    expect(styles).toContain('/* Issue #402: Stage F severity presentation.');
-    expect(styles).toContain("data-stage-f1='true'");
+  it('keeps Stage F styling bounded without adding a dominant F1 Workbench row', () => {
+    expect(styles).toContain('/* Issue #402 / #403 Problem 1: Stage F severity presentation.');
     expect(styles).toContain('.fla-stage-f2-unavailable-details');
     expect(styles).toContain('.fla-stage-f3-blocked');
-    expect(styles).toContain('grid-template-rows: auto auto auto minmax(0, 1fr);');
+    expect(styles).toContain('.fla-render-workbench-header > .fla-stage-f1-render-notice');
+    expect(styles).not.toContain(".fla-render-workbench[data-stage-f1='true']");
+    expect(styles).not.toContain(".fla-render-workbench[data-stage-f1='true'] {");
   });
 });
