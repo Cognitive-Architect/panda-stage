@@ -5,6 +5,7 @@ import type {
 } from '../../src/shared/fla-import-api';
 import {
   FlaInspectionLifecycle,
+  isFlaInspectionUserCancelled,
   subscribeToFlaInspection,
   type FlaInspectionClient,
 } from '../../src/renderer/fla-import/fla-inspection-lifecycle';
@@ -91,6 +92,14 @@ async function flushPromises(): Promise<void> {
 }
 
 describe('FLA chooser and inspection lifecycle', () => {
+  it('keeps native picker cancellation distinct from a genuine failure', () => {
+    expect(isFlaInspectionUserCancelled({
+      ok: false,
+      error: { code: 'USER_CANCELLED', message: 'cancelled' },
+    })).toBe(true);
+    expect(isFlaInspectionUserCancelled(failure())).toBe(false);
+  });
+
   it('keeps a StrictMode-equivalent repeated start single-flight', () => {
     const harness = deferredClient();
     const lifecycle = new FlaInspectionLifecycle(

@@ -69,6 +69,7 @@
     "verify:issue402-stage-f": "pnpm build && electron scripts/verify-issue402-stage-f.cjs",
     "verify:issue403-raster-containment": "pnpm build && node scripts/verify-issue403-raster-containment.cjs",
     "verify:issue405-stage-g": "pnpm build && electron scripts/verify-issue405-stage-g.cjs",
+    "verify:issue407-stage-a": "pnpm build && electron scripts/verify-issue407-stage-a.cjs",
     "verify:issue125": "pnpm build && pnpm test:integration && electron scripts/verify-issue76.cjs && electron scripts/verify-issue102-task3.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",

@@ -28,6 +28,17 @@ const cancelledResponse = (): FlaInspectionResponse => ({
 });
 
 /**
+ * Picker cancellation is an intentional dismissal, not an inspection
+ * failure.  Keep this distinction next to the operation lifecycle so every
+ * consumer can preserve the same three-outcome contract.
+ */
+export function isFlaInspectionUserCancelled(
+  response: FlaInspectionResponse,
+): boolean {
+  return !response.ok && response.error.code === 'USER_CANCELLED';
+}
+
+/**
  * Owns one user-started FLA chooser/inspection operation at a time.
  *
  * The operation is created by an explicit Import action rather than by a

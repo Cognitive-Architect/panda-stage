@@ -36,6 +36,7 @@ import {
   type FlaReviewMedia,
 } from './fla-review';
 import {
+  isFlaInspectionUserCancelled,
   subscribeToFlaInspection,
   type FlaInspectionOperation,
 } from './fla-inspection-lifecycle';
@@ -51,6 +52,7 @@ import {
   FlaStageGRasterSuccess,
   type FlaStageGTerminalState,
 } from './FlaStageGTerminal';
+import { FlaStageAInspecting } from './FlaStageAInspecting';
 import { FlaStageF3Blocked } from './FlaStageF';
 import { routeFlaInspection } from './fla-content-route';
 
@@ -106,6 +108,12 @@ export function FlaCompatibilityReviewSession({
     return subscribeToFlaInspection(
       inspection,
       (nextResponse) => {
+        if (isFlaInspectionUserCancelled(nextResponse)) {
+          // Native picker cancellation is a clean dismissal, not a failed
+          // inspection.  Do not briefly mount F3 or expose its diagnostics.
+          onClose();
+          return;
+        }
         setResponse(nextResponse);
         if (nextResponse.ok) {
           setSessionId(nextResponse.sessionId);
@@ -264,33 +272,7 @@ export function FlaCompatibilityReviewSession({
   if (phase === 'inspecting') {
     return (
       <FlaReviewPortal>
-        <section
-          aria-label="FLA 兼容性预览"
-          aria-modal="true"
-          className="fla-review-session"
-          data-review-layout="portal"
-          data-testid="fla-review-session"
-          role="dialog"
-        >
-          <header className="fla-review-heading" data-testid="fla-review-header">
-            <div>
-              <p className="eyebrow">导入前检查</p>
-              <h2>FLA 兼容性预览</h2>
-            </div>
-            <button
-              autoFocus
-              data-testid="fla-review-cancel"
-              onClick={() => void closeSession()}
-              type="button"
-            >
-              取消
-            </button>
-          </header>
-          <div className="fla-review-body fla-review-status-body">
-            <p>正在读取所选 FLA。预览过程中不会修改项目或素材。</p>
-            <output data-testid="fla-review-status">正在检查源文件…</output>
-          </div>
-        </section>
+        <FlaStageAInspecting onCancel={closeSession} />
       </FlaReviewPortal>
     );
   }

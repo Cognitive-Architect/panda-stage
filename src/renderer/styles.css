@@ -3013,6 +3013,225 @@ button:disabled {
   }
 }
 
+/* Issue #407: Stage A is the first quiet state of the same FLA Workbench.
+   It intentionally has no determinate progress, parser detail, filename, or
+   discovered-content placeholder.  The empty left zone preserves the
+   landscape rhythm without pretending that inspection has found anything. */
+.fla-review-portal .fla-review-session[data-workbench-route='inspection'] {
+  width: min(1120px, 100%);
+  height: min(calc(100vh - 24px), 760px);
+  max-height: calc(100vh - 24px);
+  padding: 16px 18px;
+  border-color: rgb(131 211 154 / 38%);
+  background:
+    radial-gradient(circle at 68% 0%, rgb(61 126 79 / 14%), transparent 42%),
+    #101a14;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0;
+}
+
+.fla-stage-a-header {
+  min-height: 54px;
+  padding: 0 2px 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.fla-stage-a-header h2 {
+  margin: 0;
+  color: #edf6ef;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.fla-stage-a-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fla-stage-a-state {
+  color: #9aaca0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fla-stage-a-cancel {
+  min-width: 76px;
+  min-height: 44px;
+  border-color: rgb(255 255 255 / 14%);
+  background: transparent;
+  color: #b6c5bb;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fla-stage-a-cancel:hover:not(:disabled),
+.fla-stage-a-cancel:focus-visible:not(:disabled) {
+  border-color: rgb(131 211 154 / 58%);
+  background: rgb(255 255 255 / 4%);
+  color: #e4f7e8;
+}
+
+.fla-stage-a-body {
+  display: grid;
+  padding: 0;
+  overflow: hidden;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr);
+  align-items: stretch;
+  gap: 0;
+}
+
+.fla-stage-a-quiet-pane {
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid rgb(255 255 255 / 7%);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 2%), transparent 36%),
+    rgb(7 12 9 / 22%);
+}
+
+.fla-stage-a-inspection {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  align-content: center;
+  justify-items: center;
+  padding: clamp(32px, 7vw, 88px) clamp(24px, 7vw, 100px);
+  text-align: center;
+  gap: 24px;
+}
+
+.fla-stage-a-scan-core {
+  position: relative;
+  display: grid;
+  width: clamp(96px, 12vw, 132px);
+  height: clamp(96px, 12vw, 132px);
+  place-items: center;
+}
+
+.fla-stage-a-scan-ring {
+  position: absolute;
+  display: block;
+  border: 1px solid rgb(131 211 154 / 24%);
+  border-radius: 50%;
+  transform-origin: center;
+}
+
+.fla-stage-a-scan-ring-outer {
+  width: 100%;
+  height: 100%;
+  border-top-color: rgb(131 211 154 / 78%);
+  animation: fla-stage-a-scan-outer 7s linear infinite;
+}
+
+.fla-stage-a-scan-ring-middle {
+  width: 74%;
+  height: 74%;
+  border-right-color: rgb(131 211 154 / 58%);
+  animation: fla-stage-a-scan-middle 5s ease-in-out infinite;
+}
+
+.fla-stage-a-scan-ring-inner {
+  width: 48%;
+  height: 48%;
+  border-bottom-color: rgb(131 211 154 / 70%);
+  animation: fla-stage-a-scan-inner 3.8s linear infinite reverse;
+}
+
+.fla-stage-a-scan-center {
+  width: 18%;
+  height: 18%;
+  border: 1px solid rgb(183 234 195 / 84%);
+  border-radius: 50%;
+  background: #83d39a;
+  box-shadow:
+    0 0 0 8px rgb(131 211 154 / 8%),
+    0 0 28px rgb(131 211 154 / 34%);
+  animation: fla-stage-a-scan-breathe 3.8s ease-in-out infinite;
+}
+
+@keyframes fla-stage-a-scan-outer {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fla-stage-a-scan-middle {
+  50% { opacity: 0.48; transform: scale(0.92) rotate(180deg); }
+  to { opacity: 1; transform: scale(1) rotate(360deg); }
+}
+
+@keyframes fla-stage-a-scan-inner {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fla-stage-a-scan-breathe {
+  50% { opacity: 0.62; transform: scale(0.78); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.fla-stage-a-copy {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 10px;
+}
+
+.fla-stage-a-copy h1 {
+  max-width: 100%;
+  margin: 0;
+  color: #edf6ef;
+  font-size: clamp(24px, 3.2vw, 36px);
+  line-height: 1.2;
+}
+
+.fla-stage-a-copy p {
+  max-width: 32ch;
+  margin: 0;
+  color: #a8b6ad;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.fla-stage-a-footer {
+  display: grid;
+  min-height: 42px;
+  padding: 12px 2px 0;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  color: #718279;
+  font-size: 11px;
+  text-align: center;
+  place-items: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fla-stage-a-scan-ring,
+  .fla-stage-a-scan-center {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .fla-review-portal .fla-review-session[data-workbench-route='inspection'] {
+    width: 100%;
+    height: calc(100vh - 20px);
+    max-height: calc(100vh - 20px);
+    padding: 14px;
+  }
+
+  .fla-stage-a-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fla-stage-a-quiet-pane {
+    display: none;
+  }
+
+  .fla-stage-a-inspection {
+    padding-inline: 18px;
+  }
+}
+
 .fla-raster-selection-header {
   align-items: center !important;
 }

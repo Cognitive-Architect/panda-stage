@@ -5,6 +5,10 @@ const component = readFileSync(
   'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
   'utf8',
 );
+const stageA = readFileSync(
+  'src/renderer/fla-import/FlaStageAInspecting.tsx',
+  'utf8',
+);
 const styles = readFileSync('src/renderer/styles.css', 'utf8');
 const issue255Styles = styles.slice(styles.indexOf('/* Issue #255:'));
 const reviewModel = readFileSync('src/renderer/fla-import/fla-review.ts', 'utf8');
@@ -97,9 +101,9 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('确认选择');
     expect(component).toContain('FLA 文件 · 只读预览');
     expect(component).not.toContain('在确认导入前，不会修改项目或原文件。');
-    expect(component).toContain('正在读取所选 FLA');
-    expect(component).toContain('正在检查源文件');
-    expect(component).toContain('源文件');
+    expect(stageA).toContain('正在检查 FLA');
+    expect(stageA).toContain('不会修改原文件或当前项目');
+    expect(stageA).toContain('检查完成后自动进入下一步');
     expect(component).toContain('舞台');
     expect(component).toContain('素材');
     expect(component).toContain('已使用');
@@ -115,6 +119,24 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(reviewModel).toContain("degraded: '部分兼容'");
     expect(reviewModel).toContain("unsupported: '暂不支持'");
     expect(reviewModel).toContain("'not-present': '未出现'");
+  });
+
+  it('keeps Stage A as a quiet indeterminate Workbench state', () => {
+    expect(stageA).toContain('data-stage-a-state="inspecting"');
+    expect(stageA).toContain('data-workbench-route="inspection"');
+    expect(stageA).toContain('data-testid="fla-review-session"');
+    expect(stageA).toContain('FLA WORKBENCH');
+    expect(stageA).toContain('检查中');
+    expect(stageA).toContain('data-ring-count="3"');
+    expect(stageA).toContain('data-placeholder-authoritative="false"');
+    expect(stageA).not.toContain('%');
+    expect(stageA).not.toContain('第');
+    expect(stageA).not.toContain('文件名');
+    expect(stageA).not.toContain('ZIP');
+    expect(stageA).not.toContain('ActionScript');
+    expect(component).toContain('isFlaInspectionUserCancelled(nextResponse)');
+    expect(component).toContain('onClose();');
+    expect(component).toContain('<FlaStageF3Blocked response={response} onClose={onClose} />');
   });
 
   it('hides diagnostic identifiers from the default UI but retains internal contracts', () => {
