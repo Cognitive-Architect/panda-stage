@@ -811,7 +811,7 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
       const finalSequenceReady = reviewState() === 'valid' && importButtonEnabled() &&
         document.querySelectorAll('[data-testid^="fla-frame-sequence-filmstrip-item-"]').length === 24;
       click('[data-testid="fla-frame-sequence-import"]');
-      await waitFor('[data-testid="fla-frame-sequence-committed"]');
+      await waitFor('[data-testid="fla-frame-sequence-committed"], [data-testid="fla-stage-g-sequence-success"]');
       await delay(500);
       const afterImport = readProjectState();
       const zeroRasterSequenceRoute = document.querySelector('[data-testid="fla-review-zero-raster"]') !== null;
@@ -820,8 +820,12 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
         : null;
       const revisionAdvanced = afterImport.maxRevision !== null &&
         (beforeImport.maxRevision === null || afterImport.maxRevision > beforeImport.maxRevision);
-      const committedText = document.querySelector('[data-testid="fla-frame-sequence-committed"]')?.textContent?.trim() ?? '';
-      click('[data-testid="fla-frame-sequence-close"]');
+      const committedText = document.querySelector('[data-testid="fla-frame-sequence-committed"], [data-testid="fla-stage-g-sequence-success"]')?.textContent?.trim() ?? '';
+      if (document.querySelector('[data-testid="fla-stage-g-return-library"]')) {
+        click('[data-testid="fla-stage-g-return-library"]');
+      } else {
+        click('[data-testid="fla-frame-sequence-close"]');
+      }
       await waitFor('[data-testid="asset-browser-view"]');
       const libraryAfterClose = readProjectState();
 

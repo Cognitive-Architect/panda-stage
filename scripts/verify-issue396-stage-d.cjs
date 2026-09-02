@@ -527,7 +527,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       const detailsVisible = document.querySelector('[data-testid="fla-snapshot-details-region"]') !== null &&
         document.querySelector('[data-testid="fla-snapshot-action-bar"]') !== null;
       click('[data-testid="fla-snapshot-import"]');
-      await waitFor('[data-testid="fla-snapshot-committed"]');
+      await waitFor('[data-testid="fla-snapshot-committed"], [data-testid="fla-stage-g-snapshot-success"]');
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
       const afterImport = readProjectState();
       const committedAssetCount = beforeImport.assetCount !== null && afterImport.assetCount !== null
@@ -535,8 +535,12 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         : null;
       const revisionAdvanced = afterImport.maxRevision !== null &&
         (beforeImport.maxRevision === null || afterImport.maxRevision > beforeImport.maxRevision);
-      const committedText = document.querySelector('[data-testid="fla-snapshot-committed"]')?.textContent?.trim() ?? '';
-      click('[data-testid="fla-snapshot-close"]');
+      const committedText = document.querySelector('[data-testid="fla-snapshot-committed"], [data-testid="fla-stage-g-snapshot-success"]')?.textContent?.trim() ?? '';
+      if (document.querySelector('[data-testid="fla-stage-g-return-library"]')) {
+        click('[data-testid="fla-stage-g-return-library"]');
+      } else {
+        click('[data-testid="fla-snapshot-close"]');
+      }
       await waitFor('[data-testid="asset-browser-view"]');
       const libraryAfterClose = readProjectState();
 
