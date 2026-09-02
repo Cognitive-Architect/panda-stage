@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { AnimationImportIR } from '../../shared/fla-import-api';
 import { FlaStageF1Notice, getFlaStageF1Warnings } from './FlaStageF';
+import type { FlaStageGTerminalState } from './FlaStageGTerminal';
 
 export type FlaRenderWorkbenchMode = 'snapshot' | 'sequence';
 
@@ -9,6 +10,7 @@ interface FlaRenderWorkbenchProps {
   sourceBasename: string;
   compatibility: ReadonlyArray<AnimationImportIR['compatibility'][number]>;
   onModeChange: (mode: FlaRenderWorkbenchMode) => void;
+  terminalState?: FlaStageGTerminalState;
   children: ReactNode;
 }
 
@@ -24,10 +26,12 @@ export function FlaRenderWorkbench({
   sourceBasename,
   compatibility,
   onModeChange,
+  terminalState = 'active',
   children,
 }: FlaRenderWorkbenchProps): React.JSX.Element {
   const snapshotActive = mode === 'snapshot';
   const hasStageF1Warning = getFlaStageF1Warnings(compatibility).length > 0;
+  const terminal = terminalState !== 'active';
 
   return (
     <section
@@ -35,6 +39,7 @@ export function FlaRenderWorkbench({
       className="fla-render-workbench"
       data-stage-f1={hasStageF1Warning ? 'true' : 'false'}
       data-render-mode={mode}
+      data-terminal-state={terminalState}
       data-testid="fla-render-workbench"
     >
       <header className="fla-render-workbench-header" data-testid="fla-render-workbench-header">
@@ -45,45 +50,47 @@ export function FlaRenderWorkbench({
             <span> · 只读</span>
           </p>
         </div>
-        <FlaStageF1Notice compatibility={compatibility} />
+        {!terminal ? <FlaStageF1Notice compatibility={compatibility} /> : null}
       </header>
 
-      <div
-        aria-label="渲染方式"
-        className="fla-render-mode-tabs"
-        data-testid="fla-render-mode-tabs"
-        role="tablist"
-      >
-        <button
-          aria-controls="fla-render-workbench-panel"
-          aria-selected={snapshotActive}
-          className={`fla-render-mode-tab${snapshotActive ? ' is-active' : ''}`}
-          data-testid="fla-render-mode-snapshot"
-          id="fla-render-mode-tab-snapshot"
-          onClick={() => onModeChange('snapshot')}
-          role="tab"
-          type="button"
+      {!terminal ? (
+        <div
+          aria-label="渲染方式"
+          className="fla-render-mode-tabs"
+          data-testid="fla-render-mode-tabs"
+          role="tablist"
         >
-          单帧
-          <span>Static Snapshot</span>
-        </button>
-        <button
-          aria-controls="fla-render-workbench-panel"
-          aria-selected={!snapshotActive}
-          className={`fla-render-mode-tab${snapshotActive ? '' : ' is-active'}`}
-          data-testid="fla-render-mode-sequence"
-          id="fla-render-mode-tab-sequence"
-          onClick={() => onModeChange('sequence')}
-          role="tab"
-          type="button"
-        >
-          帧序列
-          <span>Frame Sequence</span>
-        </button>
-      </div>
+          <button
+            aria-controls="fla-render-workbench-panel"
+            aria-selected={snapshotActive}
+            className={`fla-render-mode-tab${snapshotActive ? ' is-active' : ''}`}
+            data-testid="fla-render-mode-snapshot"
+            id="fla-render-mode-tab-snapshot"
+            onClick={() => onModeChange('snapshot')}
+            role="tab"
+            type="button"
+          >
+            单帧
+            <span>Static Snapshot</span>
+          </button>
+          <button
+            aria-controls="fla-render-workbench-panel"
+            aria-selected={!snapshotActive}
+            className={`fla-render-mode-tab${snapshotActive ? '' : ' is-active'}`}
+            data-testid="fla-render-mode-sequence"
+            id="fla-render-mode-tab-sequence"
+            onClick={() => onModeChange('sequence')}
+            role="tab"
+            type="button"
+          >
+            帧序列
+            <span>Frame Sequence</span>
+          </button>
+        </div>
+      ) : null}
 
       <div
-        aria-labelledby={snapshotActive ? 'fla-render-mode-tab-snapshot' : 'fla-render-mode-tab-sequence'}
+        aria-labelledby={terminal ? undefined : snapshotActive ? 'fla-render-mode-tab-snapshot' : 'fla-render-mode-tab-sequence'}
         className="fla-render-workbench-panel-slot"
         data-testid="fla-render-workbench-panel"
         id="fla-render-workbench-panel"

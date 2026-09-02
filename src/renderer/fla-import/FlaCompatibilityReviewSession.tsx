@@ -45,6 +45,12 @@ import {
   FlaRenderWorkbench,
   type FlaRenderWorkbenchMode,
 } from './FlaRenderWorkbench';
+import {
+  FlaStageGImporting,
+  FlaStageGRecovery,
+  FlaStageGRasterSuccess,
+  type FlaStageGTerminalState,
+} from './FlaStageGTerminal';
 import { FlaStageF3Blocked } from './FlaStageF';
 import { routeFlaInspection } from './fla-content-route';
 
@@ -91,6 +97,8 @@ export function FlaCompatibilityReviewSession({
   const [rasterFilter, setRasterFilter] = useState<FlaRasterReviewFilter>('all');
   const [rasterSearch, setRasterSearch] = useState('');
   const [renderMode, setRenderMode] = useState<FlaRenderWorkbenchMode>('snapshot');
+  const [renderCommitBusy, setRenderCommitBusy] = useState(false);
+  const [renderTerminalState, setRenderTerminalState] = useState<FlaStageGTerminalState>('active');
   const reviewBodyRef = useRef<HTMLDivElement | null>(null);
   const reviewScrollTop = useRef(0);
 
@@ -111,6 +119,8 @@ export function FlaCompatibilityReviewSession({
           setRasterSearch('');
           setCompatibilityNotesOpen(false);
           setRenderMode('snapshot');
+          setRenderCommitBusy(false);
+          setRenderTerminalState('active');
           reviewScrollTop.current = 0;
           setPhase('ready');
         } else {
@@ -247,7 +257,7 @@ export function FlaCompatibilityReviewSession({
   };
 
   const closeSession = (): void => {
-    if (phase === 'committing') return;
+    if (phase === 'committing' || renderCommitBusy) return;
     onClose();
   };
 
@@ -331,6 +341,10 @@ export function FlaCompatibilityReviewSession({
   const counts = compatibilityCounts(ir);
   const warnings = compatibilityWarnings(ir);
   const rasterRoute = contentRoute === 'v1-raster-review';
+  const rasterCommitError = rasterRoute && commitResponse && !commitResponse.ok
+    ? commitResponse
+    : null;
+  const renderPhase: SessionPhase = phase;
   const progressStep = phase === 'ready'
     ? 'select'
     : phase === 'confirmed'
@@ -427,19 +441,22 @@ export function FlaCompatibilityReviewSession({
             <div className="fla-review-heading-copy">
               <h2>FLA 素材工作台</h2>
             </div>
-            <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
-              <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
-              <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
-              <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
-            </ol>
-            <button
-              disabled={phase === 'committing'}
-              data-testid="fla-review-cancel"
-              onClick={() => void closeSession()}
-              type="button"
-            >
-              取消
-            </button>
+            {phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
+              <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
+                <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
+                <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
+                <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
+              </ol>
+            ) : null}
+            {phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
+              <button
+                data-testid="fla-review-cancel"
+                onClick={() => void closeSession()}
+                type="button"
+              >
+                取消
+              </button>
+            ) : null}
           </header>
         ) : null}
 
@@ -461,7 +478,25 @@ export function FlaCompatibilityReviewSession({
               Panda 已处理一个兼容性问题；原 FLA 文件没有被修改。
             </output>
           ) : null}
-          {rasterRoute ? (
+          {rasterRoute && phase === 'committing' ? (
+            <FlaStageGImporting
+              context={`${intent?.selectedCount ?? selectedCount} 项位图素材`}
+              headline={`正在导入 ${intent?.selectedCount ?? selectedCount} 项位图素材…`}
+              route="raster"
+            />
+          ) : rasterRoute && phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
+            <FlaStageGRasterSuccess onReturn={closeSession} response={commitResponse} />
+          ) : rasterCommitError ? (
+            <FlaStageGRecovery
+              candidateStillCurrent={rasterCommitError.error.code === 'ASSET_COMMIT_FAILED' || rasterCommitError.error.code === 'COMMIT_BUSY'}
+              code={rasterCommitError.error.code}
+              message={rasterCommitError.error.message}
+              onClose={closeSession}
+              onPrimary={() => void commit()}
+              residualPaths={rasterCommitError.error.residualPaths}
+              route="raster"
+            />
+          ) : rasterRoute ? (
             <div className="fla-raster-workbench" data-testid="fla-raster-workbench">
               <aside className="fla-raster-overview" data-testid="fla-raster-overview">
                 <div>
@@ -675,11 +710,18 @@ export function FlaCompatibilityReviewSession({
               <FlaRenderWorkbench
                 compatibility={ir.compatibility}
                 mode={renderMode}
-                onModeChange={setRenderMode}
+                onModeChange={(mode) => {
+                  setRenderMode(mode);
+                  setRenderCommitBusy(false);
+                  setRenderTerminalState('active');
+                }}
                 sourceBasename={ir.source.basename}
+                terminalState={renderTerminalState}
               >
                 {renderMode === 'snapshot' ? (
                   <FlaStaticSnapshotReview
+                    onCommitStateChange={setRenderCommitBusy}
+                    onTerminalStateChange={setRenderTerminalState}
                     sessionId={sessionId}
                     source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
                     stage={ir.document}
@@ -689,6 +731,8 @@ export function FlaCompatibilityReviewSession({
                   />
                 ) : (
                   <FlaFrameSequenceReview
+                    onCommitStateChange={setRenderCommitBusy}
+                    onTerminalStateChange={setRenderTerminalState}
                     sessionId={sessionId}
                     source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
                     embedded
@@ -702,7 +746,7 @@ export function FlaCompatibilityReviewSession({
           )}
         </div>
 
-        {rasterRoute ? (
+        {rasterRoute && phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
           <div className="fla-review-action-stack">
             <div className="fla-review-action-bar fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
               <div>
@@ -713,7 +757,7 @@ export function FlaCompatibilityReviewSession({
                 <button
                   className="fla-review-action-cancel"
                   data-testid="fla-review-action-cancel"
-                  disabled={phase === 'committing'}
+                  disabled={renderPhase === 'committing'}
                   onClick={() => void closeSession()}
                   type="button"
                 >
@@ -749,13 +793,13 @@ export function FlaCompatibilityReviewSession({
                 </button>
               </div>
             ) : null}
-            {phase === 'committing' ? (
+            {renderPhase === 'committing' ? (
               <output data-testid="fla-review-commit-status">正在导入已选择的素材…</output>
             ) : null}
             {commitResponse && !commitResponse.ok ? (
               <output data-testid="fla-review-commit-error" role="alert">{commitResponse.error.message}</output>
             ) : null}
-            {phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
+            {renderPhase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
               <output
                 data-testid="fla-review-commit-success"
                 data-imported-count={commitResponse.summary.importedCount}

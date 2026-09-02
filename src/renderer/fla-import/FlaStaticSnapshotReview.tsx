@@ -17,6 +17,12 @@ import type {
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
 import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
+import {
+  FlaStageGImporting,
+  FlaStageGRecovery,
+  FlaStageGSnapshotSuccess,
+  type FlaStageGTerminalState,
+} from './FlaStageGTerminal';
 
 interface FlaStaticSnapshotStageFacts {
   width: number;
@@ -31,6 +37,8 @@ interface FlaStaticSnapshotReviewProps {
   snapshot: EditorProjectSnapshot | null;
   onImported: (response: FlaStaticSnapshotCommitResponse) => void;
   onClose: () => void;
+  onCommitStateChange?: (busy: boolean) => void;
+  onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
 }
 
 type SnapshotPhase =
@@ -57,6 +65,8 @@ export function FlaStaticSnapshotReview({
   snapshot,
   onImported,
   onClose,
+  onCommitStateChange,
+  onTerminalStateChange,
 }: FlaStaticSnapshotReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<SnapshotPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
@@ -102,6 +112,15 @@ export function FlaStaticSnapshotReview({
       : previewIsCurrent
         ? 'valid'
         : 'needs-preview';
+
+  useEffect(() => {
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
+    return () => {
+      onCommitStateChange?.(false);
+      onTerminalStateChange?.('active');
+    };
+  }, [onCommitStateChange, onTerminalStateChange]);
 
   // Load the Main-owned catalog once for this inspection session.
   useEffect(() => {
@@ -177,6 +196,7 @@ export function FlaStaticSnapshotReview({
     return (
       <div
         className="fla-snapshot-review fla-render-workbench-panel"
+        data-fla-session-id={sessionId}
         data-testid="fla-snapshot-review"
         data-workbench-panel="snapshot"
         role="note"
@@ -191,6 +211,7 @@ export function FlaStaticSnapshotReview({
       <div
         className="fla-snapshot-review fla-render-workbench-panel"
         data-preview-state={phase === 'error' ? 'error' : 'needs-preview'}
+        data-fla-session-id={sessionId}
         data-testid="fla-snapshot-review"
         data-workbench-panel="snapshot"
         role="note"
@@ -206,6 +227,9 @@ export function FlaStaticSnapshotReview({
 
   const previewNow = async (): Promise<void> => {
     if (!supported || !snapshot) return;
+
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
 
     // Re-previewing the same target/frame must also invalidate the previous
     // accepted preview before a new request becomes the sole candidate.
@@ -255,6 +279,8 @@ export function FlaStaticSnapshotReview({
 
   const importFrame = async (): Promise<void> => {
     if (!previewIsCurrent || !preview || !preview.ok || !snapshot || phase !== 'preview-ready') return;
+    onCommitStateChange?.(true);
+    onTerminalStateChange?.('importing');
     setPhase('committing');
     setErrorMessage('');
     const target: FlaRenderTarget = {
@@ -281,14 +307,34 @@ export function FlaStaticSnapshotReview({
         confirmed: true,
       });
       setCommitResponse(response);
-      if (response.ok && response.status === 'completed') {
+      if (response.ok) {
+        onCommitStateChange?.(false);
+        onTerminalStateChange?.('success');
         setPhase('committed');
         onImported(response);
       } else {
+        if (!isSnapshotCommitRetryable(response.error.code)) {
+          previewRequestIdRef.current = null;
+          setPreview(null);
+          setPreviewUrl(null);
+        }
+        onCommitStateChange?.(false);
+        onTerminalStateChange?.('recovery');
         setErrorMessage(response.ok ? '导入失败。' : response.error.message);
         setPhase('preview-ready');
       }
     } catch (error) {
+      const failure: FlaStaticSnapshotCommitResponse = {
+        ok: false,
+        error: {
+          code: 'ASSET_COMMIT_FAILED',
+          message: error instanceof Error ? error.message : '导入失败。',
+          projectRoot: snapshot.projectRoot,
+        },
+      };
+      setCommitResponse(failure);
+      onCommitStateChange?.(false);
+      onTerminalStateChange?.('recovery');
       setErrorMessage(error instanceof Error ? error.message : '导入失败。');
       setPhase('preview-ready');
     }
@@ -296,6 +342,8 @@ export function FlaStaticSnapshotReview({
 
   const close = (): void => {
     if (phase === 'committing') return;
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
     previewRequestIdRef.current = null;
     void flaStaticSnapshotClient.cancel({
       format: 'fla-static-snapshot-cancel',
@@ -308,11 +356,56 @@ export function FlaStaticSnapshotReview({
   const previewStatus = snapshotPreviewStatus(phase, previewIsCurrent);
   const canPreview = supported && Boolean(snapshot) && phase !== 'previewing' && phase !== 'committing' && phase !== 'committed';
   const canImport = previewIsCurrent && phase === 'preview-ready';
+  const renderPhase: SnapshotPhase = phase;
+
+  if (phase === 'committing') {
+    return (
+      <div className="fla-snapshot-review fla-render-workbench-panel fla-stage-g-panel" data-fla-session-id={sessionId} data-stage-g-state="importing" data-testid="fla-snapshot-review">
+        <FlaStageGImporting
+          context={`${selecting.userLabel} · 第 ${selectedFrameIndex + 1} 帧`}
+          headline="正在导入当前帧…"
+          route="snapshot"
+        />
+      </div>
+    );
+  }
+
+  if (commitResponse && !commitResponse.ok) {
+    const candidateStillCurrent = isSnapshotCommitRetryable(commitResponse.error.code);
+    return (
+      <div className="fla-snapshot-review fla-render-workbench-panel fla-stage-g-panel" data-fla-session-id={sessionId} data-stage-g-state="recovery" data-testid="fla-snapshot-review">
+        <FlaStageGRecovery
+          candidateStillCurrent={candidateStillCurrent}
+          code={commitResponse.error.code}
+          message={commitResponse.error.message}
+          onClose={close}
+          onPrimary={() => {
+            if (commitResponse.error.code === 'STALE_PREVIEW') {
+              void previewNow();
+            } else if (candidateStillCurrent) {
+              void importFrame();
+            }
+          }}
+          residualPaths={commitResponse.error.residualPaths}
+          route="snapshot"
+        />
+      </div>
+    );
+  }
+
+  if (phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed') {
+    return (
+      <div className="fla-snapshot-review fla-render-workbench-panel fla-stage-g-panel" data-fla-session-id={sessionId} data-stage-g-state="success" data-testid="fla-snapshot-review">
+        <FlaStageGSnapshotSuccess onReturn={close} response={commitResponse} />
+      </div>
+    );
+  }
 
   return (
     <div
       className="fla-snapshot-review fla-render-workbench-panel"
       data-preview-state={previewState}
+      data-fla-session-id={sessionId}
       data-testid="fla-snapshot-review"
       data-workbench-panel="snapshot"
     >
@@ -365,7 +458,7 @@ export function FlaStaticSnapshotReview({
                         type="radio"
                         name="fla-snapshot-target"
                         checked={target.renderTargetId === selectedTargetId}
-                        disabled={!entry.previewSupported || phase === 'committing' || phase === 'committed'}
+                        disabled={!entry.previewSupported || renderPhase === 'committing' || renderPhase === 'committed'}
                         onChange={() => {
                           setSelectedTargetId(target.renderTargetId);
                           setFocusedTargetId(target.renderTargetId);
@@ -391,7 +484,7 @@ export function FlaStaticSnapshotReview({
                         aria-pressed={target.renderTargetId === focusedTargetId}
                         className="fla-stage-f2-focus"
                         data-testid={`fla-snapshot-f2-focus-${target.renderTargetId}`}
-                        disabled={phase === 'committing' || phase === 'committed'}
+                        disabled={renderPhase === 'committing' || renderPhase === 'committed'}
                         onClick={() => setFocusedTargetId(target.renderTargetId)}
                         type="button"
                       >
@@ -444,7 +537,7 @@ export function FlaStaticSnapshotReview({
               <div className="fla-snapshot-frame-controls">
                 <button
                   type="button"
-                  disabled={selectedFrameIndex <= 0 || phase === 'committing' || phase === 'committed'}
+                  disabled={selectedFrameIndex <= 0 || renderPhase === 'committing' || renderPhase === 'committed'}
                   onClick={() => setSelectedFrameIndex((index) => Math.max(0, index - 1))}
                   data-testid="fla-snapshot-frame-prev"
                 >
@@ -457,7 +550,7 @@ export function FlaStaticSnapshotReview({
                     min={0}
                     max={frameCount - 1}
                     value={selectedFrameIndex}
-                    disabled={phase === 'committing' || phase === 'committed'}
+                    disabled={renderPhase === 'committing' || renderPhase === 'committed'}
                     onChange={(event) => {
                       const value = Number(event.target.value);
                       if (Number.isFinite(value)) {
@@ -470,7 +563,7 @@ export function FlaStaticSnapshotReview({
                 <span>/ {Math.max(0, frameCount - 1)}</span>
                 <button
                   type="button"
-                  disabled={selectedFrameIndex >= frameCount - 1 || phase === 'committing' || phase === 'committed'}
+                  disabled={selectedFrameIndex >= frameCount - 1 || renderPhase === 'committing' || renderPhase === 'committed'}
                   onClick={() => setSelectedFrameIndex((index) => Math.min(frameCount - 1, index + 1))}
                   data-testid="fla-snapshot-frame-next"
                 >
@@ -553,7 +646,7 @@ export function FlaStaticSnapshotReview({
           <button
             className="fla-snapshot-close-action"
             type="button"
-            disabled={phase === 'committing'}
+            disabled={renderPhase === 'committing'}
             onClick={() => void close()}
             data-testid="fla-snapshot-close"
           >
@@ -563,6 +656,10 @@ export function FlaStaticSnapshotReview({
       </div>
     </div>
   );
+}
+
+function isSnapshotCommitRetryable(code: string): boolean {
+  return code === 'ASSET_COMMIT_FAILED' || code === 'COMMIT_BUSY';
 }
 
 function renderTargetKindLabel(kind: FlaRenderTarget['kind']): string {

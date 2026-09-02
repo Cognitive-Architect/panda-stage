@@ -35,6 +35,12 @@ import { flaFrameSequenceClient } from './fla-frame-sequence-render';
 import { formatFlaFrameSequenceCommitResult } from './formatFlaFrameSequenceCommitResult';
 import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
 import {
+  FlaStageGImporting,
+  FlaStageGRecovery,
+  FlaStageGSequenceSuccess,
+  type FlaStageGTerminalState,
+} from './FlaStageGTerminal';
+import {
   buildRange,
   getDefaultSequenceRange,
   intentChangeReset,
@@ -53,6 +59,8 @@ interface FlaFrameSequenceReviewProps {
   embedded?: boolean;
   onImported: (response: FlaFrameSequenceCommitResponse) => void;
   onClose: () => void;
+  onCommitStateChange?: (busy: boolean) => void;
+  onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
 }
 
 type RenderPhase =
@@ -72,6 +80,8 @@ export function FlaFrameSequenceReview({
   embedded = false,
   onImported,
   onClose,
+  onCommitStateChange,
+  onTerminalStateChange,
 }: FlaFrameSequenceReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<RenderPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
@@ -141,6 +151,15 @@ export function FlaFrameSequenceReview({
       : hasPreview
         ? phase === 'committed' ? 'committed' : 'valid'
         : 'needs-preview';
+
+  useEffect(() => {
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
+    return () => {
+      onCommitStateChange?.(false);
+      onTerminalStateChange?.('active');
+    };
+  }, [onCommitStateChange, onTerminalStateChange]);
 
   // Revoke object URLs on unmount / sequence change.
   useEffect(() => {
@@ -274,6 +293,8 @@ export function FlaFrameSequenceReview({
     activeRequestIdRef.current = requestId;
     acceptedRequestIdRef.current = null;
     latestSequenceRef.current = null;
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
     setPhase('rendering');
     setErrorMessage('');
     setCommitResponse(null);
@@ -369,6 +390,8 @@ export function FlaFrameSequenceReview({
       setPhase('error');
       return;
     }
+    onCommitStateChange?.(true);
+    onTerminalStateChange?.('importing');
     setPhase('committing');
     setErrorMessage('');
     try {
@@ -393,30 +416,54 @@ export function FlaFrameSequenceReview({
         confirmed: true,
       });
       setCommitResponse(response);
-      if (response.ok && response.status === 'completed') {
+      if (response.ok) {
         // Corrective C: commit success clears/disables stale commit state.
         const next = postCommitSequenceState();
+        onCommitStateChange?.(false);
+        onTerminalStateChange?.('success');
         setPhase(next.phase);
         onImported(response);
       } else {
+        const candidateStillCurrent = isSequenceCommitRetryable(response.error.code);
+        if (!candidateStillCurrent) {
+          activeRequestIdRef.current = null;
+          acceptedRequestIdRef.current = null;
+          latestSequenceRef.current = null;
+          setSuccess(null);
+          clearPreviewResources();
+        }
+        onCommitStateChange?.(false);
+        onTerminalStateChange?.('recovery');
         setErrorMessage(response.ok ? '序列导入失败。' : response.error.message);
         setPhase('preview-ready');
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '序列导入失败。');
       setPhase('preview-ready');
+      setCommitResponse({
+        ok: false,
+        error: {
+          code: 'ASSET_COMMIT_FAILED',
+          message: error instanceof Error ? error.message : 'Frame sequence import failed.',
+          projectRoot: snapshot.projectRoot,
+        },
+      });
+      onCommitStateChange?.(false);
+      onTerminalStateChange?.('recovery');
     }
   };
 
   const close = (): void => {
     if (phase === 'rendering' || phase === 'committing') return;
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
     void flaFrameSequenceClient.cancel({ format: 'fla-frame-sequence-cancel', version: 1, sessionId });
     onClose();
   };
 
   if (!selectedEntry) {
     return (
-      <div className={reviewClassName} data-testid="fla-frame-sequence-review" data-workbench-panel={embedded ? 'sequence' : undefined} role="note">
+      <div className={reviewClassName} data-fla-session-id={sessionId} data-testid="fla-frame-sequence-review" data-workbench-panel={embedded ? 'sequence' : undefined} role="note">
         {phase === 'loading' ? (
           <p data-testid="fla-frame-sequence-loading">正在分析可渲染的图形…</p>
         ) : phase === 'error' ? (
@@ -435,10 +482,60 @@ export function FlaFrameSequenceReview({
   const canGenerate = supported && validation.valid && Boolean(snapshot) &&
     canGeneratePhase;
   const canImport = sequenceIsCurrent;
+
+  if (phase === 'committing') {
+    return (
+      <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="importing" data-testid="fla-frame-sequence-review">
+        <FlaStageGImporting
+          context={`${source.basename} · 范围 ${startFrameIndex}–${endFrameIndex}`}
+          headline={`正在导入 ${orderedSequenceItems.length} 帧序列…`}
+          route="sequence"
+        />
+      </div>
+    );
+  }
+
+  if (commitResponse && !commitResponse.ok) {
+    const candidateStillCurrent = isSequenceCommitRetryable(commitResponse.error.code);
+    return (
+      <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="recovery" data-testid="fla-frame-sequence-review">
+        <FlaStageGRecovery
+          candidateStillCurrent={candidateStillCurrent}
+          code={commitResponse.error.code}
+          message={commitResponse.error.message}
+          onClose={close}
+          onPrimary={() => {
+            if (commitResponse.error.code === 'STALE_SEQUENCE') {
+              void rerenderSequence();
+            } else if (candidateStillCurrent) {
+              void commitSequence();
+            }
+          }}
+          residualPaths={commitResponse.error.residualPaths}
+          route="sequence"
+        />
+      </div>
+    );
+  }
+
+  if (phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed') {
+    return (
+      <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="success" data-testid="fla-frame-sequence-review">
+        <FlaStageGSequenceSuccess
+          onReturn={close}
+          rangeEnd={endFrameIndex}
+          rangeStart={startFrameIndex}
+          response={commitResponse}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className={reviewClassName}
       data-preview-state={previewState}
+      data-fla-session-id={sessionId}
       data-testid="fla-frame-sequence-review"
       data-workbench-panel={embedded ? 'sequence' : undefined}
     >
@@ -778,6 +875,10 @@ export function FlaFrameSequenceReview({
       </div>
     </div>
   );
+}
+
+function isSequenceCommitRetryable(code: string): boolean {
+  return code === 'ASSET_COMMIT_FAILED' || code === 'COMMIT_BUSY';
 }
 
 function renderTargetKindLabel(kind: FlaRenderTarget['kind']): string {
