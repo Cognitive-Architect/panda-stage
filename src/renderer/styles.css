@@ -2187,6 +2187,20 @@ button:disabled {
   background: rgb(7 12 9 / 45%);
 }
 
+/* Issue #403 Problem 2: keep source-name min-content from widening the
+   overview track or carrying the compatibility surface outside its zone. */
+.fla-raster-overview {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.fla-raster-overview > *,
+.fla-raster-overview > div > *,
+.fla-raster-overview .fla-review-compatibility,
+.fla-raster-overview .fla-review-compatibility > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .fla-raster-overview,
 .fla-raster-detail {
   position: sticky;
@@ -2219,6 +2233,9 @@ button:disabled {
 .fla-raster-overview h3,
 .fla-raster-selection h3,
 .fla-raster-detail h3 {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   overflow: hidden;
   color: #edf6ef;

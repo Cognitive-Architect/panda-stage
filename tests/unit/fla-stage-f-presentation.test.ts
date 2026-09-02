@@ -156,4 +156,11 @@ describe('Issue #402 integration/source contracts', () => {
     expect(styles).not.toContain(".fla-render-workbench[data-stage-f1='true']");
     expect(styles).not.toContain(".fla-render-workbench[data-stage-f1='true'] {");
   });
+
+  it('keeps the Raster overview shrink-safe for long source basenames', () => {
+    expect(session).toContain('<h3 title={ir.source.basename}>{ir.source.basename}</h3>');
+    expect(styles).toContain('.fla-raster-overview {\n  grid-template-columns: minmax(0, 1fr);');
+    expect(styles).toContain('.fla-raster-overview > div > *');
+    expect(styles).toContain('.fla-raster-overview .fla-review-compatibility > *');
+  });
 });
