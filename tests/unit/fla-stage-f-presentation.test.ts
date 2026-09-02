@@ -163,4 +163,36 @@ describe('Issue #402 integration/source contracts', () => {
     expect(styles).toContain('.fla-raster-overview > div > *');
     expect(styles).toContain('.fla-raster-overview .fla-review-compatibility > *');
   });
+
+  it('keeps the Stage B hierarchy deletion-first with centered progress and one compatibility row', () => {
+    const headerStart = session.indexOf(
+      '<header className="fla-review-heading fla-raster-review-heading"',
+    );
+    const headerEnd = session.indexOf('</header>', headerStart);
+    const rasterHeader = session.slice(headerStart, headerEnd);
+    const headingCopyEnd = rasterHeader.indexOf('</div>');
+    const progressStart = rasterHeader.indexOf(
+      '<ol aria-label="导入进度" className="fla-workbench-progress"',
+    );
+
+    expect(headerStart).toBeGreaterThanOrEqual(0);
+    expect(headerEnd).toBeGreaterThan(headerStart);
+    expect(progressStart).toBeGreaterThan(headingCopyEnd);
+    expect(rasterHeader).not.toContain('只读导入预览');
+    expect(rasterHeader).not.toContain('eyebrow');
+    expect(session).not.toContain('className="fla-raster-readonly-badge"');
+    expect(session).not.toContain('在确认导入前，不会修改项目或原文件。');
+    expect(session).not.toContain('兼容性概览');
+    expect(session).not.toContain('详细状态按需查看');
+    expect(session).toContain('aria-label="兼容性说明"');
+    expect(session).toContain('className="fla-raster-compatibility-summary"');
+    expect(session.match(/data-testid="fla-raster-compatibility-summary"/gu)).toHaveLength(1);
+    expect(styles).toContain(
+      ".fla-review-session[data-workbench-route='raster'] .fla-review-heading {\n  display: grid;",
+    );
+    expect(styles).toContain(
+      'grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);',
+    );
+    expect(styles).toContain('.fla-raster-overview .fla-review-compatibility-notes > summary.fla-raster-compatibility-summary');
+  });
 });

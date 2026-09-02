@@ -96,8 +96,17 @@ function assertSample(sample) {
     checks.bodyHorizontalOverflowHidden,
     checks.sourceHashInvariant,
     checks.projectAssetCountUnchanged,
+    checks.stageBRegression,
+    checks.p3HeaderHierarchy,
+    checks.p3ReadOnlyCopyReduction,
+    checks.p3CompatibilitySummary,
     sample.layout.sourceBasename === expectedBasename,
     sample.layout.sourceTitle === expectedBasename,
+    sample.layout.persistentHeaderCopyCount === 3,
+    sample.layout.overviewPermanentBlockCount === 5,
+    sample.layout.readOnlyImmutabilityCopyCount === 1,
+    sample.layout.compatibilityVisibleLayerCount === 1,
+    sample.layout.compatibilitySummaryRowCount === 1,
     sample.expected.requiresEllipsis ? sample.layout.sourceEllipsized : !sample.layout.sourceEllipsized,
   ].every(Boolean);
   if (!valid) throw new Error(`Issue #403 ${sample.sampleKey} evidence is incomplete: ${JSON.stringify(sample)}`);
@@ -121,6 +130,7 @@ function main() {
     samples: results,
     checkpoint: {
       PROBLEM_2_STATUS: 'PASS',
+      PROBLEM_3_STATUS: 'PASS',
       shortBasename: 'PASS',
       longChineseBasename: 'PASS',
       longASCIIbasename: 'PASS',
@@ -128,6 +138,15 @@ function main() {
       horizontalOverflow: false,
       basenameEllipsisWorks: true,
       fullBasenameAccessibleTruth: true,
+      stageBRegression: 'PASS',
+      deletionAudit: {
+        definition: 'Visible persistent copy/block layers in the Raster/F1 default review state; expanded compatibility detail rows are excluded.',
+        persistentHeaderTextGroups: { before: 4, after: 3 },
+        leftOverviewBlocks: { before: 6, after: 5 },
+        compatibilitySummaryLayers: { before: 4, after: 1 },
+        readOnlyImmutabilityCopies: { before: 3, after: 1 },
+      },
+      stageBBusiness: results.find((sample) => sample.sampleKey === 'short')?.business?.checks ?? null,
     },
   };
   writeFileSync(outPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');

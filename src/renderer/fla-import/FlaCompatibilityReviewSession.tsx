@@ -423,16 +423,15 @@ export function FlaCompatibilityReviewSession({
         role="dialog"
       >
         {rasterRoute ? (
-          <header className="fla-review-heading" data-testid="fla-review-header">
+          <header className="fla-review-heading fla-raster-review-heading" data-testid="fla-review-header">
             <div className="fla-review-heading-copy">
-              <p className="eyebrow">只读导入预览</p>
               <h2>FLA 素材工作台</h2>
-              <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
-                <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
-                <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
-                <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
-              </ol>
             </div>
+            <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
+              <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
+              <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
+              <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
+            </ol>
             <button
               disabled={phase === 'committing'}
               data-testid="fla-review-cancel"
@@ -465,11 +464,9 @@ export function FlaCompatibilityReviewSession({
           {rasterRoute ? (
             <div className="fla-raster-workbench" data-testid="fla-raster-workbench">
               <aside className="fla-raster-overview" data-testid="fla-raster-overview">
-                <span className="fla-raster-readonly-badge">只读预览</span>
                 <div>
-                  <p className="fla-raster-panel-kicker">FLA 文件</p>
+                  <p className="fla-raster-panel-kicker">FLA 文件 · 只读预览</p>
                   <h3 title={ir.source.basename}>{ir.source.basename}</h3>
-                  <p>在确认导入前，不会修改项目或原文件。</p>
                 </div>
                 <dl className="fla-review-summary" data-testid="fla-review-summary">
                   <div><dt>舞台</dt><dd>{ir.document.width} × {ir.document.height} · {ir.document.frameRate} fps</dd></div>
@@ -492,32 +489,28 @@ export function FlaCompatibilityReviewSession({
                   </details>
                 ) : null}
                 <section
-                  aria-labelledby="fla-compatibility-heading"
-                  className="fla-review-compatibility fla-stage-f1-notice"
+                  aria-label="兼容性说明"
+                  className="fla-review-compatibility"
                   data-stage-f-severity={warnings.length > 0 ? 'warning' : 'clear'}
                   data-testid="fla-stage-f1-raster-warning"
                 >
-                  <h3 id="fla-compatibility-heading">兼容性概览</h3>
-                  {warnings.length > 0 ? (
-                    <p className="fla-stage-f1-copy">部分内容可能与原 FLA 有差异</p>
-                  ) : null}
-                  <div className="fla-raster-compatibility-summary" data-testid="fla-raster-compatibility-summary">
-                    <strong>{warnings.length > 0 ? `⚠ ${warnings.length} 个兼容性提示` : '无兼容性提示'}</strong>
-                    <span>详细状态按需查看</span>
-                  </div>
                   <details
                     className="fla-review-compatibility-notes"
                     data-testid="fla-compatibility-notes"
                     open={compatibilityNotesOpen}
                   >
                     <summary
+                      className="fla-raster-compatibility-summary"
                       onClick={(event) => {
                         event.preventDefault();
                         rememberReviewScroll();
                         setCompatibilityNotesOpen((current) => !current);
                       }}
                     >
-                      查看兼容性说明（{warnings.length}）
+                      <strong data-testid="fla-raster-compatibility-summary">
+                        {warnings.length > 0 ? `⚠ ${warnings.length} 个兼容性提示` : '无兼容性提示'}
+                      </strong>
+                      <span>查看兼容性说明</span>
                     </summary>
                     <ul data-testid="fla-compatibility-summary">
                       {FLA_COMPATIBILITY_STATUSES.map((status) => (

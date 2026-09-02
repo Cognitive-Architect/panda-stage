@@ -57,7 +57,8 @@ describe('FLA Slice 2 review UX contract', () => {
 
   it('compacts compatibility notes while preserving all statuses and actions', () => {
     expect(component).toContain('data-testid="fla-compatibility-notes"');
-    expect(component).toContain('兼容性说明（{warnings.length}）');
+    expect(component).toContain('className="fla-raster-compatibility-summary"');
+    expect(component).toContain('查看兼容性说明');
     expect(component).toContain('data-testid="fla-compatibility-warnings"');
     expect(component).toContain('FLA_COMPATIBILITY_LABELS[status]');
     expect(component).toContain('data-testid="fla-review-selected-count"');
@@ -94,8 +95,8 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('全选');
     expect(component).toContain('清空');
     expect(component).toContain('确认选择');
-    expect(component).toContain('只读导入预览');
-    expect(component).toContain('在确认导入前，不会修改项目或原文件。');
+    expect(component).toContain('FLA 文件 · 只读预览');
+    expect(component).not.toContain('在确认导入前，不会修改项目或原文件。');
     expect(component).toContain('正在读取所选 FLA');
     expect(component).toContain('正在检查源文件');
     expect(component).toContain('源文件');

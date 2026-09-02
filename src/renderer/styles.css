@@ -2210,17 +2210,6 @@ button:disabled {
   gap: 12px;
 }
 
-.fla-raster-readonly-badge {
-  width: max-content;
-  padding: 4px 8px;
-  border: 1px solid rgb(131 211 154 / 24%);
-  border-radius: 999px;
-  background: rgb(45 104 62 / 18%);
-  color: #a9dcb5;
-  font-size: 10px;
-  font-weight: 800;
-}
-
 .fla-raster-panel-kicker {
   margin: 0 0 3px;
   color: #718279;
@@ -2264,8 +2253,7 @@ button:disabled {
   background: rgb(255 255 255 / 3%);
 }
 
-.fla-raster-structure summary,
-.fla-raster-overview .fla-review-compatibility > h3 {
+.fla-raster-structure summary {
   color: #a8b6ad;
   cursor: pointer;
   font-size: 11px;
@@ -2274,15 +2262,6 @@ button:disabled {
 
 .fla-raster-structure[open] summary {
   margin-bottom: 8px;
-}
-
-.fla-raster-overview .fla-review-compatibility > ul:first-of-type {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.fla-raster-overview .fla-review-compatibility > ul:first-of-type li {
-  padding: 6px;
-  font-size: 10px;
 }
 
 .fla-raster-selection {
@@ -2598,27 +2577,37 @@ button:disabled {
 }
 
 .fla-raster-compatibility-summary {
-  display: grid;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
   padding: 8px 9px;
   border: 1px solid rgb(213 168 92 / 25%);
   border-radius: 8px;
   background: rgb(213 168 92 / 7%);
-  gap: 3px;
+  gap: 8px;
 }
 
 .fla-raster-compatibility-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
   color: #e7c78a;
   font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fla-raster-compatibility-summary span {
+  flex: 0 0 auto;
   color: #9daaa1;
   font-size: 9px;
+  white-space: nowrap;
 }
 
 .fla-raster-overview .fla-review-compatibility-notes {
-  border-color: rgb(255 255 255 / 9%);
-  background: rgb(255 255 255 / 2%);
+  border: 0;
+  background: transparent;
 }
 
 .fla-raster-overview .fla-review-compatibility-notes summary {
@@ -2653,6 +2642,64 @@ button:disabled {
   padding: 0 8px 8px;
   margin: 0;
   gap: 5px;
+}
+
+/* Issue #403 Problem 3: keep the Stage B header hierarchy quiet and put the
+   three-step progress indicator in the visual center of the workbench. */
+.fla-review-session[data-workbench-route='raster'] .fla-review-heading {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.fla-review-session[data-workbench-route='raster'] .fla-review-heading-copy {
+  min-width: 0;
+}
+
+.fla-review-session[data-workbench-route='raster'] .fla-workbench-progress {
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+}
+
+.fla-review-session[data-workbench-route='raster'] .fla-workbench-progress li {
+  white-space: nowrap;
+}
+
+.fla-review-session[data-workbench-route='raster'] .fla-review-heading > button {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.fla-raster-overview .fla-review-compatibility-notes[open] {
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 2%);
+}
+
+.fla-raster-overview .fla-review-compatibility-notes > summary.fla-raster-compatibility-summary {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .fla-review-session[data-workbench-route='raster'] .fla-review-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fla-review-session[data-workbench-route='raster'] .fla-workbench-progress {
+    justify-content: flex-start;
+  }
+
+  .fla-review-session[data-workbench-route='raster'] .fla-review-heading > button {
+    justify-self: start;
+  }
 }
 
 .fla-raster-selection-header {
