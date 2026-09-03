@@ -127,7 +127,8 @@
         "id": "project",
         "sourcePatterns": [
           "src/renderer/features/recovery/**",
-          "src/renderer/features/welcome/**"
+          "src/renderer/features/welcome/**",
+          "public/project-launcher-banner.png"
         ],
         "testPatterns": [
           "tests/unit/recovery-*.test.ts",

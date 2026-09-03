@@ -503,6 +503,7 @@ const issue413Receipt = {
   evidenceDirectory: startupEvidenceDir,
   changedFiles: [
     'public/project-launcher-banner.png',
+    'scripts/verification-manifest.json',
     'src/renderer/features/welcome/RecentProjectsPanel.tsx',
     'src/renderer/shell/NewProjectEntry.tsx',
     'src/renderer/shell/StartScreen.tsx',
