@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type {
   AnimationImportIR,
+  FlaInspectionStarted,
   FlaInspectionResponse,
 } from '../../src/shared/fla-import-api';
 import {
@@ -59,6 +60,7 @@ function failure(message = 'inspection failed'): FlaInspectionResponse {
 function deferredClient(): {
   client: FlaInspectionClient;
   resolve: (requestId: string, response: FlaInspectionResponse) => void;
+  emitStarted: (requestId: string) => void;
   chooseAndInspect: ReturnType<typeof vi.fn>;
   cancel: ReturnType<typeof vi.fn>;
 } {
@@ -66,17 +68,29 @@ function deferredClient(): {
     string,
     (response: FlaInspectionResponse) => void
   >();
+  const startedListeners = new Set<
+    (event: FlaInspectionStarted) => void
+  >();
   const chooseAndInspect = vi.fn(
     (requestId: string) =>
       new Promise<FlaInspectionResponse>((resolve) => {
         resolvers.set(requestId, resolve);
       }),
   );
+  const onInspectionStarted = vi.fn(
+    (callback: (event: FlaInspectionStarted) => void) => {
+      startedListeners.add(callback);
+      return () => startedListeners.delete(callback);
+    },
+  );
   const cancel = vi.fn(async () => ({ accepted: true as const }));
   return {
-    client: { chooseAndInspect, cancel },
+    client: { chooseAndInspect, onInspectionStarted, cancel },
     chooseAndInspect,
     cancel,
+    emitStarted: (requestId) => {
+      for (const listener of startedListeners) listener({ requestId });
+    },
     resolve: (requestId, response) => {
       const resolver = resolvers.get(requestId);
       if (!resolver) throw new Error(`No pending request: ${requestId}`);
@@ -98,6 +112,27 @@ describe('FLA chooser and inspection lifecycle', () => {
       error: { code: 'USER_CANCELLED', message: 'cancelled' },
     })).toBe(true);
     expect(isFlaInspectionUserCancelled(failure())).toBe(false);
+  });
+
+  it('resolves inspectionStarted only for the matching authoritative selection', async () => {
+    const harness = deferredClient();
+    const lifecycle = new FlaInspectionLifecycle(
+      harness.client,
+      () => '00000000-0000-4000-8000-000000000264',
+    );
+    const operation = lifecycle.start();
+    let started = false;
+    void operation.inspectionStarted.then(() => {
+      started = true;
+    });
+
+    harness.emitStarted('00000000-0000-4000-8000-000000000265');
+    await flushPromises();
+    expect(started).toBe(false);
+
+    harness.emitStarted(operation.requestId);
+    await flushPromises();
+    expect(started).toBe(true);
   });
 
   it('keeps a StrictMode-equivalent repeated start single-flight', () => {

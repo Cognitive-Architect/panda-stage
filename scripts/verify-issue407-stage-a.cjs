@@ -23,9 +23,9 @@ const {
 const { join, resolve } = require('node:path');
 const JSZip = require('jszip');
 
-const STARTING_393_HEAD = 'e5b8fec69c445117035c0f028bfe4bcda093aca4';
+const STARTING_393_HEAD = '25bf5805e08ba37189d1001fd4a258cefb7ef3a9';
 const STAGE_A_DOC_HEAD = '0923b03e6a7d6442ab8eebebd593bb3cd7406d2d';
-const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue407-stage-a';
+const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue408-stage-a';
 const INSPECTION_OBSERVATION_HOLD_MS = 1_600;
 const SIMPLE_RECT_CUBICS = '!0 0|100 0|100 100|0 100|0 0';
 
@@ -333,6 +333,15 @@ async function waitForSelector(window, selector, timeoutMs = 30_000) {
   );
 }
 
+async function waitForNativePickerCancellation(timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (nativePicker.cancelled > 0) return;
+    await delay(25);
+  }
+  throw new Error('Timed out waiting for the verifier native picker cancellation.');
+}
+
 async function click(window, selector) {
   await evaluate(window, `(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -475,6 +484,20 @@ async function readStageA(window, sourceBasename) {
   })()`);
 }
 
+async function readChooserOpenSurface(window) {
+  return evaluate(window, `(() => {
+    const library = document.querySelector('[data-testid="asset-browser-view"]');
+    const stageA = document.querySelector('[data-testid="fla-review-session"][data-stage-a-state="inspecting"]');
+    const text = document.body?.textContent?.trim() || '';
+    return {
+      assetLibraryAvailable: Boolean(library),
+      stageAPresent: Boolean(stageA),
+      inspectionCopyVisible: text.includes('\\u6b63\\u5728\\u68c0\\u67e5 FLA'),
+      visibleText: text,
+    };
+  })()`);
+}
+
 async function readReviewHandoff(window, sourceBasename, route) {
   return evaluate(window, `(() => {
     const session = document.querySelector('[data-testid="fla-review-session"]');
@@ -528,7 +551,7 @@ async function closeBlockedReview(window) {
 async function main() {
   const acceptanceRoot = startupAcceptanceRoot;
   const evidenceDir = resolve(startupArgs.evidenceDir || join(acceptanceRoot, 'evidence'));
-  const outPath = resolve(startupArgs.out || join(acceptanceRoot, 'issue407-stage-a-receipt.json'));
+  const outPath = resolve(startupArgs.out || join(acceptanceRoot, 'issue408-stage-a-receipt.json'));
   const rasterSource = join(acceptanceRoot, 'issue407-stage-a-raster.fla');
   const renderSource = join(acceptanceRoot, 'issue407-stage-a-render.fla');
   const latencySource = join(acceptanceRoot, 'issue407-stage-a-latency.fla');
@@ -565,12 +588,18 @@ async function main() {
     // source override, so the production dialog path is exercised.
     delete process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE;
     nativePicker.cancelNext = true;
-    await openFlaReview(mainWindow);
-    const nativeStageA = await readStageA(mainWindow, '');
-    nativeStageA.screenshot = await capture(
+    await openFlaReview(mainWindow, { waitForStageA: false });
+    // The verifier-only chooser delay leaves the production background
+    // observable while the native decision surface is still open.
+    await delay(120);
+    const chooserOpen = await readChooserOpenSurface(mainWindow);
+    chooserOpen.screenshot = await capture(
       mainWindow,
-      join(evidenceDir, 'stage-a-native-picker-cancel.png'),
+      join(evidenceDir, 'stage-a-chooser-open.png'),
     );
+    // The Asset Library is intentionally still present while the chooser is
+    // open, so its selector cannot be used as the cancellation boundary.
+    await waitForNativePickerCancellation(60_000);
     await waitForSelector(mainWindow, '[data-testid="asset-browser-view"]', 60_000);
     const nativePickerResult = await evaluate(mainWindow, `(() => ({
       assetLibraryAvailable: Boolean(document.querySelector('[data-testid="asset-browser-view"]')),
@@ -590,6 +619,9 @@ async function main() {
       mainWindow,
       join(evidenceDir, 'stage-a-active-cancel.png'),
     );
+    // Keep the existing Stage A visual receipt slot populated with the real
+    // active-inspection sample; chooser-open evidence is recorded separately.
+    const nativeStageA = activeStageA;
     const cancelObservationStart = Date.now();
     await click(mainWindow, '[data-testid="fla-review-cancel"]');
     await waitForSelector(mainWindow, '[data-testid="asset-browser-view"]', 60_000);
@@ -670,6 +702,8 @@ async function main() {
       nativePickerCleanDismiss: nativePickerResult.assetLibraryAvailable &&
         nativePickerResult.workbenchClosed && !nativePickerResult.f3Rendered &&
         !nativePickerResult.errorBannerRendered && nativePickerResult.assetImportAvailable,
+      chooserOpenInspectionCopyHidden: chooserOpen.assetLibraryAvailable &&
+        !chooserOpen.stageAPresent && !chooserOpen.inspectionCopyVisible,
       nativeStageAVisual: nativeStageA.present && nativeStageA.state === 'inspecting' &&
         nativeStageA.route === 'inspection' && nativeStageA.headline === '正在检查 FLA' &&
         nativeStageA.trust === '不会修改原文件或当前项目' &&
@@ -705,7 +739,11 @@ async function main() {
     response = {
       ok: Object.values(checks).every(Boolean),
       checks,
-      nativePicker: { result: nativePickerResult, stageA: nativeStageA },
+      nativePicker: {
+        result: nativePickerResult,
+        chooserOpen,
+        stageA: null,
+      },
       activeInspectionCancel: {
         result: activeCancelResult,
         stageA: activeStageA,
@@ -719,7 +757,7 @@ async function main() {
     };
 
     const receipt = {
-      schemaVersion: 'issue407-stage-a-electron-acceptance/1',
+      schemaVersion: 'issue408-chooser-boundary-electron-acceptance/1',
       acceptance: {
         kind: 'automated-real-windows-electron',
         realWindowsElectron: true,
@@ -749,6 +787,15 @@ async function main() {
         cleanDismiss: checks.nativePickerCleanDismiss,
         USER_CANCELLED_NEVER_F3: checks.nativePickerCleanDismiss ? 'PASS' : 'FAIL',
       },
+      chooserOpen: {
+        result: chooserOpen,
+        screenshot: chooserOpen.screenshot,
+        CHOOSER_OPEN_INSPECTION_COPY_HIDDEN: checks.chooserOpenInspectionCopyHidden ? 'PASS' : 'FAIL',
+      },
+      selectionToStageA: {
+        result: activeStageA,
+        pass: checks.nativeStageAVisual,
+      },
       activeInspectionCancel: {
         operationCancellationPath: Boolean(cancelObservation?.request?.requestId),
         cleanDismiss: checks.activeInspectionCleanDismiss,
@@ -763,7 +810,7 @@ async function main() {
       genuineFailure: { result: genuineFailure, pass: checks.genuineFailureRoutesToF3 },
       visual: {
         waitingPlaceholderInterpretation: 'QUIET_EMPTY_PANE',
-        evidence: [nativeStageA.screenshot, activeStageA.screenshot],
+        evidence: [chooserOpen.screenshot, activeStageA.screenshot],
         stageA: nativeStageA,
       },
       mutation: {
@@ -809,7 +856,7 @@ async function main() {
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
     const receipt = {
-      schemaVersion: 'issue407-stage-a-electron-acceptance/1',
+      schemaVersion: 'issue408-chooser-boundary-electron-acceptance/1',
       acceptance: {
         kind: 'automated-real-windows-electron',
         realWindowsElectron: true,

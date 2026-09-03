@@ -1,15 +1,21 @@
 import type {
   FlaCancelResponse,
+  FlaInspectionStarted,
   FlaInspectionResponse,
 } from '../../shared/fla-import-api';
 
 export interface FlaInspectionClient {
   chooseAndInspect: (requestId: string) => Promise<FlaInspectionResponse>;
+  onInspectionStarted: (
+    callback: (event: FlaInspectionStarted) => void,
+  ) => () => void;
   cancel: (sessionId: string) => Promise<FlaCancelResponse>;
 }
 
 export interface FlaInspectionOperation {
   readonly requestId: string;
+  /** Resolves after the native chooser has returned a selected source. */
+  readonly inspectionStarted: Promise<void>;
   readonly response: Promise<FlaInspectionResponse>;
 }
 
@@ -61,11 +67,35 @@ export class FlaInspectionLifecycle {
     const waitForCancellation = this.pendingCancellation;
     let resolveResponse!: (response: FlaInspectionResponse) => void;
     let rejectResponse!: (error: unknown) => void;
+    let resolveInspectionStarted!: () => void;
+    let inspectionStartedSettled = false;
     const response = new Promise<FlaInspectionResponse>((resolve, reject) => {
       resolveResponse = resolve;
       rejectResponse = reject;
     });
-    const operation: FlaInspectionOperation = { requestId, response };
+    const inspectionStarted = new Promise<void>((resolve) => {
+      resolveInspectionStarted = resolve;
+    });
+    let removeInspectionStartedListener: (() => void) | null = null;
+    const cleanupInspectionStartedListener = (): void => {
+      removeInspectionStartedListener?.();
+      removeInspectionStartedListener = null;
+    };
+    const markInspectionStarted = (): void => {
+      if (inspectionStartedSettled) return;
+      inspectionStartedSettled = true;
+      cleanupInspectionStartedListener();
+      resolveInspectionStarted();
+    };
+    const operation: FlaInspectionOperation = {
+      requestId,
+      inspectionStarted,
+      response,
+    };
+    removeInspectionStartedListener = this.client.onInspectionStarted((event) => {
+      if (event.requestId === requestId) markInspectionStarted();
+    });
+    if (inspectionStartedSettled) cleanupInspectionStartedListener();
     const active: ActiveInspection = {
       operation,
       cancelled: false,
@@ -89,13 +119,21 @@ export class FlaInspectionLifecycle {
 
     void response.then(
       (result) => {
+        if (isFlaInspectionUserCancelled(result)) {
+          cleanupInspectionStartedListener();
+          return;
+        }
+        // The event is sent before Main enters preflight.  This response
+        // fallback keeps the operation truthful even if a renderer subscribes
+        // after a very fast inspection has already completed.
+        markInspectionStarted();
         if (!result.ok) return;
         active.sessionId = result.sessionId;
         if (active.cancelled) {
           void this.client.cancel(result.sessionId).catch(() => undefined);
         }
       },
-      () => undefined,
+      () => markInspectionStarted(),
     );
     return operation;
   }

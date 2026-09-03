@@ -71,6 +71,7 @@ import type {
 } from '../shared/native-close-sync';
 import type {
   FlaCancelResponse,
+  FlaInspectionStarted,
   FlaInspectionResponse,
   FlaWorkerError,
   FlaWorkerProgress,
@@ -202,6 +203,9 @@ declare global {
       };
       fla: {
         chooseAndInspect: (requestId?: string) => Promise<FlaInspectionResponse>;
+        onInspectionStarted: (
+          callback: (event: FlaInspectionStarted) => void,
+        ) => () => void;
         cancel: (sessionId: string) => Promise<FlaCancelResponse>;
         commitSelected: (
           request: FlaAssetCommitRequest,

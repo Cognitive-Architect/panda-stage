@@ -8,6 +8,7 @@ import {
   FLA_PARSER_PACKAGE,
   FlaDiagnosticCategorySchema,
   FlaImportErrorCodeSchema,
+  FlaInspectionStartedSchema,
   FlaInspectionResponseSchema,
   FlaRasterSelectionIntentSchema,
 } from '../../src/shared/fla-import-api';
@@ -136,6 +137,17 @@ describe('FLA import contracts and parser boundary', () => {
         ok: false,
         error: { code: 'USER_CANCELLED', message: 'cancelled' },
         sessionId: valid.sessionId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps the chooser-to-inspection signal narrow and request-bound', () => {
+    const requestId = '00000000-0000-4000-8000-000000000251';
+    expect(FlaInspectionStartedSchema.safeParse({ requestId }).success).toBe(true);
+    expect(
+      FlaInspectionStartedSchema.safeParse({
+        requestId,
+        sourcePath: 'D:\\outside\\sample.fla',
       }).success,
     ).toBe(false);
   });

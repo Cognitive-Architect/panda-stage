@@ -40,6 +40,7 @@ import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibility
 import { DecorativeIcon } from '../../ui';
 import {
   FlaInspectionLifecycle,
+  isFlaInspectionUserCancelled,
   type FlaInspectionOperation,
 } from '../../fla-import/fla-inspection-lifecycle';
 
@@ -98,6 +99,7 @@ export function AssetLibrary({
   const [flaInspection, setFlaInspection] =
     useState<FlaInspectionOperation | null>(null);
   const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
+  const flaInspectionOperation = useRef<FlaInspectionOperation | null>(null);
   const detailsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const lastOpenedAssetId = useRef<string | null>(null);
   const pendingFocusReturnAssetId = useRef<string | null>(null);
@@ -106,6 +108,7 @@ export function AssetLibrary({
 
   const closeFlaReview = useCallback((): void => {
     setFlaReviewOpen(false);
+    flaInspectionOperation.current = null;
     setFlaInspection(null);
     void flaInspectionLifecycle.current?.cancel();
     setStatus('FLA review closed; Project and Asset state are unchanged.');
@@ -445,8 +448,28 @@ export function AssetLibrary({
       (flaInspectionLifecycle.current = new FlaInspectionLifecycle(
         window.pandaStage.fla,
       ));
-    setFlaInspection(lifecycle.start());
-    setFlaReviewOpen(true);
+    const operation = lifecycle.start();
+    flaInspectionOperation.current = operation;
+    setFlaInspection(operation);
+    // Keep the Asset Library as the background while the native chooser owns
+    // the interaction. Main resolves this only after a source is selected.
+    setFlaReviewOpen(false);
+    void operation.inspectionStarted.then(() => {
+      if (flaInspectionOperation.current === operation) {
+        setFlaReviewOpen(true);
+      }
+    });
+    void operation.response.then(
+      (nextResponse) => {
+        if (
+          isFlaInspectionUserCancelled(nextResponse) &&
+          flaInspectionOperation.current === operation
+        ) {
+          closeFlaReview();
+        }
+      },
+      () => undefined,
+    );
   };
 
   useEffect(() => {
