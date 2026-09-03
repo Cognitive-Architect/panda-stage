@@ -316,6 +316,17 @@ export const FlaInspectRequestSchema = z
   })
   .strict();
 
+/**
+ * Main emits this narrow, ephemeral signal after the native chooser returns
+ * an authoritative source path and immediately before inspection begins.
+ * It intentionally carries no path, basename, bytes, or parser progress.
+ */
+export const FlaInspectionStartedSchema = z
+  .object({
+    requestId: z.uuid(),
+  })
+  .strict();
+
 export const FlaCancelRequestSchema = z
   .object({
     requestId: z.uuid().optional(),
@@ -405,6 +416,7 @@ export type FlaInspectionTrace = z.infer<typeof FlaInspectionTraceSchema>;
 export type AnimationImportIR = z.infer<typeof AnimationImportIRSchema>;
 export type FlaInspectionResponse = z.infer<typeof FlaInspectionResponseSchema>;
 export type FlaInspectRequest = z.infer<typeof FlaInspectRequestSchema>;
+export type FlaInspectionStarted = z.infer<typeof FlaInspectionStartedSchema>;
 export type FlaCancelRequest = z.infer<typeof FlaCancelRequestSchema>;
 export type FlaCancelResponse = z.infer<typeof FlaCancelResponseSchema>;
 export type FlaCompatibilityStatus = AnimationImportIR['compatibility'][number]['status'];

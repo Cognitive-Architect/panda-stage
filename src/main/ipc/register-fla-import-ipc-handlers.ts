@@ -4,6 +4,7 @@ import {
   FlaCancelResponseSchema,
   FlaInspectRequestSchema,
   FlaInspectionResponseSchema,
+  FlaInspectionStartedSchema,
 } from '../../shared/fla-import-api';
 import {
   FlaAssetCommitResponseSchema,
@@ -97,8 +98,20 @@ export function registerFlaImportIpcHandlers(
         error: { code: 'USER_CANCELLED', message: 'FLA inspection was cancelled' },
       });
     }
+    // Start the Main-owned inspection first, then tell the Renderer that the
+    // chooser boundary has been crossed. The signal stays narrow and
+    // source-free: it only authorizes the existing Stage A presentation to
+    // mount after the user has selected a real source.
+    const inspection = dependencies.flaImportService.inspectSource(
+      sourcePath,
+      request.requestId,
+    );
+    event.sender.send(
+      IPC_CHANNELS.FLA_INSPECTION_STARTED,
+      FlaInspectionStartedSchema.parse({ requestId: request.requestId }),
+    );
     return FlaInspectionResponseSchema.parse(
-      await dependencies.flaImportService.inspectSource(sourcePath, request.requestId),
+      await inspection,
     );
   };
   const cancel = async (event: IpcMainInvokeEvent, rawRequest: unknown) => {

@@ -164,7 +164,7 @@
         "id": "fla-import",
         "sourcePatterns": ["src/renderer/fla-import/**", "fla-parser.html", "fla-static-snapshot.html", "src/renderer/fla-static-snapshot-renderer.ts", "docs/research/fla-corpus-manifest.json", "docs/research/fla-v1.5-c1-recovery-evidence.json", "docs/research/fla-v1.5-c2-safe-recovery-envelope.json", "docs/research/fla-v1.5-c3-compatibility-recovery.json", "docs/research/fla-v1.5-c4-recovered-content-routing.json", "docs/evidence/issue-284-r0/.gitignore", "docs/evidence/issue-284-r0/r0-budget.json", "docs/evidence/issue-284-r0/r0-determinism.json", "docs/evidence/issue-284-r0/r0-extract.json", "docs/evidence/issue-284-r0/r0-render-sword.png", "docs/evidence/issue-284-r0/r0-render-sword.svg", "docs/evidence/issue-294-r2/r2-summary.json"],
         "testPatterns": ["tests/unit/fla-*.test.ts", "tests/unit/fla-static-snapshot-render-session.test.ts", "tests/unit/fla-static-snapshot-commit.test.ts", "tests/unit/fla-static-snapshot-api.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts", "tests/unit/apply-fla-frame-sequence-commit-response.test.ts", "tests/helpers/fla-structural-probe.ts", "tests/helpers/fla-render-fixture.ts", "tests/integration/fla-b0-structural-probe.test.ts", "tests/unit/fla-derive-structure-summary.test.ts", "tests/integration/fla-b1-structural-fields.test.ts", "tests/unit/fla-corpus-probe.test.ts", "tests/integration/fla-corpus-collector.test.ts", "tests/helpers/fla-corpus-probe.cjs", "tests/helpers/fla-corpus-probe.d.ts"],
-        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*"],
+        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*", "scripts/verify-issue396-stage-d*", "scripts/verify-issue399-stage-e*", "scripts/verify-issue402-stage-f*", "scripts/verify-issue403-raster-containment*", "scripts/verify-issue405-stage-g*", "scripts/verify-issue407-stage-a*"],
         "suites": ["assets"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -303,7 +303,7 @@
       }
     ]
   },
-  "count": 51,
+  "count": 57,
   "gates": [
     {
       "id": "assets",
@@ -364,6 +364,78 @@
       "owner": "fla-import",
       "supersedes": null,
       "notes": "Focused built-Electron all-158 stress acceptance for the final FLA V1 candidate; records STRESS_PASS, STRESS_DEFERRED_WITH_REASON, or STRESS_FAILED_WITH_BOUNDED_RESULT separately from the core correctness gate."
+    },
+    {
+      "id": "issue396-stage-d",
+      "script": "verify:issue396-stage-d",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Real Windows Electron UI verifier for the Stage D zero-raster static snapshot workbench: shared R1/R2 mode shell, three-zone read-only presentation, preview-before-import and target/frame stale invalidation, explicit ImageAsset commit, store/disk synchronization, and source hash invariance."
+    },
+    {
+      "id": "issue399-stage-e",
+      "script": "verify:issue399-stage-e",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Real Windows Electron UI verifier for the Stage E bounded frame-sequence workbench: target/range validation, ordered filmstrip review, progress/cancel, stale invalidation, explicit sequence commit, store/disk synchronization, and source hash invariance."
+    },
+    {
+      "id": "issue402-stage-f",
+      "script": "verify:issue402-stage-f",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Real Windows Electron UI verifier for Stage F severity presentation: F1 warning/disclosure and duplicate-warning audit, production F2 reachability probe with fail-closed BLOCKED receipt, synthetic F2 presentation contract, dedicated F3 blocked composition, source immutability, and empty-project mutation checks."
+    },
+    {
+      "id": "issue403-raster-containment",
+      "script": "verify:issue403-raster-containment",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Real Windows Electron regression verifier for Issue #403 Raster/F1 presentation: short, long-Chinese, and long-ASCII source basenames, three-zone containment, deletion-first Stage B hierarchy, centered progress, compact compatibility disclosure, and unchanged pagination/search/filter/selection behavior."
+    },
+    {
+      "id": "issue405-stage-g",
+      "script": "verify:issue405-stage-g",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Real Windows Electron verifier for Stage G importing, terminal receipts, truthful recovery mapping, source immutability, Project/store synchronization, and Raster/Snapshot/Sequence cross-route regression evidence."
+    },
+    {
+      "id": "issue407-stage-a",
+      "script": "verify:issue407-stage-a",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Real Windows Electron verifier for Stage A Quiet Inspection Chamber presentation, native picker and active inspection cancellation, direct raster/zero-raster handoff, genuine F3 failure, source/project immutability, and cancellation-latency observation."
     },
     {
       "id": "fla-v1-5-c3",

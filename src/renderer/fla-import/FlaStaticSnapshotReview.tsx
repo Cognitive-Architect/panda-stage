@@ -1,16 +1,10 @@
 /**
- * V2-R1 Static Snapshot — renderable-content review (R1-C + R1-D + R1-F).
+ * V2-R1 Static Snapshot — Stage D zero-raster render workbench.
  *
- * Shown inside the existing FLA compatibility review when the file has
- * zero directly-importable bitmap media but Panda can still render one
- * frame of its vector content. The user picks one renderable target and
- * one frame, previews it, sees an honest fidelity note, and only then
- * imports that one frame as an ordinary Panda ImageAsset.
- *
- * Hard boundaries (R1-D):
- *  - previewing never mutates the Project, assets, revision, or files;
- *  - switching target/frame invalidates a stale preview;
- *  - the import button is disabled until a valid preview exists.
+ * This is a presentation convergence over the existing R1 catalog, preview,
+ * stale-preview guard, and explicit ImageAsset commit contracts. The review
+ * surface remains read-only until the user explicitly imports the latest
+ * valid preview.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -22,13 +16,29 @@ import type {
 } from '../../shared/fla-static-snapshot-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
+import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
+import {
+  FlaStageGImporting,
+  FlaStageGRecovery,
+  FlaStageGSnapshotSuccess,
+  type FlaStageGTerminalState,
+} from './FlaStageGTerminal';
+
+interface FlaStaticSnapshotStageFacts {
+  width: number;
+  height: number;
+  frameRate: number;
+}
 
 interface FlaStaticSnapshotReviewProps {
   sessionId: string;
   source: { basename: string; sha256: string };
+  stage?: FlaStaticSnapshotStageFacts;
   snapshot: EditorProjectSnapshot | null;
   onImported: (response: FlaStaticSnapshotCommitResponse) => void;
   onClose: () => void;
+  onCommitStateChange?: (busy: boolean) => void;
+  onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
 }
 
 type SnapshotPhase =
@@ -41,22 +51,31 @@ type SnapshotPhase =
   | 'error';
 
 const COMPATIBILITY_NOTE: Record<string, string> = {
+  exact: '当前目标可按 Panda 的安全渲染范围预览。',
   degraded: '当前可预览，但时间轴动画、渐变方向、描边等细节可能不完整。',
-  unsupported: '该内容暂不在当前单帧渲染范围内。',
-  unknown: '该内容的兼容性暂未完全确认。',
+  unsupported: '该目标暂不在当前单帧渲染范围内。',
+  unknown: '该目标的兼容性暂未完全确认。',
+  'not-present': '源文件中未发现该类兼容性信息。',
 };
 
 export function FlaStaticSnapshotReview({
   sessionId,
   source,
+  stage,
   snapshot,
   onImported,
   onClose,
+  onCommitStateChange,
+  onTerminalStateChange,
 }: FlaStaticSnapshotReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<SnapshotPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
-  const [summary, setSummary] = useState('');
+  const [targetSearch, setTargetSearch] = useState('');
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  // F2 detail focus is intentionally separate from the R1 render authority.
+  // Focusing an unavailable entry must not invalidate or replace the last
+  // valid supported preview.
+  const [focusedTargetId, setFocusedTargetId] = useState<string | null>(null);
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
   const [preview, setPreview] = useState<FlaStaticSnapshotPreviewResponse | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -68,8 +87,42 @@ export function FlaStaticSnapshotReview({
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
     [entries, selectedTargetId],
   );
+  const focusedEntry = useMemo(
+    () => entries.find((entry) => entry.target.renderTargetId === focusedTargetId) ?? selectedEntry,
+    [entries, focusedTargetId, selectedEntry],
+  );
+  const visibleEntries = useMemo(() => {
+    const query = targetSearch.trim().toLocaleLowerCase();
+    if (!query) return entries;
+    return entries.filter((entry) => entry.target.userLabel.toLocaleLowerCase().includes(query));
+  }, [entries, targetSearch]);
+  const selecting = selectedEntry?.target ?? null;
+  const frameCount = selecting?.frameCount ?? 0;
+  const supported = selectedEntry?.previewSupported === true;
+  const previewIsCurrent = Boolean(
+    preview?.ok === true &&
+    selecting &&
+    preview.targetRenderTargetId === selecting.renderTargetId &&
+    preview.targetSelectedFrameIndex === selectedFrameIndex,
+  );
+  const previewState = phase === 'previewing'
+    ? 'rendering'
+    : phase === 'error'
+      ? 'error'
+      : previewIsCurrent
+        ? 'valid'
+        : 'needs-preview';
 
-  // Load the catalog once.
+  useEffect(() => {
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
+    return () => {
+      onCommitStateChange?.(false);
+      onTerminalStateChange?.('active');
+    };
+  }, [onCommitStateChange, onTerminalStateChange]);
+
+  // Load the Main-owned catalog once for this inspection session.
   useEffect(() => {
     let disposed = false;
     void (async () => {
@@ -82,12 +135,10 @@ export function FlaStaticSnapshotReview({
           return;
         }
         setEntries(response.entries);
-        setSummary(response.summary);
-        const firstSupported = response.entries.find((entry) => entry.previewSupported);
-        if (firstSupported) {
-          setSelectedTargetId(firstSupported.target.renderTargetId);
-          setSelectedFrameIndex(0);
-        }
+        const firstEntry = response.entries.find((entry) => entry.previewSupported) ?? response.entries[0];
+        setSelectedTargetId(firstEntry?.target.renderTargetId ?? null);
+        setFocusedTargetId(firstEntry?.target.renderTargetId ?? null);
+        setSelectedFrameIndex(0);
         setPhase('selecting');
       } catch (error) {
         if (disposed) return;
@@ -100,29 +151,27 @@ export function FlaStaticSnapshotReview({
     };
   }, [sessionId]);
 
-  // Revoke preview object URL on change/unmount.
+  // Revoke transient preview resources whenever the active URL changes.
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
 
-  // A target/frame change invalidates any prior preview. The UI must
-  // return to a usable selecting state even while a preview is in flight
-  // (Corrective A), and the previous selection must be invalidated in Main
-  // so it can never be committed (Corrective B).
-  const selecting = selectedEntry?.target;
+  // Any authoritative target/frame change invalidates both renderer state and
+  // Main's commit candidate. This prevents a stale image from being imported
+  // after the user changes the render intent.
   useEffect(() => {
     setPreview(null);
-    setPreviewUrl((current) => {
-      if (current) URL.revokeObjectURL(current);
-      return null;
-    });
+    setPreviewUrl(null);
+    setCommitResponse(null);
+    setErrorMessage('');
     previewRequestIdRef.current = null;
-    // Corrective A: never get stuck in `previewing` on a supersede.
-    setPhase((current) => (current === 'previewing' ? 'selecting' : current === 'committing' ? 'selecting' : current));
-    // Corrective B: tell Main to invalidate the prior preview(s) for this
-    // session so a late/settled result can no longer be committed.
+    setPhase((current) => {
+      if (current === 'loading') return current;
+      if (current === 'committed') return current;
+      return 'selecting';
+    });
     void flaStaticSnapshotClient.cancel({
       format: 'fla-static-snapshot-cancel',
       version: 1,
@@ -130,32 +179,76 @@ export function FlaStaticSnapshotReview({
     });
   }, [selectedTargetId, selectedFrameIndex, sessionId]);
 
-  if (!selectedEntry || !selecting) {
+  // Mode switches unmount this panel. Invalidate any Main-side preview that
+  // would otherwise remain eligible while the sibling R2 panel is visible.
+  useEffect(() => {
+    return () => {
+      previewRequestIdRef.current = null;
+      void flaStaticSnapshotClient.cancel({
+        format: 'fla-static-snapshot-cancel',
+        version: 1,
+        sessionId,
+      });
+    };
+  }, [sessionId]);
+
+  if (entries.length === 0 && phase !== 'loading' && phase !== 'error') {
     return (
-      <div className="fla-snapshot-review" data-testid="fla-snapshot-review" role="note">
+      <div
+        className="fla-snapshot-review fla-render-workbench-panel"
+        data-fla-session-id={sessionId}
+        data-testid="fla-snapshot-review"
+        data-workbench-panel="snapshot"
+        role="note"
+      >
+        <p data-testid="fla-snapshot-empty">这个 FLA 没有可渲染的矢量内容。</p>
+      </div>
+    );
+  }
+
+  if (phase === 'loading' || phase === 'error' || !selectedEntry || !selecting) {
+    return (
+      <div
+        className="fla-snapshot-review fla-render-workbench-panel"
+        data-preview-state={phase === 'error' ? 'error' : 'needs-preview'}
+        data-fla-session-id={sessionId}
+        data-testid="fla-snapshot-review"
+        data-workbench-panel="snapshot"
+        role="note"
+      >
         {phase === 'loading' ? (
           <p data-testid="fla-snapshot-loading">正在分析可渲染的图形…</p>
-        ) : phase === 'error' ? (
-          <p role="alert" data-testid="fla-snapshot-error">{errorMessage}</p>
         ) : (
-          <p data-testid="fla-snapshot-empty">这个 FLA 没有可渲染的矢量内容。</p>
+          <p role="alert" data-testid="fla-snapshot-error">{errorMessage || '无法获取可渲染内容。'}</p>
         )}
       </div>
     );
   }
 
-  const supported = selectedEntry.previewSupported;
-  const frameCount = selecting.frameCount;
-
   const previewNow = async (): Promise<void> => {
     if (!supported || !snapshot) return;
+
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
+
+    // Re-previewing the same target/frame must also invalidate the previous
+    // accepted preview before a new request becomes the sole candidate.
+    await flaStaticSnapshotClient.cancel({
+      format: 'fla-static-snapshot-cancel',
+      version: 1,
+      sessionId,
+    });
+    setPreview(null);
+    setPreviewUrl(null);
+    setCommitResponse(null);
     setPhase('previewing');
     setErrorMessage('');
+
     const requestId = crypto.randomUUID();
     previewRequestIdRef.current = requestId;
     const target: FlaRenderTarget = {
       ...selecting,
-      selectedFrameIndex: frameCount > 0 ? selectedFrameIndex : undefined,
+      selectedFrameIndex,
     };
     try {
       const response = await flaStaticSnapshotClient.preview({
@@ -165,16 +258,13 @@ export function FlaStaticSnapshotReview({
         sessionId,
         target,
       });
-      if (previewRequestIdRef.current !== requestId) return; // superseded
+      if (previewRequestIdRef.current !== requestId) return;
       setPreview(response);
       if (response.ok && response.bytes) {
         const url = URL.createObjectURL(
           new Blob([response.bytes.buffer as ArrayBuffer], { type: 'image/png' }),
         );
-        setPreviewUrl((current) => {
-          if (current) URL.revokeObjectURL(current);
-          return url;
-        });
+        setPreviewUrl(url);
         setPhase('preview-ready');
       } else {
         setErrorMessage(response.ok ? '预览生成失败。' : response.error.message);
@@ -188,12 +278,14 @@ export function FlaStaticSnapshotReview({
   };
 
   const importFrame = async (): Promise<void> => {
-    if (!preview || !preview.ok || !snapshot || phase !== 'preview-ready') return;
+    if (!previewIsCurrent || !preview || !preview.ok || !snapshot || phase !== 'preview-ready') return;
+    onCommitStateChange?.(true);
+    onTerminalStateChange?.('importing');
     setPhase('committing');
     setErrorMessage('');
     const target: FlaRenderTarget = {
       ...selecting,
-      selectedFrameIndex: frameCount > 0 ? selectedFrameIndex : undefined,
+      selectedFrameIndex,
     };
     try {
       const response = await flaStaticSnapshotClient.commit({
@@ -215,14 +307,34 @@ export function FlaStaticSnapshotReview({
         confirmed: true,
       });
       setCommitResponse(response);
-      if (response.ok && response.status === 'completed') {
+      if (response.ok) {
+        onCommitStateChange?.(false);
+        onTerminalStateChange?.('success');
         setPhase('committed');
         onImported(response);
       } else {
+        if (!isSnapshotCommitRetryable(response.error.code)) {
+          previewRequestIdRef.current = null;
+          setPreview(null);
+          setPreviewUrl(null);
+        }
+        onCommitStateChange?.(false);
+        onTerminalStateChange?.('recovery');
         setErrorMessage(response.ok ? '导入失败。' : response.error.message);
         setPhase('preview-ready');
       }
     } catch (error) {
+      const failure: FlaStaticSnapshotCommitResponse = {
+        ok: false,
+        error: {
+          code: 'ASSET_COMMIT_FAILED',
+          message: error instanceof Error ? error.message : '导入失败。',
+          projectRoot: snapshot.projectRoot,
+        },
+      };
+      setCommitResponse(failure);
+      onCommitStateChange?.(false);
+      onTerminalStateChange?.('recovery');
       setErrorMessage(error instanceof Error ? error.message : '导入失败。');
       setPhase('preview-ready');
     }
@@ -230,132 +342,357 @@ export function FlaStaticSnapshotReview({
 
   const close = (): void => {
     if (phase === 'committing') return;
-    if (previewRequestIdRef.current) {
-      void flaStaticSnapshotClient.cancel({ format: 'fla-static-snapshot-cancel', version: 1, requestId: previewRequestIdRef.current, sessionId });
-    }
+    onCommitStateChange?.(false);
+    onTerminalStateChange?.('active');
+    previewRequestIdRef.current = null;
+    void flaStaticSnapshotClient.cancel({
+      format: 'fla-static-snapshot-cancel',
+      version: 1,
+      sessionId,
+    });
     onClose();
   };
 
-  const compatibilityNote = selecting.compatibility
-    .map((status) => COMPATIBILITY_NOTE[status])
-    .filter(Boolean)
-    .join(' ');
+  const previewStatus = snapshotPreviewStatus(phase, previewIsCurrent);
+  const canPreview = supported && Boolean(snapshot) && phase !== 'previewing' && phase !== 'committing' && phase !== 'committed';
+  const canImport = previewIsCurrent && phase === 'preview-ready';
+  const renderPhase: SnapshotPhase = phase;
+
+  if (phase === 'committing') {
+    return (
+      <div className="fla-snapshot-review fla-render-workbench-panel fla-stage-g-panel" data-fla-session-id={sessionId} data-stage-g-state="importing" data-testid="fla-snapshot-review">
+        <FlaStageGImporting
+          context={`${selecting.userLabel} · 第 ${selectedFrameIndex + 1} 帧`}
+          headline="正在导入当前帧…"
+          route="snapshot"
+        />
+      </div>
+    );
+  }
+
+  if (commitResponse && !commitResponse.ok) {
+    const candidateStillCurrent = isSnapshotCommitRetryable(commitResponse.error.code);
+    return (
+      <div className="fla-snapshot-review fla-render-workbench-panel fla-stage-g-panel" data-fla-session-id={sessionId} data-stage-g-state="recovery" data-testid="fla-snapshot-review">
+        <FlaStageGRecovery
+          candidateStillCurrent={candidateStillCurrent}
+          code={commitResponse.error.code}
+          message={commitResponse.error.message}
+          onClose={close}
+          onPrimary={() => {
+            if (commitResponse.error.code === 'STALE_PREVIEW') {
+              void previewNow();
+            } else if (candidateStillCurrent) {
+              void importFrame();
+            }
+          }}
+          residualPaths={commitResponse.error.residualPaths}
+          route="snapshot"
+        />
+      </div>
+    );
+  }
+
+  if (phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed') {
+    return (
+      <div className="fla-snapshot-review fla-render-workbench-panel fla-stage-g-panel" data-fla-session-id={sessionId} data-stage-g-state="success" data-testid="fla-snapshot-review">
+        <FlaStageGSnapshotSuccess onReturn={close} response={commitResponse} />
+      </div>
+    );
+  }
 
   return (
-    <div className="fla-snapshot-review" data-testid="fla-snapshot-review">
-      <p className="fla-snapshot-intro" data-testid="fla-snapshot-summary">
-        {summary}
-      </p>
+    <div
+      className="fla-snapshot-review fla-render-workbench-panel"
+      data-preview-state={previewState}
+      data-fla-session-id={sessionId}
+      data-testid="fla-snapshot-review"
+      data-workbench-panel="snapshot"
+    >
+      <div className="fla-snapshot-workbench" data-testid="fla-snapshot-workbench">
+        <aside className="fla-snapshot-source-region" data-testid="fla-snapshot-source-region">
+          {stage ? (
+            <p className="fla-snapshot-stage-fact" data-testid="fla-snapshot-source-facts">
+              {stage.width} × {stage.height} · {stage.frameRate} fps
+            </p>
+          ) : null}
 
-      <ul className="fla-snapshot-targets" data-testid="fla-snapshot-targets">
-        {entries.map((entry) => (
-          <li key={entry.target.renderTargetId}>
-            <label>
+          <section className="fla-snapshot-target-region" aria-labelledby="fla-snapshot-target-heading">
+            <header>
+              <div>
+                <p className="fla-render-panel-kicker">目标</p>
+                <h3 id="fla-snapshot-target-heading">可渲染目标</h3>
+              </div>
+              <span data-testid="fla-snapshot-target-count">
+                {targetSearch.trim() ? `${visibleEntries.length} / ${entries.length}` : `${entries.length} 个`}
+              </span>
+            </header>
+            <label className="fla-snapshot-target-search">
+              <span>搜索目标</span>
               <input
-                type="radio"
-                name="fla-snapshot-target"
-                checked={entry.target.renderTargetId === selectedTargetId}
-                disabled={!entry.previewSupported || phase === 'committing' || phase === 'committed'}
-                onChange={() => setSelectedTargetId(entry.target.renderTargetId)}
-                data-testid={`fla-snapshot-target-${entry.target.renderTargetId}`}
+                aria-label="搜索目标名称"
+                data-testid="fla-snapshot-target-search"
+                onChange={(event) => setTargetSearch(event.currentTarget.value)}
+                placeholder="按名称搜索"
+                type="search"
+                value={targetSearch}
               />
-              <span>{entry.target.userLabel}</span>
-              {!entry.previewSupported ? (
-                <span className="fla-snapshot-unsupported">（暂不可预览：{entry.unsupportedReason}）</span>
-              ) : null}
             </label>
-          </li>
-        ))}
-      </ul>
+            <ul className="fla-snapshot-targets" data-testid="fla-snapshot-targets">
+              {visibleEntries.map((entry) => {
+                const target = entry.target;
+                const compatibility = target.compatibility
+                  .map((status) => COMPATIBILITY_NOTE[status])
+                  .filter(Boolean)
+                  .join(' ');
+                const showException = !entry.previewSupported;
+                return (
+                  <li
+                    className={target.renderTargetId === selectedTargetId ? 'is-selected' : undefined}
+                    data-focused={target.renderTargetId === focusedTargetId ? 'true' : 'false'}
+                    data-preview-supported={entry.previewSupported ? 'true' : 'false'}
+                    key={target.renderTargetId}
+                  >
+                    <label aria-label={`${target.userLabel}，${target.frameCount} 帧`} title={target.userLabel}>
+                      <input
+                        type="radio"
+                        name="fla-snapshot-target"
+                        checked={target.renderTargetId === selectedTargetId}
+                        disabled={!entry.previewSupported || renderPhase === 'committing' || renderPhase === 'committed'}
+                        onChange={() => {
+                          setSelectedTargetId(target.renderTargetId);
+                          setFocusedTargetId(target.renderTargetId);
+                          setSelectedFrameIndex(0);
+                        }}
+                        data-testid={`fla-snapshot-target-${target.renderTargetId}`}
+                      />
+                      <span className="fla-snapshot-target-copy">
+                        <strong title={target.userLabel}>{target.userLabel}</strong>
+                        <small>{target.frameCount} 帧</small>
+                        {showException ? (
+                          <small
+                            className={entry.previewSupported ? 'fla-snapshot-target-fidelity' : 'fla-snapshot-unsupported'}
+                            title={entry.previewSupported ? compatibility : boundedUnsupportedReason(entry.unsupportedReason)}
+                          >
+                            {entry.previewSupported ? '需注意' : '暂不可预览'}
+                          </small>
+                        ) : null}
+                      </span>
+                    </label>
+                    {!entry.previewSupported ? (
+                      <button
+                        aria-pressed={target.renderTargetId === focusedTargetId}
+                        className="fla-stage-f2-focus"
+                        data-testid={`fla-snapshot-f2-focus-${target.renderTargetId}`}
+                        disabled={renderPhase === 'committing' || renderPhase === 'committed'}
+                        onClick={() => setFocusedTargetId(target.renderTargetId)}
+                        type="button"
+                      >
+                        查看说明
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
+              {visibleEntries.length === 0 ? (
+                <li className="fla-snapshot-targets-empty">没有匹配的目标，请清除搜索。</li>
+              ) : null}
+            </ul>
+          </section>
+        </aside>
 
-      {supported && frameCount > 1 ? (
-        <div className="fla-snapshot-frame" data-testid="fla-snapshot-frame">
-          <span>帧</span>
-          <button
-            type="button"
-            disabled={selectedFrameIndex <= 0 || phase === 'committing'}
-            onClick={() => setSelectedFrameIndex((i) => Math.max(0, i - 1))}
-            data-testid="fla-snapshot-frame-prev"
+        <section className="fla-snapshot-preview-region" data-testid="fla-snapshot-preview-region">
+          <header className="fla-snapshot-region-heading">
+            <h3>预览当前帧</h3>
+            <output
+              aria-live="polite"
+              data-preview-state={previewState}
+              data-testid="fla-snapshot-preview-status"
+            >
+              {previewStatus}
+            </output>
+          </header>
+
+          <div
+            className="fla-snapshot-preview-stage"
+            data-preview-state={previewState}
+            data-testid="fla-snapshot-preview-area"
           >
-            上一帧
-          </button>
-          <input
-            type="number"
-            min={0}
-            max={frameCount - 1}
-            value={selectedFrameIndex}
-            disabled={phase === 'committing'}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              if (Number.isFinite(value)) {
-                setSelectedFrameIndex(Math.min(frameCount - 1, Math.max(0, value)));
-              }
-            }}
-            data-testid="fla-snapshot-frame-input"
-          />
-          <span>/ {frameCount - 1}</span>
-          <button
-            type="button"
-            disabled={selectedFrameIndex >= frameCount - 1 || phase === 'committing'}
-            onClick={() => setSelectedFrameIndex((i) => Math.min(frameCount - 1, i + 1))}
-            data-testid="fla-snapshot-frame-next"
-          >
-            下一帧
-          </button>
-        </div>
-      ) : null}
+            {previewUrl && previewIsCurrent ? (
+              <img
+                alt={`${selecting.userLabel} 第 ${selectedFrameIndex + 1} 帧预览`}
+                data-testid="fla-snapshot-preview-image"
+                src={previewUrl}
+              />
+            ) : (
+              <div className="fla-snapshot-preview-placeholder" data-testid="fla-snapshot-preview-placeholder">
+                <strong>{previewState === 'rendering' ? '正在生成预览…' : previewState === 'error' ? '预览失败' : '需要重新预览'}</strong>
+                <span>{previewState === 'needs-preview' ? '确认目标与帧后，点击下方“预览当前帧”。' : '当前帧尚未产生可导入的有效预览。'}</span>
+              </div>
+            )}
+          </div>
 
-      <button
-        type="button"
-        disabled={!supported || phase === 'previewing' || phase === 'committing' || phase === 'committed'}
-        onClick={() => void previewNow()}
-        data-testid="fla-snapshot-preview"
-      >
-        {phase === 'previewing' ? '正在预览…' : '预览当前帧'}
-      </button>
+          {supported ? (
+            <div className="fla-snapshot-frame" data-testid="fla-snapshot-frame-controls">
+              <div className="fla-snapshot-frame-controls">
+                <button
+                  type="button"
+                  disabled={selectedFrameIndex <= 0 || renderPhase === 'committing' || renderPhase === 'committed'}
+                  onClick={() => setSelectedFrameIndex((index) => Math.max(0, index - 1))}
+                  data-testid="fla-snapshot-frame-prev"
+                >
+                  上一帧
+                </button>
+                <label>
+                  <span className="sr-only">当前帧编号</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={frameCount - 1}
+                    value={selectedFrameIndex}
+                    disabled={renderPhase === 'committing' || renderPhase === 'committed'}
+                    onChange={(event) => {
+                      const value = Number(event.target.value);
+                      if (Number.isFinite(value)) {
+                        setSelectedFrameIndex(Math.min(frameCount - 1, Math.max(0, Math.trunc(value))));
+                      }
+                    }}
+                    data-testid="fla-snapshot-frame-input"
+                  />
+                </label>
+                <span>/ {Math.max(0, frameCount - 1)}</span>
+                <button
+                  type="button"
+                  disabled={selectedFrameIndex >= frameCount - 1 || renderPhase === 'committing' || renderPhase === 'committed'}
+                  onClick={() => setSelectedFrameIndex((index) => Math.min(frameCount - 1, index + 1))}
+                  data-testid="fla-snapshot-frame-next"
+                >
+                  下一帧
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </section>
 
-      {previewUrl ? (
-        <div className="fla-snapshot-preview-area" data-testid="fla-snapshot-preview-area">
-          <img
-            src={previewUrl}
-            alt="FLA 单帧预览"
-            data-testid="fla-snapshot-preview-image"
-            style={{ backgroundImage: 'linear-gradient(45deg,#ccc 25%,transparent 25%)', maxWidth: '100%' }}
-          />
-        </div>
-      ) : null}
-
-      {compatibilityNote ? (
-        <p className="fla-snapshot-fidelity" role="note" data-testid="fla-snapshot-fidelity">
-          {compatibilityNote}
-        </p>
-      ) : null}
-
-      {phase === 'preview-ready' ? (
-        <button
-          type="button"
-          className="fla-snapshot-import"
-          disabled={phase !== 'preview-ready'}
-          onClick={() => void importFrame()}
-          data-testid="fla-snapshot-import"
+        <aside
+          className="fla-snapshot-details-region"
+          data-focused-target-id={focusedEntry?.target.renderTargetId}
+          data-testid="fla-snapshot-details-region"
         >
-          导入当前帧
-        </button>
-      ) : null}
+          {focusedEntry && !focusedEntry.previewSupported ? (
+            <FlaStageF2UnavailableDetails entry={focusedEntry} />
+          ) : null}
+          {focusedEntry?.previewSupported !== false ? (
+            <>
+          <h3>{selecting.userLabel}</h3>
+          <dl className="fla-snapshot-details" data-testid="fla-snapshot-details">
+            <div><dt>素材</dt><dd>{renderTargetKindLabel(selecting.kind)} · {frameCount} 帧</dd></div>
+            <div><dt>输出</dt><dd>PNG · ImageAsset</dd></div>
+          </dl>
+           <details className="fla-snapshot-compatibility" data-testid="fla-snapshot-compatibility-details">
+            <summary>更多详情</summary>
+            <ul>
+              {selecting.compatibility.map((status) => (
+                <li data-status={status} key={status}>{COMPATIBILITY_NOTE[status]}</li>
+              ))}
+            </ul>
+            <dl className="fla-snapshot-detail-more">
+              <div><dt>目标标识</dt><dd title={selecting.renderTargetId}>{selecting.renderTargetId}</dd></div>
+              {selecting.sourceLibraryItemName ? (
+                <div><dt>源元件</dt><dd title={selecting.sourceLibraryItemName}>{selecting.sourceLibraryItemName}</dd></div>
+              ) : null}
+              {selecting.sourceTimelineIndex !== undefined ? (
+                <div><dt>源时间线</dt><dd>{selecting.sourceTimelineIndex}</dd></div>
+              ) : null}
+            </dl>
+            {!supported ? <p className="fla-snapshot-unsupported">{boundedUnsupportedReason(selectedEntry.unsupportedReason)}</p> : null}
+          </details>
+            </>
+          ) : null}
+        </aside>
+      </div>
 
-      {errorMessage ? (
-        <p role="alert" data-testid="fla-snapshot-error">{errorMessage}</p>
-      ) : null}
-
-      {phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed' ? (
-        <p data-testid="fla-snapshot-committed">
-          已导入为普通图片素材：{commitResponse.result.targetFileName}
-        </p>
-      ) : null}
-
-      <button type="button" disabled={phase === 'committing'} onClick={() => void close()} data-testid="fla-snapshot-close">
-        返回
-      </button>
+      <div className="fla-snapshot-action-bar" data-testid="fla-snapshot-action-bar">
+        <div className="fla-snapshot-action-status">
+          <strong data-testid="fla-snapshot-action-state" title={selecting.userLabel}>
+            {selecting.userLabel} · 第 {selectedFrameIndex + 1} 帧 · {snapshotFooterState(phase, supported, previewIsCurrent)}
+          </strong>
+          {errorMessage ? <span role="alert" data-testid="fla-snapshot-error">{errorMessage}</span> : null}
+          {phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed' ? (
+            <span data-testid="fla-snapshot-committed">已导入：{commitResponse.result.targetFileName}</span>
+          ) : null}
+        </div>
+        <div className="fla-snapshot-action-buttons">
+          <button
+            className={canImport ? 'fla-snapshot-secondary-action' : 'fla-render-primary-action'}
+            type="button"
+            disabled={!canPreview}
+            onClick={() => void previewNow()}
+            data-testid="fla-snapshot-preview"
+          >
+            {phase === 'previewing' ? '正在预览…' : previewIsCurrent ? '重新预览' : '预览当前帧'}
+          </button>
+          {canImport ? (
+            <button
+              className="fla-render-primary-action"
+              type="button"
+              disabled={!canImport}
+              onClick={() => void importFrame()}
+              data-testid="fla-snapshot-import"
+            >
+              导入当前帧
+            </button>
+          ) : null}
+          <button
+            className="fla-snapshot-close-action"
+            type="button"
+            disabled={renderPhase === 'committing'}
+            onClick={() => void close()}
+            data-testid="fla-snapshot-close"
+          >
+            返回
+          </button>
+        </div>
+      </div>
     </div>
   );
+}
+
+function isSnapshotCommitRetryable(code: string): boolean {
+  return code === 'ASSET_COMMIT_FAILED' || code === 'COMMIT_BUSY';
+}
+
+function renderTargetKindLabel(kind: FlaRenderTarget['kind']): string {
+  switch (kind) {
+    case 'scene':
+      return '场景';
+    case 'timeline':
+      return '时间线';
+    case 'graphic-symbol':
+      return '图形元件';
+    default:
+      return '未知目标';
+  }
+}
+
+function snapshotPreviewStatus(phase: SnapshotPhase, previewIsCurrent: boolean): string {
+  if (phase === 'loading') return '正在读取目标';
+  if (phase === 'previewing') return '正在生成';
+  if (phase === 'committing') return '正在导入';
+  if (phase === 'committed') return '已导入';
+  if (phase === 'error') return '需要重试';
+  return previewIsCurrent ? '有效预览' : '需要重新预览';
+}
+
+function snapshotFooterState(
+  phase: SnapshotPhase,
+  supported: boolean,
+  previewIsCurrent: boolean,
+): string {
+  if (!supported) return '不可预览';
+  if (phase === 'previewing') return '生成中';
+  if (phase === 'committing') return '导入中';
+  if (phase === 'committed') return '已导入';
+  if (previewIsCurrent) return '可导入';
+  return '需预览';
 }

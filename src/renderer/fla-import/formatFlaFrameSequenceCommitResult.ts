@@ -13,15 +13,21 @@ export function formatFlaFrameSequenceCommitResult(
     return response.error.message;
   }
 
-  const { importedCount, duplicateCount } = response.result.summary;
-  if (importedCount === 0 && duplicateCount === 0) {
-    return '提交成功，未新增或复用任何帧素材。';
-  }
-  if (importedCount === 0) {
-    return `新增 0 帧，复用已有素材 ${duplicateCount} 帧。`;
-  }
-  if (duplicateCount === 0) {
-    return `已新增 ${importedCount} 帧素材。`;
-  }
-  return `已新增 ${importedCount} 帧素材，复用已有素材 ${duplicateCount} 帧。`;
+  const {
+    requestedFrameCount,
+    importedCount,
+    duplicateCount,
+    renamedCount,
+  } = response.result.summary;
+  const facts: string[] = [];
+  if (importedCount > 0) facts.push(`新增 ${importedCount} 帧`);
+  if (duplicateCount > 0) facts.push(`复用已有素材 ${duplicateCount} 帧`);
+  if (renamedCount > 0) facts.push(`重命名 ${renamedCount} 帧`);
+  const headline = importedCount > 0
+    ? '帧序列导入完成'
+    : duplicateCount > 0
+      ? '帧序列已处理'
+      : '帧序列已完成';
+  const details = facts.length > 0 ? `${facts.join('，')}；` : '';
+  return `${headline}：${details}共处理 ${requestedFrameCount} 帧。`;
 }

@@ -41,6 +41,25 @@ export interface RangeValidation {
   message: string | null;
 }
 
+export interface DefaultSequenceRange {
+  startFrameIndex: number;
+  endFrameIndex: number;
+}
+
+/**
+ * Select the initial inclusive range for a target. This is used only when a
+ * target is first selected or changed; it never rewrites an explicit user
+ * edit. Keeping the default bounded makes targets larger than the sequence
+ * cap immediately renderable without changing the cap or validation rules.
+ */
+export function getDefaultSequenceRange(frameCount: number): DefaultSequenceRange {
+  const lastAvailableFrame = Math.max(0, Math.trunc(frameCount) - 1);
+  return {
+    startFrameIndex: 0,
+    endFrameIndex: Math.min(lastAvailableFrame, MAX_SEQUENCE_FRAMES - 1),
+  };
+}
+
 /**
  * Validate a candidate inclusive range against the selected target's
  * frameCount and the hard MAX_SEQUENCE_FRAMES cap. Returns a

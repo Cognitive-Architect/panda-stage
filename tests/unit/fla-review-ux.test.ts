@@ -5,6 +5,10 @@ const component = readFileSync(
   'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
   'utf8',
 );
+const stageA = readFileSync(
+  'src/renderer/fla-import/FlaStageAInspecting.tsx',
+  'utf8',
+);
 const styles = readFileSync('src/renderer/styles.css', 'utf8');
 const issue255Styles = styles.slice(styles.indexOf('/* Issue #255:'));
 const reviewModel = readFileSync('src/renderer/fla-import/fla-review.ts', 'utf8');
@@ -41,8 +45,8 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('data-testid="fla-review-header"');
     expect(component).toContain('data-testid="fla-review-selection-toolbar"');
     expect(component).toContain('data-testid="fla-review-body"');
-    expect(component.indexOf('data-testid="fla-review-selection-toolbar"')).toBeLessThan(
-      component.indexOf('data-testid="fla-review-body"'),
+    expect(component.indexOf('data-testid="fla-review-body"')).toBeLessThan(
+      component.indexOf('data-testid="fla-review-selection-toolbar"'),
     );
     expect(issue255Styles).toMatch(
       /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?grid-template-rows:\s*auto auto auto minmax\(0, 1fr\);/u,
@@ -57,7 +61,8 @@ describe('FLA Slice 2 review UX contract', () => {
 
   it('compacts compatibility notes while preserving all statuses and actions', () => {
     expect(component).toContain('data-testid="fla-compatibility-notes"');
-    expect(component).toContain('兼容性说明（{warnings.length}）');
+    expect(component).toContain('className="fla-raster-compatibility-summary"');
+    expect(component).toContain('查看兼容性说明');
     expect(component).toContain('data-testid="fla-compatibility-warnings"');
     expect(component).toContain('FLA_COMPATIBILITY_LABELS[status]');
     expect(component).toContain('data-testid="fla-review-selected-count"');
@@ -90,15 +95,15 @@ describe('FLA Slice 2 review UX contract', () => {
   it('uses Chinese-first copy for the normal review surface', () => {
     expect(component).toContain('FLA 兼容性预览');
     expect(component).toContain('取消');
-    expect(component).toContain('已选择：');
+    expect(component).toContain('项将进入确认步骤');
     expect(component).toContain('全选');
     expect(component).toContain('清空');
     expect(component).toContain('确认选择');
-    expect(component).toContain('只读导入预览');
-    expect(component).toContain('在确认导入前，不会修改项目或原文件。');
-    expect(component).toContain('正在读取所选 FLA');
-    expect(component).toContain('正在检查源文件');
-    expect(component).toContain('源文件');
+    expect(component).toContain('FLA 文件 · 只读预览');
+    expect(component).not.toContain('在确认导入前，不会修改项目或原文件。');
+    expect(stageA).toContain('正在检查 FLA');
+    expect(stageA).toContain('不会修改原文件或当前项目');
+    expect(stageA).toContain('检查完成后自动进入下一步');
     expect(component).toContain('舞台');
     expect(component).toContain('素材');
     expect(component).toContain('已使用');
@@ -116,6 +121,24 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(reviewModel).toContain("'not-present': '未出现'");
   });
 
+  it('keeps Stage A as a quiet indeterminate Workbench state', () => {
+    expect(stageA).toContain('data-stage-a-state="inspecting"');
+    expect(stageA).toContain('data-workbench-route="inspection"');
+    expect(stageA).toContain('data-testid="fla-review-session"');
+    expect(stageA).toContain('FLA WORKBENCH');
+    expect(stageA).toContain('检查中');
+    expect(stageA).toContain('data-ring-count="3"');
+    expect(stageA).toContain('data-placeholder-authoritative="false"');
+    expect(stageA).not.toContain('%');
+    expect(stageA).not.toContain('第');
+    expect(stageA).not.toContain('文件名');
+    expect(stageA).not.toContain('ZIP');
+    expect(stageA).not.toContain('ActionScript');
+    expect(component).toContain('isFlaInspectionUserCancelled(nextResponse)');
+    expect(component).toContain('onClose();');
+    expect(component).toContain('<FlaStageF3Blocked response={response} onClose={onClose} />');
+  });
+
   it('hides diagnostic identifiers from the default UI but retains internal contracts', () => {
     expect(component).not.toContain('<dt>SHA-256</dt>');
     expect(component).not.toContain('<code>{media.id}</code>');
@@ -130,8 +153,8 @@ describe('FLA Slice 2 review UX contract', () => {
     // Archive-malformed error state gets its own beginner-facing testid.
     expect(component).toContain('data-testid="fla-review-diagnostic"');
     expect(component).toContain('data-testid="fla-review-zero-raster"');
-    // Zero-raster copy is explicit and non-alarming.
-    expect(component).toContain('没有找到可直接导入的位图素材');
+    // Issue #398 keeps the route marker but removes the duplicated zero-raster paragraph.
+    expect(component).not.toContain('data-testid="fla-review-zero-raster-summary"');
     // Primary copy must not surface developer-only archive internals.
     expect(component).not.toContain('centralDirectorySize');
     expect(component).not.toContain('EOCD');
