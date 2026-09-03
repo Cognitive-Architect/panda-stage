@@ -98,7 +98,9 @@ import {
   FlaCancelRequestSchema,
   FlaCancelResponseSchema,
   FlaInspectRequestSchema,
+  FlaInspectionStartedSchema,
   FlaInspectionResponseSchema,
+  type FlaInspectionStarted,
 } from '../shared/fla-import-api';
 import {
   FlaAssetCommitRequestSchema,
@@ -439,6 +441,20 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaInspectionResponseSchema.parse(response);
+    },
+    onInspectionStarted: (
+      callback: (event: FlaInspectionStarted) => void,
+    ): Unsubscribe => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        rawEvent: unknown,
+      ) => callback(FlaInspectionStartedSchema.parse(rawEvent));
+      ipcRenderer.on(IPC_CHANNELS.FLA_INSPECTION_STARTED, listener);
+      return () =>
+        ipcRenderer.removeListener(
+          IPC_CHANNELS.FLA_INSPECTION_STARTED,
+          listener,
+        );
     },
     cancel: async (sessionId: string) => {
       const request = FlaCancelRequestSchema.parse({

@@ -93,16 +93,21 @@ function mainWindow(senderId = 42): BrowserWindow {
 }
 
 function event(senderId = 42): IpcMainInvokeEvent {
-  return { sender: { id: senderId } } as IpcMainInvokeEvent;
+  return { sender: { id: senderId, send: vi.fn() } } as unknown as IpcMainInvokeEvent;
 }
 
 function dependencies() {
+  const inspectSource = vi.fn().mockResolvedValue({
+    ok: false,
+    error: { code: 'PARSER_CRASH', message: 'synthetic inspection failure' },
+  });
   return {
-    flaImportService: {} as FlaImportService,
+    flaImportService: { inspectSource } as unknown as FlaImportService,
     flaAssetCommitService: {
       commit: vi.fn().mockResolvedValue(operation),
     } as unknown as FlaAssetCommitService,
     selectFlaSource: vi.fn(),
+    inspectSource,
   };
 }
 
@@ -167,6 +172,60 @@ describe('FLA commit IPC boundary', () => {
       ),
     ).rejects.toThrow('Untrusted FLA IPC sender');
     expect(services.flaAssetCommitService.commit).not.toHaveBeenCalled();
+  });
+
+  it('signals inspection start only after the native chooser returns a source', async () => {
+    const services = dependencies();
+    const sourcePath = 'D:\\acceptance\\selected.fla';
+    services.selectFlaSource = vi.fn().mockResolvedValue(sourcePath);
+    const invocation = event();
+    registerFlaImportIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...services,
+    });
+    const requestId = '00000000-0000-4000-8000-000000000264';
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.FLA_INSPECT_CHOOSE)!(
+        invocation,
+        { requestId },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'PARSER_CRASH' },
+    });
+
+    expect((invocation.sender as unknown as { send: ReturnType<typeof vi.fn> }).send)
+      .toHaveBeenCalledWith(
+        IPC_CHANNELS.FLA_INSPECTION_STARTED,
+        { requestId },
+      );
+    expect(services.inspectSource).toHaveBeenCalledWith(sourcePath, requestId);
+  });
+
+  it('does not emit inspection start when the native chooser is cancelled', async () => {
+    const services = dependencies();
+    services.selectFlaSource = vi.fn().mockResolvedValue(null);
+    const invocation = event();
+    registerFlaImportIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...services,
+    });
+    const requestId = '00000000-0000-4000-8000-000000000265';
+
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.FLA_INSPECT_CHOOSE)!(
+        invocation,
+        { requestId },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'USER_CANCELLED' },
+    });
+
+    expect((invocation.sender as unknown as { send: ReturnType<typeof vi.fn> }).send)
+      .not.toHaveBeenCalled();
+    expect(services.inspectSource).not.toHaveBeenCalled();
   });
 
   it('serializes stable stale errors instead of leaking service exceptions', async () => {

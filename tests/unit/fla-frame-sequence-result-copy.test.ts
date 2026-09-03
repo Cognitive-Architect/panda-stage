@@ -30,19 +30,19 @@ function successResponse(importedCount: number, duplicateCount: number) {
 describe('formatFlaFrameSequenceCommitResult', () => {
   it('keeps a new-only success concise', () => {
     expect(formatFlaFrameSequenceCommitResult(successResponse(5, 0))).toBe(
-      '已新增 5 帧素材。',
+      '帧序列导入完成：新增 5 帧；共处理 5 帧。',
     );
   });
 
   it('shows both newly-created and reused counts for a mixed success', () => {
     expect(formatFlaFrameSequenceCommitResult(successResponse(3, 2))).toBe(
-      '已新增 3 帧素材，复用已有素材 2 帧。',
+      '帧序列导入完成：新增 3 帧，复用已有素材 2 帧；共处理 5 帧。',
     );
   });
 
   it('makes a duplicate-only success unmistakably successful', () => {
     expect(formatFlaFrameSequenceCommitResult(successResponse(0, 5))).toBe(
-      '新增 0 帧，复用已有素材 5 帧。',
+      '帧序列已处理：复用已有素材 5 帧；共处理 5 帧。',
     );
   });
 

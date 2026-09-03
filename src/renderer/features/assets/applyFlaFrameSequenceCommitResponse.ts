@@ -3,6 +3,7 @@ import type {
   FlaFrameSequenceCommitResponse,
 } from '../../../shared/fla-frame-sequence-api';
 import type { EditorProjectStore } from '../../stores/EditorProjectStore';
+import { formatFlaFrameSequenceCommitResult } from '../../fla-import/formatFlaFrameSequenceCommitResult';
 
 export interface FlaFrameSequenceCommitUiOutcome {
   status: string;
@@ -46,14 +47,7 @@ export function applyFlaFrameSequenceCommitResponse(
     );
   }
 
-  const { importedCount, duplicateCount, renamedCount } = response.result.summary;
-  const status =
-    importedCount > 0
-      ? `Imported ${importedCount} frame(s) as ordinary image asset(s); reused ${duplicateCount} existing asset(s).${
-          renamedCount > 0 ? ` Renamed ${renamedCount} asset(s) to avoid collisions.` : ''
-        }`
-      : `No new image assets; reused ${duplicateCount} existing asset(s).`;
-
+  const status = formatFlaFrameSequenceCommitResult(response);
   return {
     status,
     results: response.result.items,

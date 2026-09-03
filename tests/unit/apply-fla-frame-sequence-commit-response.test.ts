@@ -117,7 +117,7 @@ describe('applyFlaFrameSequenceCommitResponse', () => {
 
     expect(outcome.applied).toBe(true);
     expect(outcome.results).toHaveLength(2);
-    expect(outcome.status).toContain('Imported 2 frame(s)');
+    expect(outcome.status).toContain('新增 2 帧');
     expect(store.getSnapshot()).toMatchObject({
       dirty: false,
       revision: 1,
@@ -156,7 +156,7 @@ describe('applyFlaFrameSequenceCommitResponse', () => {
 
     const snapshot = store.getSnapshot()!;
     expect(outcome.applied).toBe(true);
-    expect(outcome.status).toContain('reused 1 existing asset(s)');
+    expect(outcome.status).toContain('复用已有素材 1 帧');
     expect(outcome.results?.[0]).toMatchObject({
       frameIndex: 0,
       status: 'duplicate',
@@ -188,7 +188,7 @@ describe('applyFlaFrameSequenceCommitResponse', () => {
 
     const snapshot = store.getSnapshot()!;
     expect(outcome.applied).toBe(false);
-    expect(outcome.status).toBe('No new image assets; reused 1 existing asset(s).');
+    expect(outcome.status).toBe('帧序列已处理：复用已有素材 1 帧；共处理 1 帧。');
     expect(snapshot.dirty).toBe(false);
     expect(snapshot.revision).toBe(1);
     expect(snapshot.project.assets).toHaveLength(initialProject.assets.length);
