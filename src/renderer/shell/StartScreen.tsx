@@ -64,8 +64,7 @@ export function StartScreen({
         <header className="project-launcher-header">
           <div className="project-launcher-identity">
             <p className="eyebrow">PANDA STAGE</p>
-            <h1 id="recovery-heading">项目</h1>
-            <p className="project-launcher-lede">
+            <p className="project-launcher-lede" id="recovery-heading">
               <span className="project-launcher-state-copy">
                 {currentProject ? '欢迎回来，' : '开始创作，'}
               </span>

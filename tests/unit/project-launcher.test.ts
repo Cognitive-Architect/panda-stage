@@ -30,7 +30,7 @@ function renderStartScreen(
   );
 }
 
-describe('Issue #413 Project Launcher final cleanup presentation', () => {
+describe('Issue #414 Project Launcher visual refinement presentation', () => {
   it('makes Continue Creating the focal action for an open clean project', () => {
     const markup = renderStartScreen({
       projectRoot: 'D:\\projects\\story.pandastage',
@@ -39,7 +39,9 @@ describe('Issue #413 Project Launcher final cleanup presentation', () => {
     });
 
     expect(markup).toContain('data-project-launcher-state="current-project"');
-    expect(markup).toContain('<h1 id="recovery-heading">项目</h1>');
+    expect(markup).toContain('id="recovery-heading"');
+    expect(markup).not.toContain('<h1');
+    expect(markup).not.toContain('>项目</h1>');
     expect(markup).toContain('欢迎回来');
     expect(markup).toContain('继续你的创作');
     expect(markup).toContain('Story Project');
@@ -70,7 +72,9 @@ describe('Issue #413 Project Launcher final cleanup presentation', () => {
     const markup = renderStartScreen();
 
     expect(markup).toContain('data-project-launcher-state="no-project"');
-    expect(markup).toContain('<h1 id="recovery-heading">项目</h1>');
+    expect(markup).toContain('id="recovery-heading"');
+    expect(markup).not.toContain('<h1');
+    expect(markup).not.toContain('>项目</h1>');
     expect(markup).toContain('开始创作');
     expect(markup).toContain('新建一个项目，或继续最近的工作');
     expect(markup).toContain('data-testid="project-launcher-banner"');

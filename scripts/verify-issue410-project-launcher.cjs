@@ -263,7 +263,9 @@ async function launcherSnapshot(mainWindow) {
       const recentList = recentPanel?.querySelector('.recent-projects-list');
       return {
         state: panel?.dataset.projectLauncherState || null,
-        stableHeading: panel?.querySelector('#recovery-heading')?.textContent?.trim() || null,
+        stableHeading: panel?.querySelector('.project-launcher-header h1')?.textContent?.trim() || null,
+        largePageTitle: panel?.querySelector('.project-launcher-header h1')?.textContent?.trim() || null,
+        orientationCopy: panel?.querySelector('#recovery-heading')?.textContent?.trim() || null,
         panelText: panel?.textContent?.trim() || '',
         recentPanelText: recentPanel?.textContent?.trim() || '',
         currentName: document.querySelector('[data-testid="project-center-current-project"] h3')?.textContent?.trim() || null,
@@ -276,6 +278,11 @@ async function launcherSnapshot(mainWindow) {
         continueAlignItems: continueButton ? getComputedStyle(continueButton).alignItems : null,
         currentHeroHeight: currentHero?.getBoundingClientRect().height || null,
         bannerVisible: isVisible(banner),
+        bannerHeight: banner ? banner.getBoundingClientRect().height : null,
+        bannerMinHeight: banner ? getComputedStyle(banner).minHeight : null,
+        bannerBackgroundPosition: banner ? getComputedStyle(banner).backgroundPosition : null,
+        bannerBackgroundSize: banner ? getComputedStyle(banner).backgroundSize : null,
+        bannerBorderRadius: banner ? getComputedStyle(banner).borderRadius : null,
         noProjectWelcomeVisible: isVisible(welcome),
         visibleLauncherSummaries: visibleLauncherSummaries.map((summary) => summary.textContent?.trim() || ''),
         actionTiles: [...document.querySelectorAll('[data-testid="project-launcher-actions"] button.launcher-action-tile')]
@@ -539,6 +546,53 @@ const issue413Receipt = {
   status: 'IN_PROGRESS',
 };
 
+const issue414Receipt = {
+  issue: 414,
+  parentIssues: [410, 413],
+  pr: 411,
+  startingPr411Head: '818320d42a616b5de29eb61e21bb66cd459e47e9',
+  finalPr411Head: null,
+  acceptanceRoot: startupAcceptanceRoot,
+  evidenceDirectory: startupEvidenceDir,
+  changedFiles: [
+    'src/renderer/shell/StartScreen.tsx',
+    'src/renderer/styles.css',
+    'tests/unit/project-launcher.test.ts',
+    'scripts/verify-issue410-project-launcher.cjs',
+  ],
+  bannerAsset: {
+    path: 'public/project-launcher-banner.png',
+    changed: false,
+  },
+  bannerPreviousHeightTreatment: {
+    minHeight: 'clamp(184px, 22vw, 248px)',
+    backgroundPosition: 'center',
+    backgroundSize: 'cover',
+    borderRadius: '18px',
+  },
+  bannerFinalHeightTreatment: null,
+  largePageTitleRemoved: {
+    noProject: null,
+    currentProject: null,
+    recovery: null,
+  },
+  orientationCopyPreserved: {
+    noProject: null,
+    currentProject: null,
+    recovery: null,
+  },
+  screenshots: {
+    noProject: null,
+    currentProject: null,
+  },
+  sameSessionContinue: null,
+  nativeOpen: null,
+  verifier: 'pnpm verify:issue410-project-launcher',
+  ci: null,
+  maintainerVerdict: 'pending',
+  status: 'IN_PROGRESS',
+};
+
 let mainWindow = null;
 
 async function run() {
@@ -575,9 +629,12 @@ async function run() {
   assert(phase2.advancedOpen === false, 'Raw path entry is not demoted behind the closed advanced section.');
   assert(phase2.recentPanelText.includes('还没有最近项目'), 'Phase 2 empty recent copy is missing.');
   assert(phase2.recentPanelText.includes('新建或打开项目后，会显示在这里。'), 'Phase 2 empty recent supporting copy is missing.');
-  assert(phase2.stableHeading === '项目', 'Phase 2 does not use the stable 项目 page heading.');
+  assert(phase2.largePageTitle === null, 'Issue #414 large 项目 page title remains in the no-project Launcher.');
+  assert(phase2.orientationCopy?.includes('开始创作'), 'Issue #414 no-project supporting copy is missing.');
   assert(phase2.actionTiles.length === 2, 'Phase 2 did not render two Launcher action tiles.');
   assert(phase2.bannerVisible, 'Issue #413 local no-project Banner is not visible.');
+  assert((phase2.bannerHeight || 0) >= 100 && (phase2.bannerHeight || 0) <= 180, `Issue #414 Banner is not materially reduced: ${phase2.bannerHeight}px.`);
+  assert(phase2.bannerBackgroundSize?.split(',').every((value) => value.trim() === 'cover'), 'Issue #414 Banner no longer uses an intentional cover treatment.');
   assert(!phase2.noProjectWelcomeVisible, 'Issue #413 legacy no-project welcome Hero is still visible.');
   assert(phase2.visibleLauncherSummaries.length === 0, 'Issue #413 still exposes a visible legacy More Open section.');
   assert(phase2.recentLauncherEyebrow === null, 'Issue #413 still exposes the redundant Recent Projects eyebrow.');
@@ -609,9 +666,22 @@ async function run() {
     heading: '最近项目',
   };
   issue413Receipt.screenshots.noProject = receipt.screenshots.phase2NoProject;
+  issue414Receipt.largePageTitleRemoved.noProject = phase2.largePageTitle === null;
+  issue414Receipt.orientationCopyPreserved.noProject = phase2.orientationCopy;
+  issue414Receipt.bannerFinalHeightTreatment = {
+    minHeight: 'clamp(112px, 12vw, 168px)',
+    actualHeight: phase2.bannerHeight,
+    backgroundPosition: phase2.bannerBackgroundPosition,
+    backgroundSize: phase2.bannerBackgroundSize,
+    borderRadius: phase2.bannerBorderRadius,
+  };
+  issue414Receipt.screenshots.noProject = receipt.screenshots.phase2NoProject;
   visualCraftReceipt.screenshots.noProjectEmpty = receipt.screenshots.phase2NoProject;
   visualCraftReceipt.checks.noProjectEmpty = {
     stableHeading: phase2.stableHeading,
+    orientationCopy: phase2.orientationCopy,
+    largePageTitleRemoved: phase2.largePageTitle === null,
+    bannerHeight: phase2.bannerHeight,
     actionTiles: phase2.actionTiles,
     emptyRecentCopy: true,
   };
@@ -678,7 +748,8 @@ async function run() {
   assert(phase1.advancedOpen === false, 'Phase 1 raw path entry remains visually dominant.');
   assert(!phase1.panelText.includes('当前项目仍保持打开'), 'Phase 1 contains duplicated always-on open-status copy.');
   assert(!phase1.panelText.includes('当前项目与编辑状态保持不变'), 'Issue #413 passive current-project status sentence remains.');
-  assert(phase1.stableHeading === '项目', 'Phase 1 does not use the stable 项目 page heading.');
+  assert(phase1.largePageTitle === null, 'Issue #414 large 项目 page title remains in the current-project Launcher.');
+  assert(phase1.orientationCopy?.includes('欢迎回来'), 'Issue #414 current-project supporting copy is missing.');
   assert((phase1.currentHeroHeight || 0) >= 150, 'Current Project Hero is below the visual height floor.');
   assert(phase1.actionTiles.length === 2, 'Phase 1 did not render two secondary Launcher action tiles.');
   assert(phase1.currentProjectGlyph, 'Issue #413 Current Project label is missing its local glyph.');
@@ -693,9 +764,14 @@ async function run() {
   };
   receipt.checks.phase1CurrentProject = phase1;
   receipt.screenshots.phase1CurrentProject = await capture(mainWindow, startupEvidenceDir, 'phase-1-current-project.png');
+  issue414Receipt.largePageTitleRemoved.currentProject = phase1.largePageTitle === null;
+  issue414Receipt.orientationCopyPreserved.currentProject = phase1.orientationCopy;
+  issue414Receipt.screenshots.currentProject = receipt.screenshots.phase1CurrentProject;
   visualCraftReceipt.screenshots.currentProjectSaved = receipt.screenshots.phase1CurrentProject;
   visualCraftReceipt.checks.currentProjectSaved = {
     stableHeading: phase1.stableHeading,
+    orientationCopy: phase1.orientationCopy,
+    largePageTitleRemoved: phase1.largePageTitle === null,
     heroHeight: phase1.currentHeroHeight,
     continueAction: true,
     truthfulSaveState: phase1.saveStateText,
@@ -746,6 +822,7 @@ async function run() {
   assert(phase1Dirty.currentPathInMeta, 'Issue #413 dirty project path is not on the save metadata row.');
   assert(['inline-flex', 'flex'].includes(phase1Dirty.continueDisplay), `Issue #413 dirty Continue CTA lost flex alignment: ${phase1Dirty.continueDisplay}`);
   assert(phase1Dirty.continueAlignItems === 'center', 'Issue #413 dirty Continue CTA lost vertical alignment.');
+  assert(phase1Dirty.largePageTitle === null, 'Issue #414 large 项目 page title remains in the dirty current-project Launcher.');
   receipt.screenshots.currentProjectDirty = await capture(
     mainWindow,
     startupEvidenceDir,
@@ -870,7 +947,10 @@ async function run() {
   assert(recoveryDetails.includes('检测到未保存的恢复内容'), 'Recovery notice copy is missing.');
   receipt.checks.recoveryPresentation = { launcher: recoveryPresentation, detailsVisible: recoveryDetails.includes('查看详情') };
   receipt.screenshots.phase3Recovery = await capture(mainWindow, startupEvidenceDir, 'phase-3-recovery.png');
-  assert(recoveryPresentation.stableHeading === '项目', 'Recovery Launcher does not use the stable 项目 page heading.');
+  assert(recoveryPresentation.largePageTitle === null, 'Issue #414 large 项目 page title remains in the recovery Launcher.');
+  assert(recoveryPresentation.orientationCopy?.includes('欢迎回来'), 'Issue #414 recovery supporting copy is missing.');
+  issue414Receipt.largePageTitleRemoved.recovery = recoveryPresentation.largePageTitle === null;
+  issue414Receipt.orientationCopyPreserved.recovery = recoveryPresentation.orientationCopy;
   visualCraftReceipt.screenshots.recovery = receipt.screenshots.phase3Recovery;
   visualCraftReceipt.checks.recovery = {
     stableHeading: recoveryPresentation.stableHeading,
@@ -903,6 +983,9 @@ async function run() {
   receipt.finalHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
   visualCraftReceipt.finalPr411Head = receipt.finalHead;
   issue413Receipt.finalPr411Head = receipt.finalHead;
+  issue414Receipt.finalPr411Head = receipt.finalHead;
+  issue414Receipt.sameSessionContinue = receipt.checks.continueSameSession;
+  issue414Receipt.nativeOpen = receipt.checks.openProjectChooser;
   issue413Receipt.status = 'PASS_AUTOMATED_PENDING_HUMAN';
   visualCraftReceipt.checks.behaviorRegression = {
     sameSessionContinue: receipt.checks.continueSameSession,
@@ -946,6 +1029,16 @@ async function finish(exitCode, error) {
   writeFileSync(
     join(startupEvidenceDir, 'issue-413-project-launcher-receipt.json'),
     `${JSON.stringify(issue413Receipt, null, 2)}\n`,
+    'utf8',
+  );
+  if (!issue414Receipt.finalPr411Head) {
+    issue414Receipt.finalPr411Head = receipt.finalHead;
+  }
+  issue414Receipt.status = receipt.status;
+  if (error) issue414Receipt.error = receipt.error;
+  writeFileSync(
+    join(startupEvidenceDir, 'issue-414-project-launcher-receipt.json'),
+    `${JSON.stringify(issue414Receipt, null, 2)}\n`,
     'utf8',
   );
   dialog.showOpenDialog = originalShowOpenDialog;
