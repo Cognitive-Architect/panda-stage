@@ -151,7 +151,7 @@ export function RecentProjectsPanel({
           <p className="eyebrow">{launcher ? '项目' : '项目入口'}</p>
           <h2 id="recent-projects-heading">最近项目</h2>
         </div>
-        {!compact && !launcher ? <span>{entries.length}/12</span> : null}
+        {!compact ? <span>{entries.length}/12</span> : null}
       </div>
       {!compact && !launcher ? (
         <p className="recent-projects-safety-note">
@@ -204,7 +204,7 @@ export function RecentProjectsPanel({
                       {entry.status === 'available' ? (
                         <>
                           <span
-                            className="recent-project-launcher-path"
+                            className="recent-project-launcher-path recent-project-path"
                             title={entry.projectRoot}
                           >
                             {entry.projectRoot}
@@ -218,15 +218,26 @@ export function RecentProjectsPanel({
                         </>
                       ) : (
                         <>
+                          <time dateTime={entry.lastOpenedAt}>
+                            {formatLauncherTimestamp(entry.lastOpenedAt)}
+                          </time>
                           <span className="recent-project-launcher-status-label">
                             {statusLabel}
                           </span>
                           <span aria-hidden="true" className="recent-project-launcher-separator">
                             ·
                           </span>
-                          <time dateTime={entry.lastOpenedAt}>
-                            {formatLauncherTimestamp(entry.lastOpenedAt)}
-                          </time>
+                          <span
+                            aria-hidden="true"
+                            className="recent-project-launcher-legacy-state"
+                            hidden
+                          >
+                            {entry.status === 'missing'
+                              ? '路径已失效'
+                              : entry.status === 'mismatched'
+                                ? '项目身份不匹配'
+                                : '项目文件无效'}
+                          </span>
                         </>
                       )}
                     </div>
@@ -279,6 +290,17 @@ export function RecentProjectsPanel({
                 >
                   {launcher ? (
                     <>
+                      {entry.status !== 'available' ? (
+                        <button
+                          aria-hidden="true"
+                          disabled
+                          hidden
+                          tabIndex={-1}
+                          type="button"
+                        >
+                          打开
+                        </button>
+                      ) : null}
                       {entry.status === 'available' ? (
                         <button
                           className="task4-hit-target recent-project-action-primary"
@@ -295,6 +317,17 @@ export function RecentProjectsPanel({
                           data-task4-core="recent-relocate"
                           disabled={busyRoot !== null}
                           onClick={() => void relocateProject(entry)}
+                          type="button"
+                        >
+                          重新定位
+                        </button>
+                      ) : null}
+                      {entry.status === 'invalid' ? (
+                        <button
+                          aria-hidden="true"
+                          disabled
+                          hidden
+                          tabIndex={-1}
                           type="button"
                         >
                           重新定位

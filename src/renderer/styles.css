@@ -4656,8 +4656,18 @@ button:disabled {
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-project-launcher-status-label {
+  order: -2;
   color: #e4c88a;
   font-weight: 600;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list
+  li:not([data-project-status='available'])
+  .recent-project-launcher-separator {
+  order: -1;
+  color: var(--ui-color-text-muted, #84958b);
 }
 
 .project-center-screen
