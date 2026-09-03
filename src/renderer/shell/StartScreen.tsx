@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
+import { ArrowRight, Plus } from 'lucide-react';
 import { RecentProjectsPanel } from '../features/welcome/RecentProjectsPanel';
+import { DecorativeIcon } from '../ui';
 import { NewProjectEntry } from './NewProjectEntry';
 
 export interface ProjectCenterCurrentProject {
@@ -60,16 +62,18 @@ export function StartScreen({
         }
       >
         <header className="project-launcher-header">
-          <div>
+          <div className="project-launcher-identity">
             <p className="eyebrow">PANDA STAGE</p>
-            <p className="project-launcher-section-label">项目</p>
-            <h1 id="recovery-heading">
-              {currentProject ? '欢迎回来' : '开始创作'}
-            </h1>
+            <h1 id="recovery-heading">项目</h1>
             <p className="project-launcher-lede">
-              {currentProject
-                ? '继续你的创作'
-                : '新建一个项目，或继续最近的工作'}
+              <span className="project-launcher-state-copy">
+                {currentProject ? '欢迎回来，' : '开始创作，'}
+              </span>
+              <span>
+                {currentProject
+                  ? '继续你的创作'
+                  : '新建一个项目，或继续最近的工作'}
+              </span>
             </p>
           </div>
         </header>
@@ -103,13 +107,13 @@ export function StartScreen({
                     已保存
                   </span>
                 )}
-                <code
-                  className="project-center-current-path"
-                  title={currentProject.projectRoot}
-                >
-                  {currentProject.projectRoot}
-                </code>
               </div>
+              <code
+                className="project-center-current-path"
+                title={currentProject.projectRoot}
+              >
+                {currentProject.projectRoot}
+              </code>
             </div>
             <button
               className="launcher-continue-button task4-hit-target"
@@ -119,7 +123,8 @@ export function StartScreen({
               onClick={onReturnToEditor}
               type="button"
             >
-              继续创作
+              <span>继续创作</span>
+              <DecorativeIcon icon={ArrowRight} size={19} strokeWidth={2.2} />
             </button>
           </section>
         ) : (
@@ -129,12 +134,12 @@ export function StartScreen({
             data-testid="project-launcher-welcome"
           >
             <div aria-hidden="true" className="project-launcher-welcome-mark">
-              +
+              <DecorativeIcon icon={Plus} size={28} strokeWidth={1.7} />
             </div>
-            <div>
+            <div className="project-launcher-welcome-content">
               <p className="eyebrow">从这里开始</p>
-              <h2 id="project-launcher-welcome-heading">从这里开始你的新项目</h2>
-              <p>创建一个项目，或打开你最近的工作。</p>
+              <h2 id="project-launcher-welcome-heading">建立你的下一段故事</h2>
+              <p>从这里开始你的新项目。创建一个项目，或打开你最近的工作。</p>
             </div>
           </section>
         )}

@@ -1,4 +1,6 @@
+import { FolderOpen, Plus } from 'lucide-react';
 import { useState } from 'react';
+import { DecorativeIcon } from '../ui';
 import { validateProjectOpenCandidate } from './projectOpenFlow';
 
 export interface NewProjectEntryProps {
@@ -37,7 +39,7 @@ export function NewProjectEntry({
         data-testid="project-launcher-actions"
       >
         <button
-          className={`new-project-button task4-hit-target${
+          className={`launcher-action-tile launcher-action-new new-project-button task4-hit-target${
             !hasCurrentProject ? ' launcher-action-primary' : ''
           }`}
           data-task4-core="new-project"
@@ -46,19 +48,29 @@ export function NewProjectEntry({
           onClick={onRequestNewProject}
           type="button"
         >
-          <span aria-hidden="true">+</span>
-          <span>新建项目</span>
+          <span aria-hidden="true" className="launcher-action-icon">
+            <DecorativeIcon icon={Plus} size={22} strokeWidth={2.1} />
+          </span>
+          <span className="launcher-action-copy">
+            <strong>新建项目</strong>
+            <small>从一个空白项目开始</small>
+          </span>
         </button>
         <button
-          className="launcher-open-project-button task4-hit-target"
+          className="launcher-action-tile launcher-action-open launcher-open-project-button task4-hit-target"
           data-task4-core="open-project"
           data-testid="open-project"
           disabled={busy}
           onClick={() => void openProjectFromChooser()}
           type="button"
         >
-          <span aria-hidden="true">↗</span>
-          <span>打开项目</span>
+          <span aria-hidden="true" className="launcher-action-icon">
+            <DecorativeIcon icon={FolderOpen} size={22} strokeWidth={1.9} />
+          </span>
+          <span className="launcher-action-copy">
+            <strong>打开项目</strong>
+            <small>打开已有 Panda Stage 项目</small>
+          </span>
         </button>
       </div>
 
@@ -71,7 +83,12 @@ export function NewProjectEntry({
         <summary>更多打开方式</summary>
         <div className="recovery-open-row">
           <label>
-            项目文件夹（.pandastage）
+            <span className="launcher-advanced-field-label">
+              通过项目路径打开
+            </span>
+            <span className="launcher-advanced-field-note">
+              项目文件夹（.pandastage）
+            </span>
             <input
               onChange={(event) =>
                 onOpenCandidatePathChange(event.target.value)

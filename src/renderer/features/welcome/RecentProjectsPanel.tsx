@@ -1,4 +1,4 @@
-import { MoreHorizontal } from 'lucide-react';
+import { Box, MoreHorizontal } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { RecentProjectEntry } from '../../../shared/recent-projects-api';
 import { DecorativeIcon } from '../../ui';
@@ -184,8 +184,16 @@ export function RecentProjectsPanel({
               >
                 {launcher ? (
                   <div className="recent-project-launcher-copy">
-                    <strong>{entry.projectName}</strong>
-                    <span
+                    <div className="recent-project-launcher-title">
+                      <span
+                        aria-hidden="true"
+                        className="recent-project-launcher-glyph"
+                      >
+                        <DecorativeIcon icon={Box} size={19} strokeWidth={1.8} />
+                      </span>
+                      <strong>{entry.projectName}</strong>
+                    </div>
+                    <div
                       className="recent-project-launcher-meta"
                       data-testid={
                         entry.status === 'available'
@@ -193,10 +201,35 @@ export function RecentProjectsPanel({
                           : 'recent-project-status'
                       }
                     >
-                      {entry.status === 'available'
-                        ? formatLauncherTimestamp(entry.lastOpenedAt)
-                        : `${statusLabel} · ${formatLauncherTimestamp(entry.lastOpenedAt)}`}
-                    </span>
+                      {entry.status === 'available' ? (
+                        <>
+                          <span
+                            className="recent-project-launcher-path"
+                            title={entry.projectRoot}
+                          >
+                            {entry.projectRoot}
+                          </span>
+                          <span aria-hidden="true" className="recent-project-launcher-separator">
+                            ·
+                          </span>
+                          <time dateTime={entry.lastOpenedAt}>
+                            {formatLauncherTimestamp(entry.lastOpenedAt)}
+                          </time>
+                        </>
+                      ) : (
+                        <>
+                          <span className="recent-project-launcher-status-label">
+                            {statusLabel}
+                          </span>
+                          <span aria-hidden="true" className="recent-project-launcher-separator">
+                            ·
+                          </span>
+                          <time dateTime={entry.lastOpenedAt}>
+                            {formatLauncherTimestamp(entry.lastOpenedAt)}
+                          </time>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div>

@@ -4136,6 +4136,658 @@ button:disabled {
   }
 }
 
+/* Issue #412 — bounded Project Launcher visual craft pass. Lifecycle and
+ * persistence selectors remain untouched; these final rules are scoped to
+ * the launcher surface and its existing presentation hooks. */
+.project-center-screen > .start-screen.project-launcher {
+  width: min(100%, 1160px);
+  padding: clamp(28px, 4vw, 56px) clamp(18px, 4vw, 40px) 48px;
+  gap: 32px;
+}
+
+.project-center-screen .start-screen.project-launcher
+  > [data-project-launcher-panel='true'] {
+  gap: 26px;
+}
+
+.project-center-screen .project-launcher-header {
+  padding-bottom: 24px;
+  border-bottom-color: rgb(154 216 172 / 18%);
+}
+
+.project-center-screen .project-launcher-header h1 {
+  max-width: none;
+  margin-top: 10px;
+  font-size: clamp(34px, 4vw, 40px);
+  line-height: 1;
+}
+
+.project-center-screen .project-launcher-lede {
+  display: flex;
+  margin-top: 14px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 16px;
+  line-height: 1.5;
+  flex-wrap: wrap;
+  gap: 0 0.35em;
+}
+
+.project-center-screen .project-launcher-state-copy {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-weight: 700;
+}
+
+.project-center-screen .launcher-current-project {
+  position: relative;
+  min-height: 160px;
+  padding: 28px 32px;
+  overflow: hidden;
+  border-color: rgb(127 199 148 / 50%);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 88% 50%, rgb(83 177 106 / 20%), transparent 30%),
+    linear-gradient(112deg, rgb(37 87 57 / 48%), rgb(17 35 24 / 92%)),
+    var(--ui-color-surface-panel, #112318);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 20%);
+  gap: 28px;
+}
+
+.project-center-screen .launcher-current-project::after {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  right: 8%;
+  bottom: -170px;
+  border: 1px solid rgb(154 230 172 / 12%);
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+
+.project-center-screen .launcher-current-project-copy {
+  position: relative;
+  z-index: 1;
+  align-content: center;
+  gap: 8px;
+}
+
+.project-center-screen .launcher-current-project-copy .eyebrow {
+  color: #b5e3bf;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.project-center-screen .launcher-current-project h3 {
+  max-width: 34ch;
+  font-size: clamp(20px, 2vw, 24px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.project-center-screen .launcher-current-project-meta {
+  gap: 8px;
+}
+
+.project-center-screen .launcher-current-project-meta .clean-state,
+.project-center-screen .launcher-current-project-meta .dirty-state {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.project-center-screen .launcher-current-project-copy
+  > .project-center-current-path {
+  display: block;
+  max-width: min(72ch, 100%);
+  color: var(--ui-color-text-muted, #84958b);
+  font-size: 13px;
+}
+
+.project-center-screen .launcher-continue-button {
+  display: inline-flex;
+  position: relative;
+  z-index: 1;
+  min-width: 184px;
+  min-height: var(--ui-touch-emphasized, 56px);
+  padding: 14px 22px;
+  border-color: rgb(154 230 172 / 76%);
+  border-radius: 12px;
+  font-size: 16px;
+  box-shadow: 0 10px 24px rgb(21 69 37 / 28%);
+  gap: 10px;
+}
+
+.project-center-screen .launcher-continue-button:hover:not(:disabled),
+.project-center-screen .launcher-continue-button:focus-visible {
+  background: #39814f;
+  box-shadow: 0 12px 28px rgb(21 69 37 / 34%);
+}
+
+.project-center-screen .project-launcher-welcome {
+  position: relative;
+  min-height: 136px;
+  padding: 24px 28px;
+  overflow: hidden;
+  border-color: rgb(127 199 148 / 34%);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 92% 16%, rgb(65 145 87 / 16%), transparent 28%),
+    linear-gradient(105deg, rgb(17 35 24 / 92%), rgb(14 27 19 / 70%));
+  gap: 18px;
+}
+
+.project-center-screen .project-launcher-welcome::after {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  right: 8%;
+  bottom: -160px;
+  border: 1px solid rgb(154 230 172 / 10%);
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+
+.project-center-screen .project-launcher-welcome-mark {
+  position: relative;
+  z-index: 1;
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+  border-color: rgb(154 216 172 / 52%);
+  border-radius: 18px;
+  background: rgb(45 104 64 / 34%);
+}
+
+.project-center-screen .project-launcher-welcome-content {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.project-center-screen .project-launcher-welcome h2 {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.project-center-screen .project-launcher-welcome p:last-child {
+  margin-top: 8px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.project-center-screen .project-launcher-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.project-center-screen .project-launcher-actions button.launcher-action-tile {
+  display: grid;
+  width: 100%;
+  min-height: 96px;
+  padding: 16px 18px;
+  align-items: center;
+  justify-self: stretch;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: initial;
+  text-align: left;
+  gap: 14px;
+}
+
+.project-center-screen .launcher-action-icon {
+  display: grid;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  border: 1px solid rgb(154 216 172 / 42%);
+  border-radius: 13px;
+  color: #b9efc8;
+  background: rgb(45 104 64 / 30%);
+  place-items: center;
+}
+
+.project-center-screen .launcher-action-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.project-center-screen .launcher-action-copy strong {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.project-center-screen .launcher-action-copy small {
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.project-center-screen .project-launcher-actions
+  button.launcher-action-primary {
+  border-color: rgb(154 230 172 / 74%);
+  background:
+    linear-gradient(110deg, rgb(45 104 64 / 92%), rgb(31 79 47 / 96%)),
+    var(--ui-color-action-primary, #1d4d31);
+  box-shadow: 0 10px 24px rgb(21 69 37 / 20%);
+}
+
+.project-center-screen .project-launcher-actions
+  button.launcher-action-primary:hover:not(:disabled),
+.project-center-screen .project-launcher-actions
+  button.launcher-action-primary:focus-visible {
+  background: #39814f;
+}
+
+.project-center-screen .project-launcher-actions
+  button.launcher-action-open {
+  border-color: rgb(127 199 148 / 42%);
+  background: linear-gradient(110deg, rgb(24 52 34 / 94%), rgb(18 35 25 / 94%));
+}
+
+.project-center-screen .project-launcher-actions
+  button.launcher-action-open:hover:not(:disabled),
+.project-center-screen .project-launcher-actions
+  button.launcher-action-open:focus-visible {
+  border-color: rgb(154 230 172 / 62%);
+  background: rgb(45 104 64 / 34%);
+}
+
+.project-center-screen .launcher-advanced-open {
+  width: min(100%, 720px);
+  border-top: 0;
+}
+
+.project-center-screen .launcher-advanced-open summary {
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 8px 2px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.project-center-screen .launcher-advanced-open summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-center-screen .launcher-advanced-open summary::after {
+  color: #83d39a;
+  content: '⌄';
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.project-center-screen .launcher-advanced-open[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.project-center-screen .launcher-advanced-open .recovery-open-row {
+  display: grid;
+  padding: 16px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 14px;
+  background: rgb(17 35 24 / 72%);
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.project-center-screen .launcher-advanced-open .recovery-open-row label {
+  display: grid;
+  min-width: 0;
+  color: var(--ui-color-text-primary, #eef6f0);
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.project-center-screen .launcher-advanced-field-note {
+  color: var(--ui-color-text-muted, #84958b);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.project-center-screen .launcher-advanced-open .recovery-open-row input {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.project-center-screen .launcher-advanced-open .open-path-hint {
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 13px;
+}
+
+.project-center-screen .launcher-advanced-open .recovery-open-row > button {
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+
+.project-center-screen .project-launcher-status {
+  max-width: 76ch;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 13px;
+}
+
+.project-center-screen .project-launcher-status:empty {
+  display: none;
+}
+
+.project-center-screen
+  .project-launcher
+  .recovery-prompt {
+  display: grid;
+  min-height: 64px;
+  padding: 14px 16px;
+  border-color: rgb(233 181 80 / 42%);
+  background: linear-gradient(105deg, rgb(101 66 15 / 30%), rgb(64 45 14 / 22%));
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt > div {
+  min-width: 0;
+}
+
+.project-center-screen .project-launcher .recovery-prompt-summary {
+  gap: 4px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt-summary strong {
+  font-size: 15px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt-summary span {
+  color: #d8c69c;
+  font-size: 13px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt > div:nth-child(2) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt > div:nth-child(2) button {
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 10px 14px;
+}
+
+.project-center-screen .project-launcher .recovery-details {
+  min-width: 84px;
+  color: #f8e7bd;
+  font-size: 13px;
+}
+
+.project-center-screen .recent-projects-panel[data-presentation='launcher'] {
+  gap: 16px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-heading {
+  align-items: end;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-heading h2 {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list {
+  max-height: none;
+  padding-right: 4px;
+  overflow: visible;
+  gap: 8px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list
+  li {
+  display: grid;
+  min-height: 82px;
+  padding: 14px 16px;
+  border: 1px solid rgb(154 216 172 / 18%);
+  border-radius: 14px;
+  background: linear-gradient(105deg, rgb(18 39 27 / 78%), rgb(14 28 20 / 72%));
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list
+  li:hover {
+  border-color: rgb(127 199 148 / 38%);
+  background: linear-gradient(105deg, rgb(25 54 36 / 86%), rgb(16 34 23 / 82%));
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-copy {
+  gap: 8px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-glyph {
+  display: grid;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid rgb(154 216 172 / 32%);
+  border-radius: 11px;
+  color: #9eddb0;
+  background: rgb(45 104 64 / 24%);
+  place-items: center;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-title
+  strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+  line-height: 1.4;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-muted, #84958b);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-meta
+  time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-status-label {
+  color: #e4c88a;
+  font-weight: 600;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-action-primary {
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 10px 14px;
+  border-color: rgb(127 199 148 / 48%);
+  background: rgb(31 66 43 / 82%);
+  font-size: 14px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-more {
+  display: inline-grid;
+  width: var(--ui-touch-icon, 44px);
+  min-width: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 0;
+  border-color: transparent;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  background: transparent;
+  place-items: center;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-more:hover,
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-more:focus-visible {
+  border-color: rgb(127 199 148 / 35%);
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: rgb(45 104 62 / 28%);
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-maintenance-menu {
+  grid-column: 1 / -1;
+  padding: 12px 0 0;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-empty-state {
+  padding: 20px 16px;
+  border: 1px solid rgb(154 216 172 / 18%);
+  border-radius: 14px;
+  background: rgb(18 39 27 / 54%);
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-empty {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 15px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-empty-description {
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+}
+
+@media (max-width: 760px) {
+  .project-center-screen > .start-screen.project-launcher {
+    padding: 28px 16px 36px;
+    gap: 26px;
+  }
+
+  .project-center-screen .launcher-current-project {
+    min-height: 0;
+    padding: 24px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .project-center-screen .launcher-continue-button {
+    width: 100%;
+  }
+
+  .project-center-screen .project-launcher-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-center-screen .launcher-advanced-open .recovery-open-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-center-screen
+    .launcher-advanced-open
+    .recovery-open-row
+    > button {
+    width: 100%;
+  }
+
+  .project-center-screen
+    .recent-projects-panel[data-presentation='launcher']
+    .recent-projects-list
+    li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .project-center-screen
+    .recent-projects-panel[data-presentation='launcher']
+    .recent-projects-actions {
+    justify-content: flex-start;
+  }
+
+  .project-center-screen .project-launcher .recovery-prompt {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
 /* Issue #410 — Project Launcher v1. The existing lifecycle classes remain
  * available for regression verifiers; these scoped rules only change the
  * presentation of the Project Center launcher surface. */

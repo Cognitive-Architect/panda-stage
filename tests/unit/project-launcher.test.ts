@@ -30,7 +30,7 @@ function renderStartScreen(
   );
 }
 
-describe('Issue #410 Project Launcher presentation', () => {
+describe('Issue #412 Project Launcher visual craft presentation', () => {
   it('makes Continue Creating the focal action for an open clean project', () => {
     const markup = renderStartScreen({
       projectRoot: 'D:\\projects\\story.pandastage',
@@ -39,6 +39,7 @@ describe('Issue #410 Project Launcher presentation', () => {
     });
 
     expect(markup).toContain('data-project-launcher-state="current-project"');
+    expect(markup).toContain('<h1 id="recovery-heading">项目</h1>');
     expect(markup).toContain('欢迎回来');
     expect(markup).toContain('继续你的创作');
     expect(markup).toContain('Story Project');
@@ -66,6 +67,7 @@ describe('Issue #410 Project Launcher presentation', () => {
     const markup = renderStartScreen();
 
     expect(markup).toContain('data-project-launcher-state="no-project"');
+    expect(markup).toContain('<h1 id="recovery-heading">项目</h1>');
     expect(markup).toContain('开始创作');
     expect(markup).toContain('新建一个项目，或继续最近的工作');
     expect(markup).toContain('data-testid="project-launcher-welcome"');
@@ -75,6 +77,8 @@ describe('Issue #410 Project Launcher presentation', () => {
     expect(markup).not.toContain('当前项目仍保持打开');
     expect(markup).toContain('data-testid="open-project"');
     expect(markup).toContain('data-testid="new-project-button"');
+    expect(markup).toContain('从一个空白项目开始');
+    expect(markup).toContain('打开已有 Panda Stage 项目');
     expect(markup).toContain('更多打开方式');
     expect(markup).not.toContain('<details open=""');
   });
@@ -110,6 +114,8 @@ describe('Issue #410 Project Launcher presentation', () => {
     expect(recent).toContain('项目身份不匹配');
     expect(recent).toContain('项目文件无效');
     expect(recent).toContain('从最近项目移除，不会删除磁盘上的项目。');
+    expect(recent).toContain('recent-project-launcher-glyph');
+    expect(recent).toContain('recent-project-launcher-path');
     expect(recent).toContain('data-task4-core="recent-relocate"');
   });
 });
