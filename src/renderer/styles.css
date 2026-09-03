@@ -5300,10 +5300,10 @@ button:disabled {
 
 .project-center-screen .launcher-legacy-open-compat input,
 .project-center-screen .launcher-legacy-open-compat button {
-  width: 1px;
-  min-width: 1px;
-  height: 1px;
-  min-height: 1px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   opacity: 0;
