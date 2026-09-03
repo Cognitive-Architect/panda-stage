@@ -127,7 +127,8 @@
         "id": "project",
         "sourcePatterns": [
           "src/renderer/features/recovery/**",
-          "src/renderer/features/welcome/**"
+          "src/renderer/features/welcome/**",
+          "public/project-launcher-banner.png"
         ],
         "testPatterns": [
           "tests/unit/recovery-*.test.ts",
@@ -281,6 +282,7 @@
         ],
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
+          "tests/unit/project-launcher.test.ts",
           "tests/unit/left-workspace.test.ts",
           "tests/unit/right-inspector*.test.ts",
           "tests/unit/ui-m1-*.test.ts",
@@ -293,7 +295,8 @@
         "verifierPatterns": [
           "scripts/verify-issue102-task2*",
           "scripts/verify-issue102-task4*",
-          "scripts/verify-issue109*"
+          "scripts/verify-issue109*",
+          "scripts/verify-issue410-project-launcher*"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
@@ -303,7 +306,7 @@
       }
     ]
   },
-  "count": 57,
+  "count": 58,
   "gates": [
     {
       "id": "assets",
@@ -436,6 +439,18 @@
       "owner": "fla-import",
       "supersedes": null,
       "notes": "Real Windows Electron verifier for Stage A Quiet Inspection Chamber presentation, native picker and active inspection cancellation, direct raster/zero-raster handoff, genuine F3 failure, source/project immutability, and cancellation-latency observation."
+    },
+    {
+      "id": "issue410-project-launcher",
+      "script": "verify:issue410-project-launcher",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Real Windows Electron verifier for Project Launcher v1: current/no-project states, native Open and New entry points, truthful recent-project exceptions, same-session Continue, recovery Restore/Ignore semantics, and no project/session/schema/filesystem ownership drift."
     },
     {
       "id": "fla-v1-5-c3",

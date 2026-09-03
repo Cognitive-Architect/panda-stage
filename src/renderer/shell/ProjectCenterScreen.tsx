@@ -18,7 +18,10 @@ export function ProjectCenterScreen(
       data-project-open={props.currentProject ? 'true' : 'false'}
       aria-labelledby="recovery-heading"
     >
-      <div className="start-screen" data-testid="start-screen">
+      <div
+        className="start-screen project-launcher"
+        data-testid="start-screen"
+      >
         <StartScreen {...props} />
       </div>
     </section>

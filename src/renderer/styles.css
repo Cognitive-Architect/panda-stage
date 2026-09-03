@@ -4136,6 +4136,1171 @@ button:disabled {
   }
 }
 
+/* Issue #412 — bounded Project Launcher visual craft pass. Lifecycle and
+ * persistence selectors remain untouched; these final rules are scoped to
+ * the launcher surface and its existing presentation hooks. */
+.project-center-screen > .start-screen.project-launcher {
+  width: min(100%, 1160px);
+  padding: clamp(28px, 4vw, 56px) clamp(18px, 4vw, 40px) 48px;
+  gap: 32px;
+}
+
+.project-center-screen .start-screen.project-launcher
+  > [data-project-launcher-panel='true'] {
+  gap: 26px;
+}
+
+.project-center-screen .project-launcher-header {
+  padding-bottom: 24px;
+  border-bottom-color: rgb(154 216 172 / 18%);
+}
+
+.project-center-screen .project-launcher-lede {
+  display: flex;
+  margin-top: 14px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 16px;
+  line-height: 1.5;
+  flex-wrap: wrap;
+  gap: 0 0.35em;
+}
+
+.project-center-screen .project-launcher-state-copy {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-weight: 700;
+}
+
+.project-center-screen .launcher-current-project {
+  position: relative;
+  min-height: 160px;
+  padding: 28px 32px;
+  overflow: hidden;
+  border-color: rgb(127 199 148 / 50%);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 88% 50%, rgb(83 177 106 / 20%), transparent 30%),
+    linear-gradient(112deg, rgb(37 87 57 / 48%), rgb(17 35 24 / 92%)),
+    var(--ui-color-surface-panel, #112318);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 20%);
+  gap: 28px;
+}
+
+.project-center-screen .launcher-current-project::after {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  right: 8%;
+  bottom: -170px;
+  border: 1px solid rgb(154 230 172 / 12%);
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+
+.project-center-screen .launcher-current-project-copy {
+  position: relative;
+  z-index: 1;
+  align-content: center;
+  gap: 8px;
+}
+
+.project-center-screen .launcher-current-project-copy .eyebrow {
+  color: #b5e3bf;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.project-center-screen .launcher-current-project h3 {
+  max-width: 34ch;
+  font-size: clamp(20px, 2vw, 24px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.project-center-screen .launcher-current-project-meta {
+  gap: 8px;
+}
+
+.project-center-screen .launcher-current-project-meta .clean-state,
+.project-center-screen .launcher-current-project-meta .dirty-state {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.project-center-screen .launcher-current-project-copy
+  > .project-center-current-path {
+  display: block;
+  max-width: min(72ch, 100%);
+  color: var(--ui-color-text-muted, #84958b);
+  font-size: 13px;
+}
+
+.project-center-screen .launcher-continue-button {
+  display: inline-flex;
+  position: relative;
+  z-index: 1;
+  min-width: 184px;
+  min-height: var(--ui-touch-emphasized, 56px);
+  padding: 14px 22px;
+  border-color: rgb(154 230 172 / 76%);
+  border-radius: 12px;
+  font-size: 16px;
+  box-shadow: 0 10px 24px rgb(21 69 37 / 28%);
+  gap: 10px;
+}
+
+.project-center-screen .launcher-continue-button:hover:not(:disabled),
+.project-center-screen .launcher-continue-button:focus-visible {
+  background: #39814f;
+  box-shadow: 0 12px 28px rgb(21 69 37 / 34%);
+}
+
+.project-center-screen .project-launcher-welcome {
+  position: relative;
+  min-height: 136px;
+  padding: 24px 28px;
+  overflow: hidden;
+  border-color: rgb(127 199 148 / 34%);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 92% 16%, rgb(65 145 87 / 16%), transparent 28%),
+    linear-gradient(105deg, rgb(17 35 24 / 92%), rgb(14 27 19 / 70%));
+  gap: 18px;
+}
+
+.project-center-screen .project-launcher-welcome::after {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  right: 8%;
+  bottom: -160px;
+  border: 1px solid rgb(154 230 172 / 10%);
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+
+.project-center-screen .project-launcher-welcome-mark {
+  position: relative;
+  z-index: 1;
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+  border-color: rgb(154 216 172 / 52%);
+  border-radius: 18px;
+  background: rgb(45 104 64 / 34%);
+}
+
+.project-center-screen .project-launcher-welcome-content {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.project-center-screen .project-launcher-welcome h2 {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.project-center-screen .project-launcher-welcome p:last-child {
+  margin-top: 8px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.project-center-screen .project-launcher-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.project-center-screen .project-launcher-actions button.launcher-action-tile {
+  display: grid;
+  width: 100%;
+  min-height: 96px;
+  padding: 16px 18px;
+  align-items: center;
+  justify-self: stretch;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: initial;
+  text-align: left;
+  gap: 14px;
+}
+
+.project-center-screen .launcher-action-icon {
+  display: grid;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  border: 1px solid rgb(154 216 172 / 42%);
+  border-radius: 13px;
+  color: #b9efc8;
+  background: rgb(45 104 64 / 30%);
+  place-items: center;
+}
+
+.project-center-screen .launcher-action-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.project-center-screen .launcher-action-copy strong {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.project-center-screen .launcher-action-copy small {
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.project-center-screen .project-launcher-actions
+  button.launcher-action-primary {
+  border-color: rgb(154 230 172 / 74%);
+  background:
+    linear-gradient(110deg, rgb(45 104 64 / 92%), rgb(31 79 47 / 96%)),
+    var(--ui-color-action-primary, #1d4d31);
+  box-shadow: 0 10px 24px rgb(21 69 37 / 20%);
+}
+
+.project-center-screen .project-launcher-actions
+  button.launcher-action-primary:hover:not(:disabled),
+.project-center-screen .project-launcher-actions
+  button.launcher-action-primary:focus-visible {
+  background: #39814f;
+}
+
+.project-center-screen .project-launcher-actions
+  button.launcher-action-open {
+  border-color: rgb(127 199 148 / 42%);
+  background: linear-gradient(110deg, rgb(24 52 34 / 94%), rgb(18 35 25 / 94%));
+}
+
+.project-center-screen .project-launcher-actions
+  button.launcher-action-open:hover:not(:disabled),
+.project-center-screen .project-launcher-actions
+  button.launcher-action-open:focus-visible {
+  border-color: rgb(154 230 172 / 62%);
+  background: rgb(45 104 64 / 34%);
+}
+
+.project-center-screen .launcher-advanced-open {
+  width: min(100%, 720px);
+  border-top: 0;
+}
+
+.project-center-screen .launcher-advanced-open summary {
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 8px 2px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.project-center-screen .launcher-advanced-open summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-center-screen .launcher-advanced-open summary::after {
+  color: #83d39a;
+  content: '⌄';
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.project-center-screen .launcher-advanced-open[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.project-center-screen .launcher-advanced-open .recovery-open-row {
+  display: grid;
+  padding: 16px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 14px;
+  background: rgb(17 35 24 / 72%);
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.project-center-screen .launcher-advanced-open .recovery-open-row label {
+  display: grid;
+  min-width: 0;
+  color: var(--ui-color-text-primary, #eef6f0);
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.project-center-screen .launcher-advanced-field-note {
+  color: var(--ui-color-text-muted, #84958b);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.project-center-screen .launcher-advanced-open .recovery-open-row input {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.project-center-screen .launcher-advanced-open .open-path-hint {
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 13px;
+}
+
+.project-center-screen .launcher-advanced-open .recovery-open-row > button {
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+
+.project-center-screen .project-launcher-status {
+  max-width: 76ch;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 13px;
+}
+
+.project-center-screen .project-launcher-status:empty {
+  display: none;
+}
+
+.project-center-screen
+  .project-launcher
+  .recovery-prompt {
+  display: grid;
+  min-height: 64px;
+  padding: 14px 16px;
+  border-color: rgb(233 181 80 / 42%);
+  background: linear-gradient(105deg, rgb(101 66 15 / 30%), rgb(64 45 14 / 22%));
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt > div {
+  min-width: 0;
+}
+
+.project-center-screen .project-launcher .recovery-prompt-summary {
+  gap: 4px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt-summary strong {
+  font-size: 15px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt-summary span {
+  color: #d8c69c;
+  font-size: 13px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt > div:nth-child(2) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-center-screen .project-launcher .recovery-prompt > div:nth-child(2) button {
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 10px 14px;
+}
+
+.project-center-screen .project-launcher .recovery-details {
+  min-width: 84px;
+  color: #f8e7bd;
+  font-size: 13px;
+}
+
+.project-center-screen .recent-projects-panel[data-presentation='launcher'] {
+  gap: 16px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-heading {
+  align-items: end;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-heading h2 {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list {
+  max-height: none;
+  padding-right: 4px;
+  overflow: visible;
+  gap: 8px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list
+  li {
+  display: grid;
+  min-height: 82px;
+  padding: 14px 16px;
+  border: 1px solid rgb(154 216 172 / 18%);
+  border-radius: 14px;
+  background: linear-gradient(105deg, rgb(18 39 27 / 78%), rgb(14 28 20 / 72%));
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list
+  li:hover {
+  border-color: rgb(127 199 148 / 38%);
+  background: linear-gradient(105deg, rgb(25 54 36 / 86%), rgb(16 34 23 / 82%));
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-copy {
+  gap: 8px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-glyph {
+  display: grid;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid rgb(154 216 172 / 32%);
+  border-radius: 11px;
+  color: #9eddb0;
+  background: rgb(45 104 64 / 24%);
+  place-items: center;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-title
+  strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+  line-height: 1.4;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-muted, #84958b);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-meta
+  time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-status-label {
+  order: -2;
+  color: #e4c88a;
+  font-weight: 600;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list
+  li:not([data-project-status='available'])
+  .recent-project-launcher-separator {
+  order: -1;
+  color: var(--ui-color-text-muted, #84958b);
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-action-primary {
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 10px 14px;
+  border-color: rgb(127 199 148 / 48%);
+  background: rgb(31 66 43 / 82%);
+  font-size: 14px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-more {
+  display: inline-grid;
+  width: var(--ui-touch-icon, 44px);
+  min-width: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 0;
+  border-color: transparent;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  background: transparent;
+  place-items: center;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-more:hover,
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-more:focus-visible {
+  border-color: rgb(127 199 148 / 35%);
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: rgb(45 104 62 / 28%);
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-project-maintenance-menu {
+  grid-column: 1 / -1;
+  padding: 12px 0 0;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-empty-state {
+  padding: 20px 16px;
+  border: 1px solid rgb(154 216 172 / 18%);
+  border-radius: 14px;
+  background: rgb(18 39 27 / 54%);
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-empty {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 15px;
+}
+
+.project-center-screen
+  .recent-projects-panel[data-presentation='launcher']
+  .recent-projects-empty-description {
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 14px;
+}
+
+@media (max-width: 760px) {
+  .project-center-screen > .start-screen.project-launcher {
+    padding: 28px 16px 36px;
+    gap: 26px;
+  }
+
+  .project-center-screen .launcher-current-project {
+    min-height: 0;
+    padding: 24px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .project-center-screen .launcher-continue-button {
+    width: 100%;
+  }
+
+  .project-center-screen .project-launcher-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-center-screen .launcher-advanced-open .recovery-open-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-center-screen
+    .launcher-advanced-open
+    .recovery-open-row
+    > button {
+    width: 100%;
+  }
+
+  .project-center-screen
+    .recent-projects-panel[data-presentation='launcher']
+    .recent-projects-list
+    li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .project-center-screen
+    .recent-projects-panel[data-presentation='launcher']
+    .recent-projects-actions {
+    justify-content: flex-start;
+  }
+
+  .project-center-screen .project-launcher .recovery-prompt {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* Issue #410 — Project Launcher v1. The existing lifecycle classes remain
+ * available for regression verifiers; these scoped rules only change the
+ * presentation of the Project Center launcher surface. */
+.project-center-screen > .start-screen.project-launcher {
+  height: auto;
+  min-height: 100%;
+  padding: clamp(24px, 4vw, 56px) clamp(16px, 4vw, 48px) 40px;
+  align-content: start;
+  overflow: visible;
+  gap: 28px;
+}
+
+[data-project-launcher-panel='true'] {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 22px;
+}
+
+.project-launcher-header {
+  display: grid;
+  min-width: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgb(154 216 172 / 16%);
+}
+
+.project-launcher-header .eyebrow,
+.project-launcher-section-label,
+.project-launcher-lede,
+.project-launcher-welcome p,
+.project-launcher-welcome h2 {
+  margin: 0;
+}
+
+.project-launcher-header .eyebrow {
+  color: #a8c9b1;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.project-launcher-section-label {
+  margin-top: 14px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.project-launcher-lede {
+  margin-top: 10px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: clamp(14px, 1.8vw, 17px);
+}
+
+.launcher-current-project {
+  min-height: 132px;
+  padding: 22px 24px;
+  border: 1px solid rgb(127 199 148 / 45%);
+  border-radius: var(--ui-radius-large, 14px);
+  background:
+    linear-gradient(110deg, rgb(37 87 57 / 38%), rgb(17 35 24 / 88%)),
+    var(--ui-color-surface-panel, #112318);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 18%);
+}
+
+.launcher-current-project-copy {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 5px;
+}
+
+.launcher-current-project-copy .eyebrow {
+  margin: 0;
+  color: #a8c9b1;
+}
+
+.launcher-current-project h3 {
+  margin: 0;
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: clamp(18px, 2vw, 23px);
+  line-height: 1.2;
+}
+
+.launcher-current-project-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.launcher-current-project-meta .project-center-current-path {
+  max-width: min(52ch, 100%);
+  color: var(--ui-color-text-muted, #84958b);
+}
+
+.launcher-continue-button {
+  min-width: 156px;
+  min-height: var(--ui-touch-emphasized, 56px);
+  padding: 12px 20px;
+  border-color: rgb(154 230 172 / 72%);
+  border-radius: var(--ui-radius-medium, 10px);
+  color: #f2fff4;
+  background: #2d6840;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 8px 22px rgb(21 69 37 / 30%);
+}
+
+.launcher-continue-button:hover:not(:disabled),
+.launcher-continue-button:focus-visible {
+  background: #39814f;
+}
+
+.project-launcher-welcome {
+  display: flex;
+  min-height: 112px;
+  padding: 20px 24px;
+  align-items: center;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: var(--ui-radius-large, 14px);
+  background: rgb(17 35 24 / 62%);
+  gap: 16px;
+}
+
+.project-launcher-welcome-mark {
+  display: grid;
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  border: 1px solid rgb(154 216 172 / 45%);
+  border-radius: 16px;
+  color: #b9efc8;
+  background: rgb(45 104 64 / 36%);
+  place-items: center;
+  font-size: 28px;
+  font-weight: 300;
+}
+
+.project-launcher-welcome h2 {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 18px;
+}
+
+.project-launcher-welcome p:last-child {
+  margin-top: 6px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 13px;
+}
+
+.project-launcher-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.project-launcher-actions button {
+  display: inline-flex;
+  min-height: var(--ui-touch-regular, 48px);
+  padding: 11px 18px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.project-launcher-actions .launcher-action-primary {
+  border-color: rgb(154 230 172 / 72%);
+  color: #f2fff4;
+  background: #2d6840;
+  box-shadow: 0 8px 22px rgb(21 69 37 / 20%);
+}
+
+.project-launcher-actions .launcher-action-primary:hover:not(:disabled),
+.project-launcher-actions .launcher-action-primary:focus-visible {
+  background: #39814f;
+}
+
+.project-launcher-actions .launcher-open-project-button {
+  border-color: rgb(127 199 148 / 35%);
+  background: var(--ui-color-surface-overlay, #142019);
+}
+
+.launcher-advanced-open {
+  min-width: 0;
+  border-top: 1px solid rgb(154 216 172 / 14%);
+}
+
+.launcher-advanced-open summary {
+  display: flex;
+  width: fit-content;
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 10px 2px;
+  align-items: center;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.launcher-advanced-open summary:hover,
+.launcher-advanced-open summary:focus-visible {
+  color: var(--ui-color-text-primary, #eef6f0);
+}
+
+.launcher-advanced-open .recovery-open-row {
+  padding: 4px 0 0;
+}
+
+.project-launcher-status {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 12px;
+}
+
+.recent-projects-panel[data-presentation='launcher'] {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 12px;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-heading {
+  align-items: end;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-heading h2 {
+  font-size: 20px;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-list {
+  max-height: min(38vh, 360px);
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  scrollbar-color: #3f6d4e #0a100c;
+  gap: 0;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-list li {
+  display: grid;
+  min-width: 0;
+  min-height: 72px;
+  padding: 14px 0;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border: 0;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 0;
+  background: transparent;
+  gap: 16px;
+}
+
+.recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list
+  li:last-child {
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+}
+
+.recent-project-launcher-copy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.recent-project-launcher-copy strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-project-launcher-meta {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-meta[data-testid='recent-project-status'] {
+  color: #e4c88a;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.recent-projects-panel[data-presentation='launcher']
+  .recent-project-action-primary {
+  min-height: var(--ui-touch-icon, 44px);
+  border-color: rgb(127 199 148 / 45%);
+  background: rgb(31 66 43 / 72%);
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-project-more {
+  display: inline-grid;
+  width: var(--ui-touch-icon, 44px);
+  min-width: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 0;
+  border-color: transparent;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  background: transparent;
+  place-items: center;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-project-more:hover,
+.recent-projects-panel[data-presentation='launcher']
+  .recent-project-more:focus-visible {
+  border-color: rgb(127 199 148 / 35%);
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: rgb(45 104 62 / 28%);
+}
+
+.recent-projects-empty-state {
+  padding: 20px 0;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+}
+
+.recent-projects-empty-description {
+  margin: 6px 0 0;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 12px;
+}
+
+.recent-projects-panel[data-presentation='launcher'] > .recent-projects-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.recent-projects-panel[data-presentation='launcher']
+  .recent-project-maintenance-menu {
+  padding: 12px 0 0;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+}
+
+@media (max-width: 720px) {
+  .project-center-screen > .start-screen.project-launcher {
+    padding: 24px 16px 32px;
+    gap: 22px;
+  }
+
+  .launcher-current-project,
+  .project-launcher-welcome {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .launcher-continue-button,
+  .project-launcher-actions button {
+    width: 100%;
+  }
+
+  .project-launcher-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recent-projects-panel[data-presentation='launcher'] .recent-projects-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .recent-projects-panel[data-presentation='launcher'] .recent-projects-actions {
+    justify-content: flex-start;
+  }
+
+  .launcher-advanced-open .recovery-open-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* Issue #414 — final Project Launcher visual refinement. The Banner is
+   decorative; all product copy remains in React/HTML. */
+.project-center-screen .project-launcher-banner {
+  min-height: clamp(112px, 12vw, 168px);
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 18px;
+  background-image:
+    linear-gradient(90deg, rgb(8 16 12 / 18%), rgb(8 16 12 / 4%)),
+    url('/project-launcher-banner.png');
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 18%);
+  overflow: hidden;
+}
+
+.project-center-screen .launcher-current-project {
+  min-height: 164px;
+  padding: 28px 30px;
+  border-color: rgb(127 199 148 / 52%);
+  background:
+    radial-gradient(circle at 92% 52%, rgb(76 157 96 / 22%), transparent 34%),
+    linear-gradient(108deg, rgb(35 84 54 / 62%), rgb(15 34 23 / 96%));
+  box-shadow: 0 20px 44px rgb(0 0 0 / 24%);
+}
+
+.project-center-screen .launcher-current-project-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.project-center-screen .launcher-current-project-glyph {
+  display: inline-flex;
+  color: #9ed9ae;
+}
+
+.project-center-screen .launcher-current-project-meta {
+  gap: 10px;
+}
+
+.project-center-screen .launcher-current-project-meta .clean-state,
+.project-center-screen .launcher-current-project-meta .dirty-state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  line-height: 1;
+}
+
+.project-center-screen .launcher-current-project-meta .clean-state {
+  border: 1px solid rgb(154 216 172 / 30%);
+  color: #d4ead9;
+  background: rgb(104 137 114 / 20%);
+}
+
+.project-center-screen .launcher-current-project-meta .dirty-state {
+  border: 1px solid rgb(231 187 94 / 28%);
+  color: #f0d59a;
+  background: rgb(155 104 18 / 22%);
+}
+
+.project-center-screen .launcher-save-state-icon {
+  flex: 0 0 auto;
+}
+
+.project-center-screen .launcher-current-project-meta .project-center-current-path {
+  display: block;
+  min-width: 0;
+  flex: 1 1 260px;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-center-screen .launcher-continue-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+/* Manual path entry is retained only as an off-surface compatibility hook for
+   historical lifecycle verifiers. The native chooser remains the sole normal
+   Launcher Open Project presentation. */
+.project-center-screen .launcher-legacy-open-compat {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.project-center-screen .launcher-legacy-open-compat input,
+.project-center-screen .launcher-legacy-open-compat button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+
+@media (max-width: 720px) {
+  .project-center-screen
+    .launcher-current-project-meta
+    .project-center-current-path {
+    flex-basis: 100%;
+  }
+}
+
 /* Issue #399: Stage E uses the same bounded Workbench composition as Stage D.
    The sequence panel keeps its own R2 state owner while target selection,
    range editing, review focus, and actions stay visible as one task surface. */
@@ -8146,6 +9311,10 @@ h1 {
   min-height: 1.2em;
   font-size: 0.84rem;
   color: #cfe4d7;
+}
+
+.new-project-status:empty {
+  display: none;
 }
 
 .new-project-actions {

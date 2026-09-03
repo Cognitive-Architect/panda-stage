@@ -225,7 +225,9 @@ describe('EditorShell project session integration', () => {
     expect(markup).toContain(PROJECT_ROOT);
     expect(markup).toContain('有未保存更改');
     expect(markup).toContain('data-testid="return-to-editor"');
-    expect(markup).toContain('返回编辑器');
+    expect(markup).toContain('继续创作');
+    expect(markup).not.toContain('返回编辑器');
+    expect(markup).not.toContain('当前项目仍保持打开');
   });
 
   it('renders one no-project entry, recent projects, and an enabled create entry', () => {
@@ -286,7 +288,7 @@ describe('EditorShell project session integration', () => {
       NewProjectDialog({
         parentDirectory: '',
         projectName: '',
-        status: '请选择存放文件夹并填写项目名称。',
+        status: '',
         busy: false,
         onParentDirectoryChange: vi.fn(),
         onProjectNameChange: vi.fn(),
@@ -301,6 +303,8 @@ describe('EditorShell project session integration', () => {
         projectName: '子目录\\短片',
         status: '请修正项目名称。',
         busy: false,
+        parentDirectoryTouched: true,
+        projectNameTouched: true,
         onParentDirectoryChange: vi.fn(),
         onProjectNameChange: vi.fn(),
         onChooseParentDirectory: vi.fn(),
@@ -323,7 +327,8 @@ describe('EditorShell project session integration', () => {
     );
 
     expect(empty.match(/data-testid="new-project-dialog"/gu)).toHaveLength(1);
-    expect(empty).toContain('请先选择新项目的存放文件夹');
+    expect(empty).not.toContain('请先选择新项目的存放文件夹');
+    expect(empty).not.toContain('请输入项目名称。');
     expect(empty).toMatch(
       /data-testid="new-project-confirm"[^>]*disabled/u,
     );
@@ -334,7 +339,7 @@ describe('EditorShell project session integration', () => {
     expect(ready).not.toMatch(
       /data-testid="new-project-confirm"[^>]*disabled/u,
     );
-    expect(ready).toContain('将在所选文件夹中创建同名项目文件夹');
+    expect(ready).not.toContain('将在所选文件夹中创建同名项目文件夹');
     // The dialog only ever renders the two submitted parts.
     expect(ready).not.toContain('.pandastage"');
     expect(ready).not.toContain('D:\\作品\\短片');

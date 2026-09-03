@@ -567,8 +567,10 @@ async function verifyIssue81() {
         JSON.stringify('[data-testid="project-tools-drawer"]') +
         ') && document.querySelector(' +
         JSON.stringify('[data-testid="recent-projects-panel"][data-presentation="compact"]') +
+        ') && document.querySelector(' +
+        JSON.stringify('[data-testid="recent-projects-panel"][data-presentation="compact"] [data-project-status="missing"] [data-task4-core="recent-relocate"]') +
         ')',
-      'Project Tools drawer did not open with compact Recent Projects.',
+      'Project Tools drawer did not load compact Recent Projects with relocation controls.',
     );
     const projectToolsHome = await window.webContents.executeJavaScript(
       '(() => {' +

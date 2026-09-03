@@ -406,18 +406,17 @@ export function EditorShell({
     session.getSnapshot(),
   );
   const [openCandidatePath, setOpenCandidatePath] = useState('');
-  const [status, setStatus] = useState(
-    '请选择一个 .pandastage 项目文件夹。',
-  );
+  const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [recentRefreshToken, setRecentRefreshToken] = useState(0);
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
   const [newProjectParentDirectory, setNewProjectParentDirectory] =
     useState('');
+  const [newProjectParentDirectoryTouched, setNewProjectParentDirectoryTouched] =
+    useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectStatus, setNewProjectStatus] = useState(
-    '请选择存放文件夹并填写项目名称。',
-  );
+  const [newProjectNameTouched, setNewProjectNameTouched] = useState(false);
+  const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closeConfirmStatus, setCloseConfirmStatus] = useState('');
@@ -568,11 +567,7 @@ export function EditorShell({
   const openProjectCenter = (): void => {
     setProductPreviewOpen(false);
     setRequestedPage('project-center');
-    setStatus(
-      projectSnapshot
-        ? '项目中心已打开，当前项目与编辑状态保持不变。'
-        : '请选择一个 .pandastage 项目文件夹。',
-    );
+    setStatus('');
   };
 
   const returnToEditor = (): void => {
@@ -601,12 +596,28 @@ export function EditorShell({
     }
   };
 
+  const openProjectFromChooser = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const response = await window.pandaStage.project.chooseDirectory();
+      if (response.status === 'cancelled') {
+        setStatus('');
+        return;
+      }
+      await switchToProject(response.projectRoot);
+    } catch (error) {
+      setStatus(projectOpenErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const chooseProjectDirectory = async (): Promise<void> => {
     setBusy(true);
     try {
       const response = await window.pandaStage.project.chooseDirectory();
       if (response.status === 'cancelled') {
-        setStatus('已取消选择，当前项目与待打开路径保持不变。');
+        setStatus('');
         return;
       }
       setOpenCandidatePath(response.projectRoot);
@@ -623,13 +634,15 @@ export function EditorShell({
   };
 
   const requestNewProject = (): void => {
-    setNewProjectStatus('请选择存放文件夹并填写项目名称。');
+    setNewProjectParentDirectoryTouched(false);
+    setNewProjectNameTouched(false);
+    setNewProjectStatus('');
     setNewProjectDialogOpen(true);
   };
 
   const cancelNewProject = (): void => {
     setNewProjectDialogOpen(false);
-    setNewProjectStatus('已取消新建项目。');
+    setNewProjectStatus('');
   };
 
   const chooseNewProjectParentDirectory = async (): Promise<void> => {
@@ -661,6 +674,8 @@ export function EditorShell({
     const projectName = newProjectName.trim();
     const validation = validateNewProjectInput(parentDirectory, projectName);
     if (!validation.valid) {
+      setNewProjectParentDirectoryTouched(true);
+      setNewProjectNameTouched(true);
       setNewProjectStatus(
         validation.parentDirectory.valid
           ? validation.projectName.message
@@ -692,7 +707,9 @@ export function EditorShell({
       }
       setNewProjectDialogOpen(false);
       setNewProjectName('');
-      setNewProjectStatus('请选择存放文件夹并填写项目名称。');
+      setNewProjectParentDirectoryTouched(false);
+      setNewProjectNameTouched(false);
+      setNewProjectStatus('');
     } catch (error) {
       setNewProjectStatus(projectCreateErrorMessage(error));
     } finally {
@@ -953,6 +970,7 @@ export function EditorShell({
           currentProject={projectSnapshot}
           newProjectDialogOpen={newProjectDialogOpen}
           onChooseProjectDirectory={chooseProjectDirectory}
+          onOpenProjectFromChooser={openProjectFromChooser}
           onOpenProject={openProject}
           onOpenRecentProject={switchToRecentProject}
           onOpenCandidatePathChange={setOpenCandidatePath}
@@ -1121,10 +1139,22 @@ export function EditorShell({
           onCancel={cancelNewProject}
           onChooseParentDirectory={chooseNewProjectParentDirectory}
           onCreateProject={createProject}
-          onParentDirectoryChange={setNewProjectParentDirectory}
-          onProjectNameChange={setNewProjectName}
+          onParentDirectoryBlur={() =>
+            setNewProjectParentDirectoryTouched(true)
+          }
+          onParentDirectoryChange={(value) => {
+            setNewProjectParentDirectoryTouched(true);
+            setNewProjectParentDirectory(value);
+          }}
+          onProjectNameBlur={() => setNewProjectNameTouched(true)}
+          onProjectNameChange={(value) => {
+            setNewProjectNameTouched(true);
+            setNewProjectName(value);
+          }}
           parentDirectory={newProjectParentDirectory}
+          parentDirectoryTouched={newProjectParentDirectoryTouched}
           projectName={newProjectName}
+          projectNameTouched={newProjectNameTouched}
           status={newProjectStatus}
         />
       ) : null}
