@@ -601,6 +601,22 @@ export function EditorShell({
     }
   };
 
+  const openProjectFromChooser = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const response = await window.pandaStage.project.chooseDirectory();
+      if (response.status === 'cancelled') {
+        setStatus('已取消选择，当前项目与编辑状态保持不变。');
+        return;
+      }
+      await switchToProject(response.projectRoot);
+    } catch (error) {
+      setStatus(projectOpenErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const chooseProjectDirectory = async (): Promise<void> => {
     setBusy(true);
     try {
@@ -953,6 +969,7 @@ export function EditorShell({
           currentProject={projectSnapshot}
           newProjectDialogOpen={newProjectDialogOpen}
           onChooseProjectDirectory={chooseProjectDirectory}
+          onOpenProjectFromChooser={openProjectFromChooser}
           onOpenProject={openProject}
           onOpenRecentProject={switchToRecentProject}
           onOpenCandidatePathChange={setOpenCandidatePath}

@@ -225,7 +225,9 @@ describe('EditorShell project session integration', () => {
     expect(markup).toContain(PROJECT_ROOT);
     expect(markup).toContain('有未保存更改');
     expect(markup).toContain('data-testid="return-to-editor"');
-    expect(markup).toContain('返回编辑器');
+    expect(markup).toContain('继续创作');
+    expect(markup).not.toContain('返回编辑器');
+    expect(markup).not.toContain('当前项目仍保持打开');
   });
 
   it('renders one no-project entry, recent projects, and an enabled create entry', () => {

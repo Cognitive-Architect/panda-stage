@@ -4136,6 +4136,409 @@ button:disabled {
   }
 }
 
+/* Issue #410 — Project Launcher v1. The existing lifecycle classes remain
+ * available for regression verifiers; these scoped rules only change the
+ * presentation of the Project Center launcher surface. */
+.project-center-screen > .start-screen.project-launcher {
+  height: auto;
+  min-height: 100%;
+  padding: clamp(24px, 4vw, 56px) clamp(16px, 4vw, 48px) 40px;
+  align-content: start;
+  overflow: visible;
+  gap: 28px;
+}
+
+[data-project-launcher-panel='true'] {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 22px;
+}
+
+.project-launcher-header {
+  display: grid;
+  min-width: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgb(154 216 172 / 16%);
+}
+
+.project-launcher-header .eyebrow,
+.project-launcher-section-label,
+.project-launcher-lede,
+.project-launcher-welcome p,
+.project-launcher-welcome h2 {
+  margin: 0;
+}
+
+.project-launcher-header .eyebrow {
+  color: #a8c9b1;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.project-launcher-section-label {
+  margin-top: 14px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.project-launcher-header h1 {
+  max-width: 18ch;
+  margin: 8px 0 0;
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+
+.project-launcher-lede {
+  margin-top: 10px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: clamp(14px, 1.8vw, 17px);
+}
+
+.launcher-current-project {
+  min-height: 132px;
+  padding: 22px 24px;
+  border: 1px solid rgb(127 199 148 / 45%);
+  border-radius: var(--ui-radius-large, 14px);
+  background:
+    linear-gradient(110deg, rgb(37 87 57 / 38%), rgb(17 35 24 / 88%)),
+    var(--ui-color-surface-panel, #112318);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 18%);
+}
+
+.launcher-current-project-copy {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 5px;
+}
+
+.launcher-current-project-copy .eyebrow {
+  margin: 0;
+  color: #a8c9b1;
+}
+
+.launcher-current-project h3 {
+  margin: 0;
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: clamp(18px, 2vw, 23px);
+  line-height: 1.2;
+}
+
+.launcher-current-project-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.launcher-current-project-meta .project-center-current-path {
+  max-width: min(52ch, 100%);
+  color: var(--ui-color-text-muted, #84958b);
+}
+
+.launcher-continue-button {
+  min-width: 156px;
+  min-height: var(--ui-touch-emphasized, 56px);
+  padding: 12px 20px;
+  border-color: rgb(154 230 172 / 72%);
+  border-radius: var(--ui-radius-medium, 10px);
+  color: #f2fff4;
+  background: #2d6840;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 8px 22px rgb(21 69 37 / 30%);
+}
+
+.launcher-continue-button:hover:not(:disabled),
+.launcher-continue-button:focus-visible {
+  background: #39814f;
+}
+
+.project-launcher-welcome {
+  display: flex;
+  min-height: 112px;
+  padding: 20px 24px;
+  align-items: center;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: var(--ui-radius-large, 14px);
+  background: rgb(17 35 24 / 62%);
+  gap: 16px;
+}
+
+.project-launcher-welcome-mark {
+  display: grid;
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  border: 1px solid rgb(154 216 172 / 45%);
+  border-radius: 16px;
+  color: #b9efc8;
+  background: rgb(45 104 64 / 36%);
+  place-items: center;
+  font-size: 28px;
+  font-weight: 300;
+}
+
+.project-launcher-welcome h2 {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 18px;
+}
+
+.project-launcher-welcome p:last-child {
+  margin-top: 6px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 13px;
+}
+
+.project-launcher-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.project-launcher-actions button {
+  display: inline-flex;
+  min-height: var(--ui-touch-regular, 48px);
+  padding: 11px 18px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.project-launcher-actions .launcher-action-primary {
+  border-color: rgb(154 230 172 / 72%);
+  color: #f2fff4;
+  background: #2d6840;
+  box-shadow: 0 8px 22px rgb(21 69 37 / 20%);
+}
+
+.project-launcher-actions .launcher-action-primary:hover:not(:disabled),
+.project-launcher-actions .launcher-action-primary:focus-visible {
+  background: #39814f;
+}
+
+.project-launcher-actions .launcher-open-project-button {
+  border-color: rgb(127 199 148 / 35%);
+  background: var(--ui-color-surface-overlay, #142019);
+}
+
+.launcher-advanced-open {
+  min-width: 0;
+  border-top: 1px solid rgb(154 216 172 / 14%);
+}
+
+.launcher-advanced-open summary {
+  display: flex;
+  width: fit-content;
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 10px 2px;
+  align-items: center;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.launcher-advanced-open summary:hover,
+.launcher-advanced-open summary:focus-visible {
+  color: var(--ui-color-text-primary, #eef6f0);
+}
+
+.launcher-advanced-open .recovery-open-row {
+  padding: 4px 0 0;
+}
+
+.project-launcher-status {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 12px;
+}
+
+.recent-projects-panel[data-presentation='launcher'] {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 12px;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-heading {
+  align-items: end;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-heading h2 {
+  font-size: 20px;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-list {
+  max-height: min(38vh, 360px);
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  scrollbar-color: #3f6d4e #0a100c;
+  gap: 0;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-list li {
+  display: grid;
+  min-width: 0;
+  min-height: 72px;
+  padding: 14px 0;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border: 0;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 0;
+  background: transparent;
+  gap: 16px;
+}
+
+.recent-projects-panel[data-presentation='launcher']
+  .recent-projects-list
+  li:last-child {
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+}
+
+.recent-project-launcher-copy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.recent-project-launcher-copy strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-project-launcher-meta {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-projects-panel[data-presentation='launcher']
+  .recent-project-launcher-meta[data-testid='recent-project-status'] {
+  color: #e4c88a;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-projects-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.recent-projects-panel[data-presentation='launcher']
+  .recent-project-action-primary {
+  min-height: var(--ui-touch-icon, 44px);
+  border-color: rgb(127 199 148 / 45%);
+  background: rgb(31 66 43 / 72%);
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-project-more {
+  display: inline-grid;
+  width: var(--ui-touch-icon, 44px);
+  min-width: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon, 44px);
+  padding: 0;
+  border-color: transparent;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  background: transparent;
+  place-items: center;
+}
+
+.recent-projects-panel[data-presentation='launcher'] .recent-project-more:hover,
+.recent-projects-panel[data-presentation='launcher']
+  .recent-project-more:focus-visible {
+  border-color: rgb(127 199 148 / 35%);
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: rgb(45 104 62 / 28%);
+}
+
+.recent-projects-empty-state {
+  padding: 20px 0;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+}
+
+.recent-projects-empty-description {
+  margin: 6px 0 0;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font-size: 12px;
+}
+
+.recent-projects-panel[data-presentation='launcher'] > .recent-projects-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.recent-projects-panel[data-presentation='launcher']
+  .recent-project-maintenance-menu {
+  padding: 12px 0 0;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+}
+
+@media (max-width: 720px) {
+  .project-center-screen > .start-screen.project-launcher {
+    padding: 24px 16px 32px;
+    gap: 22px;
+  }
+
+  .launcher-current-project,
+  .project-launcher-welcome {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .launcher-continue-button,
+  .project-launcher-actions button {
+    width: 100%;
+  }
+
+  .project-launcher-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recent-projects-panel[data-presentation='launcher'] .recent-projects-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .recent-projects-panel[data-presentation='launcher'] .recent-projects-actions {
+    justify-content: flex-start;
+  }
+
+  .launcher-advanced-open .recovery-open-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* Issue #399: Stage E uses the same bounded Workbench composition as Stage D.
    The sequence panel keeps its own R2 state owner while target selection,
    range editing, review focus, and actions stay visible as one task surface. */
