@@ -73,6 +73,35 @@ async function click(window, selector) {
   })()`);
 }
 
+function waitForChooserCompletion() {
+  return `new Promise((resolve, reject) => {
+    const deadline = Date.now() + 10000;
+    let observedBusy = false;
+    const poll = () => {
+      const button = document.querySelector('[data-testid="choose-project-directory"]');
+      const input = document.querySelector('.recovery-open-row input');
+      const status = document.querySelector('[data-testid="project-launcher-status"]');
+      if (button?.disabled) observedBusy = true;
+      if (
+        observedBusy &&
+        button &&
+        !button.disabled &&
+        input instanceof HTMLInputElement &&
+        status instanceof HTMLOutputElement &&
+        input.value === '' &&
+        status.textContent?.trim() === ''
+      ) {
+        return resolve();
+      }
+      if (Date.now() >= deadline) {
+        return reject(new Error('Directory chooser did not complete.'));
+      }
+      setTimeout(poll, 25);
+    };
+    poll();
+  })`;
+}
+
 async function clickRecent(window, projectRoot) {
   await ensureProjectCenter(window);
   await window.webContents.executeJavaScript(`(() => {
@@ -308,15 +337,12 @@ async function verifyIssue73() {
 
     chooserResponses.push({ ok: true, status: 'cancelled' });
     await click(window, '[data-testid="choose-project-directory"]');
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector('.recovery-panel output')` +
-          `?.textContent?.includes('已取消选择')`,
-        'Directory chooser cancellation was not reported.',
-      ),
-    );
+    await window.webContents.executeJavaScript(waitForChooserCompletion());
     const chooserCancelled = await window.webContents.executeJavaScript(
-      `document.querySelector('.recovery-open-row input').value`,
+      `(() => ({
+        path: document.querySelector('.recovery-open-row input')?.value ?? '',
+        status: document.querySelector('[data-testid="project-launcher-status"]')?.textContent?.trim() ?? '',
+      }))()`,
     );
 
     chooserResponses.push({
@@ -462,7 +488,8 @@ async function verifyIssue73() {
       guardRequests,
     };
     if (
-      chooserCancelled !== '' ||
+      chooserCancelled.path !== '' ||
+      chooserCancelled.status !== '' ||
       openedA.nameDraft !== projectA.shots[0].name ||
       openedA.durationDraft !== projectA.shots[0].durationMs ||
       switchedB.nameDraft !== projectB.shots[0].name ||
