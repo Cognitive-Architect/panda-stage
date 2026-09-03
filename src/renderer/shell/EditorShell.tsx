@@ -570,7 +570,7 @@ export function EditorShell({
     setRequestedPage('project-center');
     setStatus(
       projectSnapshot
-        ? '项目中心已打开，当前项目与编辑状态保持不变。'
+        ? ''
         : '请选择一个 .pandastage 项目文件夹。',
     );
   };
@@ -606,7 +606,7 @@ export function EditorShell({
     try {
       const response = await window.pandaStage.project.chooseDirectory();
       if (response.status === 'cancelled') {
-        setStatus('已取消选择，当前项目与编辑状态保持不变。');
+        setStatus('');
         return;
       }
       await switchToProject(response.projectRoot);
@@ -622,7 +622,7 @@ export function EditorShell({
     try {
       const response = await window.pandaStage.project.chooseDirectory();
       if (response.status === 'cancelled') {
-        setStatus('已取消选择，当前项目与待打开路径保持不变。');
+        setStatus('');
         return;
       }
       setOpenCandidatePath(response.projectRoot);

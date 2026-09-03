@@ -148,7 +148,7 @@ export function RecentProjectsPanel({
     >
       <div className="recent-projects-heading">
         <div>
-          <p className="eyebrow">{launcher ? '项目' : '项目入口'}</p>
+          {!launcher ? <p className="eyebrow">项目入口</p> : null}
           <h2 id="recent-projects-heading">最近项目</h2>
         </div>
         {!compact ? <span>{entries.length}/12</span> : null}

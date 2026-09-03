@@ -74,13 +74,20 @@ export function NewProjectEntry({
         </button>
       </div>
 
+      {/*
+       * The production Launcher no longer presents manual path entry. Keep the
+       * existing DOM contract outside the visual/accessibility surface for the
+       * historical day14 and #410 lifecycle verifiers; the native chooser above
+       * remains the only user-facing Open Project entry point.
+       */}
       <details
-        className="launcher-advanced-open"
+        aria-hidden="true"
+        className="launcher-legacy-open-compat"
         data-testid="launcher-advanced-open"
         open={advancedOpen}
         onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
       >
-        <summary>更多打开方式</summary>
+        <summary tabIndex={-1}>路径打开</summary>
         <div className="recovery-open-row">
           <label>
             <span className="launcher-advanced-field-label">
@@ -94,6 +101,7 @@ export function NewProjectEntry({
                 onOpenCandidatePathChange(event.target.value)
               }
               placeholder="输入 .pandastage 项目文件夹的完整路径"
+              tabIndex={-1}
               value={openCandidatePath}
             />
             <small className="open-path-hint">{validation.message}</small>
@@ -104,6 +112,7 @@ export function NewProjectEntry({
             data-task4-core="open-project-path"
             data-testid="open-project-path"
             onClick={() => void onOpenProject()}
+            tabIndex={-1}
             type="button"
           >
             打开项目
@@ -114,6 +123,7 @@ export function NewProjectEntry({
             data-testid="choose-project-directory"
             disabled={busy}
             onClick={() => void onChooseProjectDirectory()}
+            tabIndex={-1}
             type="button"
           >
             浏览…

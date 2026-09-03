@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowRight, Plus } from 'lucide-react';
+import { ArrowRight, Box, Check } from 'lucide-react';
 import { RecentProjectsPanel } from '../features/welcome/RecentProjectsPanel';
 import { DecorativeIcon } from '../ui';
 import { NewProjectEntry } from './NewProjectEntry';
@@ -87,7 +87,15 @@ export function StartScreen({
             data-testid="project-center-current-project"
           >
             <div className="launcher-current-project-copy">
-              <p className="eyebrow">当前项目</p>
+              <p className="eyebrow launcher-current-project-label">
+                <span
+                  aria-hidden="true"
+                  className="launcher-current-project-glyph"
+                >
+                  <DecorativeIcon icon={Box} size={14} strokeWidth={1.9} />
+                </span>
+                <span>当前项目</span>
+              </p>
               <h3 id="project-center-current-heading">
                 {currentProject.project.name}
               </h3>
@@ -104,16 +112,22 @@ export function StartScreen({
                     className="clean-state"
                     data-testid="project-center-save-state"
                   >
-                    已保存
+                    <DecorativeIcon
+                      className="launcher-save-state-icon"
+                      icon={Check}
+                      size={13}
+                      strokeWidth={2.5}
+                    />
+                    <span>已保存</span>
                   </span>
                 )}
+                <code
+                  className="project-center-current-path"
+                  title={currentProject.projectRoot}
+                >
+                  {currentProject.projectRoot}
+                </code>
               </div>
-              <code
-                className="project-center-current-path"
-                title={currentProject.projectRoot}
-              >
-                {currentProject.projectRoot}
-              </code>
             </div>
             <button
               className="launcher-continue-button task4-hit-target"
@@ -128,20 +142,11 @@ export function StartScreen({
             </button>
           </section>
         ) : (
-          <section
-            aria-labelledby="project-launcher-welcome-heading"
-            className="project-launcher-welcome"
-            data-testid="project-launcher-welcome"
-          >
-            <div aria-hidden="true" className="project-launcher-welcome-mark">
-              <DecorativeIcon icon={Plus} size={28} strokeWidth={1.7} />
-            </div>
-            <div className="project-launcher-welcome-content">
-              <p className="eyebrow">从这里开始</p>
-              <h2 id="project-launcher-welcome-heading">建立你的下一段故事</h2>
-              <p>从这里开始你的新项目。创建一个项目，或打开你最近的工作。</p>
-            </div>
-          </section>
+          <div
+            aria-hidden="true"
+            className="project-launcher-banner"
+            data-testid="project-launcher-banner"
+          />
         )}
 
         <NewProjectEntry

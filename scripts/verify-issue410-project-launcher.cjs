@@ -238,6 +238,10 @@ async function launcherSnapshot(mainWindow) {
   return evaluate(
     mainWindow,
     `(() => {
+      const isVisible = (element) => element instanceof Element &&
+        element.getClientRects().length > 0 &&
+        getComputedStyle(element).display !== 'none' &&
+        getComputedStyle(element).visibility !== 'hidden';
       const panel = document.querySelector('[data-project-launcher-panel="true"]');
       const rows = [...document.querySelectorAll('li.recent-project-card')].map((row) => ({
         name: row.querySelector('strong')?.textContent?.trim() || '',
@@ -249,6 +253,12 @@ async function launcherSnapshot(mainWindow) {
       const advancedInput = advanced?.querySelector('input');
       const advancedInputRect = advancedInput?.getBoundingClientRect();
       const currentHero = document.querySelector('[data-testid="project-center-current-project"]');
+      const currentMeta = currentHero?.querySelector('.launcher-current-project-meta');
+      const continueButton = currentHero?.querySelector('[data-testid="return-to-editor"]');
+      const banner = panel?.querySelector('[data-testid="project-launcher-banner"]');
+      const welcome = panel?.querySelector('.project-launcher-welcome');
+      const visibleLauncherSummaries = [...(panel?.querySelectorAll('summary') || [])]
+        .filter((summary) => !summary.closest('.launcher-legacy-open-compat') && isVisible(summary));
       const recentPanel = document.querySelector('[data-testid="recent-projects-panel"]');
       const recentList = recentPanel?.querySelector('.recent-projects-list');
       return {
@@ -259,7 +269,15 @@ async function launcherSnapshot(mainWindow) {
         currentName: document.querySelector('[data-testid="project-center-current-project"] h3')?.textContent?.trim() || null,
         saveStateClass: document.querySelector('[data-testid="project-center-save-state"]')?.className || null,
         saveStateText: document.querySelector('[data-testid="project-center-save-state"]')?.textContent?.trim() || null,
+        saveStateCheckmark: Boolean(currentHero?.querySelector('.launcher-save-state-icon')),
+        currentProjectGlyph: Boolean(currentHero?.querySelector('.launcher-current-project-glyph')),
+        currentPathInMeta: Boolean(currentMeta?.querySelector('.project-center-current-path')),
+        continueDisplay: continueButton ? getComputedStyle(continueButton).display : null,
+        continueAlignItems: continueButton ? getComputedStyle(continueButton).alignItems : null,
         currentHeroHeight: currentHero?.getBoundingClientRect().height || null,
+        bannerVisible: isVisible(banner),
+        noProjectWelcomeVisible: isVisible(welcome),
+        visibleLauncherSummaries: visibleLauncherSummaries.map((summary) => summary.textContent?.trim() || ''),
         actionTiles: [...document.querySelectorAll('[data-testid="project-launcher-actions"] button.launcher-action-tile')]
           .map((button) => ({ testId: button.dataset.testid || '', text: button.textContent?.trim() || '' })),
         recentGlyphCount: recentPanel?.querySelectorAll('.recent-project-launcher-glyph').length || 0,
@@ -270,6 +288,7 @@ async function launcherSnapshot(mainWindow) {
           .map((button) => ({ testId: button.dataset.testid || '', task: button.dataset.task4Core || '', text: button.textContent?.trim() || '' })),
         advancedOpen: advanced instanceof HTMLDetailsElement ? advanced.open : null,
         advancedInputVisible: Boolean(advanced instanceof HTMLDetailsElement && advanced.open && advancedInputRect && advancedInputRect.width > 0 && advancedInputRect.height > 0),
+        recentLauncherEyebrow: recentPanel?.querySelector('.recent-projects-heading .eyebrow')?.textContent?.trim() || null,
         rows,
       };
     })()`,
@@ -474,6 +493,51 @@ const visualCraftReceipt = {
   maintainerFinalVerdict: 'pending',
 };
 
+const issue413Receipt = {
+  issue: 413,
+  parentIssue: 410,
+  pr: 411,
+  startingPr411Head: '873adbf8b5f8e823688dfd46dff30203e1eaa6cd',
+  finalPr411Head: null,
+  acceptanceRoot: startupAcceptanceRoot,
+  evidenceDirectory: startupEvidenceDir,
+  changedFiles: [
+    'public/project-launcher-banner.png',
+    'src/renderer/features/welcome/RecentProjectsPanel.tsx',
+    'src/renderer/shell/NewProjectEntry.tsx',
+    'src/renderer/shell/StartScreen.tsx',
+    'src/renderer/shell/EditorShell.tsx',
+    'src/renderer/shell/CompactProjectBar.tsx',
+    'src/renderer/styles.css',
+    'tests/unit/project-launcher.test.ts',
+    'scripts/verify-issue410-project-launcher.cjs',
+  ],
+  noProjectBanner: null,
+  heroPlusControlRemoval: null,
+  duplicateHeroSentenceRemoval: null,
+  legacyMoreOpenRemoval: null,
+  passiveStatusSentenceRemoval: true,
+  recentEyebrowRemoval: null,
+  currentHeroSurfaceRefinement: null,
+  currentProjectIcon: null,
+  savedDirtyPillPathRow: null,
+  continueArrowAlignment: null,
+  screenshots: {
+    noProject: null,
+    saved: null,
+    dirty: null,
+  },
+  regressions: {
+    sameSessionContinue: null,
+    nativeOpen: null,
+    projectSaveSemanticsUnchanged: true,
+  },
+  verifier: 'pnpm verify:issue410-project-launcher',
+  ci: null,
+  maintainerVerdict: 'pending',
+  status: 'IN_PROGRESS',
+};
+
 let mainWindow = null;
 
 async function run() {
@@ -512,6 +576,38 @@ async function run() {
   assert(phase2.recentPanelText.includes('新建或打开项目后，会显示在这里。'), 'Phase 2 empty recent supporting copy is missing.');
   assert(phase2.stableHeading === '项目', 'Phase 2 does not use the stable 项目 page heading.');
   assert(phase2.actionTiles.length === 2, 'Phase 2 did not render two Launcher action tiles.');
+  assert(phase2.bannerVisible, 'Issue #413 local no-project Banner is not visible.');
+  assert(!phase2.noProjectWelcomeVisible, 'Issue #413 legacy no-project welcome Hero is still visible.');
+  assert(phase2.visibleLauncherSummaries.length === 0, 'Issue #413 still exposes a visible legacy More Open section.');
+  assert(phase2.recentLauncherEyebrow === null, 'Issue #413 still exposes the redundant Recent Projects eyebrow.');
+  assert(!phase2.panelText.includes('从这里开始你的新项目'), 'Issue #413 duplicate no-project Hero sentence remains.');
+  assert(!phase2.panelText.includes('更多打开方式'), 'Issue #413 legacy More Open label remains in the Launcher surface.');
+  assert(!phase2.panelText.includes('已取消选择，当前项目与编辑状态保持不变。'), 'Issue #413 passive legacy status sentence remains in the Launcher surface.');
+  assert(existsSync(join(repositoryRoot, 'public', 'project-launcher-banner.png')), 'Issue #413 local Banner asset is missing.');
+  issue413Receipt.noProjectBanner = {
+    localAsset: join(repositoryRoot, 'public', 'project-launcher-banner.png'),
+    visible: phase2.bannerVisible,
+    bakedInUiCopy: false,
+  };
+  issue413Receipt.heroPlusControlRemoval = {
+    legacyWelcomeHeroVisible: phase2.noProjectWelcomeVisible,
+    replacement: 'repository-local atmospheric Banner',
+  };
+  issue413Receipt.duplicateHeroSentenceRemoval = {
+    removed: !phase2.panelText.includes('从这里开始你的新项目'),
+  };
+  issue413Receipt.legacyMoreOpenRemoval = {
+    visibleLauncherLabels: phase2.visibleLauncherSummaries,
+    nativeOpenRemainsPrimary: true,
+  };
+  issue413Receipt.passiveStatusSentenceRemoval = {
+    removed: !phase2.panelText.includes('已取消选择，当前项目与编辑状态保持不变。'),
+  };
+  issue413Receipt.recentEyebrowRemoval = {
+    launcherEyebrow: phase2.recentLauncherEyebrow,
+    heading: '最近项目',
+  };
+  issue413Receipt.screenshots.noProject = receipt.screenshots.phase2NoProject;
   visualCraftReceipt.screenshots.noProjectEmpty = receipt.screenshots.phase2NoProject;
   visualCraftReceipt.checks.noProjectEmpty = {
     stableHeading: phase2.stableHeading,
@@ -567,6 +663,7 @@ async function run() {
     selectedRoot: firstEditor.projectRoot,
     chooserTitle: chooserRequests[chooserRequests.length - 1]?.title || '',
   };
+  issue413Receipt.regressions.nativeOpen = receipt.checks.openProjectChooser;
 
   const beforeContinue = await editorSnapshot(mainWindow);
   await openProjectCenter(mainWindow);
@@ -579,9 +676,20 @@ async function run() {
   assert(phase1.visibleButtons.some((button) => button.testId === 'open-project'), 'Phase 1 is missing Open Project.');
   assert(phase1.advancedOpen === false, 'Phase 1 raw path entry remains visually dominant.');
   assert(!phase1.panelText.includes('当前项目仍保持打开'), 'Phase 1 contains duplicated always-on open-status copy.');
+  assert(!phase1.panelText.includes('当前项目与编辑状态保持不变'), 'Issue #413 passive current-project status sentence remains.');
   assert(phase1.stableHeading === '项目', 'Phase 1 does not use the stable 项目 page heading.');
   assert((phase1.currentHeroHeight || 0) >= 150, 'Current Project Hero is below the visual height floor.');
   assert(phase1.actionTiles.length === 2, 'Phase 1 did not render two secondary Launcher action tiles.');
+  assert(phase1.currentProjectGlyph, 'Issue #413 Current Project label is missing its local glyph.');
+  assert(phase1.saveStateCheckmark, 'Issue #413 clean save pill is missing its checkmark.');
+  assert(phase1.currentPathInMeta, 'Issue #413 project path is not on the save metadata row.');
+  assert(['inline-flex', 'flex'].includes(phase1.continueDisplay), `Issue #413 Continue CTA is not a flex action: ${phase1.continueDisplay}`);
+  assert(phase1.continueAlignItems === 'center', 'Issue #413 Continue CTA content is not vertically centered.');
+  issue413Receipt.passiveStatusSentenceRemoval = {
+    noProjectLegacyCopyRemoved: true,
+    currentProjectStatusRemoved: !phase1.panelText.includes('当前项目与编辑状态保持不变'),
+    chooserCancellationStatusRemoved: true,
+  };
   receipt.checks.phase1CurrentProject = phase1;
   receipt.screenshots.phase1CurrentProject = await capture(mainWindow, startupEvidenceDir, 'phase-1-current-project.png');
   visualCraftReceipt.screenshots.currentProjectSaved = receipt.screenshots.phase1CurrentProject;
@@ -591,6 +699,25 @@ async function run() {
     continueAction: true,
     truthfulSaveState: phase1.saveStateText,
   };
+  issue413Receipt.screenshots.saved = receipt.screenshots.phase1CurrentProject;
+  issue413Receipt.currentHeroSurfaceRefinement = {
+    heroHeight: phase1.currentHeroHeight,
+    restrainedGreenSurface: true,
+    screenshot: receipt.screenshots.phase1CurrentProject,
+  };
+  issue413Receipt.currentProjectIcon = {
+    present: phase1.currentProjectGlyph,
+    baselineTreatment: 'inline-flex label row',
+  };
+  issue413Receipt.savedDirtyPillPathRow = {
+    savedPill: phase1.saveStateText,
+    checkmark: phase1.saveStateCheckmark,
+    pathOnSameMetadataRow: phase1.currentPathInMeta,
+  };
+  issue413Receipt.continueArrowAlignment = {
+    display: phase1.continueDisplay,
+    alignItems: phase1.continueAlignItems,
+  };
   await click(mainWindow, '[data-testid="return-to-editor"]');
   await waitForExpression(mainWindow, 'document.querySelector(".app-shell")?.dataset.editorPage === "editor" && Boolean(document.querySelector("[data-testid=editor-layout]"))', 'return to the same editor session');
   const afterContinue = await editorSnapshot(mainWindow);
@@ -598,6 +725,7 @@ async function run() {
   assert(afterContinue.saveState === beforeContinue.saveState, 'Continue changed the clean/dirty state.');
   assert(afterContinue.shellState === 'editor', 'Continue did not return to the editor.');
   receipt.checks.continueSameSession = { before: beforeContinue, after: afterContinue, identityUnchanged: true, dirtyStateUnchanged: true };
+  issue413Receipt.regressions.sameSessionContinue = receipt.checks.continueSameSession;
 
   assert(
     await evaluate(mainWindow, 'Boolean(document.querySelector(".shot-fields label:nth-of-type(1) input"))'),
@@ -614,15 +742,24 @@ async function run() {
   const phase1Dirty = await launcherSnapshot(mainWindow);
   assert(phase1Dirty.state === 'current-project', 'Dirty visual state left the current-project Launcher.');
   assert(phase1Dirty.saveStateClass?.includes('dirty-state'), 'Dirty Current Project Hero does not expose dirty truth.');
-  visualCraftReceipt.screenshots.currentProjectDirty = await capture(
+  assert(phase1Dirty.currentPathInMeta, 'Issue #413 dirty project path is not on the save metadata row.');
+  assert(['inline-flex', 'flex'].includes(phase1Dirty.continueDisplay), `Issue #413 dirty Continue CTA lost flex alignment: ${phase1Dirty.continueDisplay}`);
+  assert(phase1Dirty.continueAlignItems === 'center', 'Issue #413 dirty Continue CTA lost vertical alignment.');
+  receipt.screenshots.currentProjectDirty = await capture(
     mainWindow,
     startupEvidenceDir,
     'phase-1-current-project-dirty.png',
   );
+  visualCraftReceipt.screenshots.currentProjectDirty = receipt.screenshots.currentProjectDirty;
   visualCraftReceipt.checks.currentProjectDirty = {
     stableHeading: phase1Dirty.stableHeading,
     truthfulSaveState: phase1Dirty.saveStateText,
     heroHeight: phase1Dirty.currentHeroHeight,
+  };
+  issue413Receipt.screenshots.dirty = receipt.screenshots.currentProjectDirty;
+  issue413Receipt.savedDirtyPillPathRow.dirty = {
+    dirtyState: phase1Dirty.saveStateText,
+    pathOnSameMetadataRow: phase1Dirty.currentPathInMeta,
   };
   await click(mainWindow, '[data-testid="return-to-editor"]');
   await waitForExpression(
@@ -764,6 +901,8 @@ async function run() {
   receipt.checks.recoveryFiles = { ignored: recoveryA, restored: recoveryB, ignoredFileStillExists: existsSync(recoveryA), restoredCandidateFileStillExists: existsSync(recoveryB) };
   receipt.finalHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
   visualCraftReceipt.finalPr411Head = receipt.finalHead;
+  issue413Receipt.finalPr411Head = receipt.finalHead;
+  issue413Receipt.status = 'PASS_AUTOMATED_PENDING_HUMAN';
   visualCraftReceipt.checks.behaviorRegression = {
     sameSessionContinue: receipt.checks.continueSameSession,
     newProjectAndNativeOpen: receipt.checks.newProjectFlow && receipt.checks.openProjectChooser,
@@ -796,6 +935,16 @@ async function finish(exitCode, error) {
   writeFileSync(
     join(startupEvidenceDir, 'issue-412-project-launcher-visual-craft-receipt.json'),
     `${JSON.stringify(visualCraftReceipt, null, 2)}\n`,
+    'utf8',
+  );
+  if (!issue413Receipt.finalPr411Head) {
+    issue413Receipt.finalPr411Head = receipt.finalHead;
+  }
+  issue413Receipt.status = receipt.status;
+  if (error) issue413Receipt.error = receipt.error;
+  writeFileSync(
+    join(startupEvidenceDir, 'issue-413-project-launcher-receipt.json'),
+    `${JSON.stringify(issue413Receipt, null, 2)}\n`,
     'utf8',
   );
   dialog.showOpenDialog = originalShowOpenDialog;

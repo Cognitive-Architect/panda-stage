@@ -30,7 +30,7 @@ function renderStartScreen(
   );
 }
 
-describe('Issue #412 Project Launcher visual craft presentation', () => {
+describe('Issue #413 Project Launcher final cleanup presentation', () => {
   it('makes Continue Creating the focal action for an open clean project', () => {
     const markup = renderStartScreen({
       projectRoot: 'D:\\projects\\story.pandastage',
@@ -43,7 +43,10 @@ describe('Issue #412 Project Launcher visual craft presentation', () => {
     expect(markup).toContain('欢迎回来');
     expect(markup).toContain('继续你的创作');
     expect(markup).toContain('Story Project');
-    expect(markup).toContain('已保存');
+    expect(markup).toContain('class="clean-state"');
+    expect(markup).toContain('launcher-save-state-icon');
+    expect(markup).toContain('class="launcher-current-project-glyph"');
+    expect(markup).toContain('D:\\projects\\story.pandastage');
     expect(markup).toContain('class="launcher-continue-button task4-hit-target"');
     expect(markup).toContain('继续创作');
     expect(markup).not.toContain('返回编辑器');
@@ -63,27 +66,29 @@ describe('Issue #412 Project Launcher visual craft presentation', () => {
     expect(markup).toContain('class="dirty-state"');
   });
 
-  it('makes the no-project state a lightweight start surface without a fake current card', () => {
+  it('uses a local atmospheric Banner and removes the duplicate no-project Hero copy', () => {
     const markup = renderStartScreen();
 
     expect(markup).toContain('data-project-launcher-state="no-project"');
     expect(markup).toContain('<h1 id="recovery-heading">项目</h1>');
     expect(markup).toContain('开始创作');
     expect(markup).toContain('新建一个项目，或继续最近的工作');
-    expect(markup).toContain('data-testid="project-launcher-welcome"');
-    expect(markup).toContain('从这里开始你的新项目');
+    expect(markup).toContain('data-testid="project-launcher-banner"');
+    expect(markup).toContain('class="project-launcher-banner"');
     expect(markup).not.toContain('data-testid="project-center-current-project"');
     expect(markup).not.toContain('继续创作');
     expect(markup).not.toContain('当前项目仍保持打开');
+    expect(markup).not.toContain('project-launcher-welcome');
     expect(markup).toContain('data-testid="open-project"');
     expect(markup).toContain('data-testid="new-project-button"');
     expect(markup).toContain('从一个空白项目开始');
     expect(markup).toContain('打开已有 Panda Stage 项目');
-    expect(markup).toContain('更多打开方式');
+    expect(markup).not.toContain('更多打开方式');
+    expect(markup).not.toContain('从这里开始你的新项目');
     expect(markup).not.toContain('<details open=""');
   });
 
-  it('keeps native chooser opening in the shell and leaves manual path entry advanced', () => {
+  it('keeps native chooser opening in the shell and preserves lifecycle contracts off-surface', () => {
     const shell = readFileSync(
       'src/renderer/shell/EditorShell.tsx',
       'utf8',
@@ -95,10 +100,13 @@ describe('Issue #412 Project Launcher visual craft presentation', () => {
 
     expect(shell).toContain('onOpenProjectFromChooser={openProjectFromChooser}');
     expect(shell).toContain('await switchToProject(response.projectRoot);');
+    expect(shell).not.toContain('项目中心已打开，当前项目与编辑状态保持不变。');
+    expect(shell).not.toContain('已取消选择，当前项目与编辑状态保持不变。');
     expect(entry).toContain('data-testid="open-project"');
     expect(entry).toContain('onClick={() => void openProjectFromChooser()}');
-    expect(entry).toContain('className="launcher-advanced-open"');
+    expect(entry).toContain('className="launcher-legacy-open-compat"');
     expect(entry).toContain('data-testid="open-project-path"');
+    expect(entry).not.toContain('更多打开方式');
     expect(entry).not.toContain('window.pandaStage');
   });
 
@@ -117,5 +125,8 @@ describe('Issue #412 Project Launcher visual craft presentation', () => {
     expect(recent).toContain('recent-project-launcher-glyph');
     expect(recent).toContain('recent-project-launcher-path');
     expect(recent).toContain('data-task4-core="recent-relocate"');
+    expect(recent).toContain(
+      '!launcher ? <p className="eyebrow">项目入口</p> : null',
+    );
   });
 });

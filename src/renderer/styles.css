@@ -5201,6 +5201,122 @@ button:disabled {
   }
 }
 
+/* Issue #413 — final Project Launcher cleanup and Current Project Hero craft.
+   The Banner is decorative; all product copy remains in React/HTML. */
+.project-center-screen .project-launcher-banner {
+  min-height: clamp(184px, 22vw, 248px);
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 18px;
+  background-image:
+    linear-gradient(90deg, rgb(8 16 12 / 18%), rgb(8 16 12 / 4%)),
+    url('/project-launcher-banner.png');
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 18px 42px rgb(0 0 0 / 20%);
+  overflow: hidden;
+}
+
+.project-center-screen .launcher-current-project {
+  min-height: 164px;
+  padding: 28px 30px;
+  border-color: rgb(127 199 148 / 52%);
+  background:
+    radial-gradient(circle at 92% 52%, rgb(76 157 96 / 22%), transparent 34%),
+    linear-gradient(108deg, rgb(35 84 54 / 62%), rgb(15 34 23 / 96%));
+  box-shadow: 0 20px 44px rgb(0 0 0 / 24%);
+}
+
+.project-center-screen .launcher-current-project-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.project-center-screen .launcher-current-project-glyph {
+  display: inline-flex;
+  color: #9ed9ae;
+}
+
+.project-center-screen .launcher-current-project-meta {
+  gap: 10px;
+}
+
+.project-center-screen .launcher-current-project-meta .clean-state,
+.project-center-screen .launcher-current-project-meta .dirty-state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  line-height: 1;
+}
+
+.project-center-screen .launcher-current-project-meta .clean-state {
+  border: 1px solid rgb(154 216 172 / 30%);
+  color: #d4ead9;
+  background: rgb(104 137 114 / 20%);
+}
+
+.project-center-screen .launcher-current-project-meta .dirty-state {
+  border: 1px solid rgb(231 187 94 / 28%);
+  color: #f0d59a;
+  background: rgb(155 104 18 / 22%);
+}
+
+.project-center-screen .launcher-save-state-icon {
+  flex: 0 0 auto;
+}
+
+.project-center-screen .launcher-current-project-meta .project-center-current-path {
+  display: block;
+  min-width: 0;
+  flex: 1 1 260px;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-center-screen .launcher-continue-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+/* Manual path entry is retained only as an off-surface compatibility hook for
+   historical lifecycle verifiers. The native chooser remains the sole normal
+   Launcher Open Project presentation. */
+.project-center-screen .launcher-legacy-open-compat {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.project-center-screen .launcher-legacy-open-compat input,
+.project-center-screen .launcher-legacy-open-compat button {
+  width: 1px;
+  min-width: 1px;
+  height: 1px;
+  min-height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+
+@media (max-width: 720px) {
+  .project-center-screen
+    .launcher-current-project-meta
+    .project-center-current-path {
+    flex-basis: 100%;
+  }
+}
+
 /* Issue #399: Stage E uses the same bounded Workbench composition as Stage D.
    The sequence panel keeps its own R2 state owner while target selection,
    range editing, review focus, and actions stay visible as one task surface. */
