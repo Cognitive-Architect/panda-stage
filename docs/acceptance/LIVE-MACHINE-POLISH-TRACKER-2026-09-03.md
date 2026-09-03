@@ -69,11 +69,55 @@
 
 ## 当前问题清单
 
-> 暂不预填问题，等待真人实机逐条录入，避免把猜测写成事实。
-
 | ID | 区域 | 严重度 | 状态 | 一句话描述 | 是否需单独 Issue |
 |---|---|---:|---|---|---|
-| - | - | - | - | 待实机录入 | - |
+| LM-001 | Project Launcher / No Project | P3 | CONFIRMED | “最近项目”空状态卡内容视觉重心偏下，上半部留白过大 | 暂不需要 |
+
+## 问题明细
+
+### LM-001｜No Project 的“最近项目”空状态卡视觉重心偏下
+
+状态：`CONFIRMED`  
+严重度：`P3`  
+区域：`Project Launcher / No Project / Recent Projects empty state`  
+实机环境：`Windows + Electron`
+
+**现象：**
+
+在 Project Launcher 的 No Project 状态下，“最近项目”区域的空状态卡片中，
+“还没有最近项目 / 新建或打开项目后，会显示在这里。”这组文案整体看起来偏下，
+卡片上半部留下了一块较明显、但没有承担信息层级或视觉功能的空白。
+
+结果是卡片的视觉重心不在中部，像内容被向下压了一截；功能不受影响，但真人观看时会产生明显的“不齐 / 有点歪 / 上面空一块”的不舒服感。
+
+**复现：**
+
+1. 启动当前 `main` 的 Windows Electron 应用。
+2. 进入 Project Launcher。
+3. 保持 No Project 状态，且 Recent Projects 为空。
+4. 观察“最近项目”标题下方的 empty-state 卡片。
+
+**预期：**
+
+- empty-state 文案组在卡片中的垂直视觉重心更自然；
+- 上下留白应更均衡，或通过更紧凑的卡片高度消除无意义空区；
+- 保持当前简洁、低噪音的 Launcher 方向，不通过增加图标、说明文字或额外装饰来“填空”。
+
+**证据：**
+
+- 2026-09-03 维护者真人实机截图：红框标出了 Recent Projects empty-state 区域；
+- 人工观察：文案“感觉歪了”，上方空白过大、视觉不舒服。
+
+**建议修复方向（仅供后续实施单使用）：**
+
+优先检查 empty-state 容器自身的 `min-height / padding / align-items / justify-content` 等布局约束，
+目标应是“收紧或重新垂直居中”，而不是往空白处继续堆新内容。
+
+**备注：**
+
+- 当前属于纯视觉 polish，不影响 New/Open/Recent Projects 功能和项目状态 truth；
+- 暂不值得单独开 Issue，先留在 #416；
+- 如果后续出现多个 Launcher spacing / alignment 问题，可一起切成一个小型 Launcher polish implementation slice。
 
 ## 收口规则
 
