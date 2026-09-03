@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  NewProjectDialog,
+  type NewProjectDialogProps,
+} from '../../src/renderer/shell/NewProjectDialog';
 import { StartScreen } from '../../src/renderer/shell/StartScreen';
 
 function renderStartScreen(
@@ -26,6 +30,25 @@ function renderStartScreen(
       openCandidatePath: '',
       recentRefreshToken: 0,
       status: '',
+    }),
+  );
+}
+
+function renderNewProjectDialog(
+  overrides: Partial<NewProjectDialogProps> = {},
+): string {
+  return renderToStaticMarkup(
+    createElement(NewProjectDialog, {
+      busy: false,
+      onCancel: vi.fn(),
+      onChooseParentDirectory: vi.fn(async () => undefined),
+      onCreateProject: vi.fn(async () => undefined),
+      onParentDirectoryChange: vi.fn(),
+      onProjectNameChange: vi.fn(),
+      parentDirectory: '',
+      projectName: '',
+      status: '',
+      ...overrides,
     }),
   );
 }
@@ -132,5 +155,48 @@ describe('Issue #414 Project Launcher visual refinement presentation', () => {
     expect(recent).toContain(
       '!launcher ? <p className="eyebrow">项目入口</p> : null',
     );
+  });
+});
+
+describe('Issue #415 Project Launcher copy cleanup', () => {
+  it('does not render the passive no-project status instruction by default', () => {
+    const markup = renderStartScreen();
+
+    expect(markup).not.toContain('请选择一个 .pandastage 项目文件夹。');
+    expect(markup).not.toContain('project-launcher-status">请选择');
+  });
+
+  it('keeps the initial New Project dialog quiet while naming the directory field accessibly', () => {
+    const markup = renderNewProjectDialog();
+
+    expect(markup).toContain('role="group"');
+    expect(markup).toContain('id="new-project-parent-field-label"');
+    expect(markup).toContain(
+      '<span class="sr-only" id="new-project-parent-field-label">存放文件夹</span>',
+    );
+    expect(markup).toContain('aria-labelledby="new-project-parent-field-label"');
+    expect(markup).not.toContain('<div class="new-project-field">存放文件夹');
+    expect(markup).not.toContain('请先选择新项目的存放文件夹。');
+    expect(markup).not.toContain('请输入项目名称。');
+    expect(markup).not.toContain('请选择存放文件夹并填写项目名称。');
+    expect(markup).not.toContain('new-project-hint');
+    expect(markup).toMatch(
+      /data-testid="new-project-confirm"[^>]*disabled=""/u,
+    );
+  });
+
+  it('retains invalid gating and actionable runtime status presentation', () => {
+    const invalidMarkup = renderNewProjectDialog({
+      parentDirectory: 'D:\\作品',
+      projectName: '短片?',
+    });
+    const runtimeError = renderNewProjectDialog({
+      status: '该文件夹中已存在同名项目，请换一个项目名称。',
+    });
+
+    expect(invalidMarkup).toMatch(
+      /data-testid="new-project-confirm"[^>]*disabled=""/u,
+    );
+    expect(runtimeError).toContain('该文件夹中已存在同名项目，请换一个项目名称。');
   });
 });

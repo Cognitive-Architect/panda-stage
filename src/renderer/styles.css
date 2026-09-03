@@ -9313,6 +9313,10 @@ h1 {
   color: #cfe4d7;
 }
 
+.new-project-status:empty {
+  display: none;
+}
+
 .new-project-actions {
   display: flex;
   justify-content: flex-end;

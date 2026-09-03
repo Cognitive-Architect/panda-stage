@@ -257,6 +257,7 @@ async function launcherSnapshot(mainWindow) {
       const continueButton = currentHero?.querySelector('[data-testid="return-to-editor"]');
       const banner = panel?.querySelector('[data-testid="project-launcher-banner"]');
       const welcome = panel?.querySelector('.project-launcher-welcome');
+      const launcherStatus = panel?.querySelector('[data-testid="project-launcher-status"]');
       const visibleLauncherSummaries = [...(panel?.querySelectorAll('summary') || [])]
         .filter((summary) => !summary.closest('.launcher-legacy-open-compat') && isVisible(summary));
       const recentPanel = document.querySelector('[data-testid="recent-projects-panel"]');
@@ -267,6 +268,8 @@ async function launcherSnapshot(mainWindow) {
         largePageTitle: panel?.querySelector('.project-launcher-header h1')?.textContent?.trim() || null,
         orientationCopy: panel?.querySelector('#recovery-heading')?.textContent?.trim() || null,
         panelText: panel?.textContent?.trim() || '',
+        launcherStatusText: launcherStatus?.textContent?.trim() || '',
+        launcherStatusVisible: isVisible(launcherStatus),
         recentPanelText: recentPanel?.textContent?.trim() || '',
         currentName: document.querySelector('[data-testid="project-center-current-project"] h3')?.textContent?.trim() || null,
         saveStateClass: document.querySelector('[data-testid="project-center-save-state"]')?.className || null,
@@ -297,6 +300,47 @@ async function launcherSnapshot(mainWindow) {
         advancedInputVisible: Boolean(advanced instanceof HTMLDetailsElement && advanced.open && advancedInputRect && advancedInputRect.width > 0 && advancedInputRect.height > 0),
         recentLauncherEyebrow: recentPanel?.querySelector('.recent-projects-heading .eyebrow')?.textContent?.trim() || null,
         rows,
+      };
+    })()`,
+  );
+}
+
+async function newProjectDialogSnapshot(mainWindow) {
+  return evaluate(
+    mainWindow,
+    `(() => {
+      const isVisible = (element) => element instanceof Element &&
+        element.getClientRects().length > 0 &&
+        getComputedStyle(element).display !== 'none' &&
+        getComputedStyle(element).visibility !== 'hidden';
+      const isVisuallyPresent = (element) => {
+        if (!isVisible(element)) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 1 && rect.height > 1;
+      };
+      const dialog = document.querySelector('[data-testid="new-project-dialog"]');
+      const parentGroup = dialog?.querySelector('[role="group"]');
+      const parentLabel = dialog?.querySelector('#new-project-parent-field-label');
+      const parentInput = dialog?.querySelector('[data-testid="new-project-parent-directory"]');
+      const nameInput = dialog?.querySelector('[data-testid="new-project-name"]');
+      const status = dialog?.querySelector('.new-project-status');
+      const exactVisibleText = (text) => [...(dialog?.querySelectorAll('*') || [])]
+        .some((element) => element.textContent?.trim() === text && isVisuallyPresent(element));
+      return {
+        storageFolderLabelVisible: exactVisibleText('存放文件夹'),
+        accessibleDirectoryFieldName: parentGroup?.getAttribute('aria-labelledby') === 'new-project-parent-field-label' &&
+          Boolean(parentLabel),
+        directoryInputLabelled: parentInput?.getAttribute('aria-labelledby') === 'new-project-parent-field-label',
+        emptyFieldHintCount: dialog?.querySelectorAll('.new-project-hint').length || 0,
+        parentDirectoryHint: parentGroup?.querySelector('.new-project-hint')?.textContent?.trim() || '',
+        projectNameHint: nameInput?.parentElement?.querySelector('.new-project-hint')?.textContent?.trim() || '',
+        projectNameHintVisible: isVisible(nameInput?.parentElement?.querySelector('.new-project-hint')),
+        statusText: status?.textContent?.trim() || '',
+        statusVisible: isVisible(status),
+        confirmDisabled: Boolean(dialog?.querySelector('[data-testid="new-project-confirm"]')?.disabled),
+        parentDirectoryAriaInvalid: parentInput?.getAttribute('aria-invalid') || null,
+        projectNameAriaInvalid: nameInput?.getAttribute('aria-invalid') || null,
+        text: dialog?.textContent?.trim() || '',
       };
     })()`,
   );
@@ -593,6 +637,42 @@ const issue414Receipt = {
   status: 'IN_PROGRESS',
 };
 
+const issue415Receipt = {
+  issue: 415,
+  parentIssue: 410,
+  pr: 411,
+  startingPr411Head: '3c7f6256c044a267adba8672952f50d1cbbd5530',
+  finalPr411Head: null,
+  acceptanceRoot: startupAcceptanceRoot,
+  evidenceDirectory: startupEvidenceDir,
+  changedFiles: [
+    'src/renderer/shell/EditorShell.tsx',
+    'src/renderer/shell/NewProjectDialog.tsx',
+    'src/renderer/styles.css',
+    'tests/unit/project-launcher.test.ts',
+    'tests/integration/editor-shell-project-session.test.ts',
+    'scripts/verify-issue410-project-launcher.cjs',
+  ],
+  checks: {
+    launcherPassiveStatusRemoved: null,
+    directoryFieldAccessibleNamePreserved: null,
+    initialDialogCopyRemoved: null,
+    invalidInputFeedbackPreserved: null,
+    runtimeCreateErrorFeedbackPreserved: null,
+    createDisabledWhileInvalid: null,
+  },
+  screenshots: {
+    noProject: null,
+    newProjectInitial: null,
+    newProjectInvalidFeedback: null,
+    newProjectRuntimeError: null,
+  },
+  verifier: 'pnpm verify:issue410-project-launcher',
+  ci: null,
+  maintainerVerdict: 'pending',
+  status: 'IN_PROGRESS',
+};
+
 let mainWindow = null;
 
 async function run() {
@@ -621,6 +701,17 @@ async function run() {
   const phase2 = await launcherSnapshot(mainWindow);
   receipt.checks.phase2NoProject = phase2;
   receipt.screenshots.phase2NoProject = await capture(mainWindow, startupEvidenceDir, 'phase-2-no-project.png');
+  issue415Receipt.checks.launcherPassiveStatusRemoved = {
+    removed:
+      phase2.launcherStatusText === '' &&
+      phase2.launcherStatusVisible === false &&
+      !phase2.panelText.includes('请选择一个 .pandastage 项目文件夹。'),
+  };
+  assert(
+    issue415Receipt.checks.launcherPassiveStatusRemoved.removed,
+    'Issue #415 passive no-project Launcher status is still visible.',
+  );
+  issue415Receipt.screenshots.noProject = receipt.screenshots.phase2NoProject;
   assert(phase2.state === 'no-project', 'Phase 2 did not render the no-project Launcher state.');
   assert(phase2.currentName === null, 'Phase 2 rendered a fake current-project card.');
   assert(!phase2.panelText.includes('继续创作'), 'Phase 2 exposed Continue without a current session.');
@@ -714,7 +805,112 @@ async function run() {
 
   await click(mainWindow, '[data-testid="new-project-button"]');
   await waitForExpression(mainWindow, 'Boolean(document.querySelector("[data-testid=new-project-dialog]"))', 'New Project dialog');
-  receipt.checks.newProjectFlow = { dialogOpened: true };
+  const newProjectInitial = await newProjectDialogSnapshot(mainWindow);
+  receipt.checks.newProjectFlow = {
+    dialogOpened: true,
+    initial: newProjectInitial,
+  };
+  assert(
+    newProjectInitial.storageFolderLabelVisible === false,
+    'Issue #415 visible 存放文件夹 label remains in the initial dialog.',
+  );
+  assert(
+    newProjectInitial.accessibleDirectoryFieldName &&
+      newProjectInitial.directoryInputLabelled,
+    'Issue #415 directory field lost its accessible name.',
+  );
+  assert(
+    newProjectInitial.emptyFieldHintCount === 0 &&
+      newProjectInitial.statusText === '' &&
+      newProjectInitial.statusVisible === false,
+    'Issue #415 initial New Project dialog still exposes eager helper/status copy.',
+  );
+  assert(
+    !newProjectInitial.text.includes('请先选择新项目的存放文件夹。') &&
+      !newProjectInitial.text.includes('请输入项目名称。') &&
+      !newProjectInitial.text.includes('请选择存放文件夹并填写项目名称。'),
+    'Issue #415 initial New Project dialog still contains passive validation copy.',
+  );
+  assert(
+    newProjectInitial.confirmDisabled,
+    'Issue #415 Create Project is not disabled for the empty form.',
+  );
+  issue415Receipt.checks.directoryFieldAccessibleNamePreserved = {
+    visibleLabelRemoved: !newProjectInitial.storageFolderLabelVisible,
+    groupNamed: newProjectInitial.accessibleDirectoryFieldName,
+    inputLabelled: newProjectInitial.directoryInputLabelled,
+  };
+  issue415Receipt.checks.initialDialogCopyRemoved = {
+    emptyFieldHintsHidden: newProjectInitial.emptyFieldHintCount === 0,
+    defaultStatusRemoved:
+      newProjectInitial.statusText === '' &&
+      newProjectInitial.statusVisible === false,
+    createDisabledWhileEmpty: newProjectInitial.confirmDisabled,
+  };
+  issue415Receipt.screenshots.newProjectInitial = await capture(
+    mainWindow,
+    startupEvidenceDir,
+    'phase-2-new-project-initial.png',
+  );
+
+  await setInput(mainWindow, '[data-testid="new-project-name"]', 'Invalid?Name');
+  await waitForExpression(
+    mainWindow,
+    'document.querySelector("[data-testid=new-project-name]")?.parentElement?.querySelector(".new-project-hint")?.textContent?.includes("Windows 不允许的字符")',
+    'invalid new-project name feedback',
+  );
+  const newProjectInvalid = await newProjectDialogSnapshot(mainWindow);
+  assert(
+    newProjectInvalid.projectNameHint.includes('Windows 不允许的字符') &&
+      newProjectInvalid.projectNameHintVisible,
+    'Issue #415 invalid project-name feedback was not surfaced after interaction.',
+  );
+  assert(
+    newProjectInvalid.confirmDisabled,
+    'Issue #415 Create Project became enabled for an invalid project name.',
+  );
+  issue415Receipt.checks.invalidInputFeedbackPreserved = {
+    messageVisible: newProjectInvalid.projectNameHintVisible,
+    message: newProjectInvalid.projectNameHint,
+    createDisabled: newProjectInvalid.confirmDisabled,
+    ariaInvalid: newProjectInvalid.projectNameAriaInvalid,
+  };
+  issue415Receipt.checks.createDisabledWhileInvalid =
+    newProjectInvalid.confirmDisabled;
+  issue415Receipt.screenshots.newProjectInvalidFeedback = await capture(
+    mainWindow,
+    startupEvidenceDir,
+    'phase-2-new-project-invalid-feedback.png',
+  );
+
+  await setInput(mainWindow, '[data-testid="new-project-parent-directory"]', fixturesRoot);
+  await setInput(mainWindow, '[data-testid="new-project-name"]', 'launcher-available');
+  await waitForExpression(
+    mainWindow,
+    '!document.querySelector("[data-testid=new-project-confirm]")?.disabled',
+    'valid duplicate new-project form',
+  );
+  await click(mainWindow, '[data-testid="new-project-confirm"]');
+  await waitForExpression(
+    mainWindow,
+    'document.querySelector(".new-project-status")?.textContent?.includes("已存在同名项目")',
+    'runtime duplicate-project error feedback',
+  );
+  const newProjectRuntimeError = await newProjectDialogSnapshot(mainWindow);
+  assert(
+    newProjectRuntimeError.statusText.includes('已存在同名项目') &&
+      newProjectRuntimeError.statusVisible,
+    'Issue #415 runtime create error feedback was not surfaced.',
+  );
+  issue415Receipt.checks.runtimeCreateErrorFeedbackPreserved = {
+    statusVisible: newProjectRuntimeError.statusVisible,
+    status: newProjectRuntimeError.statusText,
+  };
+  issue415Receipt.screenshots.newProjectRuntimeError = await capture(
+    mainWindow,
+    startupEvidenceDir,
+    'phase-2-new-project-runtime-error.png',
+  );
   await click(mainWindow, '[data-testid="new-project-cancel"]');
   await waitForExpression(mainWindow, '!document.querySelector("[data-testid=new-project-dialog]")', 'New Project dialog cancellation');
 
@@ -1039,6 +1235,16 @@ async function finish(exitCode, error) {
   writeFileSync(
     join(startupEvidenceDir, 'issue-414-project-launcher-receipt.json'),
     `${JSON.stringify(issue414Receipt, null, 2)}\n`,
+    'utf8',
+  );
+  if (!issue415Receipt.finalPr411Head) {
+    issue415Receipt.finalPr411Head = receipt.finalHead;
+  }
+  issue415Receipt.status = receipt.status;
+  if (error) issue415Receipt.error = receipt.error;
+  writeFileSync(
+    join(startupEvidenceDir, 'issue-415-project-launcher-receipt.json'),
+    `${JSON.stringify(issue415Receipt, null, 2)}\n`,
     'utf8',
   );
   dialog.showOpenDialog = originalShowOpenDialog;
