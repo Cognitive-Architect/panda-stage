@@ -2769,6 +2769,11 @@ button:disabled {
 }
 
 .editor-shell[data-editor-shell-layout='landscape']
+  .right-workspace-surface[data-active-activity='properties'] {
+  overflow-y: hidden;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
   .right-workspace-surface:focus {
   outline: 2px solid var(--ui-color-focus-ring);
   outline-offset: -2px;
@@ -2780,10 +2785,10 @@ button:disabled {
   position: static;
   display: block;
   width: 100%;
-  height: auto;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -2794,10 +2799,11 @@ button:disabled {
   .right-inspector-drawer-embedded {
   position: static;
   width: 100%;
-  height: auto;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   padding: 16px;
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 0;
   border-radius: 0;
   background: transparent;

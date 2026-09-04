@@ -126,6 +126,7 @@ export function RightWorkspace({
           ref={surfaceRef}
           aria-label={`${RIGHT_ACTIVITIES.find((item) => item.id === activeActivity)?.label ?? ''}工作区`}
           className="right-workspace-surface"
+          data-active-activity={activeActivity}
           data-testid="right-workspace-surface"
           id="right-workspace-surface"
           tabIndex={-1}

@@ -36,6 +36,27 @@ function waitFor(expression, message) {
   })`;
 }
 
+async function selectRightActivity(window, activity) {
+  const selector = `[data-testid="right-activity-rail-${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Right activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="right-workspace"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)} && ` +
+        `document.querySelector('[data-testid="right-workspace-surface"]')`,
+      `Right activity did not activate: ${activity}`,
+    ),
+  );
+}
+
 async function setInput(window, selector, value) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
@@ -59,6 +80,8 @@ async function focusInput(window, selector) {
     if (!(input instanceof HTMLInputElement)) {
       throw new Error('Input not found: ${selector}');
     }
+    const details = input.closest('details');
+    if (details instanceof HTMLDetailsElement) details.open = true;
     input.scrollIntoView({ block: 'center' });
     const rect = input.getBoundingClientRect();
     return {
@@ -175,13 +198,7 @@ async function ensureCloudTouchEditor(window) {
       'Cloud Touch landscape editor did not render the selected Shot actions.',
     ),
   );
-  const drawerOpen = await window.webContents.executeJavaScript(
-    `document.querySelector('[data-testid="right-inspector"]')` +
-      `?.getAttribute('data-drawer-open') === 'true'`,
-  );
-  if (!drawerOpen) {
-    await clickElement(window, '[data-testid="inspector-rail-handle"]');
-  }
+  await selectRightActivity(window, 'properties');
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-testid="right-inspector"]')` +

@@ -43,6 +43,19 @@ describe('Issue #426 unified Right Workspace R1', () => {
     expect(workspace).toContain('surfaceRef.current?.focus()');
   });
 
+  it('keeps embedded Properties scrolling inside the docked surface', () => {
+    const workspace = source('src/renderer/shell/RightWorkspace.tsx');
+    const styles = source('src/renderer/styles.css');
+
+    expect(workspace).toContain('data-active-activity={activeActivity}');
+    expect(styles).toMatch(
+      /\.right-workspace-surface\[data-active-activity='properties'\]\s*\{\s*overflow-y:\s*hidden;/u,
+    );
+    expect(styles).toMatch(
+      /\.right-inspector-drawer-embedded\s*\{[\s\S]*?height:\s*100%;[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*auto;/u,
+    );
+  });
+
   it('reuses the existing Properties and Tools owners in content mode', () => {
     const workspace = source('src/renderer/shell/RightWorkspace.tsx');
     const inspector = source('src/renderer/shell/RightInspector.tsx');
@@ -61,6 +74,7 @@ describe('Issue #426 unified Right Workspace R1', () => {
     const verifiers = [
       source('scripts/verify-day22.cjs'),
       source('scripts/verify-day23.cjs'),
+      source('scripts/verify-day24.cjs'),
     ];
 
     for (const verifier of verifiers) {
@@ -71,5 +85,9 @@ describe('Issue #426 unified Right Workspace R1', () => {
         '`?.dataset.activeActivity === ${JSON.stringify(activity)} && `',
       );
     }
+    expect(verifiers[2]).not.toContain('inspector-rail-handle');
+    expect(verifiers[2]).toContain(
+      "if (details instanceof HTMLDetailsElement) details.open = true;",
+    );
   });
 });
