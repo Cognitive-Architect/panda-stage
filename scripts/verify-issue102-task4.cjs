@@ -219,10 +219,10 @@ function assertRecentCards(sample, label) {
 
 // The bottom workspace hosts both the Stage 3-C HistoryControls and the Day 26
 // Timeline Shell. Cloud Touch landscape now uses the post-Stage-E LM-006
-// geometry: the expanded normal state is 280px, while the live maximum is
-// constrained by the editor-body budget. Keep this focused shell verifier's
-// 300px ceiling above the normalized state; Issue #422 covers the live
-// MIN/NORMAL/MAX resize contract separately.
+// geometry: the expanded compact minimum is 210px and the normal state is
+// 280px, while the live maximum is constrained by the editor-body budget.
+// Keep this focused shell verifier's 300px ceiling above the normalized state;
+// Issues #422/#423 cover the live MIN/NORMAL/MAX and compact-tray contracts.
 function assertCompactBottom(sample, label, maxHeight = 300) {
   assert(
     sample.bottom && sample.bottomMetrics && sample.historyMetrics,

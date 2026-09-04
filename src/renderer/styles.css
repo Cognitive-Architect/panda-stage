@@ -21704,7 +21704,7 @@ h1 {
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
   height: var(--timeline-expanded-height, 280px);
-  min-height: var(--timeline-expanded-min-height, 240px);
+  min-height: var(--timeline-expanded-min-height, 210px);
   max-height: var(--timeline-expanded-max-height, 420px);
 }
 
@@ -25753,7 +25753,7 @@ h1 {
    consume the remaining height and scroll locally. */
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
-  min-height: var(--timeline-expanded-min-height, 240px);
+  min-height: var(--timeline-expanded-min-height, 210px);
   max-height: var(--timeline-expanded-max-height, 420px);
 }
 
@@ -25824,6 +25824,36 @@ h1 {
   z-index: 3;
   top: 0;
   background: rgb(6 13 9 / 98%);
+}
+
+/* Issue #423: at the derived absolute MIN, the fixed Toolbar/ruler core stays
+   intact and the Task Tray yields to a compact, scrollable header. Content is
+   intentionally kept mounted so its existing entry points remain reachable by
+   scrolling; the tray is the only presentation surface allowed to compress. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true'][data-timeline-task-tray-density='compact']
+  .timeline-task-tray {
+  min-height: 48px;
+  overflow-y: auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true'][data-timeline-task-tray-density='compact']
+  .timeline-task-tray
+  > .dialogue-sheet.dialogue-sheet-timeline {
+  gap: 0;
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true'][data-timeline-task-tray-density='compact']
+  .timeline-task-tray
+  .dialogue-sheet-header {
+  flex: 0 0 48px;
+  min-height: 48px;
+  padding: 0;
+  border-bottom: 0;
 }
 
 /* Issue #398 final cascade: these route-scoped values intentionally come

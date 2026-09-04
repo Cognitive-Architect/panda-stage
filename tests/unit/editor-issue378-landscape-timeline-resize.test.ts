@@ -23,7 +23,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
       maxHeight: TIMELINE_EXPANDED_MAX_HEIGHT,
     });
     expect(getTimelineHeightBounds(300, 168).maxHeight).toBe(
-      TIMELINE_EXPANDED_MIN_HEIGHT,
+      228,
     );
     expect(getTimelineHeightBounds(80, 168).maxHeight).toBe(
       TIMELINE_EXPANDED_MIN_HEIGHT,
@@ -39,7 +39,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
       TIMELINE_EXPANDED_MIN_HEIGHT,
     );
     expect(getTimelineHeightFromPointer(200, 500, 0, 220)).toBe(
-      TIMELINE_EXPANDED_MIN_HEIGHT,
+      220,
     );
   });
 

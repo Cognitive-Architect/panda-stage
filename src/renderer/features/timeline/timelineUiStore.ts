@@ -13,12 +13,31 @@ type Listener = () => void;
  * stack, and unified Task Tray were added. Collapse remains the explicit way
  * to reclaim more vertical space; an expanded Timeline must keep its core
  * surface usable.
+ *
+ * Issue #423 keeps that core surface fixed and lets the Task Tray yield first:
+ * the expanded floor is derived from the fixed Toolbar/ruler geometry, a
+ * compact Task Tray header, and the existing BottomWorkspace border rather
+ * than being another arbitrary floor.
  */
-export const TIMELINE_EXPANDED_MIN_HEIGHT = 240;
+export const TIMELINE_TOOLBAR_HEIGHT = 48;
+export const TIMELINE_RULER_SCROLL_HEIGHT = 112;
+export const TIMELINE_TASK_TRAY_NORMAL_MIN_HEIGHT = 76;
+export const TIMELINE_TASK_TRAY_COMPACT_MIN_HEIGHT = 48;
+export const TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT = 2;
+export const TIMELINE_EXPANDED_CORE_MIN_HEIGHT =
+  TIMELINE_TOOLBAR_HEIGHT + TIMELINE_RULER_SCROLL_HEIGHT;
+export const TIMELINE_EXPANDED_MIN_HEIGHT =
+  TIMELINE_EXPANDED_CORE_MIN_HEIGHT +
+  TIMELINE_TASK_TRAY_COMPACT_MIN_HEIGHT +
+  TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT;
 export const TIMELINE_EXPANDED_DEFAULT_HEIGHT = 280;
 export const TIMELINE_EXPANDED_MAX_HEIGHT = 420;
 export const TIMELINE_MIN_CANVAS_HEIGHT = 240;
 export const TIMELINE_RESIZE_KEYBOARD_STEP = 16;
+export const TIMELINE_TASK_TRAY_COMPACT_MAX_EXPANDED_HEIGHT =
+  TIMELINE_EXPANDED_MIN_HEIGHT +
+  TIMELINE_TASK_TRAY_NORMAL_MIN_HEIGHT -
+  TIMELINE_TASK_TRAY_COMPACT_MIN_HEIGHT;
 
 export interface TimelineHeightBounds {
   minHeight: number;

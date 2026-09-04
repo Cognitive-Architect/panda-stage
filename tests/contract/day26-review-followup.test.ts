@@ -38,8 +38,8 @@ describe('Day 26 review follow-up #195 contracts', () => {
 
   it('V-CI-01: Issue-102 gate accepts the Day-26 Timeline Shell height budget', () => {
     // Bottom workspace now uses the post-Stage-E LM-006 Cloud Touch landscape
-    // contract (240px minimum, 280px normal); the focused gate allows the
-    // normalized state with a small 300px verification ceiling.
+    // contract (210px compact minimum, 280px normal); the focused gate allows
+    // the normalized state with a small 300px verification ceiling.
     expect(gate).toMatch(
       /function assertCompactBottom\([^)]*maxHeight = 300\)/u,
     );

@@ -13,7 +13,7 @@ function source(path: string): string {
 
 describe('Issue #422 Cloud Touch landscape Timeline geometry rebaseline', () => {
   it('keeps the expanded floor usable and derives max from the strongest body floor', () => {
-    expect(TIMELINE_EXPANDED_MIN_HEIGHT).toBe(240);
+    expect(TIMELINE_EXPANDED_MIN_HEIGHT).toBe(210);
     expect(TIMELINE_EXPANDED_DEFAULT_HEIGHT).toBe(280);
     expect(TIMELINE_EXPANDED_DEFAULT_HEIGHT).toBeGreaterThanOrEqual(
       TIMELINE_EXPANDED_MIN_HEIGHT,
@@ -21,16 +21,16 @@ describe('Issue #422 Cloud Touch landscape Timeline geometry rebaseline', () => 
     expect(TIMELINE_EXPANDED_MAX_HEIGHT).toBe(420);
 
     expect(getTimelineHeightBounds(400, 200, 312)).toEqual({
-      minHeight: 240,
+      minHeight: 210,
       maxHeight: 288,
     });
     expect(getTimelineHeightBounds(400, 200, 360)).toEqual({
-      minHeight: 240,
+      minHeight: 210,
       maxHeight: 240,
     });
     expect(getTimelineHeightBounds(300, 168)).toEqual({
-      minHeight: 240,
-      maxHeight: 240,
+      minHeight: 210,
+      maxHeight: 228,
     });
   });
 

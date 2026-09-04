@@ -6,6 +6,7 @@ import {
   getTimelineHeightBounds,
   getTimelineHeightFromPointer,
   TIMELINE_EXPANDED_MIN_HEIGHT,
+  TIMELINE_TASK_TRAY_COMPACT_MAX_EXPANDED_HEIGHT,
   TIMELINE_MIN_CANVAS_HEIGHT,
   TIMELINE_RESIZE_KEYBOARD_STEP,
   timelineUiStore,
@@ -143,6 +144,10 @@ export function BottomWorkspace({
 }: BottomWorkspaceProps = {}): React.JSX.Element {
   const ui = useTimelineUi();
   const { expanded } = ui;
+  const taskTrayDensity =
+    ui.expandedHeightPx <= TIMELINE_TASK_TRAY_COMPACT_MAX_EXPANDED_HEIGHT
+      ? 'compact'
+      : 'normal';
   const workspaceRef = useRef<HTMLElement>(null);
   const resizePointerRef = useRef<TimelineResizePointer | null>(null);
 
@@ -269,6 +274,7 @@ export function BottomWorkspace({
       data-resizable={resizable ? 'true' : 'false'}
       data-timeline-resizing={ui.resizing ? 'true' : 'false'}
       data-testid="bottom-workspace"
+      data-timeline-task-tray-density={taskTrayDensity}
       data-timeline-expanded={expanded ? 'true' : 'false'}
       hidden={hidden}
       ref={workspaceRef}
