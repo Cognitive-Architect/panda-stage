@@ -278,7 +278,8 @@
           "src/renderer/shell/**",
           "src/renderer/styles.css",
           "src/renderer/styles/**",
-          "src/renderer/ui/**"
+          "src/renderer/ui/**",
+          "public/subtitle-empty-state.png"
         ],
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
@@ -303,7 +304,7 @@
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
       }
     ]
   },
