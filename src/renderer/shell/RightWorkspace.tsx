@@ -7,11 +7,12 @@ import {
   MessageCircleMore,
   SlidersHorizontal,
   Wrench,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { DecorativeIcon } from '../ui';
+import { DialogueSheet } from '../features/dialogue/DialogueSheet';
+import { usePendingDialoguePlacement } from '../features/timeline/PendingDialoguePlacement';
 import { ProjectToolsDrawer } from './ProjectToolsDrawer';
 import { RightInspector } from './RightInspector';
 
@@ -43,46 +44,12 @@ export interface RightWorkspaceProps {
   ): Promise<void>;
 }
 
-function SubtitleWorkspacePlaceholder({
-  onClose,
-}: {
-  onClose(): void;
-}): React.JSX.Element {
-  return (
-    <section
-      aria-labelledby="subtitle-workspace-heading"
-      className="subtitle-workspace-placeholder"
-      data-testid="subtitle-workspace-placeholder"
-    >
-      <header className="right-workspace-content-header">
-        <div>
-          <p className="eyebrow">右侧工作区</p>
-          <h2 id="subtitle-workspace-heading">字幕</h2>
-        </div>
-        <button
-          aria-label="关闭字幕"
-          className="right-workspace-close"
-          data-testid="subtitle-workspace-close"
-          onClick={onClose}
-          type="button"
-        >
-          <DecorativeIcon icon={X} size={20} />
-        </button>
-      </header>
-      <div className="subtitle-workspace-placeholder-body">
-        <DecorativeIcon icon={MessageCircleMore} size={34} strokeWidth={1.6} />
-        <strong>字幕工作区</strong>
-        <p>本阶段仅建立统一入口；字幕创建与待安排队列将在下一阶段迁入。</p>
-      </div>
-    </section>
-  );
-}
-
 export function RightWorkspace({
   projectSnapshot,
   recentRefreshToken,
   onOpenRecentProject,
 }: RightWorkspaceProps): React.JSX.Element {
+  const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
     useState<RightActivity | null>(null);
   const triggerRefs = useRef<Partial<Record<RightActivity, HTMLButtonElement>>>({});
@@ -93,7 +60,11 @@ export function RightWorkspace({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && activeActivity) closeSurface();
+      if (
+        event.key === 'Escape' &&
+        !event.defaultPrevented &&
+        activeActivity
+      ) closeSurface();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -132,7 +103,13 @@ export function RightWorkspace({
           tabIndex={-1}
         >
           {activeActivity === 'subtitles' ? (
-            <SubtitleWorkspacePlaceholder onClose={closeSurface} />
+            <DialogueSheet
+              onClose={closeSurface}
+              pendingDragDialogueId={pendingPlacement.drag?.dialogueId ?? null}
+              pendingTrayInteraction={pendingPlacement.interaction}
+              presentation="right-workspace"
+              unifiedTaskTray
+            />
           ) : activeActivity === 'properties' ? (
             <RightInspector
               drawerOpen

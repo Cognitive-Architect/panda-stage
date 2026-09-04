@@ -27,6 +27,7 @@ import {
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
+import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
 import { BottomWorkspace } from './BottomWorkspace';
@@ -1029,13 +1030,14 @@ export function EditorShell({
               />
             ) : null}
           </div>
-          <div
-            className="editor-body"
-            data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
-            data-portrait-surface={portraitContextSurface}
-            data-shell-mode={layoutMode}
-            data-testid="editor-body"
-          >
+          <PendingDialoguePlacementProvider>
+            <div
+              className="editor-body"
+              data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
+              data-portrait-surface={portraitContextSurface}
+              data-shell-mode={layoutMode}
+              data-testid="editor-body"
+            >
             <div
               aria-hidden={!portraitResourcesVisible}
               className="editor-workspace-slot editor-workspace-slot-resources"
@@ -1114,13 +1116,14 @@ export function EditorShell({
               )}
             </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
-          </div>
-          <BottomWorkspace
-            hidden={isPortrait && portraitWorkspace !== 'timeline'}
-            presentation={layoutMode}
-            resizable={layoutMode === 'landscape'}
-            showHistoryControls={false}
-          />
+            </div>
+            <BottomWorkspace
+              hidden={isPortrait && portraitWorkspace !== 'timeline'}
+              presentation={layoutMode}
+              resizable={layoutMode === 'landscape'}
+              showHistoryControls={false}
+            />
+          </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
             <ProductPreviewOverlay
               onClose={closeProductPreview}

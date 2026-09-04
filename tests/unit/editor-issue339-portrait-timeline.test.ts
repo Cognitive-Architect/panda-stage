@@ -11,10 +11,12 @@ describe('Issue #339 portrait Timeline subtitle task surface', () => {
     const timeline = source(
       'src/renderer/features/timeline/TimelineDock.tsx',
     );
+    const right = source('src/renderer/shell/RightWorkspace.tsx');
 
     expect(timeline).toContain('timelineUiStore.seek');
     expect(timeline).toContain('<DialogueClip');
-    expect(timeline).toContain('<DialogueSheet');
+    expect(timeline).not.toContain('<DialogueSheet');
+    expect(right).toContain('<DialogueSheet');
     expect(timeline).toContain('data-audio-state=');
     expect(timeline).toContain('laneLabelWidth');
     expect(timeline).toContain('--timeline-lane-label-width');

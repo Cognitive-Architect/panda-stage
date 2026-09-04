@@ -27,6 +27,15 @@ describe('Issue #381 Cloud Touch landscape Pending subtitle drag-to-place', () =
     expect(isPendingDialoguePlacementGesture(0, 0, 4, -12)).toBe(true);
     expect(isPendingDialoguePlacementGesture(0, 0, 12, -12)).toBe(false);
     expect(isPendingDialoguePlacementGesture(0, 0, 0, 10)).toBe(false);
+    expect(
+      isPendingDialoguePlacementGesture(0, 0, 10, 0, 'any-direction'),
+    ).toBe(true);
+    expect(
+      isPendingDialoguePlacementGesture(0, 0, 8, 8, 'any-direction'),
+    ).toBe(true);
+    expect(
+      isPendingDialoguePlacementGesture(0, 0, 6, 6, 'any-direction'),
+    ).toBe(false);
   });
 
   it('maps client X through the existing lane geometry at zoom and scroll positions', () => {
@@ -50,27 +59,30 @@ describe('Issue #381 Cloud Touch landscape Pending subtitle drag-to-place', () =
     const timeline = source(
       'src/renderer/features/timeline/TimelineDock.tsx',
     );
+    const placement = source(
+      'src/renderer/features/timeline/PendingDialoguePlacement.tsx',
+    );
     const sheet = source(
       'src/renderer/features/dialogue/DialogueSheet.tsx',
     );
     const store = source('src/renderer/stores/dialogueStore.ts');
     const service = source('src/domain/services/DialogueService.ts');
 
-    expect(timeline).toContain('pendingTrayInteraction');
-    expect(timeline).toContain('setPointerCapture(pointer.pointerId)');
-    expect(timeline).toContain('pending-dialogue-drag-ghost');
+    expect(placement).toContain('PendingTrayInteractionController');
+    expect(placement).toContain('setPointerCapture(pointer.pointerId)');
+    expect(placement).toContain('pending-dialogue-drag-ghost');
     expect(timeline).toContain('pending-dialogue-drop-marker');
     expect(timeline).toContain('data-pending-drop-surface="subtitle"');
     expect(timeline).toContain("pendingDrag ? 'not-allowed' : undefined");
-    expect(timeline).toContain('dialogueStore.previewArrange');
-    expect(timeline).toContain('dialogueStore.arrange(');
-    expect(timeline).toContain('integerFrameSpanMs()');
-    expect(timeline).toContain('event.preventDefault()');
-    expect(timeline).toContain('event.stopPropagation()');
-    expect(timeline).toContain("event.key !== 'Escape'");
-    expect(timeline).not.toContain('draggable=');
-    expect(timeline).not.toContain('updateProject');
-    expect(timeline).not.toContain('historyStore');
+    expect(placement).toContain('dialogueStore.previewArrange');
+    expect(placement).toContain('dialogueStore.arrange(');
+    expect(placement).toContain('integerFrameSpanMs()');
+    expect(placement).toContain('event.preventDefault()');
+    expect(placement).toContain('event.stopPropagation()');
+    expect(placement).toContain("event.key !== 'Escape'");
+    expect(placement).not.toContain('draggable=');
+    expect(placement).not.toContain('updateProject');
+    expect(placement).not.toContain('historyStore');
 
     expect(sheet).toContain('PendingTrayInteractionController');
     expect(sheet).toContain('data-pending-card-select="true"');
@@ -103,16 +115,16 @@ describe('Issue #381 Cloud Touch landscape Pending subtitle drag-to-place', () =
     const sheet = source(
       'src/renderer/features/dialogue/DialogueSheet.tsx',
     );
-    const timeline = source(
-      'src/renderer/features/timeline/TimelineDock.tsx',
+    const placement = source(
+      'src/renderer/features/timeline/PendingDialoguePlacement.tsx',
     );
 
     expect(sheet).toContain('data-testid="dialogue-untimed-arrange"');
     expect(sheet).toContain(
       'dialogueStore.arrange(dialogueId, integerFrameSpanMs())',
     );
-    expect(timeline).toContain('clearPendingDrag(!validDrop)');
-    expect(timeline).toContain('if (!active || !validDrop');
-    expect(timeline).toContain('sourceElement');
+    expect(placement).toContain('clearDrag(!validDrop)');
+    expect(placement).toContain('if (!active || !validDrop');
+    expect(placement).toContain('sourceElement');
   });
 });

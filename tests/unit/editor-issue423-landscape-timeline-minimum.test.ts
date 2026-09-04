@@ -38,12 +38,13 @@ describe('Issue #423 Cloud Touch landscape Timeline minimum composition', () => 
     );
   });
 
-  it('derives Task Tray density from the single Timeline height owner', () => {
+  it('keeps the inherited R1 height owner without a removed tray density state', () => {
     const bottom = source('src/renderer/shell/BottomWorkspace.tsx');
 
-    expect(bottom).toContain('TIMELINE_TASK_TRAY_COMPACT_MAX_EXPANDED_HEIGHT');
-    expect(bottom).toContain('data-timeline-task-tray-density={taskTrayDensity}');
-    expect(bottom).toContain('ui.expandedHeightPx <=');
+    expect(bottom).toContain('TIMELINE_EXPANDED_MIN_HEIGHT');
+    expect(bottom).not.toContain('TIMELINE_TASK_TRAY_COMPACT_MAX_EXPANDED_HEIGHT');
+    expect(bottom).not.toContain('data-timeline-task-tray-density');
+    expect(bottom).not.toContain('taskTrayDensity');
     expect(bottom).not.toContain('useState');
   });
 

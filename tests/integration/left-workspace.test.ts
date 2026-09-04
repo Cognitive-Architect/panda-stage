@@ -557,8 +557,8 @@ async function verifyIssue81() {
     await openProject(window, projectARoot);
     await waitForActivity(window, 'shots');
 
-    // Issue #426 R1: the left and right rails expose the final 3 + 3 shell,
-    // and one right surface replaces another without stacking.
+    // Issue #426 R1 / #428 R2: the left and right rails expose the final 3 + 3
+    // shell, and one right surface replaces another without stacking.
     const activityShell = await window.webContents.executeJavaScript(
       '(() => ({' +
         'left: [...document.querySelectorAll(' +
@@ -582,11 +582,11 @@ async function verifyIssue81() {
     await waitFor(
       window,
       'document.querySelector(' +
-        JSON.stringify('[data-testid="subtitle-workspace-placeholder"]') +
+        JSON.stringify('[data-testid="dialogue-sheet"][data-presentation="right-workspace"]') +
         ') && document.querySelectorAll(' +
         JSON.stringify('[data-testid="right-workspace-surface"]') +
         ').length === 1',
-      'Subtitle placeholder did not open as the single right surface.',
+      'Right Subtitle Workspace did not open as the single right surface.',
     );
     await click(window, '[data-testid="right-activity-rail-properties"]');
     await waitFor(
@@ -598,7 +598,7 @@ async function verifyIssue81() {
         ')).visibility === "visible" && document.querySelector(' +
         JSON.stringify('[data-testid="inspector-inline-close"]') +
         ') && !document.querySelector(' +
-        JSON.stringify('[data-testid="subtitle-workspace-placeholder"]') +
+        JSON.stringify('[data-testid="dialogue-sheet"][data-presentation="right-workspace"]') +
         ') && document.querySelectorAll(' +
         JSON.stringify('[data-testid="right-workspace-surface"]') +
         ').length === 1',

@@ -2862,6 +2862,287 @@ button:disabled {
   line-height: 1.6;
 }
 
+/* Issue #428 R2: the existing DialogueSheet is presented by the Right
+   Workspace. Only the queue/authoring surface scrolls; the editor page and
+   Bottom Timeline remain independent, fixed owners. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-workspace-surface[data-active-activity='subtitles'] {
+  overflow: hidden;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  border: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace[data-task-tray-state='single-add'],
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace[data-task-tray-state='batch-paste'] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  > .dialogue-sheet-header {
+  display: grid;
+  min-height: 72px;
+  padding: 12px;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-sheet-heading,
+.dialogue-sheet-right-workspace .dialogue-sheet-heading p,
+.dialogue-sheet-right-workspace .dialogue-sheet-heading h3 {
+  min-width: 0;
+  margin: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-sheet-heading h3 {
+  font-size: 17px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-sheet-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-open,
+.dialogue-sheet-right-workspace .dialogue-secondary-action {
+  display: inline-flex;
+  min-height: 40px;
+  padding: 8px 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.dialogue-sheet-right-workspace .timeline-subtitle-queue {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.dialogue-sheet-right-workspace .timeline-subtitle-queue-intro {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-queue {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 4px 0 0;
+  margin: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  list-style: none;
+  gap: 8px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-item {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 10px;
+  background: rgb(8 18 12 / 42%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-item[data-selected='true'] {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 24%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-select {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 76px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'speaker status'
+    'copy affordance';
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  text-align: left;
+  gap: 4px 10px;
+  touch-action: pan-y;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-select:hover,
+.dialogue-sheet-right-workspace .dialogue-untimed-select:focus-visible {
+  background: rgb(83 145 101 / 14%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-speaker {
+  overflow: hidden;
+  grid-area: speaker;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-text {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  grid-area: copy;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-status {
+  grid-area: status;
+  color: #8fb59a;
+  font-size: 11px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-affordance {
+  display: inline-flex;
+  grid-area: affordance;
+  align-items: center;
+  justify-content: flex-end;
+  color: #9bc4a6;
+  font-size: 11px;
+  gap: 2px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-action-strip {
+  display: grid;
+  padding: 10px 12px;
+  border-top: 1px solid rgb(255 255 255 / 7%);
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-action-meta,
+.dialogue-sheet-right-workspace .dialogue-untimed-action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-shell {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  gap: 12px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-header p,
+.dialogue-sheet-right-workspace .dialogue-authoring-header h3 {
+  margin: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tabs,
+.dialogue-sheet-right-workspace .dialogue-authoring-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-mode,
+.dialogue-sheet-right-workspace .dialogue-authoring-single-grid {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-section {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 9px;
+  background: rgb(0 0 0 / 12%);
+  gap: 7px;
+}
+
+.dialogue-sheet-right-workspace textarea,
+.dialogue-sheet-right-workspace select {
+  width: 100%;
+  min-width: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-task-body-empty {
+  display: grid;
+  min-height: 0;
+  padding: 22px;
+  overflow-y: auto;
+  align-content: center;
+  justify-items: center;
+  color: var(--ui-color-text-secondary);
+  text-align: center;
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .subtitle-workspace-empty-art {
+  width: 132px;
+  max-width: 54%;
+  height: auto;
+  margin-bottom: 4px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-task-body-empty strong {
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-task-body-empty span {
+  max-width: 24ch;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dialogue-sheet-right-workspace .subtitle-workspace-empty-action {
+  margin-top: 8px;
+}
+
 @media (max-width: 1050px) {
   .editor-shell[data-editor-shell-layout='landscape']
     .editor-body:has(.right-workspace[data-surface-open='true']) {

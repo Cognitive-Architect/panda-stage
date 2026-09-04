@@ -5,7 +5,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { ArrowLeft, Plus, X } from 'lucide-react';
+import { ArrowLeft, GripVertical, Plus, X } from 'lucide-react';
 import type { Character, Dialogue } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
@@ -21,8 +21,10 @@ import { DialogueInspector } from './DialogueInspector';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import { formatTimecode, integerFrameSpanMs } from '../timeline/timeGeometry';
 import { isHorizontalPendingTrayGesture } from '../timeline/pendingDialogueDrag';
+import type { PendingTrayInteractionController } from '../timeline/PendingDialoguePlacement';
 
 export { isHorizontalPendingTrayGesture } from '../timeline/pendingDialogueDrag';
+export type { PendingTrayInteractionController } from '../timeline/PendingDialoguePlacement';
 
 /** Keep the Timeline presentation on the same timed/untimed truth as the
  * DialogueClip and DialogueInspector owners. */
@@ -55,20 +57,11 @@ interface PendingTrayPointerState {
   swiping: boolean;
 }
 
-export interface PendingTrayInteractionController {
-  onPointerDown(
-    event: React.PointerEvent<HTMLUListElement>,
-    dialogueId: string | null,
-  ): void;
-  onPointerMove(event: React.PointerEvent<HTMLUListElement>): void;
-  onPointerUp(event: React.PointerEvent<HTMLUListElement>): void;
-  onPointerCancel(event: React.PointerEvent<HTMLUListElement>): void;
-  onClickCapture(event: React.MouseEvent<HTMLUListElement>): void;
-}
-
 export interface DialogueSheetProps {
+  onClose?: () => void;
   pendingTrayInteraction?: PendingTrayInteractionController;
   pendingDragDialogueId?: string | null;
+  presentation?: 'timeline' | 'right-workspace';
   unifiedTaskTray?: boolean;
 }
 
@@ -190,10 +183,13 @@ export function getDialogueSheetState(input: {
  * into Shot B.
  */
 export function DialogueSheet({
+  onClose,
   pendingTrayInteraction,
   pendingDragDialogueId = null,
+  presentation = 'timeline',
   unifiedTaskTray = false,
 }: DialogueSheetProps = {}): React.JSX.Element {
+  const rightWorkspace = presentation === 'right-workspace';
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -513,7 +509,8 @@ export function DialogueSheet({
   const characterName = (id: string): string =>
     characters.find((candidate) => candidate.id === id)?.name ?? id;
 
-  const selectedDialogueState: DialogueSelectionState = selectedTimedDialogue
+  const selectedDialogueState: DialogueSelectionState =
+    !rightWorkspace && selectedTimedDialogue
     ? 'timed'
     : selectedUntimedDialogue
       ? 'untimed'
@@ -537,13 +534,16 @@ export function DialogueSheet({
         ? 'untimed-queue'
         : 'empty';
   const showInlineActions = timelineState === 'timeline-untimed-selected';
-  const displayedUntimedDialogues = unifiedTaskTray && selectedUntimedDialogue
+  const displayedUntimedDialogues = unifiedTaskTray && !rightWorkspace && selectedUntimedDialogue
     ? [selectedUntimedDialogue]
     : untimedDialogues;
 
   return (
     <div
-      className="dialogue-sheet dialogue-sheet-timeline"
+      className={`dialogue-sheet dialogue-sheet-timeline${
+        rightWorkspace ? ' dialogue-sheet-right-workspace' : ''
+      }`}
+      data-presentation={presentation}
       data-state={timelineState}
       data-subtitle-state={subtitleState}
       data-task-tray-state={taskTrayState}
@@ -578,7 +578,9 @@ export function DialogueSheet({
             </div>
           ) : !showTimedEditor ? (
             <div className="dialogue-sheet-heading">
-              <p className="eyebrow">字幕任务</p>
+              <p className="eyebrow">
+                {rightWorkspace ? '右侧工作区' : '字幕任务'}
+              </p>
               <h3>
                 {unifiedTaskTray && selectedUntimedDialogue ? (
                   <>安排字幕</>
@@ -633,6 +635,17 @@ export function DialogueSheet({
                 <span>新建字幕</span>
               </button>
             ) : null}
+            {rightWorkspace && onClose ? (
+              <button
+                aria-label="关闭字幕"
+                className="right-workspace-close"
+                data-testid="subtitle-workspace-close"
+                onClick={onClose}
+                type="button"
+              >
+                <X aria-hidden="true" size={20} strokeWidth={2} />
+              </button>
+            ) : null}
           </div>
         </header>
       ) : (
@@ -644,7 +657,9 @@ export function DialogueSheet({
         >
           <header className="dialogue-authoring-header">
             <div>
-              <p className="eyebrow">字幕任务</p>
+              <p className="eyebrow">
+                {rightWorkspace ? '右侧工作区' : '字幕任务'}
+              </p>
               <h3 id="dialogue-authoring-title">新建字幕</h3>
               <p>创建新的未定时字幕或批量导入。</p>
             </div>
@@ -796,7 +811,11 @@ export function DialogueSheet({
                 <section className="dialogue-authoring-section dialogue-authoring-placement">
                   <div>
                     <h4>创建位置</h4>
-                    <p>将在当前播放头处创建未定时字幕。</p>
+                    <p>
+                      {rightWorkspace
+                        ? '创建后进入待安排队列，不会自动定时。'
+                        : '将在当前播放头处创建未定时字幕。'}
+                    </p>
                   </div>
                   <div>
                     <span>当前播放头</span>
@@ -939,7 +958,16 @@ export function DialogueSheet({
                       aria-hidden="true"
                       className="dialogue-untimed-affordance"
                     >
-                      {selected ? '✓' : '›'}
+                      {selected ? (
+                        '✓'
+                      ) : rightWorkspace ? (
+                        <>
+                          <GripVertical size={16} />
+                          拖动
+                        </>
+                      ) : (
+                        '›'
+                      )}
                     </span>
                   </button>
                   {selected && showInlineActions ? (
@@ -1006,8 +1034,31 @@ export function DialogueSheet({
           className="timeline-subtitle-empty dialogue-task-body dialogue-task-body-empty"
           data-testid="timeline-subtitle-empty"
         >
+          {rightWorkspace ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="subtitle-workspace-empty-art"
+              src="/subtitle-empty-state.png"
+            />
+          ) : null}
           <strong>暂无待安排字幕</strong>
-          <span>点击下方入口添加字幕，或从时间轴选择已有字幕。</span>
+          <span>
+            {rightWorkspace
+              ? '新建一条字幕，它会先留在这里等待安排。'
+              : '点击下方入口添加字幕，或从时间轴选择已有字幕。'}
+          </span>
+          {rightWorkspace ? (
+            <button
+              className="dialogue-authoring-open subtitle-workspace-empty-action"
+              data-testid="subtitle-workspace-empty-action"
+              onClick={() => handleOpenAuthoring('single')}
+              type="button"
+            >
+              <Plus aria-hidden="true" focusable="false" size={16} />
+              新建字幕
+            </button>
+          ) : null}
         </div>
       )}
 

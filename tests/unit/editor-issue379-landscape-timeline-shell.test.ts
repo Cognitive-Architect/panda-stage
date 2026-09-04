@@ -22,25 +22,24 @@ describe('Issue #379 Cloud Touch landscape Timeline shell', () => {
   const styles = source('src/renderer/styles.css');
   const issue379 = issue379Styles(styles);
 
-  it('creates one ordered Toolbar, Ruler, Track Stack, and Task Tray', () => {
+  it('keeps the ordered Toolbar, Ruler, and Track Stack after the R2 tray migration', () => {
     const layers = [
       'data-timeline-layer="toolbar"',
       'data-timeline-layer="ruler"',
       'data-timeline-layer="track-stack"',
-      'data-timeline-layer="task-tray"',
     ];
     const positions = layers.map((layer) => timeline.indexOf(layer));
 
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(timeline.match(/data-timeline-layer=/gu)).toHaveLength(4);
+    expect(timeline.match(/data-timeline-layer=/gu)).toHaveLength(3);
     expect(timeline.match(/data-timeline-scroll-owner=/gu)).toHaveLength(1);
     expect(timeline.match(/onScroll=\{handleScroll\}/gu)).toHaveLength(1);
     expect(timeline).toContain('data-testid="timeline-toolbar"');
     expect(timeline).toContain('data-testid="timeline-ruler"');
     expect(timeline).toContain('data-testid="timeline-track-stack"');
-    expect(timeline).toContain('data-testid="timeline-task-tray"');
-    expect(timeline).toContain('<DialogueSheet');
+    expect(timeline).not.toContain('data-testid="timeline-task-tray"');
+    expect(timeline).not.toContain('<DialogueSheet');
   });
 
   it('keeps exactly the V1 subtitle and audio tracks on the shared time surface', () => {
@@ -55,21 +54,18 @@ describe('Issue #379 Cloud Touch landscape Timeline shell', () => {
     expect(timeline).toContain('data-testid="timeline-ruler-track"');
     expect(timeline).toContain('data-testid="timeline-playhead"');
 
-    const trackStart = timeline.indexOf('data-timeline-layer="track-stack"');
-    const taskTrayStart = timeline.indexOf('data-timeline-layer="task-tray"');
-    expect(taskTrayStart).toBeGreaterThan(trackStart);
+    expect(timeline.indexOf('data-timeline-layer="track-stack"')).toBeGreaterThan(
+      timeline.indexOf('data-timeline-layer="ruler"'),
+    );
   });
 
-  it('makes the track labels and Task Tray independent of horizontal Timeline scroll', () => {
+  it('keeps track labels independent of horizontal Timeline scroll', () => {
     expect(issue379).toContain('.timeline-ruler-label-spacer');
     expect(issue379).toMatch(
       /\.timeline-ruler-label-spacer[\s\S]*?position: sticky;[\s\S]*?left: 0;/u,
     );
     expect(issue379).toMatch(
       /\.timeline-lane-label[\s\S]*?position: sticky;[\s\S]*?left: 0;/u,
-    );
-    expect(issue379).toMatch(
-      /\.timeline-task-tray[\s\S]*?overflow: visible;/u,
     );
     expect(issue379).toContain('data-resizable=\'true\'');
     expect(issue379).not.toContain("data-editor-shell-layout='portrait'");
@@ -88,9 +84,6 @@ describe('Issue #379 Cloud Touch landscape Timeline shell', () => {
     );
     expect(issue379).toMatch(
       /\.timeline-lane[\s\S]*?height: 34px;[\s\S]*?min-height: 34px;/u,
-    );
-    expect(issue379).toMatch(
-      /\.timeline-task-tray[\s\S]*?flex: 0 0 auto;/u,
     );
   });
 

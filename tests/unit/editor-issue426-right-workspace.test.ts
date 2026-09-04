@@ -26,8 +26,9 @@ describe('Issue #426 unified Right Workspace R1', () => {
     expect(workspace).toContain("{ id: 'properties', label: '属性', icon: SlidersHorizontal }");
     expect(workspace).toContain("{ id: 'tools', label: '工具', icon: Wrench }");
     expect(workspace.match(/className="right-activity-rail"/gu)).toHaveLength(1);
-    expect(workspace).toContain('data-testid="subtitle-workspace-placeholder"');
-    expect(workspace).not.toContain('<DialogueSheet');
+    expect(workspace).toContain('<DialogueSheet');
+    expect(workspace).toContain('presentation="right-workspace"');
+    expect(workspace).not.toContain('subtitle-workspace-placeholder');
   });
 
   it('toggles the active surface and replaces it instead of stacking surfaces', () => {
@@ -38,7 +39,8 @@ describe('Issue #426 unified Right Workspace R1', () => {
 
     const workspace = source('src/renderer/shell/RightWorkspace.tsx');
     expect(workspace.match(/className="right-workspace-surface"/gu)).toHaveLength(1);
-    expect(workspace).toContain("event.key === 'Escape' && activeActivity");
+    expect(workspace).toContain("event.key === 'Escape' &&");
+    expect(workspace).toContain('!event.defaultPrevented');
     expect(workspace).toContain('triggerRefs.current[previousActivity]?.focus()');
     expect(workspace).toContain('surfaceRef.current?.focus()');
   });
