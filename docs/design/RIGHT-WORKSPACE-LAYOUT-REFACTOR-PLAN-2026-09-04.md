@@ -13,6 +13,32 @@ related = #416 / #422 / #423
 > 本文只定义信息架构、owner 边界、迁移顺序和验收合同。
 > 视觉尺寸、图标、间距、抽屉宽度、动画和最终高保真样式暂不定稿，后续单独补视觉设计。
 
+## 命名决策（2026-09-04）
+
+未来用户可见 UI 中，原“项目工具”统一简化命名为：
+
+```text
+工具
+```
+
+技术实现名暂不要求同步重命名，因此设计/实施文档在指向现有代码时仍可使用：
+
+```text
+ProjectToolsDrawer
+projectToolsOpen
+projectToolsContent
+Project Tools
+```
+
+原则：
+
+```text
+用户界面名称 = 工具
+现有代码技术名 = 可暂时保留
+```
+
+避免为了文案改名引入无收益的文件/变量重命名。
+
 ---
 
 ## 1. 背景 / 为什么需要这次重构
@@ -61,7 +87,7 @@ assets      -> 素材
 characters  -> 角色
 ```
 
-`项目工具` 并不是第四种资源 activity；它通过 `projectToolsContent / projectToolsOpen` 额外挂在同一 rail 上。
+当前 UI 中的 `项目工具` 并不是第四种资源 activity；它通过 `projectToolsContent / projectToolsOpen` 额外挂在同一 rail 上。
 
 因此从信息架构上看，左侧天然适合收口为：
 
@@ -83,7 +109,7 @@ LegacyWorkspace / Action Presets
 
 真实业务 owner 并不属于 LeftWorkspace 本身。
 
-所以项目工具右迁应遵循：
+所以当前“项目工具”（未来 UI 显示为“工具”）右迁应遵循：
 
 ```text
 移动 presentation surface
@@ -153,7 +179,7 @@ dialogueSelectionStore
 │         │                               │           │
 │ 镜头    │                               │ 字幕      │
 │ 素材    │            Canvas             │ 属性      │
-│ 角色    │                               │ 项目工具  │
+│ 角色    │                               │ 工具      │
 │         │                               │           │
 ├─────────┴───────────────────────────────┴───────────┤
 │                     Timeline                        │
@@ -191,7 +217,7 @@ dialogueSelectionStore
 不再承担：
 
 ```text
-项目工具
+工具（当前 UI 名称：项目工具）
 字幕任务
 ```
 
@@ -315,17 +341,17 @@ Properties mutation
 
 ---
 
-## 4.4 Right Project Tools Workspace
+## 4.4 Right Tools Workspace
 
-把当前左侧：
+用户可见入口统一命名为：
 
 ```text
-项目工具
+工具
 ```
 
-迁入右侧第三个 activity。
+它承接当前左侧“项目工具”的既有功能。
 
-继续复用：
+继续复用现有技术 owner / 组件：
 
 ```text
 ProjectToolsDrawer
@@ -339,6 +365,7 @@ LegacyWorkspace / Action Presets
 LeftWorkspace 不再 owner projectToolsOpen
 RightWorkspace 负责右侧 presentation selection
 ProjectToolsDrawer 业务内容不复制
+用户可见名称统一为“工具”
 ```
 
 ### 与 LM-004 的关系
@@ -351,15 +378,15 @@ ProjectToolsDrawer 业务内容不复制
 1:1
 ```
 
-迁入“项目工具”。
+迁入右侧“工具”。
 
-因此 **Project Tools 应先确定最终位于右侧**，然后 LM-004 再把 viewport controls 直接迁进最终位置。
+因此 **Tools Workspace 应先确定最终位于右侧**，然后 LM-004 再把 viewport controls 直接迁进最终位置。
 
 避免：
 
 ```text
-先把 controls 搬到左侧项目工具
--> 再把项目工具整体搬右
+先把 controls 搬到左侧当前“项目工具”
+-> 再把整个工具入口搬右
 -> 二次返工
 ```
 
@@ -551,15 +578,15 @@ dialogue 仍然 untimed
 ```text
 字幕
 属性
-项目工具
+工具
 ```
 
 理由：
 
 ```text
-字幕      -> 高频编排入口
-属性      -> 当前 selection 的上下文编辑
-项目工具  -> 低频项目级辅助入口
+字幕 -> 高频编排入口
+属性 -> 当前 selection 的上下文编辑
+工具 -> 低频项目级辅助入口
 ```
 
 最终图标、rail 宽度、抽屉宽度、间距后续视觉设计确定。
@@ -577,8 +604,8 @@ dialogue 仍然 untimed
 点击 属性
 -> 打开 / 切换到 Properties
 
-点击 项目工具
--> 打开 / 切换到 Project Tools
+点击 工具
+-> 打开 / 切换到 Tools Workspace（复用 ProjectToolsDrawer 内容）
 
 再次点击当前 activity
 -> 可关闭 drawer，保留 rail
@@ -611,15 +638,15 @@ right active surface 不必自动变化
 
 建议分成 3 个可独立验收的 implementation slice。
 
-## Phase R1｜Right Workspace Shell + Project Tools relocation
+## Phase R1｜Right Workspace Shell + Tools relocation
 
 目标：
 
 ```text
 左侧收口为 镜头 / 素材 / 角色
 新增统一 Right Activity Rail
-Right activities = 字幕 / 属性 / 项目工具
-项目工具从左迁右
+Right activities = 字幕 / 属性 / 工具
+当前“项目工具”从左迁右，并将用户可见名称改为“工具”
 Properties 重挂到统一 Right Workspace
 Subtitle 可以先只有占位 / skeleton，不迁业务
 ```
@@ -627,8 +654,8 @@ Subtitle 可以先只有占位 / skeleton，不迁业务
 ### R1 DoD
 
 - Left Rail 只有 3 个资源入口；
-- Right Rail 形成 3 个 activity；
-- Project Tools 功能无回归；
+- Right Rail 形成 `字幕 / 属性 / 工具` 三个 activity；
+- Tools Workspace（现 Project Tools 内容）功能无回归；
 - Properties 功能无回归；
 - 只有一个右侧 drawer/surface owner；
 - 不复制业务 state。
@@ -704,7 +731,7 @@ MAX 的产品目标从：
 ```text
 #418 / LM-006 当前阶段性验收
         ↓
-R1 Right Workspace shell
+R1 Right Workspace shell + Tools relocation
         ↓
 R2 Subtitle Workspace + drag migration
         ↓
@@ -717,10 +744,10 @@ LM-004 Canvas flatten + viewport controls relocation
 
 原因：
 
-1. 先把 Project Tools 定到最终右侧位置；
+1. 先把“工具”定到最终右侧位置；
 2. 再把 Subtitle Task Tray 从底部移走；
 3. 再根据最终 Bottom Timeline 内容重新定高度；
-4. 最后 LM-004 才基于稳定空间做 Canvas flatten，并把 viewport controls 直接放入最终右侧 Project Tools。
+4. 最后 LM-004 才基于稳定空间做 Canvas flatten，并把 viewport controls 直接放入最终右侧“工具”。
 
 这样可以明显减少返工。
 
@@ -731,12 +758,12 @@ LM-004 Canvas flatten + viewport controls relocation
 ## MUST
 
 - 左侧收口为镜头 / 素材 / 角色；
-- 右侧形成字幕 / 属性 / 项目工具；
+- 右侧形成字幕 / 属性 / 工具；
 - 底部最终只保留 Timeline；
 - Canvas 在字幕编排工作流中持续可见；
 - 复用现有业务 owner；
 - 跨区拖放复用现有 arrange / preview / time mapping；
-- Project Tools 右迁只迁 presentation；
+- 当前 Project Tools 右迁只迁 presentation，用户可见入口改名为“工具”；
 - Properties 继续使用现有 selection / mutation truth；
 - 迁移后重新真人校准 Timeline geometry。
 
@@ -751,7 +778,8 @@ LM-004 Canvas flatten + viewport controls relocation
 - 改 autosave / History 语义；
 - 因布局迁移重写 dialogue arrange 业务规则；
 - 在本轮顺手做 LM-004 Canvas transform/coordinate 重构；
-- 在没有视觉稿之前拍死最终 rail width / drawer width / icon / spacing。
+- 在没有视觉稿之前拍死最终 rail width / drawer width / icon / spacing；
+- 仅为了用户可见名称从“项目工具”改成“工具”而强制重命名现有文件、组件或状态变量。
 
 ---
 
@@ -761,7 +789,7 @@ LM-004 Canvas flatten + viewport controls relocation
 
 ```text
 Left: 镜头 / 素材 / 角色
-Right: 字幕 / 属性 / 项目工具
+Right: 字幕 / 属性 / 工具
 Bottom: pure Timeline
 ```
 
@@ -795,12 +823,13 @@ Bottom: pure Timeline
 - 切换 Subtitle / Properties 不改变 selection truth；
 - 不产生第二份字幕编辑 truth。
 
-## 10.5 Project Tools
+## 10.5 Tools
 
-- 右侧 Project Tools 可打开 / 关闭；
+- 右侧“工具”可打开 / 关闭；
 - Recovery / Recent / Action Presets 行为不变；
-- 左侧彻底不再出现 Project Tools；
-- 后续 LM-004 viewport controls 有明确最终落点。
+- 左侧彻底不再出现当前“项目工具”入口；
+- 后续 LM-004 viewport controls 有明确最终落点；
+- 用户可见标题/rail label 统一显示“工具”。
 
 ## 10.6 Timeline
 
@@ -886,10 +915,16 @@ Properties = selected object/dialogue properties
 Right 3-button rail collapsed state
 Subtitle drawer open
 Properties drawer open
-Project Tools drawer open
+Tools drawer open
 cross-workspace subtitle drag state
 pure Timeline MIN / NORMAL / MAX
 narrow landscape fallback
+```
+
+其中第三个右侧入口的用户可见名称固定为：
+
+```text
+工具
 ```
 
 ---
@@ -901,7 +936,7 @@ narrow landscape fallback
 ```text
 Left  = 镜头 / 素材 / 角色
 Center = Canvas
-Right = 字幕 / 属性 / 项目工具
+Right = 字幕 / 属性 / 工具
 Bottom = pure Timeline
 ```
 
@@ -925,10 +960,10 @@ Bottom = pure Timeline
 推荐后续实施顺序：
 
 ```text
-R1 Right Workspace shell
+R1 Right Workspace shell + Tools relocation
 -> R2 Subtitle Workspace + cross-workspace drag
 -> R3 Pure Timeline rebaseline
--> LM-004 Canvas flatten / viewport controls relocation
+-> LM-004 Canvas flatten / viewport controls relocation into 工具
 ```
 
 视觉设计在实施 Issue 创建前或 R1 开工前补齐即可。
