@@ -296,6 +296,8 @@ export interface RightInspectorProps {
   /** Optional controlled drawer state for a portrait Canvas-context sheet. */
   drawerOpen?: boolean;
   onDrawerOpenChange?(open: boolean): void;
+  /** Render only the existing Inspector content inside RightWorkspace. */
+  embedded?: boolean;
 }
 
 export function RightInspector({
@@ -304,6 +306,7 @@ export function RightInspector({
   dialogueSelectionVisible = true,
   drawerOpen: requestedDrawerOpen,
   onDrawerOpenChange,
+  embedded = false,
 }: RightInspectorProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -390,24 +393,27 @@ export function RightInspector({
   const prevDrawerOpenRef = useRef(drawerOpen);
 
   useEffect(() => {
+    if (embedded) return undefined;
     if (requestedDrawerOpen === undefined) {
       setInternalDrawerOpen(!narrow);
     }
-  }, [narrow, requestedDrawerOpen]);
+  }, [embedded, narrow, requestedDrawerOpen]);
 
   useEffect(() => {
+    if (embedded) return undefined;
     if (!narrow) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') setDrawerOpen(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [narrow]);
+  }, [embedded, narrow]);
 
   // V-194-02: keep keyboard focus inside the open drawer, and return it to the
   // rail trigger when the drawer closes. The trigger is hidden while open, so
   // without this, focus would strand on a visibility:hidden element.
   useEffect(() => {
+    if (embedded) return;
     if (!narrow) return;
     let focusTimer: number | undefined;
     if (drawerOpen && !prevDrawerOpenRef.current) {
@@ -429,7 +435,7 @@ export function RightInspector({
     return () => {
       if (focusTimer !== undefined) window.clearTimeout(focusTimer);
     };
-  }, [drawerOpen, narrow]);
+  }, [drawerOpen, embedded, narrow]);
 
   const inspectorHeading = (
     <div className="right-inspector-heading">
@@ -604,6 +610,35 @@ export function RightInspector({
   ) : (
     inspectorBody
   );
+
+  if (embedded) {
+    return (
+      <aside
+        aria-labelledby="right-inspector-heading"
+        className="right-inspector right-inspector-compact right-inspector-drawer-open right-inspector-embedded"
+        data-background-layer-id={backgroundLayerId}
+        data-drawer-open="true"
+        data-inspector-mode={dialogueMode ? 'subtitle' : 'properties'}
+        data-presentation="embedded"
+        data-selected-layer-id={selectedLayerId ?? ''}
+        data-selection-state={selection.state}
+        data-testid="right-inspector"
+      >
+        <span
+          aria-hidden="true"
+          className="right-inspector-measurement-hook"
+          data-testid={LEGACY_REGION_TEST_ID}
+        />
+        <div
+          className="right-inspector-drawer right-inspector-drawer-embedded"
+          data-testid="right-inspector-drawer"
+          id="right-inspector-drawer"
+        >
+          {inspectorContent}
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside

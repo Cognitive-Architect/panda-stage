@@ -557,10 +557,58 @@ async function verifyIssue81() {
     await openProject(window, projectARoot);
     await waitForActivity(window, 'shots');
 
-    // Issue #369: Project Tools shares the landscape rail/drawer contract,
-    // keeps Recent Projects compact, and only exposes ActionPreset at level 2.
+    // Issue #426 R1: the left and right rails expose the final 3 + 3 shell,
+    // and one right surface replaces another without stacking.
+    const activityShell = await window.webContents.executeJavaScript(
+      '(() => ({' +
+        'left: [...document.querySelectorAll(' +
+          JSON.stringify('[data-testid="resource-activity-rail"] > button') +
+          ')].map((button) => button.textContent?.trim()),' +
+        'right: [...document.querySelectorAll(' +
+          JSON.stringify('[data-testid="right-activity-rail"] > button') +
+          ')].map((button) => button.textContent?.trim())' +
+      '}))()',
+    );
+    if (
+      JSON.stringify(activityShell.left) !== JSON.stringify(['镜头', '素材', '角色']) ||
+      JSON.stringify(activityShell.right) !== JSON.stringify(['字幕', '属性', '工具'])
+    ) {
+      throw new Error(
+        'Issue #426 activity shell labels regressed: ' +
+          JSON.stringify(activityShell),
+      );
+    }
+    await click(window, '[data-testid="right-activity-rail-subtitles"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="subtitle-workspace-placeholder"]') +
+        ') && document.querySelectorAll(' +
+        JSON.stringify('[data-testid="right-workspace-surface"]') +
+        ').length === 1',
+      'Subtitle placeholder did not open as the single right surface.',
+    );
+    await click(window, '[data-testid="right-activity-rail-properties"]');
+    await waitFor(
+      window,
+      'document.querySelector(' +
+        JSON.stringify('[data-testid="right-inspector"][data-presentation="embedded"]') +
+        ') && getComputedStyle(document.querySelector(' +
+        JSON.stringify('[data-testid="right-inspector-drawer"]') +
+        ')).visibility === "visible" && document.querySelector(' +
+        JSON.stringify('[data-testid="inspector-inline-close"]') +
+        ') && !document.querySelector(' +
+        JSON.stringify('[data-testid="subtitle-workspace-placeholder"]') +
+        ') && document.querySelectorAll(' +
+        JSON.stringify('[data-testid="right-workspace-surface"]') +
+        ').length === 1',
+      'Properties did not replace Subtitle inside the single right surface.',
+    );
+
+    // Project Tools keeps its business owners and second-level navigation
+    // after moving from the left rail into the same right surface.
     const projectToolsBefore = await snapshot(window);
-    await click(window, '[data-testid="resource-activity-rail-project-tools"]');
+    await click(window, '[data-testid="right-activity-rail-tools"]');
     await waitFor(
       window,
       'document.querySelector(' +
@@ -579,7 +627,7 @@ async function verifyIssue81() {
         ');' +
         'return {' +
         'active: document.querySelector(' +
-        JSON.stringify('[data-testid="resource-activity-rail-project-tools"]') +
+        JSON.stringify('[data-testid="right-activity-rail-tools"]') +
         ')?.getAttribute("aria-pressed") === "true",' +
         'hasPath: Boolean(panel?.querySelector(' +
         JSON.stringify('.recent-projects-path') +
@@ -653,8 +701,23 @@ async function verifyIssue81() {
       window,
       '!document.querySelector(' +
         JSON.stringify('[data-testid="project-tools-drawer"]') +
+        ') && document.activeElement?.matches(' +
+        JSON.stringify('[data-testid="right-activity-rail-tools"]') +
         ')',
       'Project Tools close did not return to the canvas-first shell.',
+    );
+    await click(window, '[data-testid="right-activity-rail-subtitles"]');
+    await window.webContents.executeJavaScript(
+      'window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))',
+    );
+    await waitFor(
+      window,
+      '!document.querySelector(' +
+        JSON.stringify('[data-testid="right-workspace-surface"]') +
+        ') && document.activeElement?.matches(' +
+        JSON.stringify('[data-testid="right-activity-rail-subtitles"]') +
+        ')',
+      'Escape did not close the right surface and return focus to its trigger.',
     );
 
     // T1: leave local asset state and import results in A, then switch to B.

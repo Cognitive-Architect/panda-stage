@@ -517,7 +517,7 @@ export function CanvasStage({
                 data-testid="canvas-empty-guidance"
               >
                 <strong>当前镜头还没有图层</strong>
-                <span>请从项目工具中添加背景或角色。</span>
+                <span>请从工具中添加背景或角色。</span>
               </div>
             ) : null}
             {missingBackground ? (

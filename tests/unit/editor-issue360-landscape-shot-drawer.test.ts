@@ -6,17 +6,18 @@ function source(path: string): string {
 }
 
 describe('Issue #360 landscape Shot drawer', () => {
-  it('moves project utilities to a separate existing project-level entry', () => {
+  it('keeps project utilities separate from the three-entry resource rail', () => {
     const left = source('src/renderer/shell/LeftWorkspace.tsx');
     const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
+    const right = source('src/renderer/shell/RightWorkspace.tsx');
 
     expect(left).toContain(
       "auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}",
     );
-    expect(left).toContain('<ProjectToolsDrawer');
-    expect(dock).toContain('data-testid="resource-activity-rail-project-tools"');
-    expect(dock).toContain('projectToolsContent');
-    expect(dock).toContain('projectToolsOpen');
+    expect(left).not.toContain('<ProjectToolsDrawer');
+    expect(dock).not.toContain('resource-activity-rail-project-tools');
+    expect(right).toContain('<ProjectToolsDrawer');
+    expect(right).toContain('data-testid={`right-activity-rail-${activity.id}`}');
     expect(left).toContain('<ProjectRecoveryPanel');
     expect(left).toContain('<LegacyCompatibilityActivity');
     expect(dock).toContain('resource-activity-auxiliary');
@@ -66,9 +67,7 @@ describe('Issue #360 landscape Shot drawer', () => {
     const scope = ".editor-layout[data-shell-mode='landscape']";
 
     expect(styles).toContain(`${scope}\n  .resource-activity-dock-landscape`);
-    expect(styles).toContain(
-      `${scope}\n  .resource-activity-dock[data-project-tools='true']`,
-    );
+    expect(styles).toContain('.right-activity-rail');
     expect(styles).toContain('shot-list-item-selected');
     expect(styles).toContain('shot-quick-actions');
     expect(styles).toContain('shot-list-item-actions');

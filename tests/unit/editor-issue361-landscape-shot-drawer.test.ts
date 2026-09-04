@@ -11,9 +11,10 @@ function source(path: string): string {
 }
 
 describe('Issue #361 landscape Shot drawer corrective polish', () => {
-  it('keeps project tools out of the resource drawer while preserving its entry', () => {
+  it('keeps project tools out of the resource drawer and relocates its entry', () => {
     const left = source('src/renderer/shell/LeftWorkspace.tsx');
     const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
+    const right = source('src/renderer/shell/RightWorkspace.tsx');
     const styles = source('src/renderer/styles.css');
 
     expect(dock).toContain(
@@ -21,8 +22,10 @@ describe('Issue #361 landscape Shot drawer corrective polish', () => {
     );
     expect(dock).not.toContain('resource-activity-secondary-tools');
     expect(styles).not.toContain('resource-activity-secondary-tools');
-    expect(left).toContain('<ProjectToolsDrawer');
-    expect(dock).toContain('data-testid="resource-activity-rail-project-tools"');
+    expect(left).not.toContain('<ProjectToolsDrawer');
+    expect(dock).not.toContain('resource-activity-rail-project-tools');
+    expect(right).toContain('<ProjectToolsDrawer');
+    expect(right).toContain("{ id: 'tools', label: '工具', icon: Wrench }");
     expect(left).toContain('<ProjectRecoveryPanel');
     expect(left).toContain('<LegacyCompatibilityActivity');
   });

@@ -6,23 +6,24 @@ function source(path: string): string {
 }
 
 describe('Issue #369 landscape Project Tools launcher', () => {
-  it('promotes Project Tools into the shared landscape rail and drawer host', () => {
+  it('keeps Project Tools content while relocating it to the unified right host', () => {
     const left = source('src/renderer/shell/LeftWorkspace.tsx');
     const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
+    const right = source('src/renderer/shell/RightWorkspace.tsx');
     const drawer = source('src/renderer/shell/ProjectToolsDrawer.tsx');
     const styles = source('src/renderer/styles.css');
 
-    expect(left).toContain('<ProjectToolsDrawer');
+    expect(left).not.toContain('<ProjectToolsDrawer');
     expect(left).not.toContain('<details');
     expect(left).not.toContain('landscape-project-tools');
-    expect(dock).toContain('data-testid="resource-activity-rail-project-tools"');
-    expect(dock).toContain('projectToolsContent');
-    expect(dock).toContain('projectToolsOpen');
+    expect(dock).not.toContain('resource-activity-rail-project-tools');
+    expect(right).toContain('<ProjectToolsDrawer');
+    expect(right).toContain("{ id: 'tools', label: '工具', icon: Wrench }");
     expect(drawer).toContain('data-testid="project-tools-drawer"');
     expect(drawer).toContain('data-testid="project-tools-close"');
     expect(drawer).toContain('presentation="compact"');
-    expect(styles).toContain('Issue #369');
-    expect(styles).toContain("grid-template-rows: repeat(4, minmax(72px, 1fr));");
+    expect(styles).toContain('Issue #426 R1');
+    expect(styles).toContain("grid-template-rows: repeat(3, minmax(72px, 1fr));");
   });
 
   it('keeps the home view task-focused and the ActionPreset owner second-level', () => {
@@ -63,9 +64,9 @@ describe('Issue #369 landscape Project Tools launcher', () => {
 
   it('keeps Project Tools navigation out of Project and History ownership', () => {
     const drawer = source('src/renderer/shell/ProjectToolsDrawer.tsx');
-    const left = source('src/renderer/shell/LeftWorkspace.tsx');
+    const right = source('src/renderer/shell/RightWorkspace.tsx');
 
-    for (const sourceText of [drawer, left]) {
+    for (const sourceText of [drawer, right]) {
       expect(sourceText).not.toContain('updateProject');
       expect(sourceText).not.toContain('editorProjectStore');
       expect(sourceText).not.toContain('HistoryControls');

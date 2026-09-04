@@ -41,6 +41,7 @@ import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
+import { RightWorkspace } from './RightWorkspace';
 import type { ResourceActivity } from './ResourceActivityDock';
 import {
   reconcileEditorWorkspace,
@@ -1084,7 +1085,8 @@ export function EditorShell({
               data-workspace-owner="properties"
               hidden={!portraitPropertiesVisible}
             >
-              <RightInspector
+              {isPortrait ? (
+                <RightInspector
                 compact={isPortrait ? portraitPropertiesVisible : undefined}
                 dialogueSelectionVisible={
                   !isPortrait || portraitWorkspace !== 'timeline'
@@ -1101,7 +1103,15 @@ export function EditorShell({
                   }
                 }}
                 shellMode={layoutMode}
-              />
+                />
+              ) : (
+                <RightWorkspace
+                  key={`right-workspace:${projectSnapshot.projectRoot}`}
+                  onOpenRecentProject={switchToRecentProject}
+                  projectSnapshot={projectSnapshot}
+                  recentRefreshToken={recentRefreshToken}
+                />
+              )}
             </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
           </div>

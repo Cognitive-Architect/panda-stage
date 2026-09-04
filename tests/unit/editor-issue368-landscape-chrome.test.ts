@@ -87,6 +87,7 @@ describe('Issue #368 landscape editor chrome', () => {
   it('uses icon-over-label controls and restrained landscape selection styling', () => {
     const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
     const left = source('src/renderer/shell/LeftWorkspace.tsx');
+    const right = source('src/renderer/shell/RightWorkspace.tsx');
     const projectTools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
     const styles = source('src/renderer/styles.css');
 
@@ -94,8 +95,9 @@ describe('Issue #368 landscape editor chrome', () => {
       expect(dock).toContain(icon);
     }
     expect(dock).toContain('DecorativeIcon icon={activity.icon}');
-    expect(dock).toContain('DecorativeIcon icon={Wrench}');
-    expect(left).toContain('<ProjectToolsDrawer');
+    expect(right).toContain("{ id: 'tools', label: '工具', icon: Wrench }");
+    expect(left).not.toContain('<ProjectToolsDrawer');
+    expect(right).toContain('<ProjectToolsDrawer');
     expect(projectTools).toContain('data-testid="project-tools-action-preset-card"');
     const inspector = source('src/renderer/shell/RightInspector.tsx');
     expect(inspector).toContain('SlidersHorizontal');

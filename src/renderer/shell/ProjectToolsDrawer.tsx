@@ -42,25 +42,25 @@ export function ProjectToolsDrawer({
         <div className="project-tools-drawer-heading">
           {view === 'action-presets' ? (
             <button
-              aria-label="返回项目工具"
+              aria-label="返回工具"
               className="project-tools-back"
               data-testid="project-tools-back"
               onClick={() => setView('home')}
               type="button"
             >
               <DecorativeIcon icon={ArrowLeft} size={18} />
-              <span>项目工具</span>
+              <span>工具</span>
             </button>
           ) : null}
           <p className="eyebrow">
             {view === 'action-presets' ? '编辑辅助' : '编辑器工作区'}
           </p>
           <h2 id="project-tools-heading">
-            {view === 'action-presets' ? '动作预设' : '项目工具'}
+            {view === 'action-presets' ? '动作预设' : '工具'}
           </h2>
         </div>
         <button
-          aria-label="关闭项目工具"
+          aria-label="关闭工具"
           className="project-tools-close"
           data-testid="project-tools-close"
           onClick={onClose}
