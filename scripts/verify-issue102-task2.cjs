@@ -319,7 +319,10 @@ async function run(window, fixture) {
   assert(clean.page === 'editor', 'Clean snapshot is not on the editor page.');
   assert(clean.projectName === projectName, 'Current project name is not visible.');
   assert(clean.projectPath === fixture.projectRoot, 'Current project path is not visible.');
-  assert(clean.saveState === '已保存', 'Clean save state is not 已保存.');
+  assert(
+    clean.saveState === null,
+    'Clean save-state pill should be absent from the compact bar.',
+  );
   assert(clean.saveStateCode === 'saved', 'Clean save-state code is not saved.');
   assert(clean.saveDisabled === true, 'Save button must be disabled when clean.');
   assert(clean.pathInputs === 0, 'Editor top project area still contains a path input.');
@@ -347,7 +350,9 @@ async function run(window, fixture) {
   clean.verticalGainComparedWithOld = reclaimedTopChrome;
   clean.editorBodyNetGainComparedWithOld = editorBodyNetGain;
   result.snapshots.clean = clean;
-  result.checks.push('Compact bar is <=56px, name/save state stay visible, and old editor input is gone');
+  result.checks.push(
+    'Compact bar is <=56px, saved truth stays on the bar, and old editor input is gone',
+  );
   result.checks.push(
     `Compact project chrome reclaims ${reclaimedTopChrome.toFixed(2)}px at the same 1280x720 window size`,
   );
@@ -374,13 +379,19 @@ async function run(window, fixture) {
   await clickSelector(window, '[data-testid="compact-project-save"]');
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() === '已保存' &&
+    `document.querySelector('[data-testid="project-save-state"]') === null &&
+      document.querySelector('[data-testid="compact-project-bar"]')?.getAttribute('data-save-state') === 'saved' &&
       document.querySelector('[data-testid="compact-project-save"]')?.disabled === true`,
-    'Save action did not return the compact bar to 已保存.',
+    'Save action did not restore saved truth while keeping the saved-state pill hidden.',
   );
   const saved = await snapshot(window);
+  assert(saved.saveState === null, 'Saved save-state pill should remain absent.');
+  assert(saved.saveStateCode === 'saved', 'Saved save-state code is not saved.');
+  assert(saved.saveDisabled === true, 'Save button must be disabled after saving.');
   result.snapshots.saved = saved;
-  result.checks.push('Save action returns the compact bar to 已保存 and disables 保存');
+  result.checks.push(
+    'Save action restores saved truth, keeps the saved-state pill hidden, and disables 保存',
+  );
 
   await clickSelector(window, '[data-testid="compact-project-more"]');
   await waitForDom(

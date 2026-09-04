@@ -30,4 +30,16 @@ describe('Issue #228 Task 2 verifier repair contract', () => {
     expect(verifier).not.toContain('app.quit()');
     expect(verifier).not.toMatch(/setTimeout\(\(\)\s*=>\s*process\.exit/u);
   });
+
+  it('uses saved truth without requiring the removed saved-state pill', () => {
+    expect(verifier).toContain('clean.saveState === null');
+    expect(verifier).toContain("clean.saveStateCode === 'saved'");
+    expect(verifier).toContain(
+      `document.querySelector('[data-testid="project-save-state"]') === null`,
+    );
+    expect(verifier).toContain(
+      `getAttribute('data-save-state') === 'saved'`,
+    );
+    expect(verifier).not.toContain("clean.saveState === '已保存'");
+  });
 });
