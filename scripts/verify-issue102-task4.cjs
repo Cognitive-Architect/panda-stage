@@ -218,10 +218,12 @@ function assertRecentCards(sample, label) {
 }
 
 // The bottom workspace hosts both the Stage 3-C HistoryControls and the Day 26
-// Timeline Shell, so its height budget is intentionally taller than the old
-// history-only "compact" bar. The 172px ceiling covers the Day-26
-// `min-height:132px; max-height:168px` contract with a small safety margin.
-function assertCompactBottom(sample, label, maxHeight = 172) {
+// Timeline Shell. Cloud Touch landscape now uses the post-Stage-E LM-006
+// geometry: the expanded normal state is 280px, while the live maximum is
+// constrained by the editor-body budget. Keep this focused shell verifier's
+// 300px ceiling above the normalized state; Issue #422 covers the live
+// MIN/NORMAL/MAX resize contract separately.
+function assertCompactBottom(sample, label, maxHeight = 300) {
   assert(
     sample.bottom && sample.bottomMetrics && sample.historyMetrics,
     `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
