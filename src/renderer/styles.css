@@ -21703,8 +21703,8 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
-  height: var(--timeline-expanded-height, 168px);
-  min-height: 132px;
+  height: var(--timeline-expanded-height, 280px);
+  min-height: var(--timeline-expanded-min-height, 240px);
   max-height: var(--timeline-expanded-max-height, 420px);
 }
 
@@ -25745,6 +25745,85 @@ h1 {
     .dialogue-batch-table {
     min-width: 480px;
   }
+}
+
+/* Issue #422: rebaseline the post-Stage-E Timeline geometry. The expanded
+   floor is deliberately above the old shallow container-query branch. The
+   Toolbar and ruler/track surface stay fixed; only the unified Task Tray may
+   consume the remaining height and scroll locally. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
+  min-height: var(--timeline-expanded-min-height, 240px);
+  max-height: var(--timeline-expanded-max-height, 420px);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-dock {
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-toolbar {
+  flex: 0 0 48px;
+  min-height: 48px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-ruler-scroll {
+  flex: 0 0 112px;
+  height: 112px;
+  min-height: 112px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-track-stack {
+  flex: 0 0 68px;
+  height: 68px;
+  min-height: 68px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-lane {
+  height: 34px;
+  min-height: 34px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray {
+  min-height: 76px;
+  flex: 1 1 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #3f6d4e #0a100c;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  > .dialogue-sheet.dialogue-sheet-timeline {
+  height: auto;
+  min-height: 100%;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-sheet-header {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  background: rgb(6 13 9 / 98%);
 }
 
 /* Issue #398 final cascade: these route-scoped values intentionally come

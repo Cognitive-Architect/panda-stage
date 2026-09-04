@@ -8,9 +8,14 @@ type Listener = () => void;
  * Stage A keeps the existing expanded Timeline surface usable while allowing
  * Cloud Touch landscape to trade Canvas space for Timeline space. These are
  * UI/session bounds only; they are never part of the formal Project model.
+ *
+ * Issue #422 re-baselines the expanded floor after the Toolbar, ruler/track
+ * stack, and unified Task Tray were added. Collapse remains the explicit way
+ * to reclaim more vertical space; an expanded Timeline must keep its core
+ * surface usable.
  */
-export const TIMELINE_EXPANDED_MIN_HEIGHT = 132;
-export const TIMELINE_EXPANDED_DEFAULT_HEIGHT = 168;
+export const TIMELINE_EXPANDED_MIN_HEIGHT = 240;
+export const TIMELINE_EXPANDED_DEFAULT_HEIGHT = 280;
 export const TIMELINE_EXPANDED_MAX_HEIGHT = 420;
 export const TIMELINE_MIN_CANVAS_HEIGHT = 240;
 export const TIMELINE_RESIZE_KEYBOARD_STEP = 16;
@@ -39,12 +44,14 @@ export function clampTimelineHeight(
 
 /**
  * Derive a generous but finite maximum from the live editor geometry. The
- * current body+bottom sum represents the available grid budget, so this keeps
- * a meaningful Canvas floor without tying the contract to one viewport.
+ * current body+bottom sum represents the available grid budget. The caller
+ * may provide the strongest measured editor-body floor so Canvas and the
+ * side-rail affordances are protected by the same bound.
  */
 export function getTimelineHeightBounds(
   editorBodyHeight: number,
   currentBottomHeight: number,
+  editorBodyMinimumHeight = TIMELINE_MIN_CANVAS_HEIGHT,
 ): TimelineHeightBounds {
   const body = Number.isFinite(editorBodyHeight)
     ? Math.max(0, editorBodyHeight)
@@ -52,12 +59,15 @@ export function getTimelineHeightBounds(
   const bottom = Number.isFinite(currentBottomHeight)
     ? Math.max(0, currentBottomHeight)
     : 0;
-  const canvasPreservingMaximum = Math.floor(
-    body + bottom - TIMELINE_MIN_CANVAS_HEIGHT,
+  const bodyMinimum = Number.isFinite(editorBodyMinimumHeight)
+    ? Math.max(TIMELINE_MIN_CANVAS_HEIGHT, editorBodyMinimumHeight)
+    : TIMELINE_MIN_CANVAS_HEIGHT;
+  const editorBodyPreservingMaximum = Math.floor(
+    body + bottom - bodyMinimum,
   );
   const maxHeight = Math.min(
     TIMELINE_EXPANDED_MAX_HEIGHT,
-    Math.max(TIMELINE_EXPANDED_MIN_HEIGHT, canvasPreservingMaximum),
+    Math.max(TIMELINE_EXPANDED_MIN_HEIGHT, editorBodyPreservingMaximum),
   );
   return {
     minHeight: TIMELINE_EXPANDED_MIN_HEIGHT,
