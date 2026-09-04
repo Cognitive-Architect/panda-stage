@@ -56,4 +56,13 @@ describe('Issue #426 unified Right Workspace R1', () => {
     expect(tools).toContain("{view === 'action-presets' ? '动作预设' : '工具'}");
     expect(tools).toContain('aria-label="关闭工具"');
   });
+
+  it('opens the unified properties activity before the canvas verifier edits properties', () => {
+    const verifier = source('scripts/verify-day22.cjs');
+
+    expect(verifier).toContain("await selectRightActivity(window, 'properties');");
+    expect(verifier).toContain(
+      '`?.dataset.activeActivity === ${JSON.stringify(activity)} && `',
+    );
+  });
 });

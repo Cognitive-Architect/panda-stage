@@ -61,6 +61,27 @@ async function selectResourceActivity(window, activity) {
   );
 }
 
+async function selectRightActivity(window, activity) {
+  const selector = `[data-testid="right-activity-rail-${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Right activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="right-workspace"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)} && ` +
+        `document.querySelector('[data-testid="right-workspace-surface"]')`,
+      `Right activity did not activate: ${activity}`,
+    ),
+  );
+}
+
 async function setInput(window, selector, value) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
@@ -698,6 +719,7 @@ async function verifyDay22() {
     }
     const autosaveAfterDrag = autosaveUpdates.length;
 
+    await selectRightActivity(window, 'properties');
     await setInput(
       window,
       '[data-testid="layer-transform-panel"] label:nth-of-type(1) input',
