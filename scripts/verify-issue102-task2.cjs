@@ -175,6 +175,7 @@ async function snapshot(window) {
       projectName: name?.textContent?.trim() ?? null,
       projectPath:
         bar?.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() ?? null,
+      // The saved pill is intentionally hidden; data-save-state remains the truth.
       saveState: bar?.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() ?? null,
       saveStateCode: bar?.getAttribute('data-save-state') ?? null,
       saveDisabled: save instanceof HTMLButtonElement ? save.disabled : null,
