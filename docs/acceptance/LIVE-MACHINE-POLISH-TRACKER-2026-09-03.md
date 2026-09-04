@@ -75,6 +75,7 @@
 | LM-002 | Main Editor / Top Toolbar | P3 | CONFIRMED | 顶部工具栏常驻“已保存”状态胶囊冗余，占用核心操作区 | 暂不需要 |
 | LM-003 | Main Editor / Right Properties Handle | P3 | CONFIRMED | 右侧“属性”把手内容分布松散，文字偏下，缺少与左侧一致的图标层级 | 暂不需要 |
 | LM-004 | Main Editor / Canvas + Project Tools | P2 | CONFIRMED | 画布视觉套娃浪费空间且视口模式按钮被遮挡，建议扁平化外观并把模式控制迁入项目工具 | 建议后续单独切实施 Issue |
+| LM-005 | Main Editor / Adaptive Shell | P2 | CONFIRMED | 去掉 Editor Device Mode 选择，只保留 Cloud Touch 横/竖屏自适应 UI | 建议后续单独切实施 Issue |
 
 ## 问题明细
 
@@ -300,6 +301,125 @@ C. Single source of truth
 - 建议待本轮真人实机问题收集基本结束后，为 LM-004 单独切一个小型 implementation Issue，而不是和纯 spacing P3 全塞进一刀；
 - 实施前应补回归：fit / 50% / actual 三模式切换、滚动、拖拽落点、pointer coordinate、窗口 resize、时间轴展开/收起；
 - 禁止把“视觉去套娃”误做成“删除 viewport coordinate/transform wrapper”。
+
+### LM-005｜移除 Editor Device Mode，只保留 Cloud Touch 自适应编辑器
+
+状态：`CONFIRMED`  
+严重度：`P2`  
+区域：`Main Editor / More Menu / Adaptive Editor Shell`  
+实机环境：`Windows + Electron`
+
+**现象 / 产品决策：**
+
+当前顶部“更多”菜单内存在一组 `EDITOR DEVICE MODE` 选择：
+
+```text
+Auto
+Desktop
+Cloud Touch
+```
+
+这意味着当前产品公开暴露了三种设备模式，并继续保留一条独立 Desktop composition 路径。维护者当前没有资源再设计、维护和验收第二套桌面端 UI，希望收缩产品范围：删除该模式选择，只保留已经完成主要优化的 Cloud Touch 编辑体验。
+
+这里不是单纯“菜单太占地方”，而是明确的产品范围收缩：当前阶段不再承诺 Desktop 专用 UI。
+
+**仓库现状核验：**
+
+当前 `adaptiveEditorShell.ts` 定义：
+
+```text
+EditorDeviceMode = auto | desktop | cloud-touch
+EditorShellLayoutMode = desktop | landscape | portrait
+```
+
+当前行为：
+
+```text
+Desktop
+-> 永远走 desktop layout
+
+Cloud Touch
+-> height > width ? portrait : landscape
+
+Auto
+-> 竖屏 portrait
+-> 横屏且 width <= 1100 -> landscape
+-> 宽横屏 -> desktop
+```
+
+因此，仅隐藏“更多”菜单中的三颗按钮并不够：`EditorShell` 当前默认 `deviceMode = auto`，如果只删 selector、不改默认/路由，宽屏 Windows 仍然会自动进入 Desktop UI，与本次产品决策相违背。
+
+另外，当前 `BottomWorkspace` 的横屏可调整能力也显式依赖：
+
+```text
+deviceMode === cloud-touch && layoutMode === landscape
+```
+
+所以实施时必须同步收口这类 mode gate，不能只做表面删除。
+
+**复现：**
+
+1. 启动当前 `main` 的 Windows Electron 应用并打开项目。
+2. 点击顶部“更多”。
+3. 可见 `EDITOR DEVICE MODE` 下的 Auto / Desktop / Cloud Touch 三个选项。
+4. 选择不同模式后，编辑器 shell 会切换不同 composition；Auto 在宽横屏上仍可能进入 desktop layout。
+
+**预期：**
+
+1. 从“更多”菜单中完整移除 `EDITOR DEVICE MODE` 分组与 Auto / Desktop / Cloud Touch 三个用户选项。
+2. 当前产品只保留 **Cloud Touch 产品路线**：
+   - 横屏 -> `landscape`
+   - 竖屏 -> `portrait`
+3. 不再由窗口宽度触发独立 `desktop` composition。
+4. 保留 Cloud Touch 已有的横竖屏响应式切换，不把“只保留 Cloud Touch”误解为“只保留横屏”或“固定一个布局”。
+5. 清理/收口依赖 `deviceMode` 的 presentation gate，保证现有 Cloud Touch 能力（例如 landscape 下时间轴可调整等）继续正常工作。
+6. 不修改 Project schema、项目文件、autosave 或业务数据；该模式本来就是 session/presentation-only 状态。
+
+**证据：**
+
+- 2026-09-04 维护者真人实机截图：红框标出“更多”菜单中的 `EDITOR DEVICE MODE` 三选一控件；
+- 维护者明确决策：当前阶段不再投入资源维护第二套 Desktop UI，只保留已经优化好的 Cloud Touch UI；
+- 仓库核验：`EditorShell` 当前默认 `deviceMode = auto`，`getEditorShellLayoutMode()` 在 Auto 宽屏情况下仍会选择 `desktop`。
+
+**建议修复方向（仅供后续实施单使用）：**
+
+优先做“真正单路线化”，而不是“隐藏开关但保留默认 Auto”：
+
+```text
+Before
+user selector
+  -> auto / desktop / cloud-touch
+  -> desktop / landscape / portrait
+
+After
+single product route
+  -> Cloud Touch responsive shell
+  -> landscape / portrait by orientation
+```
+
+实现上可以有两种安全方式：
+
+```text
+A. 小步收口
+   - 删除 CompactProjectBar device-mode selector
+   - EditorShell 固定使用 cloud-touch
+   - 收口所有 deviceMode === cloud-touch 的 gate
+   - 暂时保留底层类型/函数以降低一次性改动风险
+
+B. 后续彻底清理
+   - 删除 EditorDeviceMode / EDITOR_DEVICE_MODE_OPTIONS
+   - 简化 getEditorShellLayoutMode 为 orientation-only landscape/portrait
+   - 删除 desktop-only 分支和对应已无价值测试/样式
+```
+
+本轮优先 A，待真人验收 Cloud Touch 唯一路线稳定后，再决定是否做 B 的代码清扫，避免一刀把响应式结构也顺手拆坏。
+
+**备注：**
+
+- 该项属于产品范围/架构展示面的主动收缩，因此记为 P2，而不是普通 P3 视觉 polish；
+- “Desktop 暂不做”不等于以后永久禁止桌面专用体验；如果未来真有需求，可以基于证据重新立项，而不是当前为一个没人验收的分支持续付维护费；
+- 建议与 LM-004 分开切 Issue：LM-004 是 Canvas/Viewport ownership 与空间布局；LM-005 是 Adaptive Shell product route 收口；
+- 后续真人验收至少覆盖：横屏 Cloud Touch、竖屏 Cloud Touch、窗口横竖切换、时间轴、左右工作区、项目工具、属性区，不允许仅凭测试删除 Desktop 路线后直接宣称完成。
 
 ## 收口规则
 
