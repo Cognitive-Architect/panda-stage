@@ -74,6 +74,7 @@
 | LM-001 | Project Launcher / No Project | P3 | CONFIRMED | “最近项目”空状态卡内容视觉重心偏下，上半部留白过大 | 暂不需要 |
 | LM-002 | Main Editor / Top Toolbar | P3 | CONFIRMED | 顶部工具栏常驻“已保存”状态胶囊冗余，占用核心操作区 | 暂不需要 |
 | LM-003 | Main Editor / Right Properties Handle | P3 | CONFIRMED | 右侧“属性”把手内容分布松散，文字偏下，缺少与左侧一致的图标层级 | 暂不需要 |
+| LM-004 | Main Editor / Canvas + Project Tools | P2 | CONFIRMED | 画布视觉套娃浪费空间且视口模式按钮被遮挡，建议扁平化外观并把模式控制迁入项目工具 | 建议后续单独切实施 Issue |
 
 ## 问题明细
 
@@ -210,6 +211,95 @@
 - 当前属于布局和视觉层级 polish，不涉及属性面板业务逻辑；
 - 暂不单独开 Issue，先留在 #416；
 - 若后续还有左右侧栏 collapsed-handle 一致性问题，可与其一起形成一个 side-rail polish implementation slice。
+
+### LM-004｜扁平化画布视觉层级，并把视口模式控制迁入“项目工具”
+
+状态：`CONFIRMED`  
+严重度：`P2`  
+区域：`Main Editor / Canvas Workspace / Canvas Viewport Controls / Project Tools`  
+实机环境：`Windows + Electron`
+
+**现象：**
+
+当前主编辑器中央画布区域存在明显的“套娃式 box”视觉：工作区外框、画布容器、视口/逻辑画布等多层边框和内缩同时可见，造成中央区域被层层吃掉，实际用于看画面的空间比预期小。
+
+在当前实机布局下，原本位于画布下方的视口模式控制也被挤压/遮挡，维护者只能看到其上缘或部分按钮，无法正常、稳定地使用“适应窗口 / 50% / 实际尺寸”等画布显示控制。
+
+这已经不仅是视觉审美问题，还影响了真实功能的可达性。
+
+**仓库现状核验：**
+
+- `CanvasWorkspace` 明确把中央生产画布交给单一 `CanvasStage` 所有者，并声明 transform controls 仍属于同一画布 owner；
+- 当前 `CanvasToolbar` 提供三种 viewport mode：`fit`（适应窗口）、`half`（50%）、`actual`（实际尺寸 / 1:1）；
+- 这些模式最终通过既有 `canvasViewportStore` 持有和切换；
+- `ProjectToolsDrawer` 当前是 presentation-level launcher，负责组合已有功能入口，而不是创建第二套业务 owner。
+
+因此，后续实施应迁移“展示入口”，而不是迁移/复制画布状态 ownership。
+
+**复现：**
+
+1. 启动当前 `main` 的 Windows Electron 应用。
+2. 打开项目并进入横屏主编辑器。
+3. 观察中央画布区域，可见多层 box / border / inset 形成明显套娃感。
+4. 在当前实机窗口尺寸下观察画布底部，可见原有 viewport mode 控件被下方时间轴区域挤压或遮挡，无法完整使用。
+5. 打开左侧“项目工具”，可见该抽屉目前已有最近项目、动作预设等辅助入口，存在承载“画布显示”设置的合理空间。
+
+**预期：**
+
+1. **视觉扁平化：**
+   - 取消中央画布区域多余的可见 box / border / inset 套娃层；
+   - 让当前最外层中央工作区承担主要画布容器的视觉角色；
+   - 尽可能把更多宽高还给真实画布内容。
+
+2. **保留必要内部结构：**
+   - 不为了“去套娃”粗暴删除 `CanvasViewport / canvas-viewport-content / canvas-logical-stage` 等承担缩放、滚动、拖拽命中和坐标换算职责的内部结构；
+   - 可以让这些内部层在视觉上透明/无框，但功能契约继续存在。
+
+3. **迁移画布显示入口：**
+   - 将 `适应窗口 / 50% / 实际尺寸` 三个 viewport mode 控制从画布底部常驻 toolbar 移到左侧“项目工具”抽屉；
+   - 建议在“项目工具”首页增加一个紧凑的“画布显示 / 视图”卡片；
+   - 三个入口仍操作现有 `canvasViewportStore`，禁止复制第二份 zoom/mode state。
+
+4. **反馈信息分层：**
+   - `transform.scale` 百分比和指针坐标如果仍有产品价值，可保留为靠近画布的轻量状态反馈；
+   - 不要求把 pointer coordinate 这类实时画布信息一起塞进“项目工具”；
+   - 本次主要迁移的是会占空间的三枚模式按钮。
+
+**证据：**
+
+- 2026-09-04 维护者真人实机截图 1：红框标出中央画布上方/左侧明显的多层 box 套娃边界；
+- 2026-09-04 维护者真人实机截图 2：红框标出画布底部 viewport mode controls 被时间轴区域遮挡/挤压；
+- 2026-09-04 维护者真人实机截图 3：展示左侧“项目工具”抽屉，可作为画布显示控制的新 presentation surface；
+- 维护者明确建议：取消画布套娃式 box，并把原画布大小/显示控制迁入“项目工具”。
+
+**建议修复方向（仅供后续实施单使用）：**
+
+推荐把这条拆成“一次实现、两个视觉动作、一个状态 owner”：
+
+```text
+A. Canvas shell visual flattening
+   -> 去掉多余可见边框 / padding / inset
+   -> 不删除负责坐标与缩放的逻辑 wrapper
+
+B. Project Tools / 画布显示
+   -> 适应窗口
+   -> 50%
+   -> 实际尺寸（1:1）
+
+C. Single source of truth
+   -> 继续使用 canvasViewportStore
+   -> Project Tools 只是新的控制入口
+   -> CanvasStage / CanvasViewport 继续执行真实 transform
+```
+
+这样可以同时解决“中央空间被套娃吃掉”和“控制按钮被时间轴挡住”两个问题，而不会为了搬按钮造第二套缩放系统。
+
+**备注：**
+
+- 这条比 LM-001~003 更接近真实产品结构调整，因此升级为 P2；
+- 建议待本轮真人实机问题收集基本结束后，为 LM-004 单独切一个小型 implementation Issue，而不是和纯 spacing P3 全塞进一刀；
+- 实施前应补回归：fit / 50% / actual 三模式切换、滚动、拖拽落点、pointer coordinate、窗口 resize、时间轴展开/收起；
+- 禁止把“视觉去套娃”误做成“删除 viewport coordinate/transform wrapper”。
 
 ## 收口规则
 
