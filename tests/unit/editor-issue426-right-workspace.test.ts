@@ -89,5 +89,28 @@ describe('Issue #426 unified Right Workspace R1', () => {
     expect(verifiers[2]).toContain(
       "if (details instanceof HTMLDetailsElement) details.open = true;",
     );
+
+    const task2Verifier = source('scripts/verify-issue102-task2.cjs');
+    expect(task2Verifier).toContain('right-activity-rail-properties');
+    expect(task2Verifier).toContain("dataset.activeActivity === 'none'");
+    expect(task2Verifier).not.toContain('inspector-rail-handle');
+
+    for (const path of [
+      'scripts/verify-issue102-task4.cjs',
+      'scripts/verify-issue109-resource-workspace.cjs',
+    ]) {
+      const layoutVerifier = source(path);
+      expect(layoutVerifier).toContain(
+        "rightRail: box('[data-testid=\"right-activity-rail\"]')",
+      );
+      expect(layoutVerifier).not.toContain('inspector-rail-handle');
+      expect(layoutVerifier).not.toContain('right-inspector-placeholder');
+    }
+    const resourceVerifier = source(
+      'scripts/verify-issue109-resource-workspace.cjs',
+    );
+    expect(resourceVerifier).toContain(
+      'sample.bottom.height >= 210 && sample.bottom.height <= 300',
+    );
   });
 });

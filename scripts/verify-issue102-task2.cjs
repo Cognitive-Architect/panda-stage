@@ -376,12 +376,14 @@ async function run(window, fixture) {
   );
   await capture(window, 'new-editor-layout.png');
 
-  await clickSelector(window, '[data-testid="inspector-rail-handle"]');
+  await clickSelector(window, '[data-testid="right-activity-rail-properties"]');
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="right-inspector"]')?.getAttribute('data-drawer-open') === 'true' &&
+    `document.querySelector('[data-testid="right-workspace"]')?.dataset.activeActivity === 'properties' &&
+      document.querySelector('[data-testid="right-workspace-surface"]') &&
+      document.querySelector('[data-testid="right-inspector"]')?.getAttribute('data-drawer-open') === 'true' &&
       document.querySelector('[data-testid="inspector-inline-close"]')`,
-    'Properties drawer did not open with its inline close affordance.',
+    'Unified Properties surface did not open with its inline close affordance.',
   );
   const propertiesClose = await window.webContents.executeJavaScript(`(() => ({
     inlineCloseCount: document.querySelectorAll(
@@ -399,11 +401,13 @@ async function run(window, fixture) {
   await clickSelector(window, '[data-testid="inspector-inline-close"]');
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="right-inspector"]')?.getAttribute('data-drawer-open') === 'false'`,
-    'Properties inline close did not close the drawer.',
+    `document.querySelector('[data-testid="right-workspace"]')?.dataset.activeActivity === 'none' &&
+      !document.querySelector('[data-testid="right-workspace-surface"]') &&
+      !document.querySelector('[data-testid="right-inspector"]')`,
+    'Properties inline close did not close the unified surface.',
   );
   result.checks.push(
-    'Cloud Touch Properties drawer has one inline close affordance and no outer duplicate',
+    'Unified Properties surface has one inline close affordance and no outer duplicate',
   );
 
   await clickSelector(window, '[data-testid="shot-quick-rename"]');
