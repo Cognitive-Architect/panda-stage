@@ -66,7 +66,7 @@ async function waitForDom(window, expression, message, timeout) {
 }
 
 async function click(window, selector) {
-  await window.webContents.executeJavaScript(`(() => {
+  const point = await window.webContents.executeJavaScript(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!(element instanceof HTMLElement)) {
       throw new Error('Element not found: ' + ${JSON.stringify(selector)});
@@ -74,8 +74,34 @@ async function click(window, selector) {
     if (element instanceof HTMLButtonElement && element.disabled) {
       throw new Error('Element is disabled: ' + ${JSON.stringify(selector)});
     }
-    element.click();
+    const rect = element.getBoundingClientRect();
+    const x = Math.round(rect.left + rect.width / 2);
+    const y = Math.round(rect.top + rect.height / 2);
+    const target = document.elementFromPoint(x, y);
+    if (!(target instanceof Element) || !element.contains(target)) {
+      throw new Error(
+        'Element is not physically clickable: ' +
+          ${JSON.stringify(selector)} +
+          ' at ' +
+          JSON.stringify({ x, y, target: target?.className ?? null }),
+      );
+    }
+    return { x, y };
   })()`);
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    clickCount: 1,
+  });
   await delay(180);
 }
 
@@ -117,6 +143,32 @@ async function measure(window) {
         scrollHeight: element.scrollHeight,
       };
     };
+    const visibleWithin = (selector, containerSelector) => {
+      const element = document.querySelector(selector);
+      const container = document.querySelector(containerSelector);
+      if (!(element instanceof HTMLElement) || !(container instanceof HTMLElement)) {
+        return null;
+      }
+      const rect = element.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const left = Math.max(rect.left, containerRect.left, 0);
+      const top = Math.max(rect.top, containerRect.top, 0);
+      const right = Math.min(rect.right, containerRect.right, window.innerWidth);
+      const bottom = Math.min(rect.bottom, containerRect.bottom, window.innerHeight);
+      return {
+        width: Math.max(0, Math.round((right - left) * 100) / 100),
+        height: Math.max(0, Math.round((bottom - top) * 100) / 100),
+        fullyVisible:
+          rect.left >= containerRect.left - 1 &&
+          rect.top >= containerRect.top - 1 &&
+          rect.right <= containerRect.right + 1 &&
+          rect.bottom <= containerRect.bottom + 1 &&
+          rect.left >= -1 &&
+          rect.top >= -1 &&
+          rect.right <= window.innerWidth + 1 &&
+          rect.bottom <= window.innerHeight + 1,
+      };
+    };
     // Issue #197: the BottomWorkspace owner mirrors the single Timeline expand
     // flag onto the data-timeline-expanded attribute. Read it through the
     // dataset to know whether the collapsed < expanded height contract holds.
@@ -153,7 +205,15 @@ async function measure(window) {
       canvas: box('[data-testid="canvas-workspace-scroll"]'),
       ruler: box('[data-testid="timeline-ruler-scroll"]'),
       timecode: box('[data-testid="timeline-timecode"]'),
+      timecodeVisible: visibleWithin(
+        '[data-testid="timeline-timecode"]',
+        '[data-testid="bottom-workspace"]',
+      ),
       reopen: box('[data-testid="timeline-collapse"]'),
+      reopenVisible: visibleWithin(
+        '[data-testid="timeline-collapse"]',
+        '[data-testid="bottom-workspace"]',
+      ),
       reopenLabel: reopenElement?.textContent?.trim() ?? null,
       history: box('[data-testid="history-controls"]'),
       historyMetrics: metrics('[data-testid="history-controls"]'),
@@ -278,16 +338,30 @@ function assertCollapsedReleasesSpace(expanded, collapsed, label) {
     `${label} still renders the Timeline ruler while collapsed: ${JSON.stringify(collapsed.ruler)}`,
   );
   assert(
-    collapsed.reopen && collapsed.reopen.width > 0 && collapsed.reopen.height > 0,
-    `${label} lost the reopen entry while collapsed.`,
+    collapsed.reopen &&
+      collapsed.reopenVisible?.fullyVisible &&
+      collapsed.reopenVisible.width >= collapsed.reopen.width - 1 &&
+      collapsed.reopenVisible.height >= collapsed.reopen.height - 1,
+    `${label} lost or clipped the reopen entry while collapsed: ${JSON.stringify({
+      box: collapsed.reopen,
+      visible: collapsed.reopenVisible,
+      bottom: collapsed.bottom,
+    })}`,
   );
   assert(
     collapsed.reopenLabel === '展开时间轴',
     `${label} reopen entry does not offer to expand the Timeline: ${JSON.stringify(collapsed.reopenLabel)}`,
   );
   assert(
-    collapsed.timecode && collapsed.timecode.height > 0,
-    `${label} hid the current time / total duration readout while collapsed.`,
+    collapsed.timecode &&
+      collapsed.timecodeVisible?.fullyVisible &&
+      collapsed.timecodeVisible.width >= collapsed.timecode.width - 1 &&
+      collapsed.timecodeVisible.height >= collapsed.timecode.height - 1,
+    `${label} hid or clipped the current time / total duration readout while collapsed: ${JSON.stringify({
+      box: collapsed.timecode,
+      visible: collapsed.timecodeVisible,
+      bottom: collapsed.bottom,
+    })}`,
   );
   assert(
     collapsed.history && collapsed.history.height > 0,

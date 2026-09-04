@@ -21899,9 +21899,9 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='false'] {
-  height: auto;
-  min-height: 0;
-  max-height: 112px;
+  height: 50px;
+  min-height: 50px;
+  max-height: 50px;
   overflow: hidden;
 }
 
