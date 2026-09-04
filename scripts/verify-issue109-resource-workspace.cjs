@@ -206,7 +206,7 @@ function assertNoPageOverflow(sample, label) {
 // expanded minimum is 210px and the normal height is 280px. Issues #422/#423
 // own the exact MIN/NORMAL/MAX interaction contract; this resource verifier
 // keeps checking that the normal surface stays bounded and overflow-free.
-function assertLandscapeBottom(sample, label) {
+function assertCompactBottom(sample, label) {
   assert(
     sample.bottom && sample.bottomMetrics && sample.historyMetrics,
     `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
@@ -244,11 +244,11 @@ function assertRegions(sample, label) {
       `${label} ${name} escaped the viewport: ${JSON.stringify(region)}`,
     );
   }
-  assertLandscapeBottom(sample, label);
+  assertCompactBottom(sample, label);
 }
 
 function assertDrawer(sample, label) {
-  assertLandscapeBottom(sample, label);
+  assertCompactBottom(sample, label);
   assert(sample.drawerVisible && sample.drawer, `${label} drawer is not visible.`);
   assert(
     sample.drawer.left >= -1 &&
