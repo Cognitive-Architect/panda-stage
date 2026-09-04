@@ -200,3 +200,24 @@ describe('Issue #415 Project Launcher copy cleanup', () => {
     expect(runtimeError).toContain('该文件夹中已存在同名项目，请换一个项目名称。');
   });
 });
+
+describe('Issue #417 live-machine polish', () => {
+  it('keeps the no-project recent empty state tight and visually balanced', () => {
+    const styles = readFileSync('src/renderer/styles.css', 'utf8');
+    const emptyStateRule = styles.match(
+      /\.project-center-screen\s+\.recent-projects-panel\[data-presentation='launcher'\]\s+\.recent-projects-empty-state\s*\{[^}]*\}/u,
+    )?.[0];
+
+    expect(emptyStateRule).toEqual(expect.any(String));
+    expect(emptyStateRule).toContain('display: grid;');
+    expect(emptyStateRule).toContain('padding: 16px;');
+    expect(emptyStateRule).toContain('align-content: center;');
+    expect(emptyStateRule).toContain('gap: 6px;');
+    expect(styles).toMatch(
+      /\.project-center-screen\s+\.recent-projects-panel\[data-presentation='launcher'\]\s+\.recent-projects-empty\s*\{[^}]*margin:\s*0;/u,
+    );
+    expect(styles).toMatch(
+      /\.project-center-screen\s+\.recent-projects-panel\[data-presentation='launcher'\]\s+\.recent-projects-empty-description\s*\{[^}]*margin:\s*0;/u,
+    );
+  });
+});

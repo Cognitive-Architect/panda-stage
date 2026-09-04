@@ -4719,15 +4719,19 @@ button:disabled {
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-empty-state {
-  padding: 20px 16px;
+  display: grid;
+  padding: 16px;
   border: 1px solid rgb(154 216 172 / 18%);
   border-radius: 14px;
   background: rgb(18 39 27 / 54%);
+  align-content: center;
+  gap: 6px;
 }
 
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-empty {
+  margin: 0;
   color: var(--ui-color-text-primary, #eef6f0);
   font-size: 15px;
 }
@@ -4735,6 +4739,7 @@ button:disabled {
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-empty-description {
+  margin: 0;
   color: var(--ui-color-text-secondary, #aebfb4);
   font-size: 14px;
 }
@@ -9972,6 +9977,45 @@ h1 {
   .inspector-rail-handle strong {
   font-size: 11px;
   writing-mode: vertical-rl;
+}
+
+/* Issue #417: keep the Properties affordance as one centered icon + label
+   group. The existing rail button and drawer remain the single owner; the
+   chevron only communicates the secondary expand/collapse affordance. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-handle {
+  align-content: center;
+  gap: 5px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-icon {
+  flex: 0 0 auto;
+  color: #b9e8c4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-label {
+  font-size: 11px;
+  line-height: 1.2;
+  writing-mode: horizontal-tb;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-chevron {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  color: #8eaf98;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.72;
+  place-items: center;
 }
 
 .editor-layout[data-shell-mode='portrait'] {

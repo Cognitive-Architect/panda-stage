@@ -132,7 +132,7 @@ export function CompactProjectBar({
 
       <div className="compact-project-controls recovery-status-row">
         <HistoryControls presentation="compact" />
-        {!isPortrait || saveState !== 'saved' ? (
+        {saveState !== 'saved' ? (
           <span
             aria-live="polite"
             className={`compact-project-save-state compact-project-save-state-${saveState} ${saveStateSemanticClass}`}

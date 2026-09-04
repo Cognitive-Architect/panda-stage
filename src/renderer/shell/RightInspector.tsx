@@ -26,6 +26,7 @@ import {
   Layers3,
   Move,
   Palette,
+  SlidersHorizontal,
   SquareDashedMousePointer,
   X,
 } from 'lucide-react';
@@ -646,8 +647,21 @@ export function RightInspector({
             onClick={() => setDrawerOpen(!drawerOpen)}
             type="button"
           >
-            <span>{drawerOpen ? '›' : '‹'}</span>
-            <strong>{dialogueMode ? '字幕' : '属性'}</strong>
+            <DecorativeIcon
+              className="inspector-rail-icon"
+              icon={SlidersHorizontal}
+              size={18}
+              strokeWidth={1.9}
+            />
+            <strong className="inspector-rail-label">
+              {dialogueMode ? '字幕' : '属性'}
+            </strong>
+            <span
+              aria-hidden="true"
+              className="inspector-rail-chevron"
+            >
+              {drawerOpen ? '›' : '‹'}
+            </span>
           </button>
           <div
             ref={drawerRef}
