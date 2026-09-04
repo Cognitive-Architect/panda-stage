@@ -58,11 +58,18 @@ describe('Issue #426 unified Right Workspace R1', () => {
   });
 
   it('opens the unified properties activity before the canvas verifier edits properties', () => {
-    const verifier = source('scripts/verify-day22.cjs');
+    const verifiers = [
+      source('scripts/verify-day22.cjs'),
+      source('scripts/verify-day23.cjs'),
+    ];
 
-    expect(verifier).toContain("await selectRightActivity(window, 'properties');");
-    expect(verifier).toContain(
-      '`?.dataset.activeActivity === ${JSON.stringify(activity)} && `',
-    );
+    for (const verifier of verifiers) {
+      expect(verifier).toContain(
+        "await selectRightActivity(window, 'properties');",
+      );
+      expect(verifier).toContain(
+        '`?.dataset.activeActivity === ${JSON.stringify(activity)} && `',
+      );
+    }
   });
 });

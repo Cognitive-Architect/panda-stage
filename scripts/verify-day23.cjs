@@ -80,6 +80,27 @@ async function selectResourceActivity(window, activity) {
   }
 }
 
+async function selectRightActivity(window, activity) {
+  const selector = `[data-testid="right-activity-rail-${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Right activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="right-workspace"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)} && ` +
+        `document.querySelector('[data-testid="right-workspace-surface"]')`,
+      `Right activity did not activate: ${activity}`,
+    ),
+  );
+}
+
 async function setInput(window, selector, value) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
@@ -543,6 +564,7 @@ async function verifyDay23() {
         })}`,
       );
     }
+    await selectRightActivity(window, 'properties');
     await window.webContents.executeJavaScript(
       `document.querySelectorAll(` +
         `'[data-testid="layer-order-controls"] button'` +
@@ -764,6 +786,7 @@ async function verifyDay23() {
       extraLayerId,
       { x: 1500, y: 850 },
     );
+    await selectRightActivity(window, 'properties');
     const beforeButtonDelete = await snapshot(window);
     await window.webContents.executeJavaScript(
       `document.querySelector(` +
