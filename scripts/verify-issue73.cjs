@@ -140,32 +140,13 @@ async function ensureProjectCenter(window) {
   );
 }
 
-async function ensureDesktopEditor(window) {
-  const desktop = await window.webContents.executeJavaScript(
-    `document.querySelector('[data-editor-shell-layout="desktop"]') !== null`,
-  );
-  if (desktop) return;
-
-  await click(window, '[data-testid="compact-project-more"]');
+async function ensureCloudTouchEditor(window) {
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('[data-testid="editor-device-mode-desktop"]')`,
-      'Editor device mode menu did not expose the Desktop option.',
-    ),
-  );
-  await click(window, '[data-testid="editor-device-mode-desktop"]');
-  await window.webContents.executeJavaScript(
-    waitFor(
-      `document.querySelector('[data-editor-shell-layout="desktop"]') && ` +
-        `document.querySelector('.shot-fields')`,
-      'Explicit Desktop mode did not restore the desktop Shot editor surface.',
-    ),
-  );
-  await click(window, '[data-testid="compact-project-more"]');
-  await window.webContents.executeJavaScript(
-    waitFor(
-      `!document.querySelector('[data-testid="compact-project-menu"]')`,
-      'Editor device mode menu did not close after selecting Desktop.',
+      `document.querySelector('[data-editor-device-mode="cloud-touch"]') && ` +
+        `document.querySelector('[data-editor-shell-layout="landscape"]') && ` +
+        `document.querySelector('[data-testid="shot-quick-actions"]')`,
+      'Cloud Touch landscape editor did not render the selected Shot actions.',
     ),
   );
 }
@@ -191,17 +172,16 @@ async function openFromPath(window, projectRoot) {
 }
 
 async function snapshot(window) {
-  return window.webContents.executeJavaScript(`(() => ({
+  return window.webContents.executeJavaScript(`(() => {
+    const selectedShot = document.querySelector('.shot-list-item-selected');
+    const durationText = selectedShot?.querySelector('small')?.textContent ?? '';
+    return {
     activeRoot: document.querySelector(
       '[data-testid="active-project-path"] code'
     )?.textContent ?? null,
     dirty: Boolean(document.querySelector('.dirty-state')),
-    nameDraft: document.querySelector(
-      '.shot-fields label:nth-of-type(1) input'
-    )?.value ?? null,
-    durationDraft: Math.round(Number(document.querySelector(
-      '.shot-duration-input input'
-    )?.value ?? NaN) * 1000),
+    nameDraft: selectedShot?.querySelector('strong')?.textContent?.trim() ?? null,
+    durationDraft: Math.round(Number.parseFloat(durationText) * 1000),
     topStatus: document.querySelector(
       '[data-testid="editor-action-status"]'
     )?.textContent?.trim() ?? '',
@@ -217,19 +197,14 @@ async function snapshot(window) {
     recoveryDetails: document.querySelector(
       '.recovery-details summary'
     )?.textContent?.trim() ?? null
-  }))()`);
+    };
+  })()`);
 }
 
 async function applyShotName(window, name) {
-  await setInput(
-    window,
-    '.shot-fields label:nth-of-type(1) input',
-    name,
-  );
-  await click(
-    window,
-    '.shot-fields label:nth-of-type(1) button',
-  );
+  await click(window, '[data-testid="shot-quick-rename"]');
+  await setInput(window, '[data-testid="shot-quick-rename-form"] input', name);
+  await click(window, '[data-testid="shot-quick-rename-apply"]');
   await window.webContents.executeJavaScript(
     waitFor(
       `Boolean(document.querySelector('.dirty-state'))`,
@@ -366,12 +341,13 @@ async function verifyIssue73() {
         'Project A did not open.',
       ),
     );
-    await ensureDesktopEditor(window);
+    await ensureCloudTouchEditor(window);
     const openedA = await snapshot(window);
 
+    await click(window, '[data-testid="shot-quick-rename"]');
     await setInput(
       window,
-      '.shot-fields label:nth-of-type(1) input',
+      '[data-testid="shot-quick-rename-form"] input',
       'A 未应用草稿',
     );
     await clickRecent(window, projectBRoot);
@@ -493,7 +469,7 @@ async function verifyIssue73() {
       openedA.nameDraft !== projectA.shots[0].name ||
       openedA.durationDraft !== projectA.shots[0].durationMs ||
       switchedB.nameDraft !== projectB.shots[0].name ||
-      switchedB.durationDraft !== projectB.shots[0].durationMs ||
+      switchedB.durationDraft !== Math.round(projectB.shots[0].durationMs / 100) * 100 ||
       returnedA.nameDraft !== projectA.shots[0].name ||
       returnedA.durationDraft !== projectA.shots[0].durationMs ||
       cancelledSwitch.activeRoot !== projectARoot ||

@@ -405,38 +405,6 @@ button:disabled {
   background: #28663f;
 }
 
-.compact-project-device-mode {
-  display: grid;
-  gap: 4px;
-  padding: 8px 4px;
-  margin: 2px 0;
-  border-top: 1px solid rgb(127 199 148 / 24%);
-  border-bottom: 1px solid rgb(127 199 148 / 24%);
-}
-
-.compact-project-device-mode-label {
-  padding: 2px 4px;
-  color: #aebfb4;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.compact-project-menu .compact-project-device-mode-option {
-  min-height: 38px;
-  border: 1px solid transparent;
-  text-align: left;
-}
-
-.compact-project-menu
-  .compact-project-device-mode-option[aria-checked='true'] {
-  border-color: rgb(154 216 172 / 72%);
-  background: rgb(40 102 63 / 72%);
-  color: #f3fff5;
-  box-shadow: inset 3px 0 0 #8bd39b;
-}
-
 .editor-layout > .recovery-panel {
   width: 100%;
   max-width: none;
@@ -9074,26 +9042,6 @@ h1 {
     pointer-events: none;
   }
 
-  /* V-194-01: a clear, non-keyboard close entry inside the drawer, mirroring
-     the left Resource Drawer's 关闭 button. Escape still works as a shortcut. */
-  .inspector-drawer-close {
-    display: block;
-    width: fit-content;
-    margin-left: auto;
-    margin-bottom: 8px;
-    padding: 4px 10px;
-    border: 1px solid rgb(127 199 148 / 34%);
-    border-radius: 8px;
-    color: #d8f2df;
-    background: #0f1812;
-    font-size: 12px;
-    cursor: pointer;
-  }
-
-  .inspector-drawer-close:focus-visible {
-    outline: 2px solid #7fd398;
-    outline-offset: 2px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -9923,24 +9871,10 @@ h1 {
   pointer-events: none;
 }
 
-.editor-layout[data-shell-mode='landscape'] .resource-activity-close,
-.editor-layout[data-shell-mode='landscape'] .inspector-drawer-close {
+.editor-layout[data-shell-mode='landscape'] .resource-activity-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.editor-layout[data-shell-mode='landscape'] .inspector-drawer-close {
-  display: block;
-  width: fit-content;
-  margin-left: auto;
-  margin-bottom: 8px;
-  padding: 4px 10px;
-  border: 1px solid rgb(127 199 148 / 34%);
-  border-radius: 8px;
-  color: #d8f2df;
-  background: #0f1812;
-  font-size: 12px;
 }
 
 /* Issue #371: Cloud Touch landscape keeps the existing RightInspector owner
@@ -10183,23 +10117,10 @@ h1 {
   background: rgb(18 31 23 / 74%);
 }
 
-.editor-layout[data-shell-mode='portrait'] .resource-activity-close,
-.editor-layout[data-shell-mode='portrait'] .inspector-drawer-close {
+.editor-layout[data-shell-mode='portrait'] .resource-activity-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.editor-layout[data-shell-mode='portrait'] .inspector-drawer-close {
-  width: fit-content;
-  margin-left: auto;
-  margin-bottom: 8px;
-  padding: 8px 12px;
-  border: 1px solid rgb(127 199 148 / 34%);
-  border-radius: 8px;
-  color: #d8f2df;
-  background: #0f1812;
-  font-size: 12px;
 }
 
 .editor-layout[data-shell-mode='portrait'] .resource-workspace-handle,
@@ -12030,18 +11951,6 @@ h1 {
   align-content: start;
   gap: 10px;
   padding: 12px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .right-inspector-drawer
-  .inspector-drawer-close {
-  position: sticky;
-  z-index: 2;
-  top: 0;
-  min-height: 40px;
-  margin-bottom: 0;
-  padding: 8px 12px;
-  background: #0f1812;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -23227,14 +23136,6 @@ h1 {
   .right-inspector-drawer:has(> .dialogue-inspector-landscape-properties) {
   gap: 0;
   padding: 12px 14px 20px;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .right-inspector-drawer:has(> .dialogue-inspector-landscape-properties)
-  > .inspector-drawer-close {
-  min-height: 40px;
-  margin-bottom: 8px;
-  padding: 8px 10px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']

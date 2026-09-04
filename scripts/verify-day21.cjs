@@ -465,7 +465,10 @@ async function verifyDay21() {
         modeFeedback: document.querySelector(
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim(),
-        clean: document.querySelector('.clean-state')
+        clean: document.querySelector('[data-testid="compact-project-bar"]')
+          ?.dataset?.saveState === 'saved' &&
+        document.querySelector('[data-testid="project-save-state"]') === null ||
+        document.querySelector('.clean-state')
           ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
@@ -495,7 +498,10 @@ async function verifyDay21() {
           viewport.clientHeight / 1080
         ),
         layerJson: stage.dataset.layerJson,
-        clean: document.querySelector('.clean-state')
+        clean: document.querySelector('[data-testid="compact-project-bar"]')
+          ?.dataset?.saveState === 'saved' &&
+        document.querySelector('[data-testid="project-save-state"]') === null ||
+        document.querySelector('.clean-state')
           ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
@@ -567,7 +573,10 @@ async function verifyDay21() {
           '[data-testid="canvas-pointer-coordinate"]'
         ).textContent.trim(),
         layerJson: stage.dataset.layerJson,
-        clean: document.querySelector('.clean-state')
+        clean: document.querySelector('[data-testid="compact-project-bar"]')
+          ?.dataset?.saveState === 'saved' &&
+        document.querySelector('[data-testid="project-save-state"]') === null ||
+        document.querySelector('.clean-state')
           ?.textContent?.trim() === '已保存',
         revisionZero: document.querySelector(
           '.shot-manager-heading span'
@@ -621,7 +630,10 @@ async function verifyDay21() {
       logicalHeight: Number(document.querySelector(
         '[data-testid="project-canvas-viewport"]'
       ).dataset.logicalHeight),
-      clean: document.querySelector('.clean-state')
+        clean: document.querySelector('[data-testid="compact-project-bar"]')
+          ?.dataset?.saveState === 'saved' &&
+        document.querySelector('[data-testid="project-save-state"]') === null ||
+        document.querySelector('.clean-state')
         ?.textContent?.trim() === '已保存'
     }))()`);
 
@@ -767,7 +779,10 @@ async function verifyDay21() {
           layerJson: document.querySelector(
             '[data-testid="project-canvas-stage"]'
           ).dataset.layerJson,
-          clean: document.querySelector('.clean-state')
+        clean: document.querySelector('[data-testid="compact-project-bar"]')
+          ?.dataset?.saveState === 'saved' &&
+        document.querySelector('[data-testid="project-save-state"]') === null ||
+        document.querySelector('.clean-state')
             ?.textContent?.trim() === '已保存',
           revisionZero: document.querySelector(
             '.shot-manager-heading span'

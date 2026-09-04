@@ -12,11 +12,12 @@ describe('Right Inspector narrow Drawer review follow-up #195 contracts', () => 
   const inspector = readSource('src/renderer/shell/RightInspector.tsx');
   const styles = readSource('src/renderer/styles.css');
 
-  it('V-194-01: Drawer exposes a non-keyboard close entry', () => {
-    expect(inspector).toContain('inspector-drawer-close');
-    expect(inspector).toContain('data-testid="inspector-drawer-close"');
+  it('V-194-01: Properties drawer exposes one inline close entry', () => {
+    expect(inspector).not.toContain('inspector-drawer-close');
+    expect(inspector).toContain('data-testid="inspector-inline-close"');
+    expect(inspector).toContain('onClick={() => setDrawerOpen(false)}');
     expect(styles).toMatch(
-      /\.inspector-drawer-close\s*\{[\s\S]*?margin-left:\s*auto;/u,
+      /\.right-inspector-heading-close\s*\{[\s\S]*?width:\s*44px;/u,
     );
   });
 

@@ -36,8 +36,6 @@ function renderBar(
       onSaveProject: vi.fn(async () => undefined),
       onOpenProductPreview: vi.fn(),
       onRequestCloseProject: vi.fn(),
-      deviceMode: 'cloud-touch',
-      onDeviceModeChange: vi.fn(),
       presentation: 'landscape',
     }),
   );

@@ -3,11 +3,7 @@ import { HistoryControls } from '../features/editor/HistoryControls';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { Button, PanelSurface } from '../ui';
 import { MoreHorizontal, Save } from 'lucide-react';
-import {
-  EDITOR_DEVICE_MODE_OPTIONS,
-  type EditorDeviceMode,
-  type EditorShellLayoutMode,
-} from './adaptiveEditorShell';
+import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 
 export type CompactProjectSaveState =
   | 'saved'
@@ -27,8 +23,6 @@ export interface CompactProjectBarProps {
   onSaveProject(): Promise<void>;
   onOpenProductPreview(): void;
   onRequestCloseProject(): void;
-  deviceMode: EditorDeviceMode;
-  onDeviceModeChange(mode: EditorDeviceMode): void;
   presentation?: EditorShellLayoutMode;
 }
 
@@ -63,8 +57,6 @@ export function CompactProjectBar({
   onSaveProject,
   onOpenProductPreview,
   onRequestCloseProject,
-  deviceMode,
-  onDeviceModeChange,
   presentation = 'landscape',
 }: CompactProjectBarProps): React.JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -230,34 +222,6 @@ export function CompactProjectBar({
               >
                 产品预览
               </Button>
-              <div
-                aria-label="Editor device mode"
-                className="compact-project-device-mode"
-                data-testid="editor-device-mode-selector"
-                role="group"
-              >
-                <span className="compact-project-device-mode-label">
-                  Editor device mode
-                </span>
-                {EDITOR_DEVICE_MODE_OPTIONS.map((option) => (
-                  <Button
-                    aria-checked={deviceMode === option.value}
-                    className={
-                      deviceMode === option.value
-                        ? 'compact-project-device-mode-option is-selected'
-                        : 'compact-project-device-mode-option'
-                    }
-                    data-device-mode={option.value}
-                    data-testid={`editor-device-mode-${option.value}`}
-                    key={option.value}
-                    onClick={() => onDeviceModeChange(option.value)}
-                    role="menuitemradio"
-                    variant="secondary"
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </div>
               <Button
                 variant="danger"
                 className="task4-hit-target"

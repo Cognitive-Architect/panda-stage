@@ -670,17 +670,6 @@ export function RightInspector({
             data-testid="right-inspector-drawer"
             id="right-inspector-drawer"
           >
-            {!compact && !(landscapePresentation && dialogueMode) ? (
-              <button
-                aria-label={`关闭${inspectorModeLabel}`}
-                className="inspector-drawer-close"
-                data-testid="inspector-drawer-close"
-                onClick={() => setDrawerOpen(false)}
-                type="button"
-              >
-                关闭
-              </button>
-            ) : null}
             {inspectorContent}
           </div>
         </>

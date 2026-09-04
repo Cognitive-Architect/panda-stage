@@ -230,12 +230,11 @@ function assertCompactBottom(sample, label, maxHeight = 172) {
     sample.bottom.height >= 52 && sample.bottom.height <= maxHeight,
     `${label} bottom workspace exceeds the Day 26 Timeline Shell height budget: ${JSON.stringify(sample.bottom)}`,
   );
-  assert(
-    sample.bottomMetrics.overflow === 'hidden' &&
-      sample.bottomMetrics.overflowX === 'hidden' &&
-      sample.bottomMetrics.overflowY === 'hidden',
-    `${label} bottom workspace uses an unexpected overflow mode: ${JSON.stringify(sample.bottomMetrics)}`,
-  );
+  // Cloud Touch landscape deliberately exposes the resizable handle outside
+  // the workspace's border (Issue #378), while portrait may use a local
+  // vertical scroller. The behavior that matters here is that the rendered
+  // history/timeline content does not create actual overflow or a scrollbar;
+  // an exact computed overflow value is no longer a stable contract.
   assert(
     sample.bottomMetrics.scrollWidth <= sample.bottomMetrics.clientWidth + 1 &&
       sample.historyMetrics.scrollWidth <= sample.historyMetrics.clientWidth + 1 &&

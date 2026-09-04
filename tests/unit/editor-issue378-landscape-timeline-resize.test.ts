@@ -74,7 +74,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
     );
 
     expect(shell).toContain(
-      "resizable={deviceMode === 'cloud-touch' && layoutMode === 'landscape'}",
+      'resizable={layoutMode === \'landscape\'}',
     );
     expect(bottom).toContain('data-testid="timeline-resize-handle"');
     expect(bottom).toContain('role="separator"');

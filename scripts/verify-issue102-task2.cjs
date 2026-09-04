@@ -158,6 +158,7 @@ async function snapshot(window) {
           }
         : null;
     };
+    const shell = document.querySelector('.editor-shell');
     const bar = document.querySelector('[data-testid="compact-project-bar"]');
     const topRegion = document.querySelector('[data-testid="editor-top-region"]');
     const body = document.querySelector('[data-testid="editor-body"]');
@@ -169,7 +170,9 @@ async function snapshot(window) {
     const menu = document.querySelector('[data-testid="compact-project-menu"]');
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
-      page: document.querySelector('.editor-shell')?.dataset.editorPage ?? null,
+      page: shell?.dataset.editorPage ?? null,
+      editorDeviceMode: shell?.dataset.editorDeviceMode ?? null,
+      editorShellLayout: shell?.dataset.editorShellLayout ?? null,
       shellState:
         document.querySelector('.editor-shell')?.dataset.editorShellState ?? null,
       projectName: name?.textContent?.trim() ?? null,
@@ -197,6 +200,9 @@ async function snapshot(window) {
       controls: rect(controls),
       save: rect(save),
       menu: rect(menu),
+      deviceModeSelector: Boolean(
+        document.querySelector('[data-testid="editor-device-mode-selector"]'),
+      ),
       menuItems: menu
         ? [...menu.querySelectorAll('[role="menuitem"]')].map((item) => ({
             testId: item.getAttribute('data-testid'),
@@ -318,6 +324,14 @@ async function run(window, fixture) {
 
   const clean = await snapshot(window);
   assert(clean.page === 'editor', 'Clean snapshot is not on the editor page.');
+  assert(
+    clean.editorDeviceMode === 'cloud-touch',
+    'Editor did not use the Cloud Touch-only product route.',
+  );
+  assert(
+    clean.editorShellLayout === 'landscape',
+    'Wide verifier window did not use the Cloud Touch landscape layout.',
+  );
   assert(clean.projectName === projectName, 'Current project name is not visible.');
   assert(clean.projectPath === fixture.projectRoot, 'Current project path is not visible.');
   assert(
@@ -362,8 +376,43 @@ async function run(window, fixture) {
   );
   await capture(window, 'new-editor-layout.png');
 
-  await setInput(window, '.shot-fields label:nth-of-type(1) input', 'Task 2 dirty state');
-  await clickSelector(window, '.shot-fields label:nth-of-type(1) button');
+  await clickSelector(window, '[data-testid="inspector-rail-handle"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="right-inspector"]')?.getAttribute('data-drawer-open') === 'true' &&
+      document.querySelector('[data-testid="inspector-inline-close"]')`,
+    'Properties drawer did not open with its inline close affordance.',
+  );
+  const propertiesClose = await window.webContents.executeJavaScript(`(() => ({
+    inlineCloseCount: document.querySelectorAll(
+      '[data-testid="inspector-inline-close"]'
+    ).length,
+    outerCloseCount: document.querySelectorAll(
+      '[data-testid="inspector-drawer-close"]'
+    ).length
+  }))()`);
+  assert(
+    propertiesClose.inlineCloseCount === 1 &&
+      propertiesClose.outerCloseCount === 0,
+    'Properties drawer did not reduce to one inline close affordance.',
+  );
+  await clickSelector(window, '[data-testid="inspector-inline-close"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="right-inspector"]')?.getAttribute('data-drawer-open') === 'false'`,
+    'Properties inline close did not close the drawer.',
+  );
+  result.checks.push(
+    'Cloud Touch Properties drawer has one inline close affordance and no outer duplicate',
+  );
+
+  await clickSelector(window, '[data-testid="shot-quick-rename"]');
+  await setInput(
+    window,
+    '[data-testid="shot-quick-rename-form"] input',
+    'Task 2 dirty state',
+  );
+  await clickSelector(window, '[data-testid="shot-quick-rename-apply"]');
   await waitForDom(
     window,
     `document.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() === '有未保存更改' &&
@@ -414,6 +463,10 @@ async function run(window, fixture) {
       menu.menuItems.some((item) => item.text === '打开项目文件夹') &&
       menu.menuItems.some((item) => item.text === '关闭当前项目'),
     'Project menu labels do not match the Task 2 requirements.',
+  );
+  assert(
+    menu.deviceModeSelector === false,
+    'More menu still exposes the removed editor device mode selector.',
   );
   assert(menu.menu && menu.menu.right <= menu.viewport.width + 1, 'Project menu overflows the right edge.');
   assert(menu.menu && !overlaps(menu.menu, menu.controls), 'Project menu blocks the save/identity controls.');

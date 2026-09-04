@@ -212,12 +212,11 @@ function assertCompactBottom(sample, label) {
     sample.bottom.height >= 52 && sample.bottom.height <= 172,
     `${label} bottom workspace is not compact: ${JSON.stringify(sample.bottom)}`,
   );
-  assert(
-    sample.bottomMetrics.overflow === 'hidden' &&
-      sample.bottomMetrics.overflowX === 'hidden' &&
-      sample.bottomMetrics.overflowY === 'hidden',
-    `${label} bottom workspace uses an unexpected overflow mode: ${JSON.stringify(sample.bottomMetrics)}`,
-  );
+  // Cloud Touch landscape deliberately exposes the resizable handle outside
+  // the workspace's border (Issue #378), while portrait may use a local
+  // vertical scroller. The behavior that matters here is that the rendered
+  // history/timeline content does not create actual overflow or a scrollbar;
+  // an exact computed overflow value is no longer a stable contract.
   assert(
     sample.bottomMetrics.scrollWidth <= sample.bottomMetrics.clientWidth + 1 &&
       sample.historyMetrics.scrollWidth <= sample.historyMetrics.clientWidth + 1 &&
@@ -452,14 +451,33 @@ async function run() {
     await waitForDom(
       window,
       `document.querySelector('[data-editor-page="editor"]') &&
-        document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceMode === 'wide'`,
-      'The wide resource dock did not render.',
+        document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceMode === 'narrow' &&
+        document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false' &&
+        document.querySelector('[data-testid="resource-activity-rail-shots"]')`,
+      'The Cloud Touch landscape resource rail did not render.',
     );
     let sample = await measure(window);
-    assertNoPageOverflow(sample, '1280px wide dock');
+    assertNoPageOverflow(sample, '1280px landscape resource rail');
+    assertRegions(sample, '1280px landscape resource rail');
+    assert(
+      sample.rail && sample.rail.width >= 48 && sample.rail.width <= 56,
+      `1280px landscape resource rail is not 48–56px wide: ${JSON.stringify(sample.rail)}`,
+    );
+    await click(window, '[data-testid="resource-activity-rail-shots"]');
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true' &&
+        document.querySelector('[data-testid="resource-activity-drawer"]')`,
+      'The Cloud Touch landscape resource drawer did not open from its rail.',
+    );
+    sample = await measure(window);
+    assertNoPageOverflow(sample, '1280px landscape resource drawer');
     assertDrawer(sample, '1280px wide dock');
     assertButtons(sample, '1280px wide dock');
-    assert(sample.left && sample.left.width >= 319 && sample.left.width <= 361, '1280px dock is not 320–360px wide.');
+    assert(
+      sample.drawer && sample.drawer.width >= 319 && sample.drawer.width <= 361,
+      `1280px resource drawer is not 320–360px wide: ${JSON.stringify(sample.drawer)}`,
+    );
     assert(sample.activeActivity === 'shots' && sample.listView && !sample.shotCreateView, 'Wide mode did not default to the shot list.');
     assert(!sample.dirty && sample.revision === 0, 'Opening the resource dock changed project state.');
     result.snapshots.wide1280 = sample;
@@ -467,6 +485,15 @@ async function run() {
     result.screenshots.wide1280 = path.join(evidenceRoot, 'issue109-wide-dock-1280.png');
     await capture(window, 'issue109-wide-dock-1280.png');
 
+    // Cloud Touch keeps the resource drawer state across a resize. Close the
+    // explicitly opened landscape drawer before exercising the 1024px closed
+    // rail contract below.
+    await click(window, '[data-testid="resource-activity-rail-shots"]');
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`,
+      'The landscape resource drawer did not close before resize.',
+    );
     window.setContentSize(1024, 720);
     await waitForDom(
       window,

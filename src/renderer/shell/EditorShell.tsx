@@ -426,9 +426,10 @@ export function EditorShell({
   }>({ phase: 'idle', revision: null });
   const [requestedPage, setRequestedPage] =
     useState<EditorShellPage>('project-center');
-  // This is presentation/session state only. It never enters Project,
-  // History, autosave, or any cross-process contract.
-  const [deviceMode, setDeviceMode] = useState<EditorDeviceMode>('auto');
+  // Cloud Touch is the sole product route. This presentation value is kept
+  // only as a DOM/CSS contract; it never enters Project, History, autosave,
+  // or any cross-process contract.
+  const deviceMode: EditorDeviceMode = 'cloud-touch';
   const layoutMode = useEditorShellLayoutMode(deviceMode);
   const [portraitWorkspace, setPortraitWorkspace] =
     useState<EditorWorkspace>('canvas');
@@ -1006,12 +1007,10 @@ export function EditorShell({
               onOpenProjectFolder={openProjectFolder}
               onRequestCloseProject={requestCloseProject}
               onSaveProject={saveProject}
-              onDeviceModeChange={setDeviceMode}
               productPreviewOpen={productPreviewOpen}
               projectSnapshot={projectSnapshot}
               saveState={saveState}
               status={status}
-              deviceMode={deviceMode}
               presentation={layoutMode}
             />
             {recoveryCandidate ? (
@@ -1109,7 +1108,7 @@ export function EditorShell({
           <BottomWorkspace
             hidden={isPortrait && portraitWorkspace !== 'timeline'}
             presentation={layoutMode}
-            resizable={deviceMode === 'cloud-touch' && layoutMode === 'landscape'}
+            resizable={layoutMode === 'landscape'}
             showHistoryControls={false}
           />
           {productPreviewOpen ? (

@@ -62,6 +62,113 @@ function waitFor(expression, failureMessage) {
   `;
 }
 
+const assetPaginationSelector =
+  '[data-testid="asset-library-pagination"]';
+
+async function resetAssetBrowserToFirstPage(window) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const state = await window.webContents.executeJavaScript(`(() => {
+      const pagination = document.querySelector(
+        ${JSON.stringify(assetPaginationSelector)},
+      );
+      const previous = pagination?.querySelector('button:first-of-type');
+      const page = Number(pagination?.dataset.page ?? 1);
+      if (!previous || previous.disabled) return { moved: false, page };
+      previous.click();
+      return { moved: true, page };
+    })()`);
+    if (!state.moved) return;
+    const expectedPage = Math.max(1, state.page - 1);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector(${JSON.stringify(assetPaginationSelector)})?.dataset.page === '${expectedPage}'`,
+        `Asset browser did not return to page ${expectedPage}.`,
+      ),
+    );
+  }
+  throw new Error('Asset browser pagination did not settle at page one.');
+}
+
+async function revealAsset(window, assetId) {
+  await resetAssetBrowserToFirstPage(window);
+  const seenAssetIds = new Set();
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const state = await window.webContents.executeJavaScript(`(() => {
+      const card = document.querySelector(
+        ${JSON.stringify(`[data-asset-id="${assetId}"]`)},
+      );
+      const pagination = document.querySelector(
+        ${JSON.stringify(assetPaginationSelector)},
+      );
+      const cards = [...document.querySelectorAll('.asset-card')];
+      const page = Number(pagination?.dataset.page ?? 1);
+      const totalPages = Number(pagination?.dataset.totalPages ?? 1);
+      if (card) {
+        return {
+          found: true,
+          page,
+          totalPages,
+          assetIds: cards.map((item) => item.dataset.assetId),
+        };
+      }
+      const next = pagination?.querySelector('button:last-of-type');
+      if (!next || next.disabled) {
+        return {
+          found: false,
+          exhausted: true,
+          page,
+          totalPages,
+          assetIds: cards.map((item) => item.dataset.assetId),
+        };
+      }
+      next.click();
+      return {
+        found: false,
+        exhausted: false,
+        page,
+        totalPages,
+        assetIds: cards.map((item) => item.dataset.assetId),
+      };
+    })()`);
+    for (const id of state.assetIds ?? []) seenAssetIds.add(id);
+    if (state.found) {
+      return {
+        ...state,
+        seenAssetCount: seenAssetIds.size,
+      };
+    }
+    if (state.exhausted) {
+      throw new Error(`Asset ${assetId} was not found in the paged browser.`);
+    }
+    const nextPage = state.page + 1;
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector(${JSON.stringify(assetPaginationSelector)})?.dataset.page === '${nextPage}'`,
+        `Asset browser did not advance to page ${nextPage}.`,
+      ),
+    );
+  }
+  throw new Error(`Asset ${assetId} pagination exceeded the safety limit.`);
+}
+
+async function closeAssetDetails(window) {
+  const closed = await window.webContents.executeJavaScript(`(() => {
+    const close = document.querySelector('[data-testid="asset-details-close"]');
+    const back = document.querySelector('[data-testid="asset-details-back"]');
+    const button = close ?? back;
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!closed) return;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      "document.querySelector('.asset-grid') && !document.querySelector('[data-testid=\"asset-details-overlay\"]') && !document.querySelector('[data-testid=\"asset-details-view\"]')",
+      'Asset details did not return to the browser.',
+    ),
+  );
+}
+
 async function verifyDay18() {
   const png = await readFile(
     path.join(repositoryRoot, 'tests/fixtures/assets/熊猫 图片.png'),
@@ -186,22 +293,64 @@ async function verifyDay18() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector(" +
-          "'[data-testid=\\\"resource-activity-tabs\\\"] " +
-          "[data-activity=\\\"assets\\\"]'" +
+          "'[data-testid=\\\"resource-activity-rail-assets\\\"], " +
+          "[data-testid=\\\"resource-activity-tabs\\\"] [data-activity=\\\"assets\\\"]'" +
           ")",
-        'Resource activity tabs did not render.',
+        'Resource activity asset navigation did not render.',
       ),
     );
     await window.webContents.executeJavaScript(
-      `document.querySelector('[data-testid="resource-activity-tabs"] ` +
-        `[data-activity="assets"]').click()`,
+      `document.querySelector('[data-testid="resource-activity-rail-assets"], ` +
+        `[data-testid="resource-activity-tabs"] [data-activity="assets"]').click()`,
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelectorAll('.asset-card').length === 100 && " +
-          "document.querySelectorAll('.asset-card img').length === 98 && " +
-          "document.querySelector('[data-thumbnail-status=\"missing\"]')",
-        'The 100-item thumbnail grid did not become ready.',
+        "[...document.querySelectorAll('.asset-category-tabs button')].some(" +
+          "(button) => button.textContent?.includes('背景'))",
+        'Asset category navigation did not render.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`(() => {
+      const backgroundCategory = [...document.querySelectorAll(
+        '.asset-category-tabs button'
+      )].find((button) => button.textContent?.includes('背景'));
+      if (!backgroundCategory) {
+        throw new Error('Background asset category did not render.');
+      }
+      if (backgroundCategory.getAttribute('aria-pressed') !== 'true') {
+        backgroundCategory.click();
+      }
+      return true;
+    })()`);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.asset-grid') && " +
+          "document.querySelectorAll('.asset-card').length === 8 && " +
+          "document.querySelectorAll('.asset-card img').length === 8 && " +
+          "document.querySelector(" +
+          "'[data-testid=\\\"asset-library-pagination\\\"]'" +
+          ")?.dataset.totalPages === '13'",
+        'The first page of the 100-item thumbnail browser did not become ready.',
+      ),
+    );
+    const initialPageScan = await revealAsset(
+      window,
+      missingThumbnailAssetId,
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-asset-id=\"" +
+          missingThumbnailAssetId +
+          "\"] [data-thumbnail-status=\"missing\"]')",
+        'The missing thumbnail page did not become ready.',
+      ),
+    );
+    await resetAssetBrowserToFirstPage(window);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelectorAll('.asset-card').length === 8 && " +
+          "document.querySelectorAll('.asset-card img').length === 8",
+        'The first asset browser page did not restore after the scan.',
       ),
     );
     await window.webContents.executeJavaScript(`
@@ -215,6 +364,15 @@ async function verifyDay18() {
       )
     `);
     const gridScreenshot = await window.webContents.capturePage();
+    await revealAsset(window, decodeErrorAssetId);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-asset-id=\"" +
+          decodeErrorAssetId +
+          "\"] img')",
+        'The decode fallback asset did not become ready.',
+      ),
+    );
 
     const selectionBefore =
       await window.webContents.executeJavaScript(`(() => {
@@ -229,18 +387,12 @@ async function verifyDay18() {
       })()`);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('[data-testid=\"asset-details-view\"]')",
+        "document.querySelector('[data-testid=\"asset-details-view\"], " +
+          "[data-testid=\"asset-details-overlay\"]')",
         'Selecting an asset did not open its details view.',
       ),
     );
-    await window.webContents.executeJavaScript(`(() => {
-      const back = document.querySelector(
-        '[data-testid="asset-details-back"]'
-      );
-      if (!back) throw new Error('Asset details back button did not render.');
-      back.click();
-      return true;
-    })()`);
+    await closeAssetDetails(window);
     const decodeFallbackBefore =
       await window.webContents.executeJavaScript(`(() => {
         const card = document.querySelector(
@@ -311,6 +463,9 @@ async function verifyDay18() {
       await window.webContents.executeJavaScript(`(async () => {
         const grid = document.querySelector('.asset-grid');
         const cards = [...grid.querySelectorAll('.asset-card')];
+        const pagination = document.querySelector(
+          '[data-testid="asset-library-pagination"]',
+        );
         const scrollSurface =
           document.querySelector('.resource-activity-body') || grid;
         const startedAt = performance.now();
@@ -324,7 +479,9 @@ async function verifyDay18() {
         );
         return {
           elapsedMs: performance.now() - startedAt,
-          itemCount: cards.length,
+          itemCount: ${JSON.stringify(initialPageScan.seenAssetCount)},
+          pageCount: Number(pagination?.dataset.totalPages ?? 1),
+          pageSize: cards.length,
           selectedName: document.querySelector('.asset-details h3')
             ?.textContent?.trim(),
           scrollTop,
@@ -333,19 +490,8 @@ async function verifyDay18() {
         };
       })()`);
 
-    await window.webContents.executeJavaScript(`(() => {
-      const back = document.querySelector(
-        '[data-testid="asset-details-back"]'
-      );
-      if (back) back.click();
-      return true;
-    })()`);
-    await window.webContents.executeJavaScript(
-      waitFor(
-        "document.querySelector('.asset-grid')",
-        'Returning from the performance selection did not restore the asset browser.',
-      ),
-    );
+    await closeAssetDetails(window);
+    await revealAsset(window, removableAssetId);
     const dragEvidence = await window.webContents.executeJavaScript(`
       (() => {
         const card = document.querySelector(
@@ -390,6 +536,7 @@ async function verifyDay18() {
       ).dispatchEvent(new DragEvent('dragend', { bubbles: true }));
     `);
 
+    await revealAsset(window, referencedAssetId);
     await window.webContents.executeJavaScript(`
       (() => {
         window.confirm = () => true;
@@ -431,20 +578,9 @@ async function verifyDay18() {
     }))()`);
     const referenceScreenshot = await window.webContents.capturePage();
 
-    await window.webContents.executeJavaScript(`
-      (() => {
-        const back = document.querySelector('[data-testid="asset-details-back"]');
-        if (back) back.click();
-        return true;
-      })()`
-    );
-    await window.webContents.executeJavaScript(
-      waitFor(
-        "document.querySelector('.asset-grid')",
-        'Returning from the reference details did not restore the asset browser.',
-      ),
-    );
+    await closeAssetDetails(window);
 
+    await revealAsset(window, removableAssetId);
     await window.webContents.executeJavaScript(`
       (() => {
         const card = document.querySelector(
@@ -473,19 +609,7 @@ async function verifyDay18() {
         'Unreferenced asset did not disappear after successful deletion.',
       ),
     );
-    await window.webContents.executeJavaScript(`
-      (() => {
-        const back = document.querySelector('[data-testid="asset-details-back"]');
-        if (back) back.click();
-        return true;
-      })()`
-    );
-    await window.webContents.executeJavaScript(
-      waitFor(
-        "document.querySelector('.asset-grid')",
-        'Returning from the deleted asset details did not restore the asset browser.',
-      ),
-    );
+    await closeAssetDetails(window);
     const deletionUi = await window.webContents.executeJavaScript(`(() => ({
       status: document.querySelector('.asset-library-status')
         ?.textContent?.trim(),
@@ -502,6 +626,15 @@ async function verifyDay18() {
     }))()`);
     const deletionScreenshot = await window.webContents.capturePage();
 
+    await revealAsset(window, missingThumbnailAssetId);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('[data-asset-id=\"" +
+          missingThumbnailAssetId +
+          "\"] [data-thumbnail-status=\"missing\"]')",
+        'The missing thumbnail card did not remain rebuildable.',
+      ),
+    );
     const sourceAudit = await window.webContents.executeJavaScript(`(() => ({
       imageCount: document.querySelectorAll('.asset-grid img').length,
       nonDataImageSources: [...document.querySelectorAll('.asset-grid img')]
@@ -522,7 +655,8 @@ async function verifyDay18() {
       executedAt: new Date().toISOString(),
       ui: {
         categories: ['角色图片', '背景图片', '音频'],
-        backgroundItemsBeforeDelete: 100,
+        backgroundItemsBeforeDelete: initialPageScan.seenAssetCount,
+        pagedBrowserScan: initialPageScan,
         thumbnailRequestCount,
         performanceObservation,
         dragEvidence,
@@ -567,8 +701,9 @@ async function verifyDay18() {
 
     if (
       performanceObservation.itemCount !== 100 ||
+      performanceObservation.pageCount !== 13 ||
+      performanceObservation.pageSize > 8 ||
       performanceObservation.elapsedMs >= 1_000 ||
-      performanceObservation.scrollTop <= 0 ||
       dragEvidence.payload.assetId !== removableAssetId ||
       dragEvidence.payload.version !== 2 ||
       dragEvidence.payload.type !== 'asset-image' ||

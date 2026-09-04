@@ -40,6 +40,7 @@ function waitFor(expression, failureMessage) {
 
 async function selectResourceActivity(window, activity) {
   const selector =
+    `[data-testid="resource-activity-rail-${activity}"], ` +
     `[data-testid="resource-activity-tabs"] [data-activity="${activity}"]`;
   await window.webContents.executeJavaScript(
     waitFor(
@@ -614,13 +615,13 @@ async function verifyDay23() {
     );
 
     const inputSelectors = [
-      '[data-testid="layer-transform-panel"] label:nth-of-type(1) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(2) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(3) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(4) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(5) input',
+      '[data-testid="layer-transform-x"]',
+      '[data-testid="layer-transform-y"]',
+      '[data-testid="layer-transform-scale"] input',
+      '[data-testid="layer-transform-rotation"] input',
+      '[data-testid="layer-opacity-range"]',
     ];
-    for (const [index, value] of [800, 450, 1.25, 450, 0.6].entries()) {
+    for (const [index, value] of [800, 450, 125, 90, 60].entries()) {
       await setInput(window, inputSelectors[index], value);
     }
     await window.webContents.executeJavaScript(
@@ -642,7 +643,7 @@ async function verifyDay23() {
 
     await window.webContents.executeJavaScript(
       `document.querySelector(` +
-        `'[data-testid="layer-transform-panel"] button[type="button"]'` +
+        `'.layer-transform-toggle-action'` +
         `).click()`,
     );
     await window.webContents.executeJavaScript(
@@ -688,7 +689,7 @@ async function verifyDay23() {
 
     await window.webContents.executeJavaScript(
       `document.querySelector(` +
-        `'[data-testid="layer-transform-panel"] .layer-lock-control input'` +
+        `'.layer-lock-switch, [data-testid="layer-transform-panel"] .layer-lock-control input'` +
         `).click()`,
     );
     await window.webContents.executeJavaScript(
@@ -704,14 +705,15 @@ async function verifyDay23() {
         '[data-testid="layer-transform-panel"] input'
       )].slice(0, 5).every((input) => input.disabled),
       orderButtonsDisabled: [...document.querySelectorAll(
-        '[data-testid="layer-order-controls"] button'
+        '[data-testid="layer-order-controls"] .layer-order-actions button, ' +
+        '[data-testid="layer-order-controls"] .layer-delete-button'
       )].every((button) => button.disabled)
     }))()`);
     const lockedScreenshot = await captureCanvas(window);
 
     await window.webContents.executeJavaScript(
       `document.querySelector(` +
-        `'[data-testid="layer-transform-panel"] .layer-lock-control input'` +
+        `'.layer-lock-switch, [data-testid="layer-transform-panel"] .layer-lock-control input'` +
         `).click()`,
     );
     await window.webContents.executeJavaScript(
@@ -729,8 +731,7 @@ async function verifyDay23() {
       waitFor(
         `document.querySelector('[data-testid="compact-project-bar"]')` +
           `?.dataset?.saveState === 'saved' && ` +
-          `document.querySelector('[data-testid="project-save-state"]')` +
-          `?.textContent?.trim() === '已保存'`,
+          `!document.querySelector('[data-testid="project-save-state"]')`,
         'Day 23 project did not save cleanly.',
       ),
     );

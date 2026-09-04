@@ -212,10 +212,10 @@ function assertNotClipped(sample, label) {
     sample.bottomMetrics && sample.historyMetrics,
     `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
   );
-  assert(
-    sample.bottomMetrics.overflow === 'hidden',
-    `${label} bottom workspace uses an unexpected overflow mode: ${JSON.stringify(sample.bottomMetrics)}`,
-  );
+  // Cloud Touch landscape deliberately exposes the resizable handle outside
+  // the workspace's border (Issue #378). Verify the stable behavior—content
+  // stays within the measured surface—rather than the implementation detail
+  // of the computed overflow value.
   assert(
     sample.bottomMetrics.scrollHeight <= sample.bottomMetrics.clientHeight + 1 &&
       sample.bottomMetrics.scrollWidth <= sample.bottomMetrics.clientWidth + 1 &&

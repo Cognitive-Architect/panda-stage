@@ -1001,11 +1001,12 @@ async function run() {
   issue413Receipt.regressions.sameSessionContinue = receipt.checks.continueSameSession;
 
   assert(
-    await evaluate(mainWindow, 'Boolean(document.querySelector(".shot-fields label:nth-of-type(1) input"))'),
-    'Could not find the production shot-name editor for the dirty Hero visual state.',
+    await evaluate(mainWindow, 'Boolean(document.querySelector("[data-testid=shot-quick-actions]"))'),
+    'Could not find the selected Shot actions for the dirty Hero visual state.',
   );
-  await setInput(mainWindow, '.shot-fields label:nth-of-type(1) input', 'Issue 412 dirty visual state');
-  await click(mainWindow, '.shot-fields label:nth-of-type(1) button');
+  await click(mainWindow, '[data-testid="shot-quick-rename"]');
+  await setInput(mainWindow, '[data-testid="shot-quick-rename-form"] input', 'Issue 412 dirty visual state');
+  await click(mainWindow, '[data-testid="shot-quick-rename-apply"]');
   await waitForExpression(
     mainWindow,
     'document.querySelector("[data-testid=project-save-state]")?.textContent?.trim() === "有未保存更改"',

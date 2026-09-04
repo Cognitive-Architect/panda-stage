@@ -94,26 +94,13 @@ async function openProjectMenu(window) {
   );
 }
 
-async function ensureDesktopEditor(window) {
-  const desktop = await window.webContents.executeJavaScript(
-    `document.querySelector('[data-editor-shell-layout="desktop"]') !== null`,
-  );
-  if (desktop) return;
-
-  await openProjectMenu(window);
-  await click(window, '[data-testid="editor-device-mode-desktop"]');
+async function ensureCloudTouchEditor(window) {
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('[data-editor-shell-layout="desktop"]') && ` +
-        `document.querySelector('.shot-fields')`,
-      'Explicit Desktop mode did not restore the desktop Shot editor surface.',
-    ),
-  );
-  await click(window, '[data-testid="compact-project-more"]');
-  await window.webContents.executeJavaScript(
-    waitFor(
-      `!document.querySelector('[data-testid="compact-project-menu"]')`,
-      'Editor device mode menu did not close after selecting Desktop.',
+      `document.querySelector('[data-editor-device-mode="cloud-touch"]') && ` +
+        `document.querySelector('[data-editor-shell-layout="landscape"]') && ` +
+        `document.querySelector('[data-testid="shot-quick-actions"]')`,
+      'Cloud Touch landscape editor did not render the selected Shot actions.',
     ),
   );
 }
@@ -131,7 +118,9 @@ async function readText(window, selector) {
 }
 
 async function snapshot(window) {
-  return window.webContents.executeJavaScript(`(() => ({
+  return window.webContents.executeJavaScript(`(() => {
+    const selectedShot = document.querySelector('.shot-list-item-selected');
+    return {
     shellState: document.querySelector('.editor-shell')
       ?.getAttribute('data-editor-shell-state') ?? null,
     activeRoot: document.querySelector(
@@ -161,15 +150,15 @@ async function snapshot(window) {
     selectedLayerId: document.querySelector(
       '[data-testid="project-canvas-stage"]'
     )?.getAttribute('data-selected-layer-id') || null,
-    nameDraft: document.querySelector(
-      '.shot-fields label:nth-of-type(1) input'
-    )?.value ?? null
-  }))()`);
+    nameDraft: selectedShot?.querySelector('strong')?.textContent?.trim() ?? null
+    };
+  })()`);
 }
 
 async function applyShotName(window, name) {
-  await setInput(window, '.shot-fields label:nth-of-type(1) input', name);
-  await click(window, '.shot-fields label:nth-of-type(1) button');
+  await click(window, '[data-testid="shot-quick-rename"]');
+  await setInput(window, '[data-testid="shot-quick-rename-form"] input', name);
+  await click(window, '[data-testid="shot-quick-rename-apply"]');
   await window.webContents.executeJavaScript(
     waitFor(
       `Boolean(document.querySelector('.dirty-state'))`,
@@ -379,7 +368,7 @@ async function verifyIssue76() {
         'Created project did not open in the editor.',
       ),
     );
-    await ensureDesktopEditor(window);
+    await ensureCloudTouchEditor(window);
     const created = await snapshot(window);
     const stopsAfterCreate = stopRequests.length;
     const updatesBeforeCleanClose = autosaveUpdates.length;
