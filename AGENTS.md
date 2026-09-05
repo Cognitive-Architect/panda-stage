@@ -84,6 +84,45 @@ react-konva, Zod, Vitest, ESLint, and pnpm.
   claim against current code. Treat daily receipts and old handoffs as
   evidence, not automatic descriptions of the current implementation.
 
+## Execution budget and validation proportionality
+
+- Do not manually trigger Full CI, rerun Full CI, run `pnpm verify:project`, or
+  invoke an equivalent repository-wide verifier sweep unless the repository
+  owner explicitly requests it or the active Issue/PR marks it REQUIRED. An
+  automatically triggered GitHub Actions route may classify and run according
+  to repository policy, but vague requests such as “run quality gates” or “be
+  thorough” do not authorize manual escalation to Full CI or a repo-wide
+  sweep. Targeted validation is the default for focused implementation work.
+- Validation scope must be proportional to change scope. For a small
+  presentation change, run focused tests and the applicable Validation Matrix
+  commands, add the most specific relevant Electron verifier when needed, and
+  stop once the Definition of Done has sufficient evidence. Do not keep adding
+  tests or verifiers merely to increase confidence after the required evidence
+  is green.
+- If targeted validation exposes an apparently unrelated historical verifier,
+  old DayXX receipt, migration fixture, evidence script, or legacy assertion,
+  first determine whether the failure is plausibly caused by the current
+  change. If it is, make only the minimal in-scope compatibility correction.
+  If it is not, or remains unclear after a focused check, record it as
+  unrelated or suspected historical debt and stop expanding scope. Do not walk
+  a Day19 -> Day22 -> another historical verifier chain without maintainer
+  authorization.
+- Without active-Issue authority, do not refactor adjacent architecture, clean
+  unrelated dead code, rewrite historical tests or evidence, create extra
+  abstractions or state owners for a local fix, expand a small UI change into
+  repository cleanup, or run broader validation because it might find
+  something. The preferred flow is: implement the authorized scope, run the
+  minimum sufficient validation, report residual uncertainty honestly, then
+  submit and wait for human acceptance.
+- Pause and report before continuing when moving from targeted validation to
+  Full CI or `pnpm verify:project`; when the next verifier is outside the
+  touched subsystem and not required by the active Issue; when fixing a
+  verifier requires production changes outside authorized scope; when
+  validation has become the dominant task while implementation is complete;
+  when a second unrelated historical verifier failure appears; or when new
+  cleanup/refactor work is being considered solely to make broad validation
+  green.
+
 ## Validation matrix
 
 Use only scripts that exist in the current `package.json`.
@@ -94,7 +133,7 @@ Use only scripts that exist in the current `package.json`.
 | Unit-only change | `pnpm test:unit`; add `pnpm typecheck` and `pnpm lint` when TypeScript or linted source is touched. |
 | Renderer/domain production change | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit`, and `pnpm build`; add `pnpm test:integration` for cross-feature or persistence behavior. |
 | Main/Preload/IPC/autosave/recovery change | `pnpm typecheck`, `pnpm lint`, `pnpm test:unit`, `pnpm test:integration`, `pnpm build`, plus the most specific applicable Electron verifier. |
-| Full delivery or PR gate | Run the core checks above and the relevant `verify:*` gate from `package.json`; report any environment-limited human acceptance separately. |
+| Full delivery or PR gate | Run the core checks above and the smallest applicable `verify:*` gate required by the active Issue/PR or repository policy; this does not default to `verify:project` or an all-verifier sweep. Report any environment-limited human acceptance separately. |
 
 The core repository commands are:
 
