@@ -26936,6 +26936,7 @@ h1 {
   .bottom-workspace[data-resizable='true']
   .timeline-ruler-track {
   display: flex;
+  height: 100%;
   min-height: 0;
   flex-direction: column;
 }
