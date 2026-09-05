@@ -172,7 +172,7 @@ describe('Issue #432 R3 Timeline vertical resize and Subtitle Workspace height r
       // The pointer-move handler must apply the product cap to drag.maxHeight
       // before the live height is computed.
       const pointerMoveBlock = bottom.match(
-        /handleResizePointerMove[\s\S]*?\n  \};/u,
+        /handleResizePointerMove[\s\S]*?\n {2}\};/u,
       );
       expect(pointerMoveBlock).toBeTruthy();
       expect(pointerMoveBlock?.[0]).toContain('TIMELINE_EXPANDED_MAX_HEIGHT');
@@ -183,7 +183,7 @@ describe('Issue #432 R3 Timeline vertical resize and Subtitle Workspace height r
 
       // The keyboard handler must also respect the product cap on End key.
       const keyboardBlock = bottom.match(
-        /handleResizeKeyDown[\s\S]*?\n  \};/u,
+        /handleResizeKeyDown[\s\S]*?\n {2}\};/u,
       );
       expect(keyboardBlock).toBeTruthy();
       expect(keyboardBlock?.[0]).toContain('TIMELINE_EXPANDED_MAX_HEIGHT');
@@ -247,7 +247,7 @@ describe('Issue #432 R3 Timeline vertical resize and Subtitle Workspace height r
       expect(block).toContain('overscroll-behavior: contain;');
     });
 
-    it('keeps DEFAULT_PENDING cards readable by giving the list flex 1 1 0 and items flex-shrink 0', () => {
+    it('keeps DEFAULT_PENDING cards readable in one internally consistent vertical flex list', () => {
       // The corrective round requires that when the available right-rail
       // height shrinks, the cards keep their readable size and the queue
       // becomes internally scrollable, instead of crushing the cards.
@@ -262,16 +262,21 @@ describe('Issue #432 R3 Timeline vertical resize and Subtitle Workspace height r
         /\.timeline-subtitle-queue\s+>\s+\.dialogue-untimed-queue\s*\{[^}]*\}/u,
       );
       expect(listRule).toBeTruthy();
+      expect(listRule?.[0]).toContain('display: flex;');
       expect(listRule?.[0]).toContain('flex: 1 1 0;');
       expect(listRule?.[0]).toContain('min-height: 0;');
+      expect(listRule?.[0]).toContain('overflow-y: auto;');
+      expect(listRule?.[0]).toContain('flex-direction: column;');
 
-      // The cards must not shrink so speaker + 台词内容 + 可拖动 remain
-      // visible at every Timeline height.
+      // The direct cards are actual flex items and own the readable minimum.
+      // Selected cards retain intrinsic growth for their action strip.
       const itemRule = block.match(
         /\.dialogue-untimed-queue\s+>\s+\.dialogue-untimed-item\s*\{[^}]*\}/u,
       );
       expect(itemRule).toBeTruthy();
-      expect(itemRule?.[0]).toContain('flex-shrink: 0;');
+      expect(itemRule?.[0]).toContain('min-height: 76px;');
+      expect(itemRule?.[0]).toContain('overflow: visible;');
+      expect(itemRule?.[0]).toContain('flex: 0 0 auto;');
 
       // The + 新建字幕 footer stays reachable.
       const footerRule = block.match(

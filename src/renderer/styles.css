@@ -3655,18 +3655,20 @@ button:disabled {
   flex: 0 0 auto;
 }
 
-/* Issue #432 R3-B corrective: the pending list is the only internal scroll
-   owner. flex: 1 1 0 + min-height: 0 lets it fill the available queue
-   area, so cards keep their readable size (min-height: 76px) and fewer full
-   cards fit when the available height shrinks. Cards must not shrink
-   (flex-shrink: 0) so speaker + 台词内容 + 可拖动 remain visible at every
-   Timeline height. */
+/* Issue #433 R3-B post-corrective: the pending list is the only internal
+   scroll owner and is a real vertical flex list. Keeping the parent/child
+   layout model consistent makes each direct card's intrinsic height part of
+   the scroll extent instead of letting Grid compress every row to fit. */
 .editor-shell[data-editor-shell-layout='landscape']
   .dialogue-sheet-right-workspace
   .timeline-subtitle-queue
   > .dialogue-untimed-queue {
+  display: flex;
   flex: 1 1 0;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex-direction: column;
 }
 
 .editor-shell[data-editor-shell-layout='landscape']
@@ -3674,7 +3676,9 @@ button:disabled {
   .timeline-subtitle-queue
   > .dialogue-untimed-queue
   > .dialogue-untimed-item {
-  flex-shrink: 0;
+  min-height: 76px;
+  overflow: visible;
+  flex: 0 0 auto;
 }
 
 .editor-shell[data-editor-shell-layout='landscape']
