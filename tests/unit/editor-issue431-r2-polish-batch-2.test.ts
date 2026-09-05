@@ -1,5 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import {
+  TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT,
+  TIMELINE_BOTTOM_WORKSPACE_VERTICAL_PADDING,
+  TIMELINE_DOCK_GAP_HEIGHT,
+  TIMELINE_EXPANDED_CORE_MIN_HEIGHT,
+  TIMELINE_EXPANDED_MIN_HEIGHT,
+} from '../../src/renderer/features/timeline/timelineUiStore';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -23,6 +30,14 @@ describe('Issue #431 R2 Subtitle Workspace polish P-04 / P-05 / P-06', () => {
     expect(timelineUi).toContain(
       'expandedHeightPx: TIMELINE_EXPANDED_MIN_HEIGHT',
     );
+    expect(timelineUi).not.toContain('TIMELINE_TASK_TRAY_');
+    expect(TIMELINE_EXPANDED_MIN_HEIGHT).toBe(
+      TIMELINE_EXPANDED_CORE_MIN_HEIGHT +
+        TIMELINE_DOCK_GAP_HEIGHT +
+        TIMELINE_BOTTOM_WORKSPACE_VERTICAL_PADDING +
+        TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT,
+    );
+    expect(TIMELINE_EXPANDED_MIN_HEIGHT).toBe(178);
 
     // P-04 must not move or reshape the Timeline's real core.
     expect(timeline).toContain('data-timeline-layer="toolbar"');

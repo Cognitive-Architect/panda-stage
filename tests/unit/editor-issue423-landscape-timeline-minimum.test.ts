@@ -2,13 +2,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT,
+  TIMELINE_BOTTOM_WORKSPACE_VERTICAL_PADDING,
+  TIMELINE_DOCK_GAP_HEIGHT,
   TIMELINE_EXPANDED_CORE_MIN_HEIGHT,
   TIMELINE_EXPANDED_DEFAULT_HEIGHT,
   TIMELINE_EXPANDED_MIN_HEIGHT,
   TIMELINE_RULER_SCROLL_HEIGHT,
-  TIMELINE_TASK_TRAY_COMPACT_MAX_EXPANDED_HEIGHT,
-  TIMELINE_TASK_TRAY_COMPACT_MIN_HEIGHT,
-  TIMELINE_TASK_TRAY_NORMAL_MIN_HEIGHT,
   TIMELINE_TOOLBAR_HEIGHT,
 } from '../../src/renderer/features/timeline/timelineUiStore';
 
@@ -17,24 +16,20 @@ function source(path: string): string {
 }
 
 describe('Issue #423 Cloud Touch landscape Timeline minimum composition', () => {
-  it('derives the lower expanded floor from fixed core and compact tray geometry', () => {
+  it('keeps the fixed core while Issue #431 removes the compact tray contribution', () => {
     expect(TIMELINE_EXPANDED_CORE_MIN_HEIGHT).toBe(
       TIMELINE_TOOLBAR_HEIGHT + TIMELINE_RULER_SCROLL_HEIGHT,
     );
     expect(TIMELINE_EXPANDED_MIN_HEIGHT).toBe(
       TIMELINE_EXPANDED_CORE_MIN_HEIGHT +
-        TIMELINE_TASK_TRAY_COMPACT_MIN_HEIGHT +
+        TIMELINE_DOCK_GAP_HEIGHT +
+        TIMELINE_BOTTOM_WORKSPACE_VERTICAL_PADDING +
         TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT,
     );
-    expect(TIMELINE_EXPANDED_MIN_HEIGHT).toBe(210);
+    expect(TIMELINE_EXPANDED_MIN_HEIGHT).toBe(178);
     expect(TIMELINE_EXPANDED_MIN_HEIGHT).toBeLessThan(240);
     expect(TIMELINE_EXPANDED_DEFAULT_HEIGHT).toBeGreaterThan(
       TIMELINE_EXPANDED_MIN_HEIGHT,
-    );
-    expect(TIMELINE_TASK_TRAY_COMPACT_MAX_EXPANDED_HEIGHT).toBe(
-      TIMELINE_EXPANDED_MIN_HEIGHT +
-        TIMELINE_TASK_TRAY_NORMAL_MIN_HEIGHT -
-        TIMELINE_TASK_TRAY_COMPACT_MIN_HEIGHT,
     );
   });
 
