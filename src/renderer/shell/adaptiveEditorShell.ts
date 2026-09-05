@@ -32,21 +32,21 @@ export const EDITOR_WORKSPACES: readonly EditorWorkspace[] = [
 ];
 
 /**
- * The existing ResourceActivityDock/RightInspector responsive seam. Viewports
- * above this boundary remain on the established desktop composition; the
- * cloud-mobile landscape shell owns the narrow side-rail composition below it.
+ * Legacy Auto-mode seam retained for older callers. The current product route
+ * is Cloud Touch and ignores this width threshold, choosing only by
+ * orientation; explicit Auto callers may still use the historical heuristic.
  */
 export const CLOUD_MOBILE_MAX_WIDTH = 1100;
 
 /**
- * The Auto mode follows the available content space without persisting a
- * device/orientation preference. Portrait takes precedence over width. The
- * existing 1100px seam remains only an Auto heuristic; it is not consulted
- * for an explicit Cloud Touch selection.
+ * Cloud Touch is the current product route and follows orientation only.
+ * Legacy explicit Auto/Desktop values remain understood for compatibility
+ * with older callers, but the default no longer selects the Desktop route on
+ * a wide Windows viewport.
  */
 export function getEditorShellLayoutMode(
   viewport: EditorViewportSize,
-  deviceMode: EditorDeviceMode = 'auto',
+  deviceMode: EditorDeviceMode = 'cloud-touch',
 ): EditorShellLayoutMode {
   const width = Number.isFinite(viewport.width) ? Math.max(0, viewport.width) : 0;
   const height = Number.isFinite(viewport.height)
@@ -116,7 +116,7 @@ function getServerLayoutMode(deviceMode: EditorDeviceMode): EditorShellLayoutMod
  * layout are never written to project data.
  */
 export function useEditorShellLayoutMode(
-  deviceMode: EditorDeviceMode = 'auto',
+  deviceMode: EditorDeviceMode = 'cloud-touch',
 ): EditorShellLayoutMode {
   return useSyncExternalStore(
     subscribeToViewport,

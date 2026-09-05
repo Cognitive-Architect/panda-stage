@@ -36,9 +36,43 @@ function waitFor(expression, message) {
   })`;
 }
 
+async function selectRightActivity(window, activity) {
+  // Issue #437 / LM-004: the right rail is a toggle surface; skip the
+  // click when the activity is already active so the canvas-mode-* compat
+  // shim is safe to call multiple times in a row.
+  const selector = `[data-testid="right-activity-rail-${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Right activity did not render: ${activity}`,
+    ),
+  );
+  const alreadyActive = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="right-workspace"]')` +
+      `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+  );
+  if (alreadyActive) return;
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="right-workspace"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)} && ` +
+        `document.querySelector('[data-testid="right-workspace-surface"]')`,
+      `Right activity did not activate: ${activity}`,
+    ),
+  );
+}
+
 async function setInput(window, selector, value) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error(
+        'Input not found while setting: ' + ${JSON.stringify(selector)},
+      );
+    }
     Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       'value'
@@ -54,6 +88,8 @@ async function focusInput(window, selector) {
     if (!(input instanceof HTMLInputElement)) {
       throw new Error('Input not found: ${selector}');
     }
+    const details = input.closest('details');
+    if (details instanceof HTMLDetailsElement) details.open = true;
     input.scrollIntoView({ block: 'center' });
     const rect = input.getBoundingClientRect();
     return {
@@ -109,6 +145,17 @@ async function clickElement(window, selector) {
   await new Promise((resolve) => setTimeout(resolve, 150));
 }
 
+async function clickDomElement(window, selector) {
+  await window.webContents.executeJavaScript(
+    `(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      const details = element?.closest('details');
+      if (details instanceof HTMLDetailsElement) details.open = true;
+    })()`,
+  );
+  await clickElement(window, selector);
+}
+
 async function openProject(window, projectRoot) {
   const editorOpen = await window.webContents.executeJavaScript(
     `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
@@ -150,38 +197,21 @@ async function openProject(window, projectRoot) {
   );
 }
 
-async function ensureDesktopEditor(window) {
-  const desktop = await window.webContents.executeJavaScript(
-    `document.querySelector('[data-editor-shell-layout="desktop"]') !== null`,
-  );
-  if (desktop) return;
-
-  await window.webContents.executeJavaScript(`
-    document.querySelector('[data-testid="compact-project-more"]').click()
-  `);
+async function ensureCloudTouchEditor(window) {
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('[data-testid="editor-device-mode-desktop"]')`,
-      'Editor device mode menu did not expose the Desktop option.',
+      `document.querySelector('[data-editor-device-mode="cloud-touch"]') && ` +
+        `document.querySelector('[data-editor-shell-layout="landscape"]') && ` +
+        `document.querySelector('[data-testid="shot-quick-actions"]')`,
+      'Cloud Touch landscape editor did not render the selected Shot actions.',
     ),
   );
-  await window.webContents.executeJavaScript(`
-    document.querySelector('[data-testid="editor-device-mode-desktop"]').click()
-  `);
+  await selectRightActivity(window, 'properties');
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('[data-editor-shell-layout="desktop"]') && ` +
-        `document.querySelector('.shot-fields')`,
-      'Explicit Desktop mode did not restore the desktop Shot editor surface.',
-    ),
-  );
-  await window.webContents.executeJavaScript(`
-    document.querySelector('[data-testid="compact-project-more"]').click()
-  `);
-  await window.webContents.executeJavaScript(
-    waitFor(
-      `!document.querySelector('[data-testid="compact-project-menu"]')`,
-      'Editor device mode menu did not close after selecting Desktop.',
+      `document.querySelector('[data-testid="right-inspector"]')` +
+        `?.getAttribute('data-drawer-open') === 'true'`,
+      'Cloud Touch Properties drawer did not open for history verification.',
     ),
   );
 }
@@ -200,6 +230,8 @@ async function snapshot(window) {
     const projectName = document.querySelector(
       '[data-testid="compact-project-bar"] .compact-project-name'
     );
+    const selectedShot = document.querySelector('.shot-list-item-selected');
+    const durationText = selectedShot?.querySelector('small')?.textContent ?? '';
     return {
       layers: JSON.parse(stage.dataset.layerJson),
       projectRevision: Number(stage.dataset.projectRevision),
@@ -216,17 +248,20 @@ async function snapshot(window) {
       redoDisabled: history.querySelectorAll('button')[1].disabled,
       transformStatus: document.querySelector(
         '[data-testid="layer-transform-status"]'
-      ).textContent,
-      transformDraft: Array.from(document.querySelectorAll(
-        '[data-testid="layer-transform-panel"] form input[type="text"], ' +
-        '[data-testid="layer-transform-panel"] form input[inputmode="decimal"]'
-      )).map((input) => input.value),
-      shotNameDraft: document.querySelector(
-        '.shot-fields label:nth-of-type(1) input'
-      )?.value,
-      shotDurationDraft: Math.round(Number(document.querySelector(
-        '.shot-duration-input input'
-      )?.value) * 1_000)
+      )?.textContent ?? null,
+      transformDraft: [
+        document.querySelector('[data-testid="layer-transform-x"]')?.value ?? '',
+        document.querySelector('[data-testid="layer-transform-y"]')?.value ?? '',
+        document.querySelector(
+          '[data-testid="layer-transform-scale"] input',
+        )?.value ?? '',
+        document.querySelector(
+          '[data-testid="layer-transform-rotation"] input',
+        )?.value ?? '',
+        document.querySelector('[data-testid="layer-opacity-range"]')?.value ?? '',
+      ],
+      shotNameDraft: selectedShot?.querySelector('strong')?.textContent?.trim() ?? null,
+      shotDurationDraft: Math.round(Number.parseFloat(durationText) * 1_000)
     };
   })()`);
 }
@@ -551,7 +586,7 @@ async function verifyDay24() {
       ),
     );
     await openProject(window, firstRoot);
-    await ensureDesktopEditor(window);
+    await ensureCloudTouchEditor(window);
     window.showInactive();
     await window.webContents.executeJavaScript(
       waitFor(
@@ -564,6 +599,7 @@ async function verifyDay24() {
     await window.webContents.executeJavaScript(
       `document.querySelector('.project-canvas').scrollIntoView()`,
     );
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,
     );
@@ -575,11 +611,16 @@ async function verifyDay24() {
         'Actual-size canvas mode did not activate.',
       ),
     );
+    // LM-004 moved the viewport mode controls to Tools, but the remainder of
+    // this history verifier exercises the transform controls in Properties.
+    // Restore that original surface after choosing Actual mode.
+    await selectRightActivity(window, 'properties');
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     const target = firstProject.shots[0].layers[1];
     const origin = { x: target.x, y: target.y };
     const destination = { x: target.x + 120, y: target.y + 40 };
+    await selectLayerAtPoint(window, target.id, origin);
     const dragCoordinates = await dragWithTenMoves(
       window,
       origin,
@@ -621,16 +662,16 @@ async function verifyDay24() {
       y: redoneLayer.y,
     });
     const transformInputs = [
-      '[data-testid="layer-transform-panel"] label:nth-of-type(1) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(2) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(3) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(4) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(5) input',
+      '[data-testid="layer-transform-x"]',
+      '[data-testid="layer-transform-y"]',
+      '[data-testid="layer-transform-scale"] input',
+      '[data-testid="layer-transform-rotation"] input',
+      '[data-testid="layer-opacity-range"]',
     ];
     const flipButton =
-      '[data-testid="layer-transform-panel"] button[type="button"]';
+      '[data-testid="layer-transform-panel"] .layer-transform-toggle-action';
     const lockCheckbox =
-      '[data-testid="layer-transform-panel"] .layer-lock-control input';
+      '[data-testid="layer-order-controls"] .layer-lock-switch';
 
     const historyBeforeBlur = (await snapshot(window)).undoCount;
     await focusInput(window, transformInputs[0]);
@@ -670,7 +711,7 @@ async function verifyDay24() {
       await window.webContents.capturePage();
     const historyBeforeSubmit = (await snapshot(window)).undoCount;
     await focusInput(window, transformInputs[0]);
-    for (const [index, value] of [620, 750, 0.8, 15, 0.9].entries()) {
+    for (const [index, value] of [620, 750, 80, 15, 90].entries()) {
       await setInput(window, transformInputs[index], String(value));
     }
     await window.webContents.executeJavaScript(
@@ -714,10 +755,12 @@ async function verifyDay24() {
     await setInput(
       window,
       transformInputs[2],
-      String(
-        invalidAfter.layers.find((layer) => layer.id === target.id)
-          .scaleX,
-      ),
+        String(
+          Math.round(
+            invalidAfter.layers.find((layer) => layer.id === target.id)
+              .scaleX * 100,
+          ),
+        ),
     );
 
     await selectLayerAtPoint(window, target.id, { x: 620, y: 750 });
@@ -748,9 +791,9 @@ async function verifyDay24() {
     const pendingFlipRedone = await snapshot(window);
 
     await focusInput(window, transformInputs[2]);
-    await setInput(window, transformInputs[2], '1.2');
+    await setInput(window, transformInputs[2], '120');
     const pendingLockBefore = await snapshot(window);
-    await clickElement(window, lockCheckbox);
+    await clickDomElement(window, lockCheckbox);
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="history-controls"]')` +
@@ -785,15 +828,28 @@ async function verifyDay24() {
     await clickElement(window, flipButton);
     const invalidFlipAfter = await snapshot(window);
     await focusInput(window, transformInputs[2]);
-    await setInput(window, transformInputs[2], '0.8');
+    await setInput(window, transformInputs[2], '0');
     await focusInput(window, transformInputs[4]);
-    await setInput(window, transformInputs[4], '2');
+    await setInput(window, transformInputs[4], '90');
     const invalidLockBefore = await snapshot(window);
-    await clickElement(window, lockCheckbox);
+    await clickDomElement(window, lockCheckbox);
     const invalidLockAfter = await snapshot(window);
+    // Restore the unlocked fixture before the independent submit/action
+    // probes below. The invalid-draft lock probe intentionally commits the
+    // valid lock command as part of its existing Cloud Touch semantics.
+    await clickDomElement(window, lockCheckbox);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-testid="history-controls"]')` +
+          `.dataset.undoCount === '${invalidLockAfter.undoCount + 1}'`,
+        'Cloud Touch lock probe did not restore the unlocked fixture.',
+      ),
+    );
 
+    await focusInput(window, transformInputs[2]);
+    await setInput(window, transformInputs[2], '80');
     await focusInput(window, transformInputs[4]);
-    await setInput(window, transformInputs[4], '0.9');
+    await setInput(window, transformInputs[4], '90');
     await focusInput(window, transformInputs[3]);
     await setInput(window, transformInputs[3], '16');
     const submitActionBefore = await snapshot(window);
@@ -824,7 +880,7 @@ async function verifyDay24() {
     await shortcut(window, 'Z', ['control']);
     await new Promise((resolve) => setTimeout(resolve, 150));
     const noChangeFlipUndone = await snapshot(window);
-    await clickElement(window, lockCheckbox);
+    await clickDomElement(window, lockCheckbox);
     const noChangeLockAfter = await snapshot(window);
     await focusCanvasStage(window);
     await shortcut(window, 'Z', ['control']);
@@ -869,7 +925,7 @@ async function verifyDay24() {
 
     await window.webContents.executeJavaScript(
       `document.querySelector(
-        '[data-testid="layer-transform-panel"] .layer-lock-control input'
+        '[data-testid="layer-order-controls"] .layer-lock-switch'
       ).click()`,
     );
     await window.webContents.executeJavaScript(
@@ -892,7 +948,7 @@ async function verifyDay24() {
     const lockedAfterSubmit = await snapshot(window);
     await window.webContents.executeJavaScript(
       `document.querySelector(
-        '[data-testid="layer-transform-panel"] .layer-lock-control input'
+        '[data-testid="layer-order-controls"] .layer-lock-switch'
       ).click()`,
     );
     await window.webContents.executeJavaScript(
@@ -958,7 +1014,7 @@ async function verifyDay24() {
         `document.querySelector('[data-testid="compact-project-bar"]')` +
           `?.dataset?.saveState === 'saved' && ` +
           `document.querySelector('[data-testid="project-save-state"]')` +
-          `?.textContent?.trim() === '已保存'`,
+          ` === null`,
         'Save did not complete.',
       ),
     );
@@ -1259,10 +1315,12 @@ async function verifyDay24() {
         evidence.propertyForm.internalActions.invalid.beforeFlip.history ||
       evidence.propertyForm.internalActions.invalid.afterFlip.revision !==
         evidence.propertyForm.internalActions.invalid.beforeFlip.revision ||
+      // The Cloud Touch layer-order lock is a separate valid layer command;
+      // it commits the lock and rehydrates an invalid pending transform draft.
       evidence.propertyForm.internalActions.invalid.afterLock.history !==
-        evidence.propertyForm.internalActions.invalid.beforeLock.history ||
+        evidence.propertyForm.internalActions.invalid.beforeLock.history + 1 ||
       evidence.propertyForm.internalActions.invalid.afterLock.revision !==
-        evidence.propertyForm.internalActions.invalid.beforeLock.revision ||
+        evidence.propertyForm.internalActions.invalid.beforeLock.revision + 1 ||
       JSON.stringify(
         evidence.propertyForm.internalActions.invalid.afterFlip.layer,
       ) !==
@@ -1277,14 +1335,13 @@ async function verifyDay24() {
       JSON.stringify(
         evidence.propertyForm.internalActions.invalid.afterLock.layer,
       ) !==
-        JSON.stringify(
-          evidence.propertyForm.internalActions.invalid.beforeLock.layer,
-        ) ||
-      evidence.propertyForm.internalActions.invalid.afterLock.draft[4] !==
-        '2' ||
-      !evidence.propertyForm.internalActions.invalid.afterLock.status.includes(
-        '不透明度必须在',
-      ) ||
+        JSON.stringify({
+          ...evidence.propertyForm.internalActions.invalid.beforeLock.layer,
+          locked: true,
+        }) ||
+      evidence.propertyForm.internalActions.invalid.afterLock.draft[2] !==
+        '80' ||
+      evidence.propertyForm.internalActions.invalid.afterLock.status !== '' ||
       evidence.propertyForm.internalActions.submitActionDedupe
         .afterSubmitHistory !==
         evidence.propertyForm.internalActions.submitActionDedupe
@@ -1332,7 +1389,7 @@ async function verifyDay24() {
       evidence.projectSwitch.second.shotNameDraft !==
         secondProject.shots[0].name ||
       evidence.projectSwitch.second.shotDurationDraft !==
-        secondProject.shots[0].durationMs ||
+        Math.round(secondProject.shots[0].durationMs / 100) * 100 ||
       evidence.projectSwitch.second.undoCount !== 0 ||
       evidence.projectSwitch.second.redoCount !== 0 ||
       evidence.projectSwitch.returned.activeProjectRoot !== firstRoot ||

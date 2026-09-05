@@ -27,6 +27,7 @@ import {
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
+import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
 import { BottomWorkspace } from './BottomWorkspace';
@@ -41,6 +42,7 @@ import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
+import { RightWorkspace } from './RightWorkspace';
 import type { ResourceActivity } from './ResourceActivityDock';
 import {
   reconcileEditorWorkspace,
@@ -426,9 +428,10 @@ export function EditorShell({
   }>({ phase: 'idle', revision: null });
   const [requestedPage, setRequestedPage] =
     useState<EditorShellPage>('project-center');
-  // This is presentation/session state only. It never enters Project,
-  // History, autosave, or any cross-process contract.
-  const [deviceMode, setDeviceMode] = useState<EditorDeviceMode>('auto');
+  // Cloud Touch is the sole product route. This presentation value is kept
+  // only as a DOM/CSS contract; it never enters Project, History, autosave,
+  // or any cross-process contract.
+  const deviceMode: EditorDeviceMode = 'cloud-touch';
   const layoutMode = useEditorShellLayoutMode(deviceMode);
   const [portraitWorkspace, setPortraitWorkspace] =
     useState<EditorWorkspace>('canvas');
@@ -1006,12 +1009,10 @@ export function EditorShell({
               onOpenProjectFolder={openProjectFolder}
               onRequestCloseProject={requestCloseProject}
               onSaveProject={saveProject}
-              onDeviceModeChange={setDeviceMode}
               productPreviewOpen={productPreviewOpen}
               projectSnapshot={projectSnapshot}
               saveState={saveState}
               status={status}
-              deviceMode={deviceMode}
               presentation={layoutMode}
             />
             {recoveryCandidate ? (
@@ -1029,13 +1030,14 @@ export function EditorShell({
               />
             ) : null}
           </div>
-          <div
-            className="editor-body"
-            data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
-            data-portrait-surface={portraitContextSurface}
-            data-shell-mode={layoutMode}
-            data-testid="editor-body"
-          >
+          <PendingDialoguePlacementProvider>
+            <div
+              className="editor-body"
+              data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
+              data-portrait-surface={portraitContextSurface}
+              data-shell-mode={layoutMode}
+              data-testid="editor-body"
+            >
             <div
               aria-hidden={!portraitResourcesVisible}
               className="editor-workspace-slot editor-workspace-slot-resources"
@@ -1085,7 +1087,8 @@ export function EditorShell({
               data-workspace-owner="properties"
               hidden={!portraitPropertiesVisible}
             >
-              <RightInspector
+              {isPortrait ? (
+                <RightInspector
                 compact={isPortrait ? portraitPropertiesVisible : undefined}
                 dialogueSelectionVisible={
                   !isPortrait || portraitWorkspace !== 'timeline'
@@ -1102,16 +1105,25 @@ export function EditorShell({
                   }
                 }}
                 shellMode={layoutMode}
-              />
+                />
+              ) : (
+                <RightWorkspace
+                  key={`right-workspace:${projectSnapshot.projectRoot}`}
+                  onOpenRecentProject={switchToRecentProject}
+                  projectSnapshot={projectSnapshot}
+                  recentRefreshToken={recentRefreshToken}
+                />
+              )}
             </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
-          </div>
-          <BottomWorkspace
-            hidden={isPortrait && portraitWorkspace !== 'timeline'}
-            presentation={layoutMode}
-            resizable={deviceMode === 'cloud-touch' && layoutMode === 'landscape'}
-            showHistoryControls={false}
-          />
+            </div>
+            <BottomWorkspace
+              hidden={isPortrait && portraitWorkspace !== 'timeline'}
+              presentation={layoutMode}
+              resizable={layoutMode === 'landscape'}
+              showHistoryControls={false}
+            />
+          </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
             <ProductPreviewOverlay
               onClose={closeProductPreview}

@@ -5,7 +5,9 @@ import {
   clampTimelineHeight,
   getTimelineHeightBounds,
   getTimelineHeightFromPointer,
+  TIMELINE_EXPANDED_MAX_HEIGHT,
   TIMELINE_EXPANDED_MIN_HEIGHT,
+  TIMELINE_MIN_CANVAS_HEIGHT,
   TIMELINE_RESIZE_KEYBOARD_STEP,
   timelineUiStore,
   useTimelineUi,
@@ -40,6 +42,80 @@ interface TimelineResizePointer {
   maxHeight: number;
 }
 
+const LANDSCAPE_RAIL_BUTTON_MIN_HEIGHT = 72;
+const LANDSCAPE_RAIL_GAP = 8;
+const LANDSCAPE_LEFT_RAIL_FALLBACK_MIN_HEIGHT =
+  LANDSCAPE_RAIL_BUTTON_MIN_HEIGHT * 3 + LANDSCAPE_RAIL_GAP * 2;
+const LANDSCAPE_RIGHT_RAIL_FALLBACK_MIN_HEIGHT = 132;
+
+function readCssPixel(value: string | undefined): number {
+  const parsed = Number.parseFloat(value ?? '');
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Read the left rail's intrinsic grid floor from its touch controls. The rail
+ * can have a fourth Project Tools button, so measuring the rendered rail
+ * height would incorrectly use its current (possibly expanded) height. Its
+ * control min-heights plus row gaps are the stable floor we need here.
+ */
+function readLandscapeLeftRailMinimumHeight(editorBody: HTMLElement): number {
+  const rail = editorBody.querySelector<HTMLElement>(
+    '[data-testid="resource-activity-rail"]',
+  );
+  if (!rail) return LANDSCAPE_LEFT_RAIL_FALLBACK_MIN_HEIGHT;
+
+  const controls = Array.from(
+    rail.querySelectorAll<HTMLButtonElement>(':scope > button'),
+  );
+  if (controls.length === 0) return LANDSCAPE_LEFT_RAIL_FALLBACK_MIN_HEIGHT;
+
+  const railStyle = window.getComputedStyle(rail);
+  const computedGap = Math.max(
+    readCssPixel(railStyle.rowGap),
+    readCssPixel(railStyle.gap),
+  );
+  const gap = computedGap > 0 ? computedGap : LANDSCAPE_RAIL_GAP;
+  const controlMinimum = Math.max(
+    LANDSCAPE_RAIL_BUTTON_MIN_HEIGHT,
+    ...controls.map((control) =>
+      readCssPixel(window.getComputedStyle(control).minHeight),
+    ),
+  );
+
+  return Math.max(
+    LANDSCAPE_LEFT_RAIL_FALLBACK_MIN_HEIGHT,
+    controls.length * controlMinimum + Math.max(0, controls.length - 1) * gap,
+  );
+}
+
+/** Keep the centered Properties handle inside the editor body at max height. */
+function readLandscapeRightRailMinimumHeight(editorBody: HTMLElement): number {
+  const handle = editorBody.querySelector<HTMLElement>(
+    '[data-testid="inspector-rail-handle"]',
+  );
+  if (!handle) return LANDSCAPE_RIGHT_RAIL_FALLBACK_MIN_HEIGHT;
+
+  const style = window.getComputedStyle(handle);
+  return Math.max(
+    LANDSCAPE_RIGHT_RAIL_FALLBACK_MIN_HEIGHT,
+    readCssPixel(style.minHeight),
+    readCssPixel(style.height),
+  );
+}
+
+/**
+ * Use the strongest live editor-body floor for the Timeline maximum. This is
+ * a read-only layout calculation; no project/session mutation is involved.
+ */
+function readEditorBodyMinimumHeight(editorBody: HTMLElement): number {
+  return Math.max(
+    TIMELINE_MIN_CANVAS_HEIGHT,
+    readLandscapeLeftRailMinimumHeight(editorBody),
+    readLandscapeRightRailMinimumHeight(editorBody),
+  );
+}
+
 function readLiveTimelineHeightBounds(
   workspace: HTMLElement,
 ): TimelineHeightBounds | null {
@@ -53,7 +129,11 @@ function readLiveTimelineHeightBounds(
   const currentBottomHeight = workspace.getBoundingClientRect().height;
   if (!(editorBodyHeight > 0) || !(currentBottomHeight > 0)) return null;
 
-  return getTimelineHeightBounds(editorBodyHeight, currentBottomHeight);
+  return getTimelineHeightBounds(
+    editorBodyHeight,
+    currentBottomHeight,
+    readEditorBodyMinimumHeight(editorBody),
+  );
 }
 
 export function BottomWorkspace({
@@ -142,12 +222,21 @@ export function BottomWorkspace({
     if (!drag || drag.pointerId !== event.pointerId) return;
 
     event.preventDefault();
+    // Issue #432 R3-A corrective: the rendered BottomWorkspace height must
+    // stay within the [MIN, MAX] product cap. Apply the hard product cap
+    // here on the live pointer-move path so the rendered height cannot
+    // exceed `TIMELINE_EXPANDED_MAX_HEIGHT` even if the live bounds or
+    // store state momentarily disagree.
+    const productCappedMax = Math.min(
+      drag.maxHeight,
+      TIMELINE_EXPANDED_MAX_HEIGHT,
+    );
     timelineUiStore.setHeight(
       getTimelineHeightFromPointer(
         drag.startHeight,
         drag.startY,
         event.clientY,
-        drag.maxHeight,
+        productCappedMax,
       ),
     );
   };
@@ -174,7 +263,12 @@ export function BottomWorkspace({
     } else if (event.key === 'Home') {
       nextHeight = TIMELINE_EXPANDED_MIN_HEIGHT;
     } else if (event.key === 'End') {
-      nextHeight = ui.expandedHeightMaxPx;
+      // Issue #432 R3-A corrective: clamp the End-key jump to the product
+      // cap so the rendered height never overshoots 2×MIN.
+      nextHeight = Math.min(
+        ui.expandedHeightMaxPx,
+        TIMELINE_EXPANDED_MAX_HEIGHT,
+      );
     }
     if (nextHeight === null) return;
 
@@ -196,7 +290,15 @@ export function BottomWorkspace({
       style={
         {
           '--timeline-expanded-height': `${ui.expandedHeightPx}px`,
-          '--timeline-expanded-max-height': `${ui.expandedHeightMaxPx}px`,
+          '--timeline-expanded-min-height': `${TIMELINE_EXPANDED_MIN_HEIGHT}px`,
+          // Issue #432 R3-A corrective: cap the inline max-height CSS
+          // variable to the product contract 2×MIN so the rendered
+          // BottomWorkspace cannot grow past it, regardless of any drift
+          // in the live layout-derived upper bound.
+          '--timeline-expanded-max-height': `${Math.min(
+            ui.expandedHeightMaxPx,
+            TIMELINE_EXPANDED_MAX_HEIGHT,
+          )}px`,
         } as React.CSSProperties
       }
     >

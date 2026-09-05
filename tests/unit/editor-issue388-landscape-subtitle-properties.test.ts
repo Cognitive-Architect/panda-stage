@@ -30,9 +30,7 @@ describe('Issue #388 Stage C.1 landscape subtitle Properties polish', () => {
     expect(inspector).toContain(
       '{(compact || landscapePresentation) &&\n      (!dialogueMode || landscapePresentation) ? (',
     );
-    expect(inspector).toContain(
-      '{!compact && !(landscapePresentation && dialogueMode) ? (',
-    );
+    expect(inspector).not.toContain('inspector-drawer-close');
     expect(inspector).toContain('data-testid="inspector-inline-close"');
     expect(landscape).toContain('data-testid="dialogue-properties-header"');
     expect(landscape).toContain('data-header-row="identity"');

@@ -27,8 +27,6 @@ function renderBar(
     createElement(CompactProjectBar, {
       busy: false,
       closeConfirmOpen: false,
-      deviceMode: 'cloud-touch',
-      onDeviceModeChange: () => undefined,
       onOpenProductPreview: () => undefined,
       onOpenProjectCenter: () => undefined,
       onOpenProjectFolder: async () => undefined,

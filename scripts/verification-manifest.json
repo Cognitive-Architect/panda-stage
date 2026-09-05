@@ -210,13 +210,15 @@
           "scripts/verify-day21*",
           "scripts/verify-day22*",
           "scripts/verify-day23*",
-          "scripts/verify-issue47*"
+          "scripts/verify-issue47*",
+          "scripts/verify-issue95*",
+          "scripts/verify-issue99*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "canvas",
-        "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts."
+        "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns."
       },
       {
         "id": "history-controls",
@@ -278,7 +280,8 @@
           "src/renderer/shell/**",
           "src/renderer/styles.css",
           "src/renderer/styles/**",
-          "src/renderer/ui/**"
+          "src/renderer/ui/**",
+          "public/subtitle-empty-state.png"
         ],
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
@@ -290,7 +293,8 @@
           "tests/integration/left-workspace.test.ts",
           "tests/integration/right-inspector*.test.ts",
           "tests/contract/ui-m1-*.test.ts",
-          "tests/contract/dom-selectors.baseline.test.ts"
+          "tests/contract/dom-selectors.baseline.test.ts",
+          "tests/contract/right-inspector-narrow-review.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-issue102-task2*",
@@ -302,7 +306,7 @@
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
       }
     ]
   },

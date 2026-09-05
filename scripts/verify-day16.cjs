@@ -70,6 +70,14 @@ async function verifyDay16() {
     ok: true,
     entries: [],
   }));
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_THUMBNAIL_READ,
+    (_event, request) => ({
+      ok: true,
+      status: 'missing',
+      assetId: request.assetId,
+    }),
+  );
   ipcMain.handle(IPC_CHANNELS.ASSET_IMPORT_CHOOSE, (_event, request) => {
     chooseRequest = request;
     chooseCount += 1;
@@ -138,12 +146,12 @@ async function verifyDay16() {
         return new Promise((resolve, reject) => {
           const deadline = Date.now() + 10000;
           const poll = () => {
-            const activityTab = document.querySelector(
-              '[data-testid="resource-activity-tabs"] [data-activity="assets"]'
+            const activityButton = document.querySelector(
+              '[data-testid="resource-activity-rail-assets"], [data-testid="resource-activity-tabs"] [data-activity="assets"]'
             );
-            if (activityTab && !activitySelected) {
+            if (activityButton && !activitySelected) {
               activitySelected = true;
-              activityTab.click();
+              activityButton.click();
             }
             const button = document.querySelector(
               '[data-testid="resource-primary-action"]'
@@ -312,8 +320,11 @@ async function verifyDay16() {
     if (
       ui.heading !== '导入项目素材' ||
       ui.button !== '导入素材' ||
-      !ui.dropText?.includes('拖到这里') ||
-      !ui.dropText?.includes('导入项目') ||
+      !ui.dropText?.includes('拖入') ||
+      !ui.dropText?.includes('PNG') ||
+      !ui.dropText?.includes('JPG') ||
+      !ui.dropText?.includes('MP3') ||
+      !ui.dropText?.includes('WAV') ||
       ui.resultStatus !== 'imported' ||
       !ui.resultMessage?.includes('已导入') ||
       ui.status !== '素材已复制并保存到项目。' ||
@@ -363,6 +374,7 @@ async function verifyDay16() {
       IPC_CHANNELS.AUTOSAVE_STOP,
       IPC_CHANNELS.RECOVERY_DETECT,
       IPC_CHANNELS.RECENT_PROJECTS_LIST,
+      IPC_CHANNELS.ASSET_THUMBNAIL_READ,
       IPC_CHANNELS.ASSET_IMPORT_CHOOSE,
     ]) {
       ipcMain.removeHandler(channel);

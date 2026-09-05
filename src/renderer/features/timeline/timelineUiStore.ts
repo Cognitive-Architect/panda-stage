@@ -8,10 +8,35 @@ type Listener = () => void;
  * Stage A keeps the existing expanded Timeline surface usable while allowing
  * Cloud Touch landscape to trade Canvas space for Timeline space. These are
  * UI/session bounds only; they are never part of the formal Project model.
+ *
+ * Issue #422 re-baselines the expanded floor after the Toolbar, ruler/track
+ * stack, and unified Task Tray were added. Collapse remains the explicit way
+ * to reclaim more vertical space; an expanded Timeline must keep its core
+ * surface usable.
+ *
+ * Issue #431 removes the obsolete Task Tray contribution from the expanded
+ * floor. The pure Timeline minimum is derived only from the unchanged
+ * Toolbar/ruler geometry and the BottomWorkspace border around them. The
+ * final Cloud Touch landscape cascade already removes local padding and gap.
+ *
+ * Issue #432 R3-A keeps the accepted MIN = 162px total and reduces the upper
+ * bound to exactly 2×MIN = 324px total so Timeline cannot expand into the
+ * dead-cavity territory above the old 420px target. The real Subtitle/Audio
+ * lanes now flex with the resize range and stay equal height (50/50 of the
+ * available lane area), so a stored expanded height that exceeds the new MAX
+ * is clamped by `setHeight` / `setHeightMax` to the new bound.
  */
-export const TIMELINE_EXPANDED_MIN_HEIGHT = 132;
-export const TIMELINE_EXPANDED_DEFAULT_HEIGHT = 168;
-export const TIMELINE_EXPANDED_MAX_HEIGHT = 420;
+export const TIMELINE_TOOLBAR_HEIGHT = 48;
+export const TIMELINE_RULER_SCROLL_HEIGHT = 112;
+export const TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT = 2;
+export const TIMELINE_EXPANDED_CORE_MIN_HEIGHT =
+  TIMELINE_TOOLBAR_HEIGHT + TIMELINE_RULER_SCROLL_HEIGHT;
+export const TIMELINE_EXPANDED_MIN_HEIGHT =
+  TIMELINE_EXPANDED_CORE_MIN_HEIGHT + TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT;
+export const TIMELINE_EXPANDED_DEFAULT_HEIGHT = 280;
+// Issue #432 R3-A: the accepted pure-Timeline MAX is 2×MIN = 324px, derived
+// from the constant so the relationship stays auditable in the source.
+export const TIMELINE_EXPANDED_MAX_HEIGHT = TIMELINE_EXPANDED_MIN_HEIGHT * 2;
 export const TIMELINE_MIN_CANVAS_HEIGHT = 240;
 export const TIMELINE_RESIZE_KEYBOARD_STEP = 16;
 
@@ -39,12 +64,14 @@ export function clampTimelineHeight(
 
 /**
  * Derive a generous but finite maximum from the live editor geometry. The
- * current body+bottom sum represents the available grid budget, so this keeps
- * a meaningful Canvas floor without tying the contract to one viewport.
+ * current body+bottom sum represents the available grid budget. The caller
+ * may provide the strongest measured editor-body floor so Canvas and the
+ * side-rail affordances are protected by the same bound.
  */
 export function getTimelineHeightBounds(
   editorBodyHeight: number,
   currentBottomHeight: number,
+  editorBodyMinimumHeight = TIMELINE_MIN_CANVAS_HEIGHT,
 ): TimelineHeightBounds {
   const body = Number.isFinite(editorBodyHeight)
     ? Math.max(0, editorBodyHeight)
@@ -52,12 +79,15 @@ export function getTimelineHeightBounds(
   const bottom = Number.isFinite(currentBottomHeight)
     ? Math.max(0, currentBottomHeight)
     : 0;
-  const canvasPreservingMaximum = Math.floor(
-    body + bottom - TIMELINE_MIN_CANVAS_HEIGHT,
+  const bodyMinimum = Number.isFinite(editorBodyMinimumHeight)
+    ? Math.max(TIMELINE_MIN_CANVAS_HEIGHT, editorBodyMinimumHeight)
+    : TIMELINE_MIN_CANVAS_HEIGHT;
+  const editorBodyPreservingMaximum = Math.floor(
+    body + bottom - bodyMinimum,
   );
   const maxHeight = Math.min(
     TIMELINE_EXPANDED_MAX_HEIGHT,
-    Math.max(TIMELINE_EXPANDED_MIN_HEIGHT, canvasPreservingMaximum),
+    Math.max(TIMELINE_EXPANDED_MIN_HEIGHT, editorBodyPreservingMaximum),
   );
   return {
     minHeight: TIMELINE_EXPANDED_MIN_HEIGHT,
@@ -101,7 +131,10 @@ const INITIAL_STATE: TimelineUiState = {
   zoom: 1,
   scrollPx: 0,
   expanded: true,
-  expandedHeightPx: TIMELINE_EXPANDED_DEFAULT_HEIGHT,
+  // Issue #431 P-04: the old 280px startup height included room for the
+  // removed Bottom Task Tray. Start the pure Timeline at the existing legal
+  // minimum; the incumbent resize owner and its min/max bounds remain intact.
+  expandedHeightPx: TIMELINE_EXPANDED_MIN_HEIGHT,
   expandedHeightMaxPx: TIMELINE_EXPANDED_MAX_HEIGHT,
   resizing: false,
 };

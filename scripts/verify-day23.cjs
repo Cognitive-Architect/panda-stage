@@ -40,6 +40,7 @@ function waitFor(expression, failureMessage) {
 
 async function selectResourceActivity(window, activity) {
   const selector =
+    `[data-testid="resource-activity-rail-${activity}"], ` +
     `[data-testid="resource-activity-tabs"] [data-activity="${activity}"]`;
   await window.webContents.executeJavaScript(
     waitFor(
@@ -77,6 +78,35 @@ async function selectResourceActivity(window, activity) {
       })}`
     );
   }
+}
+
+async function selectRightActivity(window, activity) {
+  // Issue #437 / LM-004: the right rail is a toggle surface; skip the
+  // click when the activity is already active so the canvas-mode-* compat
+  // shim is safe to call multiple times in a row.
+  const selector = `[data-testid="right-activity-rail-${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Right activity did not render: ${activity}`,
+    ),
+  );
+  const alreadyActive = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="right-workspace"]')` +
+      `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+  );
+  if (alreadyActive) return;
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="right-workspace"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)} && ` +
+        `document.querySelector('[data-testid="right-workspace-surface"]')`,
+      `Right activity did not activate: ${activity}`,
+    ),
+  );
 }
 
 async function setInput(window, selector, value) {
@@ -507,6 +537,7 @@ async function verifyDay23() {
     );
     await openProject(window);
     await scrollCanvasIntoView(window);
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,
     );
@@ -542,6 +573,7 @@ async function verifyDay23() {
         })}`,
       );
     }
+    await selectRightActivity(window, 'properties');
     await window.webContents.executeJavaScript(
       `document.querySelectorAll(` +
         `'[data-testid="layer-order-controls"] button'` +
@@ -614,13 +646,13 @@ async function verifyDay23() {
     );
 
     const inputSelectors = [
-      '[data-testid="layer-transform-panel"] label:nth-of-type(1) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(2) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(3) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(4) input',
-      '[data-testid="layer-transform-panel"] label:nth-of-type(5) input',
+      '[data-testid="layer-transform-x"]',
+      '[data-testid="layer-transform-y"]',
+      '[data-testid="layer-transform-scale"] input',
+      '[data-testid="layer-transform-rotation"] input',
+      '[data-testid="layer-opacity-range"]',
     ];
-    for (const [index, value] of [800, 450, 1.25, 450, 0.6].entries()) {
+    for (const [index, value] of [800, 450, 125, 90, 60].entries()) {
       await setInput(window, inputSelectors[index], value);
     }
     await window.webContents.executeJavaScript(
@@ -642,7 +674,7 @@ async function verifyDay23() {
 
     await window.webContents.executeJavaScript(
       `document.querySelector(` +
-        `'[data-testid="layer-transform-panel"] button[type="button"]'` +
+        `'.layer-transform-toggle-action'` +
         `).click()`,
     );
     await window.webContents.executeJavaScript(
@@ -688,7 +720,7 @@ async function verifyDay23() {
 
     await window.webContents.executeJavaScript(
       `document.querySelector(` +
-        `'[data-testid="layer-transform-panel"] .layer-lock-control input'` +
+        `'.layer-lock-switch, [data-testid="layer-transform-panel"] .layer-lock-control input'` +
         `).click()`,
     );
     await window.webContents.executeJavaScript(
@@ -704,14 +736,15 @@ async function verifyDay23() {
         '[data-testid="layer-transform-panel"] input'
       )].slice(0, 5).every((input) => input.disabled),
       orderButtonsDisabled: [...document.querySelectorAll(
-        '[data-testid="layer-order-controls"] button'
+        '[data-testid="layer-order-controls"] .layer-order-actions button, ' +
+        '[data-testid="layer-order-controls"] .layer-delete-button'
       )].every((button) => button.disabled)
     }))()`);
     const lockedScreenshot = await captureCanvas(window);
 
     await window.webContents.executeJavaScript(
       `document.querySelector(` +
-        `'[data-testid="layer-transform-panel"] .layer-lock-control input'` +
+        `'.layer-lock-switch, [data-testid="layer-transform-panel"] .layer-lock-control input'` +
         `).click()`,
     );
     await window.webContents.executeJavaScript(
@@ -729,8 +762,7 @@ async function verifyDay23() {
       waitFor(
         `document.querySelector('[data-testid="compact-project-bar"]')` +
           `?.dataset?.saveState === 'saved' && ` +
-          `document.querySelector('[data-testid="project-save-state"]')` +
-          `?.textContent?.trim() === '已保存'`,
+          `!document.querySelector('[data-testid="project-save-state"]')`,
         'Day 23 project did not save cleanly.',
       ),
     );
@@ -748,6 +780,7 @@ async function verifyDay23() {
       (layer) => layer.id === targetLayerId,
     );
 
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,
     );
@@ -763,6 +796,7 @@ async function verifyDay23() {
       extraLayerId,
       { x: 1500, y: 850 },
     );
+    await selectRightActivity(window, 'properties');
     const beforeButtonDelete = await snapshot(window);
     await window.webContents.executeJavaScript(
       `document.querySelector(` +

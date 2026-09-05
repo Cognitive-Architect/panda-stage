@@ -92,9 +92,7 @@ describe('Issue #373 Cloud Touch landscape selected-object inspector', () => {
     );
     expect(inspector).toContain('data-testid="inspector-inline-close"');
     expect(inspector).toContain('railRef.current?.focus()');
-    expect(inspector).toContain(
-      '{!compact && !(landscapePresentation && dialogueMode) ? (',
-    );
+    expect(inspector).not.toContain('inspector-drawer-close');
     expect(issue373).toContain(
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']",
     );

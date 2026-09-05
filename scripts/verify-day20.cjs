@@ -48,6 +48,23 @@ async function setInput(window, selector, value) {
       'value'
     ).set.call(input, ${JSON.stringify(String(value))});
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await window.webContents.executeJavaScript(
+    'new Promise((resolve) => setTimeout(resolve, 0))',
+  );
+}
+
+async function click(window, selector) {
+  await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!(element instanceof HTMLElement)) {
+      throw new Error('Element not found: ' + ${JSON.stringify(selector)});
+    }
+    if (element instanceof HTMLButtonElement && element.disabled) {
+      throw new Error('Element is disabled: ' + ${JSON.stringify(selector)});
+    }
+    element.click();
   })()`);
 }
 
@@ -138,6 +155,12 @@ async function openProject(window, root = projectRoot) {
 }
 
 async function assertStage2CComposition(window) {
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="recent-projects-list"]')`,
+      'Recent Projects did not finish loading for the portrait composition.',
+    ),
+  );
   const defaultComposition = await window.webContents.executeJavaScript(`(() => ({
     leftWorkspace: document.querySelectorAll(
       '[data-testid="left-workspace-scroll"]'
@@ -320,7 +343,7 @@ async function waitForShotList(window, expectedCount, selectedName) {
         "document.querySelector('[data-testid=\"shot-list-view\"]') && " +
         "!document.querySelector('[data-testid=\"shot-create-view\"]') && " +
         `document.querySelectorAll('.shot-list-item').length === ${expectedCount} && ` +
-        "document.querySelector('.shot-editor-heading h3')" +
+        "document.querySelector('.shot-list-item-selected strong')" +
         `?.textContent?.trim() === ${JSON.stringify(selectedName)}`,
       `Shot list did not return after creating ${selectedName}.`,
     ),
@@ -331,17 +354,18 @@ async function createShot(window, name, durationMs, expectedCount) {
   await enterShotCreateView(window);
   await setInput(
     window,
-    '.shot-create-form label:nth-of-type(1) input',
+    '[data-testid="shot-create-name"], .shot-create-form > label:nth-of-type(1) input',
     name,
   );
   await setInput(
     window,
-    '.shot-create-form label:nth-of-type(2) input',
-    durationMs,
+    '[data-testid="shot-create-duration-input"], .shot-create-form > label:nth-of-type(2) input',
+    durationMs / 1_000,
   );
-  await window.webContents.executeJavaScript(`
-    document.querySelector('.shot-create-form button').click()
-  `);
+  await click(
+    window,
+    '[data-testid="shot-create-submit"], .shot-create-form > button[type="submit"]',
+  );
   await waitForShotList(window, expectedCount, name);
 }
 
@@ -357,7 +381,7 @@ async function selectShot(window, name) {
   })()`);
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('.shot-editor-heading h3')?.textContent?.trim() === ${JSON.stringify(name)}`,
+      `document.querySelector('.shot-list-item-selected strong')?.textContent?.trim() === ${JSON.stringify(name)}`,
       `Could not select ${name}.`,
     ),
   );
@@ -512,7 +536,30 @@ async function verifyDay20() {
       ),
     );
     await openProject(window);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-editor-device-mode="cloud-touch"]') && ` +
+          `document.querySelector('[data-editor-shell-layout="landscape"]')`,
+        'Wide editor did not use the Cloud Touch landscape route.',
+      ),
+    );
+    window.setSize(900, 1_200);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-editor-shell-layout="portrait"]')`,
+        'Portrait resize did not switch the Cloud Touch route.',
+      ),
+    );
     await assertStage2CComposition(window);
+    window.setSize(1_440, 1_050);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `document.querySelector('[data-editor-device-mode="cloud-touch"]') && ` +
+          `document.querySelector('[data-editor-shell-layout="landscape"]') && ` +
+          `document.querySelector('[data-testid="shot-quick-actions"]')`,
+        'Landscape resize did not restore the Cloud Touch selected Shot actions.',
+      ),
+    );
 
     await window.webContents.executeJavaScript(
       'new Promise((resolve) => setTimeout(resolve, 150))',
@@ -568,39 +615,34 @@ async function verifyDay20() {
     await enterShotCreateView(window);
     await setInput(
       window,
-      '.shot-create-form label:nth-of-type(1) input',
+      '[data-testid="shot-create-name"], .shot-create-form > label:nth-of-type(1) input',
       'Rejected draft',
     );
     await setInput(
       window,
-      '.shot-create-form label:nth-of-type(2) input',
-      499,
+      '[data-testid="shot-create-duration-input"], .shot-create-form > label:nth-of-type(2) input',
+      0.499,
     );
-    await window.webContents.executeJavaScript(`
-      document.querySelector('.shot-create-form button').click()
-    `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager-status')" +
-          "?.textContent?.includes('不少于 500ms')",
+        "document.querySelector('.shot-create-duration-error')" +
+          "?.textContent?.includes('最短 0.5 秒')",
         'Failed shot creation did not show a clear error.',
       ),
     );
     const failedCreateDraft =
       await window.webContents.executeJavaScript(`(() => ({
         name: document.querySelector(
-          '.shot-create-form label:nth-of-type(1) input'
+          '[data-testid="shot-create-name"], .shot-create-form > label:nth-of-type(1) input'
         ).value,
-        durationMs: Number(document.querySelector(
-          '.shot-create-form label:nth-of-type(2) input'
-        ).value),
+        durationMs: Math.round(Number(document.querySelector(
+          '[data-testid="shot-create-duration-input"], .shot-create-form > label:nth-of-type(2) input'
+        ).value) * 1_000),
         status: document.querySelector(
-          '.shot-manager-status'
+          '.shot-create-duration-error'
         ).textContent.trim()
       }))()`);
-    await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="shot-create-back"]').click()
-    `);
+    await click(window, '[data-testid="resource-primary-action"]');
     await waitForShotList(window, failedCreateCountBefore, 'Opening');
     const failedCreate = {
       shotCountBefore: failedCreateCountBefore,
@@ -610,46 +652,32 @@ async function verifyDay20() {
       ...failedCreateDraft,
     };
 
-    await window.webContents.executeJavaScript(`
-      document.querySelector('.shot-editor-actions button').click()
-    `);
+    await click(window, '[data-testid="shot-quick-more"]');
+    await click(window, '[data-testid="shot-quick-duplicate"]');
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelectorAll('.shot-list-item').length === 2 && " +
-          "document.querySelector('.shot-editor-heading h3')" +
+          "document.querySelector('.shot-list-item-selected strong')" +
           "?.textContent?.trim() === 'Opening 副本'",
         'Populated shot was not duplicated.',
       )
     );
-    await setInput(
-      window,
-      '.shot-fields label:nth-of-type(1) input',
-      'Bridge',
-    );
-    await window.webContents.executeJavaScript(`
-      document.querySelector(
-        '.shot-fields label:nth-of-type(1) button'
-      ).click()
-    `);
+    await click(window, '[data-testid="shot-quick-rename"]');
+    await setInput(window, '[data-testid="shot-quick-rename-form"] input', 'Bridge');
+    await click(window, '[data-testid="shot-quick-rename-apply"]');
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-editor-heading h3')" +
+        "document.querySelector('.shot-list-item-selected strong')" +
           "?.textContent?.trim() === 'Bridge'",
         'Duplicated shot was not renamed.',
       ),
     );
-    await setInput(
-      window,
-      '[aria-label="镜头时长（秒）"]',
-      3.5,
-    );
-    await window.webContents.executeJavaScript(`
-      document.querySelector('[aria-label="应用时长修改"]').click()
-    `);
+    await click(window, '[data-testid="shot-quick-duration"]');
+    await setInput(window, '[data-testid="shot-quick-duration-form"] input', 3.5);
+    await click(window, '[data-testid="shot-quick-duration-apply"]');
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('[aria-label=\"镜头时长（秒）\"]')" +
-          "?.value === '3.500' && " +
+        "Number.parseFloat(document.querySelector('.shot-list-item-selected small')?.textContent) === 3.5 && " +
           "document.querySelector('.shot-manager-status')" +
           "?.textContent?.includes('3.500 秒')",
         'Duplicated shot duration was not updated.',
@@ -661,14 +689,14 @@ async function verifyDay20() {
       await window.webContents.executeJavaScript(`(() => ({
         shotCount: document.querySelectorAll('.shot-list-item').length,
         selectedName: document.querySelector(
-          '.shot-editor-heading h3'
+          '.shot-list-item-selected strong'
         ).textContent.trim()
       }))()`);
     await enterShotCreateView(window);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector(" +
-          "'.shot-create-form label:nth-of-type(1) input'" +
+          "document.querySelector(" +
+          "'[data-testid=\"shot-create-name\"], .shot-create-form > label:nth-of-type(1) input'" +
           ")?.value === '镜头 4'",
         'Successful create did not advance to an available default name.',
       ),
@@ -677,55 +705,51 @@ async function verifyDay20() {
       ...successfulList,
       nextDefaultName: await window.webContents.executeJavaScript(
         "document.querySelector(" +
-          "'.shot-create-form label:nth-of-type(1) input'" +
-          ").value",
+        "'[data-testid=\"shot-create-name\"], .shot-create-form > label:nth-of-type(1) input'" +
+        ").value",
       ),
     };
     await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="shot-create-back"]').click()
+      document.querySelector('[data-testid="resource-primary-action"]').click()
     `);
     await waitForShotList(window, successfulList.shotCount, successfulList.selectedName);
     await createShot(window, 'Scene 4', 1_500, 4);
     await createShot(window, 'Scene 5', 2_000, 5);
 
     await selectShot(window, 'Scene 3');
-    await setInput(
-      window,
-      '[aria-label="镜头时长（秒）"]',
-      0.499,
-    );
+    await click(window, '[data-testid="shot-quick-duration"]');
+    await setInput(window, '[data-testid="shot-quick-duration-form"] input', 0.499);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('[aria-label=\"镜头时长（秒）\"]')" +
+        "document.querySelector('[data-testid=\"shot-quick-duration-form\"] input')" +
           "?.getAttribute('aria-invalid') === 'true' && " +
-          "document.querySelector('.shot-duration-help[open]')",
+          "Boolean(document.querySelector('.shot-quick-edit-error'))",
         'Invalid duration did not surface contextual validation.',
       ),
     );
     const invalidDurationStatus =
-      await window.webContents.executeJavaScript(`
-        document.querySelector('.shot-duration-help p').textContent.trim()
-      `);
+      await window.webContents.executeJavaScript(
+        `String(document.querySelector('.shot-quick-edit-error')?.textContent?.trim() ?? '')`,
+      );
 
     await selectShot(window, 'Scene 5');
     await dragShot(window, 'Scene 5', 0);
-    await window.webContents.executeJavaScript(`
-      window.confirm = () => true;
-      document.querySelector(
-        '.shot-editor-actions .shot-delete-button'
-      ).click()
-    `);
+    await window.webContents.executeJavaScript(
+      'window.confirm = () => true; undefined',
+    );
+    await click(window, '[data-testid="shot-quick-more"]');
+    await click(window, '[data-testid="shot-quick-delete"]');
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelectorAll('.shot-list-item').length === 4 && " +
-          "document.querySelector('.shot-editor-heading h3')" +
+          "document.querySelector('.shot-list-item-selected strong')" +
           "?.textContent?.trim() === 'Opening'",
         'Removing the selected shot did not choose the next stable shot.',
       ),
     );
     const selectionAfterRemoval =
       await window.webContents.executeJavaScript(`
-        document.querySelector('.shot-editor-heading h3').textContent.trim()
+        document.querySelector('.shot-list-item-selected strong').textContent.trim()
       `);
 
     await createShot(window, 'Finale', 2_500, 5);
@@ -739,11 +763,11 @@ async function verifyDay20() {
           '.shot-list-item > button > span:nth-child(2) small'
         )].map((node) => Number.parseFloat(node.textContent) * 1000),
         currentName: document.querySelector(
-          '.shot-editor-heading h3'
+          '.shot-list-item-selected strong'
         ).textContent.trim(),
         currentShotId: document.querySelector(
-          '.shot-editor'
-        ).dataset.currentShotId,
+          '[data-testid="shot-quick-actions"]'
+        ).dataset.shotId,
         totalDurationMs: Number(
           document.querySelector(
             '.shot-manager-heading span'
@@ -776,8 +800,7 @@ async function verifyDay20() {
       waitFor(
         "document.querySelector('[data-testid=\"compact-project-bar\"]')" +
           "?.dataset?.saveState === 'saved' && " +
-          "document.querySelector('[data-testid=\"project-save-state\"]')" +
-          "?.textContent?.trim() === '已保存'",
+          "document.querySelector('[data-testid=\"project-save-state\"]') === null",
         'Five-shot project did not save.',
       ),
     );
@@ -806,15 +829,17 @@ async function verifyDay20() {
           '.shot-list-item > button > span:nth-child(2) small'
         )].map((node) => Number.parseFloat(node.textContent) * 1000),
         currentName: document.querySelector(
-          '.shot-editor-heading h3'
+          '.shot-list-item-selected strong'
         ).textContent.trim(),
         totalDurationMs: Number(
           document.querySelector(
             '.shot-manager-heading span'
           ).dataset.projectDurationMs
         ),
-        clean: document.querySelector('.clean-state')
-          ?.textContent?.trim() === '已保存'
+        clean:
+          document.querySelector('[data-testid="compact-project-bar"]')
+            ?.dataset?.saveState === 'saved' &&
+          document.querySelector('[data-testid="project-save-state"]') === null
       }))()`);
     const reopenedScreenshot =
       await captureSection(window, '.shot-manager');
@@ -822,7 +847,7 @@ async function verifyDay20() {
     await enterShotCreateView(window);
     await setInput(
       window,
-      '.shot-create-form label:nth-of-type(1) input',
+      '[data-testid="shot-create-name"], .shot-create-form > label:nth-of-type(1) input',
       '旧项目手工草稿',
     );
     await openProject(window, alternateProjectRoot);
@@ -831,7 +856,7 @@ async function verifyDay20() {
       waitFor(
         "document.querySelectorAll('.shot-list-item').length === 0 && " +
           "document.querySelector(" +
-          "'.shot-create-form label:nth-of-type(1) input'" +
+          "'[data-testid=\"shot-create-name\"], .shot-create-form > label:nth-of-type(1) input'" +
           ")?.value === '镜头 1'",
         'Project switch retained the previous project draft name.',
       ),
@@ -842,11 +867,11 @@ async function verifyDay20() {
         openedProjectId: ${JSON.stringify(alternateProject.id)},
         shotCount: document.querySelectorAll('.shot-list-item').length,
         defaultName: document.querySelector(
-          '.shot-create-form label:nth-of-type(1) input'
+          '[data-testid="shot-create-name"], .shot-create-form > label:nth-of-type(1) input'
         ).value,
-        durationMs: Number(document.querySelector(
-          '.shot-create-form label:nth-of-type(2) input'
-        ).value)
+        durationMs: Math.round(Number(document.querySelector(
+          '[data-testid="shot-create-duration-input"], .shot-create-form > label:nth-of-type(2) input'
+        ).value) * 1_000)
       }))()`);
 
     const source = savedProject.shots.find(
@@ -939,7 +964,7 @@ async function verifyDay20() {
       configuredUi.durations.join(',') !== expectedDurations.join(',') ||
       configuredUi.currentName !== 'Finale' ||
       configuredUi.totalDurationMs !== 11_500 ||
-      configuredUi.placeholderCount < 6 ||
+      configuredUi.placeholderCount !== expectedNames.length ||
       !configuredUi.resourceOwner ||
       configuredUi.legacyResourceOwner ||
       configuredUi.rendererHasNodeRequire ||
@@ -955,7 +980,7 @@ async function verifyDay20() {
         failedCreate.shotCountAfter ||
       failedCreate.name !== 'Rejected draft' ||
       failedCreate.durationMs !== 499 ||
-      !failedCreate.status.includes('不少于 500ms') ||
+      !failedCreate.status.includes('最短 0.5 秒') ||
       successfulCreate.shotCount !== 3 ||
       successfulCreate.selectedName !== 'Scene 3' ||
       successfulCreate.nextDefaultName !== '镜头 4' ||

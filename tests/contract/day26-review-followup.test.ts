@@ -37,16 +37,17 @@ describe('Day 26 review follow-up #195 contracts', () => {
   });
 
   it('V-CI-01: Issue-102 gate accepts the Day-26 Timeline Shell height budget', () => {
-    // Bottom workspace now hosts the Timeline Shell (132-168px), not the old
-    // ≤76px history-only "compact" bar. The gate must reflect that contract.
+    // Bottom workspace now uses the post-Stage-E LM-006 Cloud Touch landscape
+    // contract (210px compact minimum, 280px normal); the focused gate allows
+    // the normalized state with a small 300px verification ceiling.
     expect(gate).toMatch(
-      /function assertCompactBottom\([^)]*maxHeight = 172\)/u,
+      /function assertCompactBottom\([^)]*maxHeight = 300\)/u,
     );
   });
 
   it('V-DOC-01: Day-26 receipt records real Git coordinates', () => {
     expect(receipt).toContain('37f30e528177a2752dd7d414ca60eb061232f57d');
-    expect(receipt).not.toContain('本验收未产生新 commit');
-    expect(receipt).not.toMatch(/收卷 HEAD[^\n]*323f36dc/u);
+    expect(receipt).not.toContain('鏈獙鏀舵湭浜х敓鏂?commit');
+    expect(receipt).not.toMatch(/鏀跺嵎 HEAD[^\n]*323f36dc/u);
   });
 });

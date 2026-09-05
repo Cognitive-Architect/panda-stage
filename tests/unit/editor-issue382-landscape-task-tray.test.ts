@@ -38,6 +38,7 @@ describe('Issue #382 Cloud Touch landscape unified Task Tray', () => {
     const timeline = source(
       'src/renderer/features/timeline/TimelineDock.tsx',
     );
+    const right = source('src/renderer/shell/RightWorkspace.tsx');
 
     expect(sheet).toContain('data-task-tray-state={taskTrayState}');
     expect(sheet).toContain('dialogue-task-body-authoring');
@@ -51,9 +52,10 @@ describe('Issue #382 Cloud Touch landscape unified Task Tray', () => {
     expect(sheet).toContain('candidate.getClientRects().length > 0');
     expect(sheet).toContain('window.setTimeout(() =>');
     expect(sheet).toContain('TASK_TRAY_FOCUS_DELAY_MS = 180');
-    expect(timeline).toContain(
-      "unifiedTaskTray={presentation === 'landscape'}",
-    );
+    expect(right).toContain('presentation="right-workspace"');
+    expect(right).toContain('unifiedTaskTray');
+    expect(timeline).not.toContain('<DialogueSheet');
+    expect(timeline).not.toContain('timeline-task-tray');
   });
 
   it('keeps Stage E derivation presentation-only and reuses existing owners', () => {

@@ -158,6 +158,7 @@ async function snapshot(window) {
           }
         : null;
     };
+    const shell = document.querySelector('.editor-shell');
     const bar = document.querySelector('[data-testid="compact-project-bar"]');
     const topRegion = document.querySelector('[data-testid="editor-top-region"]');
     const body = document.querySelector('[data-testid="editor-body"]');
@@ -169,12 +170,15 @@ async function snapshot(window) {
     const menu = document.querySelector('[data-testid="compact-project-menu"]');
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
-      page: document.querySelector('.editor-shell')?.dataset.editorPage ?? null,
+      page: shell?.dataset.editorPage ?? null,
+      editorDeviceMode: shell?.dataset.editorDeviceMode ?? null,
+      editorShellLayout: shell?.dataset.editorShellLayout ?? null,
       shellState:
         document.querySelector('.editor-shell')?.dataset.editorShellState ?? null,
       projectName: name?.textContent?.trim() ?? null,
       projectPath:
         bar?.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() ?? null,
+      // The saved pill is intentionally hidden; data-save-state remains the truth.
       saveState: bar?.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() ?? null,
       saveStateCode: bar?.getAttribute('data-save-state') ?? null,
       saveDisabled: save instanceof HTMLButtonElement ? save.disabled : null,
@@ -196,6 +200,9 @@ async function snapshot(window) {
       controls: rect(controls),
       save: rect(save),
       menu: rect(menu),
+      deviceModeSelector: Boolean(
+        document.querySelector('[data-testid="editor-device-mode-selector"]'),
+      ),
       menuItems: menu
         ? [...menu.querySelectorAll('[role="menuitem"]')].map((item) => ({
             testId: item.getAttribute('data-testid'),
@@ -317,9 +324,20 @@ async function run(window, fixture) {
 
   const clean = await snapshot(window);
   assert(clean.page === 'editor', 'Clean snapshot is not on the editor page.');
+  assert(
+    clean.editorDeviceMode === 'cloud-touch',
+    'Editor did not use the Cloud Touch-only product route.',
+  );
+  assert(
+    clean.editorShellLayout === 'landscape',
+    'Wide verifier window did not use the Cloud Touch landscape layout.',
+  );
   assert(clean.projectName === projectName, 'Current project name is not visible.');
   assert(clean.projectPath === fixture.projectRoot, 'Current project path is not visible.');
-  assert(clean.saveState === '已保存', 'Clean save state is not 已保存.');
+  assert(
+    clean.saveState === null,
+    'Clean save-state pill should be absent from the compact bar.',
+  );
   assert(clean.saveStateCode === 'saved', 'Clean save-state code is not saved.');
   assert(clean.saveDisabled === true, 'Save button must be disabled when clean.');
   assert(clean.pathInputs === 0, 'Editor top project area still contains a path input.');
@@ -347,7 +365,9 @@ async function run(window, fixture) {
   clean.verticalGainComparedWithOld = reclaimedTopChrome;
   clean.editorBodyNetGainComparedWithOld = editorBodyNetGain;
   result.snapshots.clean = clean;
-  result.checks.push('Compact bar is <=56px, name/save state stay visible, and old editor input is gone');
+  result.checks.push(
+    'Compact bar is <=56px, saved truth stays on the bar, and old editor input is gone',
+  );
   result.checks.push(
     `Compact project chrome reclaims ${reclaimedTopChrome.toFixed(2)}px at the same 1280x720 window size`,
   );
@@ -356,8 +376,47 @@ async function run(window, fixture) {
   );
   await capture(window, 'new-editor-layout.png');
 
-  await setInput(window, '.shot-fields label:nth-of-type(1) input', 'Task 2 dirty state');
-  await clickSelector(window, '.shot-fields label:nth-of-type(1) button');
+  await clickSelector(window, '[data-testid="right-activity-rail-properties"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="right-workspace"]')?.dataset.activeActivity === 'properties' &&
+      document.querySelector('[data-testid="right-workspace-surface"]') &&
+      document.querySelector('[data-testid="right-inspector"]')?.getAttribute('data-drawer-open') === 'true' &&
+      document.querySelector('[data-testid="inspector-inline-close"]')`,
+    'Unified Properties surface did not open with its inline close affordance.',
+  );
+  const propertiesClose = await window.webContents.executeJavaScript(`(() => ({
+    inlineCloseCount: document.querySelectorAll(
+      '[data-testid="inspector-inline-close"]'
+    ).length,
+    outerCloseCount: document.querySelectorAll(
+      '[data-testid="inspector-drawer-close"]'
+    ).length
+  }))()`);
+  assert(
+    propertiesClose.inlineCloseCount === 1 &&
+      propertiesClose.outerCloseCount === 0,
+    'Properties drawer did not reduce to one inline close affordance.',
+  );
+  await clickSelector(window, '[data-testid="inspector-inline-close"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="right-workspace"]')?.dataset.activeActivity === 'none' &&
+      !document.querySelector('[data-testid="right-workspace-surface"]') &&
+      !document.querySelector('[data-testid="right-inspector"]')`,
+    'Properties inline close did not close the unified surface.',
+  );
+  result.checks.push(
+    'Unified Properties surface has one inline close affordance and no outer duplicate',
+  );
+
+  await clickSelector(window, '[data-testid="shot-quick-rename"]');
+  await setInput(
+    window,
+    '[data-testid="shot-quick-rename-form"] input',
+    'Task 2 dirty state',
+  );
+  await clickSelector(window, '[data-testid="shot-quick-rename-apply"]');
   await waitForDom(
     window,
     `document.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() === '有未保存更改' &&
@@ -374,13 +433,19 @@ async function run(window, fixture) {
   await clickSelector(window, '[data-testid="compact-project-save"]');
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() === '已保存' &&
+    `document.querySelector('[data-testid="project-save-state"]') === null &&
+      document.querySelector('[data-testid="compact-project-bar"]')?.getAttribute('data-save-state') === 'saved' &&
       document.querySelector('[data-testid="compact-project-save"]')?.disabled === true`,
-    'Save action did not return the compact bar to 已保存.',
+    'Save action did not restore saved truth while keeping the saved-state pill hidden.',
   );
   const saved = await snapshot(window);
+  assert(saved.saveState === null, 'Saved save-state pill should remain absent.');
+  assert(saved.saveStateCode === 'saved', 'Saved save-state code is not saved.');
+  assert(saved.saveDisabled === true, 'Save button must be disabled after saving.');
   result.snapshots.saved = saved;
-  result.checks.push('Save action returns the compact bar to 已保存 and disables 保存');
+  result.checks.push(
+    'Save action restores saved truth, keeps the saved-state pill hidden, and disables 保存',
+  );
 
   await clickSelector(window, '[data-testid="compact-project-more"]');
   await waitForDom(
@@ -402,6 +467,10 @@ async function run(window, fixture) {
       menu.menuItems.some((item) => item.text === '打开项目文件夹') &&
       menu.menuItems.some((item) => item.text === '关闭当前项目'),
     'Project menu labels do not match the Task 2 requirements.',
+  );
+  assert(
+    menu.deviceModeSelector === false,
+    'More menu still exposes the removed editor device mode selector.',
   );
   assert(menu.menu && menu.menu.right <= menu.viewport.width + 1, 'Project menu overflows the right edge.');
   assert(menu.menu && !overlaps(menu.menu, menu.controls), 'Project menu blocks the save/identity controls.');

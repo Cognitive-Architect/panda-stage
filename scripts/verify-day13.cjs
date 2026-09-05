@@ -114,7 +114,7 @@ async function verifyDay13Ui() {
       return {
         heading: bar?.getAttribute('aria-label'),
         projectName: bar?.querySelector('.compact-project-name')?.textContent?.trim(),
-        defaultState: bar?.querySelector('.clean-state')?.textContent?.trim(),
+        defaultState: bar?.dataset.saveState,
         hasEditorPathInput: Boolean(bar?.querySelector('input')),
         actions: buttons,
         candidateSummary: banner?.querySelector(
@@ -163,7 +163,7 @@ async function verifyDay13Ui() {
     if (
       result.heading !== '当前项目状态' ||
       result.projectName !== exampleProject.name ||
-      result.defaultState !== '已保存' ||
+      result.defaultState !== 'saved' ||
       result.hasEditorPathInput ||
       result.actions.includes('项目中心') ||
       !result.actions.includes('保存') ||

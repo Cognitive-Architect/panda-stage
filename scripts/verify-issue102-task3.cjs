@@ -158,25 +158,13 @@ async function openProjectCenter(window) {
   );
 }
 
-async function ensureDesktopEditor(window) {
-  const desktop = await window.webContents.executeJavaScript(
-    `document.querySelector('[data-editor-shell-layout="desktop"]') !== null`,
-  );
-  if (desktop) return;
-
-  await openProjectMenu(window);
-  await click(window, '[data-testid="editor-device-mode-desktop"]');
+async function ensureCloudTouchEditor(window) {
   await waitForDom(
     window,
-    `document.querySelector('[data-editor-shell-layout="desktop"]') && ` +
-      `document.querySelector('.shot-fields')`,
-    'Explicit Desktop mode did not restore the desktop Shot editor surface.',
-  );
-  await click(window, '[data-testid="compact-project-more"]');
-  await waitForDom(
-    window,
-    `!document.querySelector('[data-testid="compact-project-menu"]')`,
-    'Editor device mode menu did not close after selecting Desktop.',
+    `document.querySelector('[data-editor-device-mode="cloud-touch"]') && ` +
+      `document.querySelector('[data-editor-shell-layout="landscape"]') && ` +
+      `document.querySelector('[data-testid="shot-quick-actions"]')`,
+    'Cloud Touch landscape editor did not render the selected Shot actions.',
   );
 }
 
@@ -219,8 +207,9 @@ async function openProject(window, root) {
 }
 
 async function applyShotName(window, name) {
-  await setInput(window, '.shot-fields label:nth-of-type(1) input', name);
-  await click(window, '.shot-fields label:nth-of-type(1) button');
+  await click(window, '[data-testid="shot-quick-rename"]');
+  await setInput(window, '[data-testid="shot-quick-rename-form"] input', name);
+  await click(window, '[data-testid="shot-quick-rename-apply"]');
   await waitForDom(
     window,
     `Boolean(document.querySelector('[data-testid="project-canvas-stage"]')) &&
@@ -529,7 +518,7 @@ async function run() {
       `document.querySelector('[data-testid="project-canvas-stage"]')`,
       'Project A editor did not render.',
     );
-    await ensureDesktopEditor(window);
+    await ensureCloudTouchEditor(window);
     const selectedLayerId = await selectContentLayer(window);
     await applyShotName(window, 'Task 3 roundtrip dirty shot');
     const beforeRoundtrip = await snapshot(window);

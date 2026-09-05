@@ -414,9 +414,10 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(compatibility).not.toContain('display: none');
   });
 
-  it('keeps the landscape Shot drawer focused without deleting project tools', () => {
+  it('keeps the landscape Shot drawer focused while relocating project tools', () => {
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
     const dock = readSource('src/renderer/shell/ResourceActivityDock.tsx');
+    const right = readSource('src/renderer/shell/RightWorkspace.tsx');
     const shots = readSource('src/renderer/features/shots/ShotManager.tsx');
     const quickActions = readSource(
       'src/renderer/features/shots/ShotQuickActions.tsx',
@@ -429,9 +430,10 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(left).toContain(
       "auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}",
     );
-    expect(left).toContain('<ProjectToolsDrawer');
-    expect(dock).toContain('data-testid="resource-activity-rail-project-tools"');
-    expect(dock).toContain('projectToolsContent');
+    expect(left).not.toContain('<ProjectToolsDrawer');
+    expect(dock).not.toContain('resource-activity-rail-project-tools');
+    expect(right).toContain('<ProjectToolsDrawer');
+    expect(right).toContain("{ id: 'tools', label: '工具', icon: Wrench }");
     expect(dock).toContain('resource-activity-auxiliary');
     expect(dock).toContain(
       '!landscapePresentation && auxiliaryContent ? (',
@@ -445,7 +447,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(thumbnail).not.toContain('画布预览将在后续版本提供');
     expect(styles).toContain('shot-list-item-selected');
     expect(styles).toContain('shot-quick-actions');
-    expect(styles).toContain('project-tools-activity-surface');
+    expect(styles).toContain('.right-workspace-surface');
     expect(styles).not.toContain('shot-list-item-context');
   });
 });

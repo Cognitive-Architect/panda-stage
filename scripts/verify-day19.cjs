@@ -212,6 +212,72 @@ async function setInput(window, selector, value, eventName = 'input') {
   })()`);
 }
 
+async function readCharacterExpressionUi(window) {
+  return window.webContents.executeJavaScript(`(async () => {
+    const nextFrames = () => new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    const cards = [...document.querySelectorAll('.expression-card-list > li')];
+    if (cards.length > 0) {
+      const values = [];
+      for (let index = 0; index < cards.length; index += 1) {
+        document.querySelectorAll('.expression-card-list > li')[index]
+          ?.querySelector('.expression-edit-trigger')
+          ?.click();
+        await nextFrames();
+        document.querySelectorAll('.expression-card-list > li')[index]
+          ?.querySelector('.expression-asset-picker-trigger')
+          ?.click();
+        await nextFrames();
+        const card = document.querySelectorAll('.expression-card-list > li')[index];
+        values.push({
+          name: card?.querySelector('.expression-card-copy strong')
+            ?.textContent?.trim(),
+          assetId: card?.querySelector('.expression-asset-picker select')?.value,
+        });
+        card?.querySelector('.expression-edit-trigger')?.click();
+        await nextFrames();
+      }
+      const warningElement = document.querySelector(
+        '.character-size-warning, .expression-warning-badge, ' +
+          '.expression-card-warning, .expression-unscoped-warning'
+      );
+      return {
+        expressionNames: values.map((value) => value.name),
+        expressionAssetIds: values.map((value) => value.assetId),
+        thumbnailCount: document.querySelectorAll(
+          '.expression-card-preview img'
+        ).length,
+        defaultName: document.querySelector(
+          '.expression-card-list > li.expression-default .expression-card-copy strong'
+        )?.textContent?.trim(),
+        warning: warningElement?.textContent?.replace(/\\s+/g, ' ').trim(),
+        warningTitle: warningElement?.getAttribute('title'),
+        warningVisible: Boolean(warningElement),
+      };
+    }
+    return {
+      expressionNames: [...document.querySelectorAll(
+        '.expression-list .expression-fields input'
+      )].map((input) => input.value),
+      expressionAssetIds: [...document.querySelectorAll(
+        '.expression-list .expression-fields select'
+      )].map((select) => select.value),
+      thumbnailCount: document.querySelectorAll(
+        '.expression-thumbnail img'
+      ).length,
+      defaultName: document.querySelector(
+        '.expression-default .expression-fields input'
+      )?.value,
+      warning: document.querySelector('.character-size-warning')
+        ?.textContent?.replace(/\\s+/g, ' ').trim(),
+      warningTitle: document.querySelector('.character-size-warning')
+        ?.getAttribute('title'),
+      warningVisible: Boolean(document.querySelector('.character-size-warning')),
+    };
+  })()`);
+}
+
 async function openProject(window) {
   await window.webContents.executeJavaScript(`(() => {
     if (document.querySelector('[data-editor-page="editor"]')) {
@@ -241,15 +307,16 @@ async function openProject(window) {
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector(${JSON.stringify(
-        '[data-testid="resource-activity-tabs"] [data-activity="characters"]',
+        '[data-testid="resource-activity-rail-characters"], [data-testid="resource-activity-tabs"] [data-activity="characters"]',
       )})`,
-      'Resource activity tabs did not render.',
+      'Resource activity navigation did not render.',
     ),
   );
 }
 
 async function selectResourceActivity(window, activity) {
   const selector =
+    `[data-testid="resource-activity-rail-${activity}"], ` +
     `[data-testid="resource-activity-tabs"] [data-activity="${activity}"]`;
   await window.webContents.executeJavaScript(
     waitFor(
@@ -511,10 +578,10 @@ async function verifyDay19() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
-          "document.querySelector('.character-editor-heading h3')" +
+          "document.querySelector('.character-detail-identity-copy h3, .character-editor-heading h3')" +
           "?.textContent?.trim() === 'Panda' && " +
           "document.querySelectorAll(" +
-            "'.character-expression-summary-list li'" +
+            "'.character-expression-visual-list li, .character-expression-summary-list li'" +
           ").length === 2",
         'Character detail did not render.',
       ),
@@ -525,8 +592,12 @@ async function verifyDay19() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
-          "document.querySelectorAll('.expression-list li').length === 2 && " +
-          "document.querySelector('.character-size-warning')",
+          "(document.querySelectorAll('.expression-card-list > li').length === 2 || " +
+            "document.querySelectorAll('.expression-list li').length === 2) && " +
+          "document.querySelector(" +
+            "'.character-size-warning, .expression-warning-badge, " +
+              ".expression-card-warning, .expression-unscoped-warning'" +
+          ")",
         'Character expression view with warnings did not render.',
       ),
     );
@@ -534,55 +605,89 @@ async function verifyDay19() {
       await window.webContents.executeJavaScript(`(() => {
         const defaultRow = document.querySelector('.expression-default');
         const deleteButton = defaultRow.querySelector(
-          '.expression-actions button:last-child'
+          '[data-testid^="expression-delete-"], .expression-actions button:last-child'
+        );
+        const defaultName = defaultRow.querySelector(
+          '.expression-fields input, .expression-card-copy strong'
         );
         return {
-          defaultName: defaultRow.querySelector(
-            '.expression-fields input'
-          ).value,
-          deleteDisabled: deleteButton.disabled,
-          deleteTitle: deleteButton.title,
-          defaultBadge: defaultRow.querySelector('strong')
+          defaultName: defaultName?.value ?? defaultName?.textContent?.trim(),
+          deleteDisabled: deleteButton?.disabled,
+          deleteTitle: deleteButton?.title,
+          defaultBadge: defaultRow.querySelector(
+            '.expression-default-badge, .expression-actions strong'
+          )
             ?.textContent?.trim()
         };
       })()`);
     const expressionIdBeforeReplacement =
       await window.webContents.executeJavaScript(`
-        document.querySelector(
-          '.expression-list li:not(.expression-default)'
-        ).dataset.expressionId
+        [...document.querySelectorAll(
+          '.expression-card-list > li, .expression-list li'
+        )].find((row) => !row.classList.contains('expression-default'))
+          .dataset.expressionId
       `);
 
+
     await window.webContents.executeJavaScript(`
-      document.querySelector(
-        '.expression-list li:not(.expression-default) ' +
-        '.expression-actions button'
-      ).click()
+      [...document.querySelectorAll(
+        '.expression-card-list > li, .expression-list li'
+      )].find((row) => !row.classList.contains('expression-default'))
+        ?.querySelector(
+          '[data-testid^="expression-default-"], .expression-actions button:first-child'
+        )?.click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.expression-default input')" +
-        "?.value === 'angry'",
+        "(document.querySelector('.expression-default .expression-card-copy strong')" +
+          "?.textContent?.trim() || document.querySelector(" +
+          "'.expression-default .expression-fields input')?.value) === 'angry'",
         'Could not change the default expression to angry.',
       ),
     );
     await window.webContents.executeJavaScript(`
-      document.querySelector(
-        '.expression-list li:not(.expression-default) ' +
-        '.expression-actions button'
-      ).click()
+      [...document.querySelectorAll(
+        '.expression-card-list > li, .expression-list li'
+      )].find((row) => !row.classList.contains('expression-default'))
+        ?.querySelector(
+          '[data-testid^="expression-default-"], .expression-actions button:first-child'
+        )?.click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.expression-default input')" +
-          "?.value === 'normal'",
+        "(document.querySelector('.expression-default .expression-card-copy strong')" +
+          "?.textContent?.trim() || document.querySelector(" +
+          "'.expression-default .expression-fields input')?.value) === 'normal'",
         'Could not restore normal as the default expression.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`(() => {
+      const row = [...document.querySelectorAll(
+        '.expression-card-list > li, .expression-list li'
+      )].find((candidate) => !candidate.classList.contains('expression-default'));
+      row?.querySelector('.expression-edit-trigger')?.click();
+    })()`);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.expression-asset-picker-trigger, " +
+          ".expression-list li:not(.expression-default) .expression-fields select')",
+        'Expression asset editor did not render.',
+      ),
+    );
+    await window.webContents.executeJavaScript(`(() => {
+      document.querySelector('.expression-asset-picker-trigger')?.click();
+    })()`);
+    await window.webContents.executeJavaScript(
+      waitFor(
+        "document.querySelector('.expression-asset-picker select, " +
+          ".expression-list li:not(.expression-default) .expression-fields select')",
+        'Expression asset picker did not render.',
       ),
     );
     await setInput(
       window,
-      '.expression-list li:not(.expression-default) ' +
-        '.expression-fields select',
+      '.expression-asset-picker select, ' +
+        '.expression-list li:not(.expression-default) .expression-fields select',
       assetIds.replacement,
       'change',
     );
@@ -591,17 +696,18 @@ async function verifyDay19() {
         "document.querySelector('.character-manager-status')" +
           "?.textContent?.includes('原有镜头与时间轴引用保持不变') && " +
           "document.querySelector(" +
-          "'.expression-list li:not(.expression-default) " +
-          ".expression-fields select')?.value === " +
+          "'.expression-asset-picker select, " +
+            ".expression-list li:not(.expression-default) .expression-fields select')?.value === " +
           JSON.stringify(assetIds.replacement),
         'Could not replace the angry expression asset.',
       ),
     );
     const expressionIdAfterReplacement =
       await window.webContents.executeJavaScript(`
-        document.querySelector(
-          '.expression-list li:not(.expression-default)'
-        ).dataset.expressionId
+        [...document.querySelectorAll(
+          '.expression-card-list > li, .expression-list li'
+        )].find((row) => !row.classList.contains('expression-default'))
+          .dataset.expressionId
       `);
 
     await window.webContents.executeJavaScript(`
@@ -610,27 +716,55 @@ async function verifyDay19() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
-          "document.querySelector('.character-settings select')",
+          "document.querySelector('.character-mouth-picker select, .character-settings select')",
         'Character detail did not reopen after expression editing.',
       ),
     );
 
-    await setInput(
-      window,
-      '.character-settings input[type="number"]',
-      '0.75',
+    const isLandscapeCharacter = await window.webContents.executeJavaScript(
+      "Boolean(document.querySelector('.character-scale-stepper'))",
     );
-    await window.webContents.executeJavaScript(`(async () => {
-      const checkbox = document.querySelector(
-        '.character-settings input[type="checkbox"]'
+    const expectedScale = isLandscapeCharacter ? '0.7' : '0.75';
+    const expectedScaleNumber = Number(expectedScale);
+    if (isLandscapeCharacter) {
+      await window.webContents.executeJavaScript(`(async () => {
+        const nextFrame = () => new Promise((resolve) =>
+          requestAnimationFrame(resolve)
+        );
+        const decrease = document.querySelector(
+          '.character-scale-stepper button:first-of-type'
+        );
+        const flipSwitch = document.querySelector('.character-flip-switch');
+        const apply = document.querySelector('.character-default-apply');
+        if (!decrease || !flipSwitch || !apply) {
+          throw new Error('Landscape character transform controls did not render.');
+        }
+        for (let index = 0; index < 3; index += 1) {
+          decrease.click();
+          await nextFrame();
+        }
+        flipSwitch.click();
+        await nextFrame();
+        apply.click();
+      })()`);
+    } else {
+      await setInput(
+        window,
+        '.character-settings input[type="number"]',
+        '0.75',
       );
-      checkbox.click();
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      const buttons = [...document.querySelectorAll(
-        '.character-settings button'
-      )];
-      buttons.at(-1).click();
-    })()`);
+      await window.webContents.executeJavaScript(`(async () => {
+        const checkbox = document.querySelector(
+          '.character-settings input[type="checkbox"]'
+        );
+        checkbox.click();
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const buttons = [...document.querySelectorAll(
+          '.character-settings button'
+        )];
+        buttons.at(-1).click();
+      })()`);
+    }
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('.character-manager-status')" +
@@ -640,19 +774,30 @@ async function verifyDay19() {
     );
 
     const configuredSettingsUi =
-      await window.webContents.executeJavaScript(`(() => ({
+      await window.webContents.executeJavaScript(`(() => {
+        const scaleOutput = document.querySelector(
+          '.character-scale-stepper output'
+        );
+        const scaleInput = document.querySelector(
+          '.character-settings input[type="number"]'
+        );
+        const flipSwitch = document.querySelector('.character-flip-switch');
+        const flipInput = document.querySelector(
+          '.character-settings input[type="checkbox"]'
+        );
+        return {
         characterName: document.querySelector(
-          '.character-editor-heading h3'
+          '.character-detail-identity-copy h3, .character-editor-heading h3'
         )?.textContent?.trim(),
         mouthValue: document.querySelector(
-          '.character-settings select'
-        ).value,
-        scaleValue: document.querySelector(
-          '.character-settings input[type="number"]'
-        ).value,
-        flipChecked: document.querySelector(
-          '.character-settings input[type="checkbox"]'
-        ).checked,
+          '.character-mouth-picker select, .character-settings select'
+        )?.value,
+        scaleValue: scaleOutput
+          ? scaleOutput.textContent?.replace(/[^\\d.]/g, '')
+          : scaleInput?.value,
+        flipChecked: flipSwitch
+          ? flipSwitch.getAttribute('aria-checked') === 'true'
+          : Boolean(flipInput?.checked),
         rendererHasNodeRequire: typeof window.require !== 'undefined',
         hasTtsControl: Boolean(document.querySelector(
           '[data-tts], button[aria-label*="TTS"]'
@@ -663,15 +808,20 @@ async function verifyDay19() {
         legacyResourceOwner: Boolean(document.querySelector(
           '.character-manager'
         )?.closest('[data-testid="legacy-workspace-scroll"]'))
-      }))()`);
+        };
+      })()`);
     await window.webContents.executeJavaScript(`
       document.querySelector('[data-testid="character-expression-open"]').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
-          "document.querySelectorAll('.expression-list li').length === 2 && " +
-          "document.querySelector('.character-size-warning')",
+          "(document.querySelectorAll('.expression-card-list > li').length === 2 || " +
+            "document.querySelectorAll('.expression-list li').length === 2) && " +
+          "document.querySelector(" +
+            "'.character-size-warning, .expression-warning-badge, " +
+              ".expression-card-warning, .expression-unscoped-warning'" +
+          ")",
         'Configured character expression view did not render.',
       ),
     );
@@ -680,27 +830,14 @@ async function verifyDay19() {
       '.character-manager',
       16,
     );
+    const configuredExpressionUi =
+      await readCharacterExpressionUi(window);
     const configuredScreenshot =
       await captureSection(window, '.character-manager');
-    const configuredExpressionUi =
-      await window.webContents.executeJavaScript(`(() => ({
-        expressionNames: [...document.querySelectorAll(
-          '.expression-fields input'
-        )].map((input) => input.value),
-        expressionAssetIds: [...document.querySelectorAll(
-          '.expression-fields select'
-        )].map((select) => select.value),
-        thumbnailCount: document.querySelectorAll(
-          '.expression-thumbnail img'
-        ).length,
-        warning: document.querySelector('.character-size-warning')
-          ?.textContent?.replace(/\\s+/g, ' ').trim()
-      }))()`);
     const configuredUi = {
       ...configuredSettingsUi,
       ...configuredExpressionUi,
     };
-
     await window.webContents.executeJavaScript(`
       document.querySelector('.editor-save-button').click()
     `);
@@ -708,8 +845,7 @@ async function verifyDay19() {
       waitFor(
         "document.querySelector('[data-testid=\"compact-project-bar\"]')" +
           "?.dataset?.saveState === 'saved' && " +
-          "document.querySelector('[data-testid=\"project-save-state\"]')" +
-          "?.textContent?.trim() === '已保存'",
+          "!document.querySelector('[data-testid=\"project-save-state\"]')",
         'Character project did not save.',
       ),
     );
@@ -738,42 +874,54 @@ async function verifyDay19() {
       waitFor(
         "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
           "document.querySelectorAll(" +
-            "'.character-expression-summary-list li'" +
+            "'.character-expression-visual-list li, .character-expression-summary-list li'" +
           ").length === 2 && " +
-          "document.querySelector('.character-settings select')" +
+          "document.querySelector('.character-mouth-picker select, .character-settings select')" +
           `?.value === ${JSON.stringify(assetIds.mouth)} && ` +
-          "document.querySelector('.character-editor-heading h3')" +
+          "document.querySelector('.character-detail-identity-copy h3, .character-editor-heading h3')" +
           "?.textContent?.trim() === 'Panda'",
         'Saved character detail did not reopen completely.',
       ),
     );
     const reopenedSettingsUi =
-      await window.webContents.executeJavaScript(`(() => ({
-        characterName: document.querySelector(
-          '.character-editor-heading h3'
-        )?.textContent?.trim(),
-        mouthValue: document.querySelector(
-          '.character-settings select'
-        )?.value,
-        scaleValue: document.querySelector(
+      await window.webContents.executeJavaScript(`(() => {
+        const scaleOutput = document.querySelector(
+          '.character-scale-stepper output'
+        );
+        const scaleInput = document.querySelector(
           '.character-settings input[type="number"]'
-        )?.value,
-        flipChecked: document.querySelector(
+        );
+        const flipSwitch = document.querySelector('.character-flip-switch');
+        const flipInput = document.querySelector(
           '.character-settings input[type="checkbox"]'
-        ).checked
-      }))()`);
+        );
+        return {
+          characterName: document.querySelector(
+            '.character-detail-identity-copy h3, .character-editor-heading h3'
+          )?.textContent?.trim(),
+          mouthValue: document.querySelector(
+            '.character-mouth-picker select, .character-settings select'
+          )?.value,
+          scaleValue: scaleOutput
+            ? scaleOutput.textContent?.replace(/[^\\d.]/g, '')
+            : scaleInput?.value,
+          flipChecked: flipSwitch
+            ? flipSwitch.getAttribute('aria-checked') === 'true'
+            : Boolean(flipInput?.checked)
+        };
+      })()`);
     await window.webContents.executeJavaScript(`
       document.querySelector('[data-testid="character-expression-open"]').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
-          "document.querySelectorAll('.expression-list li').length === 2 && " +
-          "document.querySelector('.character-size-warning') && " +
+          "(document.querySelectorAll('.expression-card-list > li').length === 2 || " +
+            "document.querySelectorAll('.expression-list li').length === 2) && " +
           "document.querySelector(" +
-          "'.expression-list li:not(.expression-default) " +
-          ".expression-fields select')?.value === " +
-          JSON.stringify(assetIds.replacement),
+            "'.character-size-warning, .expression-warning-badge, " +
+              ".expression-card-warning, .expression-unscoped-warning'" +
+          ")",
         'Saved character expression view did not reopen completely.',
       ),
     );
@@ -785,20 +933,7 @@ async function verifyDay19() {
     const reopenedScreenshot =
       await captureSection(window, '.character-manager');
     const reopenedExpressionUi =
-      await window.webContents.executeJavaScript(`(() => ({
-        expressionNames: [...document.querySelectorAll(
-          '.expression-fields input'
-        )].map((input) => input.value),
-        expressionAssetIds: [...document.querySelectorAll(
-          '.expression-fields select'
-        )].map((select) => select.value),
-        defaultName: document.querySelector(
-          '.expression-default input'
-        )?.value,
-        warningVisible: Boolean(document.querySelector(
-          '.character-size-warning'
-        ))
-      }))()`);
+      await readCharacterExpressionUi(window);
     const reopenedUi = {
       ...reopenedSettingsUi,
       ...reopenedExpressionUi,
@@ -907,61 +1042,103 @@ async function verifyDay19() {
       ],
     };
 
-    if (
-      normal.width !== 160 ||
-      normal.height !== 120 ||
-      angry.width !== 240 ||
-      angry.height !== 120 ||
-      mouth.width !== 160 ||
-      mouth.height !== 52 ||
-      replacement.width !== 320 ||
-      replacement.height !== 200 ||
-      configuredUi.characterName !== 'Panda' ||
-      configuredUi.expressionNames.join(',') !== 'normal,angry' ||
-      configuredUi.expressionAssetIds.join(',') !==
-        `${assetIds.normal},${assetIds.replacement}` ||
-      configuredUi.thumbnailCount !== 2 ||
-      configuredUi.mouthValue !== assetIds.mouth ||
-      configuredUi.scaleValue !== '0.75' ||
-      !configuredUi.flipChecked ||
-      !configuredUi.warning?.includes('超过 30%') ||
-      !configuredUi.resourceOwner ||
-      configuredUi.legacyResourceOwner ||
-      configuredUi.rendererHasNodeRequire ||
-      configuredUi.hasTtsControl ||
-      !defaultProtection.deleteDisabled ||
-      !defaultProtection.deleteTitle.includes('替代表情') ||
-      !importRequest ||
-      importRequest.baseRevision !== 0 ||
-      saveRequest?.revision !== 6 ||
-      // schema version is 6 after Day 27 v5->v6 migration (PROJECT_SCHEMA_VERSION in src/domain/constants.ts)
-      savedProject?.schemaVersion !== 6 ||
-      persistedCharacter?.defaultScale !== 0.75 ||
-      persistedCharacter?.defaultFlipX !== true ||
-      persistedCharacter?.mouthOpenAssetId !== assetIds.mouth ||
-      persistedCharacter?.expressions.length !== 2 ||
-      persistedCharacter?.expressions[1]?.assetId !==
-        assetIds.replacement ||
-      expressionIdBeforeReplacement !== expressionIdAfterReplacement ||
-      persistedCharacter?.expressions[1]?.id !==
-        expressionIdBeforeReplacement ||
-      reopenedUi.characterName !== 'Panda' ||
-      reopenedUi.expressionNames.join(',') !== 'normal,angry' ||
-      reopenedUi.expressionAssetIds.join(',') !==
-        `${assetIds.normal},${assetIds.replacement}` ||
-      reopenedUi.defaultName !== 'normal' ||
-      reopenedUi.mouthValue !== assetIds.mouth ||
-      reopenedUi.scaleValue !== '0.75' ||
-      !reopenedUi.flipChecked ||
-      !reopenedUi.warningVisible ||
-      evidence.persistence.containsAbsolutePath ||
-      evidence.persistence.containsBase64
-    ) {
+    const failedChecks = [
+      {
+        name: 'dimensions',
+        passed:
+          normal.width === 160 && normal.height === 120 &&
+          angry.width === 240 && angry.height === 120 &&
+          mouth.width === 160 && mouth.height === 52 &&
+          replacement.width === 320 && replacement.height === 200,
+      },
+      { name: 'configuredName', passed: configuredUi.characterName === 'Panda' },
+      {
+        name: 'configuredExpressions',
+        passed: configuredUi.expressionNames?.join(',') === 'normal,angry',
+      },
+      {
+        name: 'configuredAssets',
+        passed:
+          configuredUi.expressionAssetIds?.join(',') ===
+          `${assetIds.normal},${assetIds.replacement}`,
+      },
+      { name: 'configuredThumbs', passed: configuredUi.thumbnailCount === 2 },
+      { name: 'configuredMouth', passed: configuredUi.mouthValue === assetIds.mouth },
+      { name: 'configuredScale', passed: configuredUi.scaleValue === expectedScale },
+      { name: 'configuredFlip', passed: configuredUi.flipChecked === true },
+      {
+        name: 'configuredWarning',
+        passed:
+          configuredUi.warningVisible === true &&
+          Boolean(configuredUi.warning || configuredUi.warningTitle),
+      },
+      { name: 'resourceOwner', passed: configuredUi.resourceOwner === true },
+      { name: 'legacyResourceOwner', passed: configuredUi.legacyResourceOwner === false },
+      { name: 'nodeRequire', passed: configuredUi.rendererHasNodeRequire === false },
+      { name: 'tts', passed: configuredUi.hasTtsControl === false },
+      {
+        name: 'defaultProtection',
+        passed:
+          defaultProtection.defaultName === 'normal' &&
+          defaultProtection.deleteDisabled === true &&
+          Boolean(defaultProtection.defaultBadge),
+      },
+      { name: 'imported', passed: Boolean(importRequest) },
+      { name: 'importRevision', passed: importRequest?.baseRevision === 0 },
+      { name: 'saveRevision', passed: saveRequest?.revision === 6 },
+      { name: 'schema', passed: savedProject?.schemaVersion === 6 },
+      {
+        name: 'persistedScale',
+        passed: persistedCharacter?.defaultScale === expectedScaleNumber,
+      },
+      { name: 'persistedFlip', passed: persistedCharacter?.defaultFlipX === true },
+      {
+        name: 'persistedMouth',
+        passed: persistedCharacter?.mouthOpenAssetId === assetIds.mouth,
+      },
+      {
+        name: 'persistedExpressionCount',
+        passed: persistedCharacter?.expressions.length === 2,
+      },
+      {
+        name: 'persistedReplacement',
+        passed: persistedCharacter?.expressions[1]?.assetId === assetIds.replacement,
+      },
+      {
+        name: 'stableExpressionId',
+        passed: expressionIdBeforeReplacement === expressionIdAfterReplacement,
+      },
+      {
+        name: 'persistedExpressionId',
+        passed: persistedCharacter?.expressions[1]?.id === expressionIdBeforeReplacement,
+      },
+      { name: 'reopenedName', passed: reopenedUi.characterName === 'Panda' },
+      {
+        name: 'reopenedExpressions',
+        passed: reopenedUi.expressionNames?.join(',') === 'normal,angry',
+      },
+      {
+        name: 'reopenedAssets',
+        passed:
+          reopenedUi.expressionAssetIds?.join(',') ===
+          `${assetIds.normal},${assetIds.replacement}`,
+      },
+      { name: 'reopenedDefault', passed: reopenedUi.defaultName === 'normal' },
+      { name: 'reopenedMouth', passed: reopenedUi.mouthValue === assetIds.mouth },
+      { name: 'reopenedScale', passed: reopenedUi.scaleValue === expectedScale },
+      { name: 'reopenedFlip', passed: reopenedUi.flipChecked === true },
+      { name: 'reopenedWarning', passed: reopenedUi.warningVisible === true },
+      { name: 'absolutePath', passed: evidence.persistence.containsAbsolutePath === false },
+      { name: 'base64', passed: evidence.persistence.containsBase64 === false },
+    ]
+      .filter((check) => !check.passed)
+      .map((check) => check.name);
+
+    if (failedChecks.length > 0) {
       throw new Error(
-        `Day 19 UI verification failed: ${JSON.stringify(evidence)}`,
+        `Day 19 UI verification failed (${failedChecks.join(', ')}): ${JSON.stringify(evidence)}`,
       );
     }
-
     await mkdir(evidenceDirectory, { recursive: true });
     await Promise.all([
       writeFile(

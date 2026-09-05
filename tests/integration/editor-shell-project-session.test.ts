@@ -71,8 +71,6 @@ function renderCompactProjectBar(
       onSaveProject: vi.fn(),
       onOpenProductPreview: vi.fn(),
       onRequestCloseProject: vi.fn(),
-      deviceMode: 'auto',
-      onDeviceModeChange: vi.fn(),
     }),
   );
 }
@@ -642,8 +640,6 @@ describe('EditorShell project session integration', () => {
         onSaveProject: vi.fn(),
         onOpenProductPreview: vi.fn(),
         onRequestCloseProject: vi.fn(),
-        deviceMode: 'auto',
-        onDeviceModeChange: vi.fn(),
       }),
     );
     expect(markup).toContain(`title="${PROJECT_ROOT}"`);
@@ -728,8 +724,8 @@ describe('EditorShell project session integration', () => {
     expect(markup).not.toContain('Crash recovery');
     expect(markup).not.toContain('recovered');
     expect(markup).not.toContain('Recovered');
-    expect(markup).toContain('data-testid="project-save-state"');
-    expect(markup).toContain('已保存');
+    expect(markup).not.toContain('data-testid="project-save-state"');
+    expect(markup).toContain('data-save-state="saved"');
     expect(markup).toContain('aria-label="保存整个项目"');
   });
 
@@ -745,7 +741,8 @@ describe('EditorShell project session integration', () => {
 
     expect(markup).toContain('data-testid="compact-project-more"');
     // Opening the preview must not change the saved/dirty presentation.
-    expect(markup).toContain('已保存');
+    expect(markup).not.toContain('data-testid="project-save-state"');
+    expect(markup).toContain('data-save-state="saved"');
     expect(markup).toMatch(/class="editor-save-button"[^>]*disabled/u);
   });
 
@@ -774,7 +771,8 @@ describe('EditorShell project session integration', () => {
 
     expect(markup).not.toContain('data-testid="open-project-center"');
     // Confirming a close must not pre-emptively change project state.
-    expect(markup).toContain('已保存');
+    expect(markup).not.toContain('data-testid="project-save-state"');
+    expect(markup).toContain('data-save-state="saved"');
     expect(markup).toContain(PROJECT_ROOT);
   });
 

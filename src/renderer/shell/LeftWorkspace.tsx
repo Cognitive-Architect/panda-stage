@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
 import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
-import { ProjectToolsDrawer } from './ProjectToolsDrawer';
 
 export interface LeftWorkspaceProps {
   projectSnapshot: EditorProjectSnapshot;
@@ -31,12 +29,6 @@ export function LeftWorkspace({
   onActiveActivityChange,
   onOpenRecentProject,
 }: LeftWorkspaceProps): React.JSX.Element {
-  const [projectToolsOpen, setProjectToolsOpen] = useState(false);
-
-  useEffect(() => {
-    setProjectToolsOpen(false);
-  }, [projectSnapshot.projectRoot]);
-
   const projectUtilities = (
     <>
       <ProjectRecoveryPanel
@@ -68,20 +60,7 @@ export function LeftWorkspace({
         key={`resource:${projectSnapshot.projectRoot}`}
         onActiveActivityChange={onActiveActivityChange}
         onDrawerOpenChange={onDrawerOpenChange}
-        onProjectToolsOpenChange={setProjectToolsOpen}
         presentation={shellMode === 'landscape' ? 'landscape' : 'default'}
-        projectToolsContent={
-          shellMode === 'landscape' ? (
-            <ProjectToolsDrawer
-              key={`project-tools:${projectSnapshot.projectRoot}`}
-              onClose={() => setProjectToolsOpen(false)}
-              onOpenRecentProject={onOpenRecentProject}
-              projectSnapshot={projectSnapshot}
-              recentRefreshToken={recentRefreshToken}
-            />
-          ) : undefined
-        }
-        projectToolsOpen={shellMode === 'landscape' && projectToolsOpen}
         snapshot={projectSnapshot}
       />
     </aside>

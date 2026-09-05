@@ -117,6 +117,12 @@ describe('Issue 197 Timeline collapse releases vertical space to Canvas', () => 
     );
   });
 
+  it('reserves one visible toolbar row in Cloud Touch landscape', () => {
+    expect(styles).toMatch(
+      /\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\][\s\S]*?\.bottom-workspace\[data-resizable='true'\]\[data-timeline-expanded='false'\]\s*\{[\s\S]*?height:\s*50px;[\s\S]*?min-height:\s*50px;[\s\S]*?max-height:\s*50px;[\s\S]*?overflow:\s*hidden;/u,
+    );
+  });
+
   it('lets the released height flow into the Canvas row instead of the bottom owner', () => {
     // `.editor-layout` middle row is the only flexible row: when the auto-sized
     // bottom row shrinks, that row (which hosts `.editor-body` / Canvas) grows.
@@ -172,6 +178,9 @@ describe('Issue 197 Timeline collapse releases vertical space to Canvas', () => 
     // The gate must compare live measurements, not re-assert the CSS numbers.
     expect(gate).toContain('collapsed.bottom.height < expanded.bottom.height');
     expect(gate).toContain('collapsed.editorBody.height > expanded.editorBody.height');
+    expect(gate).toContain('collapsed.reopenVisible?.fullyVisible');
+    expect(gate).toContain('collapsed.timecodeVisible?.fullyVisible');
+    expect(gate).toContain('window.webContents.sendInputEvent');
     expect(gate).toContain('app.exit(exitCode)');
   });
 });

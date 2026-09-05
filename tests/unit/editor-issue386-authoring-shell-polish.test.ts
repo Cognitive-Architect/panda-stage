@@ -30,15 +30,15 @@ describe('Issue #386 Stage B subtitle authoring shell polish', () => {
   it('gives Single Add a primary/content and secondary/context composition', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
 
-    expect(sheet).toContain(
-      'dialogue-authoring-section dialogue-authoring-copy-section',
-    );
-    expect(sheet).toContain(
-      'dialogue-authoring-section dialogue-authoring-speaker-section',
-    );
-    expect(sheet).toContain(
-      'dialogue-authoring-section dialogue-authoring-placement',
-    );
+    // Issue #430 P-02 keeps the speaker/copy/placement/audio capability but
+    // removes the legacy "card inside card" wrappers in the right-workspace
+    // presentation. The portrait timeline presentation keeps the historical
+    // section class names, so we assert on the data-testid hooks and the
+    // capability-bearing field markers shared by both presentations.
+    expect(sheet).toContain('dialogue-authoring-field');
+    expect(sheet).toContain('dialogue-authoring-speaker-field');
+    expect(sheet).toContain('dialogue-authoring-copy-field');
+    expect(sheet).toContain('dialogue-authoring-placement-field');
     expect(sheet).toContain('data-testid="dialogue-authoring-playhead"');
     expect(sheet).toContain('data-testid="dialogue-authoring-audio"');
     expect(sheet).toContain('data-audio-state="unbound"');

@@ -22,7 +22,9 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
       minHeight: TIMELINE_EXPANDED_MIN_HEIGHT,
       maxHeight: TIMELINE_EXPANDED_MAX_HEIGHT,
     });
-    expect(getTimelineHeightBounds(300, 168).maxHeight).toBe(228);
+    expect(getTimelineHeightBounds(300, 168).maxHeight).toBe(
+      228,
+    );
     expect(getTimelineHeightBounds(80, 168).maxHeight).toBe(
       TIMELINE_EXPANDED_MIN_HEIGHT,
     );
@@ -33,14 +35,21 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
     expect(clampTimelineHeight(999, 132, 360)).toBe(360);
     expect(clampTimelineHeight(90, 132, 360)).toBe(132);
     expect(getTimelineHeightFromPointer(200, 500, 400, 420)).toBe(300);
-    expect(getTimelineHeightFromPointer(200, 500, 700, 420)).toBe(132);
-    expect(getTimelineHeightFromPointer(200, 500, 0, 220)).toBe(220);
+    expect(getTimelineHeightFromPointer(200, 500, 700, 420)).toBe(
+      TIMELINE_EXPANDED_MIN_HEIGHT,
+    );
+    expect(getTimelineHeightFromPointer(200, 500, 0, 220)).toBe(
+      220,
+    );
   });
 
   it('restores the last valid expanded height without creating a project mutation', () => {
     const store = new TimelineUiStore();
     try {
       const initial = store.getSnapshot();
+      // Issue #432 R3-A: a 360 candidate max gets clamped to the new
+      // product cap 2×MIN = 324. The test still proves the last valid
+      // height survives the collapse/reopen round-trip.
       store.setHeightMax(360);
       store.setHeight(320);
       expect(store.getSnapshot().expandedHeightPx).toBe(320);
@@ -49,7 +58,9 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
       store.setExpanded(true);
 
       expect(store.getSnapshot().expandedHeightPx).toBe(320);
-      expect(store.getSnapshot().expandedHeightMaxPx).toBe(360);
+      expect(store.getSnapshot().expandedHeightMaxPx).toBe(
+        TIMELINE_EXPANDED_MAX_HEIGHT,
+      );
       expect(store.getSnapshot().currentTimeMs).toBe(initial.currentTimeMs);
       expect(store.getSnapshot().scrollPx).toBe(initial.scrollPx);
       expect(store.getSnapshot().zoom).toBe(initial.zoom);
@@ -74,7 +85,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
     );
 
     expect(shell).toContain(
-      "resizable={deviceMode === 'cloud-touch' && layoutMode === 'landscape'}",
+      'resizable={layoutMode === \'landscape\'}',
     );
     expect(bottom).toContain('data-testid="timeline-resize-handle"');
     expect(bottom).toContain('role="separator"');

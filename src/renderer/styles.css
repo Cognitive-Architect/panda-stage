@@ -405,38 +405,6 @@ button:disabled {
   background: #28663f;
 }
 
-.compact-project-device-mode {
-  display: grid;
-  gap: 4px;
-  padding: 8px 4px;
-  margin: 2px 0;
-  border-top: 1px solid rgb(127 199 148 / 24%);
-  border-bottom: 1px solid rgb(127 199 148 / 24%);
-}
-
-.compact-project-device-mode-label {
-  padding: 2px 4px;
-  color: #aebfb4;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.compact-project-menu .compact-project-device-mode-option {
-  min-height: 38px;
-  border: 1px solid transparent;
-  text-align: left;
-}
-
-.compact-project-menu
-  .compact-project-device-mode-option[aria-checked='true'] {
-  border-color: rgb(154 216 172 / 72%);
-  background: rgb(40 102 63 / 72%);
-  color: #f3fff5;
-  box-shadow: inset 3px 0 0 #8bd39b;
-}
-
 .editor-layout > .recovery-panel {
   width: 100%;
   max-width: none;
@@ -890,20 +858,28 @@ button:disabled {
   padding: 8px 10px;
 }
 
+/* Issue #436 LM-004: visually flatten the central Canvas shell.
+   The outer .canvas-workspace no longer carries its own panel chrome
+   (border / border-radius / background / padding). It stays a layout
+   container that lets the central area read as the editor's open
+   working surface. Functional wrappers below (canvas-viewport,
+   canvas-viewport-content, canvas-logical-stage, project-canvas-stage)
+   keep their full identity because they participate in fit / scroll /
+   pointer mapping / drop / transform. */
 .canvas-workspace {
   min-width: 0;
   min-height: 0;
-  padding: 10px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  border: 1px solid rgb(127 199 148 / 22%);
-  border-radius: 14px;
-  background: rgb(8 14 10 / 74%);
-  scrollbar-color: #3f6d4e #0a100c;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .canvas-workspace .project-canvas {
   max-width: none;
+  width: 100%;
+  height: 100%;
   margin: 0;
 }
 
@@ -2699,6 +2675,1162 @@ button:disabled {
 
   .fla-review-session[data-workbench-route='raster'] .fla-review-heading > button {
     justify-self: start;
+  }
+}
+
+/* Issue #426 R1: one docked Right Workspace owns the landscape activity rail
+   and its single surface. The surface consumes layout width so it pushes the
+   Canvas instead of covering it; portrait keeps the existing shell path. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-body:has(.right-workspace[data-surface-open='true']) {
+  grid-template-columns: 56px minmax(0, 1fr) 424px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-workspace {
+  display: grid;
+  width: 56px;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  margin-left: auto;
+  grid-template-columns: 0 56px;
+  gap: 0;
+  transition: width 120ms ease;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-workspace[data-surface-open='true'] {
+  width: 424px;
+  grid-template-columns: minmax(0, 360px) 56px;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-activity-rail {
+  display: grid;
+  width: 56px;
+  height: min(100%, 360px);
+  padding: 0;
+  margin: 0;
+  align-content: start;
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-rows: repeat(3, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-activity-rail
+  button {
+  display: grid;
+  width: 52px;
+  min-height: 72px;
+  padding: 10px 4px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: 12px;
+  color: #a9c5b0;
+  background: #142019;
+  place-items: center;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-activity-rail
+  button:hover:not(:disabled),
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-activity-rail
+  button.right-activity-rail-active {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #d8f2df;
+  background: rgb(45 104 62 / 28%);
+  box-shadow: inset 0 0 0 1px rgb(131 211 154 / 10%),
+    0 0 14px rgb(131 211 154 / 8%);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-activity-rail
+  button:focus-visible {
+  outline: 3px solid rgb(149 224 172 / 42%);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-activity-rail
+  strong {
+  font-size: 12px;
+  line-height: 1.1;
+  writing-mode: vertical-rl;
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-workspace-surface {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  grid-column: 1;
+  grid-row: 1;
+  border: 1px solid rgb(127 199 148 / 38%);
+  border-radius: 14px;
+  background: #122018;
+  box-shadow: -18px 0 34px rgb(0 0 0 / 24%);
+  scrollbar-color: #3f6d4e #0a100c;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-workspace-surface[data-active-activity='properties'] {
+  overflow-y: hidden;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-workspace-surface:focus {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-workspace
+  .right-inspector-embedded {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-workspace
+  .right-inspector-drawer-embedded {
+  position: static;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.right-workspace-content-header {
+  display: grid;
+  min-height: 72px;
+  padding: 12px;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 10px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.right-workspace-content-header .eyebrow,
+.right-workspace-content-header h2 {
+  margin: 0;
+}
+
+.right-workspace-content-header h2 {
+  font-size: 18px;
+}
+
+.right-workspace-close {
+  display: inline-grid;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  place-items: center;
+}
+
+.subtitle-workspace-placeholder-body {
+  display: grid;
+  min-height: 220px;
+  padding: 28px 24px;
+  align-content: center;
+  justify-items: center;
+  color: var(--ui-color-text-secondary);
+  text-align: center;
+  gap: 10px;
+}
+
+.subtitle-workspace-placeholder-body strong {
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+}
+
+.subtitle-workspace-placeholder-body p {
+  max-width: 25ch;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Issue #428 R2: the existing DialogueSheet is presented by the Right
+   Workspace. Only the queue/authoring surface scrolls; the editor page and
+   Bottom Timeline remain independent, fixed owners. */
+.dialogue-authoring-scroll-body {
+  display: contents;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-workspace-surface[data-active-activity='subtitles'] {
+  overflow: hidden;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  border: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace[data-task-tray-state='single-add'],
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace[data-task-tray-state='batch-paste'] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  > .dialogue-sheet-header {
+  display: grid;
+  min-height: 72px;
+  padding: 12px;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-sheet-heading,
+.dialogue-sheet-right-workspace .dialogue-sheet-heading p,
+.dialogue-sheet-right-workspace .dialogue-sheet-heading h3 {
+  min-width: 0;
+  margin: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-sheet-heading h3 {
+  font-size: 17px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-sheet-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-open,
+.dialogue-sheet-right-workspace .dialogue-secondary-action {
+  display: inline-flex;
+  min-height: 40px;
+  padding: 8px 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.dialogue-sheet-right-workspace .timeline-subtitle-queue {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.dialogue-sheet-right-workspace .timeline-subtitle-queue-intro {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-queue {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 4px 0 0;
+  margin: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  list-style: none;
+  gap: 8px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-item {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 10px;
+  background: rgb(8 18 12 / 42%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-item[data-selected='true'] {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 24%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-select {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 76px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'speaker status'
+    'copy affordance';
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  text-align: left;
+  gap: 4px 10px;
+  touch-action: pan-y;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-select:hover,
+.dialogue-sheet-right-workspace .dialogue-untimed-select:focus-visible {
+  background: rgb(83 145 101 / 14%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-speaker {
+  overflow: hidden;
+  grid-area: speaker;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-text {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  grid-area: copy;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-status {
+  grid-area: status;
+  color: #8fb59a;
+  font-size: 11px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-affordance {
+  display: inline-flex;
+  grid-area: affordance;
+  align-items: center;
+  justify-content: flex-end;
+  color: #9bc4a6;
+  font-size: 11px;
+  gap: 2px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-action-strip {
+  display: grid;
+  padding: 10px 12px;
+  border-top: 1px solid rgb(255 255 255 / 7%);
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-action-meta,
+.dialogue-sheet-right-workspace .dialogue-untimed-action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-shell {
+  --subtitle-drawer-content-gutter: 12px;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+  gap: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-scroll-body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  gap: 12px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-header p,
+.dialogue-sheet-right-workspace .dialogue-authoring-header h3 {
+  margin: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tabs,
+.dialogue-sheet-right-workspace .dialogue-authoring-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-mode,
+.dialogue-sheet-right-workspace .dialogue-authoring-single-grid {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-section {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 9px;
+  background: rgb(0 0 0 / 12%);
+  gap: 7px;
+}
+
+.dialogue-sheet-right-workspace textarea,
+.dialogue-sheet-right-workspace select {
+  width: 100%;
+  min-width: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-task-body-empty {
+  display: grid;
+  min-height: 0;
+  padding: 22px;
+  overflow-y: auto;
+  align-content: center;
+  justify-items: center;
+  color: var(--ui-color-text-secondary);
+  text-align: center;
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .subtitle-workspace-empty-art {
+  width: 132px;
+  max-width: 54%;
+  height: auto;
+  margin-bottom: 4px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-task-body-empty strong {
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-task-body-empty span {
+  max-width: 24ch;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dialogue-sheet-right-workspace .subtitle-workspace-empty-action {
+  margin-top: 8px;
+}
+
+/* Issue #430 P-01/P-02/P-03: R2 subtitle drawer polish.
+   - Formal drawer header with subtitle icon + 字幕 + Close ×
+   - Pending queue section heading + bottom 新建字幕 CTA
+   - Segmented 单条/批量 control with dark form controls
+   - Source placeholder while drag is in flight
+*/
+.dialogue-sheet-right-workspace
+  > .dialogue-sheet-header.dialogue-drawer-header {
+  min-height: 56px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  background: rgb(8 18 12 / 60%);
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.dialogue-sheet-right-workspace .dialogue-drawer-header-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--ui-color-text-primary);
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-drawer-header-identity
+  > .dialogue-drawer-header-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border-radius: 8px;
+  color: var(--ui-color-text-primary, #d6efd9);
+  background: rgb(83 145 101 / 14%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-drawer-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* P-01: pending queue section heading + bottom new-subtitle CTA */
+.dialogue-sheet-right-workspace .dialogue-pending-queue-heading {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-color-text-primary);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-pending-queue-heading
+  > .dialogue-untimed-count {
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-queue-footer {
+  display: flex;
+  justify-content: stretch;
+  padding: 6px 4px 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-queue-create {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px dashed rgb(177 232 193 / 50%);
+  border-radius: 10px;
+  background: rgb(83 145 101 / 10%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-queue-create:hover,
+.dialogue-sheet-right-workspace .dialogue-pending-queue-create:focus-visible {
+  background: rgb(83 145 101 / 20%);
+}
+
+/* P-01: pending card affordance label + placeholder while dragging */
+.dialogue-sheet-right-workspace .dialogue-untimed-affordance {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-affordance-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-card-placeholder {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border: 1px dashed rgb(177 232 193 / 60%);
+  border-radius: 9px;
+  background: rgb(83 145 101 / 8%);
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  user-select: none;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-card-placeholder-text {
+  opacity: 0.85;
+}
+
+/* P-02: secondary authoring back + segmented control + dark form fields */
+.dialogue-sheet-right-workspace .dialogue-authoring-secondary-nav {
+  display: flex;
+  align-items: center;
+  padding: 8px 0 0;
+  margin-inline: var(--subtitle-drawer-content-gutter);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-back:hover,
+.dialogue-sheet-right-workspace .dialogue-authoring-back:focus-visible {
+  background: rgb(83 145 101 / 14%);
+}
+
+.dialogue-sheet-right-workspace
+  > .dialogue-authoring-shell
+  > .dialogue-sheet-header.dialogue-drawer-header {
+  min-height: 56px;
+}
+
+.dialogue-sheet-right-workspace
+  > .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body
+  > .dialogue-authoring-header {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tabs {
+  display: grid;
+  width: auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  margin: 0 var(--subtitle-drawer-content-gutter);
+  padding: 4px;
+  background: rgb(8 18 12 / 70%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 10px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tab[data-active='true'] {
+  background: rgb(83 145 101 / 26%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  box-shadow: inset 0 0 0 1px rgb(177 232 193 / 50%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tab:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, #b1e8c1);
+  outline-offset: 1px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-mode {
+  padding: 0 0 12px;
+  margin-inline: var(--subtitle-drawer-content-gutter);
+  gap: 14px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-single-grid {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field > label,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-field-label {
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > select,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  background: rgb(8 18 12 / 80%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea {
+  min-height: 96px;
+  padding: 10px 70px 28px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea::placeholder,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > input::placeholder {
+  color: rgb(159 192 164 / 70%);
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea:focus-visible,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > select:focus-visible,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > input:focus-visible {
+  outline: none;
+  border-color: rgb(177 232 193 / 60%);
+  box-shadow: 0 0 0 2px rgb(83 145 101 / 20%);
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea[aria-invalid='true'],
+.dialogue-sheet-right-workspace .dialogue-authoring-field > select[aria-invalid='true'],
+.dialogue-sheet-right-workspace .dialogue-authoring-field > input[aria-invalid='true'] {
+  border-color: rgb(214 139 102 / 80%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced {
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 10px;
+  background: rgb(8 18 12 / 50%);
+  padding: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 12px;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field-hint {
+  margin: 0;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-playhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgb(8 18 12 / 60%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 12px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-footer {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0 14px;
+  padding-inline: 0;
+  background: transparent;
+  border: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #6fbb87 0%, #4f9a6b 100%);
+  color: #0a1a10;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit:disabled {
+  background: rgb(83 145 101 / 20%);
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  cursor: not-allowed;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-helper {
+  margin: 0;
+  text-align: center;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-error {
+  margin: 0;
+  color: var(--ui-color-danger, #e28a7a);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Issue #431 P-06: keep the single-authoring shortcut and live count inside
+   the textarea without changing its validation or keyboard behavior. */
+.dialogue-sheet-right-workspace .dialogue-authoring-textarea-shell {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-textarea-count {
+  position: absolute;
+  right: 22px;
+  bottom: 9px;
+  color: rgb(159 192 164 / 68%);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* P-03: source placeholder; while a card is dragging, keep its slot reserved
+   in the right-rail pending queue. */
+.dialogue-sheet-right-workspace
+  .dialogue-pending-card.is-pending-dragging {
+  background: transparent;
+  border-style: dashed;
+  border-color: rgb(177 232 193 / 40%);
+  opacity: 1;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-pending-card.is-pending-dragging
+  .dialogue-pending-card-placeholder {
+  width: 100%;
+}
+
+/* Batch mode inherits the same dark form system. */
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-batch
+  .dialogue-authoring-field
+  > textarea,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-batch
+  .dialogue-authoring-field
+  > select,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-batch
+  .dialogue-authoring-field
+  > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  background: rgb(8 18 12 / 80%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* Issue #432 R3-B: Right Subtitle Workspace height-responsive layout.
+
+   The unified Subtitle Workspace shell is a flex column. The stable header
+   (icon + 字幕 + Close), the optional secondary nav (← 新建字幕) and the
+   reachable action area (+ 新建字幕 / 创建字幕) never compress; the flexible
+   body becomes the only thing that scrolls internally when the available
+   height shrinks. The contract is enforced by the R3 Timeline resize range
+   (162..324px) on the BottomWorkspace: when the Timeline grows, the shared
+   editor body shrinks, and the right rail (the only consumer of that
+   remaining height) must adapt without clipping or page-level scroll. */
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  flex-direction: column;
+}
+
+/* DEFAULT_PENDING: the queue becomes a flex column with stable heading,
+   internal scroll list, and stable footer (+ 新建字幕). The list keeps the
+   pre-existing internal scroll owner; the heading and footer are flex: 0 0
+   auto so they never compress even when the available height is minimal. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-pending-queue-heading,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .timeline-subtitle-queue-intro,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-authoring-queue-heading {
+  flex: 0 0 auto;
+}
+
+/* Issue #433 R3-B post-corrective: the pending list is the only internal
+   scroll owner and is a real vertical flex list. Keeping the parent/child
+   layout model consistent makes each direct card's intrinsic height part of
+   the scroll extent instead of letting Grid compress every row to fit. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-untimed-queue {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex-direction: column;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-untimed-queue
+  > .dialogue-untimed-item {
+  min-height: 76px;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-pending-queue-footer {
+  flex: 0 0 auto;
+  position: sticky;
+  bottom: -12px;
+  z-index: 2;
+  padding: 8px 0 4px;
+  background: linear-gradient(
+    180deg,
+    rgb(8 14 10 / 0%) 0%,
+    rgb(8 14 10 / 92%) 38%,
+    rgb(8 14 10 / 96%) 100%
+  );
+}
+
+/* AUTHORING: the drawer header is stable, the secondary nav (← 新建字幕)
+   stays visible, the segmented control + form body scroll internally, and
+   the primary CTA stays reachable via sticky positioning inside the
+   scroll-body. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  flex: 1 1 0;
+  flex-direction: column;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-drawer-header {
+  flex: 0 0 auto;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 12px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body
+  > .dialogue-authoring-header,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body
+  > .dialogue-authoring-tabs,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body
+  > .dialogue-authoring-mode {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-scroll-body
+  > .dialogue-authoring-mode {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-scroll-body
+  > .dialogue-authoring-mode
+  > .dialogue-authoring-single-grid,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-scroll-body
+  > .dialogue-authoring-mode
+  > .dialogue-authoring-mode-grid {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The primary CTA footer is sticky inside the scroll-body so the user can
+   always reach 创建字幕 without scrolling past every form field. A solid
+   background hides the form content behind it. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-footer {
+  position: sticky;
+  bottom: -12px;
+  z-index: 2;
+  display: flex;
+  min-width: 0;
+  padding: 10px 0 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  background: linear-gradient(
+    180deg,
+    rgb(8 14 10 / 0%) 0%,
+    rgb(8 14 10 / 92%) 38%,
+    rgb(8 14 10 / 96%) 100%
+  );
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-footer
+  > .dialogue-authoring-submit {
+  width: 100%;
+}
+
+@media (max-width: 1050px) {
+  .editor-shell[data-editor-shell-layout='landscape']
+    .editor-body:has(.right-workspace[data-surface-open='true']) {
+    grid-template-columns: 56px minmax(0, 1fr) 320px;
+  }
+
+  .editor-shell[data-editor-shell-layout='landscape']
+    .right-workspace[data-surface-open='true'] {
+    width: 320px;
+    grid-template-columns: minmax(0, 1fr) 56px;
   }
 }
 
@@ -4719,15 +5851,19 @@ button:disabled {
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-empty-state {
-  padding: 20px 16px;
+  display: grid;
+  padding: 16px;
   border: 1px solid rgb(154 216 172 / 18%);
   border-radius: 14px;
   background: rgb(18 39 27 / 54%);
+  align-content: center;
+  gap: 6px;
 }
 
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-empty {
+  margin: 0;
   color: var(--ui-color-text-primary, #eef6f0);
   font-size: 15px;
 }
@@ -4735,6 +5871,7 @@ button:disabled {
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-empty-description {
+  margin: 0;
   color: var(--ui-color-text-secondary, #aebfb4);
   font-size: 14px;
 }
@@ -8424,15 +9561,23 @@ h1 {
   font-size: 52px;
 }
 
+/* Issue #436 LM-004: drop .project-canvas inner panel chrome so the
+   central area reads as one open Canvas surface. The 1180px width
+   cap and the surrounding 18px margin/padding are removed so the
+   Canvas can grow with the body. The grid itself is kept (still owns
+   heading / viewport / toolbar rows). */
 .project-canvas {
   display: grid;
-  max-width: 1180px;
-  margin: 0 auto 18px;
-  padding: 18px;
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: 18px;
-  background: rgb(18 26 21 / 92%);
-  gap: 12px;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 6px;
+  /* padding: 0 is explicit above so the flattened contract is auditable. */
 }
 
 .project-canvas-heading,
@@ -8563,8 +9708,14 @@ h1 {
 }
 
 .canvas-toolbar {
-  flex-wrap: wrap;
-  gap: 10px 16px;
+  /* Issue #436 LM-004: compact single-line presentation that only
+     carries the scale + pointer feedback. The three mode controls
+     live in the right-side 工具 surface (see project-tools-view-mode-card). */
+  flex-wrap: nowrap;
+  gap: 12px;
+  padding: 4px 2px 0;
+  color: #91a299;
+  font-size: 11px;
 }
 
 .canvas-mode-switch {
@@ -9069,26 +10220,6 @@ h1 {
     pointer-events: none;
   }
 
-  /* V-194-01: a clear, non-keyboard close entry inside the drawer, mirroring
-     the left Resource Drawer's 关闭 button. Escape still works as a shortcut. */
-  .inspector-drawer-close {
-    display: block;
-    width: fit-content;
-    margin-left: auto;
-    margin-bottom: 8px;
-    padding: 4px 10px;
-    border: 1px solid rgb(127 199 148 / 34%);
-    border-radius: 8px;
-    color: #d8f2df;
-    background: #0f1812;
-    font-size: 12px;
-    cursor: pointer;
-  }
-
-  .inspector-drawer-close:focus-visible {
-    outline: 2px solid #7fd398;
-    outline-offset: 2px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -9918,24 +11049,10 @@ h1 {
   pointer-events: none;
 }
 
-.editor-layout[data-shell-mode='landscape'] .resource-activity-close,
-.editor-layout[data-shell-mode='landscape'] .inspector-drawer-close {
+.editor-layout[data-shell-mode='landscape'] .resource-activity-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.editor-layout[data-shell-mode='landscape'] .inspector-drawer-close {
-  display: block;
-  width: fit-content;
-  margin-left: auto;
-  margin-bottom: 8px;
-  padding: 4px 10px;
-  border: 1px solid rgb(127 199 148 / 34%);
-  border-radius: 8px;
-  color: #d8f2df;
-  background: #0f1812;
-  font-size: 12px;
 }
 
 /* Issue #371: Cloud Touch landscape keeps the existing RightInspector owner
@@ -9972,6 +11089,45 @@ h1 {
   .inspector-rail-handle strong {
   font-size: 11px;
   writing-mode: vertical-rl;
+}
+
+/* Issue #417: keep the Properties affordance as one centered icon + label
+   group. The existing rail button and drawer remain the single owner; the
+   chevron only communicates the secondary expand/collapse affordance. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-handle {
+  align-content: center;
+  gap: 5px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-icon {
+  flex: 0 0 auto;
+  color: #b9e8c4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-label {
+  font-size: 11px;
+  line-height: 1.2;
+  writing-mode: horizontal-tb;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .inspector-rail-chevron {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  color: #8eaf98;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.72;
+  place-items: center;
 }
 
 .editor-layout[data-shell-mode='portrait'] {
@@ -10139,23 +11295,10 @@ h1 {
   background: rgb(18 31 23 / 74%);
 }
 
-.editor-layout[data-shell-mode='portrait'] .resource-activity-close,
-.editor-layout[data-shell-mode='portrait'] .inspector-drawer-close {
+.editor-layout[data-shell-mode='portrait'] .resource-activity-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.editor-layout[data-shell-mode='portrait'] .inspector-drawer-close {
-  width: fit-content;
-  margin-left: auto;
-  margin-bottom: 8px;
-  padding: 8px 12px;
-  border: 1px solid rgb(127 199 148 / 34%);
-  border-radius: 8px;
-  color: #d8f2df;
-  background: #0f1812;
-  font-size: 12px;
 }
 
 .editor-layout[data-shell-mode='portrait'] .resource-workspace-handle,
@@ -11986,18 +13129,6 @@ h1 {
   align-content: start;
   gap: 10px;
   padding: 12px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .right-inspector-drawer
-  .inspector-drawer-close {
-  position: sticky;
-  z-index: 2;
-  top: 0;
-  min-height: 40px;
-  margin-bottom: 0;
-  padding: 8px 12px;
-  background: #0f1812;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -19896,22 +21027,6 @@ h1 {
     0 0 14px rgb(131 211 154 / 8%);
 }
 
-/* Issue #369: Project Tools is a first-class landscape drawer, while its
-   recent-project and ActionPreset feature owners remain unchanged. */
-.editor-shell[data-editor-shell-layout='landscape']
-  .editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock[data-project-tools='true']
-  .resource-activity-rail {
-  height: min(100%, 440px);
-  grid-template-rows: repeat(4, minmax(72px, 1fr));
-}
-
-.editor-shell[data-editor-shell-layout='landscape']
-  .editor-layout[data-shell-mode='landscape']
-  .project-tools-activity-surface {
-  padding: 0;
-}
-
 .project-tools-drawer {
   display: grid;
   min-width: 0;
@@ -20156,6 +21271,68 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+/* Issue #436 LM-004: 画布显示 section in the right-side 工具 surface.
+   Carries the three view-mode controls (适应窗口 / 50% / 实际尺寸).
+   Binds to the existing canvasViewportStore — no second viewport state. */
+.project-tools-view-mode-card {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.project-tools-view-mode-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-tools-view-mode-heading .eyebrow,
+.project-tools-view-mode-heading h3 {
+  margin: 0;
+}
+
+.project-tools-view-mode-heading h3 {
+  font-size: 16px;
+}
+
+.project-tools-view-mode-card > p {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.project-tools-view-mode-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.project-tools-view-mode-segmented button {
+  min-height: 40px;
+  padding: 6px 8px;
+  color: #99aaa0;
+  background: rgb(255 255 255 / 4%);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.project-tools-view-mode-segmented button[aria-pressed='true'] {
+  color: #e6f7ea;
+  background: #235739;
+  box-shadow: 0 0 0 1px rgb(131 211 154 / 35%);
+}
+
+.project-tools-view-mode-segmented button .ui-icon {
+  margin-right: 4px;
 }
 
 .project-tools-action-presets-view {
@@ -21750,16 +22927,18 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
-  height: var(--timeline-expanded-height, 168px);
-  min-height: 132px;
-  max-height: var(--timeline-expanded-max-height, 420px);
+  height: var(--timeline-expanded-height, 280px);
+  /* Issue #432 R3-A: MAX = 2×MIN = 324px; the fallback mirrors the live JS
+     constant in `timelineUiStore.TIMELINE_EXPANDED_MAX_HEIGHT`. */
+  min-height: var(--timeline-expanded-min-height, 162px);
+  max-height: var(--timeline-expanded-max-height, 324px);
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='false'] {
-  height: auto;
-  min-height: 0;
-  max-height: 112px;
+  height: 50px;
+  min-height: 50px;
+  max-height: 50px;
   overflow: hidden;
 }
 
@@ -23183,14 +24362,6 @@ h1 {
   .right-inspector-drawer:has(> .dialogue-inspector-landscape-properties) {
   gap: 0;
   padding: 12px 14px 20px;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .right-inspector-drawer:has(> .dialogue-inspector-landscape-properties)
-  > .inspector-drawer-close {
-  min-height: 40px;
-  margin-bottom: 8px;
-  padding: 8px 10px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -25801,6 +26972,114 @@ h1 {
     min-width: 480px;
   }
 }
+
+/* Issue #422 + #432 R3-A: the accepted Cloud Touch landscape Timeline
+   geometry is a flex column. The Toolbar stays 48px; the ruler-scroll +
+   track-stack + lanes consume the remaining expanded height and stay
+   equal-height (50/50 of the available lane area). MIN remains the
+   accepted 162px total (48 toolbar + 112 ruler-scroll-with-lanes + 2
+   border) and MAX is now exactly 2×MIN = 324px, matching the R3 product
+   contract. Issue #431 removed the obsolete Task Tray reservation; R3-A
+   further removes the fixed-height ruler/track-stack/lane reservations
+   so a Timeline resize grows real content lanes instead of an empty
+   cavity. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
+  min-height: var(--timeline-expanded-min-height, 162px);
+  max-height: var(--timeline-expanded-max-height, 324px);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-dock {
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-toolbar {
+  flex: 0 0 48px;
+  min-height: 48px;
+}
+
+/* Issue #432 R3-A: the ruler-scroll and its inner ruler-track + track-stack
+   + lanes are a flex column so the resize range 162..324px grows real
+   content. The ruler-track stays the single positioned ancestor for the
+   absolute playhead and dialogue-track. The ruler is a 28px flex child at
+   the top; the track-stack + lanes fill the rest. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-ruler-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-ruler-track {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-ruler {
+  position: relative;
+  display: block;
+  flex: 0 0 28px;
+  min-height: 28px;
+  height: 28px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-track-stack {
+  display: flex;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-lanes {
+  position: relative;
+  top: 0;
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* Issue #432 R3-A lane equality: Subtitle Track and Audio Track are equal
+   flex children (flex: 1 1 0 + min-height: 0), so the available lane area
+   is split 50/50 at every supported expanded height between MIN and MAX.
+   The grid-template-columns and lane-label sticky positioning above are
+   preserved so the existing horizontal scroll + sticky labels keep working. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-lane {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-lane + .timeline-lane {
+  border-top: 1px solid rgb(127 199 148 / 18%);
+  margin-top: 0;
+}
+
+/* Issue #431 P-04: TimelineDock no longer renders the Bottom Task Tray.
+   Its former min-height, flex reservation, local scroll owner and compact
+   density rules are intentionally absent. Toolbar/ruler/lanes and the
+   existing resize/collapse owners above remain unchanged. */
 
 /* Issue #398 final cascade: these route-scoped values intentionally come
    after the historical Stage B/R1 rules above so the deletion-first surface
