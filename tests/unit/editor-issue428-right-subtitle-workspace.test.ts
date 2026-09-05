@@ -43,7 +43,10 @@ describe('Issue #428 Right Subtitle Workspace R2', () => {
     expect(sheet).toContain('data-testid="subtitle-workspace-empty-action"');
     expect(sheet).toContain('src="/subtitle-empty-state.png"');
     expect(sheet).toContain('aria-hidden="true"');
-    expect(sheet).toContain('<GripVertical size={16} />');
+    // Issue #430 P-01 tightens the card grip to size 14 to better match the
+    // "可拖动" affordance label; size 16 is the original default that was used
+    // before this polish pass.
+    expect(sheet).toMatch(/<GripVertical size=\{14\} \/>/u);
   });
 
   it('leaves only timeline chrome and tracks in the Bottom Workspace', () => {

@@ -3143,6 +3143,414 @@ button:disabled {
   margin-top: 8px;
 }
 
+/* Issue #430 P-01/P-02/P-03: R2 subtitle drawer polish.
+   - Formal drawer header with subtitle icon + 字幕 + Close ×
+   - Pending queue section heading + bottom 新建字幕 CTA
+   - Segmented 单条/批量 control with dark form controls
+   - Source placeholder while drag is in flight
+*/
+.dialogue-sheet-right-workspace
+  > .dialogue-sheet-header.dialogue-drawer-header {
+  min-height: 56px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  background: rgb(8 18 12 / 60%);
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.dialogue-sheet-right-workspace .dialogue-drawer-header-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--ui-color-text-primary);
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-drawer-header-identity
+  > .dialogue-drawer-header-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border-radius: 8px;
+  color: var(--ui-color-text-primary, #d6efd9);
+  background: rgb(83 145 101 / 14%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-drawer-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* P-01: pending queue section heading + bottom new-subtitle CTA */
+.dialogue-sheet-right-workspace .dialogue-pending-queue-heading {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-color-text-primary);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-pending-queue-heading
+  > .dialogue-untimed-count {
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-queue-footer {
+  display: flex;
+  justify-content: stretch;
+  padding: 6px 4px 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-queue-create {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px dashed rgb(177 232 193 / 50%);
+  border-radius: 10px;
+  background: rgb(83 145 101 / 10%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-queue-create:hover,
+.dialogue-sheet-right-workspace .dialogue-pending-queue-create:focus-visible {
+  background: rgb(83 145 101 / 20%);
+}
+
+/* P-01: pending card affordance label + placeholder while dragging */
+.dialogue-sheet-right-workspace .dialogue-untimed-affordance {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-affordance-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-card-placeholder {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border: 1px dashed rgb(177 232 193 / 60%);
+  border-radius: 9px;
+  background: rgb(83 145 101 / 8%);
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  user-select: none;
+}
+
+.dialogue-sheet-right-workspace .dialogue-pending-card-placeholder-text {
+  opacity: 0.85;
+}
+
+/* P-02: secondary authoring back + segmented control + dark form fields */
+.dialogue-sheet-right-workspace .dialogue-authoring-secondary-nav {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-back:hover,
+.dialogue-sheet-right-workspace .dialogue-authoring-back:focus-visible {
+  background: rgb(83 145 101 / 14%);
+}
+
+.dialogue-sheet-right-workspace
+  > .dialogue-authoring-shell
+  > .dialogue-sheet-header.dialogue-drawer-header {
+  min-height: 56px;
+}
+
+.dialogue-sheet-right-workspace
+  > .dialogue-authoring-shell
+  > .dialogue-authoring-header {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tabs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  margin: 8px 12px 4px;
+  padding: 4px;
+  background: rgb(8 18 12 / 70%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 10px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tab[data-active='true'] {
+  background: rgb(83 145 101 / 26%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  box-shadow: inset 0 0 0 1px rgb(177 232 193 / 50%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-tab:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, #b1e8c1);
+  outline-offset: 1px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-mode {
+  padding: 8px 12px 12px;
+  gap: 14px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-single-grid {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field > label,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-field-label {
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > select,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  background: rgb(8 18 12 / 80%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea {
+  min-height: 96px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea::placeholder,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > input::placeholder {
+  color: rgb(159 192 164 / 70%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea:focus-visible,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > select:focus-visible,
+.dialogue-sheet-right-workspace .dialogue-authoring-field > input:focus-visible {
+  outline: none;
+  border-color: rgb(177 232 193 / 60%);
+  box-shadow: 0 0 0 2px rgb(83 145 101 / 20%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea[aria-invalid='true'],
+.dialogue-sheet-right-workspace .dialogue-authoring-field > select[aria-invalid='true'],
+.dialogue-sheet-right-workspace .dialogue-authoring-field > input[aria-invalid='true'] {
+  border-color: rgb(214 139 102 / 80%);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced {
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 10px;
+  background: rgb(8 18 12 / 50%);
+  padding: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 12px;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-field-hint {
+  margin: 0;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-playhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgb(8 18 12 / 60%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 12px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-footer {
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px 14px;
+  background: transparent;
+  border: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #6fbb87 0%, #4f9a6b 100%);
+  color: #0a1a10;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit:disabled {
+  background: rgb(83 145 101 / 20%);
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  cursor: not-allowed;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-helper {
+  margin: 0;
+  text-align: center;
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 12px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-error {
+  margin: 0 12px;
+  color: var(--ui-color-danger, #e28a7a);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* P-03: source placeholder; while a card is dragging, keep its slot reserved
+   in the right-rail pending queue. */
+.dialogue-sheet-right-workspace
+  .dialogue-pending-card.is-pending-dragging {
+  background: transparent;
+  border-style: dashed;
+  border-color: rgb(177 232 193 / 40%);
+  opacity: 1;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-pending-card.is-pending-dragging
+  .dialogue-pending-card-placeholder {
+  width: 100%;
+}
+
+/* Batch mode inherits the same dark form system. */
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-batch
+  .dialogue-authoring-field
+  > textarea,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-batch
+  .dialogue-authoring-field
+  > select,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-batch
+  .dialogue-authoring-field
+  > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  background: rgb(8 18 12 / 80%);
+  color: var(--ui-color-text-primary, #d6efd9);
+  font: inherit;
+  font-size: 13px;
+}
+
 @media (max-width: 1050px) {
   .editor-shell[data-editor-shell-layout='landscape']
     .editor-body:has(.right-workspace[data-surface-open='true']) {

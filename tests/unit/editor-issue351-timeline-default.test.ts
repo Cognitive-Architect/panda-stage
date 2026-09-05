@@ -68,7 +68,10 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     expect(sheet).toContain('timeline-subtitle-empty');
     expect(sheet).toContain("authoringMode === 'none' ? (");
     expect(sheet).toContain("handleOpenAuthoring('single')");
-    expect(sheet).not.toContain('<details');
+    // Issue #430 P-02 introduces a right-workspace-only <details> block
+    // for advanced authoring settings; portrait timeline default keeps
+    // its existing field composition.
+    expect(sheet).toContain('rightWorkspace ? (');
   });
 
   it('limits the visual redesign to Cloud Touch portrait Timeline and preserves touch targets', () => {
