@@ -202,17 +202,18 @@ function assertNoPageOverflow(sample, label) {
   );
 }
 
-// Cloud Touch landscape uses the post-Stage-E LM-006 timeline geometry: the
-// expanded minimum is 210px and the normal height is 280px. Issues #422/#423
-// own the exact MIN/NORMAL/MAX interaction contract; this resource verifier
-// keeps checking that the normal surface stays bounded and overflow-free.
+// Cloud Touch landscape uses the post-Stage-E LM-006 timeline geometry. Issue
+// #431 removed the obsolete Task Tray contribution, leaving a 162px Timeline
+// core minimum while the normal height remains 280px. Issues #422/#423 own the
+// exact interaction contract; this resource verifier only checks that the
+// rendered surface stays bounded and overflow-free.
 function assertCompactBottom(sample, label) {
   assert(
     sample.bottom && sample.bottomMetrics && sample.historyMetrics,
     `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
   );
   assert(
-    sample.bottom.height >= 210 && sample.bottom.height <= 300,
+    sample.bottom.height >= 162 && sample.bottom.height <= 300,
     `${label} bottom workspace is outside the landscape height budget: ${JSON.stringify(sample.bottom)}`,
   );
   // Cloud Touch landscape deliberately exposes the resizable handle outside

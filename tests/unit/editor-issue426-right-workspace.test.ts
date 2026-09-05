@@ -112,7 +112,7 @@ describe('Issue #426 unified Right Workspace R1', () => {
       'scripts/verify-issue109-resource-workspace.cjs',
     );
     expect(resourceVerifier).toContain(
-      'sample.bottom.height >= 210 && sample.bottom.height <= 300',
+      'sample.bottom.height >= 162 && sample.bottom.height <= 300',
     );
   });
 });

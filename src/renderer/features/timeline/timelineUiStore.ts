@@ -16,20 +16,16 @@ type Listener = () => void;
  *
  * Issue #431 removes the obsolete Task Tray contribution from the expanded
  * floor. The pure Timeline minimum is derived only from the unchanged
- * Toolbar/ruler geometry and the existing layout chrome around them.
+ * Toolbar/ruler geometry and the BottomWorkspace border around them. The
+ * final Cloud Touch landscape cascade already removes local padding and gap.
  */
 export const TIMELINE_TOOLBAR_HEIGHT = 48;
 export const TIMELINE_RULER_SCROLL_HEIGHT = 112;
-export const TIMELINE_DOCK_GAP_HEIGHT = 4;
-export const TIMELINE_BOTTOM_WORKSPACE_VERTICAL_PADDING = 12;
 export const TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT = 2;
 export const TIMELINE_EXPANDED_CORE_MIN_HEIGHT =
   TIMELINE_TOOLBAR_HEIGHT + TIMELINE_RULER_SCROLL_HEIGHT;
 export const TIMELINE_EXPANDED_MIN_HEIGHT =
-  TIMELINE_EXPANDED_CORE_MIN_HEIGHT +
-  TIMELINE_DOCK_GAP_HEIGHT +
-  TIMELINE_BOTTOM_WORKSPACE_VERTICAL_PADDING +
-  TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT;
+  TIMELINE_EXPANDED_CORE_MIN_HEIGHT + TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT;
 export const TIMELINE_EXPANDED_DEFAULT_HEIGHT = 280;
 export const TIMELINE_EXPANDED_MAX_HEIGHT = 420;
 export const TIMELINE_MIN_CANVAS_HEIGHT = 240;

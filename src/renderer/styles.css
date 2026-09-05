@@ -22633,7 +22633,7 @@ h1 {
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
   height: var(--timeline-expanded-height, 280px);
-  min-height: var(--timeline-expanded-min-height, 178px);
+  min-height: var(--timeline-expanded-min-height, 162px);
   max-height: var(--timeline-expanded-max-height, 420px);
 }
 
@@ -26680,7 +26680,7 @@ h1 {
    geometry. Issue #431 removes only the obsolete Task Tray reservation. */
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
-  min-height: var(--timeline-expanded-min-height, 178px);
+  min-height: var(--timeline-expanded-min-height, 162px);
   max-height: var(--timeline-expanded-max-height, 420px);
 }
 
