@@ -5,6 +5,7 @@ import {
   clampTimelineHeight,
   getTimelineHeightBounds,
   getTimelineHeightFromPointer,
+  TIMELINE_EXPANDED_MAX_HEIGHT,
   TIMELINE_EXPANDED_MIN_HEIGHT,
   TIMELINE_MIN_CANVAS_HEIGHT,
   TIMELINE_RESIZE_KEYBOARD_STEP,
@@ -221,12 +222,21 @@ export function BottomWorkspace({
     if (!drag || drag.pointerId !== event.pointerId) return;
 
     event.preventDefault();
+    // Issue #432 R3-A corrective: the rendered BottomWorkspace height must
+    // stay within the [MIN, MAX] product cap. Apply the hard product cap
+    // here on the live pointer-move path so the rendered height cannot
+    // exceed `TIMELINE_EXPANDED_MAX_HEIGHT` even if the live bounds or
+    // store state momentarily disagree.
+    const productCappedMax = Math.min(
+      drag.maxHeight,
+      TIMELINE_EXPANDED_MAX_HEIGHT,
+    );
     timelineUiStore.setHeight(
       getTimelineHeightFromPointer(
         drag.startHeight,
         drag.startY,
         event.clientY,
-        drag.maxHeight,
+        productCappedMax,
       ),
     );
   };
@@ -253,7 +263,12 @@ export function BottomWorkspace({
     } else if (event.key === 'Home') {
       nextHeight = TIMELINE_EXPANDED_MIN_HEIGHT;
     } else if (event.key === 'End') {
-      nextHeight = ui.expandedHeightMaxPx;
+      // Issue #432 R3-A corrective: clamp the End-key jump to the product
+      // cap so the rendered height never overshoots 2×MIN.
+      nextHeight = Math.min(
+        ui.expandedHeightMaxPx,
+        TIMELINE_EXPANDED_MAX_HEIGHT,
+      );
     }
     if (nextHeight === null) return;
 
@@ -276,7 +291,14 @@ export function BottomWorkspace({
         {
           '--timeline-expanded-height': `${ui.expandedHeightPx}px`,
           '--timeline-expanded-min-height': `${TIMELINE_EXPANDED_MIN_HEIGHT}px`,
-          '--timeline-expanded-max-height': `${ui.expandedHeightMaxPx}px`,
+          // Issue #432 R3-A corrective: cap the inline max-height CSS
+          // variable to the product contract 2×MIN so the rendered
+          // BottomWorkspace cannot grow past it, regardless of any drift
+          // in the live layout-derived upper bound.
+          '--timeline-expanded-max-height': `${Math.min(
+            ui.expandedHeightMaxPx,
+            TIMELINE_EXPANDED_MAX_HEIGHT,
+          )}px`,
         } as React.CSSProperties
       }
     >

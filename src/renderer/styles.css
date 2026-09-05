@@ -3655,6 +3655,45 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+/* Issue #432 R3-B corrective: the pending list is the only internal scroll
+   owner. flex: 1 1 0 + min-height: 0 lets it fill the available queue
+   area, so cards keep their readable size (min-height: 76px) and fewer full
+   cards fit when the available height shrinks. Cards must not shrink
+   (flex-shrink: 0) so speaker + 台词内容 + 可拖动 remain visible at every
+   Timeline height. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-untimed-queue {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-untimed-queue
+  > .dialogue-untimed-item {
+  flex-shrink: 0;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-pending-queue-footer {
+  flex: 0 0 auto;
+  position: sticky;
+  bottom: -12px;
+  z-index: 2;
+  padding: 8px 0 4px;
+  background: linear-gradient(
+    180deg,
+    rgb(8 14 10 / 0%) 0%,
+    rgb(8 14 10 / 92%) 38%,
+    rgb(8 14 10 / 96%) 100%
+  );
+}
+
 /* AUTHORING: the drawer header is stable, the secondary nav (← 新建字幕)
    stays visible, the segmented control + form body scroll internally, and
    the primary CTA stays reachable via sticky positioning inside the

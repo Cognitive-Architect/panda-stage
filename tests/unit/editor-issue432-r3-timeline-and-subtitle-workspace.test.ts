@@ -154,14 +154,48 @@ describe('Issue #432 R3 Timeline vertical resize and Subtitle Workspace height r
         'max-height: var(--timeline-expanded-max-height, 324px);',
       );
       expect(issue378).toContain('height: 50px;');
+    });
 
-      // The base .bottom-workspace contract from Issue 197 stays put.
-      expect(styles).toMatch(
-        /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*132px;[\s\S]*?max-height:\s*168px;[\s\S]*?overflow:\s*hidden;/u,
+    it('clamps the live pointer-move path to the product cap 2×MIN on the resize owner', () => {
+      // The corrective round requires the clamp to live on the path that
+      // actually updates the rendered BottomWorkspace height, not just in
+      // store constants / CSS fallback values.
+      const bottom = source('src/renderer/shell/BottomWorkspace.tsx');
+
+      // The product cap constant must be imported and used as a hard cap
+      // on the pointer-move handler.
+      expect(bottom).toMatch(
+        /import\s*\{[^}]*\bTIMELINE_EXPANDED_MAX_HEIGHT\b[^}]*\}/u,
       );
-      expect(styles).toMatch(
-        /\.bottom-workspace\[data-timeline-expanded='false'\]\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?max-height:\s*112px;/u,
+      expect(bottom).toContain('TIMELINE_EXPANDED_MAX_HEIGHT');
+
+      // The pointer-move handler must apply the product cap to drag.maxHeight
+      // before the live height is computed.
+      const pointerMoveBlock = bottom.match(
+        /handleResizePointerMove[\s\S]*?\n  \};/u,
       );
+      expect(pointerMoveBlock).toBeTruthy();
+      expect(pointerMoveBlock?.[0]).toContain('TIMELINE_EXPANDED_MAX_HEIGHT');
+      expect(pointerMoveBlock?.[0]).toContain('productCappedMax');
+      expect(pointerMoveBlock?.[0]).toContain(
+        'getTimelineHeightFromPointer(',
+      );
+
+      // The keyboard handler must also respect the product cap on End key.
+      const keyboardBlock = bottom.match(
+        /handleResizeKeyDown[\s\S]*?\n  \};/u,
+      );
+      expect(keyboardBlock).toBeTruthy();
+      expect(keyboardBlock?.[0]).toContain('TIMELINE_EXPANDED_MAX_HEIGHT');
+
+      // The inline CSS variable must be product-capped too, so the rendered
+      // height cannot exceed 2×MIN even if the live layout-derived bound
+      // momentarily exceeds it.
+      const inlineStyle = bottom.match(
+        /style=\{[\s\S]*?--timeline-expanded-max-height[\s\S]*?\}/u,
+      );
+      expect(inlineStyle).toBeTruthy();
+      expect(inlineStyle?.[0]).toContain('TIMELINE_EXPANDED_MAX_HEIGHT');
     });
   });
 
@@ -211,6 +245,41 @@ describe('Issue #432 R3 Timeline vertical resize and Subtitle Workspace height r
       // The pending list keeps its internal scroll owner so cards do not
       // continuously shrink to keep all items visible.
       expect(block).toContain('overscroll-behavior: contain;');
+    });
+
+    it('keeps DEFAULT_PENDING cards readable by giving the list flex 1 1 0 and items flex-shrink 0', () => {
+      // The corrective round requires that when the available right-rail
+      // height shrinks, the cards keep their readable size and the queue
+      // becomes internally scrollable, instead of crushing the cards.
+      const styles = source('src/renderer/styles.css');
+      const start = styles.lastIndexOf('/* Issue #432 R3-B:');
+      const end = styles.indexOf('/* Issue #405:', start);
+      const block = styles.slice(start, end < 0 ? undefined : end);
+
+      // The pending list is the only internal scroll owner and fills the
+      // available queue area so cards keep their readable size.
+      const listRule = block.match(
+        /\.timeline-subtitle-queue\s+>\s+\.dialogue-untimed-queue\s*\{[^}]*\}/u,
+      );
+      expect(listRule).toBeTruthy();
+      expect(listRule?.[0]).toContain('flex: 1 1 0;');
+      expect(listRule?.[0]).toContain('min-height: 0;');
+
+      // The cards must not shrink so speaker + 台词内容 + 可拖动 remain
+      // visible at every Timeline height.
+      const itemRule = block.match(
+        /\.dialogue-untimed-queue\s+>\s+\.dialogue-untimed-item\s*\{[^}]*\}/u,
+      );
+      expect(itemRule).toBeTruthy();
+      expect(itemRule?.[0]).toContain('flex-shrink: 0;');
+
+      // The + 新建字幕 footer stays reachable.
+      const footerRule = block.match(
+        /\.dialogue-pending-queue-footer\s*\{[^}]*\}/u,
+      );
+      expect(footerRule).toBeTruthy();
+      expect(footerRule?.[0]).toContain('flex: 0 0 auto;');
+      expect(footerRule?.[0]).toContain('position: sticky;');
     });
 
     it('keeps the AUTHORING form footer reachable via sticky positioning inside the scroll-body', () => {
