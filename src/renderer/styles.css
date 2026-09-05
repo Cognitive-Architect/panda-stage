@@ -2865,6 +2865,10 @@ button:disabled {
 /* Issue #428 R2: the existing DialogueSheet is presented by the Right
    Workspace. Only the queue/authoring surface scrolls; the editor page and
    Bottom Timeline remain independent, fixed owners. */
+.dialogue-authoring-scroll-body {
+  display: contents;
+}
+
 .editor-shell[data-editor-shell-layout='landscape']
   .right-workspace-surface[data-active-activity='subtitles'] {
   overflow: hidden;
@@ -3056,10 +3060,22 @@ button:disabled {
 }
 
 .dialogue-sheet-right-workspace .dialogue-authoring-shell {
+  --subtitle-drawer-content-gutter: 12px;
   display: grid;
   min-width: 0;
   min-height: 0;
-  padding: 12px;
+  padding: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+  gap: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-scroll-body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
   align-content: start;
@@ -3271,7 +3287,8 @@ button:disabled {
 .dialogue-sheet-right-workspace .dialogue-authoring-secondary-nav {
   display: flex;
   align-items: center;
-  padding: 8px 12px 0;
+  padding: 8px 0 0;
+  margin-inline: var(--subtitle-drawer-content-gutter);
 }
 
 .dialogue-sheet-right-workspace .dialogue-authoring-back {
@@ -3279,7 +3296,7 @@ button:disabled {
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  padding: 6px 10px;
+  padding: 6px 0;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -3302,7 +3319,9 @@ button:disabled {
 
 .dialogue-sheet-right-workspace
   > .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body
   > .dialogue-authoring-header {
+  grid-template-columns: minmax(0, 1fr);
   padding: 0;
   margin: 0;
   background: transparent;
@@ -3311,9 +3330,10 @@ button:disabled {
 
 .dialogue-sheet-right-workspace .dialogue-authoring-tabs {
   display: grid;
+  width: auto;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0;
-  margin: 8px 12px 4px;
+  margin: 0 var(--subtitle-drawer-content-gutter);
   padding: 4px;
   background: rgb(8 18 12 / 70%);
   border: 1px solid rgb(255 255 255 / 10%);
@@ -3348,7 +3368,8 @@ button:disabled {
 }
 
 .dialogue-sheet-right-workspace .dialogue-authoring-mode {
-  padding: 8px 12px 12px;
+  padding: 0 0 12px;
+  margin-inline: var(--subtitle-drawer-content-gutter);
   gap: 14px;
 }
 
@@ -3372,7 +3393,9 @@ button:disabled {
   font-weight: 600;
 }
 
-.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea,
 .dialogue-sheet-right-workspace .dialogue-authoring-field > select,
 .dialogue-sheet-right-workspace .dialogue-authoring-field > input {
   width: 100%;
@@ -3388,19 +3411,25 @@ button:disabled {
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea {
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea {
   min-height: 96px;
-  padding: 10px 12px;
+  padding: 10px 70px 28px 12px;
   line-height: 1.5;
   resize: vertical;
 }
 
-.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea::placeholder,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea::placeholder,
 .dialogue-sheet-right-workspace .dialogue-authoring-field > input::placeholder {
   color: rgb(159 192 164 / 70%);
 }
 
-.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea:focus-visible,
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea:focus-visible,
 .dialogue-sheet-right-workspace .dialogue-authoring-field > select:focus-visible,
 .dialogue-sheet-right-workspace .dialogue-authoring-field > input:focus-visible {
   outline: none;
@@ -3408,7 +3437,9 @@ button:disabled {
   box-shadow: 0 0 0 2px rgb(83 145 101 / 20%);
 }
 
-.dialogue-sheet-right-workspace .dialogue-authoring-field > textarea[aria-invalid='true'],
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea[aria-invalid='true'],
 .dialogue-sheet-right-workspace .dialogue-authoring-field > select[aria-invalid='true'],
 .dialogue-sheet-right-workspace .dialogue-authoring-field > input[aria-invalid='true'] {
   border-color: rgb(214 139 102 / 80%);
@@ -3462,7 +3493,8 @@ button:disabled {
 .dialogue-sheet-right-workspace .dialogue-authoring-footer {
   display: grid;
   gap: 4px;
-  padding: 8px 12px 14px;
+  padding: 8px 0 14px;
+  padding-inline: 0;
   background: transparent;
   border: 0;
 }
@@ -3504,10 +3536,29 @@ button:disabled {
 }
 
 .dialogue-sheet-right-workspace .dialogue-authoring-error {
-  margin: 0 12px;
+  margin: 0;
   color: var(--ui-color-danger, #e28a7a);
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* Issue #431 P-06: keep the single-authoring shortcut and live count inside
+   the textarea without changing its validation or keyboard behavior. */
+.dialogue-sheet-right-workspace .dialogue-authoring-textarea-shell {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-textarea-count {
+  position: absolute;
+  right: 22px;
+  bottom: 9px;
+  color: rgb(159 192 164 / 68%);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* P-03: source placeholder; while a card is dragging, keep its slot reserved
@@ -26625,10 +26676,8 @@ h1 {
   }
 }
 
-/* Issue #422: rebaseline the post-Stage-E Timeline geometry. The expanded
-   floor is deliberately above the old shallow container-query branch. The
-   Toolbar and ruler/track surface stay fixed; only the unified Task Tray may
-   consume the remaining height and scroll locally. */
+/* Issue #422: keep the accepted Timeline min/max range and fixed core
+   geometry. Issue #431 removes only the obsolete Task Tray reservation. */
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
   min-height: var(--timeline-expanded-min-height, 210px);
@@ -26672,67 +26721,10 @@ h1 {
   min-height: 34px;
 }
 
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .bottom-workspace[data-resizable='true']
-  .timeline-task-tray {
-  min-height: 76px;
-  flex: 1 1 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  scrollbar-gutter: stable;
-  scrollbar-color: #3f6d4e #0a100c;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .bottom-workspace[data-resizable='true']
-  .timeline-task-tray
-  > .dialogue-sheet.dialogue-sheet-timeline {
-  height: auto;
-  min-height: 100%;
-  flex: 0 0 auto;
-  overflow: visible;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .bottom-workspace[data-resizable='true']
-  .timeline-task-tray
-  .dialogue-sheet-header {
-  position: sticky;
-  z-index: 3;
-  top: 0;
-  background: rgb(6 13 9 / 98%);
-}
-
-/* Issue #423: at the derived absolute MIN, the fixed Toolbar/ruler core stays
-   intact and the Task Tray yields to a compact, scrollable header. Content is
-   intentionally kept mounted so its existing entry points remain reachable by
-   scrolling; the tray is the only presentation surface allowed to compress. */
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .bottom-workspace[data-resizable='true'][data-timeline-task-tray-density='compact']
-  .timeline-task-tray {
-  min-height: 48px;
-  overflow-y: auto;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .bottom-workspace[data-resizable='true'][data-timeline-task-tray-density='compact']
-  .timeline-task-tray
-  > .dialogue-sheet.dialogue-sheet-timeline {
-  gap: 0;
-  min-height: 48px;
-  padding: 0 14px;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .bottom-workspace[data-resizable='true'][data-timeline-task-tray-density='compact']
-  .timeline-task-tray
-  .dialogue-sheet-header {
-  flex: 0 0 48px;
-  min-height: 48px;
-  padding: 0;
-  border-bottom: 0;
-}
+/* Issue #431 P-04: TimelineDock no longer renders the Bottom Task Tray.
+   Its former min-height, flex reservation, local scroll owner and compact
+   density rules are intentionally absent. Toolbar/ruler/lanes and the
+   existing resize/collapse owners above remain unchanged. */
 
 /* Issue #398 final cascade: these route-scoped values intentionally come
    after the historical Stage B/R1 rules above so the deletion-first surface

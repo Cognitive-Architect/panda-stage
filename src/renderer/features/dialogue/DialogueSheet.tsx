@@ -718,6 +718,10 @@ export function DialogueSheet({
               </div>
             </header>
           ) : null}
+          <div
+            className="dialogue-authoring-scroll-body"
+            data-testid="dialogue-authoring-scroll-body"
+          >
           <header className="dialogue-authoring-header">
             {rightWorkspace ? (
               <div
@@ -855,44 +859,87 @@ export function DialogueSheet({
                     {rightWorkspace ? '字幕内容' : '台词内容'}{' '}
                     <span aria-hidden="true">*</span>
                   </label>
-                  <textarea
-                    aria-describedby="dialogue-add-text-message dialogue-add-text-count"
-                    aria-invalid={Boolean(singleTouched.text && singleErrors.text)}
-                    data-testid="dialogue-add-text"
-                    id="dialogue-add-text"
-                    placeholder={rightWorkspace ? '在这里输入对白' : '请输入台词内容…'}
-                    rows={5}
-                    value={draftState.singleText}
-                    onBlur={() =>
-                      setSingleTouched((current) => ({
-                        ...current,
-                        text: true,
-                      }))
+                  <div
+                    className={
+                      rightWorkspace
+                        ? 'dialogue-authoring-textarea-shell'
+                        : 'dialogue-authoring-textarea-legacy'
                     }
-                    onChange={(event) => {
-                      setSingleSubmitError(null);
-                      draft.setSingleText(event.target.value);
-                    }}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key === 'Enter' &&
-                        (event.ctrlKey || event.metaKey)
-                      ) {
-                        event.preventDefault();
-                        handleAdd();
+                  >
+                    <textarea
+                      aria-describedby={
+                        rightWorkspace
+                          ? `${
+                              singleTouched.text && singleErrors.text
+                                ? 'dialogue-add-text-message '
+                                : ''
+                            }dialogue-add-text-count`
+                          : 'dialogue-add-text-message dialogue-add-text-count'
                       }
-                    }}
-                  />
-                  <div className="dialogue-authoring-field-meta">
-                    <span id="dialogue-add-text-message">
-                      {singleTouched.text && singleErrors.text
-                        ? singleErrors.text
-                        : '普通 Enter 换行，Ctrl/Cmd + Enter 提交'}
-                    </span>
-                    <output id="dialogue-add-text-count">
-                      {`${draftState.singleText.length} / ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH}`}
-                    </output>
+                      aria-invalid={Boolean(
+                        singleTouched.text && singleErrors.text,
+                      )}
+                      data-testid="dialogue-add-text"
+                      id="dialogue-add-text"
+                      placeholder={
+                        rightWorkspace
+                          ? '普通 Enter 换行，Ctrl/Cmd + Enter 提交'
+                          : '请输入台词内容…'
+                      }
+                      rows={5}
+                      value={draftState.singleText}
+                      onBlur={() =>
+                        setSingleTouched((current) => ({
+                          ...current,
+                          text: true,
+                        }))
+                      }
+                      onChange={(event) => {
+                        setSingleSubmitError(null);
+                        draft.setSingleText(event.target.value);
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === 'Enter' &&
+                          (event.ctrlKey || event.metaKey)
+                        ) {
+                          event.preventDefault();
+                          handleAdd();
+                        }
+                      }}
+                    />
+                    {rightWorkspace ? (
+                      <output
+                        className="dialogue-authoring-textarea-count"
+                        data-testid="dialogue-add-text-count"
+                        id="dialogue-add-text-count"
+                      >
+                        {`${draftState.singleText.length} / ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH}`}
+                      </output>
+                    ) : null}
                   </div>
+                  {rightWorkspace ? (
+                    singleTouched.text && singleErrors.text ? (
+                      <p
+                        className="dialogue-authoring-error"
+                        id="dialogue-add-text-message"
+                        role="alert"
+                      >
+                        {singleErrors.text}
+                      </p>
+                    ) : null
+                  ) : (
+                    <div className="dialogue-authoring-field-meta">
+                      <span id="dialogue-add-text-message">
+                        {singleTouched.text && singleErrors.text
+                          ? singleErrors.text
+                          : '普通 Enter 换行，Ctrl/Cmd + Enter 提交'}
+                      </span>
+                      <output id="dialogue-add-text-count">
+                        {`${draftState.singleText.length} / ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH}`}
+                      </output>
+                    </div>
+                  )}
                 </div>
 
                 {rightWorkspace ? (
@@ -1017,6 +1064,7 @@ export function DialogueSheet({
               onSuccess={handleCloseAuthoring}
             />
           )}
+          </div>
         </section>
       )}
 

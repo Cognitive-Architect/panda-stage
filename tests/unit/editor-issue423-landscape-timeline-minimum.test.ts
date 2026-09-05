@@ -48,29 +48,10 @@ describe('Issue #423 Cloud Touch landscape Timeline minimum composition', () => 
     expect(bottom).not.toContain('useState');
   });
 
-  it('compresses only the landscape Task Tray while keeping its header and scroll path', () => {
+  it('does not retain the obsolete landscape Task Tray CSS reservation', () => {
     const styles = source('src/renderer/styles.css');
-    const start = styles.lastIndexOf('/* Issue #423:');
-    const end = styles.indexOf('/* Issue #398:', start);
-    const issue423 = styles.slice(start, end < 0 ? undefined : end);
 
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(issue423).toContain(
-      ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']",
-    );
-    expect(issue423).toContain(
-      "[data-timeline-task-tray-density='compact']",
-    );
-    expect(issue423).toMatch(
-      /\.timeline-task-tray[\s\S]*?min-height: 48px;[\s\S]*?overflow-y: auto;/u,
-    );
-    expect(issue423).toMatch(
-      /> \.dialogue-sheet\.dialogue-sheet-timeline[\s\S]*?gap: 0;[\s\S]*?min-height: 48px;[\s\S]*?padding: 0 14px;/u,
-    );
-    expect(issue423).toMatch(
-      /\.dialogue-sheet-header[\s\S]*?flex: 0 0 48px;[\s\S]*?min-height: 48px;[\s\S]*?padding: 0;[\s\S]*?border-bottom: 0;/u,
-    );
-    expect(issue423).not.toContain("data-editor-shell-layout='portrait'");
-    expect(issue423).not.toContain("data-editor-shell-layout='desktop'");
+    expect(styles.lastIndexOf('/* Issue #423:')).toBe(-1);
+    expect(styles).toContain('/* Issue #431 P-04:');
   });
 });

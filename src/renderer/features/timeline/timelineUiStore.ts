@@ -130,7 +130,10 @@ const INITIAL_STATE: TimelineUiState = {
   zoom: 1,
   scrollPx: 0,
   expanded: true,
-  expandedHeightPx: TIMELINE_EXPANDED_DEFAULT_HEIGHT,
+  // Issue #431 P-04: the old 280px startup height included room for the
+  // removed Bottom Task Tray. Start the pure Timeline at the existing legal
+  // minimum; the incumbent resize owner and its min/max bounds remain intact.
+  expandedHeightPx: TIMELINE_EXPANDED_MIN_HEIGHT,
   expandedHeightMaxPx: TIMELINE_EXPANDED_MAX_HEIGHT,
   resizing: false,
 };

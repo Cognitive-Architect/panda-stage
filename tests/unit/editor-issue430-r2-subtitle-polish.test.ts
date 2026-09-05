@@ -95,7 +95,7 @@ describe('Issue #430 R2 Subtitle Workspace polish P-01 / P-02 / P-03', () => {
     expect(sheet).toContain('dialogue-authoring-speaker-field');
     expect(sheet).toContain('dialogue-authoring-copy-field');
     expect(styles).toContain(
-      ".dialogue-sheet-right-workspace .dialogue-authoring-field > textarea",
+      '.dialogue-authoring-textarea-shell',
     );
     expect(styles).toContain(
       ".dialogue-sheet-right-workspace .dialogue-authoring-field > select",

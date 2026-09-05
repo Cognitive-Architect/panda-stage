@@ -50,7 +50,7 @@ describe('Issue #422 Cloud Touch landscape Timeline geometry rebaseline', () => 
     expect(timelineUi).toContain('editorBodyPreservingMaximum');
   });
 
-  it('keeps the core surface fixed and gives remaining height to a local Task Tray scroll owner', () => {
+  it('keeps the accepted core geometry after the obsolete Task Tray is removed', () => {
     const styles = source('src/renderer/styles.css');
     const start = styles.lastIndexOf('/* Issue #422:');
     const end = styles.indexOf('/* Issue #398:', start);
@@ -75,12 +75,8 @@ describe('Issue #422 Cloud Touch landscape Timeline geometry rebaseline', () => 
     expect(issue422).toMatch(
       /\.timeline-lane[\s\S]*?height: 34px;[\s\S]*?min-height: 34px;/u,
     );
-    expect(issue422).toMatch(
-      /\.timeline-task-tray[\s\S]*?flex: 1 1 0;[\s\S]*?overflow-y: auto;/u,
-    );
-    expect(issue422).toMatch(
-      /> \.dialogue-sheet\.dialogue-sheet-timeline[\s\S]*?height: auto;[\s\S]*?min-height: 100%;[\s\S]*?overflow: visible;/u,
-    );
+    expect(issue422).toContain('/* Issue #431 P-04:');
+    expect(issue422).not.toContain('.timeline-task-tray');
     expect(issue422).not.toContain("data-editor-shell-layout='portrait'");
     expect(issue422).not.toContain("data-editor-shell-layout='desktop'");
   });
