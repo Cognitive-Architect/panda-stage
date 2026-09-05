@@ -210,13 +210,15 @@
           "scripts/verify-day21*",
           "scripts/verify-day22*",
           "scripts/verify-day23*",
-          "scripts/verify-issue47*"
+          "scripts/verify-issue47*",
+          "scripts/verify-issue95*",
+          "scripts/verify-issue99*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "canvas",
-        "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts."
+        "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns."
       },
       {
         "id": "history-controls",
