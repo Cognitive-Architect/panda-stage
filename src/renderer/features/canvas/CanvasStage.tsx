@@ -542,7 +542,6 @@ export function CanvasStage({
       {showToolbar ? (
         <CanvasToolbar
           mode={viewport.mode}
-          onModeChange={(mode) => canvasViewportStore.setMode(mode)}
           point={viewport.lastStagePoint}
           transform={toolbarTransform}
         />

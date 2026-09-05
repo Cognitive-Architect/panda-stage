@@ -1,8 +1,10 @@
-import { ArrowLeft, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, Maximize2, ScanLine, Sparkles } from 'lucide-react';
+import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
+import { canvasViewportStore } from '../stores/canvasViewportStore';
+import type { CanvasViewportMode } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
 export interface ProjectToolsDrawerProps {
@@ -17,6 +19,19 @@ export interface ProjectToolsDrawerProps {
 
 type ProjectToolsView = 'home' | 'action-presets';
 
+interface ViewModeOption {
+  mode: CanvasViewportMode;
+  label: string;
+  testId: string;
+  icon: typeof Maximize2;
+}
+
+const VIEW_MODE_OPTIONS: readonly ViewModeOption[] = [
+  { mode: 'fit', label: '适应窗口', testId: 'canvas-mode-fit', icon: Maximize2 },
+  { mode: 'half', label: '50%', testId: 'canvas-mode-half', icon: ScanLine },
+  { mode: 'actual', label: '实际尺寸', testId: 'canvas-mode-actual', icon: ScanLine },
+] as const;
+
 /**
  * Project Tools is a presentation-level launcher. Recent Projects and the
  * ActionPreset business owner remain the existing feature owners; this
@@ -30,6 +45,10 @@ export function ProjectToolsDrawer({
   onOpenRecentProject,
 }: ProjectToolsDrawerProps): React.JSX.Element {
   const [view, setView] = useState<ProjectToolsView>('home');
+  const viewportMode = useSyncExternalStore(
+    canvasViewportStore.subscribe,
+    canvasViewportStore.getSnapshot,
+  ).mode;
 
   return (
     <section
@@ -78,6 +97,49 @@ export function ProjectToolsDrawer({
             projectSnapshot={projectSnapshot}
             recentRefreshToken={recentRefreshToken}
           />
+          <section
+            aria-labelledby="project-tools-view-mode-heading"
+            className="project-tools-view-mode-card"
+            data-testid="project-tools-view-mode-card"
+          >
+            <div className="project-tools-view-mode-heading">
+              <div>
+                <p className="eyebrow">画布显示</p>
+                <h3 id="project-tools-view-mode-heading">视图</h3>
+              </div>
+            </div>
+            <p>选择画布视口在窗口中的呈现方式</p>
+            <div
+              className="project-tools-view-mode-segmented"
+              data-testid="project-tools-view-mode-segmented"
+              role="group"
+              aria-label="画布视口模式"
+            >
+              {VIEW_MODE_OPTIONS.map((option) => {
+                const active = option.mode === viewportMode;
+                return (
+                  <button
+                    aria-pressed={active}
+                    className="ui-icon-label"
+                    data-testid={option.testId}
+                    key={option.mode}
+                    onClick={() => canvasViewportStore.setMode(option.mode)}
+                    type="button"
+                  >
+                    {option.icon === Maximize2 ? (
+                      <Maximize2
+                        aria-hidden="true"
+                        className="ui-icon"
+                        focusable="false"
+                        size={16}
+                      />
+                    ) : null}
+                    <span>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
           <section
             aria-labelledby="project-tools-action-preset-heading"
             className="project-tools-action-preset-card"

@@ -1,56 +1,30 @@
-import type {
-  CanvasViewportMode,
-  Point,
-  ViewportTransform,
-} from '../../../domain';
-import { Maximize2, ScanLine } from 'lucide-react';
+import type { Point, ViewportTransform } from '../../../domain';
 
 export interface CanvasToolbarProps {
-  mode: CanvasViewportMode;
+  mode: 'fit' | 'half' | 'actual';
   point: Point | null;
   transform: ViewportTransform;
-  onModeChange: (mode: CanvasViewportMode) => void;
+  onModeChange?: never;
 }
 
+/**
+ * Lightweight Canvas feedback. The three viewport mode controls
+ * (适应窗口 / 50% / 实际尺寸) live in the right-side 工具 surface
+ * (ProjectToolsDrawer > 画布显示). The Canvas keeps only the compact
+ * non-blocking feedback: current effective mode + scale + pointer
+ * stage coordinate.
+ */
 export function CanvasToolbar({
   mode,
   point,
   transform,
-  onModeChange,
 }: CanvasToolbarProps): React.JSX.Element {
   return (
-    <div className="canvas-toolbar" aria-label="画布视口控制">
-      <div className="canvas-mode-switch" role="group" aria-label="缩放模式">
-        <button
-          aria-pressed={mode === 'fit'}
-          className="canvas-mode-button ui-icon-label"
-          data-testid="canvas-mode-fit"
-          onClick={() => onModeChange('fit')}
-          type="button"
-        >
-          <Maximize2 aria-hidden="true" className="ui-icon" focusable="false" size={18} />
-          <span>适应窗口</span>
-        </button>
-        <button
-          aria-pressed={mode === 'half'}
-          className="canvas-mode-button ui-icon-label"
-          data-testid="canvas-mode-half"
-          onClick={() => onModeChange('half')}
-          type="button"
-        >
-          50%
-        </button>
-        <button
-          aria-pressed={mode === 'actual'}
-          className="canvas-mode-button ui-icon-label"
-          data-testid="canvas-mode-actual"
-          onClick={() => onModeChange('actual')}
-          type="button"
-        >
-          <ScanLine aria-hidden="true" className="ui-icon" focusable="false" size={18} />
-          <span>实际尺寸</span>
-        </button>
-      </div>
+    <div
+      className="canvas-toolbar"
+      data-testid="canvas-toolbar-feedback"
+      aria-label="画布状态"
+    >
       <output
         className="canvas-mode-feedback"
         data-testid="canvas-mode-feedback"

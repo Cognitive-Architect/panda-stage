@@ -858,20 +858,28 @@ button:disabled {
   padding: 8px 10px;
 }
 
+/* Issue #436 LM-004: visually flatten the central Canvas shell.
+   The outer .canvas-workspace no longer carries its own panel chrome
+   (border / border-radius / background / padding). It stays a layout
+   container that lets the central area read as the editor's open
+   working surface. Functional wrappers below (canvas-viewport,
+   canvas-viewport-content, canvas-logical-stage, project-canvas-stage)
+   keep their full identity because they participate in fit / scroll /
+   pointer mapping / drop / transform. */
 .canvas-workspace {
   min-width: 0;
   min-height: 0;
-  padding: 10px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  border: 1px solid rgb(127 199 148 / 22%);
-  border-radius: 14px;
-  background: rgb(8 14 10 / 74%);
-  scrollbar-color: #3f6d4e #0a100c;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .canvas-workspace .project-canvas {
   max-width: none;
+  width: 100%;
+  height: 100%;
   margin: 0;
 }
 
@@ -9553,15 +9561,23 @@ h1 {
   font-size: 52px;
 }
 
+/* Issue #436 LM-004: drop .project-canvas inner panel chrome so the
+   central area reads as one open Canvas surface. The 1180px width
+   cap and the surrounding 18px margin/padding are removed so the
+   Canvas can grow with the body. The grid itself is kept (still owns
+   heading / viewport / toolbar rows). */
 .project-canvas {
   display: grid;
-  max-width: 1180px;
-  margin: 0 auto 18px;
-  padding: 18px;
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: 18px;
-  background: rgb(18 26 21 / 92%);
-  gap: 12px;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 6px;
+  /* padding: 0 is explicit above so the flattened contract is auditable. */
 }
 
 .project-canvas-heading,
@@ -9692,8 +9708,14 @@ h1 {
 }
 
 .canvas-toolbar {
-  flex-wrap: wrap;
-  gap: 10px 16px;
+  /* Issue #436 LM-004: compact single-line presentation that only
+     carries the scale + pointer feedback. The three mode controls
+     live in the right-side 工具 surface (see project-tools-view-mode-card). */
+  flex-wrap: nowrap;
+  gap: 12px;
+  padding: 4px 2px 0;
+  color: #91a299;
+  font-size: 11px;
 }
 
 .canvas-mode-switch {
@@ -21249,6 +21271,68 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+/* Issue #436 LM-004: 画布显示 section in the right-side 工具 surface.
+   Carries the three view-mode controls (适应窗口 / 50% / 实际尺寸).
+   Binds to the existing canvasViewportStore — no second viewport state. */
+.project-tools-view-mode-card {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.project-tools-view-mode-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-tools-view-mode-heading .eyebrow,
+.project-tools-view-mode-heading h3 {
+  margin: 0;
+}
+
+.project-tools-view-mode-heading h3 {
+  font-size: 16px;
+}
+
+.project-tools-view-mode-card > p {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.project-tools-view-mode-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.project-tools-view-mode-segmented button {
+  min-height: 40px;
+  padding: 6px 8px;
+  color: #99aaa0;
+  background: rgb(255 255 255 / 4%);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.project-tools-view-mode-segmented button[aria-pressed='true'] {
+  color: #e6f7ea;
+  background: #235739;
+  box-shadow: 0 0 0 1px rgb(131 211 154 / 35%);
+}
+
+.project-tools-view-mode-segmented button .ui-icon {
+  margin-right: 4px;
 }
 
 .project-tools-action-presets-view {

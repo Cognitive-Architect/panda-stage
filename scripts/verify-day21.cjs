@@ -50,6 +50,30 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
+async function selectRightActivity(window, activity) {
+  // Issue #436 LM-004: the three viewport mode controls now live in
+  // the right-side 工具 surface, so the verifier must open that
+  // surface before clicking canvas-mode-fit / half / actual.
+  const selector = `[data-testid="right-activity-rail-${activity}"]`;
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(selector)})`,
+      `Right activity did not render: ${activity}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(selector)}).click()`,
+  );
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-testid="right-workspace"]')` +
+        `?.dataset.activeActivity === ${JSON.stringify(activity)} && ` +
+        `document.querySelector('[data-testid="right-workspace-surface"]')`,
+      `Right activity did not activate: ${activity}`,
+    ),
+  );
+}
+
 async function setInput(window, selector, value) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
@@ -513,6 +537,7 @@ async function verifyDay21() {
 
     window.setSize(1440, 1000);
     await scrollCanvasIntoView(window);
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(`
       document.querySelector('[data-testid="canvas-mode-actual"]').click()
     `);
@@ -726,6 +751,7 @@ async function verifyDay21() {
           '[data-testid="project-canvas-stage"]'
         ).dataset.layerJson
       }))()`);
+      await selectRightActivity(dpiWindow, 'tools');
       await dpiWindow.webContents.executeJavaScript(`
         document.querySelector('[data-testid="canvas-mode-actual"]').click()
       `);

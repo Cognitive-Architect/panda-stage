@@ -529,6 +529,7 @@ async function verifyDay23() {
     );
     await openProject(window);
     await scrollCanvasIntoView(window);
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,
     );
@@ -771,6 +772,7 @@ async function verifyDay23() {
       (layer) => layer.id === targetLayerId,
     );
 
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,
     );

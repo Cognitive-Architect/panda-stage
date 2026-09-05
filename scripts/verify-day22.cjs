@@ -578,6 +578,7 @@ async function verifyDay22() {
     const fitDrop = await stageSnapshot(window);
     const fitLayer = fitDrop.layers.at(-1);
 
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-half"]').click()`,
     );
@@ -608,6 +609,7 @@ async function verifyDay22() {
     const halfDrop = await stageSnapshot(window);
     const halfLayer = halfDrop.layers.at(-1);
 
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,
     );

@@ -591,6 +591,7 @@ async function verifyDay24() {
     await window.webContents.executeJavaScript(
       `document.querySelector('.project-canvas').scrollIntoView()`,
     );
+    await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,
     );

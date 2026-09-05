@@ -266,6 +266,26 @@ async function setTransformInput(window, index, value) {
   await delay(60);
 }
 
+async function selectRightActivity(window, activity) {
+  // Issue #436 LM-004: the three viewport mode controls now live in
+  // the right-side 工具 surface, so the verifier must open that
+  // surface before clicking canvas-mode-fit / half / actual.
+  const selector = `[data-testid="right-activity-rail-${activity}"]`;
+  await waitForDom(
+    window,
+    `document.querySelector(${JSON.stringify(selector)})`,
+    `Right activity did not render: ${activity}`,
+  );
+  await clickElement(window, selector);
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="right-workspace"]')` +
+      `?.dataset.activeActivity === ${JSON.stringify(activity)} && ` +
+      `document.querySelector('[data-testid="right-workspace-surface"]')`,
+    `Right activity did not activate: ${activity}`,
+  );
+}
+
 async function clickElement(window, selector) {
   await window.webContents.executeJavaScript(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -741,6 +761,7 @@ async function run(window) {
   assert(afterLibraryA.intrinsicSizes.every((entry) => entry.width === imageWidth && entry.height === imageHeight), 'Opening the asset library replaced canvas sources with thumbnails.');
   progress('thumbnail cards and original canvas sources separated');
 
+  await selectRightActivity(window, 'tools');
   await clickElement(window, '[data-testid="canvas-mode-actual"]');
   await waitForDom(
     window,

@@ -50,19 +50,27 @@ describe('Issue #342 Lucide icon pilot', () => {
           { width: 800, height: 600 },
           'actual',
         ),
-        onModeChange: () => undefined,
       }),
     );
     const toolbar = source('src/renderer/features/canvas/CanvasToolbar.tsx');
+    const tools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
 
-    expect(markup).toContain('适应窗口');
-    expect(markup).toContain('50%');
-    expect(markup).toContain('实际尺寸');
+    // Issue #436 LM-004: the Canvas feedback keeps the readable mode label
+    // and the scale percentage; the three mode controls themselves now
+    // live in the right-side 工具 surface (decorative icons there still
+    // carry aria-hidden="true" per the shared chrome treatment).
     expect(markup).toContain('1:1 像素');
-    expect(markup).toContain('aria-hidden="true"');
-    expect(toolbar).toContain('onModeChange(\'fit\')');
-    expect(toolbar).toContain('onModeChange(\'half\')');
-    expect(toolbar).toContain('onModeChange(\'actual\')');
+    expect(markup).toContain('100.0%');
+    expect(markup).toContain('canvas-mode-feedback');
+    expect(markup).toContain('canvas-pointer-coordinate');
+    expect(toolbar).toContain('canvas-mode-feedback');
+    expect(tools).toContain('适应窗口');
+    expect(tools).toContain('50%');
+    expect(tools).toContain('实际尺寸');
+    expect(tools).toContain('canvas-mode-fit');
+    expect(tools).toContain('canvas-mode-half');
+    expect(tools).toContain('canvas-mode-actual');
+    expect(tools).toContain('aria-hidden="true"');
   });
 
   it('keeps four workspace tabs and Shot behavior while adding the pilot icons', () => {
