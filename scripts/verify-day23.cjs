@@ -81,6 +81,9 @@ async function selectResourceActivity(window, activity) {
 }
 
 async function selectRightActivity(window, activity) {
+  // Issue #437 / LM-004: the right rail is a toggle surface; skip the
+  // click when the activity is already active so the canvas-mode-* compat
+  // shim is safe to call multiple times in a row.
   const selector = `[data-testid="right-activity-rail-${activity}"]`;
   await window.webContents.executeJavaScript(
     waitFor(
@@ -88,6 +91,11 @@ async function selectRightActivity(window, activity) {
       `Right activity did not render: ${activity}`,
     ),
   );
+  const alreadyActive = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="right-workspace"]')` +
+      `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+  );
+  if (alreadyActive) return;
   await window.webContents.executeJavaScript(
     `document.querySelector(${JSON.stringify(selector)}).click()`,
   );

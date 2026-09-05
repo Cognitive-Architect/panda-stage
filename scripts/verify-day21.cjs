@@ -51,9 +51,12 @@ function canonicalJson(value) {
 }
 
 async function selectRightActivity(window, activity) {
-  // Issue #436 LM-004: the three viewport mode controls now live in
-  // the right-side 工具 surface, so the verifier must open that
-  // surface before clicking canvas-mode-fit / half / actual.
+  // Issue #436 / LM-004: the three viewport mode controls now live in
+  // the right-side 工具 surface, so the verifier must open that surface
+  // before clicking canvas-mode-fit / half / actual. The right rail is
+  // a toggle (getNextRightActivity), so the click is skipped when the
+  // activity is already active — this keeps the helper safe to call
+  // multiple times in a row (Issue #437 follow-up).
   const selector = `[data-testid="right-activity-rail-${activity}"]`;
   await window.webContents.executeJavaScript(
     waitFor(
@@ -61,6 +64,11 @@ async function selectRightActivity(window, activity) {
       `Right activity did not render: ${activity}`,
     ),
   );
+  const alreadyActive = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="right-workspace"]')` +
+      `?.dataset.activeActivity === ${JSON.stringify(activity)}`,
+  );
+  if (alreadyActive) return;
   await window.webContents.executeJavaScript(
     `document.querySelector(${JSON.stringify(selector)}).click()`,
   );
