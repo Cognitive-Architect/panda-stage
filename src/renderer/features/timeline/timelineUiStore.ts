@@ -18,6 +18,13 @@ type Listener = () => void;
  * floor. The pure Timeline minimum is derived only from the unchanged
  * Toolbar/ruler geometry and the BottomWorkspace border around them. The
  * final Cloud Touch landscape cascade already removes local padding and gap.
+ *
+ * Issue #432 R3-A keeps the accepted MIN = 162px total and reduces the upper
+ * bound to exactly 2×MIN = 324px total so Timeline cannot expand into the
+ * dead-cavity territory above the old 420px target. The real Subtitle/Audio
+ * lanes now flex with the resize range and stay equal height (50/50 of the
+ * available lane area), so a stored expanded height that exceeds the new MAX
+ * is clamped by `setHeight` / `setHeightMax` to the new bound.
  */
 export const TIMELINE_TOOLBAR_HEIGHT = 48;
 export const TIMELINE_RULER_SCROLL_HEIGHT = 112;
@@ -27,7 +34,9 @@ export const TIMELINE_EXPANDED_CORE_MIN_HEIGHT =
 export const TIMELINE_EXPANDED_MIN_HEIGHT =
   TIMELINE_EXPANDED_CORE_MIN_HEIGHT + TIMELINE_BOTTOM_WORKSPACE_BORDER_HEIGHT;
 export const TIMELINE_EXPANDED_DEFAULT_HEIGHT = 280;
-export const TIMELINE_EXPANDED_MAX_HEIGHT = 420;
+// Issue #432 R3-A: the accepted pure-Timeline MAX is 2×MIN = 324px, derived
+// from the constant so the relationship stays auditable in the source.
+export const TIMELINE_EXPANDED_MAX_HEIGHT = TIMELINE_EXPANDED_MIN_HEIGHT * 2;
 export const TIMELINE_MIN_CANVAS_HEIGHT = 240;
 export const TIMELINE_RESIZE_KEYBOARD_STEP = 16;
 

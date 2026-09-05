@@ -3602,6 +3602,174 @@ button:disabled {
   font-size: 13px;
 }
 
+/* Issue #432 R3-B: Right Subtitle Workspace height-responsive layout.
+
+   The unified Subtitle Workspace shell is a flex column. The stable header
+   (icon + 字幕 + Close), the optional secondary nav (← 新建字幕) and the
+   reachable action area (+ 新建字幕 / 创建字幕) never compress; the flexible
+   body becomes the only thing that scrolls internally when the available
+   height shrinks. The contract is enforced by the R3 Timeline resize range
+   (162..324px) on the BottomWorkspace: when the Timeline grows, the shared
+   editor body shrinks, and the right rail (the only consumer of that
+   remaining height) must adapt without clipping or page-level scroll. */
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  flex-direction: column;
+}
+
+/* DEFAULT_PENDING: the queue becomes a flex column with stable heading,
+   internal scroll list, and stable footer (+ 新建字幕). The list keeps the
+   pre-existing internal scroll owner; the heading and footer are flex: 0 0
+   auto so they never compress even when the available height is minimal. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-pending-queue-heading,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .timeline-subtitle-queue-intro,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .timeline-subtitle-queue
+  > .dialogue-authoring-queue-heading {
+  flex: 0 0 auto;
+}
+
+/* AUTHORING: the drawer header is stable, the secondary nav (← 新建字幕)
+   stays visible, the segmented control + form body scroll internally, and
+   the primary CTA stays reachable via sticky positioning inside the
+   scroll-body. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  flex: 1 1 0;
+  flex-direction: column;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-drawer-header {
+  flex: 0 0 auto;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 12px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body
+  > .dialogue-authoring-header,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body
+  > .dialogue-authoring-tabs,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-scroll-body
+  > .dialogue-authoring-mode {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-scroll-body
+  > .dialogue-authoring-mode {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-scroll-body
+  > .dialogue-authoring-mode
+  > .dialogue-authoring-single-grid,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-scroll-body
+  > .dialogue-authoring-mode
+  > .dialogue-authoring-mode-grid {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The primary CTA footer is sticky inside the scroll-body so the user can
+   always reach 创建字幕 without scrolling past every form field. A solid
+   background hides the form content behind it. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-footer {
+  position: sticky;
+  bottom: -12px;
+  z-index: 2;
+  display: flex;
+  min-width: 0;
+  padding: 10px 0 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  background: linear-gradient(
+    180deg,
+    rgb(8 14 10 / 0%) 0%,
+    rgb(8 14 10 / 92%) 38%,
+    rgb(8 14 10 / 96%) 100%
+  );
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-footer
+  > .dialogue-authoring-submit {
+  width: 100%;
+}
+
 @media (max-width: 1050px) {
   .editor-shell[data-editor-shell-layout='landscape']
     .editor-body:has(.right-workspace[data-surface-open='true']) {
@@ -22633,8 +22801,10 @@ h1 {
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
   height: var(--timeline-expanded-height, 280px);
+  /* Issue #432 R3-A: MAX = 2×MIN = 324px; the fallback mirrors the live JS
+     constant in `timelineUiStore.TIMELINE_EXPANDED_MAX_HEIGHT`. */
   min-height: var(--timeline-expanded-min-height, 162px);
-  max-height: var(--timeline-expanded-max-height, 420px);
+  max-height: var(--timeline-expanded-max-height, 324px);
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -26676,12 +26846,20 @@ h1 {
   }
 }
 
-/* Issue #422: keep the accepted Timeline min/max range and fixed core
-   geometry. Issue #431 removes only the obsolete Task Tray reservation. */
+/* Issue #422 + #432 R3-A: the accepted Cloud Touch landscape Timeline
+   geometry is a flex column. The Toolbar stays 48px; the ruler-scroll +
+   track-stack + lanes consume the remaining expanded height and stay
+   equal-height (50/50 of the available lane area). MIN remains the
+   accepted 162px total (48 toolbar + 112 ruler-scroll-with-lanes + 2
+   border) and MAX is now exactly 2×MIN = 324px, matching the R3 product
+   contract. Issue #431 removed the obsolete Task Tray reservation; R3-A
+   further removes the fixed-height ruler/track-stack/lane reservations
+   so a Timeline resize grows real content lanes instead of an empty
+   cavity. */
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true'][data-timeline-expanded='true'] {
   min-height: var(--timeline-expanded-min-height, 162px);
-  max-height: var(--timeline-expanded-max-height, 420px);
+  max-height: var(--timeline-expanded-max-height, 324px);
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -26698,27 +26876,76 @@ h1 {
   min-height: 48px;
 }
 
+/* Issue #432 R3-A: the ruler-scroll and its inner ruler-track + track-stack
+   + lanes are a flex column so the resize range 162..324px grows real
+   content. The ruler-track stays the single positioned ancestor for the
+   absolute playhead and dialogue-track. The ruler is a 28px flex child at
+   the top; the track-stack + lanes fill the rest. */
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true']
   .timeline-ruler-scroll {
-  flex: 0 0 112px;
-  height: 112px;
-  min-height: 112px;
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-ruler-track {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-ruler {
+  position: relative;
+  display: block;
+  flex: 0 0 28px;
+  min-height: 28px;
+  height: 28px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true']
   .timeline-track-stack {
-  flex: 0 0 68px;
-  height: 68px;
-  min-height: 68px;
+  display: flex;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true']
+  .timeline-lanes {
+  position: relative;
+  top: 0;
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* Issue #432 R3-A lane equality: Subtitle Track and Audio Track are equal
+   flex children (flex: 1 1 0 + min-height: 0), so the available lane area
+   is split 50/50 at every supported expanded height between MIN and MAX.
+   The grid-template-columns and lane-label sticky positioning above are
+   preserved so the existing horizontal scroll + sticky labels keep working. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
   .timeline-lane {
-  height: 34px;
-  min-height: 34px;
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-lane + .timeline-lane {
+  border-top: 1px solid rgb(127 199 148 / 18%);
+  margin-top: 0;
 }
 
 /* Issue #431 P-04: TimelineDock no longer renders the Bottom Task Tray.

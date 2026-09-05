@@ -47,6 +47,9 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
     const store = new TimelineUiStore();
     try {
       const initial = store.getSnapshot();
+      // Issue #432 R3-A: a 360 candidate max gets clamped to the new
+      // product cap 2×MIN = 324. The test still proves the last valid
+      // height survives the collapse/reopen round-trip.
       store.setHeightMax(360);
       store.setHeight(320);
       expect(store.getSnapshot().expandedHeightPx).toBe(320);
@@ -55,7 +58,9 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
       store.setExpanded(true);
 
       expect(store.getSnapshot().expandedHeightPx).toBe(320);
-      expect(store.getSnapshot().expandedHeightMaxPx).toBe(360);
+      expect(store.getSnapshot().expandedHeightMaxPx).toBe(
+        TIMELINE_EXPANDED_MAX_HEIGHT,
+      );
       expect(store.getSnapshot().currentTimeMs).toBe(initial.currentTimeMs);
       expect(store.getSnapshot().scrollPx).toBe(initial.scrollPx);
       expect(store.getSnapshot().zoom).toBe(initial.zoom);
