@@ -307,7 +307,20 @@ async function run(window, fixture) {
     centerWithCurrent.missingStatus.includes('路径已失效'),
     'Invalid recent path status disappeared while a current project was open.',
   );
-  await clickCardButton(window, 'missing', '移除记录');
+  await clickSelector(
+    window,
+    '[data-project-status="missing"] [data-testid="recent-project-more"]',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-project-status="missing"] ` +
+      `[data-testid="recent-project-maintenance-menu"]')`,
+    'Missing recent project maintenance menu did not open.',
+  );
+  await clickSelector(
+    window,
+    '[data-project-status="missing"] [data-task4-core="recent-remove"]',
+  );
   await waitForDom(
     window,
     `!document.querySelector('[data-project-status="missing"]')`,

@@ -611,6 +611,10 @@ async function verifyDay24() {
         'Actual-size canvas mode did not activate.',
       ),
     );
+    // LM-004 moved the viewport mode controls to Tools, but the remainder of
+    // this history verifier exercises the transform controls in Properties.
+    // Restore that original surface after choosing Actual mode.
+    await selectRightActivity(window, 'properties');
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     const target = firstProject.shots[0].layers[1];
