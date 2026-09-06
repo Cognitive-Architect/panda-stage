@@ -15953,23 +15953,6 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .editor-layout[data-active-workspace='timeline']
-  .dialogue-untimed-cancel {
-  min-width: 88px;
-  border-color: transparent;
-  color: var(--ui-color-text-secondary);
-  background: transparent;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .editor-layout[data-active-workspace='timeline']
-  .dialogue-untimed-cancel:hover {
-  border-color: var(--ui-color-separator);
-  color: var(--ui-color-text-primary);
-  background: var(--ui-color-surface-overlay);
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .editor-layout[data-active-workspace='timeline']
   .dialogue-untimed-error {
   grid-column: 1 / -1;
   margin: 0;
@@ -23638,16 +23621,6 @@ h1 {
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true']
   .timeline-task-tray
-  .dialogue-untimed-cancel {
-  min-width: 88px;
-  border-color: transparent;
-  color: var(--ui-color-text-secondary);
-  background: transparent;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .bottom-workspace[data-resizable='true']
-  .timeline-task-tray
   .timeline-subtitle-empty,
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true']
@@ -27467,4 +27440,34 @@ h1 {
   line-height: 1.4;
   word-break: break-word;
 }
+}
+
+/* Issue #443 Correction 01: pending subtitle list stays as ONE continuous
+   basket. The selected card carries a modest inline action row with the
+   approved 可手动拖入 + 自动加入 product model. No repaint of the existing
+   geometry, owners, or copy in other panels. The scope is local: this
+   block tightens only the inline-action row chrome on a selected pending
+   card, plus the click area on the right-side affordance icon. The actual
+   data-affordance and selection contract are owned by DialogueSheet.tsx
+   and its tests. */
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-untimed-action-info {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-untimed-action-hint {
+  min-width: 0;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
