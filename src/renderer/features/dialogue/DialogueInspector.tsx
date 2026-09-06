@@ -106,8 +106,8 @@ export function DialogueInspector({
       formatTimecode(Math.max(0, audioClip.endMs - audioClip.startMs)) +
       ' · 已绑定'
     : dialogue?.audioClipId
-      ? '绑定音频不可用'
-      : '未绑定音频';
+      ? '绑定配音不可用'
+      : '还没有配音';
   const unavailableAudioCount = audioAssets.filter(
     (asset) =>
       asset.durationMs === undefined || asset.metadata?.status === 'error',
@@ -181,30 +181,27 @@ export function DialogueInspector({
     }
   };
 
-  const audioBindingControl = (
+  const audioSummaryText = audioSummary;
+  const audioBindingControl = timed ? (
     <>
       <label className="dialogue-field">
-        <span>对白音频</span>
+        <span>配音来源</span>
         <select
-          aria-label="对白音频"
+          aria-label="选择配音"
           data-testid="dialogue-inspector-audio"
-          disabled={!timed || audioAssets.length === 0}
+          disabled={audioAssets.length === 0}
           value={audioAsset?.id ?? ''}
           onChange={(event) => {
             if (!event.target.value) return;
             report(
               'audio',
               () => dialogueStore.bindAudio(dialogue.id, event.target.value),
-              '对白音频绑定失败。',
+              '配音绑定失败。',
             );
           }}
         >
           <option value="">
-            {!timed
-              ? '先安排字幕时间'
-              : audioAssets.length === 0
-                ? '当前项目没有音频素材'
-                : '选择 Ready 音频'}
+            {audioAssets.length === 0 ? '当前项目没有可用配音' : '选择配音'}
           </option>
           {audioAssets.map((asset) => {
             const ready =
@@ -213,15 +210,21 @@ export function DialogueInspector({
             return (
               <option disabled={!ready} key={asset.id} value={asset.id}>
                 {asset.name}
-                {ready ? ` · ${formatTimecode(asset.durationMs!)}` : ' · 待分析'}
+                {ready ? ` · ${formatTimecode(asset.durationMs!)}` : ' · 正在准备…'}
               </option>
             );
           })}
         </select>
       </label>
+      <p
+        className="dialogue-properties-audio-summary-line"
+        data-testid="dialogue-inspector-audio-summary"
+      >
+        {audioSummaryText}
+      </p>
       {unavailableAudioCount > 0 ? (
         <small data-testid="dialogue-inspector-audio-unavailable">
-          {unavailableAudioCount} 个音频尚未 Ready，不能绑定。
+          {unavailableAudioCount} 段配音尚未准备好。
         </small>
       ) : null}
       {error?.scope === 'audio' ? (
@@ -235,6 +238,13 @@ export function DialogueInspector({
         </p>
       ) : null}
     </>
+  ) : (
+    <p
+      className="dialogue-properties-untimed-audio"
+      data-testid="dialogue-inspector-untimed-audio"
+    >
+      安排到时间轴后即可添加配音。
+    </p>
   );
 
   const commitText = (): void => {
@@ -495,12 +505,12 @@ export function DialogueInspector({
               }
               type="button"
             >
-              安排一帧
+              快速安排
             </button>
           )}
           {!timed ? (
             <p className="dialogue-point-time">
-              待安排字幕尚未产生显示时间窗。
+              安排后即会在时间轴产生显示窗口。
             </p>
           ) : null}
         </section>
@@ -511,7 +521,7 @@ export function DialogueInspector({
         >
           <h3>角色</h3>
           <label className="dialogue-field">
-            <span>说话人</span>
+            <span>角色</span>
             <select
               aria-label="字幕角色"
               className="dialogue-timed-speaker-select"
@@ -551,11 +561,8 @@ export function DialogueInspector({
           className="dialogue-inspector-section dialogue-inspector-audio-section dialogue-timed-audio-section"
           data-testid="dialogue-inspector-audio-section"
         >
-          <h3>音频</h3>
+          <h3>配音</h3>
           <p data-testid="dialogue-inspector-audio-summary">{audioSummary}</p>
-          <span className="dialogue-inspector-audio-note">
-            当前仅展示已有绑定状态。
-          </span>
         </section>
 
         <div className="dialogue-inspector-actions dialogue-timed-actions">
@@ -582,17 +589,22 @@ export function DialogueInspector({
       >
         <header
           aria-live="polite"
+          aria-label="字幕属性"
           className="dialogue-properties-header"
           data-testid="dialogue-properties-header"
         >
           <div className="dialogue-properties-heading-copy">
-            <p className="eyebrow">当前选择</p>
-            <h2>字幕属性</h2>
-            <p
+            <strong
               className="dialogue-properties-identity"
               data-testid="dialogue-properties-identity"
             >
-              {character?.name ?? '未知角色'} · {timed ? '已定时字幕' : '待安排字幕'}
+              {character?.name ?? '未知角色'}
+            </strong>
+            <p
+              className="dialogue-properties-summary"
+              data-testid="dialogue-properties-summary"
+            >
+              {dialogue.text.trim() || '（未填写对白）'}
             </p>
           </div>
           <span
@@ -656,7 +668,7 @@ export function DialogueInspector({
             <h3>角色</h3>
           </div>
           <label className="dialogue-field">
-            <span>角色（说话人）</span>
+            <span>角色</span>
             <select
               aria-label="字幕角色"
               data-testid="dialogue-inspector-speaker"
@@ -807,10 +819,10 @@ export function DialogueInspector({
                 }
                 type="button"
               >
-                安排为一帧
+                快速安排
               </button>
               <p className="dialogue-point-time">
-                待安排字幕尚未产生显示时间窗。
+                安排后即会在时间轴产生显示窗口。
               </p>
             </>
           )}
@@ -822,26 +834,9 @@ export function DialogueInspector({
         >
           <div className="dialogue-properties-section-heading">
             <DecorativeIcon icon={Volume2} size={18} />
-            <h3>音频</h3>
-          </div>
-          <div
-            className="dialogue-properties-audio-state"
-            data-audio-bound={String(Boolean(audioClip))}
-          >
-            <span className="dialogue-properties-audio-icon">
-              <DecorativeIcon icon={Volume2} size={16} />
-            </span>
-            <div>
-              <strong>{audioClip ? '已绑定音频' : '未绑定音频'}</strong>
-              <p data-testid="dialogue-inspector-audio-summary">
-                {audioSummary}
-              </p>
-            </div>
+            <h3>配音</h3>
           </div>
           {audioBindingControl}
-          <span className="dialogue-inspector-audio-note">
-            音频播放区间独立于字幕时间；只可绑定已完成时长分析的素材。
-          </span>
         </section>
 
         <div className="dialogue-properties-actions">
@@ -1065,10 +1060,10 @@ export function DialogueInspector({
                 }
                 type="button"
               >
-                安排为一帧
+                快速安排
               </button>
               <p className="dialogue-point-time">
-                待安排字幕尚未产生显示时间窗。
+                安排后即会在时间轴产生显示窗口。
               </p>
             </>
           )}
@@ -1124,16 +1119,16 @@ export function DialogueInspector({
         >
           <div className="dialogue-properties-section-heading">
             <DecorativeIcon icon={Volume2} size={18} />
-            <h3>音频</h3>
+            <h3>配音</h3>
           </div>
-          <div
-            className="dialogue-landscape-properties-audio-state"
-            data-audio-bound={String(Boolean(audioClip))}
-          >
-            <p data-testid="dialogue-inspector-audio-summary">
+          {audioClip ? (
+            <p
+              className="dialogue-landscape-properties-audio-summary"
+              data-testid="dialogue-inspector-audio-summary"
+            >
               {audioSummary}
             </p>
-          </div>
+          ) : null}
           {audioBindingControl}
         </section>
 

@@ -78,9 +78,9 @@ export function AssetImportPanel({
       setStatus(
         metadata.stopped
           ? '项目已切换，已安全停止音频时长分析。'
-          : `音频分析完成：${metadata.readyCount} 个 Ready${
+          : `${metadata.readyCount} 段配音已准备好${
               metadata.errorCount > 0
-                ? `，${metadata.errorCount} 个失败，可在素材详情重试。`
+                ? `，${metadata.errorCount} 段失败，可在素材详情重试。`
                 : '。'
             }`,
       );

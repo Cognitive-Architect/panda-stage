@@ -65,12 +65,12 @@ describe('audio metadata product path', () => {
     });
 
     expect(pending).toContain('data-audio-metadata-status="pending"');
-    expect(pending).toContain('等待 / 正在分析');
+    expect(pending).toContain('正在准备…');
     expect(ready).toContain('data-audio-metadata-status="ready"');
     expect(ready).toContain('1.25 秒');
     expect(failed).toContain('data-audio-metadata-status="error"');
     expect(failed).toContain('Audio probe failed.');
-    expect(failed).toContain('重试分析');
+    expect(failed).toContain('重试');
   });
 
   it('shows the same error and retry action in asset details', () => {
@@ -89,7 +89,7 @@ describe('audio metadata product path', () => {
 
     expect(markup).toContain('data-audio-metadata-status="error"');
     expect(markup).toContain('The audio source is missing.');
-    expect(markup).toContain('重试音频分析');
+    expect(markup).toContain('重试');
   });
 
   it('selects only newly imported audio assets for automatic analysis', () => {

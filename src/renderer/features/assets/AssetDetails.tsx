@@ -125,10 +125,10 @@ export function AssetDetails({
             <dt>音频分析</dt>
             <dd data-audio-metadata-status={metadataState}>
               {metadataState === 'ready'
-                ? 'Ready'
+                ? '可用'
                 : metadataState === 'error'
-                  ? metadataErrorMessage ?? '分析失败'
-                  : '等待 / 正在分析'}
+                  ? metadataErrorMessage ?? '无法读取配音'
+                  : '正在准备…'}
             </dd>
           </div>
         ) : null}
@@ -151,7 +151,7 @@ export function AssetDetails({
       </dl>
       {metadataState === 'error' && onRefreshMetadata ? (
         <button disabled={busy} onClick={onRefreshMetadata} type="button">
-          重试音频分析
+          重试
         </button>
       ) : null}
       {references.length > 0 ? (

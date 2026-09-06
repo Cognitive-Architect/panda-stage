@@ -27,7 +27,10 @@ describe('Issue #439 Phase 1 current-owner Audio UI', () => {
     expect(dialogue).toContain("asset.metadata?.status !== 'error'");
     expect(properties).toContain('{audioBindingControl}');
     expect(landscape).toContain('{audioBindingControl}');
-    expect(properties).toContain('只可绑定已完成时长分析的素材');
+    expect(dialogue).toContain('配音');
+    expect(dialogue).toContain('安排到时间轴后即可添加配音');
+    expect(dialogue).toContain('data-testid="dialogue-inspector-untimed-audio"');
+    expect(dialogue).toContain('aria-label="选择配音"');
   });
 
   it('keeps metadata state and retry inside the current asset card', () => {
@@ -63,7 +66,7 @@ describe('Issue #439 Phase 1 current-owner Audio UI', () => {
     );
     expect(markup).toContain('data-audio-metadata-status="error"');
     expect(markup).toContain('Cannot inspect audio');
-    expect(markup).toContain('重试分析');
+    expect(markup).toContain('重试');
   });
 
   it('retains the single current owners and does not wire Preview playback', () => {

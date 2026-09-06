@@ -217,10 +217,10 @@ export function AssetCard({
             <span>音频素材</span>
             <small data-testid="asset-audio-metadata-state">
               {audioState === 'ready'
-                ? 'Ready'
+                ? '可用'
                 : audioState === 'error'
-                  ? '分析失败'
-                  : '等待 / 正在分析'}
+                  ? '无法读取配音'
+                  : '正在准备…'}
             </small>
             {audioError ? (
               <small role="alert" title={audioError}>
@@ -235,7 +235,7 @@ export function AssetCard({
                 }}
                 type="button"
               >
-                重试分析
+                重试
               </button>
             ) : null}
           </div>

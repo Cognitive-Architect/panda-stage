@@ -376,7 +376,7 @@ export function AssetLibrary({
     });
     setStatus(
       asset.kind === 'audio'
-        ? '正在分析音频时长…'
+        ? '正在准备配音…'
         : '正在重新读取素材并生成缩略图…',
     );
     try {
@@ -435,7 +435,7 @@ export function AssetLibrary({
       setStatus(
         ready
           ? asset.kind === 'audio'
-            ? '音频分析完成，时长 Ready。'
+            ? '配音已准备好。'
             : '缩略图已重新生成。'
           : outcome.status,
       );
@@ -448,7 +448,7 @@ export function AssetLibrary({
         error instanceof Error
           ? error.message
           : asset.kind === 'audio'
-            ? '音频分析失败。'
+            ? '无法读取配音。'
             : '缩略图重建失败。';
       if (asset.kind === 'audio') {
         setMetadataErrors((existing) => ({

@@ -27367,4 +27367,53 @@ h1 {
   .fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-region {
     min-height: 440px;
   }
+
+/* Issue #441: subtitle Properties UI polish - product-language identity,
+   unboxed audio surface, and Untimed progressive disclosure. The current
+   single Right Workspace owner remains the layout authority; this block
+   only adds local presentation refinements for the dialogue Properties
+   surface without changing geometry, owners, or copy in other panels. */
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-summary {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-untimed-audio {
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--ui-color-border, rgb(127 199 148 / 22%));
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-audio-summary-line {
+  min-width: 0;
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-landscape-properties-audio-summary {
+  min-width: 0;
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
 }
