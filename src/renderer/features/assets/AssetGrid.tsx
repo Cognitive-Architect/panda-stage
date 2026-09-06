@@ -17,6 +17,7 @@ export interface AssetGridProps {
   onRebuildThumbnail: (assetId: string) => void;
   onThumbnailError: (assetId: string) => void;
   emptyMessage?: string;
+  metadataErrors?: Readonly<Record<string, string>>;
 }
 
 export function AssetGrid({
@@ -30,6 +31,7 @@ export function AssetGrid({
   onRebuildThumbnail,
   onThumbnailError,
   emptyMessage,
+  metadataErrors,
 }: AssetGridProps): React.JSX.Element {
   if (entries.length === 0) {
     return (
@@ -63,6 +65,7 @@ export function AssetGrid({
           onRebuildThumbnail={onRebuildThumbnail}
           onSelect={onSelect}
           onThumbnailError={onThumbnailError}
+          metadataError={metadataErrors?.[entry.asset.id]}
           selected={selectedAssetId === entry.asset.id}
           thumbnail={
             thumbnails[entry.asset.id] ?? { status: 'loading' }

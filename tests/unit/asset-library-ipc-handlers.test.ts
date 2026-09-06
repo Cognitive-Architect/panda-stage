@@ -28,6 +28,7 @@ import {
 } from '../../src/main/services/AssetDeleteService';
 import type { AssetThumbnailService } from '../../src/main/services/AssetThumbnailService';
 import type { AssetCanvasImageService } from '../../src/main/services/AssetCanvasImageService';
+import type { AssetPreviewAudioService } from '../../src/main/services/AssetPreviewAudioService';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -46,22 +47,29 @@ function services(): {
   assetDeleteService: AssetDeleteService;
   assetThumbnailService: AssetThumbnailService;
   assetCanvasImageService: AssetCanvasImageService;
+  assetPreviewAudioService: AssetPreviewAudioService;
   deleteAsset: ReturnType<typeof vi.fn>;
   read: ReturnType<typeof vi.fn>;
   readCanvasImage: ReturnType<typeof vi.fn>;
+  readAudio: ReturnType<typeof vi.fn>;
 } {
   const deleteAsset = vi.fn();
   const read = vi.fn();
   const readCanvasImage = vi.fn();
+  const readAudio = vi.fn();
   return {
     assetDeleteService: { deleteAsset } as unknown as AssetDeleteService,
     assetThumbnailService: { read } as unknown as AssetThumbnailService,
     assetCanvasImageService: {
       read: readCanvasImage,
     } as unknown as AssetCanvasImageService,
+    assetPreviewAudioService: {
+      read: readAudio,
+    } as unknown as AssetPreviewAudioService,
     deleteAsset,
     read,
     readCanvasImage,
+    readAudio,
   };
 }
 
@@ -83,11 +91,12 @@ describe('asset library IPC handlers', () => {
       IPC_CHANNELS.ASSET_DELETE,
       IPC_CHANNELS.ASSET_THUMBNAIL_READ,
       IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
+      IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ,
     ]);
-    expect(electronMocks.handle).toHaveBeenCalledTimes(3);
+    expect(electronMocks.handle).toHaveBeenCalledTimes(4);
     remove();
     expect(electronMocks.handlers.size).toBe(0);
-    expect(electronMocks.removeHandler).toHaveBeenCalledTimes(3);
+    expect(electronMocks.removeHandler).toHaveBeenCalledTimes(4);
   });
 
   it('rejects an untrusted renderer before calling any service', async () => {
@@ -115,9 +124,16 @@ describe('asset library IPC handlers', () => {
         {},
       ),
     ).rejects.toThrow('untrusted sender');
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ)!(
+        event(7),
+        {},
+      ),
+    ).rejects.toThrow('untrusted sender');
     expect(dependencies.deleteAsset).not.toHaveBeenCalled();
     expect(dependencies.read).not.toHaveBeenCalled();
     expect(dependencies.readCanvasImage).not.toHaveBeenCalled();
+    expect(dependencies.readAudio).not.toHaveBeenCalled();
   });
 
   it('returns strict structured failures for malformed payloads', async () => {
@@ -158,9 +174,19 @@ describe('asset library IPC handlers', () => {
       ok: false,
       error: { code: 'ASSET_CANVAS_IMAGE_INVALID_REQUEST' },
     });
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ)!(
+        event(),
+        { projectRoot: 'D:\\demo', assetId: '../secret' },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_PREVIEW_AUDIO_INVALID_REQUEST' },
+    });
     expect(dependencies.deleteAsset).not.toHaveBeenCalled();
     expect(dependencies.read).not.toHaveBeenCalled();
     expect(dependencies.readCanvasImage).not.toHaveBeenCalled();
+    expect(dependencies.readAudio).not.toHaveBeenCalled();
   });
 
   it('validates the canvas response and converts service failures to structured errors', async () => {
@@ -234,6 +260,51 @@ describe('asset library IPC handlers', () => {
     expect(
       (response as { error: { message: string } }).error.message,
     ).toHaveLength(1_000);
+  });
+
+  it('validates the audio response and keeps unexpected errors opaque', async () => {
+    const dependencies = services();
+    registerAssetLibraryIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...dependencies,
+    });
+    const request = {
+      projectRoot: 'D:\\demo.pandastage',
+      assetId: '10000000-0000-4000-8000-000000000002',
+      sha256: 'a'.repeat(64),
+    };
+    dependencies.readAudio.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      assetId: request.assetId,
+      mimeType: 'audio/wav',
+      byteLength: 2,
+      bytes: new Uint8Array([1]),
+    });
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ)!(
+        event(),
+        request,
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_PREVIEW_AUDIO_READ_FAILED' },
+    });
+
+    dependencies.readAudio.mockRejectedValue(new Error('C:\\secret\\x.wav'));
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ)!(
+        event(),
+        request,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'ASSET_PREVIEW_AUDIO_READ_FAILED',
+        message: 'Audio preview service failed.',
+        assetId: request.assetId,
+      },
+    });
   });
 
   it('preserves the current project and revision in a stale response', async () => {

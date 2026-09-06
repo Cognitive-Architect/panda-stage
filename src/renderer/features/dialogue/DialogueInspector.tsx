@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Clock3, MessageSquareText, Trash2, UserRound, Volume2 } from 'lucide-react';
-import type { Character } from '../../../domain';
+import type { AudioAsset, Character } from '../../../domain';
 import { layoutSubtitleText } from '../../../shared/preview/subtitle-layout';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
@@ -41,7 +41,7 @@ export type DialogueInspectorPresentation =
   | 'timeline';
 export type DialogueInspectorLandscapePresentation = 'landscape';
 
-type DialogueInspectorErrorScope = 'text' | 'timing' | 'speaker';
+type DialogueInspectorErrorScope = 'text' | 'timing' | 'speaker' | 'audio';
 
 interface DialogueInspectorError {
   scope: DialogueInspectorErrorScope;
@@ -80,6 +80,10 @@ export function DialogueInspector({
     (candidate) => candidate.id === dialogueId,
   );
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
+  const audioAssets: readonly AudioAsset[] =
+    snapshot?.project.assets.filter(
+      (candidate): candidate is AudioAsset => candidate.kind === 'audio',
+    ) ?? [];
   const character = characters.find(
     (candidate) => candidate.id === dialogue?.characterId,
   );
@@ -104,6 +108,10 @@ export function DialogueInspector({
     : dialogue?.audioClipId
       ? '绑定音频不可用'
       : '未绑定音频';
+  const unavailableAudioCount = audioAssets.filter(
+    (asset) =>
+      asset.durationMs === undefined || asset.metadata?.status === 'error',
+  ).length;
 
   const [text, setText] = useState(dialogue?.text ?? '');
   const [startMs, setStartMs] = useState(String(dialogue?.startMs ?? 0));
@@ -172,6 +180,62 @@ export function DialogueInspector({
       });
     }
   };
+
+  const audioBindingControl = (
+    <>
+      <label className="dialogue-field">
+        <span>对白音频</span>
+        <select
+          aria-label="对白音频"
+          data-testid="dialogue-inspector-audio"
+          disabled={!timed || audioAssets.length === 0}
+          value={audioAsset?.id ?? ''}
+          onChange={(event) => {
+            if (!event.target.value) return;
+            report(
+              'audio',
+              () => dialogueStore.bindAudio(dialogue.id, event.target.value),
+              '对白音频绑定失败。',
+            );
+          }}
+        >
+          <option value="">
+            {!timed
+              ? '先安排字幕时间'
+              : audioAssets.length === 0
+                ? '当前项目没有音频素材'
+                : '选择 Ready 音频'}
+          </option>
+          {audioAssets.map((asset) => {
+            const ready =
+              asset.durationMs !== undefined &&
+              asset.metadata?.status !== 'error';
+            return (
+              <option disabled={!ready} key={asset.id} value={asset.id}>
+                {asset.name}
+                {ready ? ` · ${formatTimecode(asset.durationMs!)}` : ' · 待分析'}
+              </option>
+            );
+          })}
+        </select>
+      </label>
+      {unavailableAudioCount > 0 ? (
+        <small data-testid="dialogue-inspector-audio-unavailable">
+          {unavailableAudioCount} 个音频尚未 Ready，不能绑定。
+        </small>
+      ) : null}
+      {error?.scope === 'audio' ? (
+        <p
+          className="dialogue-editor-error"
+          data-error-scope="audio"
+          data-testid="dialogue-editor-error"
+          role="alert"
+        >
+          {error.message}
+        </p>
+      ) : null}
+    </>
+  );
 
   const commitText = (): void => {
     focusedRef.current = false;
@@ -774,8 +838,9 @@ export function DialogueInspector({
               </p>
             </div>
           </div>
+          {audioBindingControl}
           <span className="dialogue-inspector-audio-note">
-            音频播放区间独立于字幕时间；当前仅展示已有绑定状态。
+            音频播放区间独立于字幕时间；只可绑定已完成时长分析的素材。
           </span>
         </section>
 
@@ -1069,6 +1134,7 @@ export function DialogueInspector({
               {audioSummary}
             </p>
           </div>
+          {audioBindingControl}
         </section>
 
         <div className="dialogue-properties-actions dialogue-landscape-properties-actions">

@@ -20,6 +20,10 @@ import type {
   AssetCanvasImageReadResponse,
 } from '../shared/asset-canvas-image-api';
 import type {
+  AssetPreviewAudioReadRequest,
+  AssetPreviewAudioReadResponse,
+} from '../shared/asset-preview-audio-api';
+import type {
   AppPingResponse,
   HiddenReadyResponse,
 } from '../shared/ipc/contracts';
@@ -152,6 +156,9 @@ declare global {
         readCanvasImage: (
           request: AssetCanvasImageReadRequest,
         ) => Promise<AssetCanvasImageReadResponse>;
+        readAudio: (
+          request: AssetPreviewAudioReadRequest,
+        ) => Promise<AssetPreviewAudioReadResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;

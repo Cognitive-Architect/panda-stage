@@ -217,7 +217,7 @@ describe('DialogueService Day28 timing contract', () => {
     });
   });
 
-  it('checks overlap only at explicit timing commit and allows adjacency', () => {
+  it('uses first legal gap for one-click arrange while preserving adjacency', () => {
     const service = dialogueService();
     let project = createAt(service, buildProject(), 0, 'first');
     project = createAt(service, project, 42, 'adjacent');
@@ -238,18 +238,51 @@ describe('DialogueService Day28 timing contract', () => {
       { startMs: 0, endMs: 42 },
       { startMs: 42, endMs: 84 },
     ]);
+    project = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: overlap!.id,
+      frameSpanMs: 42,
+    });
+    expect(project.shots[0]!.dialogues[2]).toMatchObject({
+      startMs: 84,
+      endMs: 126,
+    });
+  });
+
+  it('rejects an occupied explicit Timeline point without relocating it', () => {
+    const service = dialogueService();
+    let project = createAt(service, buildProject(), 0, 'occupied');
+    const occupiedId = project.shots[0]!.dialogues[0]!.id;
+    project = service.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: occupiedId,
+      startMs: 0,
+      endMs: 1300,
+    });
+    project = createAt(service, project, 0, 'explicit candidate');
+    const candidateId = project.shots[0]!.dialogues[1]!.id;
+    const before = project;
+
     expectDialogueError(
       () =>
-        service.arrange(project, {
+        service.getArrangementTiming(project, {
           shotId: IDS.shot,
-          dialogueId: overlap!.id,
+          dialogueId: candidateId,
           frameSpanMs: 42,
+          startMs: 0,
         }),
       'DIALOGUE_OVERLAP',
     );
-    expect(project.shots[0]!.dialogues[2]).toMatchObject({
-      startMs: 20,
-      endMs: 20,
+    expect(project).toBe(before);
+
+    const oneClick = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: candidateId,
+      frameSpanMs: 42,
+    });
+    expect(oneClick.shots[0]!.dialogues[1]).toMatchObject({
+      startMs: 1300,
+      endMs: 1342,
     });
   });
 
@@ -315,7 +348,7 @@ describe('DialogueService Day28 timing contract', () => {
     });
   });
 
-  it('keeps legacy overlapping Timed data loadable while rejecting new overlap', () => {
+  it('keeps legacy overlapping Timed data loadable and searches after it', () => {
     const raw = buildProject();
     const legacy = ProjectSchema.parse({
       ...raw,
@@ -348,15 +381,15 @@ describe('DialogueService Day28 timing contract', () => {
     const service = dialogueService();
     const project = createAt(service, legacy, 750, 'new untimed');
     const id = project.shots[0]!.dialogues.at(-1)!.id;
-    expectDialogueError(
-      () =>
-        service.arrange(project, {
-          shotId: IDS.shot,
-          dialogueId: id,
-          frameSpanMs: 42,
-        }),
-      'DIALOGUE_OVERLAP',
-    );
+    const arranged = service.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId: id,
+      frameSpanMs: 42,
+    });
+    expect(arranged.shots[0]!.dialogues.at(-1)).toMatchObject({
+      startMs: 1500,
+      endMs: 1542,
+    });
   });
 });
 
