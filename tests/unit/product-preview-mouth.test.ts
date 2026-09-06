@@ -281,6 +281,23 @@ describe('Product Preview mouth projection - Phase 3 B', () => {
       ),
     ).toBe(evaluated);
 
+    const noMouth = {
+      ...project,
+      characters: project.characters.map((character) => {
+        const next = { ...character };
+        delete next.mouthOpenAssetId;
+        return next;
+      }),
+    } as Project;
+    expect(
+      projectProductPreviewMouth(
+        noMouth,
+        shot,
+        evaluated,
+        DIALOGUE_A_ID,
+      ),
+    ).toBe(evaluated);
+
     const nonImageMouth = {
       ...project,
       characters: project.characters.map((character) => ({
@@ -292,6 +309,28 @@ describe('Product Preview mouth projection - Phase 3 B', () => {
       projectProductPreviewMouth(
         nonImageMouth,
         shot,
+        evaluated,
+        DIALOGUE_A_ID,
+      ),
+    ).toBe(evaluated);
+
+    const missingAudioAsset = {
+      ...project,
+      assets: project.assets.filter((asset) => asset.id !== AUDIO_ID),
+    } as Project;
+    expect(
+      projectProductPreviewMouth(
+        missingAudioAsset,
+        shot,
+        evaluated,
+        DIALOGUE_A_ID,
+      ),
+    ).toBe(evaluated);
+
+    expect(
+      projectProductPreviewMouth(
+        project,
+        { ...shot, layers: [] },
         evaluated,
         DIALOGUE_A_ID,
       ),
