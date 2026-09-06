@@ -24,6 +24,7 @@ import {
   clampProductPreviewTime,
   formatProductPreviewTimecode,
   listProductPreviewAssetIds,
+  projectProductPreviewMouth,
   resolveProductPreviewShot,
   resolveProductPreviewSubtitleStyle,
   resolveProductPreviewTransportAction,
@@ -138,6 +139,18 @@ export function ProductPreviewOverlay({
   const activeCue = evaluatedShot
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
+  const renderedShot = useMemo(
+    () =>
+      shot && evaluatedShot
+        ? projectProductPreviewMouth(
+            project,
+            shot,
+            evaluatedShot,
+            activeCue?.id ?? null,
+          )
+        : evaluatedShot,
+    [activeCue?.id, evaluatedShot, project, shot],
+  );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
   const atEnd = durationMs > 0 && timeMs >= durationMs;
@@ -209,12 +222,12 @@ export function ProductPreviewOverlay({
                       有 {assets.missingCount} 个图片素材无法读取，请在项目素材库中重新导入或刷新后再试。
                     </span>
                   </div>
-                ) : evaluatedShot ? (
+                ) : renderedShot ? (
                   <CanvasStage
                     assetUrls={assets.urls}
                     caption={caption}
                     captionStyle={captionStyle}
-                    evaluatedShot={evaluatedShot}
+                    evaluatedShot={renderedShot}
                     project={project}
                   />
                 ) : null}
