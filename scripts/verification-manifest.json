@@ -288,6 +288,7 @@
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
           "tests/unit/project-launcher.test.ts",
+          "tests/unit/product-preview-*.test.ts",
           "tests/unit/left-workspace.test.ts",
           "tests/unit/right-inspector*.test.ts",
           "tests/unit/ui-m1-*.test.ts",
