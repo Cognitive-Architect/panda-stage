@@ -24,11 +24,14 @@ import {
   clampProductPreviewTime,
   formatProductPreviewTimecode,
   listProductPreviewAssetIds,
+  resolveProductPreviewTransportAction,
   resolveProductPreviewShot,
 } from '../../src/renderer/shell/productPreviewModel';
 
 const OVERLAY_PATH = 'src/renderer/shell/ProductPreviewOverlay.tsx';
 const MODEL_PATH = 'src/renderer/shell/productPreviewModel.ts';
+const AUDIO_PATH = 'src/renderer/shell/productPreviewAudio.ts';
+const IMAGES_PATH = 'src/renderer/shell/productPreviewImages.ts';
 const SHELL_PATH = 'src/renderer/shell/EditorShell.tsx';
 const TOP_BAR_PATH = 'src/renderer/shell/CompactProjectBar.tsx';
 
@@ -268,6 +271,25 @@ describe('product preview model', () => {
     expect(formatProductPreviewTimecode(65_430)).toBe('1:05.43');
   });
 
+  it('locks Play, Pause, seek, Stop and Replay master-clock semantics', () => {
+    expect(resolveProductPreviewTransportAction(1_250, 4_000, { type: 'pause' }))
+      .toEqual({ timeMs: 1_250, playing: false, repositionAudio: false });
+    expect(resolveProductPreviewTransportAction(1_250, 4_000, { type: 'play' }))
+      .toEqual({ timeMs: 1_250, playing: true, repositionAudio: false });
+    expect(
+      resolveProductPreviewTransportAction(1_250, 4_000, {
+        type: 'seek',
+        timeMs: 2_750,
+      }),
+    ).toEqual({ timeMs: 2_750, playing: false, repositionAudio: true });
+    expect(resolveProductPreviewTransportAction(2_750, 4_000, { type: 'stop' }))
+      .toEqual({ timeMs: 0, playing: false, repositionAudio: true });
+    expect(resolveProductPreviewTransportAction(2_750, 4_000, { type: 'replay' }))
+      .toEqual({ timeMs: 0, playing: true, repositionAudio: true });
+    expect(resolveProductPreviewTransportAction(4_000, 4_000, { type: 'play' }))
+      .toEqual({ timeMs: 4_000, playing: false, repositionAudio: false });
+  });
+
   it('keeps the clamped time consumable by the formal evaluator', () => {
     const project = buildProject();
     const shot = project.shots[0];
@@ -303,7 +325,9 @@ describe('product preview overlay contract', () => {
   it('never writes the project, revision, dirty flag, selection or history', () => {
     const overlay = readSource(OVERLAY_PATH);
     const model = readSource(MODEL_PATH);
-    const sources = `${overlay}\n${model}`;
+    const audio = readSource(AUDIO_PATH);
+    const images = readSource(IMAGES_PATH);
+    const sources = `${overlay}\n${model}\n${audio}\n${images}`;
 
     for (const forbidden of [
       'editorProjectStore',
@@ -321,11 +345,15 @@ describe('product preview overlay contract', () => {
     ]) {
       expect(sources).not.toContain(forbidden);
     }
-    // The only IPC it may use is the read-only thumbnail read.
-    expect(overlay).toContain('window.pandaStage.assets.readThumbnail');
-    expect(
-      overlay.match(/window\.pandaStage\.[a-zA-Z.]+/gu),
-    ).toEqual(['window.pandaStage.assets.readThumbnail']);
+    // Phase 2 consumes only the two existing bounded, read-only asset seams.
+    expect(overlay).not.toContain('window.pandaStage.');
+    expect(images).toContain('window.pandaStage.assets.readCanvasImage');
+    expect(images).not.toContain('readThumbnail');
+    expect(audio).toContain('window.pandaStage.assets.readAudio');
+    expect(sources.match(/window\.pandaStage\.[a-zA-Z.]+/gu)).toEqual([
+      'window.pandaStage.assets.readAudio',
+      'window.pandaStage.assets.readCanvasImage',
+    ]);
   });
 
   it('owns only its local playback state and no second project tree', () => {
@@ -339,6 +367,21 @@ describe('product preview overlay contract', () => {
     expect(overlay).not.toContain('useSyncExternalStore');
     expect(overlay).toContain('project: Project;');
     expect(overlay).toContain('shotId: string | null;');
+  });
+
+  it('drives one subordinate audio transport from the shared subtitle winner', () => {
+    const overlay = readSource(OVERLAY_PATH);
+
+    expect(overlay).toContain('useProductPreviewAudio({');
+    expect(overlay).toContain('activeDialogueId: activeCue?.id ?? null');
+    expect(overlay).toContain('timeMs: evaluatedShot?.timeMs ?? 0');
+    expect(overlay).toContain('playing,');
+    expect(overlay).toContain('seekRevision,');
+    expect(overlay).toContain('resolveProductPreviewTransportAction(');
+    expect(overlay).not.toContain('setInterval(');
+    expect(overlay).not.toContain('new Audio(');
+    expect(overlay).toContain('data-testid="product-preview-audio-warning"');
+    expect(overlay).toContain('data-testid="product-preview-replay"');
   });
 
   it('shows a Chinese empty state when the project has no shot', () => {
@@ -359,20 +402,40 @@ describe('product preview overlay contract', () => {
 
     for (const selector of [
       'data-testid="product-preview-overlay"',
+      'data-testid="product-preview-play-pause"',
       'data-testid="product-preview-play"',
       'data-testid="product-preview-pause"',
       'data-testid="product-preview-stop"',
+      'data-testid="product-preview-replay"',
       'data-testid="product-preview-scrubber"',
       'data-testid="product-preview-timecode"',
       'data-testid="product-preview-close"',
     ]) {
       expect(overlay).toContain(selector);
     }
-    expect(overlay).toContain(
-      '预览只读：播放进度不会修改项目内容，也不会产生未保存更改。',
-    );
+    expect(overlay).toContain("type: playing ? 'pause' : 'play'");
     expect(overlay).toContain('role="dialog"');
     expect(overlay).toContain('aria-modal="true"');
+  });
+
+  it('uses bounded originals in a compact contain-style player shell', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const images = readSource(IMAGES_PATH);
+    const styles = readSource('src/renderer/styles.css');
+
+    expect(overlay).toContain('useProductPreviewImages(');
+    expect(overlay).toContain('data-preview-image-source="bounded-original"');
+    expect(overlay).toContain('data-preview-stage-fit="contain"');
+    expect(overlay).toContain('className="product-preview-player"');
+    expect(images).toContain('ProductPreviewImageSession');
+    expect(images).toContain('new Blob([response.bytes]');
+    expect(images).toContain('this.revokeObjectUrl(objectUrl)');
+    expect(styles).toContain('--product-preview-stage-width');
+    expect(styles).toContain('aspect-ratio: 16 / 9');
+    expect(styles).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
+    expect(styles).toMatch(
+      /\.product-preview-hint\.product-preview-warning\s*\{[\s\S]*?position:\s*absolute/u,
+    );
   });
 
   it('is mounted only while open so no hidden DOM survives closing', () => {

@@ -35,6 +35,20 @@ export interface ProductPreviewTimeStep {
   ended: boolean;
 }
 
+export type ProductPreviewTransportAction =
+  | { type: 'play' }
+  | { type: 'pause' }
+  | { type: 'seek'; timeMs: number }
+  | { type: 'stop' }
+  | { type: 'replay' };
+
+export interface ProductPreviewTransportState {
+  timeMs: number;
+  playing: boolean;
+  /** Explicit reposition/reset token for the subordinate audio transport. */
+  repositionAudio: boolean;
+}
+
 /**
  * Finds the shot the overlay should render. Returns `null` when the project
  * has no shots at all, or when the requested shot no longer exists.
@@ -141,6 +155,39 @@ export function advanceProductPreviewTime(
   const maximum = Math.max(0, Math.round(durationMs));
   const timeMs = clampProductPreviewTime(currentTimeMs + step, maximum);
   return { timeMs, ended: timeMs >= maximum };
+}
+
+/** Locks Product Preview's user-facing transport semantics as pure state. */
+export function resolveProductPreviewTransportAction(
+  currentTimeMs: number,
+  durationMs: number,
+  action: ProductPreviewTransportAction,
+): ProductPreviewTransportState {
+  const timeMs = clampProductPreviewTime(currentTimeMs, durationMs);
+  switch (action.type) {
+    case 'play':
+      return {
+        timeMs,
+        playing: durationMs > 0 && timeMs < durationMs,
+        repositionAudio: false,
+      };
+    case 'pause':
+      return { timeMs, playing: false, repositionAudio: false };
+    case 'seek':
+      return {
+        timeMs: clampProductPreviewTime(action.timeMs, durationMs),
+        playing: false,
+        repositionAudio: true,
+      };
+    case 'stop':
+      return { timeMs: 0, playing: false, repositionAudio: true };
+    case 'replay':
+      return {
+        timeMs: 0,
+        playing: durationMs > 0,
+        repositionAudio: true,
+      };
+  }
 }
 
 /** Formats a millisecond position as `分:秒.百分秒`, e.g. `0:03.20`. */

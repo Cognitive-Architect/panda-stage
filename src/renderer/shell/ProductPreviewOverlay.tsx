@@ -17,7 +17,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { evaluateShotAtTime, type Project } from '../../domain';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
-import type { StageAssetUrlMap } from '../../shared/stage/render-model';
 import { CanvasStage } from '../stage/CanvasStage';
 import {
   advanceProductPreviewTime,
@@ -27,10 +26,14 @@ import {
   listProductPreviewAssetIds,
   resolveProductPreviewShot,
   resolveProductPreviewSubtitleStyle,
+  resolveProductPreviewTransportAction,
+  type ProductPreviewTransportAction,
 } from './productPreviewModel';
+import { useProductPreviewAudio } from './productPreviewAudio';
+import { useProductPreviewImages } from './productPreviewImages';
 
 export interface ProductPreviewOverlayProps {
-  /** Project folder of the currently open project, used to read thumbnails. */
+  /** Project folder of the current project, used by bounded asset reads. */
   projectRoot: string;
   /** The already loaded formal project. Treated as immutable input. */
   project: Project;
@@ -38,90 +41,6 @@ export interface ProductPreviewOverlayProps {
   shotId: string | null;
   /** Closes the overlay and discards all preview-local playback state. */
   onClose(): void;
-}
-
-type AssetLoadStatus = 'loading' | 'ready' | 'error';
-
-interface AssetLoadState {
-  status: AssetLoadStatus;
-  urls: StageAssetUrlMap;
-  missingCount: number;
-}
-
-const INITIAL_ASSET_STATE: AssetLoadState = {
-  status: 'loading',
-  urls: {},
-  missingCount: 0,
-};
-
-/**
- * Loads one data URL per image asset the shot can show. Read-only: it calls
- * the existing thumbnail read IPC and keeps the result in overlay-local state.
- */
-function useProductPreviewAssets(
-  projectRoot: string,
-  project: Project,
-  assetIds: readonly string[],
-): AssetLoadState {
-  const [state, setState] = useState<AssetLoadState>(INITIAL_ASSET_STATE);
-  const assetKey = [...assetIds].sort().join('|');
-
-  useEffect(() => {
-    let active = true;
-    setState(INITIAL_ASSET_STATE);
-    if (assetIds.length === 0) {
-      setState({ status: 'ready', urls: {}, missingCount: 0 });
-      return () => {
-        active = false;
-      };
-    }
-
-    const requests = assetIds.map(async (assetId) => {
-      const asset = project.assets.find(
-        (candidate) => candidate.id === assetId,
-      );
-      if (!asset || asset.kind !== 'image' || !asset.sha256) {
-        return [assetId, undefined] as const;
-      }
-      try {
-        const response = await window.pandaStage.assets.readThumbnail({
-          projectRoot,
-          assetId,
-          sha256: asset.sha256,
-        });
-        if (!response.ok || response.status !== 'ready') {
-          return [assetId, undefined] as const;
-        }
-        return [assetId, response.dataUrl] as const;
-      } catch {
-        return [assetId, undefined] as const;
-      }
-    });
-
-    void Promise.all(requests).then((entries) => {
-      if (!active) return;
-      const urls: Record<string, string | undefined> = {};
-      let missingCount = 0;
-      for (const [assetId, dataUrl] of entries) {
-        if (dataUrl) {
-          urls[assetId] = dataUrl;
-        } else {
-          missingCount += 1;
-        }
-      }
-      setState({
-        status: missingCount > 0 ? 'error' : 'ready',
-        urls,
-        missingCount,
-      });
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [assetKey, project, projectRoot]);
-
-  return state;
 }
 
 export function ProductPreviewOverlay({
@@ -138,26 +57,39 @@ export function ProductPreviewOverlay({
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [seekRevision, setSeekRevision] = useState(0);
   const assetIds = useMemo(
     () => (shot ? listProductPreviewAssetIds(project, shot) : []),
     [project, shot],
   );
-  const assets = useProductPreviewAssets(projectRoot, project, assetIds);
+  const assets = useProductPreviewImages(projectRoot, project, assetIds);
   const cues = useMemo(
     () => (shot ? buildProductPreviewCues(shot) : []),
     [shot],
   );
   const durationMs = shot?.durationMs ?? 0;
 
-  const stopPlayback = useCallback((): void => {
-    setPlaying(false);
-    setTimeMs(0);
-  }, []);
+  const applyTransportAction = useCallback(
+    (action: ProductPreviewTransportAction): void => {
+      const next = resolveProductPreviewTransportAction(
+        timeMs,
+        durationMs,
+        action,
+      );
+      setPlaying(next.playing);
+      setTimeMs(next.timeMs);
+      if (next.repositionAudio) {
+        setSeekRevision((current) => current + 1);
+      }
+    },
+    [durationMs, timeMs],
+  );
 
   useEffect(() => {
     // A shot switch resets the preview-local clock; nothing outside changes.
     setPlaying(false);
     setTimeMs(0);
+    setSeekRevision((current) => current + 1);
   }, [shot?.id]);
 
   useEffect(() => {
@@ -209,6 +141,15 @@ export function ProductPreviewOverlay({
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
   const atEnd = durationMs > 0 && timeMs >= durationMs;
+  const audioWarning = useProductPreviewAudio({
+    projectRoot,
+    project,
+    shot,
+    activeDialogueId: activeCue?.id ?? null,
+    timeMs: evaluatedShot?.timeMs ?? 0,
+    playing,
+    seekRevision,
+  });
 
   return (
     <div
@@ -222,21 +163,17 @@ export function ProductPreviewOverlay({
       role="dialog"
     >
       <div className="product-preview-frame">
-        <header className="product-preview-header">
-          <div>
-            <p className="eyebrow">产品预览</p>
-            <h2>{shot ? shot.name : project.name}</h2>
-          </div>
-          <button
-            className="product-preview-close task4-hit-target"
-            data-task4-core="preview-close"
-            data-testid="product-preview-close"
-            onClick={onClose}
-            type="button"
-          >
-            关闭预览
-          </button>
-        </header>
+        <button
+          aria-label="关闭预览"
+          className="product-preview-close task4-hit-target"
+          data-task4-core="preview-close"
+          data-testid="product-preview-close"
+          onClick={onClose}
+          title="关闭预览"
+          type="button"
+        >
+          ×
+        </button>
 
         {shot === null ? (
           <div
@@ -248,106 +185,146 @@ export function ProductPreviewOverlay({
           </div>
         ) : (
           <>
-            <div className="product-preview-stage">
-              {assets.status === 'loading' ? (
-                <div
-                  className="product-preview-message"
-                  data-testid="product-preview-loading"
-                >
-                  <strong>预览素材加载中</strong>
-                  <span>正在读取当前镜头需要的图片素材。</span>
-                </div>
-              ) : assets.status === 'error' ? (
-                <div
-                  className="product-preview-message product-preview-warning"
-                  data-testid="product-preview-asset-warning"
-                >
-                  <strong>部分素材无法预览</strong>
-                  <span>
-                    有 {assets.missingCount} 个图片素材缺少可用缩略图，请在项目素材库中重新导入或刷新后再试。
-                  </span>
-                </div>
-              ) : evaluatedShot ? (
-                <CanvasStage
-                  assetUrls={assets.urls}
-                  caption={caption}
-                  captionStyle={captionStyle}
-                  evaluatedShot={evaluatedShot}
-                  project={project}
-                />
-              ) : null}
-            </div>
-
-            <div className="product-preview-transport">
+            <div className="product-preview-player">
               <div
-                aria-label="产品预览播放控制"
-                className="product-preview-controls"
+                className="product-preview-stage"
+                data-preview-image-source="bounded-original"
+                data-preview-stage-fit="contain"
               >
-                <button
-                  className="task4-hit-target"
-                  data-task4-core="preview-play"
-                  data-testid="product-preview-play"
-                  disabled={playing || atEnd || durationMs <= 0}
-                  onClick={() => setPlaying(true)}
-                  type="button"
-                >
-                  播放
-                </button>
-                <button
-                  className="task4-hit-target"
-                  data-task4-core="preview-pause"
-                  data-testid="product-preview-pause"
-                  disabled={!playing}
-                  onClick={() => setPlaying(false)}
-                  type="button"
-                >
-                  暂停
-                </button>
-                <button
-                  className="task4-hit-target"
-                  data-task4-core="preview-stop"
-                  data-testid="product-preview-stop"
-                  disabled={!playing && timeMs === 0}
-                  onClick={stopPlayback}
-                  type="button"
-                >
-                  停止
-                </button>
+                {assets.status === 'loading' ? (
+                  <div
+                    className="product-preview-message"
+                    data-testid="product-preview-loading"
+                  >
+                    <strong>预览素材加载中</strong>
+                    <span>正在读取当前镜头需要的图片素材。</span>
+                  </div>
+                ) : assets.status === 'error' ? (
+                  <div
+                    className="product-preview-message product-preview-warning"
+                    data-testid="product-preview-asset-warning"
+                  >
+                    <strong>部分素材无法预览</strong>
+                    <span>
+                      有 {assets.missingCount} 个图片素材无法读取，请在项目素材库中重新导入或刷新后再试。
+                    </span>
+                  </div>
+                ) : evaluatedShot ? (
+                  <CanvasStage
+                    assetUrls={assets.urls}
+                    caption={caption}
+                    captionStyle={captionStyle}
+                    evaluatedShot={evaluatedShot}
+                    project={project}
+                  />
+                ) : null}
               </div>
-              <input
-                aria-label="产品预览进度"
-                className="product-preview-scrubber"
-                data-testid="product-preview-scrubber"
-                max={durationMs}
-                min={0}
-                onChange={(event) => {
-                  setPlaying(false);
-                  setTimeMs(
-                    clampProductPreviewTime(
-                      Number(event.target.value),
-                      durationMs,
-                    ),
-                  );
-                }}
-                step={10}
-                type="range"
-                value={timeMs}
-              />
-              <span
-                className="product-preview-timecode"
-                data-testid="product-preview-timecode"
-              >
-                {formatProductPreviewTimecode(timeMs)} /{' '}
-                {formatProductPreviewTimecode(durationMs)}
-              </span>
+
+              <div className="product-preview-transport">
+                <div
+                  aria-label="产品预览播放控制"
+                  className="product-preview-controls"
+                >
+                  <button
+                    aria-label={playing ? '暂停' : '播放'}
+                    aria-pressed={playing}
+                    className="product-preview-icon-button task4-hit-target"
+                    data-task4-core={
+                      playing ? 'preview-pause' : 'preview-play'
+                    }
+                    data-testid="product-preview-play-pause"
+                    disabled={durationMs <= 0 || (!playing && atEnd)}
+                    onClick={() =>
+                      applyTransportAction({
+                        type: playing ? 'pause' : 'play',
+                      })
+                    }
+                    title={playing ? '暂停' : '播放'}
+                    type="button"
+                  >
+                    {playing ? (
+                      <span
+                        aria-hidden="true"
+                        className="product-preview-icon"
+                        data-testid="product-preview-pause"
+                      >
+                        ⏸
+                      </span>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="product-preview-icon"
+                        data-testid="product-preview-play"
+                      >
+                        ▶
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    aria-label="停止"
+                    className="product-preview-icon-button task4-hit-target"
+                    data-task4-core="preview-stop"
+                    data-testid="product-preview-stop"
+                    disabled={durationMs <= 0}
+                    onClick={() => applyTransportAction({ type: 'stop' })}
+                    title="停止"
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="product-preview-icon">
+                      ■
+                    </span>
+                  </button>
+                  <button
+                    aria-label="重播"
+                    className="product-preview-icon-button task4-hit-target"
+                    data-task4-core="preview-replay"
+                    data-testid="product-preview-replay"
+                    disabled={durationMs <= 0}
+                    onClick={() => applyTransportAction({ type: 'replay' })}
+                    title="重播"
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="product-preview-icon">
+                      ↺
+                    </span>
+                  </button>
+                </div>
+                <input
+                  aria-label="产品预览进度"
+                  className="product-preview-scrubber"
+                  data-testid="product-preview-scrubber"
+                  max={durationMs}
+                  min={0}
+                  onChange={(event) => {
+                    applyTransportAction({
+                      type: 'seek',
+                      timeMs: Number(event.target.value),
+                    });
+                  }}
+                  step={10}
+                  type="range"
+                  value={timeMs}
+                />
+                <span
+                  className="product-preview-timecode"
+                  data-testid="product-preview-timecode"
+                >
+                  {formatProductPreviewTimecode(timeMs)} /{' '}
+                  {formatProductPreviewTimecode(durationMs)}
+                </span>
+              </div>
             </div>
 
-            <p
-              className="product-preview-hint"
-              data-testid="product-preview-hint"
-            >
-              预览只读：播放进度不会修改项目内容，也不会产生未保存更改。
-            </p>
+            {audioWarning ? (
+              <p
+                className="product-preview-hint product-preview-warning"
+                data-testid="product-preview-audio-warning"
+                title={audioWarning}
+                role="status"
+              >
+                {audioWarning}
+              </p>
+            ) : null}
           </>
         )}
       </div>
