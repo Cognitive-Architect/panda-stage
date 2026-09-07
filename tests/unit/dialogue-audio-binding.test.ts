@@ -88,6 +88,54 @@ function expectDialogueError(
 }
 
 describe('Dialogue audio binding', () => {
+  it('deleting a uniquely bound Dialogue collects its clip but keeps the AudioAsset', () => {
+    const seed = timedProject();
+    const bound = seed.service.bindAudio(seed.project, {
+      shotId: IDS.shot,
+      dialogueId: seed.dialogueId,
+      assetId: AUDIO_A,
+    });
+
+    const removed = seed.service.remove(bound, IDS.shot, seed.dialogueId);
+
+    expect(removed.shots[0]!.dialogues).toHaveLength(0);
+    expect(removed.shots[0]!.audioClips).toHaveLength(0);
+    expect(removed.assets.find((asset) => asset.id === AUDIO_A)).toEqual(
+      bound.assets.find((asset) => asset.id === AUDIO_A),
+    );
+    expect(ProjectSchema.parse(JSON.parse(JSON.stringify(removed)))).toEqual(
+      removed,
+    );
+  });
+
+  it('deleting one Dialogue preserves a shared legacy clip for its remaining reference', () => {
+    const seed = timedProject();
+    const bound = seed.service.bindAudio(seed.project, {
+      shotId: IDS.shot,
+      dialogueId: seed.dialogueId,
+      assetId: AUDIO_A,
+    });
+    const originalDialogue = bound.shots[0]!.dialogues[0]!;
+    const secondDialogue = {
+      ...originalDialogue,
+      id: 'd2900000-0000-4000-8000-000000000098',
+      text: '共享旧对白',
+    };
+    const shared = ProjectSchema.parse({
+      ...bound,
+      shots: bound.shots.map((shot) => ({
+        ...shot,
+        dialogues: [...shot.dialogues, secondDialogue],
+      })),
+    });
+
+    const removed = seed.service.remove(shared, IDS.shot, seed.dialogueId);
+
+    expect(removed.shots[0]!.dialogues).toEqual([secondDialogue]);
+    expect(removed.shots[0]!.audioClips).toEqual(shared.shots[0]!.audioClips);
+    expect(removed.assets).toEqual(shared.assets);
+  });
+
   it('binds only timed Dialogues and creates one v6 clip with explicit defaults', () => {
     const mutationService = service();
     const untimed = mutationService.create(withAudio(), {
@@ -374,6 +422,61 @@ describe('Dialogue audio binding', () => {
     expect(after.project.shots[0]!.audioClips).toHaveLength(1);
     expect(editor.undo()).toBe(true);
     expect(editor.getSnapshot()!.project.shots[0]!.audioClips).toHaveLength(0);
+  });
+
+  it('deletes a bound Dialogue and its orphan clip in one undoable History command', () => {
+    const seed = timedProject();
+    const editor = new EditorProjectStore();
+    const shots = new ShotStore(editor, new ShotService());
+    const layers = new LayerSelectionStore(editor, shots);
+    const dialogueSelection = new DialogueSelectionStore(
+      editor,
+      shots,
+      layers,
+    );
+    const store = new DialogueStore(
+      editor,
+      shots,
+      seed.service,
+      { getSnapshot: () => ({ currentTimeMs: 0 }) },
+      dialogueSelection,
+    );
+    const bound = seed.service.bindAudio(seed.project, {
+      shotId: IDS.shot,
+      dialogueId: seed.dialogueId,
+      assetId: AUDIO_A,
+    });
+    editor.open('D:\\dialogue-audio-delete.pandastage', bound);
+    shots.select(IDS.shot);
+
+    store.remove(seed.dialogueId);
+
+    expect(editor.getSnapshot()!.project.shots[0]).toMatchObject({
+      dialogues: [],
+      audioClips: [],
+    });
+    expect(editor.getSnapshot()!.project.assets.some(({ id }) => id === AUDIO_A)).toBe(
+      true,
+    );
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      nextUndoLabel: 'Delete dialogue',
+    });
+
+    expect(editor.undo()).toBe(true);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toMatchObject({
+      id: seed.dialogueId,
+      audioClipId: bound.shots[0]!.audioClips[0]!.id,
+    });
+    expect(editor.getSnapshot()!.project.shots[0]!.audioClips).toEqual(
+      bound.shots[0]!.audioClips,
+    );
+
+    expect(editor.redo()).toBe(true);
+    expect(editor.getSnapshot()!.project.shots[0]).toMatchObject({
+      dialogues: [],
+      audioClips: [],
+    });
   });
 
   it('round-trips independent subtitle timing through one undoable resize', () => {

@@ -351,12 +351,42 @@ export class DialogueService {
   remove(project: Project, shotId: string, dialogueId: string): Project {
     const shot = this.shot(project, shotId);
     this.dialogue(shot, dialogueId);
+    const detachedShot = this.detachAudioReference(shot, dialogueId);
     return this.replaceShot(project, shot.id, {
-      ...shot,
-      dialogues: shot.dialogues.filter(
+      ...detachedShot,
+      dialogues: detachedShot.dialogues.filter(
         (candidate) => candidate.id !== dialogueId,
       ),
     });
+  }
+
+  /**
+   * Detach one Dialogue from its child AudioClip and collect the clip only when
+   * no other (legacy shared) Dialogue still references it. The source
+   * AudioAsset is project-owned and deliberately left untouched.
+   */
+  private detachAudioReference(shot: Shot, dialogueId: string): Shot {
+    const dialogue = this.dialogue(shot, dialogueId);
+    if (!dialogue.audioClipId) return shot;
+
+    const clipId = dialogue.audioClipId;
+    const dialogues: Dialogue[] = shot.dialogues.map((candidate) => {
+      if (candidate.id !== dialogueId) return candidate;
+      const unboundDialogue: Dialogue = { ...candidate };
+      delete unboundDialogue.audioClipId;
+      return unboundDialogue;
+    });
+    const clipStillReferenced = dialogues.some(
+      (candidate) => candidate.audioClipId === clipId,
+    );
+
+    return {
+      ...shot,
+      dialogues,
+      audioClips: clipStillReferenced
+        ? shot.audioClips
+        : shot.audioClips.filter((clip) => clip.id !== clipId),
+    };
   }
 
   private replaceDialogueTiming(
