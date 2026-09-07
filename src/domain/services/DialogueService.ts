@@ -357,7 +357,7 @@ export class DialogueService {
   remove(project: Project, shotId: string, dialogueId: string): Project {
     const shot = this.shot(project, shotId);
     this.dialogue(shot, dialogueId);
-    const detachedShot = this.detachAudioReference(shot, dialogueId);
+    const detachedShot = this.unbindAndCollectClip(shot, dialogueId);
     return this.replaceShot(project, shot.id, {
       ...detachedShot,
       dialogues: detachedShot.dialogues.filter(
@@ -374,7 +374,7 @@ export class DialogueService {
     return this.replaceShot(
       project,
       shot.id,
-      this.detachAudioReference(shot, dialogueId),
+      this.unbindAndCollectClip(shot, dialogueId),
     );
   }
 
@@ -442,7 +442,7 @@ export class DialogueService {
    * no other (legacy shared) Dialogue still references it. The source
    * AudioAsset is project-owned and deliberately left untouched.
    */
-  private detachAudioReference(shot: Shot, dialogueId: string): Shot {
+  private unbindAndCollectClip(shot: Shot, dialogueId: string): Shot {
     const dialogue = this.dialogue(shot, dialogueId);
     if (!dialogue.audioClipId) return shot;
 
