@@ -103,8 +103,7 @@ export function DialogueInspector({
   const audioSummary = audioClip
     ? (audioAsset?.name ?? audioClip.name) +
       ' · ' +
-      formatTimecode(Math.max(0, audioClip.endMs - audioClip.startMs)) +
-      ' · 已绑定'
+      formatTimecode(Math.max(0, audioClip.endMs - audioClip.startMs))
     : dialogue?.audioClipId
       ? '绑定配音不可用'
       : '还没有配音';
@@ -117,6 +116,7 @@ export function DialogueInspector({
   const [startMs, setStartMs] = useState(String(dialogue?.startMs ?? 0));
   const [endMs, setEndMs] = useState(String(dialogue?.endMs ?? 0));
   const [error, setError] = useState<DialogueInspectorError | null>(null);
+  const [trimHelpVisible, setTrimHelpVisible] = useState(false);
   const focusedRef = useRef(false);
 
   useEffect(() => {
@@ -124,6 +124,7 @@ export function DialogueInspector({
     setStartMs(String(dialogue?.startMs ?? 0));
     setEndMs(String(dialogue?.endMs ?? 0));
     setError(null);
+    setTrimHelpVisible(false);
   }, [dialogue?.id, dialogue?.text, dialogue?.startMs, dialogue?.endMs]);
 
   if (!shot || !dialogue) {
@@ -181,16 +182,53 @@ export function DialogueInspector({
     }
   };
 
-  const audioSummaryText = audioSummary;
+  const focusAudioTrimHandle = (): void => {
+    setTrimHelpVisible(true);
+    window.requestAnimationFrame(() => {
+      const clip = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-audio-clip-id]'),
+      ).find((candidate) => candidate.dataset.audioClipId === audioClip?.id);
+      const handle = clip?.querySelector<HTMLElement>(
+        '[data-testid="timeline-audio-trim-handle-end"]',
+      );
+      handle?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      handle?.focus({ preventScroll: true });
+    });
+  };
+
   const audioBindingControl = timed ? (
-    <>
-      <label className="dialogue-field">
-        <span>配音来源</span>
+    <div
+      className={`dialogue-audio-state${audioClip ? ' is-bound' : ' is-empty'}`}
+      data-audio-bound={String(Boolean(audioClip))}
+    >
+      {audioClip ? (
+        <div
+          className="dialogue-audio-source-card"
+          data-testid="dialogue-inspector-audio-summary"
+        >
+          <strong>{audioAsset?.name ?? audioClip.name}</strong>
+          <span>
+            片段{' '}
+            <time
+              dateTime={`PT${Math.max(0, audioClip.endMs - audioClip.startMs) / 1000}S`}
+            >
+              {formatTimecode(Math.max(0, audioClip.endMs - audioClip.startMs))}
+            </time>
+          </span>
+        </div>
+      ) : (
+        <div className="dialogue-audio-empty-state">
+          <strong>还没有配音</strong>
+          <span>为这条字幕选择角色配音。</span>
+        </div>
+      )}
+      <div className="dialogue-audio-actions">
         <select
-          aria-label="选择配音"
+          aria-label={audioClip ? '更换配音' : '选择配音'}
+          className="dialogue-audio-select-action"
           data-testid="dialogue-inspector-audio"
           disabled={audioAssets.length === 0}
-          value={audioAsset?.id ?? ''}
+          value=""
           onChange={(event) => {
             if (!event.target.value) return;
             report(
@@ -201,7 +239,11 @@ export function DialogueInspector({
           }}
         >
           <option value="">
-            {audioAssets.length === 0 ? '当前项目没有可用配音' : '选择配音'}
+            {audioAssets.length === 0
+              ? '当前项目没有可用配音'
+              : audioClip
+                ? '更换配音'
+                : '选择配音'}
           </option>
           {audioAssets.map((asset) => {
             const ready =
@@ -215,28 +257,37 @@ export function DialogueInspector({
             );
           })}
         </select>
-      </label>
-      <p
-        className="dialogue-properties-audio-summary-line"
-        data-testid="dialogue-inspector-audio-summary"
-      >
-        {audioSummaryText}
-      </p>
       {audioClip ? (
-        <button
-          className="dialogue-audio-unbind"
-          data-testid="dialogue-inspector-audio-unbind"
-          onClick={() =>
-            report(
-              'audio',
-              () => dialogueStore.unbindAudio(dialogue.id),
-              '移除配音失败。',
-            )
-          }
-          type="button"
-        >
-          移除配音
-        </button>
+        <>
+          <button
+            className="dialogue-audio-trim-action"
+            data-testid="dialogue-inspector-audio-trim"
+            onClick={focusAudioTrimHandle}
+            type="button"
+          >
+            调整时长
+          </button>
+          <button
+            className="dialogue-audio-unbind"
+            data-testid="dialogue-inspector-audio-unbind"
+            onClick={() =>
+              report(
+                'audio',
+                () => dialogueStore.unbindAudio(dialogue.id),
+                '移除配音失败。',
+              )
+            }
+            type="button"
+          >
+            移除配音
+          </button>
+        </>
+      ) : null}
+      </div>
+      {trimHelpVisible && audioClip ? (
+        <p className="dialogue-audio-trim-help" role="status">
+          拖动时间轴蓝色配音片段的右端调整时长。
+        </p>
       ) : null}
       {unavailableAudioCount > 0 ? (
         <small data-testid="dialogue-inspector-audio-unavailable">
@@ -253,7 +304,7 @@ export function DialogueInspector({
           {error.message}
         </p>
       ) : null}
-    </>
+    </div>
   ) : (
     <p
       className="dialogue-properties-untimed-audio"
@@ -604,56 +655,37 @@ export function DialogueInspector({
         data-testid="dialogue-inspector"
       >
         <header
-          aria-live="polite"
           aria-label="字幕属性"
-          className="dialogue-properties-header"
+          className="dialogue-properties-identity-editor"
           data-testid="dialogue-properties-header"
         >
-          <div className="dialogue-properties-heading-copy">
+          <DecorativeIcon icon={MessageSquareText} size={18} />
+          <div
+            className="dialogue-properties-identity-copy"
+            data-testid="dialogue-inspector-copy-section"
+          >
             <strong
               className="dialogue-properties-identity"
               data-testid="dialogue-properties-identity"
             >
               {character?.name ?? '未知角色'}
             </strong>
-            <p
-              className="dialogue-properties-summary"
-              data-testid="dialogue-properties-summary"
-            >
-              {dialogue.text.trim() || '（未填写对白）'}
-            </p>
-          </div>
-          <span
-            className="dialogue-properties-status"
-            data-testid="dialogue-properties-status"
-            data-timed={String(timed)}
-          >
-            {timed ? '已定时' : '待安排'}
-          </span>
-        </header>
-
-        <section
-          className="dialogue-properties-section"
-          data-testid="dialogue-inspector-copy-section"
-        >
-          <div className="dialogue-properties-section-heading">
-            <DecorativeIcon icon={MessageSquareText} size={18} />
-            <h3>台词</h3>
-          </div>
-          <label className="dialogue-field">
-            <span>内容</span>
             <textarea
               aria-label="台词内容"
+              className="dialogue-properties-inline-text"
               data-testid="dialogue-inspector-text"
               value={text}
-              rows={4}
+              rows={2}
               onChange={(event) => setText(event.target.value)}
               onFocus={() => {
                 focusedRef.current = true;
               }}
               onBlur={commitText}
             />
-          </label>
+          </div>
+          {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
+        </header>
+        <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
             <p
               className="dialogue-editor-error"
@@ -673,77 +705,40 @@ export function DialogueInspector({
               {error.message}
             </p>
           ) : null}
-        </section>
+        </div>
 
         <section
-          className="dialogue-properties-section"
-          data-testid="dialogue-inspector-speaker-section"
-        >
-          <div className="dialogue-properties-section-heading">
-            <DecorativeIcon icon={UserRound} size={18} />
-            <h3>角色</h3>
-          </div>
-          <label className="dialogue-field">
-            <span>角色</span>
-            <select
-              aria-label="字幕角色"
-              data-testid="dialogue-inspector-speaker"
-              value={dialogue.characterId}
-              onChange={(event) =>
-                report(
-                  'speaker',
-                  () =>
-                    dialogueStore.update(dialogue.id, {
-                      characterId: event.target.value,
-                    }),
-                  '角色无效。',
-                )
-              }
-            >
-              {characters.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {error?.scope === 'speaker' ? (
-            <p
-              className="dialogue-editor-error"
-              data-error-scope="speaker"
-              data-testid="dialogue-editor-error"
-              role="alert"
-            >
-              {error.message}
-            </p>
-          ) : null}
-        </section>
-
-        <section
-          className="dialogue-properties-section"
+          className="dialogue-properties-section dialogue-properties-time-section"
           data-testid="dialogue-inspector-time-section"
         >
           <div className="dialogue-properties-section-heading">
             <DecorativeIcon icon={Clock3} size={18} />
             <h3>时间</h3>
+            {timed ? (
+              <button
+                className="dialogue-properties-apply-timing"
+                data-testid="dialogue-inspector-apply-timing"
+                disabled={!timingInputValid}
+                onClick={commitTiming}
+                type="button"
+              >
+                应用
+              </button>
+            ) : null}
           </div>
           {timed ? (
             <>
-              <div className="dialogue-timing-fields">
-                <label className="dialogue-field">
-                  <span className="dialogue-timing-label">
-                    开始
-                    <time
-                      data-testid="dialogue-inspector-start-readable"
-                      dateTime={'PT' + Math.max(0, dialogue.startMs) / 1000 + 'S'}
-                    >
-                      {formatTimecode(dialogue.startMs)}
+              <div className="dialogue-compact-timing-grid">
+                <label className="dialogue-compact-time-cell">
+                  <span>开始</span>
+                  <span className="dialogue-compact-time-value">
+                    <time data-testid="dialogue-inspector-start-readable">
+                      {draftStartTimecode}
                     </time>
-                  </span>
-                  <span className="dialogue-timing-input">
                     <input
-                      aria-label="开始时间（毫秒）"
-                      data-display-time={formatTimecode(dialogue.startMs)}
+                      aria-label="开始时间"
+                      aria-valuetext={draftStartTimecode}
+                      data-display-time={draftStartTimecode}
                       data-testid="dialogue-inspector-start"
                       inputMode="numeric"
                       min={0}
@@ -751,23 +746,18 @@ export function DialogueInspector({
                       type="number"
                       value={startMs}
                     />
-                    <span aria-hidden="true">ms</span>
                   </span>
                 </label>
-                <label className="dialogue-field">
-                  <span className="dialogue-timing-label">
-                    结束
-                    <time
-                      data-testid="dialogue-inspector-end-readable"
-                      dateTime={'PT' + Math.max(0, dialogue.endMs) / 1000 + 'S'}
-                    >
-                      {formatTimecode(dialogue.endMs)}
+                <label className="dialogue-compact-time-cell">
+                  <span>结束</span>
+                  <span className="dialogue-compact-time-value">
+                    <time data-testid="dialogue-inspector-end-readable">
+                      {draftEndTimecode}
                     </time>
-                  </span>
-                  <span className="dialogue-timing-input">
                     <input
-                      aria-label="结束时间（毫秒）"
-                      data-display-time={formatTimecode(dialogue.endMs)}
+                      aria-label="结束时间"
+                      aria-valuetext={draftEndTimecode}
+                      data-display-time={draftEndTimecode}
                       data-testid="dialogue-inspector-end"
                       inputMode="numeric"
                       min={0}
@@ -775,36 +765,18 @@ export function DialogueInspector({
                       type="number"
                       value={endMs}
                     />
-                    <span aria-hidden="true">ms</span>
                   </span>
                 </label>
-              </div>
-              <div className="dialogue-timing-footer">
-                <p
-                  className="dialogue-point-time"
+                <div
+                  className="dialogue-compact-time-cell is-duration"
                   data-duration-ms={Math.max(0, dialogue.endMs - dialogue.startMs)}
                   data-testid="dialogue-inspector-timing-summary"
                 >
-                  <span>持续</span>{' '}
-                  <time
-                    dateTime={
-                      'PT' +
-                      Math.max(0, dialogue.endMs - dialogue.startMs) / 1000 +
-                      'S'
-                    }
-                  >
+                  <span>时长</span>
+                  <time>
                     {formatTimecode(dialogue.endMs - dialogue.startMs)}
                   </time>
-                </p>
-                <button
-                  className="dialogue-properties-apply-timing"
-                  data-testid="dialogue-inspector-apply-timing"
-                  disabled={!timingInputValid}
-                  onClick={commitTiming}
-                  type="button"
-                >
-                  应用时间
-                </button>
+                </div>
               </div>
               {error?.scope === 'timing' ? (
                 <p
@@ -845,6 +817,42 @@ export function DialogueInspector({
         </section>
 
         <section
+          className="dialogue-properties-section dialogue-properties-speaker-section"
+          data-testid="dialogue-inspector-speaker-section"
+        >
+          <div className="dialogue-properties-section-heading">
+            <DecorativeIcon icon={UserRound} size={18} />
+            <h3>角色</h3>
+          </div>
+          <select
+            aria-label="字幕角色"
+            data-testid="dialogue-inspector-speaker"
+            value={dialogue.characterId}
+            onChange={(event) =>
+              report(
+                'speaker',
+                () =>
+                  dialogueStore.update(dialogue.id, {
+                    characterId: event.target.value,
+                  }),
+                '角色无效。',
+              )
+            }
+          >
+            {characters.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            ))}
+          </select>
+          {error?.scope === 'speaker' ? (
+            <p className="dialogue-editor-error" role="alert">
+              {error.message}
+            </p>
+          ) : null}
+        </section>
+
+        <section
           className="dialogue-properties-section dialogue-properties-audio-section"
           data-testid="dialogue-inspector-audio-section"
         >
@@ -881,51 +889,37 @@ export function DialogueInspector({
         data-testid="dialogue-inspector"
       >
         <header
-          aria-live="polite"
-          className="dialogue-properties-header dialogue-inspector-context-summary"
+          aria-label="字幕属性"
+          className="dialogue-properties-identity-editor dialogue-landscape-properties-identity-editor"
           data-testid="dialogue-properties-header"
         >
+          <DecorativeIcon icon={MessageSquareText} size={18} />
           <div
-            className="dialogue-landscape-properties-identity-row"
-            data-header-row="identity"
-            data-testid="dialogue-properties-identity"
+            className="dialogue-properties-identity-copy"
+            data-testid="dialogue-inspector-copy-section"
           >
-            <strong data-testid="dialogue-inspector-speaker-name">
+            <strong
+              className="dialogue-properties-identity"
+              data-testid="dialogue-inspector-speaker-name"
+            >
               {character?.name ?? '未知角色'}
             </strong>
-            <span
-              className="dialogue-properties-status"
-              data-testid="dialogue-inspector-status"
-              data-timed={String(timed)}
-            >
-              {timed ? '已定时' : '待安排'}
-            </span>
-          </div>
-        </header>
-
-        <section
-          className="dialogue-properties-section dialogue-landscape-properties-section dialogue-landscape-properties-copy-section"
-          data-testid="dialogue-inspector-copy-section"
-        >
-          <div className="dialogue-properties-section-heading">
-            <DecorativeIcon icon={MessageSquareText} size={18} />
-            <h3>台词</h3>
-          </div>
-          <label className="dialogue-field">
-            <span>内容</span>
             <textarea
               aria-label="台词内容"
-              className="dialogue-landscape-properties-textarea"
+              className="dialogue-properties-inline-text dialogue-landscape-properties-textarea"
               data-testid="dialogue-inspector-text"
               value={text}
-              rows={3}
+              rows={2}
               onChange={(event) => setText(event.target.value)}
               onFocus={() => {
                 focusedRef.current = true;
               }}
               onBlur={commitText}
             />
-          </label>
+          </div>
+          {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
+        </header>
+        <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
             <p
               className="dialogue-editor-error"
@@ -945,7 +939,7 @@ export function DialogueInspector({
               {error.message}
             </p>
           ) : null}
-        </section>
+        </div>
 
         <section
           className="dialogue-properties-section dialogue-landscape-properties-section dialogue-landscape-properties-timing-section"
@@ -954,28 +948,30 @@ export function DialogueInspector({
           <div className="dialogue-properties-section-heading">
             <DecorativeIcon icon={Clock3} size={18} />
             <h3>时间</h3>
+            {timed ? (
+              <button
+                className="dialogue-properties-apply-timing"
+                data-testid="dialogue-inspector-apply-timing"
+                disabled={!timingInputValid}
+                onClick={commitTiming}
+                type="button"
+              >
+                应用
+              </button>
+            ) : null}
           </div>
           {timed ? (
             <>
-              <div className="dialogue-timing-fields dialogue-landscape-properties-timing-fields">
-                <label className="dialogue-field">
-                  <span className="dialogue-timing-label">
-                    <span>开始</span>
-                    <time
-                      aria-hidden="true"
-                      data-testid="dialogue-inspector-start-readable"
-                      dateTime={
-                        'PT' + Math.max(0, dialogue.startMs) / 1000 + 'S'
-                      }
-                    >
+              <div className="dialogue-compact-timing-grid">
+                <label className="dialogue-compact-time-cell">
+                  <span>开始</span>
+                  <span className="dialogue-compact-time-value">
+                    <time data-testid="dialogue-inspector-start-readable">
                       {draftStartTimecode}
                     </time>
-                  </span>
-                  <span className="dialogue-timing-input">
                     <input
                       aria-label="开始时间"
                       aria-valuetext={draftStartTimecode}
-                      className="dialogue-landscape-properties-time-input"
                       data-testid="dialogue-inspector-start"
                       data-display-time={draftStartTimecode}
                       data-persisted-timecode={formatTimecode(dialogue.startMs)}
@@ -987,24 +983,15 @@ export function DialogueInspector({
                     />
                   </span>
                 </label>
-                <label className="dialogue-field">
-                  <span className="dialogue-timing-label">
-                    <span>结束</span>
-                    <time
-                      aria-hidden="true"
-                      data-testid="dialogue-inspector-end-readable"
-                      dateTime={
-                        'PT' + Math.max(0, dialogue.endMs) / 1000 + 'S'
-                      }
-                    >
+                <label className="dialogue-compact-time-cell">
+                  <span>结束</span>
+                  <span className="dialogue-compact-time-value">
+                    <time data-testid="dialogue-inspector-end-readable">
                       {draftEndTimecode}
                     </time>
-                  </span>
-                  <span className="dialogue-timing-input">
                     <input
                       aria-label="结束时间"
                       aria-valuetext={draftEndTimecode}
-                      className="dialogue-landscape-properties-time-input"
                       data-testid="dialogue-inspector-end"
                       data-display-time={draftEndTimecode}
                       data-persisted-timecode={formatTimecode(dialogue.endMs)}
@@ -1016,36 +1003,19 @@ export function DialogueInspector({
                     />
                   </span>
                 </label>
-              </div>
-              <div className="dialogue-timing-footer dialogue-landscape-properties-timing-footer">
-                <p
-                  className="dialogue-point-time"
+                <div
+                  className="dialogue-compact-time-cell is-duration"
                   data-duration-ms={Math.max(
                     0,
                     dialogue.endMs - dialogue.startMs,
                   )}
                   data-testid="dialogue-inspector-timing-summary"
                 >
-                  <span>持续</span>
-                  <time
-                    dateTime={
-                      'PT' +
-                      Math.max(0, dialogue.endMs - dialogue.startMs) / 1000 +
-                      'S'
-                    }
-                  >
+                  <span>时长</span>
+                  <time>
                     {formatTimecode(dialogue.endMs - dialogue.startMs)}
                   </time>
-                </p>
-                <button
-                  className="dialogue-properties-apply-timing"
-                  data-testid="dialogue-inspector-apply-timing"
-                  disabled={!timingInputValid}
-                  onClick={commitTiming}
-                  type="button"
-                >
-                  应用时间
-                </button>
+                </div>
               </div>
               {error?.scope === 'timing' ? (
                 <p
@@ -1091,7 +1061,7 @@ export function DialogueInspector({
         >
           <div className="dialogue-properties-section-heading">
             <DecorativeIcon icon={UserRound} size={18} />
-            <h3>角色（说话人）</h3>
+            <h3>角色</h3>
           </div>
           <label className="dialogue-field">
             <select
@@ -1137,14 +1107,6 @@ export function DialogueInspector({
             <DecorativeIcon icon={Volume2} size={18} />
             <h3>配音</h3>
           </div>
-          {audioClip ? (
-            <p
-              className="dialogue-landscape-properties-audio-summary"
-              data-testid="dialogue-inspector-audio-summary"
-            >
-              {audioSummary}
-            </p>
-          ) : null}
           {audioBindingControl}
         </section>
 

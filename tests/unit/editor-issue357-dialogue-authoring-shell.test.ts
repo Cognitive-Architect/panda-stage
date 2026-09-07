@@ -144,10 +144,10 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
     expect(batch).toContain('resolveDialoguePaste(');
     expect(batch.match(/dialogueStore\.createMany\(/gu)).toHaveLength(1);
     expect(batch).toContain('data-testid="dialogue-batch-preview"');
-    expect(batch).toContain('data-testid="dialogue-batch-mapping"');
-    expect(batch).toContain('data-testid="dialogue-batch-stats"');
-    expect(batch).toContain('解析失败');
-    expect(batch).toContain('未知角色');
+    expect(batch).toContain('data-testid={`dialogue-batch-map-${line.lineNumber}`}');
+    expect(batch).toContain('没找到这个角色');
+    expect(batch).not.toContain('data-testid="dialogue-batch-stats"');
+    expect(batch).not.toContain('解析统计');
     expect(batch).toContain('disabled={!resolution.allResolved}');
     expect(batch).toContain('onSuccess();');
     expect(batch).not.toContain('CharacterStore');

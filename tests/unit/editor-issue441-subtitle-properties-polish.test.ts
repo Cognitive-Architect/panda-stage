@@ -78,8 +78,7 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     expect(properties).toContain('aria-label="字幕属性"');
     expect(properties).toContain('data-testid="dialogue-properties-header"');
     expect(properties).toContain('data-testid="dialogue-properties-identity"');
-    expect(properties).toContain('data-testid="dialogue-properties-summary"');
-    expect(properties).toContain('data-testid="dialogue-properties-status"');
+    expect(properties).toContain('dialogue-properties-inline-text');
     // Visible 字幕属性 h2 + 当前选择 eyebrow + 已定时字幕 redundant row all gone.
     expect(properties).not.toContain('<h2>字幕属性</h2>');
     expect(properties).not.toContain('当前选择');
@@ -114,7 +113,7 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     // message live in the audioBindingControl definition, which is referenced
     // (not redeclared) by both the properties and landscape sections; assert
     // the new product copy against the full source.
-    expect(dialogue).toContain('aria-label="选择配音"');
+    expect(dialogue).toContain("aria-label={audioClip ? '更换配音' : '选择配音'}");
     expect(dialogue).toContain("'选择配音'");
     expect(dialogue).toContain("'当前项目没有可用配音'");
     expect(dialogue).toContain('安排到时间轴后即可添加配音');
@@ -129,12 +128,10 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     expect(dialogue).not.toContain('只可绑定已完成时长分析的素材');
     expect(dialogue).toContain('配音绑定失败。');
 
-    // Timeline remains feedback-only and reads 配音 / 还没有配音 / 已绑定 in
-    // the audio summary line. The summary text is computed in a shared
-    // helper above the presentation branches, so assert against the full
-    // source rather than the timeline slice.
+    // Timeline remains feedback-only while the normal bound Properties state
+    // no longer repeats a persistent binding-state label.
     expect(dialogue).toContain('还没有配音');
-    expect(dialogue).toContain('已绑定');
+    expect(dialogue).not.toContain("' · 已绑定'");
     expect(timeline).toContain('配音');
   });
 

@@ -9,7 +9,7 @@ import {
   getAudioTrimPreviewEnd,
   type AudioTrimGestureIdentity,
 } from './audioTrimGesture';
-import { timeToPx } from './timeGeometry';
+import { formatTimecode, timeToPx } from './timeGeometry';
 
 interface DragState {
   pointerId: number;
@@ -93,6 +93,7 @@ export function AudioClip({
       data-audio-clip-id={clip.id}
       data-end-ms={displayedEndMs}
       data-selected={String(selected)}
+      data-trimming={String(Boolean(dragRef.current))}
       data-testid="timeline-audio-clip"
       onClick={(event) => {
         event.stopPropagation();
@@ -118,6 +119,7 @@ export function AudioClip({
           aria-valuenow={displayedEndMs}
           className="timeline-audio-trim-handle"
           data-testid="timeline-audio-trim-handle-end"
+          title="拖动右端调整配音时长"
           onPointerCancel={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -189,7 +191,21 @@ export function AudioClip({
           }}
           role="slider"
           tabIndex={0}
-        />
+        >
+          <span aria-hidden="true" className="timeline-audio-trim-grip">
+            <i />
+            <i />
+          </span>
+        </span>
+      ) : null}
+      {selected && dialogue ? (
+        <output
+          aria-live="off"
+          className="timeline-audio-duration"
+          data-testid="timeline-audio-duration"
+        >
+          {formatTimecode(displayedEndMs - clip.startMs)}
+        </output>
       ) : null}
       {error ? <span className="timeline-audio-clip-error" role="alert">{error}</span> : null}
     </div>

@@ -1055,7 +1055,6 @@ export function DialogueSheet({
           ) : (
             <DialogueBatchPaste
               draft={draft}
-              onCancel={handleCloseAuthoring}
               onSuccess={handleCloseAuthoring}
             />
           )}

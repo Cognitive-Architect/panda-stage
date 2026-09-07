@@ -30,7 +30,7 @@ describe('Issue #439 Phase 1 current-owner Audio UI', () => {
     expect(dialogue).toContain('配音');
     expect(dialogue).toContain('安排到时间轴后即可添加配音');
     expect(dialogue).toContain('data-testid="dialogue-inspector-untimed-audio"');
-    expect(dialogue).toContain('aria-label="选择配音"');
+    expect(dialogue).toContain("aria-label={audioClip ? '更换配音' : '选择配音'}");
     expect(dialogue).toContain('data-testid="dialogue-inspector-audio-unbind"');
     expect(dialogue).toContain('dialogueStore.unbindAudio');
     expect(dialogue).toContain('移除配音');

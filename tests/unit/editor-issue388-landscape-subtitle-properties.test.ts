@@ -33,9 +33,9 @@ describe('Issue #388 Stage C.1 landscape subtitle Properties polish', () => {
     expect(inspector).not.toContain('inspector-drawer-close');
     expect(inspector).toContain('data-testid="inspector-inline-close"');
     expect(landscape).toContain('data-testid="dialogue-properties-header"');
-    expect(landscape).toContain('data-header-row="identity"');
-    expect(landscape).toContain('data-testid="dialogue-properties-identity"');
-    expect(landscape).toContain('data-testid="dialogue-inspector-status"');
+    expect(landscape).toContain('dialogue-properties-identity-editor');
+    expect(landscape).toContain('data-testid="dialogue-inspector-speaker-name"');
+    expect(landscape).not.toContain("timed ? '已定时'");
     expect(landscape).not.toContain('已安排字幕');
     expect(landscape).not.toContain('dialogue-inspector-context-copy');
     expect(landscape).not.toContain('title={dialogue.text}');
@@ -65,10 +65,9 @@ describe('Issue #388 Stage C.1 landscape subtitle Properties polish', () => {
     );
     const landscape = landscapeDialogueSource(dialogue);
 
-    expect(landscape.match(/角色（说话人）/gu)).toHaveLength(1);
-    expect(landscape.match(/dialogue-inspector-audio-summary/gu)).toHaveLength(
-      1,
-    );
+    expect(landscape.match(/<h3>角色<\/h3>/gu)).toHaveLength(1);
+    expect(landscape).toContain('{audioBindingControl}');
+    expect(dialogue).toContain('className="dialogue-audio-source-card"');
     expect(landscape).not.toContain('dialogue-inspector-audio-note');
     expect(landscape).not.toContain('音频播放区间独立于字幕时间');
     expect(landscape).toContain('dialogueStore.update(dialogue.id');
