@@ -25,6 +25,7 @@ import {
 } from './timeGeometry';
 import { timelineUiStore, useTimelineUi } from './timelineUiStore';
 import { DialogueClip } from './DialogueClip';
+import { AudioClip } from './AudioClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { usePendingDialoguePlacement } from './PendingDialoguePlacement';
 
@@ -419,26 +420,44 @@ export function TimelineDock({
                       }
                       style={{ width: `${trackWidth}px` }}
                     >
-                      {audioClips.map((clip) => (
-                        <div
-                          aria-label={`音频：${audioClipName(clip.assetId, clip.name)}`}
-                          className="timeline-audio-clip"
-                          data-audio-clip-id={clip.id}
-                          data-testid="timeline-audio-clip"
-                          key={clip.id}
-                          style={{
-                            left: `${timeToPx(clip.startMs, pixelsPerMs)}px`,
-                            width: `${Math.max(
-                              8,
-                              timeToPx(clip.endMs - clip.startMs, pixelsPerMs),
-                            )}px`,
-                          }}
-                        >
-                          <span>
-                            {audioClipName(clip.assetId, clip.name)}
-                          </span>
-                        </div>
-                      ))}
+                      {audioClips.map((clip) => {
+                        const dialogue =
+                          shot?.dialogues.find(
+                            (candidate) => candidate.audioClipId === clip.id,
+                          ) ?? null;
+                        const asset = snapshot?.project.assets.find(
+                          (candidate) => candidate.id === clip.assetId,
+                        );
+                        const legalMaximumEndMs =
+                          dialogue &&
+                          asset?.kind === 'audio' &&
+                          asset.durationMs !== undefined
+                            ? Math.min(
+                                durationMs,
+                                dialogue.endMs,
+                                clip.startMs +
+                                  Math.max(0, asset.durationMs - clip.offsetMs),
+                              )
+                            : null;
+                        const maximumEndMs =
+                          legalMaximumEndMs !== null &&
+                          legalMaximumEndMs >= clip.startMs + 1
+                            ? legalMaximumEndMs
+                            : null;
+                        return (
+                          <AudioClip
+                            clip={clip}
+                            dialogue={dialogue}
+                            displayName={audioClipName(clip.assetId, clip.name)}
+                            key={clip.id}
+                            maximumEndMs={maximumEndMs}
+                            pixelsPerMs={pixelsPerMs}
+                            projectRoot={snapshot?.projectRoot ?? ''}
+                            selected={dialogue?.id === selectedDialogueId}
+                            shotId={shot!.id}
+                          />
+                        );
+                      })}
                       {audioClips.length === 0 ? (
                         <span
                           className="timeline-audio-empty"

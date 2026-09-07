@@ -95,6 +95,12 @@ export interface BindDialogueAudioInput {
   assetId: string;
 }
 
+export interface ResizeBoundAudioEndInput {
+  shotId: string;
+  dialogueId: string;
+  endMs: number;
+}
+
 export interface DialogueServiceOptions {
   createId?: () => string;
   now?: () => Date;
@@ -370,6 +376,65 @@ export class DialogueService {
       shot.id,
       this.detachAudioReference(shot, dialogueId),
     );
+  }
+
+  /** Resize only the tail of a bound voice clip, isolated by copy-on-write. */
+  resizeBoundAudioEnd(
+    project: Project,
+    input: ResizeBoundAudioEndInput,
+  ): Project {
+    const shot = this.shot(project, input.shotId);
+    const dialogue = this.dialogue(shot, input.dialogueId);
+    if (!dialogue.audioClipId) {
+      throw new DialogueServiceError(
+        'AUDIO_CLIP_NOT_FOUND',
+        '当前对白没有可调整的配音片段。',
+      );
+    }
+    this.validInteger(input.endMs, '配音结束时间');
+    const clip = this.audioClip(shot, dialogue.audioClipId);
+    const asset = this.audioAsset(project, clip.assetId);
+    const sourceEndMs =
+      clip.startMs + Math.max(0, (asset.durationMs ?? 0) - clip.offsetMs);
+    const maximumEndMs = Math.min(
+      shot.durationMs,
+      dialogue.endMs,
+      sourceEndMs,
+    );
+    if (maximumEndMs < clip.startMs + MIN_TIMED_DIALOGUE_DURATION_MS) {
+      throw new DialogueServiceError(
+        'AUDIO_CLIP_TOO_SHORT',
+        '当前配音没有可用的正时长尾部。',
+      );
+    }
+    const endMs = Math.min(
+      maximumEndMs,
+      Math.max(clip.startMs + MIN_TIMED_DIALOGUE_DURATION_MS, input.endMs),
+    );
+    if (endMs === clip.endMs) return project;
+
+    const references = shot.dialogues.filter(
+      (candidate) => candidate.audioClipId === clip.id,
+    ).length;
+    const clipId =
+      references === 1 ? clip.id : this.nextId(this.collectIds(project));
+    const nextClip: AudioClip = { ...clip, id: clipId, endMs };
+    const audioClips =
+      references === 1
+        ? shot.audioClips.map((candidate) =>
+            candidate.id === clip.id ? nextClip : candidate,
+          )
+        : [...shot.audioClips, nextClip];
+
+    return this.replaceShot(project, shot.id, {
+      ...shot,
+      audioClips,
+      dialogues: shot.dialogues.map((candidate) =>
+        candidate.id === dialogue.id
+          ? { ...candidate, audioClipId: clipId }
+          : candidate,
+      ),
+    });
   }
 
   /**
