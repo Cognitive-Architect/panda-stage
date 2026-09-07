@@ -101,6 +101,40 @@ export interface ResizeBoundAudioEndInput {
   endMs: number;
 }
 
+export interface BoundAudioEndRangeInput {
+  shotDurationMs: number;
+  dialogueEndMs: number;
+  clipStartMs: number;
+  clipOffsetMs: number;
+  sourceDurationMs: number;
+}
+
+export interface BoundAudioEndRange {
+  minimumEndMs: number;
+  maximumEndMs: number;
+}
+
+/**
+ * One shared legal range for both Timeline and Inspector tail controls.
+ * The bound clip remains constrained by Shot, Dialogue, and available source.
+ */
+export function getBoundAudioEndRange(
+  input: BoundAudioEndRangeInput,
+): BoundAudioEndRange | null {
+  const minimumEndMs = input.clipStartMs + MIN_TIMED_DIALOGUE_DURATION_MS;
+  const sourceEndMs =
+    input.clipStartMs +
+    Math.max(0, input.sourceDurationMs - input.clipOffsetMs);
+  const maximumEndMs = Math.min(
+    input.shotDurationMs,
+    input.dialogueEndMs,
+    sourceEndMs,
+  );
+  return maximumEndMs < minimumEndMs
+    ? null
+    : { minimumEndMs, maximumEndMs };
+}
+
 export interface DialogueServiceOptions {
   createId?: () => string;
   now?: () => Date;
@@ -394,22 +428,22 @@ export class DialogueService {
     this.validInteger(input.endMs, '配音结束时间');
     const clip = this.audioClip(shot, dialogue.audioClipId);
     const asset = this.audioAsset(project, clip.assetId);
-    const sourceEndMs =
-      clip.startMs + Math.max(0, (asset.durationMs ?? 0) - clip.offsetMs);
-    const maximumEndMs = Math.min(
-      shot.durationMs,
-      dialogue.endMs,
-      sourceEndMs,
-    );
-    if (maximumEndMs < clip.startMs + MIN_TIMED_DIALOGUE_DURATION_MS) {
+    const range = getBoundAudioEndRange({
+      shotDurationMs: shot.durationMs,
+      dialogueEndMs: dialogue.endMs,
+      clipStartMs: clip.startMs,
+      clipOffsetMs: clip.offsetMs,
+      sourceDurationMs: asset.durationMs ?? 0,
+    });
+    if (!range) {
       throw new DialogueServiceError(
         'AUDIO_CLIP_TOO_SHORT',
         '当前配音没有可用的正时长尾部。',
       );
     }
     const endMs = Math.min(
-      maximumEndMs,
-      Math.max(clip.startMs + MIN_TIMED_DIALOGUE_DURATION_MS, input.endMs),
+      range.maximumEndMs,
+      Math.max(range.minimumEndMs, input.endMs),
     );
     if (endMs === clip.endMs) return project;
 

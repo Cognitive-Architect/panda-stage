@@ -28033,3 +28033,330 @@ h1 {
   border-top: 0;
   background: none;
 }
+
+/* Issue #448 A: keep the approved compact subtitle Inspector hierarchy while
+   restoring production-friendly spacing and control sizes. Moderate drawer
+   scrolling is intentional; this block does not touch Batch Paste. */
+.dialogue-inspector-properties .dialogue-properties-identity-editor,
+.dialogue-inspector-landscape-properties .dialogue-properties-identity-editor {
+  gap: 11px;
+  padding: 13px 0 16px;
+}
+
+.dialogue-inspector-properties .dialogue-properties-inline-text,
+.dialogue-inspector-landscape-properties .dialogue-properties-inline-text {
+  min-height: 50px;
+  padding: 7px 8px;
+  line-height: 1.45;
+}
+
+.dialogue-inspector-properties .dialogue-properties-section,
+.dialogue-inspector-landscape-properties .dialogue-properties-section {
+  gap: 12px;
+  padding: 17px 0 19px;
+}
+
+.dialogue-inspector-properties .dialogue-properties-section-heading,
+.dialogue-inspector-landscape-properties .dialogue-properties-section-heading {
+  min-height: 30px;
+  gap: 9px;
+}
+
+.dialogue-inspector-properties
+  .dialogue-properties-section-heading
+  .dialogue-properties-apply-timing,
+.dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading
+  .dialogue-properties-apply-timing {
+  min-width: 58px;
+  min-height: 36px;
+  padding: 6px 13px;
+}
+
+.dialogue-inspector-properties .dialogue-compact-timing-grid,
+.dialogue-inspector-landscape-properties .dialogue-compact-timing-grid {
+  gap: 10px;
+}
+
+.dialogue-inspector-properties .dialogue-compact-time-cell,
+.dialogue-inspector-landscape-properties .dialogue-compact-time-cell {
+  gap: 6px;
+}
+
+.dialogue-inspector-properties .dialogue-compact-time-value,
+.dialogue-inspector-properties .dialogue-compact-time-cell.is-duration time,
+.dialogue-inspector-landscape-properties .dialogue-compact-time-value,
+.dialogue-inspector-landscape-properties
+  .dialogue-compact-time-cell.is-duration
+  time {
+  min-height: 44px;
+  padding-inline: 10px;
+  border-radius: var(--ui-radius-medium, 8px);
+  font-size: 12px;
+}
+
+.dialogue-inspector-properties .dialogue-properties-speaker-section > select,
+.dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-select {
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.dialogue-inspector-properties .dialogue-audio-state,
+.dialogue-inspector-landscape-properties .dialogue-audio-state {
+  gap: 9px;
+}
+
+.dialogue-inspector-properties .dialogue-audio-source-card,
+.dialogue-inspector-properties .dialogue-audio-empty-state,
+.dialogue-inspector-landscape-properties .dialogue-audio-source-card,
+.dialogue-inspector-landscape-properties .dialogue-audio-empty-state {
+  gap: 6px;
+}
+
+.dialogue-inspector-properties .dialogue-audio-actions,
+.dialogue-inspector-landscape-properties .dialogue-audio-actions {
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.dialogue-inspector-properties .dialogue-audio-actions > select,
+.dialogue-inspector-properties .dialogue-audio-actions > button,
+.dialogue-inspector-landscape-properties .dialogue-audio-actions > select,
+.dialogue-inspector-landscape-properties .dialogue-audio-actions > button {
+  min-height: 40px;
+  padding: 7px 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-identity-editor {
+  gap: 11px;
+  padding: 13px 0 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-inline-text {
+  height: auto;
+  min-height: 50px;
+  padding: 7px 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section {
+  gap: 12px;
+  padding: 17px 0 19px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading {
+  min-height: 30px;
+  gap: 9px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading
+  .dialogue-properties-apply-timing {
+  min-width: 58px;
+  min-height: 36px;
+  padding: 6px 13px;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-compact-time-value,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-compact-time-cell.is-duration
+  time {
+  min-height: 44px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-select {
+  min-height: 44px;
+  padding-block: 8px;
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-audio-actions
+  > select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-audio-actions
+  > button {
+  min-height: 40px;
+  padding: 7px 11px;
+}
+
+/* Issue #448 B: an inline editor for the existing bound AudioClip tail. */
+.dialogue-audio-duration-editor {
+  display: grid;
+  min-width: 0;
+  gap: 11px;
+  padding-top: 3px;
+}
+
+.dialogue-audio-duration-facts {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  margin: 0;
+}
+
+.dialogue-audio-duration-facts > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialogue-audio-duration-facts dt,
+.dialogue-audio-duration-facts dd {
+  margin: 0;
+}
+
+.dialogue-audio-duration-facts dt {
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-audio-duration-facts dd {
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+
+.dialogue-audio-duration-slider {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-audio-duration-slider input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
+  accent-color: var(--ui-color-accent, #75dc98);
+  cursor: ew-resize;
+  touch-action: pan-y;
+}
+
+.dialogue-audio-duration-slider input:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring, rgb(116 211 145 / 28%));
+  outline-offset: 2px;
+}
+
+.dialogue-audio-duration-range {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: -8px;
+  color: var(--ui-color-text-muted, #829589);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dialogue-audio-duration-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 3px;
+}
+
+.dialogue-audio-duration-actions > button {
+  min-height: 40px;
+  padding: 7px 11px;
+  border: 1px solid var(--ui-color-separator, #2b4336);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #b7c8bd);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dialogue-audio-duration-actions > button:hover:not(:disabled) {
+  border-color: var(--ui-color-selected-border, #74d391);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: rgb(46 104 64 / 16%);
+}
+
+.dialogue-audio-duration-actions > button.is-primary {
+  border-color: var(--ui-color-selected-border, #74d391);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-action-primary, #256f40);
+}
+
+.dialogue-audio-duration-actions > button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.timeline-audio-trim-handle {
+  position: absolute;
+  z-index: 2;
+  top: -3px;
+  right: auto;
+  bottom: -3px;
+  left: calc(100% - 24px);
+  display: grid;
+  width: 32px;
+  place-items: center;
+  border-radius: 7px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.timeline-audio-clip.selected {
+  overflow: visible;
+}
+
+.timeline-audio-trim-grip {
+  width: 16px;
+  height: 100%;
+  border-width: 2px;
+  border-radius: 5px;
+  background: #347f8d;
+}
+
+.timeline-audio-trim-grip i {
+  height: 14px;
+}
+
+.timeline-audio-trim-handle:hover,
+.timeline-audio-trim-handle:focus-visible {
+  background: rgb(79 178 196 / 20%);
+}

@@ -74,7 +74,7 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     expect(inspector).not.toContain("' · 已绑定'");
   });
 
-  it('connects the Inspector affordance to the existing selected Timeline grip without new duration truth', () => {
+  it('keeps Inspector and Timeline connected to the existing duration truth', () => {
     const inspector = source(
       'src/renderer/features/dialogue/DialogueInspector.tsx',
     );
@@ -84,8 +84,8 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     );
 
     expect(inspector).toContain('data-testid="dialogue-inspector-audio-trim"');
-    expect(inspector).toContain('timeline-audio-trim-handle-end');
-    expect(inspector).toContain('拖动时间轴蓝色配音片段的右端调整时长');
+    expect(inspector).toContain('dialogueStore.resizeBoundAudioEnd');
+    expect(inspector).toContain('dialogue-inspector-audio-duration-editor');
     expect(clip).toContain('className="timeline-audio-trim-grip"');
     expect(clip).toContain('title="拖动右端调整配音时长"');
     expect(clip).toContain('aria-label="调整配音结束时间"');

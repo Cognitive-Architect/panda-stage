@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   DialogueService,
+  getBoundAudioEndRange,
   ProjectSchema,
   ShotService,
   type Project,
@@ -72,6 +73,27 @@ function boundProject(): {
 }
 
 describe('Dialogue bound AudioClip right-edge trim', () => {
+  it('publishes one legal end range for domain, Timeline, and Inspector controls', () => {
+    expect(
+      getBoundAudioEndRange({
+        shotDurationMs: 4_000,
+        dialogueEndMs: 2_000,
+        clipStartMs: 500,
+        clipOffsetMs: 1_200,
+        sourceDurationMs: 2_000,
+      }),
+    ).toEqual({ minimumEndMs: 501, maximumEndMs: 1_300 });
+    expect(
+      getBoundAudioEndRange({
+        shotDurationMs: 4_000,
+        dialogueEndMs: 2_000,
+        clipStartMs: 500,
+        clipOffsetMs: 2_000,
+        sourceDurationMs: 2_000,
+      }),
+    ).toBeNull();
+  });
+
   it('shortens and restores only the right edge within source/dialogue/shot bounds', () => {
     const seed = boundProject();
     const clip = seed.project.shots[0]!.audioClips[0]!;

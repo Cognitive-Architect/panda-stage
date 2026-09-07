@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Clock3, MessageSquareText, Trash2, UserRound, Volume2 } from 'lucide-react';
-import type { AudioAsset, Character } from '../../../domain';
+import {
+  getBoundAudioEndRange,
+  type AudioAsset,
+  type Character,
+} from '../../../domain';
 import { layoutSubtitleText } from '../../../shared/preview/subtitle-layout';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
@@ -96,10 +100,27 @@ export function DialogueInspector({
       )
     : undefined;
   const audioAsset = audioClip
-    ? snapshot?.project.assets.find(
-        (candidate) => candidate.id === audioClip.assetId,
-      )
+    ? audioAssets.find((candidate) => candidate.id === audioClip.assetId)
     : undefined;
+  const audioEndRange =
+    shot && dialogue && audioClip && audioAsset?.durationMs !== undefined
+      ? getBoundAudioEndRange({
+          shotDurationMs: shot.durationMs,
+          dialogueEndMs: dialogue.endMs,
+          clipStartMs: audioClip.startMs,
+          clipOffsetMs: audioClip.offsetMs,
+          sourceDurationMs: audioAsset.durationMs,
+        })
+      : null;
+  const audioClipDurationMs = audioClip
+    ? Math.max(0, audioClip.endMs - audioClip.startMs)
+    : 0;
+  const audioTrimMaximumDurationMs = audioClip && audioEndRange
+    ? audioEndRange.maximumEndMs - audioClip.startMs
+    : 0;
+  const sourceAvailableDurationMs = audioClip && audioAsset?.durationMs
+    ? Math.max(0, audioAsset.durationMs - audioClip.offsetMs)
+    : 0;
   const audioSummary = audioClip
     ? (audioAsset?.name ?? audioClip.name) +
       ' · ' +
@@ -116,7 +137,10 @@ export function DialogueInspector({
   const [startMs, setStartMs] = useState(String(dialogue?.startMs ?? 0));
   const [endMs, setEndMs] = useState(String(dialogue?.endMs ?? 0));
   const [error, setError] = useState<DialogueInspectorError | null>(null);
-  const [trimHelpVisible, setTrimHelpVisible] = useState(false);
+  const [audioTrimEditorOpen, setAudioTrimEditorOpen] = useState(false);
+  const [audioTrimDurationMs, setAudioTrimDurationMs] = useState(
+    audioClipDurationMs,
+  );
   const focusedRef = useRef(false);
 
   useEffect(() => {
@@ -124,8 +148,12 @@ export function DialogueInspector({
     setStartMs(String(dialogue?.startMs ?? 0));
     setEndMs(String(dialogue?.endMs ?? 0));
     setError(null);
-    setTrimHelpVisible(false);
   }, [dialogue?.id, dialogue?.text, dialogue?.startMs, dialogue?.endMs]);
+
+  useEffect(() => {
+    setAudioTrimEditorOpen(false);
+    setAudioTrimDurationMs(audioClipDurationMs);
+  }, [audioClip?.id, audioClip?.startMs, audioClip?.endMs]);
 
   if (!shot || !dialogue) {
     return timelinePresentation ? (
@@ -170,30 +198,50 @@ export function DialogueInspector({
     scope: DialogueInspectorErrorScope,
     action: () => void,
     fallback: string,
-  ): void => {
+  ): boolean => {
     try {
       action();
       setError(null);
+      return true;
     } catch (nextError) {
       setError({
         scope,
         message: nextError instanceof Error ? nextError.message : fallback,
       });
+      return false;
     }
   };
 
-  const focusAudioTrimHandle = (): void => {
-    setTrimHelpVisible(true);
-    window.requestAnimationFrame(() => {
-      const clip = Array.from(
-        document.querySelectorAll<HTMLElement>('[data-audio-clip-id]'),
-      ).find((candidate) => candidate.dataset.audioClipId === audioClip?.id);
-      const handle = clip?.querySelector<HTMLElement>(
-        '[data-testid="timeline-audio-trim-handle-end"]',
-      );
-      handle?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-      handle?.focus({ preventScroll: true });
-    });
+  const openAudioTrimEditor = (): void => {
+    if (!audioClip || !audioEndRange) return;
+    setAudioTrimDurationMs(
+      Math.min(
+        audioTrimMaximumDurationMs,
+        Math.max(1, audioClipDurationMs),
+      ),
+    );
+    setAudioTrimEditorOpen(true);
+    setError(null);
+  };
+
+  const cancelAudioTrim = (): void => {
+    setAudioTrimDurationMs(audioClipDurationMs);
+    setAudioTrimEditorOpen(false);
+    setError(null);
+  };
+
+  const applyAudioTrim = (): void => {
+    if (!audioClip || !audioEndRange) return;
+    const applied = report(
+      'audio',
+      () =>
+        dialogueStore.resizeBoundAudioEnd(
+          dialogue.id,
+          audioClip.startMs + audioTrimDurationMs,
+        ),
+      '配音时长调整失败。',
+    );
+    if (applied) setAudioTrimEditorOpen(false);
   };
 
   const audioBindingControl = timed ? (
@@ -207,14 +255,14 @@ export function DialogueInspector({
           data-testid="dialogue-inspector-audio-summary"
         >
           <strong>{audioAsset?.name ?? audioClip.name}</strong>
-          <span>
-            片段{' '}
-            <time
-              dateTime={`PT${Math.max(0, audioClip.endMs - audioClip.startMs) / 1000}S`}
-            >
-              {formatTimecode(Math.max(0, audioClip.endMs - audioClip.startMs))}
-            </time>
-          </span>
+          {!audioTrimEditorOpen ? (
+            <span>
+              片段{' '}
+              <time dateTime={`PT${audioClipDurationMs / 1000}S`}>
+                {formatTimecode(audioClipDurationMs)}
+              </time>
+            </span>
+          ) : null}
         </div>
       ) : (
         <div className="dialogue-audio-empty-state">
@@ -222,73 +270,142 @@ export function DialogueInspector({
           <span>为这条字幕选择角色配音。</span>
         </div>
       )}
-      <div className="dialogue-audio-actions">
-        <select
-          aria-label={audioClip ? '更换配音' : '选择配音'}
-          className="dialogue-audio-select-action"
-          data-testid="dialogue-inspector-audio"
-          disabled={audioAssets.length === 0}
-          value=""
-          onChange={(event) => {
-            if (!event.target.value) return;
-            report(
-              'audio',
-              () => dialogueStore.bindAudio(dialogue.id, event.target.value),
-              '配音绑定失败。',
-            );
-          }}
+      {audioTrimEditorOpen && audioClip && audioAsset && audioEndRange ? (
+        <div
+          className="dialogue-audio-duration-editor"
+          data-testid="dialogue-inspector-audio-duration-editor"
         >
-          <option value="">
-            {audioAssets.length === 0
-              ? '当前项目没有可用配音'
-              : audioClip
-                ? '更换配音'
-                : '选择配音'}
-          </option>
-          {audioAssets.map((asset) => {
-            const ready =
-              asset.durationMs !== undefined &&
-              asset.metadata?.status !== 'error';
-            return (
-              <option disabled={!ready} key={asset.id} value={asset.id}>
-                {asset.name}
-                {ready ? ` · ${formatTimecode(asset.durationMs!)}` : ' · 正在准备…'}
-              </option>
-            );
-          })}
-        </select>
-      {audioClip ? (
-        <>
-          <button
-            className="dialogue-audio-trim-action"
-            data-testid="dialogue-inspector-audio-trim"
-            onClick={focusAudioTrimHandle}
-            type="button"
-          >
-            调整时长
-          </button>
-          <button
-            className="dialogue-audio-unbind"
-            data-testid="dialogue-inspector-audio-unbind"
-            onClick={() =>
+          <dl className="dialogue-audio-duration-facts">
+            <div>
+              <dt>片段时长</dt>
+              <dd>
+                <output data-testid="dialogue-inspector-audio-duration-draft">
+                  {formatTimecode(audioTrimDurationMs)}
+                </output>
+              </dd>
+            </div>
+            <div>
+              <dt>可用原音频</dt>
+              <dd>
+                <time>{formatTimecode(sourceAvailableDurationMs)}</time>
+              </dd>
+            </div>
+          </dl>
+          <label className="dialogue-audio-duration-slider">
+            <span>调整片段时长</span>
+            <input
+              aria-label="配音片段时长"
+              aria-valuetext={formatTimecode(audioTrimDurationMs)}
+              data-testid="dialogue-inspector-audio-duration-input"
+              max={audioTrimMaximumDurationMs}
+              min={1}
+              onChange={(event) =>
+                setAudioTrimDurationMs(Number(event.target.value))
+              }
+              step={1}
+              type="range"
+              value={audioTrimDurationMs}
+            />
+          </label>
+          <div className="dialogue-audio-duration-range" aria-hidden="true">
+            <span>{formatTimecode(1)}</span>
+            <span>当前上限 {formatTimecode(audioTrimMaximumDurationMs)}</span>
+          </div>
+          <div className="dialogue-audio-duration-actions">
+            <button
+              data-testid="dialogue-inspector-audio-duration-restore"
+              onClick={() =>
+                setAudioTrimDurationMs(audioTrimMaximumDurationMs)
+              }
+              type="button"
+            >
+              恢复可用长度
+            </button>
+            <button
+              data-testid="dialogue-inspector-audio-duration-cancel"
+              onClick={cancelAudioTrim}
+              type="button"
+            >
+              取消
+            </button>
+            <button
+              className="is-primary"
+              data-testid="dialogue-inspector-audio-duration-apply"
+              disabled={audioTrimDurationMs === audioClipDurationMs}
+              onClick={applyAudioTrim}
+              type="button"
+            >
+              应用
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="dialogue-audio-actions">
+          <select
+            aria-label={audioClip ? '更换配音' : '选择配音'}
+            className="dialogue-audio-select-action"
+            data-testid="dialogue-inspector-audio"
+            disabled={audioAssets.length === 0}
+            value=""
+            onChange={(event) => {
+              if (!event.target.value) return;
               report(
                 'audio',
-                () => dialogueStore.unbindAudio(dialogue.id),
-                '移除配音失败。',
-              )
-            }
-            type="button"
+                () => dialogueStore.bindAudio(dialogue.id, event.target.value),
+                '配音绑定失败。',
+              );
+            }}
           >
-            移除配音
-          </button>
-        </>
-      ) : null}
-      </div>
-      {trimHelpVisible && audioClip ? (
-        <p className="dialogue-audio-trim-help" role="status">
-          拖动时间轴蓝色配音片段的右端调整时长。
-        </p>
-      ) : null}
+            <option value="">
+              {audioAssets.length === 0
+                ? '当前项目没有可用配音'
+                : audioClip
+                  ? '更换配音'
+                  : '选择配音'}
+            </option>
+            {audioAssets.map((asset) => {
+              const ready =
+                asset.durationMs !== undefined &&
+                asset.metadata?.status !== 'error';
+              return (
+                <option disabled={!ready} key={asset.id} value={asset.id}>
+                  {asset.name}
+                  {ready
+                    ? ` · ${formatTimecode(asset.durationMs!)}`
+                    : ' · 正在准备…'}
+                </option>
+              );
+            })}
+          </select>
+          {audioClip ? (
+            <>
+              <button
+                className="dialogue-audio-trim-action"
+                data-testid="dialogue-inspector-audio-trim"
+                disabled={!audioEndRange}
+                onClick={openAudioTrimEditor}
+                type="button"
+              >
+                调整时长
+              </button>
+              <button
+                className="dialogue-audio-unbind"
+                data-testid="dialogue-inspector-audio-unbind"
+                onClick={() =>
+                  report(
+                    'audio',
+                    () => dialogueStore.unbindAudio(dialogue.id),
+                    '移除配音失败。',
+                  )
+                }
+                type="button"
+              >
+                移除配音
+              </button>
+            </>
+          ) : null}
+        </div>
+      )}
       {unavailableAudioCount > 0 ? (
         <small data-testid="dialogue-inspector-audio-unavailable">
           {unavailableAudioCount} 段配音尚未准备好。

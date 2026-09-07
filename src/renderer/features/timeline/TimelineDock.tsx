@@ -14,6 +14,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
+import { getBoundAudioEndRange } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import {
@@ -428,21 +429,17 @@ export function TimelineDock({
                         const asset = snapshot?.project.assets.find(
                           (candidate) => candidate.id === clip.assetId,
                         );
-                        const legalMaximumEndMs =
+                        const legalRange =
                           dialogue &&
                           asset?.kind === 'audio' &&
                           asset.durationMs !== undefined
-                            ? Math.min(
-                                durationMs,
-                                dialogue.endMs,
-                                clip.startMs +
-                                  Math.max(0, asset.durationMs - clip.offsetMs),
-                              )
-                            : null;
-                        const maximumEndMs =
-                          legalMaximumEndMs !== null &&
-                          legalMaximumEndMs >= clip.startMs + 1
-                            ? legalMaximumEndMs
+                            ? getBoundAudioEndRange({
+                                shotDurationMs: durationMs,
+                                dialogueEndMs: dialogue.endMs,
+                                clipStartMs: clip.startMs,
+                                clipOffsetMs: clip.offsetMs,
+                                sourceDurationMs: asset.durationMs,
+                              })
                             : null;
                         return (
                           <AudioClip
@@ -450,7 +447,7 @@ export function TimelineDock({
                             dialogue={dialogue}
                             displayName={audioClipName(clip.assetId, clip.name)}
                             key={clip.id}
-                            maximumEndMs={maximumEndMs}
+                            maximumEndMs={legalRange?.maximumEndMs ?? null}
                             pixelsPerMs={pixelsPerMs}
                             projectRoot={snapshot?.projectRoot ?? ''}
                             selected={dialogue?.id === selectedDialogueId}
