@@ -64,7 +64,7 @@ describe('Issue #332 landscape contextual inspector', () => {
     expect(dialogue).toContain(
       "export type DialogueInspectorLandscapePresentation = 'landscape'",
     );
-    expect(dialogue).toContain('dialogue-inspector-context-summary');
+    expect(dialogue).toContain('dialogue-properties-identity-editor');
     expect(dialogue).toContain('dialogue-inspector-copy-section');
     expect(dialogue).toContain('dialogue-inspector-time-section');
     expect(dialogue).toContain('dialogue-inspector-audio-section');

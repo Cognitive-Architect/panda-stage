@@ -9,6 +9,10 @@ import type { AssetThumbnailReadResponse } from '../../../shared/asset-thumbnail
 import { Image, ImageOff, Music2 } from 'lucide-react';
 import { DecorativeIcon } from '../../ui';
 import { writeAssetDropPayload } from './AssetDropPayload';
+import {
+  audioMetadataError,
+  audioMetadataState,
+} from './assetMetadataState';
 
 export type ThumbnailMissingReason = 'cache' | 'source' | 'error';
 
@@ -70,6 +74,7 @@ export interface AssetCardProps {
   onDragEnd: () => void;
   onRebuildThumbnail: (assetId: string) => void;
   onThumbnailError: (assetId: string) => void;
+  metadataError?: string;
 }
 
 export function AssetCard({
@@ -85,8 +90,11 @@ export function AssetCard({
   onDragEnd,
   onRebuildThumbnail,
   onThumbnailError,
+  metadataError,
 }: AssetCardProps): React.JSX.Element {
   const image = asset.kind === 'image';
+  const audioState = audioMetadataState(asset, metadataError);
+  const audioError = audioMetadataError(asset, metadataError);
   const sourceMissing =
     image && thumbnail.status === 'missing' && thumbnail.reason === 'source';
   const sourceStatus = sourceMissing
@@ -197,13 +205,39 @@ export function AssetCard({
             ) : null}
           </div>
         ) : (
-          <div className="asset-card-audio-placeholder">
+          <div
+            className="asset-card-audio-placeholder"
+            data-audio-metadata-status={audioState ?? undefined}
+          >
             <DecorativeIcon
               className="asset-card-audio-icon"
               icon={Music2}
               size={30}
             />
             <span>音频素材</span>
+            <small data-testid="asset-audio-metadata-state">
+              {audioState === 'ready'
+                ? '可用'
+                : audioState === 'error'
+                  ? '无法读取配音'
+                  : '正在准备…'}
+            </small>
+            {audioError ? (
+              <small role="alert" title={audioError}>
+                {audioError}
+              </small>
+            ) : null}
+            {audioState === 'error' ? (
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRebuildThumbnail(asset.id);
+                }}
+                type="button"
+              >
+                重试
+              </button>
+            ) : null}
           </div>
         )}
       </div>

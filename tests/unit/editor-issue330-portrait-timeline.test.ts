@@ -30,9 +30,12 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(bottom).toContain('<TimelineDock presentation={presentation} />');
   });
 
-  it('promotes the existing ruler and clip owners while exposing read-only audio data', () => {
+  it('promotes the existing ruler and current subtitle/audio clip owners', () => {
     const timeline = source(
       'src/renderer/features/timeline/TimelineDock.tsx',
+    );
+    const audioClip = source(
+      'src/renderer/features/timeline/AudioClip.tsx',
     );
 
     expect(timeline).toContain('timelineUiStore.seek');
@@ -40,7 +43,8 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(timeline).toContain('shot?.audioClips');
     expect(timeline).toContain('data-testid="timeline-subtitle-track"');
     expect(timeline).toContain('data-testid="timeline-audio-track"');
-    expect(timeline).toContain('data-testid="timeline-audio-clip"');
+    expect(timeline).toContain('<AudioClip');
+    expect(audioClip).toContain('data-testid="timeline-audio-clip"');
     expect(timeline).not.toContain('updateProject');
   });
 

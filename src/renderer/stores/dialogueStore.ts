@@ -2,8 +2,10 @@ import {
   DialogueService,
   type DialogueArrangementTiming,
   type ArrangeDialogueInput,
+  type BindDialogueAudioInput,
   type MoveDialogueInput,
   type Project,
+  type ResizeBoundAudioEndInput,
   type ResizeDialogueInput,
   type SetDialogueTimingInput,
 } from '../../domain';
@@ -111,6 +113,32 @@ export class DialogueStore {
     const next = this.service.setTiming(project, input);
     if (next !== project) {
       this.editorStore.updateProject(next, 'Set dialogue timing');
+    }
+  }
+
+  bindAudio(dialogueId: string, assetId: string): void {
+    const { project, shotId } = this.context();
+    const input: BindDialogueAudioInput = { shotId, dialogueId, assetId };
+    const next = this.service.bindAudio(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Bind dialogue audio');
+    }
+  }
+
+  unbindAudio(dialogueId: string): void {
+    const { project, shotId } = this.context();
+    const next = this.service.unbindAudio(project, shotId, dialogueId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Remove dialogue audio');
+    }
+  }
+
+  resizeBoundAudioEnd(dialogueId: string, endMs: number): void {
+    const { project, shotId } = this.context();
+    const input: ResizeBoundAudioEndInput = { shotId, dialogueId, endMs };
+    const next = this.service.resizeBoundAudioEnd(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Trim dialogue audio');
     }
   }
 

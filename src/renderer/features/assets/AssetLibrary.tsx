@@ -30,6 +30,11 @@ import {
 } from './AssetCard';
 import { AssetImportPanel } from './AssetImportPanel';
 import {
+  refreshImportedAudioMetadata,
+  type AssetMetadataProjectIdentity,
+  type AssetMetadataRefreshOutcome,
+} from './assetMetadataQueue';
+import {
   assetLibraryPageCount,
   paginateAssetLibraryEntries,
 } from './assetLibraryPagination';
@@ -95,6 +100,9 @@ export function AssetLibrary({
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
+  const [metadataErrors, setMetadataErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [flaReviewOpen, setFlaReviewOpen] = useState(false);
   const [flaInspection, setFlaInspection] =
     useState<FlaInspectionOperation | null>(null);
@@ -342,14 +350,35 @@ export function AssetLibrary({
     if (!hideHeading) onViewChange('details');
   };
 
-  const rebuildThumbnail = async (assetId: string): Promise<void> => {
+  const refreshAssetMetadata = useCallback(async (
+    assetId: string,
+    expected?: AssetMetadataProjectIdentity,
+  ): Promise<AssetMetadataRefreshOutcome> => {
     const current = editorProjectStore.getSnapshot();
-    if (!current) return;
+    if (
+      !current ||
+      (expected &&
+        (current.projectRoot !== expected.projectRoot ||
+          current.project.id !== expected.projectId))
+    ) {
+      return { status: 'stopped', applied: false };
+    }
     const asset = current.project.assets.find(
       (candidate) => candidate.id === assetId,
     );
+    if (!asset) return { status: 'stopped', applied: false };
     setBusy(true);
-    setStatus('正在重新读取素材并生成缩略图…');
+    setMetadataErrors((existing) => {
+      if (!(assetId in existing)) return existing;
+      const next = { ...existing };
+      delete next[assetId];
+      return next;
+    });
+    setStatus(
+      asset.kind === 'audio'
+        ? '正在准备配音…'
+        : '正在重新读取素材并生成缩略图…',
+    );
     try {
       const response =
         await window.pandaStage.assets.refreshMetadata({
@@ -359,7 +388,15 @@ export function AssetLibrary({
           assetId,
           requestId: crypto.randomUUID(),
         });
-      if (!response.ok) {
+      const latest = editorProjectStore.getSnapshot();
+      if (
+        !latest ||
+        latest.projectRoot !== current.projectRoot ||
+        latest.project.id !== current.project.id
+      ) {
+        return { status: 'stopped', applied: false };
+      }
+      if (!response.ok && asset.kind === 'image') {
         setThumbnails((existing) => ({
           ...existing,
           [assetId]: {
@@ -382,19 +419,58 @@ export function AssetLibrary({
         response,
         editorProjectStore,
       );
+      const ready =
+        response.ok && response.result.status === 'ready' && outcome.applied;
+      if (asset.kind === 'audio') {
+        setMetadataErrors((existing) => {
+          if (ready) {
+            if (!(assetId in existing)) return existing;
+            const next = { ...existing };
+            delete next[assetId];
+            return next;
+          }
+          return { ...existing, [assetId]: outcome.status };
+        });
+      }
       setStatus(
-        outcome.applied
-          ? '缩略图已重新生成。'
+        ready
+          ? asset.kind === 'audio'
+            ? '配音已准备好。'
+            : '缩略图已重新生成。'
           : outcome.status,
       );
+      return {
+        status: ready ? 'ready' : 'error',
+        applied: outcome.applied,
+      };
     } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : '缩略图重建失败。',
-      );
+      const message =
+        error instanceof Error
+          ? error.message
+          : asset.kind === 'audio'
+            ? '无法读取配音。'
+            : '缩略图重建失败。';
+      if (asset.kind === 'audio') {
+        setMetadataErrors((existing) => ({
+          ...existing,
+          [assetId]: message,
+        }));
+      }
+      setStatus(message);
+      return { status: 'error', applied: false };
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
+
+  const refreshAudioMetadataBatch = useCallback(
+    (assetIds: readonly string[]) =>
+      refreshImportedAudioMetadata(assetIds, {
+        getSnapshot: () => editorProjectStore.getSnapshot(),
+        refresh: refreshAssetMetadata,
+      }),
+    [refreshAssetMetadata],
+  );
 
   const deleteSelected = async (): Promise<void> => {
     const current = editorProjectStore.getSnapshot();
@@ -523,6 +599,7 @@ export function AssetLibrary({
       setSelectedAssetId(null);
       setSelectedDetailsOpen(false);
       setAuthoritativeReferences([]);
+      setMetadataErrors({});
     }
     if (previousProject !== snapshot?.projectRoot && flaReviewOpen) {
       closeFlaReview();
@@ -623,6 +700,7 @@ export function AssetLibrary({
             showFlaAction={showFlaAction}
             importRequestToken={importRequestToken}
             onImportFla={openFlaReview}
+            onImportedAudioAssets={refreshAudioMetadataBatch}
             snapshot={snapshot}
           />
           <div
@@ -729,6 +807,10 @@ export function AssetLibrary({
                       asset={selectedAsset}
                       busy={busy}
                       onDelete={() => void deleteSelected()}
+                      metadataError={metadataErrors[selectedAsset.id]}
+                      onRefreshMetadata={() =>
+                        void refreshAssetMetadata(selectedAsset.id)
+                      }
                       presentation="portrait"
                       references={references}
                       thumbnail={thumbnails[selectedAsset.id]}
@@ -753,7 +835,7 @@ export function AssetLibrary({
                   );
                 }}
                 onRebuildThumbnail={(assetId) =>
-                  void rebuildThumbnail(assetId)
+                  void refreshAssetMetadata(assetId)
                 }
                 onSelect={selectAsset}
                 onThumbnailError={(assetId) => {
@@ -773,6 +855,7 @@ export function AssetLibrary({
                   searchQuery.trim() ? '没有匹配的素材' : undefined
                 }
                 selectedAssetId={selectedAssetId}
+                metadataErrors={metadataErrors}
                 thumbnails={thumbnails}
                 entries={pageEntries}
               />
@@ -836,6 +919,14 @@ export function AssetLibrary({
             asset={selectedAsset}
             busy={busy}
             onDelete={() => void deleteSelected()}
+            metadataError={
+              selectedAsset ? metadataErrors[selectedAsset.id] : undefined
+            }
+            onRefreshMetadata={
+              selectedAsset
+                ? () => void refreshAssetMetadata(selectedAsset.id)
+                : undefined
+            }
             references={references}
             thumbnail={selectedAsset ? thumbnails[selectedAsset.id] : undefined}
           />

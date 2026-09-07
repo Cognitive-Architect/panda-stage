@@ -55,25 +55,29 @@ describe('Issue #352 Timeline State B selected untimed subtitle', () => {
     expect(sheet).toContain('selected && showInlineActions');
     expect(sheet).toContain('data-testid="dialogue-untimed-action-strip"');
     expect(sheet).toContain('data-testid="dialogue-untimed-arrange"');
-    expect(sheet).toContain('data-testid="dialogue-untimed-cancel"');
+    // Issue #443 Correction 01: the selected action row uses the approved
+    // 可手动拖入 + 自动加入 product model. The legacy 取消选择 subpage
+    // affordance is gone — selecting a card is selection, not navigation.
+    expect(sheet).toContain('data-testid="dialogue-untimed-action-hint"');
+    expect(sheet).toContain('可手动拖入');
+    expect(sheet).toContain('自动加入');
+    expect(sheet).not.toContain('data-testid="dialogue-untimed-cancel"');
     expect(sheet).toContain('dialogueSelectionStore.clear()');
     expect(row.indexOf('data-testid="dialogue-untimed-arrange"')).toBeGreaterThan(
       row.indexOf('selected && showInlineActions'),
     );
-    expect(sheet.indexOf('data-testid="dialogue-untimed-cancel"')).toBeLessThan(
-      sheet.indexOf('displayedUntimedDialogues.map'),
-    );
   });
 
-  it('renders the live playhead and keeps arrangement errors beside the selected row', () => {
+  it('keeps arrangement errors beside the selected row without surfacing the Timeline playhead', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
 
-    expect(sheet).toContain('useTimelineUi');
-    expect(sheet).toContain('formatTimecode(timelineUi.currentTimeMs)');
-    expect(sheet).toContain('data-testid="dialogue-untimed-playhead"');
     expect(sheet).toContain('queueError?.dialogueId === dialogue.id');
     expect(sheet).toContain('data-testid="dialogue-untimed-error"');
     expect(sheet).toContain('dialogueStore.arrange(dialogueId, integerFrameSpanMs())');
+    // Issue #443 Correction 01: the selected-card presentation no longer
+    // surfaces the Timeline 当前播放头 — Subtitle Workspace stays the
+    // "what has not been arranged yet" owner; Timeline owns "when".
+    expect(sheet).not.toContain('data-testid="dialogue-untimed-playhead"');
   });
 
   it('styles the selected row as a compact, keyboard-usable inline action surface', () => {
@@ -89,7 +93,9 @@ describe('Issue #352 Timeline State B selected untimed subtitle', () => {
     expect(issue352).toContain("data-active-workspace='timeline'");
     expect(issue352).toContain(".dialogue-untimed-item[data-selected='true']");
     expect(issue352).toContain('.dialogue-untimed-action-strip');
-    expect(issue352).toContain('.dialogue-untimed-cancel');
+    // Issue #443 Correction 01: 取消选择 is gone; the inline action row
+    // carries 可手动拖入 + 自动加入 instead.
+    expect(issue352).not.toContain('.dialogue-untimed-cancel');
     expect(issue352).toContain('min-height: 48px;');
     expect(issue352).toContain('outline: 2px solid var(--ui-color-focus-ring);');
     expect(issue352).not.toContain("data-editor-shell-layout='landscape'");

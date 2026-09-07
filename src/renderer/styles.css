@@ -1118,7 +1118,7 @@ button:disabled {
   background: rgb(35 105 122 / 72%);
   color: #d8f3f7;
   font-size: 10px;
-  pointer-events: none;
+  cursor: pointer;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -10470,58 +10470,76 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 28px;
+  padding: 16px;
   background: rgb(6 14 11 / 82%);
 }
 
 .product-preview-frame {
+  --product-preview-stage-width: min(100%, calc((100vh - 150px) * 16 / 9));
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  width: min(1180px, 100%);
-  max-height: 100%;
-  padding: 20px 22px 18px;
+  gap: 10px;
+  width: min(1400px, 100%, calc((100vh - 150px) * 16 / 9 + 30px));
+  height: auto;
+  min-height: 0;
+  max-height: calc(100vh - 32px);
+  padding: 42px 14px 12px;
   overflow: hidden;
   background: #101c17;
   border: 1px solid #2a4438;
-  border-radius: 14px;
+  border-radius: 10px;
   box-shadow: 0 26px 60px rgb(0 0 0 / 48%);
 }
 
-.product-preview-header {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.product-preview-header h2 {
-  margin: 2px 0 0;
-  font-size: 1.15rem;
-  color: #f2fbf5;
-}
-
 .product-preview-close {
-  padding: 9px 18px;
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 22px;
+  line-height: 1;
   font-weight: 600;
 }
 
 .product-preview-stage {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  width: var(--product-preview-stage-width);
+  height: auto;
+  aspect-ratio: 16 / 9;
   align-items: center;
   justify-content: center;
   min-height: 0;
   overflow: hidden;
   background: #0a1310;
-  border: 1px solid #23382e;
-  border-radius: 10px;
+  border: 0;
+  border-radius: 8px;
+}
+
+.product-preview-player {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  gap: 10px;
 }
 
 .product-preview-stage .stage-viewport {
   width: 100%;
   height: 100%;
-  min-height: 320px;
+  min-height: 0;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .product-preview-empty,
@@ -10552,25 +10570,58 @@ h1 {
   color: #ffd98a;
 }
 
+.product-preview-hint.product-preview-warning {
+  position: absolute;
+  top: 14px;
+  right: 56px;
+  left: 14px;
+  overflow: hidden;
+  color: #ffd98a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .product-preview-transport {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  width: var(--product-preview-stage-width);
+  max-width: 100%;
+  min-height: 42px;
+  gap: 10px;
   align-items: center;
+  padding: 0 2px;
 }
 
 .product-preview-controls {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+}
+
+.product-preview-icon-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  line-height: 1;
+}
+
+.product-preview-icon {
+  display: inline-grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  font-size: 1.08rem;
 }
 
 .product-preview-scrubber {
-  flex: 1 1 220px;
-  min-width: 160px;
+  width: 100%;
+  min-width: 0;
   accent-color: #7fd6a0;
 }
 
 .product-preview-timecode {
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   font-size: 0.86rem;
   color: #cfe4d7;
@@ -15898,23 +15949,6 @@ h1 {
   .editor-layout[data-active-workspace='timeline']
   .dialogue-untimed-arrange:hover {
   background: var(--ui-color-action-hover);
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .editor-layout[data-active-workspace='timeline']
-  .dialogue-untimed-cancel {
-  min-width: 88px;
-  border-color: transparent;
-  color: var(--ui-color-text-secondary);
-  background: transparent;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .editor-layout[data-active-workspace='timeline']
-  .dialogue-untimed-cancel:hover {
-  border-color: var(--ui-color-separator);
-  color: var(--ui-color-text-primary);
-  background: var(--ui-color-surface-overlay);
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
@@ -23587,16 +23621,6 @@ h1 {
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true']
   .timeline-task-tray
-  .dialogue-untimed-cancel {
-  min-width: 88px;
-  border-color: transparent;
-  color: var(--ui-color-text-secondary);
-  background: transparent;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .bottom-workspace[data-resizable='true']
-  .timeline-task-tray
   .timeline-subtitle-empty,
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .bottom-workspace[data-resizable='true']
@@ -27367,4 +27391,972 @@ h1 {
   .fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-region {
     min-height: 440px;
   }
+
+/* Issue #441: subtitle Properties UI polish - product-language identity,
+   unboxed audio surface, and Untimed progressive disclosure. The current
+   single Right Workspace owner remains the layout authority; this block
+   only adds local presentation refinements for the dialogue Properties
+   surface without changing geometry, owners, or copy in other panels. */
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-summary {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-untimed-audio {
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--ui-color-border, rgb(127 199 148 / 22%));
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-audio-summary-line {
+  min-width: 0;
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.timeline-audio-clip.selected {
+  border-color: #a8e9f4;
+  box-shadow: 0 0 0 1px rgb(168 233 244 / 35%);
+}
+
+.timeline-audio-trim-handle {
+  position: absolute;
+  z-index: 2;
+  top: -1px;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  border-right: 3px solid #d8f3f7;
+  border-radius: 0 5px 5px 0;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.timeline-audio-clip-error {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  color: var(--ui-color-danger, #ff9f9f);
+  font-size: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind {
+  min-height: 32px;
+  justify-self: start;
+  padding: 5px 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind:hover,
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-landscape-properties-audio-summary {
+  min-width: 0;
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+}
+
+/* Issue #443 Correction 01: pending subtitle list stays as ONE continuous
+   basket. The selected card carries a modest inline action row with the
+   approved 可手动拖入 + 自动加入 product model. No repaint of the existing
+   geometry, owners, or copy in other panels. The scope is local: this
+   block tightens only the inline-action row chrome on a selected pending
+   card, plus the click area on the right-side affordance icon. The actual
+   data-affordance and selection contract are owned by DialogueSheet.tsx
+   and its tests. */
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-untimed-action-info {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-untimed-action-hint {
+  min-width: 0;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+/* Issue #447: production Batch Paste, compact subtitle Inspector, and a
+   discoverable right-edge-only AudioClip trim affordance. */
+.dialogue-authoring-batch {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.dialogue-batch-input-section {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.dialogue-batch-input-section > label {
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-authoring-batch .dialogue-batch-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 164px;
+  padding: 12px 13px;
+  border: 1px solid var(--ui-color-border, #31513f);
+  border-radius: var(--ui-radius-medium, 8px);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: rgb(8 18 12 / 88%);
+  color-scheme: dark;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.dialogue-batch-recognition,
+.dialogue-batch-commit-hint {
+  margin: 0;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.dialogue-batch-preview {
+  display: grid;
+  max-height: 280px;
+  min-width: 0;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border-block: 1px solid var(--ui-color-separator, #263b30);
+  scrollbar-color: #3f6d4e #0a100c;
+  scrollbar-width: thin;
+}
+
+.dialogue-batch-preview > li {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--ui-color-separator, #263b30);
+}
+
+.dialogue-batch-preview > li:last-child {
+  border-bottom: 0;
+}
+
+.dialogue-batch-preview > li[data-status='unknown'],
+.dialogue-batch-preview > li[data-status='ambiguous'],
+.dialogue-batch-preview > li[data-status='malformed'],
+.dialogue-batch-preview > li[data-status='invalid'] {
+  padding: 10px;
+  border-left: 2px solid var(--ui-color-action-warning, #d9a441);
+  background: rgb(92 67 24 / 13%);
+}
+
+.dialogue-batch-row-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dialogue-batch-row-copy strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-batch-row-copy > span {
+  color: var(--ui-color-text-secondary, #b7c8bd);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dialogue-batch-row-issue {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  color: #e8c37c;
+  font-size: 12px;
+}
+
+.dialogue-batch-row-resolution {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.dialogue-batch-row-resolution label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-batch-row-resolution select {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid var(--ui-color-border, #31513f);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-surface-work, #101b15);
+  color-scheme: dark;
+}
+
+.dialogue-authoring-batch .dialogue-authoring-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.dialogue-properties-identity-editor {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 9px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--ui-color-separator, #263b30);
+}
+
+.dialogue-properties-identity-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.dialogue-properties-identity-copy .dialogue-properties-identity {
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.dialogue-properties-inline-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #c1d0c7);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  resize: none;
+}
+
+.dialogue-properties-inline-text:hover {
+  border-color: var(--ui-color-separator, #2b4336);
+}
+
+.dialogue-properties-inline-text:focus {
+  border-color: var(--ui-color-selected-border, #74d391);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-surface-work, #101b15);
+  outline: 2px solid var(--ui-color-focus-ring, rgb(116 211 145 / 28%));
+}
+
+.dialogue-properties-inline-feedback:empty {
+  display: none;
+}
+
+.dialogue-properties-section-heading .dialogue-properties-apply-timing {
+  width: auto;
+  min-height: 28px;
+  margin-left: auto;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.dialogue-compact-timing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dialogue-compact-time-cell {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: var(--ui-color-text-muted, #829589);
+  font-size: 11px;
+}
+
+.dialogue-compact-time-value,
+.dialogue-compact-time-cell.is-duration time {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-border, #31513f);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-surface-work, #101b15);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dialogue-compact-time-value > time {
+  pointer-events: none;
+}
+
+.dialogue-compact-time-value > input {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0 7px;
+  border: 0;
+  color: transparent;
+  background: transparent;
+  caret-color: var(--ui-color-accent, #75dc98);
+  outline: 0;
+  appearance: textfield;
+}
+
+.dialogue-compact-time-value:focus-within {
+  border-color: var(--ui-color-selected-border, #74d391);
+  outline: 2px solid var(--ui-color-focus-ring, rgb(116 211 145 / 28%));
+}
+
+.dialogue-properties-speaker-section > select,
+.dialogue-landscape-properties-speaker-section select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid var(--ui-color-border, #31513f);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-surface-work, #101b15);
+  color-scheme: dark;
+}
+
+.dialogue-audio-state,
+.dialogue-audio-source-card,
+.dialogue-audio-empty-state {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.dialogue-audio-source-card strong,
+.dialogue-audio-empty-state strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-audio-source-card span,
+.dialogue-audio-empty-state span {
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-audio-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.dialogue-audio-actions > select,
+.dialogue-audio-actions > button {
+  width: auto;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid var(--ui-color-separator, #2b4336);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #b7c8bd);
+  background: transparent;
+  color-scheme: dark;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dialogue-audio-actions > select:hover,
+.dialogue-audio-actions > button:hover {
+  border-color: var(--ui-color-selected-border, #74d391);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: rgb(46 104 64 / 16%);
+}
+
+.dialogue-audio-actions > .dialogue-audio-unbind {
+  color: var(--ui-color-danger, #e28a7a);
+}
+
+.dialogue-audio-trim-help {
+  margin: 4px 0 0;
+  color: var(--ui-color-accent, #80dca0);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.timeline-audio-clip.selected {
+  border-color: #d8f3f7;
+  box-shadow:
+    0 0 0 2px rgb(168 233 244 / 70%),
+    0 0 8px rgb(83 187 205 / 24%);
+}
+
+.timeline-audio-trim-handle {
+  top: -4px;
+  right: -8px;
+  bottom: -4px;
+  display: grid;
+  width: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.timeline-audio-trim-grip {
+  display: flex;
+  width: 10px;
+  height: calc(100% - 6px);
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid #d8f3f7;
+  border-radius: 4px;
+  background: #347f8d;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+.timeline-audio-trim-grip i {
+  width: 1px;
+  height: 10px;
+  border-radius: 1px;
+  background: #e9fbff;
+}
+
+.timeline-audio-trim-handle:hover .timeline-audio-trim-grip,
+.timeline-audio-trim-handle:focus .timeline-audio-trim-grip {
+  background: #4fb2c4;
+  transform: scaleX(1.12);
+}
+
+.timeline-audio-trim-handle:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring, rgb(168 233 244 / 48%));
+  outline-offset: 1px;
+}
+
+.timeline-audio-duration {
+  display: none;
+}
+
+.timeline-audio-clip[data-trimming='true'] .timeline-audio-duration {
+  position: absolute;
+  z-index: 3;
+  top: -23px;
+  right: 4px;
+  display: block;
+  padding: 2px 5px;
+  border: 1px solid #74aeb8;
+  border-radius: 4px;
+  color: #e9fbff;
+  background: #173b42;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .dialogue-compact-timing-grid {
+    gap: 4px;
+  }
+
+  .dialogue-compact-time-value,
+  .dialogue-compact-time-cell.is-duration time {
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-identity-editor {
+  min-height: 0;
+  align-items: start;
+  gap: 8px;
+  padding: 6px 0 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-inline-text {
+  height: 38px;
+  min-height: 38px;
+  padding: 3px 5px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section {
+  gap: 5px;
+  padding: 6px 0 7px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 7px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading
+  .dialogue-properties-apply-timing {
+  width: auto;
+  min-width: 52px;
+  min-height: 28px;
+  margin-left: auto;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-compact-time-value,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-compact-time-cell.is-duration
+  time {
+  min-height: 30px;
+  padding-inline: 6px;
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-select {
+  min-height: 32px;
+  padding-block: 3px;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-audio-actions
+  > select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-audio-actions
+  > button {
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-batch
+  .dialogue-authoring-footer {
+  position: static;
+  bottom: auto;
+  z-index: auto;
+  padding: 4px 0 0;
+  border-top: 0;
+  background: none;
+}
+
+/* Issue #448 A: keep the approved compact subtitle Inspector hierarchy while
+   restoring production-friendly spacing and control sizes. Moderate drawer
+   scrolling is intentional; this block does not touch Batch Paste. */
+.dialogue-inspector-properties .dialogue-properties-identity-editor,
+.dialogue-inspector-landscape-properties .dialogue-properties-identity-editor {
+  gap: 11px;
+  padding: 13px 0 16px;
+}
+
+.dialogue-inspector-properties .dialogue-properties-inline-text,
+.dialogue-inspector-landscape-properties .dialogue-properties-inline-text {
+  min-height: 50px;
+  padding: 7px 8px;
+  line-height: 1.45;
+}
+
+.dialogue-inspector-properties .dialogue-properties-section,
+.dialogue-inspector-landscape-properties .dialogue-properties-section {
+  gap: 12px;
+  padding: 17px 0 19px;
+}
+
+.dialogue-inspector-properties .dialogue-properties-section-heading,
+.dialogue-inspector-landscape-properties .dialogue-properties-section-heading {
+  min-height: 30px;
+  gap: 9px;
+}
+
+.dialogue-inspector-properties
+  .dialogue-properties-section-heading
+  .dialogue-properties-apply-timing,
+.dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading
+  .dialogue-properties-apply-timing {
+  min-width: 58px;
+  min-height: 36px;
+  padding: 6px 13px;
+}
+
+.dialogue-inspector-properties .dialogue-compact-timing-grid,
+.dialogue-inspector-landscape-properties .dialogue-compact-timing-grid {
+  gap: 10px;
+}
+
+.dialogue-inspector-properties .dialogue-compact-time-cell,
+.dialogue-inspector-landscape-properties .dialogue-compact-time-cell {
+  gap: 6px;
+}
+
+.dialogue-inspector-properties .dialogue-compact-time-value,
+.dialogue-inspector-properties .dialogue-compact-time-cell.is-duration time,
+.dialogue-inspector-landscape-properties .dialogue-compact-time-value,
+.dialogue-inspector-landscape-properties
+  .dialogue-compact-time-cell.is-duration
+  time {
+  min-height: 44px;
+  padding-inline: 10px;
+  border-radius: var(--ui-radius-medium, 8px);
+  font-size: 12px;
+}
+
+.dialogue-inspector-properties .dialogue-properties-speaker-section > select,
+.dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-select {
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.dialogue-inspector-properties .dialogue-audio-state,
+.dialogue-inspector-landscape-properties .dialogue-audio-state {
+  gap: 9px;
+}
+
+.dialogue-inspector-properties .dialogue-audio-source-card,
+.dialogue-inspector-properties .dialogue-audio-empty-state,
+.dialogue-inspector-landscape-properties .dialogue-audio-source-card,
+.dialogue-inspector-landscape-properties .dialogue-audio-empty-state {
+  gap: 6px;
+}
+
+.dialogue-inspector-properties .dialogue-audio-actions,
+.dialogue-inspector-landscape-properties .dialogue-audio-actions {
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.dialogue-inspector-properties .dialogue-audio-actions > select,
+.dialogue-inspector-properties .dialogue-audio-actions > button,
+.dialogue-inspector-landscape-properties .dialogue-audio-actions > select,
+.dialogue-inspector-landscape-properties .dialogue-audio-actions > button {
+  min-height: 40px;
+  padding: 7px 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-identity-editor {
+  gap: 11px;
+  padding: 13px 0 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-inline-text {
+  height: auto;
+  min-height: 50px;
+  padding: 7px 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section {
+  gap: 12px;
+  padding: 17px 0 19px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading {
+  min-height: 30px;
+  gap: 9px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading
+  .dialogue-properties-apply-timing {
+  min-width: 58px;
+  min-height: 36px;
+  padding: 6px 13px;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-compact-time-value,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-compact-time-cell.is-duration
+  time {
+  min-height: 44px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-select {
+  min-height: 44px;
+  padding-block: 8px;
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-audio-actions
+  > select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-audio-actions
+  > button {
+  min-height: 40px;
+  padding: 7px 11px;
+}
+
+/* Issue #448 B: an inline editor for the existing bound AudioClip tail. */
+.dialogue-audio-duration-editor {
+  display: grid;
+  min-width: 0;
+  gap: 11px;
+  padding-top: 3px;
+}
+
+.dialogue-audio-duration-facts {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  margin: 0;
+}
+
+.dialogue-audio-duration-facts > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialogue-audio-duration-facts dt,
+.dialogue-audio-duration-facts dd {
+  margin: 0;
+}
+
+.dialogue-audio-duration-facts dt {
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-audio-duration-facts dd {
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+
+.dialogue-audio-duration-slider {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-audio-duration-slider input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
+  accent-color: var(--ui-color-accent, #75dc98);
+  cursor: ew-resize;
+  touch-action: pan-y;
+}
+
+.dialogue-audio-duration-slider input:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring, rgb(116 211 145 / 28%));
+  outline-offset: 2px;
+}
+
+.dialogue-audio-duration-range {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: -8px;
+  color: var(--ui-color-text-muted, #829589);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dialogue-audio-duration-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 3px;
+}
+
+.dialogue-audio-duration-actions > button {
+  min-height: 40px;
+  padding: 7px 11px;
+  border: 1px solid var(--ui-color-separator, #2b4336);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #b7c8bd);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dialogue-audio-duration-actions > button:hover:not(:disabled) {
+  border-color: var(--ui-color-selected-border, #74d391);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: rgb(46 104 64 / 16%);
+}
+
+.dialogue-audio-duration-actions > button.is-primary {
+  border-color: var(--ui-color-selected-border, #74d391);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-action-primary, #256f40);
+}
+
+.dialogue-audio-duration-actions > button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.timeline-audio-trim-handle {
+  position: absolute;
+  z-index: 2;
+  top: -3px;
+  right: auto;
+  bottom: -3px;
+  left: calc(100% - 24px);
+  display: grid;
+  width: 32px;
+  place-items: center;
+  border-radius: 7px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.timeline-audio-clip.selected {
+  overflow: visible;
+}
+
+.timeline-audio-trim-grip {
+  width: 16px;
+  height: 100%;
+  border-width: 2px;
+  border-radius: 5px;
+  background: #347f8d;
+}
+
+.timeline-audio-trim-grip i {
+  height: 14px;
+}
+
+.timeline-audio-trim-handle:hover,
+.timeline-audio-trim-handle:focus-visible {
+  background: rgb(79 178 196 / 20%);
 }

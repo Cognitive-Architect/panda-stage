@@ -14,6 +14,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
+import { getBoundAudioEndRange } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import {
@@ -25,6 +26,7 @@ import {
 } from './timeGeometry';
 import { timelineUiStore, useTimelineUi } from './timelineUiStore';
 import { DialogueClip } from './DialogueClip';
+import { AudioClip } from './AudioClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { usePendingDialoguePlacement } from './PendingDialoguePlacement';
 
@@ -419,26 +421,40 @@ export function TimelineDock({
                       }
                       style={{ width: `${trackWidth}px` }}
                     >
-                      {audioClips.map((clip) => (
-                        <div
-                          aria-label={`音频：${audioClipName(clip.assetId, clip.name)}`}
-                          className="timeline-audio-clip"
-                          data-audio-clip-id={clip.id}
-                          data-testid="timeline-audio-clip"
-                          key={clip.id}
-                          style={{
-                            left: `${timeToPx(clip.startMs, pixelsPerMs)}px`,
-                            width: `${Math.max(
-                              8,
-                              timeToPx(clip.endMs - clip.startMs, pixelsPerMs),
-                            )}px`,
-                          }}
-                        >
-                          <span>
-                            {audioClipName(clip.assetId, clip.name)}
-                          </span>
-                        </div>
-                      ))}
+                      {audioClips.map((clip) => {
+                        const dialogue =
+                          shot?.dialogues.find(
+                            (candidate) => candidate.audioClipId === clip.id,
+                          ) ?? null;
+                        const asset = snapshot?.project.assets.find(
+                          (candidate) => candidate.id === clip.assetId,
+                        );
+                        const legalRange =
+                          dialogue &&
+                          asset?.kind === 'audio' &&
+                          asset.durationMs !== undefined
+                            ? getBoundAudioEndRange({
+                                shotDurationMs: durationMs,
+                                dialogueEndMs: dialogue.endMs,
+                                clipStartMs: clip.startMs,
+                                clipOffsetMs: clip.offsetMs,
+                                sourceDurationMs: asset.durationMs,
+                              })
+                            : null;
+                        return (
+                          <AudioClip
+                            clip={clip}
+                            dialogue={dialogue}
+                            displayName={audioClipName(clip.assetId, clip.name)}
+                            key={clip.id}
+                            maximumEndMs={legalRange?.maximumEndMs ?? null}
+                            pixelsPerMs={pixelsPerMs}
+                            projectRoot={snapshot?.projectRoot ?? ''}
+                            selected={dialogue?.id === selectedDialogueId}
+                            shotId={shot!.id}
+                          />
+                        );
+                      })}
                       {audioClips.length === 0 ? (
                         <span
                           className="timeline-audio-empty"

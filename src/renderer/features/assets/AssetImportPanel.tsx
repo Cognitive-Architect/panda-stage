@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileArchive } from 'lucide-react';
 import type {
+  AssetImportResponse,
   AssetImportResult,
 } from '../../../shared/asset-import-api';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { DecorativeIcon } from '../../ui';
 import { applyAssetImportResponse } from './applyAssetImportResponse';
+import type { AssetMetadataBatchOutcome } from './assetMetadataQueue';
 import { useAssetDrop } from './useAssetDrop';
 
 export interface AssetImportPanelProps {
@@ -15,6 +17,26 @@ export interface AssetImportPanelProps {
   onImportFla: () => void;
   compact?: boolean;
   showFlaAction?: boolean;
+  onImportedAudioAssets?: (
+    assetIds: readonly string[],
+  ) => Promise<AssetMetadataBatchOutcome>;
+}
+
+export function selectImportedAudioAssetIds(
+  response: AssetImportResponse,
+): string[] {
+  if (
+    !response.ok ||
+    response.status !== 'completed' ||
+    !response.projectChanged
+  ) {
+    return [];
+  }
+  return response.results.flatMap((result) =>
+    result.status === 'imported' && result.asset?.kind === 'audio'
+      ? [result.asset.id]
+      : [],
+  );
 }
 
 function resultClass(result: AssetImportResult): string {
@@ -27,6 +49,7 @@ export function AssetImportPanel({
   onImportFla,
   compact = false,
   showFlaAction = true,
+  onImportedAudioAssets,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
@@ -39,17 +62,30 @@ export function AssetImportPanel({
   }, [compact]);
 
   const applyResponse = useCallback(
-    (response: Awaited<
+    async (response: Awaited<
       ReturnType<typeof window.pandaStage.assets.choose>
-    >): void => {
+    >): Promise<void> => {
       const outcome = applyAssetImportResponse(
         response,
         editorProjectStore,
       );
       if (outcome.results) setResults(outcome.results);
       setStatus(outcome.status);
+
+      const importedAudioIds = selectImportedAudioAssetIds(response);
+      if (importedAudioIds.length === 0 || !onImportedAudioAssets) return;
+      const metadata = await onImportedAudioAssets(importedAudioIds);
+      setStatus(
+        metadata.stopped
+          ? '项目已切换，已安全停止音频时长分析。'
+          : `${metadata.readyCount} 段配音已准备好${
+              metadata.errorCount > 0
+                ? `，${metadata.errorCount} 段失败，可在素材详情重试。`
+                : '。'
+            }`,
+      );
     },
-    [],
+    [onImportedAudioAssets],
   );
 
   const chooseFiles = useCallback(async (): Promise<void> => {
@@ -57,7 +93,7 @@ export function AssetImportPanel({
     if (!current) return;
     setBusy(true);
     try {
-      applyResponse(
+      await applyResponse(
         await window.pandaStage.assets.choose({
           projectRoot: current.projectRoot,
           project: current.project,
@@ -89,7 +125,7 @@ export function AssetImportPanel({
       if (!current) return;
       setBusy(true);
       try {
-        applyResponse(
+        await applyResponse(
           await window.pandaStage.assets.importDropped(
             {
               projectRoot: current.projectRoot,

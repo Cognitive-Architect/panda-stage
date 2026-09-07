@@ -50,12 +50,12 @@ describe('Issue #358 portrait Properties dialogue inspector', () => {
     }
 
     expect(properties.indexOf('data-testid="dialogue-inspector-copy-section"')).toBeLessThan(
-      properties.indexOf('data-testid="dialogue-inspector-speaker-section"'),
-    );
-    expect(properties.indexOf('data-testid="dialogue-inspector-speaker-section"')).toBeLessThan(
       properties.indexOf('data-testid="dialogue-inspector-time-section"'),
     );
     expect(properties.indexOf('data-testid="dialogue-inspector-time-section"')).toBeLessThan(
+      properties.indexOf('data-testid="dialogue-inspector-speaker-section"'),
+    );
+    expect(properties.indexOf('data-testid="dialogue-inspector-speaker-section"')).toBeLessThan(
       properties.indexOf('data-testid="dialogue-inspector-audio-section"'),
     );
     expect(properties.indexOf('data-testid="dialogue-inspector-audio-section"')).toBeLessThan(

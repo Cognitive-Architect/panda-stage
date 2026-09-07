@@ -41,7 +41,7 @@ describe('Issue #387 landscape subtitle Properties polish', () => {
     expect(dialogue).not.toContain('editorProjectStore.update');
   });
 
-  it('orders the compact landscape hierarchy as identity, copy, timing, metadata, actions', () => {
+  it('orders the compact landscape hierarchy as identity/copy, timing, metadata, actions', () => {
     const dialogue = source(
       'src/renderer/features/dialogue/DialogueInspector.tsx',
     );
@@ -56,8 +56,6 @@ describe('Issue #387 landscape subtitle Properties polish', () => {
       'dialogue-inspector-speaker-section',
       'dialogue-inspector-audio-section',
       'dialogue-inspector-delete',
-      'dialogue-inspector-status',
-      'data-timed={String(timed)}',
     ]) {
       expect(landscape).toContain(marker);
     }
@@ -72,13 +70,13 @@ describe('Issue #387 landscape subtitle Properties polish', () => {
     ].map((marker) => landscape.indexOf(marker));
     expect(ordered).toEqual([...ordered].sort((a, b) => a - b));
     expect(landscape).toContain(
-      'className="dialogue-landscape-properties-textarea"',
+      'dialogue-properties-inline-text dialogue-landscape-properties-textarea',
     );
     expect(landscape).toContain(
       'className="dialogue-landscape-properties-speaker-select"',
     );
     expect(landscape).toContain(
-      'className="dialogue-landscape-properties-time-input"',
+      'className="dialogue-compact-timing-grid"',
     );
   });
 
@@ -98,7 +96,7 @@ describe('Issue #387 landscape subtitle Properties polish', () => {
     expect(landscape).toContain(
       'data-testid="dialogue-inspector-apply-timing"',
     );
-    expect(landscape).toContain(
+    expect(dialogue).toContain(
       'data-testid="dialogue-inspector-audio-summary"',
     );
     expect(landscape).not.toContain('updateProject');

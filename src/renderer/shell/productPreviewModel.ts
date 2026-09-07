@@ -14,6 +14,7 @@
  */
 import {
   listShotImageAssets,
+  type EvaluatedShot,
   type Project,
   type Shot,
   type SubtitleStyle,
@@ -33,6 +34,20 @@ export interface ProductPreviewTimeStep {
   timeMs: number;
   /** True once the clock reached the end of the shot. */
   ended: boolean;
+}
+
+export type ProductPreviewTransportAction =
+  | { type: 'play' }
+  | { type: 'pause' }
+  | { type: 'seek'; timeMs: number }
+  | { type: 'stop' }
+  | { type: 'replay' };
+
+export interface ProductPreviewTransportState {
+  timeMs: number;
+  playing: boolean;
+  /** Explicit reposition/reset token for the subordinate audio transport. */
+  repositionAudio: boolean;
 }
 
 /**
@@ -82,6 +97,12 @@ export function listProductPreviewAssetIds(
   }
   for (const character of project.characters) {
     if (!characterIds.has(character.id)) continue;
+    const mouthAsset = project.assets.find(
+      (candidate) => candidate.id === character.mouthOpenAssetId,
+    );
+    if (mouthAsset?.kind === 'image') {
+      assetIds.add(mouthAsset.id);
+    }
     for (const expression of character.expressions) {
       const asset = project.assets.find(
         (candidate) => candidate.id === expression.assetId,
@@ -93,6 +114,71 @@ export function listProductPreviewAssetIds(
   }
 
   return [...assetIds];
+}
+
+/**
+ * Applies a transient mouth-open image after formal shot evaluation.
+ *
+ * Dialogue identity comes from the shared subtitle winner supplied by the
+ * caller, while the bound AudioClip owns the half-open speaking interval.
+ * The project and formal evaluated result remain untouched.
+ */
+export function projectProductPreviewMouth(
+  project: Project,
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+  activeDialogueId: string | null,
+): EvaluatedShot {
+  if (!activeDialogueId) return evaluatedShot;
+
+  const dialogue = shot.dialogues.find(
+    (candidate) => candidate.id === activeDialogueId,
+  );
+  if (!dialogue?.audioClipId) return evaluatedShot;
+
+  const audioClip = shot.audioClips.find(
+    (candidate) => candidate.id === dialogue.audioClipId,
+  );
+  if (
+    !audioClip ||
+    evaluatedShot.timeMs < audioClip.startMs ||
+    evaluatedShot.timeMs >= audioClip.endMs
+  ) {
+    return evaluatedShot;
+  }
+
+  const audioAsset = project.assets.find(
+    (candidate) => candidate.id === audioClip.assetId,
+  );
+  if (audioAsset?.kind !== 'audio') return evaluatedShot;
+
+  const speakingCharacter = project.characters.find(
+    (candidate) => candidate.id === dialogue.characterId,
+  );
+  if (!speakingCharacter?.mouthOpenAssetId) return evaluatedShot;
+
+  const mouthAsset = project.assets.find(
+    (candidate) => candidate.id === speakingCharacter.mouthOpenAssetId,
+  );
+  if (mouthAsset?.kind !== 'image') return evaluatedShot;
+
+  let changed = false;
+  const layers = evaluatedShot.layers.map((layer) => {
+    const source = shot.layers.find(
+      (candidate) => candidate.id === layer.id,
+    )?.source;
+    if (
+      source?.kind !== 'character' ||
+      source.characterId !== dialogue.characterId ||
+      layer.assetId === mouthAsset.id
+    ) {
+      return layer;
+    }
+    changed = true;
+    return { ...layer, assetId: mouthAsset.id };
+  });
+
+  return changed ? { ...evaluatedShot, layers } : evaluatedShot;
 }
 
 /**
@@ -141,6 +227,39 @@ export function advanceProductPreviewTime(
   const maximum = Math.max(0, Math.round(durationMs));
   const timeMs = clampProductPreviewTime(currentTimeMs + step, maximum);
   return { timeMs, ended: timeMs >= maximum };
+}
+
+/** Locks Product Preview's user-facing transport semantics as pure state. */
+export function resolveProductPreviewTransportAction(
+  currentTimeMs: number,
+  durationMs: number,
+  action: ProductPreviewTransportAction,
+): ProductPreviewTransportState {
+  const timeMs = clampProductPreviewTime(currentTimeMs, durationMs);
+  switch (action.type) {
+    case 'play':
+      return {
+        timeMs,
+        playing: durationMs > 0 && timeMs < durationMs,
+        repositionAudio: false,
+      };
+    case 'pause':
+      return { timeMs, playing: false, repositionAudio: false };
+    case 'seek':
+      return {
+        timeMs: clampProductPreviewTime(action.timeMs, durationMs),
+        playing: false,
+        repositionAudio: true,
+      };
+    case 'stop':
+      return { timeMs: 0, playing: false, repositionAudio: true };
+    case 'replay':
+      return {
+        timeMs: 0,
+        playing: durationMs > 0,
+        repositionAudio: true,
+      };
+  }
 }
 
 /** Formats a millisecond position as `分:秒.百分秒`, e.g. `0:03.20`. */

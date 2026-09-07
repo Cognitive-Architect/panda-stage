@@ -541,9 +541,11 @@ export function DialogueSheet({
         ? 'untimed-queue'
         : 'empty';
   const showInlineActions = timelineState === 'timeline-untimed-selected';
-  const displayedUntimedDialogues = unifiedTaskTray && !rightWorkspace && selectedUntimedDialogue
-    ? [selectedUntimedDialogue]
-    : untimedDialogues;
+  // Issue #443 Correction 01: keep the pending list as ONE continuous basket
+  // so selecting a card is selection, not navigation into a subpage. The
+  // selected card gets a modest inline action strip; the surrounding
+  // pending cards stay visible / scrollable.
+  const displayedUntimedDialogues = untimedDialogues;
 
   return (
     <div
@@ -609,15 +611,12 @@ export function DialogueSheet({
                 {unifiedTaskTray && selectedUntimedDialogue ? (
                   <>安排字幕</>
                 ) : untimedDialogues.length > 0 ? (
-                  <>
-                    待安排字幕{' '}
-                    <span
-                      className="dialogue-untimed-count"
-                      data-testid="dialogue-untimed-count"
-                    >
-                      {untimedDialogues.length} 条
-                    </span>
-                  </>
+                  // Issue #443 Correction 01: persistent beginner-friendly
+                  // heading. The heading stays after selecting a pending
+                  // subtitle so the user never feels they left the basket.
+                  <span data-testid="dialogue-untimed-pending-heading">
+                    未加入时间轴 · {untimedDialogues.length}条
+                  </span>
                 ) : (
                   '暂无待安排字幕'
                 )}
@@ -637,15 +636,11 @@ export function DialogueSheet({
               </button>
             ) : null}
             {unifiedTaskTray && selectedUntimedDialogue ? (
-              <button
-                type="button"
-                className="dialogue-secondary-action dialogue-untimed-cancel"
-                data-testid="dialogue-untimed-cancel"
-                onClick={handleClearSelection}
-              >
-                <ArrowLeft aria-hidden="true" focusable="false" size={16} />
-                返回待安排字幕
-              </button>
+              // Issue #443 Correction 01: the pending list stays as one
+              // continuous basket, so there is nothing to "return" from.
+              // The selected card carries a modest inline action row;
+              // selection alone is the only navigation.
+              null
             ) : null}
             {!rightWorkspace &&
             (!unifiedTaskTray ||
@@ -1060,7 +1055,6 @@ export function DialogueSheet({
           ) : (
             <DialogueBatchPaste
               draft={draft}
-              onCancel={handleCloseAuthoring}
               onSuccess={handleCloseAuthoring}
             />
           )}
@@ -1092,12 +1086,16 @@ export function DialogueSheet({
               className="dialogue-pending-queue-heading"
               data-testid="dialogue-pending-queue-heading"
             >
-              待安排字幕{' '}
+              {/* Issue #443 Correction 01: persistent beginner-friendly
+                  heading. The list heading remains visible after selecting
+                  a pending subtitle, so the user never feels they left the
+                  basket. */}
+              未加入时间轴 ·{' '}
               <span
                 className="dialogue-untimed-count"
                 data-testid="dialogue-untimed-count"
               >
-                {untimedDialogues.length} 条
+                {untimedDialogues.length}条
               </span>
             </h3>
           ) : timelineState === 'timeline-default' ? (
@@ -1167,22 +1165,16 @@ export function DialogueSheet({
                         aria-hidden="true"
                         className="dialogue-untimed-affordance"
                         data-affordance={
-                          rightWorkspace
-                            ? selected
-                              ? 'selected'
-                              : 'draggable'
-                            : 'chevron'
+                          rightWorkspace ? 'draggable' : 'chevron'
                         }
                       >
-                        {selected ? (
-                          '✓'
-                        ) : rightWorkspace ? (
-                          <>
-                            <GripVertical size={14} />
-                            <span className="dialogue-untimed-affordance-label">
-                              可拖动
-                            </span>
-                          </>
+                        {/* Issue #443 Correction 01: pending cards show the
+                            drag-grip icon only — no repeated drag-affordance
+                            text label and no selected "✓" chrome. The
+                            selected state is communicated by the card
+                            background/border plus the inline action row. */}
+                        {rightWorkspace ? (
+                          <GripVertical size={14} />
                         ) : (
                           '›'
                         )}
@@ -1195,42 +1187,36 @@ export function DialogueSheet({
                       data-dialogue-id={dialogue.id}
                       data-testid="dialogue-untimed-action-strip"
                     >
-                      <div className="dialogue-untimed-action-meta">
-                        <span className="dialogue-untimed-playhead-label">
-                          当前播放头
-                        </span>
-                        <output
-                          aria-label={`当前播放头 ${formatTimecode(timelineUi.currentTimeMs)}`}
-                          aria-live="polite"
-                          className="dialogue-untimed-playhead-time"
-                          data-current-time={timelineUi.currentTimeMs}
-                          data-testid="dialogue-untimed-playhead"
+                      {/* Issue #443 Correction 01: the selected card carries
+                          a modest inline action row with the approved
+                          可手动拖入 (manual) + 自动加入 (auto) product model.
+                          The Timeline playhead does not dominate the
+                          selected-card presentation — Timeline is the
+                          owner of when content happens. */}
+                      <div className="dialogue-untimed-action-info">
+                        <GripVertical
+                          aria-hidden="true"
+                          focusable={false}
+                          size={12}
+                        />
+                        <span
+                          className="dialogue-untimed-action-hint"
+                          data-testid="dialogue-untimed-action-hint"
                         >
-                          {formatTimecode(timelineUi.currentTimeMs)}
-                        </output>
+                          可手动拖入
+                        </span>
                       </div>
                       <div className="dialogue-untimed-action-buttons">
                         <button
                           type="button"
                           className="dialogue-untimed-arrange"
-                          aria-label={`安排一帧：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                          aria-label={`自动加入：${characterName(dialogue.characterId)}：${dialogue.text}`}
                           data-dialogue-id={dialogue.id}
                           data-testid="dialogue-untimed-arrange"
                           onClick={() => handleArrange(dialogue.id)}
                         >
-                          安排一帧
+                          自动加入
                         </button>
-                        {!unifiedTaskTray ? (
-                          <button
-                            type="button"
-                            className="dialogue-untimed-cancel"
-                            data-dialogue-id={dialogue.id}
-                            data-testid="dialogue-untimed-cancel"
-                            onClick={handleClearSelection}
-                          >
-                            取消选择
-                          </button>
-                        ) : null}
                       </div>
                       {queueError?.dialogueId === dialogue.id ? (
                         <p

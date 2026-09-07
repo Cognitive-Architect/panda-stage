@@ -28,12 +28,15 @@ describe('Issue #430 R2 Subtitle Workspace polish P-01 / P-02 / P-03', () => {
     expect(sheet).toContain('dialogue-pending-queue-heading');
     expect(sheet).toContain('data-testid="dialogue-pending-queue-heading"');
 
-    // "未定时" must not render on each card; the affordance reads "可拖动".
+    // "未定时" must not render on each card; the affordance shows the
+    // drag-grip icon. Issue #443 Correction 01 removed the redundant
+    // "可拖动" text label — selection / drag are communicated by the
+    // grip icon + the card's background/border, not by repeated text.
     expect(sheet).toMatch(
       /rightWorkspace\s*\?\s*null\s*:\s*\(\s*<span className="dialogue-untimed-status">\s*未定时/u,
     );
-    expect(sheet).toContain('可拖动');
-    expect(sheet).toContain('dialogue-untimed-affordance-label');
+    expect(sheet).not.toContain('dialogue-untimed-affordance-label');
+    expect(sheet).not.toContain('可拖动');
 
     // "+ 新建字幕" lives at the bottom of the queue, not in the header.
     expect(sheet).toContain('data-testid="dialogue-pending-queue-create"');

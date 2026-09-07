@@ -16,7 +16,11 @@ describe('Issue #433 R3 post-corrective pending-card layout', () => {
     expect(sheet).toContain(
       "const showInlineActions = timelineState === 'timeline-untimed-selected'",
     );
-    expect(sheet).toContain(
+    // Issue #443 Correction 01: the pending list is ONE continuous basket.
+    // The selected card does NOT collapse the list to a single-item
+    // subpage. Selection is selection, not navigation.
+    expect(sheet).toContain('const displayedUntimedDialogues = untimedDialogues;');
+    expect(sheet).not.toContain(
       'unifiedTaskTray && !rightWorkspace && selectedUntimedDialogue',
     );
     expect(list).toContain('displayedUntimedDialogues.map');
@@ -25,6 +29,12 @@ describe('Issue #433 R3 post-corrective pending-card layout', () => {
     expect(list).toContain('className="dialogue-untimed-affordance"');
     expect(list).toContain('selected && showInlineActions');
     expect(list).toContain('data-testid="dialogue-untimed-action-strip"');
+    // Issue #443 Correction 01: selected-card action row is
+    // 可手动拖入 + 自动加入. The legacy 取消选择 subpage affordance is gone.
+    expect(list).toContain('data-testid="dialogue-untimed-action-hint"');
+    expect(list).toContain('可手动拖入');
+    expect(list).toContain('自动加入');
+    expect(list).not.toContain('data-testid="dialogue-untimed-cancel"');
   });
 
   it('uses flex-only sizing on actual flex items and leaves the list as the vertical scroll owner', () => {
