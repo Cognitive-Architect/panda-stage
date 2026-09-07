@@ -360,6 +360,18 @@ export class DialogueService {
     });
   }
 
+  /** Clear one Dialogue voice binding and collect only an orphaned child clip. */
+  unbindAudio(project: Project, shotId: string, dialogueId: string): Project {
+    const shot = this.shot(project, shotId);
+    const dialogue = this.dialogue(shot, dialogueId);
+    if (!dialogue.audioClipId) return project;
+    return this.replaceShot(
+      project,
+      shot.id,
+      this.detachAudioReference(shot, dialogueId),
+    );
+  }
+
   /**
    * Detach one Dialogue from its child AudioClip and collect the clip only when
    * no other (legacy shared) Dialogue still references it. The source

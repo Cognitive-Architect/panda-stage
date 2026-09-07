@@ -117,4 +117,49 @@ describe('Dialogue audio Phase 1 persistence integration', () => {
     expect(persisted).not.toContain('"undoCount"');
     expect(persisted).not.toContain('"history"');
   });
+
+  it('persists an explicit unbind without deleting the source AudioAsset', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-day29-unbind-'),
+    );
+    temporaryParents.push(parent);
+    const root = path.join(parent, 'dialogue-audio-unbind.pandastage');
+    const projectService = new ProjectService();
+    const created = await projectService.create(root, { name: 'Audio unbind' });
+    const dialogueService = new DialogueService();
+    let project = addAudio(
+      ProjectSchema.parse({
+        ...buildProject(),
+        id: created.project.id,
+        name: created.project.name,
+        createdAt: created.project.createdAt,
+        updatedAt: created.project.updatedAt,
+      }),
+    );
+    project = dialogueService.create(project, {
+      shotId: IDS.shot,
+      characterId: IDS.character,
+      text: '解绑后保留素材',
+      pointTimeMs: 0,
+    });
+    const dialogueId = project.shots[0]!.dialogues[0]!.id;
+    project = dialogueService.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId,
+      startMs: 0,
+      endMs: 1_000,
+    });
+    project = dialogueService.bindAudio(project, {
+      shotId: IDS.shot,
+      dialogueId,
+      assetId: AUDIO_ID,
+    });
+    project = dialogueService.unbindAudio(project, IDS.shot, dialogueId);
+    await projectService.save(root, project, 1);
+
+    const reopened = await projectService.open(root);
+    expect(reopened.project.shots[0]!.dialogues[0]!.audioClipId).toBeUndefined();
+    expect(reopened.project.shots[0]!.audioClips).toHaveLength(0);
+    expect(reopened.project.assets.some(({ id }) => id === AUDIO_ID)).toBe(true);
+  });
 });

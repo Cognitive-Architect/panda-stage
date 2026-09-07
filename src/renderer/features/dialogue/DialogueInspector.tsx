@@ -222,6 +222,22 @@ export function DialogueInspector({
       >
         {audioSummaryText}
       </p>
+      {audioClip ? (
+        <button
+          className="dialogue-audio-unbind"
+          data-testid="dialogue-inspector-audio-unbind"
+          onClick={() =>
+            report(
+              'audio',
+              () => dialogueStore.unbindAudio(dialogue.id),
+              '移除配音失败。',
+            )
+          }
+          type="button"
+        >
+          移除配音
+        </button>
+      ) : null}
       {unavailableAudioCount > 0 ? (
         <small data-testid="dialogue-inspector-audio-unavailable">
           {unavailableAudioCount} 段配音尚未准备好。

@@ -27432,6 +27432,29 @@ h1 {
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind {
+  min-height: 32px;
+  justify-self: start;
+  padding: 5px 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind:hover,
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
   .dialogue-landscape-properties-audio-summary {
   min-width: 0;
   margin: 0;

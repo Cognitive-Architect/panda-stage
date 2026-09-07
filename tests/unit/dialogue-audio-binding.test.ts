@@ -136,6 +136,57 @@ describe('Dialogue audio binding', () => {
     expect(removed.assets).toEqual(shared.assets);
   });
 
+  it('unbinds a unique clip, keeps its source, and treats repeated unbind as a no-op', () => {
+    const seed = timedProject();
+    const bound = seed.service.bindAudio(seed.project, {
+      shotId: IDS.shot,
+      dialogueId: seed.dialogueId,
+      assetId: AUDIO_A,
+    });
+
+    const unbound = seed.service.unbindAudio(bound, IDS.shot, seed.dialogueId);
+
+    expect(unbound.shots[0]!.dialogues[0]!.audioClipId).toBeUndefined();
+    expect(unbound.shots[0]!.audioClips).toHaveLength(0);
+    expect(unbound.assets).toEqual(bound.assets);
+    expect(ProjectSchema.parse(JSON.parse(JSON.stringify(unbound)))).toEqual(
+      unbound,
+    );
+    expect(seed.service.unbindAudio(unbound, IDS.shot, seed.dialogueId)).toBe(
+      unbound,
+    );
+  });
+
+  it('unbinds only the current Dialogue from a shared legacy clip', () => {
+    const seed = timedProject();
+    const bound = seed.service.bindAudio(seed.project, {
+      shotId: IDS.shot,
+      dialogueId: seed.dialogueId,
+      assetId: AUDIO_A,
+    });
+    const originalDialogue = bound.shots[0]!.dialogues[0]!;
+    const secondDialogue = {
+      ...originalDialogue,
+      id: 'd2900000-0000-4000-8000-000000000097',
+      text: '共享旧对白',
+    };
+    const shared = ProjectSchema.parse({
+      ...bound,
+      shots: bound.shots.map((shot) => ({
+        ...shot,
+        dialogues: [...shot.dialogues, secondDialogue],
+      })),
+    });
+
+    const unbound = seed.service.unbindAudio(shared, IDS.shot, seed.dialogueId);
+
+    expect(unbound.shots[0]!.dialogues[0]!.audioClipId).toBeUndefined();
+    expect(unbound.shots[0]!.dialogues[1]!.audioClipId).toBe(
+      originalDialogue.audioClipId,
+    );
+    expect(unbound.shots[0]!.audioClips).toEqual(shared.shots[0]!.audioClips);
+  });
+
   it('binds only timed Dialogues and creates one v6 clip with explicit defaults', () => {
     const mutationService = service();
     const untimed = mutationService.create(withAudio(), {
@@ -477,6 +528,49 @@ describe('Dialogue audio binding', () => {
       dialogues: [],
       audioClips: [],
     });
+  });
+
+  it('unbinds in one History command with Undo/Redo and no no-op history junk', () => {
+    const seed = timedProject();
+    const bound = seed.service.bindAudio(seed.project, {
+      shotId: IDS.shot,
+      dialogueId: seed.dialogueId,
+      assetId: AUDIO_A,
+    });
+    const editor = new EditorProjectStore();
+    const shots = new ShotStore(editor, new ShotService());
+    const layers = new LayerSelectionStore(editor, shots);
+    const dialogueSelection = new DialogueSelectionStore(editor, shots, layers);
+    const store = new DialogueStore(
+      editor,
+      shots,
+      seed.service,
+      { getSnapshot: () => ({ currentTimeMs: 0 }) },
+      dialogueSelection,
+    );
+    editor.open('D:\\dialogue-audio-unbind.pandastage', bound);
+    shots.select(IDS.shot);
+
+    store.unbindAudio(seed.dialogueId);
+    expect(editor.getSnapshot()!.project.shots[0]).toMatchObject({
+      audioClips: [],
+    });
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]!.audioClipId).toBeUndefined();
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      nextUndoLabel: 'Remove dialogue audio',
+    });
+
+    expect(editor.undo()).toBe(true);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]!.audioClipId).toBe(
+      bound.shots[0]!.audioClips[0]!.id,
+    );
+    expect(editor.redo()).toBe(true);
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]!.audioClipId).toBeUndefined();
+
+    const historyAfterRedo = editor.history.getSnapshot();
+    store.unbindAudio(seed.dialogueId);
+    expect(editor.history.getSnapshot()).toEqual(historyAfterRedo);
   });
 
   it('round-trips independent subtitle timing through one undoable resize', () => {

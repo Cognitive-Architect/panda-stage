@@ -124,6 +124,14 @@ export class DialogueStore {
     }
   }
 
+  unbindAudio(dialogueId: string): void {
+    const { project, shotId } = this.context();
+    const next = this.service.unbindAudio(project, shotId, dialogueId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Remove dialogue audio');
+    }
+  }
+
   arrange(dialogueId: string, frameSpanMs: number, startMs?: number): void {
     const { project, shotId } = this.context();
     const input: ArrangeDialogueInput = {
