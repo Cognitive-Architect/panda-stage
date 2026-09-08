@@ -10,7 +10,6 @@ import {
 import type Konva from 'konva';
 import {
   Layer as KonvaLayer,
-  Line,
   Rect,
   Stage,
 } from 'react-konva';
@@ -285,7 +284,6 @@ export function CanvasStage({
               data-background-scale-y={
                 backgroundLayer?.render.coverScale ?? ''
               }
-              data-center-guides="vertical,horizontal"
               data-interaction-status={interactionStatus}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
               data-project-revision={snapshot?.revision ?? -1}
@@ -367,18 +365,6 @@ export function CanvasStage({
                   <SubtitleRenderer
                     style={activeSubtitleStyle}
                     text={activeCue?.text ?? null}
-                  />
-                  <Line
-                    listening={false}
-                    points={[PROJECT_WIDTH / 2, 0, PROJECT_WIDTH / 2, PROJECT_HEIGHT]}
-                    stroke="rgba(255, 225, 125, 0.55)"
-                    strokeWidth={2}
-                  />
-                  <Line
-                    listening={false}
-                    points={[0, PROJECT_HEIGHT / 2, PROJECT_WIDTH, PROJECT_HEIGHT / 2]}
-                    stroke="rgba(255, 225, 125, 0.55)"
-                    strokeWidth={2}
                   />
                 </KonvaLayer>
                 <KonvaLayer

@@ -142,6 +142,24 @@ describe('CanvasViewport chrome pointer routing', () => {
   });
 });
 
+describe('CanvasStage permanent guide contract', () => {
+  it('does not render or advertise permanent center guides', () => {
+    const stage = readFileSync(
+      'src/renderer/features/canvas/CanvasStage.tsx',
+      'utf8',
+    );
+
+    expect(stage).not.toContain('data-center-guides');
+    expect(stage).not.toContain('<Line');
+    expect(stage).not.toContain(
+      'PROJECT_WIDTH / 2, 0, PROJECT_WIDTH / 2',
+    );
+    expect(stage).not.toContain(
+      '0, PROJECT_HEIGHT / 2, PROJECT_WIDTH',
+    );
+  });
+});
+
 describe('layer position input', () => {
   it('accepts finite decimal coordinates', () => {
     expect(parseLayerPositionDraft(' 10.5 ', '20.25')).toEqual({
