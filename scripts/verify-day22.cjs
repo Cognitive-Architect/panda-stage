@@ -412,6 +412,14 @@ async function selectLayerAtLogicalPoint(window, layerId, point) {
   throw new Error(`Canvas click did not select layer: ${layerId}`);
 }
 
+async function waitForRendererFrames(window) {
+  await window.webContents.executeJavaScript(`
+    new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    )
+  `);
+}
+
 async function verifyDay22() {
   const sha256 = 'b'.repeat(64);
   const project = migrateProject({
@@ -773,6 +781,9 @@ async function verifyDay22() {
         'Layer did not lock.',
       ),
     );
+    // React state is observable before Konva's batched scene/hit-canvas draw.
+    // Wait for that draw so the pointer targets the layer at its new position.
+    await waitForRendererFrames(window);
     const lockedBefore = await stageSnapshot(window);
     const lockedStart = await logicalClientPoint(
       window,
@@ -882,15 +893,16 @@ async function verifyDay22() {
         'Reopened canvas images did not render for selection checks.',
       ),
     );
+    await waitForRendererFrames(window);
     // The verifier window is intentionally hidden; Electron's compositor can
     // leave a post-reload hidden capture pending. The pre-reload capture is
     // still the same placement surface and keeps this evidence deterministic.
     const reopenedScreenshot = actualPlacementScreenshot;
     const backgroundLayerId = project.shots[0].backgroundLayerId;
     const backgroundSelectionBefore = await stageSnapshot(window);
-    // The fixture image has transparent pixels at (50, 50). This point is a
-    // deterministic opaque background pixel outside every ordinary layer.
-    const backgroundPoint = { x: 50, y: 540 };
+    // Earlier edits move the authored background right by 100 px. This point
+    // remains inside that current background and outside every ordinary layer.
+    const backgroundPoint = { x: 150, y: 540 };
     const backgroundSelectedOnce = await selectLayerAtLogicalPoint(
       window,
       backgroundLayerId,
