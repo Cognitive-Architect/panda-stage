@@ -1010,24 +1010,13 @@ export function EditorShell({
           className="editor-layout"
           data-active-workspace={portraitWorkspace}
           data-shell-mode={layoutMode}
+          data-top-region-layout={recoveryCandidate || isPortrait ? 'flow' : 'overlay'}
           data-testid="editor-layout"
         >
-          <div className="editor-top-region" data-testid="editor-top-region">
-            <CompactProjectBar
-              busy={busy}
-              closeConfirmOpen={closeConfirmOpen}
-              key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
-              onOpenProductPreview={openProductPreview}
-              onOpenProjectCenter={openProjectCenter}
-              onOpenProjectFolder={openProjectFolder}
-              onRequestCloseProject={requestCloseProject}
-              onSaveProject={saveProject}
-              productPreviewOpen={productPreviewOpen}
-              projectSnapshot={projectSnapshot}
-              saveState={saveState}
-              status={status}
-              presentation={layoutMode}
-            />
+          <div
+            className="editor-top-region"
+            data-testid="editor-top-region"
+          >
             {recoveryCandidate ? (
               <RecoveryCandidateBanner
                 busy={busy}
@@ -1051,6 +1040,21 @@ export function EditorShell({
               data-shell-mode={layoutMode}
               data-testid="editor-body"
             >
+              <CompactProjectBar
+                busy={busy}
+                closeConfirmOpen={closeConfirmOpen}
+                key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
+                onOpenProductPreview={openProductPreview}
+                onOpenProjectCenter={openProjectCenter}
+                onOpenProjectFolder={openProjectFolder}
+                onRequestCloseProject={requestCloseProject}
+                onSaveProject={saveProject}
+                productPreviewOpen={productPreviewOpen}
+                projectSnapshot={projectSnapshot}
+                saveState={saveState}
+                status={status}
+                presentation={layoutMode}
+              />
             <div
               aria-hidden={!portraitResourcesVisible}
               className="editor-workspace-slot editor-workspace-slot-resources"
