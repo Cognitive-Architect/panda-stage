@@ -151,12 +151,13 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(dialog).toContain('role="dialog"');
     expect(dialog).toContain('aria-modal="true"');
     expect(shell.match(/<CloseConfirmDialog/gu)).toHaveLength(1);
-    // The dialog owns the confirmation surface; the compact bar owns the menu entry.
+    // The dialog owns the confirmation surface; the quick action drawer owns
+    // the close entry.
     expect(
       (shell + topBar).match(/data-testid="close-confirm-dialog"/gu),
     ).toBeNull();
     expect(dialog).not.toContain('data-testid="menu-close-project"');
-    expect(topBar).toContain('data-testid="menu-close-project"');
+    expect(topBar).toContain('data-testid="quick-action-close"');
     expect(styles).toMatch(
       /\.close-confirm-overlay\s*\{[\s\S]*?inset:\s*0;/u,
     );
@@ -265,7 +266,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     );
   });
 
-  it('locks the compact project bar selectors and removes the old editor panel', () => {
+  it('locks the quick action drawer selectors and removes the old editor panel', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
     const panel = readSource(
@@ -273,28 +274,35 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     );
     expect(shell).toContain('<CompactProjectBar');
     expect(shell).not.toContain('<EditorTopBar');
-    expect(topBar).toContain('data-testid="compact-project-bar"');
-    expect(topBar).toContain('className="compact-project-bar"');
+    expect(topBar).toContain('data-testid="quick-action-drawer"');
+    expect(topBar).toContain('className="quick-action-drawer"');
     expect(topBar).not.toContain('className="recovery-panel"');
     expect(topBar).not.toContain('className="recovery-open-row"');
-    expect(topBar).toContain('className="editor-save-button"');
     expect(topBar).toContain('data-testid="project-save-state"');
-    expect(topBar).toContain('data-testid="compact-project-more"');
-    expect(topBar).toContain('data-testid="menu-open-project-center"');
-    expect(topBar).toContain('data-testid="menu-open-project-folder"');
-    expect(topBar).toContain('data-testid="menu-close-project"');
+    expect(topBar).toContain('data-testid="quick-action-drawer-handle"');
+    for (const action of [
+      'quick-action-home',
+      'quick-action-folder',
+      'quick-action-save',
+      'quick-action-play',
+      'quick-action-history',
+      'quick-action-close',
+    ]) {
+      expect(topBar).toContain(`data-testid="${action}"`);
+    }
+    expect(topBar).not.toContain('compact-project-more');
+    expect(topBar).not.toContain('compact-project-menu');
+    expect(topBar).not.toContain('className="editor-save-button"');
     expect(topBar).toContain('已保存');
     expect(topBar).toContain('有未保存更改');
     expect(topBar).toContain('保存中');
     expect(topBar).toContain('保存失败');
     expect(topBar).not.toContain('data-testid="product-preview-open"');
-    expect(topBar).toMatch(
-      /data-testid="menu-open-product-preview"[\s\S]*?disabled=\{productPreviewOpen\}/u,
-    );
+    expect(topBar).toContain('aria-pressed={productPreviewOpen}');
     expect(topBar).not.toContain('product-preview-placeholder');
-    expect(topBar).toContain('data-testid="menu-close-project"');
+    expect(topBar).toContain('data-testid="quick-action-close"');
     expect(topBar).toMatch(
-      /data-testid="menu-close-project"[\s\S]*?disabled=\{closeConfirmOpen\}/u,
+      /data-testid="quick-action-close"[\s\S]*?disabled=\{busy \|\| closeConfirmOpen\}/u,
     );
     expect(panel).not.toContain('id="recovery-heading"');
     expect(panel).not.toContain('className="recovery-open-row"');

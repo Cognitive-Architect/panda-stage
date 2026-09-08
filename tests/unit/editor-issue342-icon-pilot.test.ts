@@ -25,9 +25,10 @@ describe('Issue #342 Lucide icon pilot', () => {
     const history = source('src/renderer/features/editor/HistoryControls.tsx');
     const switcher = source('src/renderer/shell/AdaptiveWorkspaceSwitcher.tsx');
 
-    for (const name of ['MoreHorizontal', 'Save']) {
+    for (const name of ['Home', 'FolderOpen', 'Play', 'Save', 'X']) {
       expect(bar).toContain(name);
     }
+    expect(bar).not.toContain('MoreHorizontal');
     for (const name of ['Undo2', 'Redo2']) {
       expect(history).toContain(name);
     }

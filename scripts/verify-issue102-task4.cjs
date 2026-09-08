@@ -157,14 +157,15 @@ async function measure(window) {
         root: document.querySelector('#root')?.scrollWidth ?? null,
       },
       page: document.querySelector('.editor-shell')?.dataset.editorPage ?? null,
-      topBar: box('[data-testid="compact-project-bar"]'),
+      topBar: box('[data-testid="quick-action-drawer"]'),
       editorBody: box('[data-testid="editor-body"]'),
       canvas: box('[data-testid="canvas-workspace-scroll"]'),
       rightRail: box('[data-testid="right-activity-rail"]'),
       bottom: box('[data-testid="bottom-workspace"]'),
       bottomMetrics: metrics('[data-testid="bottom-workspace"]'),
       historyMetrics: metrics('[data-testid="history-controls"]'),
-      menu: box('[data-testid="compact-project-menu"]'),
+      menu: box('[data-testid="quick-action-drawer-surface"]'),
+      quickActionHandle: box('[data-testid="quick-action-drawer-handle"]'),
       projectCenter: box('[data-testid="project-center-screen"]'),
       recentList: box('[data-testid="recent-projects-list"]'),
       cards,
@@ -198,6 +199,19 @@ function assertCoreButtons(sample, label) {
   assert(
     outside.length === 0,
     `${label} has core buttons outside the viewport: ${JSON.stringify(outside)}`,
+  );
+}
+
+function assertQuickActionHandle(sample, label) {
+  const handle = sample.quickActionHandle;
+  assert(handle, `${label} did not expose the centered Quick Action Drawer handle.`);
+  assert(
+    handle.width >= 96 && handle.height >= 44,
+    `${label} Quick Action Drawer handle is not a safe hit target: ${JSON.stringify(handle)}`,
+  );
+  assert(
+    Math.abs(handle.left + handle.width / 2 - sample.viewport.width / 2) <= 2,
+    `${label} Quick Action Drawer handle is not centered: ${JSON.stringify(handle)}`,
   );
 }
 
@@ -265,12 +279,12 @@ function assertEditorRegions(sample, label) {
 }
 
 function assertMenuContained(sample, label) {
-  assert(sample.menu, `${label} more menu did not render.`);
+  assert(sample.menu, `${label} quick action surface did not render.`);
   assert(
     sample.menu.left >= -1 &&
       sample.menu.right <= sample.viewport.width + 1 &&
       sample.menu.bottom <= sample.viewport.height + 1,
-    `${label} more menu was clipped: ${JSON.stringify(sample.menu)}`,
+    `${label} quick action surface was clipped: ${JSON.stringify(sample.menu)}`,
   );
 }
 
@@ -464,77 +478,83 @@ async function run() {
     await waitForDom(
       window,
       `document.querySelector('[data-editor-page="editor"]') &&
-        document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(projectARoot)}`,
+        document.title === ${JSON.stringify(`Panda Stage（${projectA.name}）`)} &&
+        document.querySelector('[data-testid="quick-action-drawer"]')`,
       'The recent project did not open in the editor at 1280x720.',
     );
     const editor1280 = await measure(window);
     assertNoHorizontalOverflow(editor1280, '1280px editor');
-    assertCoreButtons(editor1280, '1280px editor');
+    assertQuickActionHandle(editor1280, '1280px editor');
     assertEditorRegions(editor1280, '1280px editor');
     result.snapshots.editor1280 = editor1280;
-    result.checks.push('1280x720 editor keeps the compact bar, canvas, inspector, and bottom workspace visible');
+    result.checks.push('1280x720 editor keeps the collapsed Quick Action Drawer, canvas, inspector, and bottom workspace visible');
     result.screenshots.editor1280 = path.join(
       evidenceRoot,
       'task4-editor-1280.png',
     );
     await capture(window, 'task4-editor-1280.png');
 
-    await click(window, '[data-testid="compact-project-more"]');
+    await click(window, '[data-testid="quick-action-drawer-handle"]');
     await waitForDom(
       window,
-      `document.querySelector('[data-testid="compact-project-menu"]')`,
-      'The 1280px more menu did not render.',
+      `document.querySelector('[data-testid="quick-action-drawer"][data-expanded="true"]')`,
+      'The 1280px Quick Action Drawer did not expand.',
     );
     const menu1280 = await measure(window);
     assertNoHorizontalOverflow(menu1280, '1280px editor menu');
     assertCoreButtons(menu1280, '1280px editor menu');
     assertMenuContained(menu1280, '1280px editor menu');
     result.snapshots.menu1280 = menu1280;
-    result.checks.push('1280x720 more menu stays fully inside the window');
+    result.checks.push('1280x720 Quick Action Drawer stays fully inside the window');
     result.screenshots.menu1280 = path.join(
       evidenceRoot,
       'task4-menu-1280.png',
     );
     await capture(window, 'task4-menu-1280.png');
-    await click(window, '[data-testid="compact-project-more"]');
+    await click(window, '[data-testid="quick-action-drawer-handle"]');
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="quick-action-drawer"][data-expanded="false"]')`,
+      'The 1280px Quick Action Drawer did not collapse.',
+    );
 
     window.setContentSize(1024, 720);
     await delay(260);
     const editor1024 = await measure(window);
     assertNoHorizontalOverflow(editor1024, '1024px editor');
-    assertCoreButtons(editor1024, '1024px editor');
+    assertQuickActionHandle(editor1024, '1024px editor');
     assertEditorRegions(editor1024, '1024px editor');
     result.snapshots.editor1024 = editor1024;
-    result.checks.push('1024px narrow editor remains contained and keeps all three work regions visible');
+    result.checks.push('1024px narrow editor remains contained and keeps the collapsed drawer and all three work regions visible');
     result.screenshots.editor1024 = path.join(
       evidenceRoot,
       'task4-editor-1024.png',
     );
     await capture(window, 'task4-editor-1024.png');
 
-    await click(window, '[data-testid="compact-project-more"]');
+    await click(window, '[data-testid="quick-action-drawer-handle"]');
     await waitForDom(
       window,
-      `document.querySelector('[data-testid="compact-project-menu"]')`,
-      'The 1024px more menu did not render.',
+      `document.querySelector('[data-testid="quick-action-drawer"][data-expanded="true"]')`,
+      'The 1024px Quick Action Drawer did not expand.',
     );
     const menu1024 = await measure(window);
     assertNoHorizontalOverflow(menu1024, '1024px editor menu');
     assertCoreButtons(menu1024, '1024px editor menu');
     assertMenuContained(menu1024, '1024px editor menu');
     result.snapshots.menu1024 = menu1024;
-    result.checks.push('1024px narrow more menu is not clipped at the window edge');
+    result.checks.push('1024px narrow Quick Action Drawer is not clipped at the window edge');
     result.screenshots.menu1024 = path.join(
       evidenceRoot,
       'task4-menu-1024.png',
     );
     await capture(window, 'task4-menu-1024.png');
 
-    await click(window, '[data-testid="menu-open-project-center"]');
+    await click(window, '[data-testid="quick-action-home"]');
     await waitForDom(
       window,
       `document.querySelector('[data-editor-page="project-center"]')`,
-      'The 1024px Project Center did not open from the compact bar.',
+      'The 1024px Project Center did not open from the Quick Action Drawer.',
     );
     const center1024 = await measure(window);
     assertNoHorizontalOverflow(center1024, '1024px Project Center');
@@ -555,17 +575,18 @@ async function run() {
     await waitForDom(
       window,
       `document.querySelector('[data-editor-page="editor"]') &&
-        document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(projectARoot)}`,
+        document.title === ${JSON.stringify(`Panda Stage（${projectA.name}）`)} &&
+        document.querySelector('[data-testid="quick-action-drawer"]')`,
       'The recent project did not reopen in the editor for the minimum-width check.',
     );
     window.setContentSize(800, 720);
     await delay(260);
     const editorMinimum = await measure(window);
     assertNoHorizontalOverflow(editorMinimum, 'minimum-width editor');
-    assertCoreButtons(editorMinimum, 'minimum-width editor');
+    assertQuickActionHandle(editorMinimum, 'minimum-width editor');
     assertEditorRegions(editorMinimum, 'minimum-width editor');
     result.snapshots.editorMinimum = editorMinimum;
-    result.checks.push('Minimum-width editor keeps the compact bottom history within the viewport');
+    result.checks.push('Minimum-width editor keeps the collapsed Quick Action Drawer and compact bottom history within the viewport');
     result.screenshots.editorMinimum = path.join(
       evidenceRoot,
       'task4-editor-minimum-width.png',
@@ -576,7 +597,7 @@ async function run() {
     await delay(260);
     const editorMinimumHeight = await measure(window);
     assertNoHorizontalOverflow(editorMinimumHeight, 'minimum-height editor');
-    assertCoreButtons(editorMinimumHeight, 'minimum-height editor');
+    assertQuickActionHandle(editorMinimumHeight, 'minimum-height editor');
     assertEditorRegions(editorMinimumHeight, 'minimum-height editor');
     result.snapshots.editorMinimumHeight = editorMinimumHeight;
     result.checks.push(

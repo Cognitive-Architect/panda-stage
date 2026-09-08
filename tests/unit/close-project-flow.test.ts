@@ -202,9 +202,10 @@ describe('in-app close project contract locks', () => {
       shellSource.match(/<CloseConfirmDialog/gu),
     ).toHaveLength(1);
     expect(shellSource).toContain('{closeConfirmOpen ? (');
-    expect(topBarSource).toContain('data-testid="menu-close-project"');
+    expect(topBarSource).toContain('data-testid="quick-action-close"');
     expect(topBarSource).toContain('关闭当前项目');
-    expect(topBarSource).toContain('disabled={closeConfirmOpen}');
+    expect(topBarSource).toContain('disabled={busy || closeConfirmOpen}');
+    expect(topBarSource).not.toContain('compact-project-menu');
     expect(topBarSource).not.toContain('CloseConfirmDialog');
   });
 

@@ -97,6 +97,12 @@ export function getEditorShellPage(
     : 'project-center';
 }
 
+export function getEditorWindowTitle(
+  snapshot: Pick<EditorProjectSnapshot, 'project'> | null,
+): string {
+  return snapshot ? `Panda Stage（${snapshot.project.name}）` : 'Panda Stage';
+}
+
 export function shouldRenderProductSurface(gateA: boolean): boolean {
   return !gateA;
 }
@@ -471,6 +477,12 @@ export function EditorShell({
       isPortrait && portraitWorkspace === 'canvas' ? 'shots' : 'none',
     );
   }, [isPortrait, portraitWorkspace]);
+
+  useEffect(() => {
+    // Electron uses the renderer document title for the native window title.
+    // The formal project snapshot remains the only project-name owner.
+    document.title = getEditorWindowTitle(projectSnapshot);
+  }, [projectSnapshot?.project.name]);
 
   useEffect(() => {
     session.activateAutosaveErrors((error) => setStatus(error.message));
@@ -1004,6 +1016,7 @@ export function EditorShell({
             <CompactProjectBar
               busy={busy}
               closeConfirmOpen={closeConfirmOpen}
+              key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
               onOpenProductPreview={openProductPreview}
               onOpenProjectCenter={openProjectCenter}
               onOpenProjectFolder={openProjectFolder}
@@ -1126,6 +1139,7 @@ export function EditorShell({
           </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
             <ProductPreviewOverlay
+              autoPlay
               onClose={closeProductPreview}
               project={projectSnapshot.project}
               projectRoot={projectSnapshot.projectRoot}

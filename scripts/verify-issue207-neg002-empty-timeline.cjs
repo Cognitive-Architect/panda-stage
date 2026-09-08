@@ -120,7 +120,7 @@ async function measure(window) {
     const dock = q('[data-testid="timeline-dock"]');
     const empty = q('[data-testid="timeline-empty"]');
     const tc = q('[data-testid="timeline-timecode"]');
-    const bar = q('[data-testid="compact-project-bar"]');
+    const drawer = q('[data-testid="quick-action-drawer"]');
     const history = q('[data-testid="history-controls"]');
     return {
       editorPage: q('.editor-shell')?.dataset.editorPage ?? null,
@@ -137,7 +137,7 @@ async function measure(window) {
       timecodeText: tc?.textContent?.trim() ?? null,
       currentTimeMs: tc ? Number(tc.dataset.currentTime) : null,
       durationMs: tc ? Number(tc.dataset.duration) : null,
-      saveState: bar?.dataset.saveState ?? null,
+      saveState: drawer?.dataset.saveState ?? null,
       dirtyIndicator: !!q('.dirty-state'),
       undoCount: history?.dataset.undoCount ?? null,
       redoCount: history?.dataset.redoCount ?? null,

@@ -28360,3 +28360,273 @@ h1 {
 .timeline-audio-trim-handle:focus-visible {
   background: rgb(79 178 196 / 20%);
 }
+
+/* Issue #454: the top action surface is a centered, session-only drawer. */
+.quick-action-drawer {
+  display: grid;
+  min-width: 0;
+  min-height: var(--ui-touch-icon);
+  justify-items: center;
+}
+
+.quick-action-drawer-surface {
+  display: grid;
+  width: fit-content;
+  max-width: 100%;
+  max-height: 180px;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-overlay);
+  gap: var(--ui-space-1);
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-height 180ms ease,
+    padding 180ms ease,
+    border-color 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease,
+    visibility 0s linear 0s;
+}
+
+.quick-action-drawer[data-expanded='false'] .quick-action-drawer-surface {
+  max-height: 0;
+  padding-block: 0;
+  border-color: transparent;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  visibility: hidden;
+  transition:
+    max-height 180ms ease,
+    padding 180ms ease,
+    border-color 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease,
+    visibility 0s linear 180ms;
+}
+
+.quick-action-drawer-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: var(--ui-space-1);
+}
+
+.quick-action-drawer button.quick-action-drawer-action {
+  display: inline-flex;
+  flex: 0 0 var(--ui-touch-icon);
+  width: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  height: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  padding: 0;
+  border-radius: var(--ui-radius-small);
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-action-drawer-history,
+.quick-action-drawer
+  .history-controls[data-history-presentation='compact'] {
+  display: contents;
+}
+
+.quick-action-drawer
+  .history-controls[data-history-presentation='compact']
+  .history-actions {
+  display: contents;
+}
+
+.quick-action-drawer
+  .history-controls[data-history-presentation='compact']
+  .history-actions
+  > button {
+  display: inline-flex;
+  flex: 0 0 var(--ui-touch-icon);
+  width: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  height: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  padding: 0;
+  border-radius: var(--ui-radius-small);
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-action-drawer
+  .history-controls[data-history-presentation='compact']
+  .history-actions
+  > button
+  > span {
+  display: none;
+}
+
+.quick-action-drawer button.quick-action-drawer-action[data-ui-variant='secondary'] {
+  border-color: var(--ui-color-separator);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-work);
+}
+
+.quick-action-drawer
+  button.quick-action-drawer-action[data-ui-variant='secondary']:hover:not(:disabled) {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-hover);
+}
+
+.quick-action-drawer button.quick-action-drawer-play {
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-primary);
+}
+
+.quick-action-drawer button.quick-action-drawer-play:hover:not(:disabled) {
+  background: var(--ui-color-action-hover);
+}
+
+.quick-action-drawer
+  button.quick-action-drawer-close:hover:not(:disabled),
+.quick-action-drawer
+  button.quick-action-drawer-close:focus-visible {
+  border-color: rgb(255 155 143 / 70%);
+  color: #fff0ed;
+  background: var(--ui-color-action-danger);
+}
+
+.quick-action-drawer button.quick-action-drawer-save-dirty {
+  border-color: var(--ui-color-action-warning);
+  color: #ffe6ad;
+}
+
+.quick-action-drawer button.quick-action-drawer-save-failed {
+  border-color: rgb(255 155 143 / 70%);
+  color: #ffd4d0;
+}
+
+.quick-action-drawer button.quick-action-drawer-save-failed:hover:not(:disabled) {
+  background: var(--ui-color-action-danger);
+}
+
+.quick-action-drawer-spinner {
+  animation: quick-action-drawer-spin 900ms linear infinite;
+}
+
+@keyframes quick-action-drawer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.quick-action-drawer-save-state,
+.quick-action-drawer-feedback {
+  display: block;
+  max-width: min(70vw, 520px);
+  overflow-wrap: anywhere;
+  font: var(--ui-font-secondary);
+  line-height: 1.35;
+  text-align: center;
+}
+
+.quick-action-drawer-save-state {
+  justify-self: center;
+  padding: 2px 8px;
+  border-radius: var(--ui-radius-pill);
+  font-weight: 800;
+}
+
+.quick-action-drawer-save-state-dirty,
+.quick-action-drawer-save-state-saving {
+  color: #ffe6ad;
+  background: rgb(163 109 25 / 28%);
+}
+
+.quick-action-drawer-save-state-failed {
+  color: #ffd4d0;
+  background: rgb(124 46 37 / 44%);
+}
+
+.quick-action-drawer-feedback {
+  color: #ffd4d0;
+}
+
+.quick-action-drawer-handle {
+  display: flex;
+  width: 96px;
+  min-width: 96px;
+  height: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-pill);
+  color: var(--ui-color-selected-border);
+  background: transparent;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-action-drawer-handle:hover:not(:disabled) {
+  background: rgb(127 199 148 / 12%);
+}
+
+.quick-action-drawer-handle:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.quick-action-drawer-grip {
+  display: block;
+  width: 64px;
+  height: 5px;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-pill);
+  background: var(--ui-color-action-primary);
+  box-shadow:
+    0 0 0 2px rgb(11 16 14 / 72%),
+    inset 12px 0 0 rgb(127 199 148 / 24%),
+    inset -12px 0 0 rgb(127 199 148 / 24%);
+}
+
+.quick-action-drawer
+  .history-actions
+  > span,
+.quick-action-drawer
+  .history-controls[data-history-presentation='compact']
+  > output {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .quick-action-drawer-surface {
+    padding-inline: 4px;
+  }
+
+  .quick-action-drawer-actions {
+    gap: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-action-drawer-surface,
+  .quick-action-drawer[data-expanded='false'] .quick-action-drawer-surface {
+    transition: none;
+  }
+
+  .quick-action-drawer-spinner {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}

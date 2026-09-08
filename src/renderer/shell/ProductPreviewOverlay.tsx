@@ -40,6 +40,8 @@ export interface ProductPreviewOverlayProps {
   project: Project;
   /** Shot selected in the editor, or `null` when nothing is selected. */
   shotId: string | null;
+  /** Starts the existing preview transport immediately when the overlay mounts. */
+  autoPlay?: boolean;
   /** Closes the overlay and discards all preview-local playback state. */
   onClose(): void;
 }
@@ -48,16 +50,18 @@ export function ProductPreviewOverlay({
   projectRoot,
   project,
   shotId,
+  autoPlay = false,
   onClose,
 }: ProductPreviewOverlayProps): React.JSX.Element {
   const shot = useMemo(
     () => resolveProductPreviewShot(project, shotId),
     [project, shotId],
   );
+  const durationMs = shot?.durationMs ?? 0;
   // Playback position and transport flag: the ONLY temporal state in the app
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(autoPlay && durationMs > 0);
   const [seekRevision, setSeekRevision] = useState(0);
   const assetIds = useMemo(
     () => (shot ? listProductPreviewAssetIds(project, shot) : []),
@@ -68,7 +72,6 @@ export function ProductPreviewOverlay({
     () => (shot ? buildProductPreviewCues(shot) : []),
     [shot],
   );
-  const durationMs = shot?.durationMs ?? 0;
 
   const applyTransportAction = useCallback(
     (action: ProductPreviewTransportAction): void => {
@@ -88,10 +91,10 @@ export function ProductPreviewOverlay({
 
   useEffect(() => {
     // A shot switch resets the preview-local clock; nothing outside changes.
-    setPlaying(false);
+    setPlaying(autoPlay && durationMs > 0);
     setTimeMs(0);
     setSeekRevision((current) => current + 1);
-  }, [shot?.id]);
+  }, [autoPlay, durationMs, shot?.id]);
 
   useEffect(() => {
     if (!playing || durationMs <= 0) {

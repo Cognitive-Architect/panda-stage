@@ -15,6 +15,7 @@ import {
   EditorShellSession,
   getEditorShellSessionRegion,
   getEditorShellState,
+  getEditorWindowTitle,
 } from '../../src/renderer/shell/EditorShell';
 import { CompactProjectBar } from '../../src/renderer/shell/CompactProjectBar';
 import { NewProjectDialog } from '../../src/renderer/shell/NewProjectDialog';
@@ -397,7 +398,7 @@ describe('EditorShell project session integration', () => {
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
-  it('renders one compact project bar without owning the recovery banner', async () => {
+  it('renders one quick action drawer without owning the recovery banner', async () => {
     const recoveryCandidate = candidate(PROJECT);
     const harness = createSession(recoveryCandidate);
     const sessionSnapshot =
@@ -422,20 +423,20 @@ describe('EditorShell project session integration', () => {
         onIgnore: vi.fn(),
       }),
     );
-    expect(markup.match(/data-testid="compact-project-bar"/gu)).toHaveLength(1);
+    expect(markup.match(/data-testid="quick-action-drawer"/gu)).toHaveLength(1);
     expect(markup).not.toContain('class="recovery-prompt"');
     expect(markup).not.toContain('class="recovery-open-row"');
-    expect(markup.match(/class="editor-save-button"/gu)).toHaveLength(1);
+    expect(markup.match(/data-testid="quick-action-save"/gu)).toHaveLength(1);
     expect(bannerMarkup).toContain('role="alert"');
-    expect(markup).toContain(PROJECT.name);
-    expect(markup).toContain(`title="${PROJECT_ROOT}"`);
+    expect(markup).not.toContain(PROJECT.name);
+    expect(markup).not.toContain(PROJECT_ROOT);
     expect(bannerMarkup).toContain(recoveryCandidate.recoveryFilePath);
     expect(bannerMarkup).toContain('恢复');
     expect(bannerMarkup).toContain('忽略');
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps one top bar while switching a second project through the same controller', async () => {
+  it('keeps one quick action drawer while switching a second project through the same controller', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
     const before = renderCompactProjectBar(
@@ -454,8 +455,8 @@ describe('EditorShell project session integration', () => {
     expect(harness.store.getSnapshot()?.projectRoot).toBe(
       SECOND_PROJECT_ROOT,
     );
-    expect(before.match(/data-testid="compact-project-bar"/gu)).toHaveLength(1);
-    expect(after.match(/data-testid="compact-project-bar"/gu)).toHaveLength(1);
+    expect(before.match(/data-testid="quick-action-drawer"/gu)).toHaveLength(1);
+    expect(after.match(/data-testid="quick-action-drawer"/gu)).toHaveLength(1);
     expect(before).not.toContain('class="recovery-open-row"');
     expect(after).not.toContain('class="recovery-open-row"');
     expect(harness.createController).toHaveBeenCalledTimes(1);
@@ -598,7 +599,7 @@ describe('EditorShell project session integration', () => {
     });
   });
 
-  it('keeps A -> B -> A identity, visible active path, dirty state, and save target aligned', async () => {
+  it('keeps A -> B -> A identity, native title, dirty state, and save target aligned', async () => {
     const harness = createSession(null);
 
     await harness.session.switchProject(PROJECT_ROOT);
@@ -642,7 +643,9 @@ describe('EditorShell project session integration', () => {
         onRequestCloseProject: vi.fn(),
       }),
     );
-    expect(markup).toContain(`title="${PROJECT_ROOT}"`);
+    expect(markup).not.toContain(PROJECT_ROOT);
+    expect(markup).not.toContain(PROJECT.name);
+    expect(getEditorWindowTitle(current)).toBe(`Panda Stage（${PROJECT.name}）`);
   });
 
   it('keeps restore, save, and ignore semantics behind shell-owned actions', async () => {
@@ -668,8 +671,8 @@ describe('EditorShell project session integration', () => {
       'Recovered',
     );
     expect(restoredMarkup).not.toContain('class="recovery-prompt"');
-    expect(restoredMarkup).toContain('class="editor-save-button"');
-    expect(restoredMarkup).toContain('dirty-state');
+    expect(restoredMarkup).toContain('data-testid="quick-action-save"');
+    expect(restoredMarkup).toContain('quick-action-drawer-save-dirty');
     expect(await restoreHarness.session.saveCurrentProject()).toMatchObject({
       ok: true,
       acknowledgement: 'current',
@@ -681,7 +684,7 @@ describe('EditorShell project session integration', () => {
     );
     expect(savedMarkup).not.toContain('data-testid="editor-action-status"');
     expect(savedMarkup).toMatch(
-      /class="editor-save-button"[^>]*disabled/u,
+      /data-testid="quick-action-save"[^>]*disabled/u,
     );
 
     const ignoreHarness = createSession(candidate(PROJECT));
@@ -701,7 +704,7 @@ describe('EditorShell project session integration', () => {
     expect(ignoredMarkup).toContain('data-save-state="saved"');
   });
 
-  it('renders the editor controls and an enabled product preview entry', async () => {
+  it('renders the editor controls and an enabled product preview action', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
     const markup = renderCompactProjectBar(
@@ -709,15 +712,15 @@ describe('EditorShell project session integration', () => {
       null,
     );
 
-    expect(markup).toContain('data-testid="compact-project-bar"');
+    expect(markup).toContain('data-testid="quick-action-drawer"');
     expect(markup).not.toContain('class="recovery-panel"');
     expect(markup).not.toContain('class="recovery-open-row"');
-    expect(markup).toContain('recovery-status-row');
-    expect(markup).toContain('class="editor-save-button"');
-    expect(markup).toContain(PROJECT.name);
-    expect(markup).toContain('data-testid="compact-project-more"');
+    expect(markup).not.toContain('recovery-status-row');
+    expect(markup).toContain('data-testid="quick-action-save"');
+    expect(markup).not.toContain(PROJECT.name);
+    expect(markup).toContain('data-testid="quick-action-play"');
     expect(markup).not.toContain('产品预览（后续阶段启用）');
-    // The menu and overlay are both transient surfaces.
+    // The drawer is collapsed and the overlay is both transient and separate.
     expect(markup).not.toContain('data-testid="compact-project-menu"');
     expect(markup).not.toContain('data-testid="product-preview-overlay"');
     expect(markup).not.toContain('class="recovery-prompt"');
@@ -726,10 +729,10 @@ describe('EditorShell project session integration', () => {
     expect(markup).not.toContain('Recovered');
     expect(markup).not.toContain('data-testid="project-save-state"');
     expect(markup).toContain('data-save-state="saved"');
-    expect(markup).toContain('aria-label="保存整个项目"');
+    expect(markup).toContain('aria-label="保存项目"');
   });
 
-  it('disables the preview entry while the overlay is already open', async () => {
+  it('disables the preview action while the overlay is already open', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
     const markup = renderCompactProjectBar(
@@ -739,23 +742,25 @@ describe('EditorShell project session integration', () => {
       true,
     );
 
-    expect(markup).toContain('data-testid="compact-project-more"');
+    expect(markup).toMatch(
+      /data-testid="quick-action-play"[^>]*disabled/u,
+    );
     // Opening the preview must not change the saved/dirty presentation.
     expect(markup).not.toContain('data-testid="project-save-state"');
     expect(markup).toContain('data-save-state="saved"');
-    expect(markup).toMatch(/class="editor-save-button"[^>]*disabled/u);
+    expect(markup).toMatch(/data-testid="quick-action-save"[^>]*disabled/u);
   });
 
-  it('renders exactly one in-app close entry next to the save control', async () => {
+  it('renders exactly one in-app close action next to the save control', async () => {
     const harness = createSession(null);
     await harness.session.switchProject(PROJECT_ROOT);
     const markup = renderCompactProjectBar(harness.store.getSnapshot()!, null);
 
-    expect(markup).toContain('data-testid="compact-project-more"');
-    // The menu only opens the dialog; it never renders it while closed.
+    expect(markup).toContain('data-testid="quick-action-close"');
+    // The drawer only opens the dialog; it never renders it while closed.
     expect(markup).not.toContain('data-testid="close-confirm-dialog"');
     expect(markup).not.toContain('不保存关闭');
-    expect(markup.match(/class="editor-save-button"/gu)).toHaveLength(1);
+    expect(markup.match(/data-testid="quick-action-save"/gu)).toHaveLength(1);
   });
 
   it('disables the close entry while the confirmation is already open', async () => {
@@ -769,11 +774,13 @@ describe('EditorShell project session integration', () => {
       true,
     );
 
-    expect(markup).not.toContain('data-testid="open-project-center"');
+    expect(markup).toMatch(
+      /data-testid="quick-action-close"[^>]*disabled/u,
+    );
     // Confirming a close must not pre-emptively change project state.
     expect(markup).not.toContain('data-testid="project-save-state"');
     expect(markup).toContain('data-save-state="saved"');
-    expect(markup).toContain(PROJECT_ROOT);
+    expect(markup).not.toContain(PROJECT_ROOT);
   });
 
   it('closes the tracked project through the owned session', async () => {
