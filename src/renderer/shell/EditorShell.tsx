@@ -1126,9 +1126,6 @@ export function EditorShell({
               ) : (
                 <RightWorkspace
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
-                  onOpenRecentProject={switchToRecentProject}
-                  projectSnapshot={projectSnapshot}
-                  recentRefreshToken={recentRefreshToken}
                 />
               )}
             </div>

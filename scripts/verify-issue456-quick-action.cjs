@@ -3,16 +3,23 @@ const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
 const isIssue457 = process.env.PANDA_STAGE_VERIFY_ISSUE457 === '1';
-const verificationIssue = isIssue457 ? 457 : 456;
+const isIssue460 = process.env.PANDA_STAGE_VERIFY_ISSUE460 === '1';
+if (isIssue457 && isIssue460) {
+  throw new Error('Issue 457 and Issue 460 verification modes are mutually exclusive.');
+}
+const verificationIssue = isIssue460 ? 460 : isIssue457 ? 457 : 456;
+const isCanvasFirstGate = isIssue457 || isIssue460;
 
 // Issue #456 real Electron geometry gate. The drawer must remain a live
 // overlay while its surrounding editor body and Canvas keep the same rect in
 // both UI states. The receipt is intentionally kept outside the repository so
 // this gate does not create or remove product evidence during validation.
 const repositoryRoot = path.join(__dirname, '..');
-const acceptanceRoot = isIssue457
-  ? 'D:\\PandaStage-Acceptance\\issue-457-canvas-first'
-  : 'D:\\PandaStage-Acceptance\\issue-456-quick-action';
+const acceptanceRoot = isIssue460
+  ? 'D:\\PandaStage-Acceptance\\issue-460-two-mode-pan-tools'
+  : isIssue457
+    ? 'D:\\PandaStage-Acceptance\\issue-457-canvas-first'
+    : 'D:\\PandaStage-Acceptance\\issue-456-quick-action';
 const userDataRoot = path.join(acceptanceRoot, 'electron-user-data');
 const tempRoot = path.join(acceptanceRoot, 'temp');
 const outputPath = path.join(acceptanceRoot, 'geometry-results.json');
@@ -128,8 +135,8 @@ async function clickPhysically(window, selector) {
   await delay(260);
 }
 
-async function movePointerTo(window, selector) {
-  const point = await window.webContents.executeJavaScript(`(() => {
+async function elementPoint(window, selector) {
+  return window.webContents.executeJavaScript(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!(element instanceof HTMLElement)) {
       throw new Error('Element not found: ' + ${JSON.stringify(selector)});
@@ -143,6 +150,10 @@ async function movePointerTo(window, selector) {
       y: Math.round(rect.top + rect.height / 2),
     };
   })()`);
+}
+
+async function movePointerTo(window, selector) {
+  const point = await elementPoint(window, selector);
 
   window.webContents.sendInputEvent({
     type: 'mouseMove',
@@ -150,6 +161,14 @@ async function movePointerTo(window, selector) {
     y: point.y,
   });
   await delay(260);
+}
+
+async function sendKey(window, type, keyCode) {
+  window.webContents.sendInputEvent({
+    type,
+    keyCode,
+  });
+  await delay(100);
 }
 
 async function movePointerOutside(window) {
@@ -175,12 +194,16 @@ function documentFor(root, candidate) {
 function createFixture() {
   return migrateProject({
     ...exampleProject,
-    id: isIssue457
-      ? 'c4570000-0000-4000-8000-000000000001'
-      : 'c4560000-0000-4000-8000-000000000001',
-    name: isIssue457
-      ? 'Issue 457 Canvas First Geometry'
-      : 'Issue 456 Quick Action Geometry',
+    id: isIssue460
+      ? 'c4600000-0000-4000-8000-000000000001'
+      : isIssue457
+        ? 'c4570000-0000-4000-8000-000000000001'
+        : 'c4560000-0000-4000-8000-000000000001',
+    name: isIssue460
+      ? 'Issue 460 Two Mode Canvas'
+      : isIssue457
+        ? 'Issue 457 Canvas First Geometry'
+        : 'Issue 456 Quick Action Geometry',
   });
 }
 
@@ -202,7 +225,7 @@ function registerAcceptanceHandlers(project) {
           ok: false,
           error: {
             code: 'PROJECT_NOT_FOUND',
-            message: 'Issue 456 fixture project was not found.',
+            message: `Issue ${verificationIssue} fixture project was not found.`,
             projectRoot: request.projectRoot,
           },
         },
@@ -231,7 +254,7 @@ function registerAcceptanceHandlers(project) {
           ok: false,
           error: {
             code: 'RECENT_PROJECT_RELOCATE_FAILED',
-            message: 'Issue 456 fixture project was not found.',
+          message: `Issue ${verificationIssue} fixture project was not found.`,
             projectRoot: request.projectRoot,
           },
         },
@@ -259,7 +282,7 @@ function registerAcceptanceHandlers(project) {
         ok: false,
         error: {
           code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
-          message: 'Issue 456 fixture image asset was not found.',
+          message: `Issue ${verificationIssue} fixture image asset was not found.`,
           assetId: request.assetId,
         },
       };
@@ -307,6 +330,9 @@ async function measure(window) {
     const canvasViewport = query('[data-testid="project-canvas-viewport"]');
     const canvasChrome = query('[data-testid="canvas-toolbar-feedback"]');
     const pointerFeedback = query('[data-testid="canvas-pointer-coordinate"]');
+    const canvasStage = query('[data-testid="project-canvas-stage"]');
+    const projectTools = query('[data-testid="project-tools-drawer"]');
+    const historyControls = query('[data-testid="history-controls"]');
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       page: query('.editor-shell')?.dataset.editorPage ?? null,
@@ -319,6 +345,28 @@ async function measure(window) {
       canvas: rect('[data-testid="canvas-workspace-scroll"]'),
       projectCanvas: rect('.project-canvas'),
       canvasViewport: rect('[data-testid="project-canvas-viewport"]'),
+      canvasViewportState: canvasViewport
+        ? {
+            className: canvasViewport.className,
+            displayScale: canvasViewport.dataset.displayScale ?? null,
+            panActive: canvasViewport.dataset.panActive ?? null,
+            panAvailable: canvasViewport.dataset.panAvailable ?? null,
+            scrollLeft: canvasViewport.scrollLeft,
+            scrollTop: canvasViewport.scrollTop,
+            scrollWidth: canvasViewport.scrollWidth,
+            scrollHeight: canvasViewport.scrollHeight,
+            clientWidth: canvasViewport.clientWidth,
+            clientHeight: canvasViewport.clientHeight,
+          }
+        : null,
+      canvasStageState: canvasStage
+        ? {
+            projectRevision: canvasStage.dataset.projectRevision ?? null,
+            layerJson: canvasStage.dataset.layerJson ?? null,
+            selectedLayerId: canvasStage.dataset.selectedLayerId ?? null,
+            interactionStatus: canvasStage.dataset.interactionStatus ?? null,
+          }
+        : null,
       timeline: rect('[data-testid="bottom-workspace"]'),
       timelineDock: rect('[data-testid="timeline-dock"]'),
       canvasTransform: {
@@ -345,6 +393,35 @@ async function measure(window) {
       surface: rect('[data-testid="quick-action-drawer-surface"]'),
       handle: rect('[data-testid="quick-action-drawer-handle"]'),
       drawerExpanded: drawer?.dataset.expanded ?? null,
+      drawerSaveState: drawer?.dataset.saveState ?? null,
+      history: historyControls
+        ? {
+            undoCount: historyControls.dataset.undoCount ?? null,
+            redoCount: historyControls.dataset.redoCount ?? null,
+          }
+        : null,
+      tools: projectTools
+        ? {
+            view: projectTools.dataset.projectToolsView ?? null,
+            headings: [...projectTools.querySelectorAll('h1, h2, h3')].map(
+              (element) => element.textContent?.trim() ?? '',
+            ),
+            modeButtonTestIds: [
+              ...projectTools.querySelectorAll(
+                '[data-testid="project-tools-view-mode-segmented"] button',
+              ),
+            ].map((element) => element.dataset.testid ?? null),
+            actionPresetLauncherCount: projectTools.querySelectorAll(
+              '[data-testid="project-tools-action-presets"]',
+            ).length,
+            recentNodeCount: projectTools.querySelectorAll(
+              '[data-testid*="recent"], [data-testid*="project-center"]',
+            ).length,
+            actionPresetButtonCount: projectTools.querySelectorAll(
+              '[data-testid^="preset-"]',
+            ).length,
+          }
+        : null,
       actionOrder: (() => {
         let historyIndex = 0;
         return [...document.querySelectorAll(
@@ -531,7 +608,7 @@ async function runAtSize(window, width, height) {
     `Electron viewport did not reach ${width}x${height}: ${JSON.stringify(collapsed.viewport)}`,
   );
   assertCollapsedLandscape(collapsed, `${width}x${height}`);
-  if (isIssue457) {
+  if (isCanvasFirstGate) {
     assertCanvasFirst(collapsed, `${width}x${height} collapsed`);
     assertPointerFeedback(
       collapsed,
@@ -560,7 +637,7 @@ async function runAtSize(window, width, height) {
   await delay(260);
   const expanded = await measure(window);
   assertExpanded(expanded, `${width}x${height}`);
-  if (isIssue457) {
+  if (isCanvasFirstGate) {
     assertCanvasFirst(expanded, `${width}x${height} expanded`);
     assertPointerFeedback(
       expanded,
@@ -580,7 +657,7 @@ async function runAtSize(window, width, height) {
   await delay(260);
   const collapsedAgain = await measure(window);
   assertCollapsedLandscape(collapsedAgain, `${width}x${height} repeated`);
-  if (isIssue457) {
+  if (isCanvasFirstGate) {
     assertCanvasFirst(collapsedAgain, `${width}x${height} repeated`);
     assertPointerFeedback(
       collapsedAgain,
@@ -593,16 +670,287 @@ async function runAtSize(window, width, height) {
   return { collapsed, expanded, collapsedAgain };
 }
 
+function assertWithin(actual, expected, label, tolerance = 1) {
+  assert(
+    Number.isFinite(actual) &&
+      Number.isFinite(expected) &&
+      Math.abs(actual - expected) <= tolerance,
+    `${label} changed by more than ${tolerance}px: ${JSON.stringify({ actual, expected })}`,
+  );
+}
+
+function assertCanvasProjectUnchanged(before, after, label) {
+  assert(
+    JSON.stringify(before.canvasStageState) ===
+      JSON.stringify(after.canvasStageState),
+    `${label} changed the project canvas state: ${JSON.stringify({
+      before: before.canvasStageState,
+      after: after.canvasStageState,
+    })}`,
+  );
+  assert(
+    before.drawerSaveState === after.drawerSaveState,
+    `${label} changed the save state: ${JSON.stringify({
+      before: before.drawerSaveState,
+      after: after.drawerSaveState,
+    })}`,
+  );
+  assert(
+    JSON.stringify(before.history) === JSON.stringify(after.history),
+    `${label} changed history: ${JSON.stringify({
+      before: before.history,
+      after: after.history,
+    })}`,
+  );
+}
+
+function assertToolsHome(sample, label) {
+  assert(sample.tools?.view === 'home', `${label} did not render the Tools home.`);
+  assert(
+    JSON.stringify(sample.tools.modeButtonTestIds) ===
+      JSON.stringify(['canvas-mode-fit', 'canvas-mode-actual']),
+    `${label} mode controls drifted: ${JSON.stringify(sample.tools.modeButtonTestIds)}`,
+  );
+  assert(
+    sample.tools.actionPresetLauncherCount === 1,
+    `${label} Action Presets launcher count changed: ${JSON.stringify(sample.tools)}`,
+  );
+  assert(
+    sample.tools.recentNodeCount === 0,
+    `${label} still exposes project/recent navigation: ${JSON.stringify(sample.tools)}`,
+  );
+  assert(
+    sample.tools.headings.length === 3,
+    `${label} has unexpected heading structure: ${JSON.stringify(sample.tools.headings)}`,
+  );
+}
+
+function assertToolsActionView(sample, label) {
+  assert(
+    sample.tools?.view === 'action-presets',
+    `${label} did not open Action Presets: ${JSON.stringify(sample.tools)}`,
+  );
+  assert(
+    sample.tools.actionPresetButtonCount > 0,
+    `${label} Action Presets owner did not render its controls.`,
+  );
+  assert(
+    sample.tools.recentNodeCount === 0,
+    `${label} Action Presets view exposes project/recent navigation.`,
+  );
+}
+
+async function runIssue460AtSize(window, width, height) {
+  await clickPhysically(window, '[data-testid="right-activity-rail-tools"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="project-tools-drawer"][data-project-tools-view="home"]')`,
+    `${width}x${height} Tools home did not open.`,
+  );
+  const toolsHome = await measure(window);
+  assertToolsHome(toolsHome, `${width}x${height}`);
+
+  await clickPhysically(window, '[data-testid="canvas-mode-actual"]');
+  await waitForDom(
+    window,
+    `Number(document.querySelector('[data-testid="project-canvas-viewport"]')?.dataset.displayScale) === 1`,
+    `${width}x${height} Actual Size did not reach a 1:1 transform.`,
+  );
+  await movePointerTo(window, '[data-testid="project-canvas-viewport"]');
+  const actualBefore = await measure(window);
+  assert(
+    actualBefore.canvasViewportState?.className.includes('canvas-viewport-actual'),
+    `${width}x${height} did not enter Actual Size.`,
+  );
+  assert(
+    actualBefore.canvasViewportState.scrollWidth >
+      actualBefore.canvasViewportState.clientWidth + 1 &&
+      actualBefore.canvasViewportState.scrollHeight >
+        actualBefore.canvasViewportState.clientHeight + 1,
+    `${width}x${height} Actual Size did not expose a scrollable viewport: ${JSON.stringify(
+      actualBefore.canvasViewportState,
+    )}`,
+  );
+
+  await delay(2200);
+  const actualStable = await measure(window);
+  for (const property of ['left', 'top', 'right', 'bottom', 'width', 'height']) {
+    assertWithin(
+      actualStable.canvasViewport[property],
+      actualBefore.canvasViewport[property],
+      `${width}x${height} Actual Size viewport ${property}`,
+    );
+  }
+  assert(
+    actualStable.canvasViewportState.displayScale === '1.000000',
+    `${width}x${height} Actual Size scale drifted during stability wait: ${JSON.stringify(
+      actualStable.canvasViewportState,
+    )}`,
+  );
+
+  const panStart = actualStable;
+  await sendKey(window, 'keyDown', 'Space');
+  const panArmed = await measure(window);
+  assert(
+    panArmed.canvasViewportState.panAvailable === 'true' &&
+      panArmed.canvasViewportState.panActive === 'false',
+    `${width}x${height} Space did not arm Actual Size pan: ${JSON.stringify(
+      panArmed.canvasViewportState,
+    )}`,
+  );
+  const start = await elementPoint(
+    window,
+    '[data-testid="project-canvas-viewport"]',
+  );
+  const end = {
+    x: Math.max(8, start.x - 180),
+    y: Math.max(8, start.y - 100),
+  };
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    x: start.x,
+    y: start.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await delay(120);
+  const panActive = await measure(window);
+  assert(
+    panActive.canvasViewportState.panActive === 'true',
+    `${width}x${height} Space+left-drag did not capture the viewport pointer: ${JSON.stringify(
+      panActive.canvasViewportState,
+    )}`,
+  );
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: end.x,
+    y: end.y,
+    movementX: end.x - start.x,
+    movementY: end.y - start.y,
+  });
+  await delay(180);
+  const panMoving = await measure(window);
+  assert(
+    panMoving.canvasViewportState.panActive === 'true' &&
+      (panMoving.canvasViewportState.scrollLeft >
+        panStart.canvasViewportState.scrollLeft ||
+        panMoving.canvasViewportState.scrollTop >
+          panStart.canvasViewportState.scrollTop),
+    `${width}x${height} Space+left-drag did not move the viewport scroll position: ${JSON.stringify(
+      {
+        before: panStart.canvasViewportState,
+        during: panMoving.canvasViewportState,
+      },
+    )}`,
+  );
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    x: end.x,
+    y: end.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await delay(120);
+  const panAfterPointerUp = await measure(window);
+  assert(
+    panAfterPointerUp.canvasViewportState.panActive === 'false' &&
+      panAfterPointerUp.canvasViewportState.panAvailable === 'true',
+    `${width}x${height} pan did not end while Space remained held: ${JSON.stringify(
+      panAfterPointerUp.canvasViewportState,
+    )}`,
+  );
+  await sendKey(window, 'keyUp', 'Space');
+  const panReleased = await measure(window);
+  assert(
+    panReleased.canvasViewportState.panAvailable === 'false' &&
+      panReleased.canvasViewportState.panActive === 'false',
+    `${width}x${height} Space release left pan armed: ${JSON.stringify(
+      panReleased.canvasViewportState,
+    )}`,
+  );
+  assertCanvasProjectUnchanged(panStart, panReleased, `${width}x${height} pan`);
+
+  await clickPhysically(window, '[data-testid="canvas-mode-fit"]');
+  await waitForDom(
+    window,
+    `Number(document.querySelector('[data-testid="project-canvas-viewport"]')?.dataset.displayScale) > 0 &&
+      Number(document.querySelector('[data-testid="project-canvas-viewport"]')?.dataset.displayScale) < 1`,
+    `${width}x${height} Fit did not restore a scaled transform.`,
+  );
+  await movePointerTo(window, '[data-testid="project-canvas-viewport"]');
+  const fitBeforeSpace = await measure(window);
+  await sendKey(window, 'keyDown', 'Space');
+  const fitSpace = await measure(window);
+  await sendKey(window, 'keyUp', 'Space');
+  const fitAfterSpace = await measure(window);
+  assert(
+    fitSpace.canvasViewportState.panAvailable === 'false' &&
+      fitSpace.canvasViewportState.panActive === 'false',
+    `${width}x${height} Fit incorrectly armed viewport pan: ${JSON.stringify(
+      fitSpace.canvasViewportState,
+    )}`,
+  );
+  assert(
+    fitAfterSpace.canvasViewportState.scrollLeft ===
+        fitBeforeSpace.canvasViewportState.scrollLeft &&
+      fitAfterSpace.canvasViewportState.scrollTop ===
+        fitBeforeSpace.canvasViewportState.scrollTop,
+    `${width}x${height} Fit changed scroll state while Space was held.`,
+  );
+  assertCanvasProjectUnchanged(
+    fitBeforeSpace,
+    fitAfterSpace,
+    `${width}x${height} Fit mode`
+  );
+
+  await clickPhysically(window, '[data-testid="project-tools-action-presets"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="project-tools-drawer"][data-project-tools-view="action-presets"]')`,
+    `${width}x${height} Action Presets view did not open.`,
+  );
+  const actionView = await measure(window);
+  assertToolsActionView(actionView, `${width}x${height}`);
+  await clickPhysically(window, '[data-testid="project-tools-back"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="project-tools-drawer"][data-project-tools-view="home"]')`,
+    `${width}x${height} Tools did not return home.`,
+  );
+  await clickPhysically(window, '[data-testid="right-activity-rail-tools"]');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="project-tools-drawer"]')`,
+    `${width}x${height} Tools did not close.`,
+  );
+  await movePointerOutside(window);
+
+  return {
+    toolsHome,
+    actualBefore,
+    actualStable,
+    panArmed,
+    panActive,
+    panMoving,
+    panAfterPointerUp,
+    panReleased,
+    fitBeforeSpace,
+    fitSpace,
+    fitAfterSpace,
+    actionView,
+  };
+}
+
 async function openFixture(window) {
   await waitForDom(
     window,
     `document.querySelector('[data-testid="project-center-screen"]')`,
-    'Issue 456 Project Center did not render.',
+    `Issue ${verificationIssue} Project Center did not render.`,
   );
   await waitForDom(
     window,
     `document.querySelector('[data-project-status="available"] [data-task4-core="recent-open"]')`,
-    'Issue 456 recent project did not render.',
+    `Issue ${verificationIssue} recent project did not render.`,
   );
   await clickPhysically(
     window,
@@ -612,7 +960,7 @@ async function openFixture(window) {
     window,
     `document.querySelector('[data-editor-page="editor"]') &&
       document.querySelector('[data-testid="quick-action-drawer"]')`,
-    'Issue 456 fixture did not open in the editor.',
+    `Issue ${verificationIssue} fixture did not open in the editor.`,
   );
 }
 
@@ -633,17 +981,27 @@ async function run() {
   try {
     await app.whenReady();
     window = await createMainWindow({ show: false });
-    if (isIssue457) {
+    if (isCanvasFirstGate) {
       // Chromium does not dispatch native mouse-move/pointer events to a
-      // hidden BrowserWindow. The focused Issue #457 seam is intentionally a
-      // visible real Electron window so the pointer-coordinate assertion is
-      // an actual input path rather than a DOM-dispatched substitute.
+      // hidden BrowserWindow. Canvas pointer assertions therefore use a
+      // visible real Electron window and native input events.
       window.show();
       window.focus();
     }
     await openFixture(window);
-    result.snapshots['1366x768'] = await runAtSize(window, 1366, 768);
-    result.snapshots['1920x1080'] = await runAtSize(window, 1920, 1080);
+    if (isIssue460) {
+      result.snapshots['1366x768'] = {
+        layout: await runAtSize(window, 1366, 768),
+        twoModePanTools: await runIssue460AtSize(window, 1366, 768),
+      };
+      result.snapshots['1920x1080'] = {
+        layout: await runAtSize(window, 1920, 1080),
+        twoModePanTools: await runIssue460AtSize(window, 1920, 1080),
+      };
+    } else {
+      result.snapshots['1366x768'] = await runAtSize(window, 1366, 768);
+      result.snapshots['1920x1080'] = await runAtSize(window, 1920, 1080);
+    }
     result.passed = true;
     return result;
   } finally {
@@ -677,6 +1035,6 @@ async function main() {
   }
 }
 
-if (require.main === module || isIssue457) {
+if (require.main === module || isIssue457 || isIssue460) {
   void main();
 }

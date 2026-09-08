@@ -9590,8 +9590,7 @@ h1 {
 }
 
 .project-canvas-heading,
-.canvas-toolbar,
-.canvas-mode-switch {
+.canvas-toolbar {
   display: flex;
   align-items: center;
 }
@@ -9630,10 +9629,17 @@ h1 {
   overflow: hidden;
 }
 
-.canvas-viewport-half,
 .canvas-viewport-actual {
   overflow: auto;
   scrollbar-color: #3f6d4e #0a100c;
+}
+
+.canvas-viewport-actual.canvas-viewport-space-held {
+  cursor: grab;
+}
+
+.canvas-viewport-actual.canvas-viewport-panning {
+  cursor: grabbing;
 }
 
 .canvas-viewport-drag-over {
@@ -9718,7 +9724,7 @@ h1 {
 
 .canvas-toolbar {
   /* Issue #436 LM-004: compact single-line presentation that only
-     carries the scale + pointer feedback. The three mode controls
+     carries the scale + pointer feedback. The two mode controls
      live in the right-side 工具 surface (see project-tools-view-mode-card). */
   flex-wrap: nowrap;
   gap: 12px;
@@ -9752,22 +9758,6 @@ h1 {
 
 .canvas-viewport-chrome output[hidden] {
   display: none;
-}
-
-.canvas-mode-switch {
-  gap: 6px;
-}
-
-.canvas-mode-switch button {
-  padding: 7px 11px;
-  color: #99aaa0;
-  background: rgb(255 255 255 / 4%);
-}
-
-.canvas-mode-switch button[aria-pressed="true"] {
-  color: #e6f7ea;
-  background: #235739;
-  box-shadow: 0 0 0 1px rgb(131 211 154 / 35%);
 }
 
 .canvas-mode-feedback {
@@ -21127,7 +21117,6 @@ h1 {
   gap: 2px;
 }
 
-.project-tools-drawer-heading .eyebrow,
 .project-tools-drawer-heading h2 {
   margin: 0;
 }
@@ -21172,91 +21161,6 @@ h1 {
   gap: 12px;
 }
 
-.project-tools-home > .recent-projects-panel {
-  max-width: none;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  gap: 10px;
-}
-
-.recent-projects-panel-compact .recent-projects-heading {
-  display: block;
-}
-
-.recent-projects-panel-compact .recent-projects-heading .eyebrow,
-.recent-projects-panel-compact .recent-projects-heading h2 {
-  margin: 0;
-}
-
-.recent-projects-panel-compact .recent-projects-heading h2 {
-  font-size: 17px;
-}
-
-.recent-projects-panel-compact .recent-projects-list {
-  gap: 8px;
-}
-
-.recent-projects-panel-compact .recent-projects-list li {
-  display: grid;
-  min-width: 0;
-  padding: 12px;
-  align-items: center;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-}
-
-.recent-projects-panel-compact .recent-projects-list li > div:first-child {
-  min-width: 0;
-  gap: 4px;
-}
-
-.recent-projects-panel-compact .recent-projects-list strong {
-  overflow: hidden;
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recent-projects-panel-compact .recent-project-meta {
-  overflow: hidden;
-  color: var(--ui-color-text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recent-projects-panel-compact .recent-projects-actions {
-  flex-wrap: nowrap;
-  gap: 8px;
-}
-
-.recent-projects-panel-compact .recent-projects-actions button {
-  min-height: 44px;
-}
-
-.recent-projects-panel-compact .recent-project-action-primary {
-  border-color: rgb(131 211 154 / 56%);
-  color: #e6f7ea;
-  background: #235739;
-}
-
-.recent-projects-panel-compact .recent-project-action-primary:hover,
-.recent-projects-panel-compact .recent-project-action-primary:focus-visible {
-  color: #f2fff4;
-  background: #2d6840;
-}
-
-.recent-projects-panel-compact .recent-project-more {
-  display: inline-grid;
-  width: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  place-items: center;
-}
-
 .recent-project-maintenance-menu {
   display: grid;
   min-width: 0;
@@ -21278,18 +21182,6 @@ h1 {
   min-height: 44px;
 }
 
-.recent-projects-panel-compact > .recent-projects-status {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  border: 0;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
 .project-tools-action-preset-card {
   display: grid;
   min-width: 0;
@@ -21308,29 +21200,12 @@ h1 {
   gap: 8px;
 }
 
-.project-tools-action-preset-heading .eyebrow,
-.project-tools-action-preset-heading h3,
-.project-tools-action-preset-card > p {
+.project-tools-action-preset-heading h3 {
   margin: 0;
 }
 
 .project-tools-action-preset-heading h3 {
   font-size: 16px;
-}
-
-.project-tools-compatibility-badge {
-  padding: 3px 7px;
-  border: 1px solid rgb(127 199 148 / 34%);
-  border-radius: 999px;
-  color: var(--ui-color-text-secondary);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.project-tools-action-preset-card > p {
-  color: var(--ui-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .project-tools-action-preset-launcher {
@@ -21343,8 +21218,8 @@ h1 {
   gap: 6px;
 }
 
-/* Issue #436 LM-004: 画布显示 section in the right-side 工具 surface.
-   Carries the three view-mode controls (适应窗口 / 50% / 实际尺寸).
+/* Issue #460: the right-side 工具 surface owns the two Canvas modes
+   (适应窗口 / 实际尺寸).
    Binds to the existing canvasViewportStore — no second viewport state. */
 .project-tools-view-mode-card {
   display: grid;
@@ -21364,7 +21239,6 @@ h1 {
   gap: 8px;
 }
 
-.project-tools-view-mode-heading .eyebrow,
 .project-tools-view-mode-heading h3 {
   margin: 0;
 }
@@ -21373,16 +21247,9 @@ h1 {
   font-size: 16px;
 }
 
-.project-tools-view-mode-card > p {
-  margin: 0;
-  color: var(--ui-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .project-tools-view-mode-segmented {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 

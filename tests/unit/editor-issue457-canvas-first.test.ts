@@ -56,21 +56,18 @@ describe('Issue #457 Canvas-first workspace contract', () => {
     );
   });
 
-  it('preserves the existing fit, half, actual, and pointer mapping contract', () => {
+  it('preserves the existing fit, actual, and pointer mapping contract', () => {
     const container = { width: 1280, height: 720 };
     const fit = calculateViewportTransform(container, 'fit');
-    const half = calculateViewportTransform(container, 'half');
     const actual = calculateViewportTransform(container, 'actual');
 
     expect(fit.scale).toBeCloseTo(2 / 3);
-    expect(half.scale).toBe(0.5);
     expect(actual.scale).toBe(1);
     expect(actual.contentWidth).toBe(1920);
     expect(actual.contentHeight).toBe(1080);
 
     const point = { x: 640, y: 360 };
     expect(screenToStage(stageToScreen(point, fit), fit)).toMatchObject(point);
-    expect(screenToStage(stageToScreen(point, half), half)).toMatchObject(point);
     expect(screenToStage(stageToScreen(point, actual), actual)).toMatchObject(point);
   });
 });

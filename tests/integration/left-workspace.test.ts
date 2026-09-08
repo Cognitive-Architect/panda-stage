@@ -616,11 +616,15 @@ async function verifyIssue81() {
       'document.querySelector(' +
         JSON.stringify('[data-testid="project-tools-drawer"]') +
         ') && document.querySelector(' +
-        JSON.stringify('[data-testid="recent-projects-panel"][data-presentation="compact"]') +
+        JSON.stringify('[data-testid="canvas-mode-fit"]') +
         ') && document.querySelector(' +
-        JSON.stringify('[data-testid="recent-projects-panel"][data-presentation="compact"] [data-project-status="missing"] [data-task4-core="recent-relocate"]') +
+        JSON.stringify('[data-testid="canvas-mode-actual"]') +
+        ') && document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-action-presets"]') +
+        ') && !document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-drawer"] [data-testid*="recent"]') +
         ')',
-      'Project Tools drawer did not load compact Recent Projects with relocation controls.',
+      'Project Tools drawer did not load the two-mode Canvas and Action Presets surface.',
     );
     const projectToolsHome = await window.webContents.executeJavaScript(
       '(() => {' +
@@ -631,16 +635,12 @@ async function verifyIssue81() {
         'active: document.querySelector(' +
         JSON.stringify('[data-testid="right-activity-rail-tools"]') +
         ')?.getAttribute("aria-pressed") === "true",' +
-        'hasPath: Boolean(panel?.querySelector(' +
-        JSON.stringify('.recent-projects-path') +
+        'hasRecent: Boolean(panel?.querySelector(' +
+        JSON.stringify('[data-testid*="recent"]') +
         ')),' +
-        'hasCapacity: panel?.textContent?.includes("/12") ?? false,' +
-        'hasImplementationCopy: panel?.textContent?.includes(' +
-        JSON.stringify('最近项目保存在应用配置中') +
-        ') ?? false,' +
-        'hasMissingRelocate: Boolean(panel?.querySelector(' +
-        JSON.stringify('[data-project-status="missing"] [data-task4-core="recent-relocate"]') +
-        ')),' +
+        'modeButtonIds: [...(panel?.querySelectorAll(' +
+        JSON.stringify('[data-testid="project-tools-view-mode-segmented"] button') +
+        ') ?? [])].map((button) => button.dataset.testid),' +
         'hasActionPresetLauncher: Boolean(panel?.querySelector(' +
         JSON.stringify('[data-testid="project-tools-action-presets"]') +
         '))' +
@@ -649,10 +649,9 @@ async function verifyIssue81() {
     );
     if (
       !projectToolsHome.active ||
-      projectToolsHome.hasPath ||
-      projectToolsHome.hasCapacity ||
-      projectToolsHome.hasImplementationCopy ||
-      !projectToolsHome.hasMissingRelocate ||
+      projectToolsHome.hasRecent ||
+      JSON.stringify(projectToolsHome.modeButtonIds) !==
+        JSON.stringify(['canvas-mode-fit', 'canvas-mode-actual']) ||
       !projectToolsHome.hasActionPresetLauncher
     ) {
       throw new Error(
@@ -660,14 +659,6 @@ async function verifyIssue81() {
           JSON.stringify(projectToolsHome),
       );
     }
-    await click(window, '[data-testid="recent-project-more"]');
-    await waitFor(
-      window,
-      'document.querySelector(' +
-        JSON.stringify('[data-testid="recent-project-maintenance-menu"]') +
-        ')',
-      'Project Tools recent-project maintenance menu did not open.',
-    );
     await click(window, '[data-testid="project-tools-action-presets"]');
     await waitFor(
       window,
