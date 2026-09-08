@@ -493,7 +493,9 @@ async function verifyDay21() {
         backgroundLayerId: stage.dataset.backgroundLayerId,
         backgroundOpacity: Number(stage.dataset.backgroundOpacity),
         renderContract: stage.dataset.renderContract,
-        centerGuides: stage.dataset.centerGuides,
+        // Issue #452: the normal editor must not advertise permanent center
+        // guides; retain an explicit null in the evidence for that contract.
+        centerGuides: stage.dataset.centerGuides ?? null,
         modeFeedback: document.querySelector(
           '[data-testid="canvas-mode-feedback"]'
         ).textContent.replace(/\\s+/g, ' ').trim(),
@@ -929,7 +931,7 @@ async function verifyDay21() {
       fit.backgroundLayerId !== project.shots[0].backgroundLayerId ||
       fit.backgroundOpacity !== 1 ||
       fit.renderContract !== 'shared-stage-layer-v1' ||
-      fit.centerGuides !== 'vertical,horizontal' ||
+      fit.centerGuides !== null ||
       !fit.modeFeedback.includes('适应窗口') ||
       !fit.clean ||
       !fit.revisionZero ||

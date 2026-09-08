@@ -54,7 +54,8 @@
 `pnpm verify:day21` drives real `BrowserWindow` instances and asserts:
 
 1. Fit geometry, centered offsets, explicit background identity, shared render
-   contract marker, cover behavior, opacity, guides, and inverse mapping.
+   contract marker, cover behavior, opacity, absence of permanent center guides,
+   and inverse mapping.
 2. Resize from `1440 × 1000` to `1000 × 700` without Layer, revision, dirty, or
    autosave mutation.
 3. Actual-size mode after nonzero scroll. A real mouse event maps to the

@@ -142,6 +142,24 @@ describe('CanvasViewport chrome pointer routing', () => {
   });
 });
 
+describe('CanvasStage permanent guide contract', () => {
+  it('does not render or advertise permanent center guides', () => {
+    const stage = readFileSync(
+      'src/renderer/features/canvas/CanvasStage.tsx',
+      'utf8',
+    );
+
+    expect(stage).not.toContain('data-center-guides');
+    expect(stage).not.toContain('<Line');
+    expect(stage).not.toContain(
+      'PROJECT_WIDTH / 2, 0, PROJECT_WIDTH / 2',
+    );
+    expect(stage).not.toContain(
+      '0, PROJECT_HEIGHT / 2, PROJECT_WIDTH',
+    );
+  });
+});
+
 describe('layer position input', () => {
   it('accepts finite decimal coordinates', () => {
     expect(parseLayerPositionDraft(' 10.5 ', '20.25')).toEqual({
@@ -329,22 +347,28 @@ describe('SelectableLayer interaction adapter', () => {
     ).toBe('selectable-canvas-layer');
   });
 
-  it('uses the original canvas-image API and owns object URL lifecycle in CanvasStage', () => {
-    const source = readFileSync(
+  it('uses the original canvas-image API through the Canvas resource session', () => {
+    const stage = readFileSync(
       'src/renderer/features/canvas/CanvasStage.tsx',
       'utf8',
     );
+    const resources = readFileSync(
+      'src/renderer/features/canvas/canvasImageResources.ts',
+      'utf8',
+    );
 
-    expect(source).toContain('readCanvasImage');
-    expect(source).not.toContain('readThumbnail');
-    expect(source).toContain('new Blob([response.bytes]');
-    expect(source).toContain('URL.createObjectURL');
-    expect(source).toContain('URL.revokeObjectURL');
-    expect(source).toContain('projectRoot');
-    expect(source).toContain('assetId: asset.id');
-    expect(source).toContain('sha256: asset.sha256');
-    expect(source).toContain('shotId');
-    expect(source).toContain('disposeCanvasImageResource');
-    expect(source.match(/if \(!active/gu)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(stage).toContain('CanvasImageResourceSession');
+    expect(stage).toContain('projectContextKey');
+    expect(stage).toContain('shotId');
+    expect(resources).toContain('readCanvasImage');
+    expect(resources).not.toContain('readThumbnail');
+    expect(resources).toContain('new Blob([response.bytes]');
+    expect(resources).toContain('URL.createObjectURL');
+    expect(resources).toContain('URL.revokeObjectURL');
+    expect(resources).toContain('projectRoot');
+    expect(resources).toContain('assetId,');
+    expect(resources).toContain('sha256: sourceKey');
+    expect(resources).toContain('isCurrent');
+    expect(resources).toContain('disposeResource');
   });
 });
