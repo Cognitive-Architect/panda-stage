@@ -8,11 +8,12 @@ export interface CanvasToolbarProps {
 }
 
 /**
- * Lightweight Canvas feedback. The three viewport mode controls
+ * Lightweight Canvas viewport chrome. The three viewport mode controls
  * (适应窗口 / 50% / 实际尺寸) live in the right-side 工具 surface
  * (ProjectToolsDrawer > 画布显示). The Canvas keeps only the compact
- * non-blocking feedback: current effective mode + scale + pointer
- * stage coordinate.
+ * non-blocking feedback: current effective mode + scale + pointer stage
+ * coordinate. The component is mounted inside CanvasViewport so it never
+ * becomes a normal-flow layout row.
  */
 export function CanvasToolbar({
   mode,
@@ -21,7 +22,7 @@ export function CanvasToolbar({
 }: CanvasToolbarProps): React.JSX.Element {
   return (
     <div
-      className="canvas-toolbar"
+      className="canvas-toolbar canvas-viewport-chrome"
       data-testid="canvas-toolbar-feedback"
       aria-label="画布状态"
     >
@@ -37,10 +38,11 @@ export function CanvasToolbar({
         {' · '}
         {(transform.scale * 100).toFixed(1)}%
       </output>
-      <output data-testid="canvas-pointer-coordinate">
-        {point
-          ? `x ${point.x.toFixed(1)} · y ${point.y.toFixed(1)}`
-          : '将指针移入画布查看坐标'}
+      <output
+        data-testid="canvas-pointer-coordinate"
+        hidden={!point}
+      >
+        {point ? `x ${point.x.toFixed(1)} · y ${point.y.toFixed(1)}` : null}
       </output>
     </div>
   );

@@ -31,7 +31,7 @@ describe('canvas components', () => {
     expect(markup).not.toContain('canvas-mode-actual');
   });
 
-  it('explains that actual size is 1:1 and scrollable', () => {
+  it('keeps no-pointer feedback quiet while explaining actual size', () => {
     const markup = renderToStaticMarkup(
       createElement(CanvasToolbar, {
         mode: 'actual',
@@ -45,6 +45,8 @@ describe('canvas components', () => {
 
     expect(markup).toContain('1:1 像素 · 可滚动查看');
     expect(markup).toContain('100.0%');
-    expect(markup).toContain('将指针移入画布查看坐标');
+    expect(markup).toContain('data-testid="canvas-pointer-coordinate"');
+    expect(markup).toContain('hidden');
+    expect(markup).not.toContain('将指针移入画布查看坐标');
   });
 });

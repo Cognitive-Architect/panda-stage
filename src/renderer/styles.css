@@ -9579,7 +9579,14 @@ h1 {
   border-radius: 0;
   background: transparent;
   gap: 6px;
+  grid-template-rows: minmax(0, 1fr);
   /* padding: 0 is explicit above so the flattened contract is auditable. */
+}
+
+/* Issue #457: a heading is an intentional flow row; the production viewport
+   owns every remaining pixel when the compact shell hides that heading. */
+.project-canvas[data-with-heading='true'] {
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .project-canvas-heading,
@@ -9607,8 +9614,8 @@ h1 {
 .canvas-viewport {
   position: relative;
   width: 100%;
-  height: min(62vh, 660px);
-  min-height: 320px;
+  height: auto;
+  min-height: 0;
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 14px;
   background:
@@ -9718,6 +9725,33 @@ h1 {
   padding: 4px 2px 0;
   color: #91a299;
   font-size: 11px;
+}
+
+/* Issue #457: feedback is viewport chrome, not a third project-canvas grid
+   row. It is deliberately non-interactive so Canvas hit testing and drag/drop
+   remain owned by the existing viewport/stage path. */
+.canvas-viewport-chrome {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: flex;
+  padding: 10px 12px;
+  pointer-events: none;
+  align-items: flex-end;
+  justify-content: space-between;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 80%);
+}
+
+.canvas-viewport-chrome output {
+  min-width: 0;
+  color: rgb(213 230 218 / 78%);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.canvas-viewport-chrome output[hidden] {
+  display: none;
 }
 
 .canvas-mode-switch {

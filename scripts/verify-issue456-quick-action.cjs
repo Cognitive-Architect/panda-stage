@@ -2,19 +2,24 @@ const { app, ipcMain } = require('electron');
 const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
+const isIssue457 = process.env.PANDA_STAGE_VERIFY_ISSUE457 === '1';
+const verificationIssue = isIssue457 ? 457 : 456;
+
 // Issue #456 real Electron geometry gate. The drawer must remain a live
 // overlay while its surrounding editor body and Canvas keep the same rect in
 // both UI states. The receipt is intentionally kept outside the repository so
 // this gate does not create or remove product evidence during validation.
 const repositoryRoot = path.join(__dirname, '..');
-const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue-456-quick-action';
+const acceptanceRoot = isIssue457
+  ? 'D:\\PandaStage-Acceptance\\issue-457-canvas-first'
+  : 'D:\\PandaStage-Acceptance\\issue-456-quick-action';
 const userDataRoot = path.join(acceptanceRoot, 'electron-user-data');
 const tempRoot = path.join(acceptanceRoot, 'temp');
 const outputPath = path.join(acceptanceRoot, 'geometry-results.json');
 const projectRoot = path.join(
   acceptanceRoot,
   'projects',
-  'issue456-quick-action.pandastage',
+  `issue${verificationIssue}-canvas-first.pandastage`,
 );
 const exampleProject = require('../demo-project/project-v1.example.json');
 const probePng = readFileSync(
@@ -123,6 +128,39 @@ async function clickPhysically(window, selector) {
   await delay(260);
 }
 
+async function movePointerTo(window, selector) {
+  const point = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!(element instanceof HTMLElement)) {
+      throw new Error('Element not found: ' + ${JSON.stringify(selector)});
+    }
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      throw new Error('Element has no pointer area: ' + ${JSON.stringify(selector)});
+    }
+    return {
+      x: Math.round(rect.left + rect.width / 2),
+      y: Math.round(rect.top + rect.height / 2),
+    };
+  })()`);
+
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: point.x,
+    y: point.y,
+  });
+  await delay(260);
+}
+
+async function movePointerOutside(window) {
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: 1,
+    y: 1,
+  });
+  await delay(260);
+}
+
 function documentFor(root, candidate) {
   const project = migrateProject(candidate);
   return {
@@ -137,8 +175,12 @@ function documentFor(root, candidate) {
 function createFixture() {
   return migrateProject({
     ...exampleProject,
-    id: 'c4560000-0000-4000-8000-000000000001',
-    name: 'Issue 456 Quick Action Geometry',
+    id: isIssue457
+      ? 'c4570000-0000-4000-8000-000000000001'
+      : 'c4560000-0000-4000-8000-000000000001',
+    name: isIssue457
+      ? 'Issue 457 Canvas First Geometry'
+      : 'Issue 456 Quick Action Geometry',
   });
 }
 
@@ -254,12 +296,17 @@ async function measure(window) {
         width: Math.round(value.width * 100) / 100,
         height: Math.round(value.height * 100) / 100,
         display: style.display,
+        position: style.position,
+        pointerEvents: style.pointerEvents,
         visibility: style.visibility,
       };
     };
     const layout = query('[data-testid="editor-layout"]');
     const topRegion = query('[data-testid="editor-top-region"]');
     const drawer = query('[data-testid="quick-action-drawer"]');
+    const canvasViewport = query('[data-testid="project-canvas-viewport"]');
+    const canvasChrome = query('[data-testid="canvas-toolbar-feedback"]');
+    const pointerFeedback = query('[data-testid="canvas-pointer-coordinate"]');
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       page: query('.editor-shell')?.dataset.editorPage ?? null,
@@ -270,6 +317,30 @@ async function measure(window) {
       topRegion: rect('[data-testid="editor-top-region"]'),
       editorBody: rect('[data-testid="editor-body"]'),
       canvas: rect('[data-testid="canvas-workspace-scroll"]'),
+      projectCanvas: rect('.project-canvas'),
+      canvasViewport: rect('[data-testid="project-canvas-viewport"]'),
+      timeline: rect('[data-testid="bottom-workspace"]'),
+      timelineDock: rect('[data-testid="timeline-dock"]'),
+      canvasTransform: {
+        mode: canvasViewport?.dataset.displayScale
+          ? query('[data-testid="canvas-transform-contract"]')?.dataset.transformMode ?? null
+          : null,
+        displayScale: canvasViewport?.dataset.displayScale ?? null,
+      },
+      canvasChromeInViewport: Boolean(canvasViewport && canvasChrome && canvasViewport.contains(canvasChrome)),
+      canvasChromeStyle: canvasChrome
+        ? {
+            position: getComputedStyle(canvasChrome).position,
+            pointerEvents: getComputedStyle(canvasChrome).pointerEvents,
+          }
+        : null,
+      pointerFeedback: pointerFeedback
+        ? {
+            hidden: pointerFeedback.hidden,
+            text: pointerFeedback.textContent?.trim() ?? '',
+            display: getComputedStyle(pointerFeedback).display,
+          }
+        : null,
       drawer: rect('[data-testid="quick-action-drawer"]'),
       surface: rect('[data-testid="quick-action-drawer-surface"]'),
       handle: rect('[data-testid="quick-action-drawer-handle"]'),
@@ -328,6 +399,86 @@ function assertCanvasStable(collapsed, expanded, label) {
     collapsed.editorBody?.height,
     `${label} editor body height`,
   );
+  assertClose(
+    expanded.timeline?.height,
+    collapsed.timeline?.height,
+    `${label} Timeline height`,
+  );
+}
+
+function assertCanvasFirst(sample, label) {
+  assert(
+    sample.canvas &&
+      sample.projectCanvas &&
+      sample.canvasViewport &&
+      sample.timeline &&
+      sample.canvasViewport.height > 0,
+    `${label} lost the production Canvas viewport or Timeline.`,
+  );
+  assertClose(
+    sample.canvasViewport.top,
+    sample.canvas.top,
+    `${label} Canvas viewport top`,
+  );
+  assertClose(
+    sample.canvasViewport.height,
+    sample.canvas.height,
+    `${label} Canvas viewport height`,
+  );
+  assertClose(
+    sample.canvasViewport.bottom,
+    sample.editorBody.bottom,
+    `${label} Canvas did not reach the editor-body bottom`,
+  );
+  assert(
+    sample.timeline.top >= sample.canvasViewport.bottom &&
+      sample.timeline.top - sample.canvasViewport.bottom <= 12,
+    `${label} retained a blank strip before the Timeline: ${JSON.stringify({
+      canvasViewport: sample.canvasViewport,
+      timeline: sample.timeline,
+    })}`,
+  );
+  assert(
+    sample.canvasChromeInViewport === true,
+    `${label} Canvas feedback is not mounted inside the viewport.`,
+  );
+  assert(
+    sample.canvasChromeStyle?.position === 'absolute' &&
+      sample.canvasChromeStyle.pointerEvents === 'none',
+    `${label} Canvas feedback is not non-flow/non-blocking: ${JSON.stringify(
+      sample.canvasChromeStyle,
+    )}`,
+  );
+  assert(
+    sample.canvasTransform.mode === 'fit' &&
+      Number(sample.canvasTransform.displayScale) > 0,
+    `${label} lost the live fit transform contract: ${JSON.stringify(
+      sample.canvasTransform,
+    )}`,
+  );
+}
+
+function assertPointerFeedback(sample, visible, label) {
+  assert(sample.pointerFeedback, `${label} pointer feedback is missing.`);
+  if (visible) {
+    assert(
+      sample.pointerFeedback.hidden === false &&
+        sample.pointerFeedback.text.includes('x ') &&
+        sample.pointerFeedback.text.includes('y '),
+      `${label} pointer coordinates did not update: ${JSON.stringify(
+        sample.pointerFeedback,
+      )}`,
+    );
+  } else {
+    assert(
+      sample.pointerFeedback.hidden === true &&
+        sample.pointerFeedback.text === '' &&
+        sample.pointerFeedback.display === 'none',
+      `${label} no-pointer state is not quiet: ${JSON.stringify(
+        sample.pointerFeedback,
+      )}`,
+    );
+  }
 }
 
 function assertCollapsedLandscape(sample, label) {
@@ -373,12 +524,31 @@ async function runAtSize(window, width, height) {
     `${width}x${height} did not settle in the collapsed drawer state.`,
   );
 
+  await movePointerOutside(window);
   const collapsed = await measure(window);
   assert(
     collapsed.viewport.width === width && collapsed.viewport.height === height,
     `Electron viewport did not reach ${width}x${height}: ${JSON.stringify(collapsed.viewport)}`,
   );
   assertCollapsedLandscape(collapsed, `${width}x${height}`);
+  if (isIssue457) {
+    assertCanvasFirst(collapsed, `${width}x${height} collapsed`);
+    assertPointerFeedback(
+      collapsed,
+      false,
+      `${width}x${height} collapsed no-pointer`,
+    );
+
+    await movePointerTo(window, '[data-testid="project-canvas-viewport"]');
+    const pointerInside = await measure(window);
+    assertCanvasFirst(pointerInside, `${width}x${height} pointer-inside`);
+    assertPointerFeedback(
+      pointerInside,
+      true,
+      `${width}x${height} pointer-inside`,
+    );
+    await movePointerOutside(window);
+  }
 
   await clickPhysically(window, '[data-testid="quick-action-drawer-handle"]');
   await waitForDom(
@@ -386,9 +556,18 @@ async function runAtSize(window, width, height) {
     `document.querySelector('[data-testid="quick-action-drawer"][data-expanded="true"]')`,
     `${width}x${height} drawer did not expand.`,
   );
+  await movePointerOutside(window);
   await delay(260);
   const expanded = await measure(window);
   assertExpanded(expanded, `${width}x${height}`);
+  if (isIssue457) {
+    assertCanvasFirst(expanded, `${width}x${height} expanded`);
+    assertPointerFeedback(
+      expanded,
+      false,
+      `${width}x${height} expanded no-pointer`,
+    );
+  }
   assertCanvasStable(collapsed, expanded, `${width}x${height}`);
 
   await clickPhysically(window, '[data-testid="quick-action-drawer-handle"]');
@@ -397,9 +576,18 @@ async function runAtSize(window, width, height) {
     `document.querySelector('[data-testid="quick-action-drawer"][data-expanded="false"]')`,
     `${width}x${height} drawer did not collapse again.`,
   );
+  await movePointerOutside(window);
   await delay(260);
   const collapsedAgain = await measure(window);
   assertCollapsedLandscape(collapsedAgain, `${width}x${height} repeated`);
+  if (isIssue457) {
+    assertCanvasFirst(collapsedAgain, `${width}x${height} repeated`);
+    assertPointerFeedback(
+      collapsedAgain,
+      false,
+      `${width}x${height} repeated no-pointer`,
+    );
+  }
   assertCanvasStable(collapsed, collapsedAgain, `${width}x${height} repeated`);
 
   return { collapsed, expanded, collapsedAgain };
@@ -433,7 +621,7 @@ async function run() {
   const channels = registerAcceptanceHandlers(project);
   let window = null;
   const result = {
-    issue: 456,
+    issue: verificationIssue,
     passed: false,
     electron: process.versions.electron,
     node: process.versions.node,
@@ -445,6 +633,14 @@ async function run() {
   try {
     await app.whenReady();
     window = await createMainWindow({ show: false });
+    if (isIssue457) {
+      // Chromium does not dispatch native mouse-move/pointer events to a
+      // hidden BrowserWindow. The focused Issue #457 seam is intentionally a
+      // visible real Electron window so the pointer-coordinate assertion is
+      // an actual input path rather than a DOM-dispatched substitute.
+      window.show();
+      window.focus();
+    }
     await openFixture(window);
     result.snapshots['1366x768'] = await runAtSize(window, 1366, 768);
     result.snapshots['1920x1080'] = await runAtSize(window, 1920, 1080);
@@ -458,7 +654,7 @@ async function run() {
 
 async function main() {
   const output = {
-    issue: 456,
+    issue: verificationIssue,
     passed: false,
     electron: process.versions.electron,
     node: process.versions.node,
@@ -481,4 +677,6 @@ async function main() {
   }
 }
 
-void main();
+if (require.main === module || isIssue457) {
+  void main();
+}
