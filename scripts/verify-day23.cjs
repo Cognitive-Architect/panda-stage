@@ -129,16 +129,21 @@ async function openProject(window) {
   );
   if (editorOpen) {
     await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="compact-project-more"]').click()
+      (() => {
+        const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+        if (drawer?.dataset.expanded !== 'true') {
+          drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+        }
+      })()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="compact-project-menu"]')`,
-        'Project menu did not open for a project switch.',
+        `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+        'Quick Action Drawer did not expand for a project switch.',
       ),
     );
     await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="menu-open-project-center"]').click()
+      document.querySelector('[data-testid="quick-action-home"]').click()
     `);
   }
   await window.webContents.executeJavaScript(
@@ -756,11 +761,11 @@ async function verifyDay23() {
     );
 
     await window.webContents.executeJavaScript(
-      `document.querySelector('[data-testid="compact-project-save"]').click()`,
+      `document.querySelector('[data-testid="quick-action-save"]').click()`,
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="compact-project-bar"]')` +
+        `document.querySelector('[data-testid="quick-action-drawer"]')` +
           `?.dataset?.saveState === 'saved' && ` +
           `!document.querySelector('[data-testid="project-save-state"]')`,
         'Day 23 project did not save cleanly.',
