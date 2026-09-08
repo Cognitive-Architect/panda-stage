@@ -47,6 +47,11 @@ import {
   configureKonvaScenePixelRatio,
   resolveEditorCanvasPixelRatio,
 } from '../../stage/konva-pixel-ratio';
+import {
+  CanvasImageResourceSession,
+  EMPTY_CANVAS_IMAGE_STATE,
+  type CanvasImageState,
+} from './canvasImageResources';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
@@ -55,27 +60,6 @@ const editorDevicePixelRatio =
 const editorCanvasPixelRatio = resolveEditorCanvasPixelRatio(
   editorDevicePixelRatio,
 );
-
-interface CanvasImageState {
-  images: ReadonlyMap<string, HTMLImageElement>;
-  sourceKeys: ReadonlyMap<string, string>;
-  missing: ReadonlySet<string>;
-}
-
-interface CanvasImageResource {
-  image: HTMLImageElement;
-  objectUrl: string;
-  disposed: boolean;
-}
-
-function disposeCanvasImageResource(resource: CanvasImageResource): void {
-  if (resource.disposed) return;
-  resource.disposed = true;
-  resource.image.onload = null;
-  resource.image.onerror = null;
-  resource.image.src = '';
-  URL.revokeObjectURL(resource.objectUrl);
-}
 
 function useCanvasImages(
   snapshot: EditorProjectSnapshot | null,
@@ -90,114 +74,37 @@ function useCanvasImages(
   );
   const sourceKey = assets
     .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
+    .sort()
     .join('|');
   const projectId = snapshot?.project.id ?? null;
   const projectRoot = snapshot?.projectRoot ?? null;
   const shotId = shot?.id ?? null;
-  const [state, setState] = useState<CanvasImageState>({
-    images: new Map(),
-    sourceKeys: new Map(),
-    missing: new Set(),
-  });
+  const projectContextKey =
+    projectId && projectRoot ? `${projectId}:${projectRoot}` : null;
+  const [state, setState] = useState<CanvasImageState>(
+    EMPTY_CANVAS_IMAGE_STATE,
+  );
+  const sessionRef = useRef<CanvasImageResourceSession | null>(null);
 
   useEffect(() => {
-    let active = true;
-    const resources = new Map<string, CanvasImageResource>();
-    setState({
-      images: new Map(),
-      sourceKeys: new Map(),
-      missing: new Set(
-        assets
-          .filter((asset) => !asset.sha256 || !projectRoot)
-          .map((asset) => asset.id),
-      ),
-    });
-
-    const cleanup = (): void => {
-      active = false;
-      for (const resource of resources.values()) {
-        disposeCanvasImageResource(resource);
-      }
-      resources.clear();
+    const session = new CanvasImageResourceSession();
+    sessionRef.current = session;
+    return () => {
+      session.dispose();
+      if (sessionRef.current === session) sessionRef.current = null;
     };
-    if (!projectId || !projectRoot || !shotId) return cleanup;
+  }, []);
 
-    const markMissing = (assetId: string): void => {
-      if (!active) return;
-      setState((current) => ({
-        images: current.images,
-        sourceKeys: current.sourceKeys,
-        missing: new Set(current.missing).add(assetId),
-      }));
-    };
-
-    for (const asset of assets) {
-      if (!asset.sha256) continue;
-      void Promise.resolve()
-        .then(() =>
-          window.pandaStage.assets.readCanvasImage({
-            projectRoot,
-            assetId: asset.id,
-            sha256: asset.sha256!,
-          }),
-        )
-        .then((response) => {
-          if (!active || !response.ok || response.status !== 'ready') {
-            return null;
-          }
-          const objectUrl = URL.createObjectURL(
-            new Blob([response.bytes], { type: response.mimeType }),
-          );
-          if (!active) {
-            URL.revokeObjectURL(objectUrl);
-            return null;
-          }
-          const image = new window.Image();
-          const resource: CanvasImageResource = {
-            image,
-            objectUrl,
-            disposed: false,
-          };
-          resources.set(asset.id, resource);
-          return new Promise<HTMLImageElement | null>((resolve) => {
-            image.onload = () => {
-              if (!active) {
-                resources.delete(asset.id);
-                disposeCanvasImageResource(resource);
-                resolve(null);
-                return;
-              }
-              resolve(image);
-            };
-            image.onerror = () => {
-              resources.delete(asset.id);
-              disposeCanvasImageResource(resource);
-              resolve(null);
-            };
-            image.src = objectUrl;
-          });
-        })
-        .then((image) => {
-          if (!active || !image) {
-            if (active) markMissing(asset.id);
-            return;
-          }
-          setState((current) => {
-            const images = new Map(current.images);
-            const sourceKeys = new Map(current.sourceKeys);
-            const missing = new Set(current.missing);
-            images.set(asset.id, image);
-            sourceKeys.set(asset.id, asset.sha256!);
-            missing.delete(asset.id);
-            return { images, sourceKeys, missing };
-          });
-        })
-        .catch(() => {
-          markMissing(asset.id);
-        });
-    }
-    return cleanup;
-  }, [assets, projectId, projectRoot, shotId, sourceKey]);
+  useEffect(() => {
+    sessionRef.current?.reconcile(
+      {
+        contextKey: projectContextKey,
+        projectRoot,
+        assets: shotId ? assets : [],
+      },
+      setState,
+    );
+  }, [assets, projectContextKey, projectRoot, shotId, sourceKey]);
 
   return state;
 }
@@ -281,11 +188,8 @@ export function CanvasStage({
     : undefined;
   const imageForAsset = (asset: {
     id: string;
-    sha256?: string;
   }): HTMLImageElement | undefined =>
-    asset.sha256 && imageState.sourceKeys.get(asset.id) === asset.sha256
-      ? imageState.images.get(asset.id)
-      : undefined;
+    imageState.images.get(asset.id);
   const backgroundLayer =
     stageModel?.layers.find((layer) => layer.render.isBackground) ?? null;
   const backgroundAsset = backgroundLayer?.asset ?? null;
