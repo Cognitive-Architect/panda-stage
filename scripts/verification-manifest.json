@@ -287,6 +287,7 @@
         ],
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
+          "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",
           "tests/unit/left-workspace.test.ts",
