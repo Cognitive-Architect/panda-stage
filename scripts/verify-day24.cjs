@@ -156,22 +156,32 @@ async function clickDomElement(window, selector) {
   await clickElement(window, selector);
 }
 
-async function openProject(window, projectRoot) {
+async function openProject(
+  window,
+  projectRoot,
+  expectedProjectName,
+  expectedShotName,
+) {
   const editorOpen = await window.webContents.executeJavaScript(
     `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
   );
   if (editorOpen) {
     await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="compact-project-more"]').click()
+      (() => {
+        const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+        if (drawer?.dataset.expanded !== 'true') {
+          drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+        }
+      })()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="compact-project-menu"]')`,
-        'Project menu did not open for a project switch.',
+        `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+        'Quick Action Drawer did not expand for a project switch.',
       ),
     );
     await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="menu-open-project-center"]').click()
+      document.querySelector('[data-testid="quick-action-home"]').click()
     `);
   }
   await window.webContents.executeJavaScript(
@@ -190,8 +200,9 @@ async function openProject(window, projectRoot) {
   );
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('[data-testid="active-project-path"] code')` +
-        `?.textContent === ${JSON.stringify(projectRoot)}`,
+      `document.title.includes(${JSON.stringify(expectedProjectName)}) && ` +
+        `document.querySelector('.shot-list-item-selected strong')` +
+          `?.textContent?.trim() === ${JSON.stringify(expectedShotName)}`,
       `Project did not become active: ${projectRoot}`,
     ),
   );
@@ -224,22 +235,15 @@ async function snapshot(window) {
     const history = document.querySelector(
       '[data-testid="history-controls"]'
     );
-    const activeProjectPath = document.querySelector(
-      '[data-testid="active-project-path"] code'
-    );
-    const projectName = document.querySelector(
-      '[data-testid="compact-project-bar"] .compact-project-name'
-    );
     const selectedShot = document.querySelector('.shot-list-item-selected');
     const durationText = selectedShot?.querySelector('small')?.textContent ?? '';
     return {
       layers: JSON.parse(stage.dataset.layerJson),
       projectRevision: Number(stage.dataset.projectRevision),
-      activeProjectRoot: activeProjectPath?.textContent,
-      projectName: projectName?.textContent,
-      // Task 2 deliberately removes the always-present editor path input;
-      // the compact bar's visible active root is the retained identity.
-      openCandidatePath: activeProjectPath?.textContent,
+      // Issue #454 deliberately keeps project root/name out of the compact
+      // editor chrome; the native title and selected shot identify the active
+      // fixture without restoring the removed project-bar DOM.
+      projectTitle: document.title,
       selectedLayerId: stage.dataset.selectedLayerId,
       undoCount: Number(history.dataset.undoCount),
       redoCount: Number(history.dataset.redoCount),
@@ -368,7 +372,7 @@ async function blurWithoutChangingSelection(window, expectedLayerId) {
     );
   }
   const point = await window.webContents.executeJavaScript(`(() => {
-    const target = document.querySelector('[data-testid="compact-project-bar"]');
+    const target = document.querySelector('[data-testid="quick-action-drawer-handle"]');
     const form = document.querySelector(
       '[data-testid="layer-transform-panel"] form'
     );
@@ -397,7 +401,7 @@ async function blurWithoutChangingSelection(window, expectedLayerId) {
     });
   }
   await window.webContents.executeJavaScript(
-      `document.querySelector('[data-testid="compact-project-bar"]')` +
+      `document.querySelector('[data-testid="quick-action-drawer-handle"]')` +
         `.focus({ preventScroll: true })`,
   );
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -585,7 +589,12 @@ async function verifyDay24() {
         'Editor did not render.',
       ),
     );
-    await openProject(window, firstRoot);
+    await openProject(
+      window,
+      firstRoot,
+      firstProject.name,
+      firstProject.shots[0].name,
+    );
     await ensureCloudTouchEditor(window);
     window.showInactive();
     await window.webContents.executeJavaScript(
@@ -1007,11 +1016,11 @@ async function verifyDay24() {
     const deleteRedone = await snapshot(window);
 
     await window.webContents.executeJavaScript(
-      `document.querySelector('[data-testid="compact-project-save"]').click()`,
+      `document.querySelector('[data-testid="quick-action-save"]').click()`,
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="compact-project-bar"]')` +
+        `document.querySelector('[data-testid="quick-action-drawer"]')` +
           `?.dataset?.saveState === 'saved' && ` +
           `document.querySelector('[data-testid="project-save-state"]')` +
           ` === null`,
@@ -1019,7 +1028,12 @@ async function verifyDay24() {
       ),
     );
     await new Promise((resolve) => setTimeout(resolve, 200));
-    await openProject(window, secondRoot);
+    await openProject(
+      window,
+      secondRoot,
+      secondProject.name,
+      secondProject.shots[0].name,
+    );
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="history-controls"]')` +
@@ -1028,7 +1042,12 @@ async function verifyDay24() {
       ),
     );
     const switched = await snapshot(window);
-    await openProject(window, firstRoot);
+    await openProject(
+      window,
+      firstRoot,
+      firstProject.name,
+      firstProject.shots[0].name,
+    );
     await window.webContents.executeJavaScript(
       waitFor(
         `document.querySelector('[data-testid="history-controls"]')` +
@@ -1232,18 +1251,16 @@ async function verifyDay24() {
       },
       projectSwitch: {
         second: {
-          activeProjectRoot: switched.activeProjectRoot,
-          openCandidatePath: switched.openCandidatePath,
-          projectName: switched.projectName,
+          requestedRoot: secondRoot,
+          projectTitle: switched.projectTitle,
           shotNameDraft: switched.shotNameDraft,
           shotDurationDraft: switched.shotDurationDraft,
           undoCount: switched.undoCount,
           redoCount: switched.redoCount,
         },
         returned: {
-          activeProjectRoot: returned.activeProjectRoot,
-          openCandidatePath: returned.openCandidatePath,
-          projectName: returned.projectName,
+          requestedRoot: firstRoot,
+          projectTitle: returned.projectTitle,
           shotNameDraft: returned.shotNameDraft,
           shotDurationDraft: returned.shotDurationDraft,
           undoCount: returned.undoCount,
@@ -1383,18 +1400,20 @@ async function verifyDay24() {
       !evidence.persistence.savedToActiveRoot ||
       !evidence.persistence.historyExcluded ||
       !evidence.persistence.uiStateExcluded ||
-      evidence.projectSwitch.second.activeProjectRoot !== secondRoot ||
-      evidence.projectSwitch.second.openCandidatePath !== secondRoot ||
-      evidence.projectSwitch.second.projectName !== secondProject.name ||
+      evidence.projectSwitch.second.requestedRoot !== secondRoot ||
+      !evidence.projectSwitch.second.projectTitle.includes(
+        secondProject.name,
+      ) ||
       evidence.projectSwitch.second.shotNameDraft !==
         secondProject.shots[0].name ||
       evidence.projectSwitch.second.shotDurationDraft !==
         Math.round(secondProject.shots[0].durationMs / 100) * 100 ||
       evidence.projectSwitch.second.undoCount !== 0 ||
       evidence.projectSwitch.second.redoCount !== 0 ||
-      evidence.projectSwitch.returned.activeProjectRoot !== firstRoot ||
-      evidence.projectSwitch.returned.openCandidatePath !== firstRoot ||
-      evidence.projectSwitch.returned.projectName !== firstProject.name ||
+      evidence.projectSwitch.returned.requestedRoot !== firstRoot ||
+      !evidence.projectSwitch.returned.projectTitle.includes(
+        firstProject.name,
+      ) ||
       evidence.projectSwitch.returned.shotNameDraft !==
         firstProject.shots[0].name ||
       evidence.projectSwitch.returned.shotDurationDraft !==
