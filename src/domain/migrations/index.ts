@@ -68,6 +68,8 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
 
 const MIGRATED_SUBTITLE_STYLE_ID =
   '00000000-0000-4000-8000-000000000110';
+const HISTORICAL_DEFAULT_SUBTITLE_BACKGROUND = '#0a1411c7';
+const TRANSPARENT_SUBTITLE_BACKGROUND = '#0a141100';
 
 function migrateLegacyProject(
   legacy: ProjectV0 | LegacyProbeProjectV1,
@@ -89,8 +91,7 @@ function migrateLegacyProject(
         fontFamily: 'Microsoft YaHei',
         fontSize: 44,
         textColor: '#fffdf6',
-        // The background is a new default synthesized for legacy projects;
-        // existing persisted style records are otherwise left untouched.
+        // The background is a new default synthesized for legacy projects.
         backgroundColor: '#0a141100',
         position: 'bottom',
         align: 'center',
@@ -143,41 +144,72 @@ function migrateLegacyProject(
 }
 
 /**
+ * Removes only the historical product default from persisted styles. Explicit
+ * custom backgrounds remain part of the project model and are preserved.
+ */
+function normalizeHistoricalSubtitleBackground(project: Project): Project {
+  let changed = false;
+  const subtitleStyles = project.subtitleStyles.map((style) => {
+    if (
+      style.backgroundColor !== HISTORICAL_DEFAULT_SUBTITLE_BACKGROUND
+    ) {
+      return style;
+    }
+    changed = true;
+    return {
+      ...style,
+      backgroundColor: TRANSPARENT_SUBTITLE_BACKGROUND,
+    };
+  });
+
+  return changed ? { ...project, subtitleStyles } : project;
+}
+
+/**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v5) is routed here by version and resolved to
+ * Every persisted envelope (v0-v6) is routed here by version and resolved to
  * the current v6 project through exactly one path. The formal v1-v4
  * transform and the Day27 v5-to-v6 dialogue transition live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v6 shape. There is no second, implicit migration
- * path: `ProjectSchema.parse` never migrates legacy input.
+ * validate the resolved v6 shape. A narrow compatibility normalization then
+ * replaces the one historical subtitle default while preserving all other
+ * style values. There is no second, implicit migration path:
+ * `ProjectSchema.parse` never migrates legacy input.
  */
 export function migrateProject(input: unknown): Project {
   const version = detectSchemaVersion(input);
+  let project: Project;
   switch (version) {
     case 0:
-      return migrateLegacyProject(ProjectV0Schema.parse(input));
+      project = migrateLegacyProject(ProjectV0Schema.parse(input));
+      break;
     case 1:
-      return migrateVersion1(input);
+      project = migrateVersion1(input);
+      break;
     case 2:
     case 3:
     case 4:
       // Formal v2-v4 envelopes are migrated to the current schema by the
       // shared formal transform, then validated as a current project.
-      return ProjectSchema.parse(migrateFormalProject(input));
+      project = ProjectSchema.parse(migrateFormalProject(input));
+      break;
     case 5:
       // Day27 v5 envelopes carry mandatory audioClipId on dialogues. The
       // formal transform explicitly recognises that historical shape and
       // bumps it to the current v6 schema without changing dialogue data.
-      return ProjectSchema.parse(migrateFormalProject(input));
+      project = ProjectSchema.parse(migrateFormalProject(input));
+      break;
     case PROJECT_SCHEMA_VERSION:
-      // Current v6 envelope: validated as-is, no migration, no in-place
-      // mutation.
-      return ProjectSchema.parse(input);
+      // Current v6 envelope: validate it, then apply only the narrow
+      // historical-default compatibility normalization without mutating input.
+      project = ProjectSchema.parse(input);
+      break;
     default:
       throw new UnsupportedSchemaVersionError(version);
   }
+  return normalizeHistoricalSubtitleBackground(project);
 }
 
 /**

@@ -18,6 +18,13 @@ export type CompactProjectSaveState =
   | 'saving'
   | 'failed';
 
+export function shouldRenderRestSaveState(
+  expanded: boolean,
+  saveState: CompactProjectSaveState,
+): boolean {
+  return !expanded && saveState !== 'saved';
+}
+
 export interface CompactProjectBarProps {
   projectSnapshot: EditorProjectSnapshot;
   saveState: CompactProjectSaveState;
@@ -88,6 +95,8 @@ export function QuickActionDrawer({
         : projectSnapshot.dirty
           ? '保存项目'
           : '保存项目（已保存）';
+
+  const showRestSaveState = shouldRenderRestSaveState(expanded, saveState);
 
   useEffect(() => {
     // Switching projects remounts this presentation in EditorShell, and this
@@ -267,7 +276,7 @@ export function QuickActionDrawer({
           </output>
         ) : null}
       </PanelSurface>
-      {saveState !== 'saved' ? (
+      {showRestSaveState ? (
         <span
           aria-live="polite"
           className={`quick-action-drawer-rest-state quick-action-drawer-rest-state-${saveState}`}
