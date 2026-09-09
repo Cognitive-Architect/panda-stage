@@ -918,31 +918,33 @@ export function DialogueInspector({
           className="dialogue-properties-identity-editor"
           data-testid="dialogue-properties-header"
         >
-          <DecorativeIcon icon={MessageSquareText} size={18} />
           <div
-            className="dialogue-properties-identity-copy"
+            className="dialogue-properties-identity-row"
             data-testid="dialogue-inspector-copy-section"
           >
-            <strong
-              className="dialogue-properties-identity"
-              data-testid="dialogue-properties-identity"
-            >
-              {character?.name ?? '未知角色'}
-            </strong>
-            <textarea
-              aria-label="台词内容"
-              className="dialogue-properties-inline-text"
-              data-testid="dialogue-inspector-text"
-              value={text}
-              rows={2}
-              onChange={(event) => setText(event.target.value)}
-              onFocus={() => {
-                focusedRef.current = true;
-              }}
-              onBlur={commitText}
-            />
+            <DecorativeIcon icon={MessageSquareText} size={18} />
+            <div className="dialogue-properties-identity-copy">
+              <strong
+                className="dialogue-properties-identity"
+                data-testid="dialogue-properties-identity"
+              >
+                {character?.name ?? '未知角色'}
+              </strong>
+            </div>
+            {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
           </div>
-          {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
+          <textarea
+            aria-label="台词内容"
+            className="dialogue-properties-inline-text"
+            data-testid="dialogue-inspector-text"
+            value={text}
+            rows={2}
+            onChange={(event) => setText(event.target.value)}
+            onFocus={() => {
+              focusedRef.current = true;
+            }}
+            onBlur={commitText}
+          />
         </header>
         <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
@@ -1191,31 +1193,33 @@ export function DialogueInspector({
           className="dialogue-properties-identity-editor dialogue-landscape-properties-identity-editor"
           data-testid="dialogue-properties-header"
         >
-          <DecorativeIcon icon={MessageSquareText} size={18} />
           <div
-            className="dialogue-properties-identity-copy"
+            className="dialogue-properties-identity-row dialogue-landscape-properties-identity-row"
             data-testid="dialogue-inspector-copy-section"
           >
-            <strong
-              className="dialogue-properties-identity"
-              data-testid="dialogue-inspector-speaker-name"
-            >
-              {character?.name ?? '未知角色'}
-            </strong>
-            <textarea
-              aria-label="台词内容"
-              className="dialogue-properties-inline-text dialogue-landscape-properties-textarea"
-              data-testid="dialogue-inspector-text"
-              value={text}
-              rows={2}
-              onChange={(event) => setText(event.target.value)}
-              onFocus={() => {
-                focusedRef.current = true;
-              }}
-              onBlur={commitText}
-            />
+            <DecorativeIcon icon={MessageSquareText} size={18} />
+            <div className="dialogue-properties-identity-copy">
+              <strong
+                className="dialogue-properties-identity"
+                data-testid="dialogue-inspector-speaker-name"
+              >
+                {character?.name ?? '未知角色'}
+              </strong>
+            </div>
+            {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
           </div>
-          {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
+          <textarea
+            aria-label="台词内容"
+            className="dialogue-properties-inline-text dialogue-landscape-properties-textarea"
+            data-testid="dialogue-inspector-text"
+            value={text}
+            rows={2}
+            onChange={(event) => setText(event.target.value)}
+            onFocus={() => {
+              focusedRef.current = true;
+            }}
+            onBlur={commitText}
+          />
         </header>
         <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (

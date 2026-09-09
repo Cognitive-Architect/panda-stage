@@ -28733,3 +28733,72 @@ h1 {
   line-height: 1.1;
   white-space: nowrap;
 }
+
+/* Issue #468: keep the Subtitle Properties identity row separate from its
+   full-width copy field. The textarea now shares the same content width as
+   the controls below; no positional compensation is needed. */
+.dialogue-inspector-properties .dialogue-properties-identity-editor,
+.dialogue-inspector-landscape-properties .dialogue-properties-identity-editor {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dialogue-inspector-properties .dialogue-properties-identity-row,
+.dialogue-inspector-landscape-properties .dialogue-properties-identity-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialogue-inspector-properties
+  .dialogue-properties-identity-row
+  .dialogue-properties-identity-copy,
+.dialogue-inspector-landscape-properties
+  .dialogue-properties-identity-row
+  .dialogue-properties-identity-copy {
+  min-width: 0;
+  gap: 0;
+}
+
+.dialogue-inspector-properties
+  .dialogue-properties-identity-copy
+  .dialogue-properties-identity,
+.dialogue-inspector-landscape-properties
+  .dialogue-properties-identity-copy
+  .dialogue-properties-identity {
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-inspector-properties .dialogue-properties-identity-editor > .dialogue-properties-inline-text,
+.dialogue-inspector-landscape-properties
+  .dialogue-properties-identity-editor
+  > .dialogue-properties-inline-text {
+  grid-column: 1;
+  width: 100%;
+  margin: 0;
+}
+
+.dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-section
+  .dialogue-properties-section-heading {
+  color: var(--ui-color-text-secondary);
+}
+
+.dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-timing-section
+  .dialogue-properties-section-heading
+  h3 {
+  color: var(--ui-color-text-secondary);
+}
