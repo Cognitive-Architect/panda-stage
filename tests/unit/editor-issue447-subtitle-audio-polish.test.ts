@@ -55,9 +55,9 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
       expect(presentation).toContain('dialogue-properties-identity-editor');
       expect(presentation).toContain('dialogue-properties-inline-text');
       expect(presentation).toContain('dialogue-compact-timing-grid');
-      expect(presentation).toContain('<span>开始</span>');
+      expect(presentation).toContain('<span>开始（秒）</span>');
       expect(presentation).toContain('<span>结束</span>');
-      expect(presentation).toContain('<span>时长</span>');
+      expect(presentation).toContain('<span>时长（秒）</span>');
       expect(presentation).toContain('>\n                应用\n');
       expect(presentation).toContain('<h3>角色</h3>');
       expect(presentation).not.toContain('角色（说话人）');
