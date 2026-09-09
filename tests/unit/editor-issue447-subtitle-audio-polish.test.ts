@@ -66,7 +66,7 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     }
 
     expect(inspector).toContain('className="dialogue-audio-source-card"');
-    expect(inspector).toContain('片段{\' \'}');
+    expect(inspector).toContain('音频{\' \'}');
     expect(inspector).toContain("audioClip ? '更换配音' : '选择配音'");
     expect(inspector).toContain('调整时长');
     expect(inspector).toContain('移除配音');

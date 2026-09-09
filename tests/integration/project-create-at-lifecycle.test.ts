@@ -84,6 +84,9 @@ describe('secure project creation from a parent directory and a name', () => {
       [...PROJECT_DIRECTORIES, PROJECT_FILE_NAME].sort(),
     );
     expect(created.project.name).toBe('熊猫短片');
+    expect(created.project.subtitleStyles[0]?.backgroundColor).toBe(
+      '#0a141100',
+    );
     expect(created.migrated).toBe(false);
     const serialized = JSON.parse(
       await readFile(created.projectFilePath, 'utf8'),

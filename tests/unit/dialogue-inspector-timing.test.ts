@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatHumanAudioDuration,
   millisecondsToSeconds,
   normalizeManualDialogueTiming,
   secondsToMilliseconds,
@@ -25,6 +26,12 @@ describe('DialogueInspector subtitle seconds timing', () => {
     expect(millisecondsToSeconds(0)).toBe('0');
     expect(millisecondsToSeconds(330)).toBe('0.33');
     expect(millisecondsToSeconds(3_125)).toBe('3.125');
+  });
+
+  it('formats bound audio duration as human-readable seconds', () => {
+    expect(formatHumanAudioDuration(3_168)).toBe('3.17 秒');
+    expect(formatHumanAudioDuration(3_000)).toBe('3.00 秒');
+    expect(formatHumanAudioDuration(-10)).toBe('0.00 秒');
   });
 
   it.each([

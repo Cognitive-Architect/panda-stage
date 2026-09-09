@@ -267,6 +267,17 @@ export function QuickActionDrawer({
           </output>
         ) : null}
       </PanelSurface>
+      {saveState !== 'saved' ? (
+        <span
+          aria-live="polite"
+          className={`quick-action-drawer-rest-state quick-action-drawer-rest-state-${saveState}`}
+          data-save-state={saveState}
+          data-testid="project-save-state-rest"
+          title={saveState === 'failed' ? statusText || '保存失败' : undefined}
+        >
+          {saveStateLabel}
+        </span>
+      ) : null}
       <button
         aria-controls={panelId}
         aria-expanded={expanded}

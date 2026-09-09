@@ -3056,9 +3056,16 @@ button:disabled {
 
 .dialogue-sheet-right-workspace .dialogue-untimed-action-strip {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   padding: 10px 12px;
   border-top: 1px solid rgb(255 255 255 / 7%);
   gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-action-info {
+  grid-column: 1;
+  justify-self: start;
 }
 
 .dialogue-sheet-right-workspace .dialogue-untimed-action-meta,
@@ -3067,6 +3074,21 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-action-buttons {
+  grid-column: 2;
+  justify-self: end;
+  justify-content: flex-end;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-arrange {
+  font-size: 12px;
+  text-align: center;
+}
+
+.dialogue-sheet-right-workspace .dialogue-untimed-error {
+  grid-column: 1 / -1;
 }
 
 .dialogue-sheet-right-workspace .dialogue-authoring-shell {
@@ -15921,6 +15943,14 @@ h1 {
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-strip
+  .dialogue-untimed-action-info {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
   .dialogue-untimed-action-meta {
   display: inline-flex;
   min-width: 0;
@@ -17251,8 +17281,9 @@ h1 {
   border-radius: var(--ui-radius-small);
   color: var(--ui-color-accent);
   background: transparent;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -17864,7 +17895,8 @@ h1 {
   .dialogue-properties-section-heading h3 {
   margin: 0;
   color: var(--ui-color-text-primary);
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 700;
   line-height: 1.3;
 }
 
@@ -23512,6 +23544,8 @@ h1 {
   border-color: var(--ui-color-selected-border);
   color: var(--ui-color-text-primary);
   background: var(--ui-color-action-primary);
+  font-size: 12px;
+  text-align: center;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -23810,7 +23844,7 @@ h1 {
   .dialogue-pending-card
   .dialogue-untimed-action-strip {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   margin-top: 0;
   padding: 8px;
@@ -23827,8 +23861,17 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 6px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-task-tray
+  .dialogue-pending-card
+  .dialogue-untimed-action-strip
+  .dialogue-untimed-error {
+  grid-column: 1 / -1;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -24455,7 +24498,8 @@ h1 {
   min-width: 0;
   margin: 0;
   color: var(--ui-color-text-primary);
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 700;
   line-height: 1.3;
 }
 
@@ -24884,7 +24928,7 @@ h1 {
   .dialogue-inspector-landscape-properties
   .dialogue-properties-section-heading
   h3 {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -24899,8 +24943,9 @@ h1 {
   .dialogue-landscape-properties-timing-section
   .dialogue-properties-section-heading
   h3 {
-  font-size: 16px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -25049,7 +25094,9 @@ h1 {
   .dialogue-properties-section-heading
   h3 {
   color: var(--ui-color-text-secondary);
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -27573,7 +27620,7 @@ h1 {
 .dialogue-properties-identity-copy {
   display: grid;
   min-width: 0;
-  gap: 3px;
+  gap: 7px;
 }
 
 .dialogue-properties-identity-copy .dialogue-properties-identity {
@@ -27962,7 +28009,7 @@ h1 {
 .dialogue-inspector-properties .dialogue-properties-section-heading,
 .dialogue-inspector-landscape-properties .dialogue-properties-section-heading {
   min-height: 30px;
-  gap: 9px;
+  gap: 8px;
 }
 
 .dialogue-inspector-properties
@@ -28064,7 +28111,7 @@ h1 {
   .dialogue-inspector-landscape-properties
   .dialogue-properties-section-heading {
   min-height: 30px;
-  gap: 9px;
+  gap: 8px;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
@@ -28426,6 +28473,7 @@ h1 {
 }
 
 .quick-action-drawer-save-state,
+.quick-action-drawer-rest-state,
 .quick-action-drawer-feedback {
   display: block;
   max-width: min(70vw, 520px);
@@ -28435,22 +28483,39 @@ h1 {
   text-align: center;
 }
 
-.quick-action-drawer-save-state {
+.quick-action-drawer-save-state,
+.quick-action-drawer-rest-state {
   justify-self: center;
   padding: 2px 8px;
+  border: 1px solid transparent;
   border-radius: var(--ui-radius-pill);
   font-weight: 800;
 }
 
 .quick-action-drawer-save-state-dirty,
-.quick-action-drawer-save-state-saving {
+.quick-action-drawer-rest-state-dirty,
+.quick-action-drawer-save-state-saving,
+.quick-action-drawer-rest-state-saving {
   color: #ffe6ad;
   background: rgb(163 109 25 / 28%);
 }
 
-.quick-action-drawer-save-state-failed {
+.quick-action-drawer-rest-state-saving {
+  border-color: var(--ui-color-action-warning);
+}
+
+.quick-action-drawer-save-state-failed,
+.quick-action-drawer-rest-state-failed {
   color: #ffd4d0;
   background: rgb(124 46 37 / 44%);
+}
+
+.quick-action-drawer-rest-state-dirty {
+  border-color: var(--ui-color-action-warning);
+}
+
+.quick-action-drawer-rest-state-failed {
+  border-color: rgb(255 155 143 / 70%);
 }
 
 .quick-action-drawer-feedback {
@@ -28493,6 +28558,20 @@ h1 {
     0 0 0 2px rgb(11 16 14 / 72%),
     inset 12px 0 0 rgb(127 199 148 / 24%),
     inset -12px 0 0 rgb(127 199 148 / 24%);
+}
+
+.quick-action-drawer[data-save-state='dirty'] .quick-action-drawer-grip {
+  border-color: var(--ui-color-action-warning);
+  background: rgb(163 109 25 / 60%);
+}
+
+.quick-action-drawer[data-save-state='saving'] .quick-action-drawer-grip {
+  border-color: var(--ui-color-action-warning);
+}
+
+.quick-action-drawer[data-save-state='failed'] .quick-action-drawer-grip {
+  border-color: rgb(255 155 143 / 70%);
+  background: var(--ui-color-action-danger);
 }
 
 .quick-action-drawer

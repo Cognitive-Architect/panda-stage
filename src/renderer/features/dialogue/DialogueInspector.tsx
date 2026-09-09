@@ -53,6 +53,14 @@ export function millisecondsToSeconds(milliseconds: number): string {
     .replace(/(\.\d*?)0+$/, '$1');
 }
 
+/** Keep audio summaries human-readable without changing the integer-ms model. */
+export function formatHumanAudioDuration(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds)) return '—';
+  const roundedMilliseconds = Math.round(milliseconds);
+  if (!Number.isSafeInteger(roundedMilliseconds)) return '—';
+  return `${(Math.max(0, roundedMilliseconds) / 1_000).toFixed(2)} 秒`;
+}
+
 export function normalizeManualDialogueTiming(
   startSecondsValue: string,
   durationSecondsValue: string,
@@ -195,12 +203,10 @@ export function DialogueInspector({
     ? Math.max(0, audioAsset.durationMs - audioClip.offsetMs)
     : 0;
   const audioSummary = audioClip
-    ? (audioAsset?.name ?? audioClip.name) +
-      ' · ' +
-      formatTimecode(Math.max(0, audioClip.endMs - audioClip.startMs))
+    ? `音频 ${formatHumanAudioDuration(audioClipDurationMs)}`
     : dialogue?.audioClipId
       ? '绑定配音不可用'
-      : '还没有配音';
+      : null;
   const unavailableAudioCount = audioAssets.filter(
     (asset) =>
       asset.durationMs === undefined || asset.metadata?.status === 'error',
@@ -344,19 +350,14 @@ export function DialogueInspector({
           <strong>{audioAsset?.name ?? audioClip.name}</strong>
           {!audioTrimEditorOpen ? (
             <span>
-              片段{' '}
+              音频{' '}
               <time dateTime={`PT${audioClipDurationMs / 1000}S`}>
-                {formatTimecode(audioClipDurationMs)}
+                {formatHumanAudioDuration(audioClipDurationMs)}
               </time>
             </span>
           ) : null}
         </div>
-      ) : (
-        <div className="dialogue-audio-empty-state">
-          <strong>还没有配音</strong>
-          <span>为这条字幕选择角色配音。</span>
-        </div>
-      )}
+      ) : null}
       {audioTrimEditorOpen && audioClip && audioAsset && audioEndRange ? (
         <div
           className="dialogue-audio-duration-editor"
@@ -883,7 +884,11 @@ export function DialogueInspector({
           data-testid="dialogue-inspector-audio-section"
         >
           <h3>配音</h3>
-          <p data-testid="dialogue-inspector-audio-summary">{audioSummary}</p>
+          {audioSummary ? (
+            <p data-testid="dialogue-inspector-audio-summary">
+              {audioSummary}
+            </p>
+          ) : null}
         </section>
 
         <div className="dialogue-inspector-actions dialogue-timed-actions">

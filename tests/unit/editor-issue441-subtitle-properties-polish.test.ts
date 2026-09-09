@@ -86,7 +86,7 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     expect(properties).not.toContain('待安排字幕');
   });
 
-  it('uses 配音 / 选择配音 / 还没有配音 / 安排到时间轴后即可添加配音 product copy in properties + landscape + timeline', () => {
+  it('uses 配音 / 选择配音 / 安排到时间轴后即可添加配音 product copy in properties + landscape + timeline', () => {
     const dialogue = source(
       'src/renderer/features/dialogue/DialogueInspector.tsx',
     );
@@ -130,7 +130,8 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
 
     // Timeline remains feedback-only while the normal bound Properties state
     // no longer repeats a persistent binding-state label.
-    expect(dialogue).toContain('还没有配音');
+    expect(dialogue).not.toContain('还没有配音');
+    expect(dialogue).not.toContain('为这条字幕选择角色配音。');
     expect(dialogue).not.toContain("' · 已绑定'");
     expect(timeline).toContain('配音');
   });
@@ -200,7 +201,6 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
       expect(sourceText).not.toContain('等待 / 正在分析');
       expect(sourceText).not.toContain('重试分析');
       expect(sourceText).not.toContain('重试音频分析');
-      expect(sourceText).not.toContain('分析失败');
       expect(sourceText).not.toContain('时长 Ready');
     }
 
@@ -212,7 +212,10 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     expect(details).toContain('可用');
     expect(details).toContain('无法读取配音');
 
-    expect(importPanel).toContain('段配音已准备好');
+    expect(importPanel).toContain('个配音时长分析失败');
+    expect(importPanel).toContain('已导入');
+    expect(importPanel).toContain('时长分析失败');
+    expect(importPanel).not.toContain('段配音已准备好');
     expect(importPanel).not.toContain('个 Ready');
     expect(importPanel).not.toContain('音频分析完成');
 

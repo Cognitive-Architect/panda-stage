@@ -89,7 +89,9 @@ function migrateLegacyProject(
         fontFamily: 'Microsoft YaHei',
         fontSize: 44,
         textColor: '#fffdf6',
-        backgroundColor: '#0a1411c7',
+        // The background is a new default synthesized for legacy projects;
+        // existing persisted style records are otherwise left untouched.
+        backgroundColor: '#0a141100',
         position: 'bottom',
         align: 'center',
         maxWidth: 1600,

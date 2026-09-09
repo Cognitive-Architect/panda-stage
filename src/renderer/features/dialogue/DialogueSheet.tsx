@@ -8,6 +8,7 @@ import {
 import {
   ArrowLeft,
   GripVertical,
+  Info,
   MessageCircleMore,
   Plus,
   X,
@@ -1194,7 +1195,7 @@ export function DialogueSheet({
                           selected-card presentation — Timeline is the
                           owner of when content happens. */}
                       <div className="dialogue-untimed-action-info">
-                        <GripVertical
+                        <Info
                           aria-hidden="true"
                           focusable={false}
                           size={12}

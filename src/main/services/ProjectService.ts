@@ -148,7 +148,9 @@ export class ProjectService {
             fontFamily: 'Microsoft YaHei',
             fontSize: 44,
             textColor: '#fffdf6',
-            backgroundColor: '#0a1411c7',
+            // Issue #467 R4: new projects start with a text-only subtitle
+            // presentation while retaining the persisted style field.
+            backgroundColor: '#0a141100',
             position: 'bottom',
             align: 'center',
             maxWidth: 1600,

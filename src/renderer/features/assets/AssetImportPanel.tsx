@@ -7,7 +7,9 @@ import type {
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { DecorativeIcon } from '../../ui';
-import { applyAssetImportResponse } from './applyAssetImportResponse';
+import {
+  applyAssetImportResponse,
+} from './applyAssetImportResponse';
 import type { AssetMetadataBatchOutcome } from './assetMetadataQueue';
 import { useAssetDrop } from './useAssetDrop';
 
@@ -41,6 +43,19 @@ export function selectImportedAudioAssetIds(
 
 function resultClass(result: AssetImportResult): string {
   return `asset-import-result asset-import-result-${result.status}`;
+}
+
+function resultStatusLabel(status: AssetImportResult['status']): string {
+  switch (status) {
+    case 'imported':
+      return '已导入';
+    case 'duplicate':
+      return '已复用';
+    case 'rejected':
+      return '未导入';
+    case 'failed':
+      return '失败';
+  }
 }
 
 export function AssetImportPanel({
@@ -78,11 +93,9 @@ export function AssetImportPanel({
       setStatus(
         metadata.stopped
           ? '项目已切换，已安全停止音频时长分析。'
-          : `${metadata.readyCount} 段配音已准备好${
-              metadata.errorCount > 0
-                ? `，${metadata.errorCount} 段失败，可在素材详情重试。`
-                : '。'
-            }`,
+          : metadata.errorCount > 0
+            ? `${outcome.status}；${metadata.errorCount} 个配音时长分析失败，可在素材详情重试。`
+            : outcome.status,
       );
     },
     [onImportedAudioAssets],
@@ -193,8 +206,12 @@ export function AssetImportPanel({
               className={resultClass(result)}
               key={`${result.sourceName}:${result.sha256 ?? index}`}
             >
-              <strong>{result.status}</strong>
-              <span>{result.message}</span>
+              <strong>{resultStatusLabel(result.status)}</strong>
+              <span>
+                {result.status === 'imported'
+                  ? result.sourceName
+                  : result.message}
+              </span>
             </li>
           ))}
         </ul>
