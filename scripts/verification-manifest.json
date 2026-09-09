@@ -96,6 +96,7 @@
           "tests/unit/ipc-contracts.test.ts",
           "tests/unit/production-resources.test.ts",
           "tests/integration/dialogue-audio-*.test.ts",
+          "tests/integration/project-subtitle-background-migration.test.ts",
           "tests/unit/application-menu-policy.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*"],
