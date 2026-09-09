@@ -91,6 +91,7 @@
           "tests/unit/domain/**",
           "tests/unit/migrations/**",
           "tests/integration/schema-*.test.ts",
+          "tests/integration/project-create-at-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
           "tests/unit/production-resources.test.ts",
@@ -155,7 +156,7 @@
       {
         "id": "assets",
         "sourcePatterns": ["src/renderer/features/assets/**"],
-        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts"],
+        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts"],
         "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
         "suites": ["assets", "character"],
         "riskPolicy": "targeted",
