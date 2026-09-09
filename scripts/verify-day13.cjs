@@ -107,16 +107,17 @@ async function verifyDay13Ui() {
       });
     })()`);
     const result = await window.webContents.executeJavaScript(`(() => {
-      const bar = document.querySelector('[data-testid="compact-project-bar"]');
+      const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
       const banner = document.querySelector('.recovery-prompt');
-      const buttons = [...(bar?.querySelectorAll('button') ?? [])]
-        .map((button) => button.textContent?.trim());
+      const actionIds = [
+        ...(drawer?.querySelectorAll('.quick-action-drawer-actions > [data-testid]') ?? [])
+      ].map((element) => element.getAttribute('data-testid'));
       return {
-        heading: bar?.getAttribute('aria-label'),
-        projectName: bar?.querySelector('.compact-project-name')?.textContent?.trim(),
-        defaultState: bar?.dataset.saveState,
-        hasEditorPathInput: Boolean(bar?.querySelector('input')),
-        actions: buttons,
+        hasQuickActionDrawer: Boolean(drawer),
+        projectName: document.title,
+        defaultState: drawer?.dataset.saveState,
+        hasEditorPathInput: Boolean(drawer?.querySelector('input')),
+        actions: actionIds,
         candidateSummary: banner?.querySelector(
           '.recovery-prompt-summary strong'
         )
@@ -140,16 +141,20 @@ async function verifyDay13Ui() {
       };
     })()`);
     result.invalidCandidate = invalidCandidate;
-    result.projectMenuActions = await window.webContents.executeJavaScript(`(() => {
-      const more = document.querySelector('[data-testid="compact-project-more"]');
-      if (!(more instanceof HTMLElement)) {
-        throw new Error('Project More menu trigger did not render.');
+    result.quickActionIds = await window.webContents.executeJavaScript(`(() => {
+      const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+      const handle = drawer?.querySelector('[data-testid="quick-action-drawer-handle"]');
+      if (!(drawer instanceof HTMLElement) || !(handle instanceof HTMLElement)) {
+        throw new Error('Quick Action Drawer did not render.');
       }
-      more.click();
+      handle.click();
       return new Promise((resolve) => requestAnimationFrame(() => {
-        const menu = document.querySelector('[data-testid="compact-project-menu"]');
-        resolve([...(menu?.querySelectorAll('[role="menuitem"]') ?? [])]
-          .map((item) => item.textContent?.trim()));
+        resolve({
+          expanded: drawer.dataset.expanded === 'true',
+          actions: [
+            ...(drawer.querySelectorAll('.quick-action-drawer-actions > [data-testid]') ?? [])
+          ].map((element) => element.getAttribute('data-testid')),
+        });
       }));
     })()`);
     await window.webContents.executeJavaScript(`
@@ -161,14 +166,21 @@ async function verifyDay13Ui() {
     `);
 
     if (
-      result.heading !== '当前项目状态' ||
-      result.projectName !== exampleProject.name ||
+      !result.hasQuickActionDrawer ||
+      !result.projectName.includes(exampleProject.name) ||
       result.defaultState !== 'saved' ||
       result.hasEditorPathInput ||
-      result.actions.includes('项目中心') ||
-      !result.actions.includes('保存') ||
-      !result.actions.some((action) => action?.includes('更多')) ||
-      !result.projectMenuActions.includes('打开项目中心') ||
+      !result.actions.includes('quick-action-home') ||
+      !result.actions.includes('quick-action-save') ||
+      !result.actions.includes('quick-action-play') ||
+      !result.actions.includes('quick-action-close') ||
+      !result.quickActionIds.expanded ||
+      !result.quickActionIds.actions.includes('quick-action-home') ||
+      !result.quickActionIds.actions.includes('quick-action-folder') ||
+      !result.quickActionIds.actions.includes('quick-action-save') ||
+      !result.quickActionIds.actions.includes('quick-action-play') ||
+      !result.quickActionIds.actions.includes('quick-action-history') ||
+      !result.quickActionIds.actions.includes('quick-action-close') ||
       !result.invalidCandidate.disabled ||
       result.invalidCandidate.hint !==
         '项目文件夹路径包含 Windows 不允许的字符。' ||

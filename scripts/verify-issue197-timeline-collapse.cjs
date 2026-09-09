@@ -179,8 +179,8 @@ async function measure(window) {
     const historyElement = document.querySelector(
       '[data-testid="history-controls"]',
     );
-    const barElement = document.querySelector(
-      '[data-testid="compact-project-bar"]',
+    const drawerElement = document.querySelector(
+      '[data-testid="quick-action-drawer"]',
     );
     const reopenElement = document.querySelector(
       '[data-testid="timeline-collapse"]',
@@ -224,7 +224,7 @@ async function measure(window) {
             depth: historyElement.dataset.historyDepth ?? null,
           }
         : null,
-      saveState: barElement?.dataset.saveState ?? null,
+      saveState: drawerElement?.dataset.saveState ?? null,
     };
   })()`);
 }
@@ -257,7 +257,6 @@ function assertExpandedState(sample, label) {
     ['canvas', sample.canvas],
     ['timeline ruler', sample.ruler],
     ['timeline timecode', sample.timecode],
-    ['history controls', sample.history],
   ]) {
     assert(
       region && region.width > 0 && region.height > 0,
@@ -269,20 +268,24 @@ function assertExpandedState(sample, label) {
 
 function assertNotClipped(sample, label) {
   assert(
-    sample.bottomMetrics && sample.historyMetrics,
-    `${label} does not expose the live BottomWorkspace and HistoryControls surfaces.`,
+    sample.bottomMetrics,
+    `${label} does not expose the live BottomWorkspace surface.`,
   );
   // Cloud Touch landscape deliberately exposes the resizable handle outside
   // the workspace's border (Issue #378). Verify the stable behavior—content
   // stays within the measured surface—rather than the implementation detail
   // of the computed overflow value.
-  assert(
+  const bottomFits =
     sample.bottomMetrics.scrollHeight <= sample.bottomMetrics.clientHeight + 1 &&
-      sample.bottomMetrics.scrollWidth <= sample.bottomMetrics.clientWidth + 1 &&
-      sample.historyMetrics.scrollHeight <=
-        sample.historyMetrics.clientHeight + 1 &&
-      sample.historyMetrics.scrollWidth <=
-        sample.historyMetrics.clientWidth + 1,
+    sample.bottomMetrics.scrollWidth <= sample.bottomMetrics.clientWidth + 1;
+  const historyFits =
+    !sample.history ||
+    !sample.historyMetrics ||
+    (sample.historyMetrics.scrollHeight <=
+      sample.historyMetrics.clientHeight + 1 &&
+      sample.historyMetrics.scrollWidth <= sample.historyMetrics.clientWidth + 1);
+  assert(
+    bottomFits && historyFits,
     `${label} clips its own collapsed content: ${JSON.stringify({
       bottom: sample.bottomMetrics,
       history: sample.historyMetrics,
@@ -332,7 +335,8 @@ function assertCollapsedReleasesSpace(expanded, collapsed, label) {
       collapsed: collapsed.canvas,
     })}`,
   );
-  // The ruler body is gone, but the reopen entry, timecode and History stay.
+  // The ruler body is gone, but the reopen entry and timecode stay. History
+  // actions now belong to the collapsed-by-default Quick Action Drawer.
   assert(
     collapsed.ruler === null,
     `${label} still renders the Timeline ruler while collapsed: ${JSON.stringify(collapsed.ruler)}`,
@@ -364,8 +368,8 @@ function assertCollapsedReleasesSpace(expanded, collapsed, label) {
     })}`,
   );
   assert(
-    collapsed.history && collapsed.history.height > 0,
-    `${label} hid the History controls while collapsed.`,
+    collapsed.history === null,
+    `${label} exposed History controls while the Quick Action Drawer is collapsed.`,
   );
   assertNotClipped(collapsed, `${label} collapsed`);
   assertNoRootScroll(collapsed, `${label} collapsed`);

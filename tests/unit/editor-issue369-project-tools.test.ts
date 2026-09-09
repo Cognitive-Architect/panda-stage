@@ -21,7 +21,7 @@ describe('Issue #369 landscape Project Tools launcher', () => {
     expect(right).toContain("{ id: 'tools', label: '工具', icon: Wrench }");
     expect(drawer).toContain('data-testid="project-tools-drawer"');
     expect(drawer).toContain('data-testid="project-tools-close"');
-    expect(drawer).toContain('presentation="compact"');
+    expect(drawer).not.toContain('presentation="compact"');
     expect(styles).toContain('Issue #426 R1');
     expect(styles).toContain("grid-template-rows: repeat(3, minmax(72px, 1fr));");
   });
@@ -33,14 +33,17 @@ describe('Issue #369 landscape Project Tools launcher', () => {
     );
     const legacy = source('src/renderer/shell/LegacyWorkspace.tsx');
 
-    expect(drawer).toContain('编辑辅助');
+    expect(drawer).not.toContain('编辑器工作区');
+    expect(drawer).not.toContain('编辑辅助');
     expect(drawer).toContain('动作预设');
     expect(drawer).toContain('打开动作预设');
     expect(drawer).toContain('data-testid="project-tools-action-presets"');
     expect(drawer).toContain('data-testid="project-tools-back"');
-    expect(drawer).toContain('<ProjectRecoveryPanel');
+    expect(drawer).not.toContain('<ProjectRecoveryPanel');
+    expect(drawer).not.toContain('最近项目');
     expect(drawer).toContain('<LegacyWorkspace');
     expect(drawer).not.toContain('兼容编辑工具');
+    expect(drawer).not.toContain('兼容');
     expect(recent).toContain("presentation?: RecentProjectsPanelPresentation");
     expect(recent).toContain('data-testid="recent-project-more"');
     expect(recent).toContain('data-testid="recent-project-maintenance-menu"');

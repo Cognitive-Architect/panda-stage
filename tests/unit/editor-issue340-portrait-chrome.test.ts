@@ -91,42 +91,35 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
     expect(shortcuts).toContain("key === 'y'");
   });
 
-  it('keeps the portrait header quiet while retaining menu capabilities and meaningful feedback', () => {
+  it('keeps the portrait drawer quiet while retaining actions and meaningful feedback', () => {
     const bar = source('src/renderer/shell/CompactProjectBar.tsx');
     const markup = renderBar();
     const failedMarkup = renderBar('保存失败：磁盘不可用。', 'failed');
 
     expect(markup).toContain('data-presentation="portrait"');
+    expect(markup).toContain('data-testid="quick-action-drawer-handle"');
+    expect(markup).toContain('data-expanded="false"');
     expect(markup).toContain('data-history-presentation="compact"');
-    expect(markup).not.toContain('data-testid="open-project-center"');
-    expect(markup).not.toContain('data-testid="active-project-path"');
     expect(markup).not.toContain('data-testid="project-save-state"');
     expect(markup).not.toContain(snapshot.projectRoot);
-    expect(markup).not.toContain('已保存');
+    expect(markup).not.toContain('data-testid="project-save-state"');
     expect(failedMarkup).toContain('data-testid="project-save-state"');
     expect(failedMarkup).toContain('data-testid="editor-action-status"');
     expect(failedMarkup).toContain('保存失败：磁盘不可用。');
-    expect(bar).toContain('data-testid="menu-open-project-center"');
-    expect(bar).toContain('data-testid="menu-open-project-folder"');
-    expect(bar).toContain('onOpenProjectCenter();');
-    expect(bar).toContain('onOpenProjectFolder();');
+    expect(bar).toContain('data-testid="quick-action-home"');
+    expect(bar).toContain('data-testid="quick-action-folder"');
+    expect(bar).toContain('onOpenProjectCenter');
+    expect(bar).toContain('onOpenProjectFolder');
   });
 
   it('scopes the header relocation and quiet state to Cloud Touch portrait', () => {
     const styles = source('src/renderer/styles.css');
-    const scope =
-      ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
-
-    expect(styles).toContain(
-      `${scope}\n  .compact-project-bar[data-presentation='portrait']`,
-    );
+    expect(styles).toContain('.quick-action-drawer');
     expect(styles).toContain(
       "  .history-controls[data-history-presentation='compact']",
     );
     expect(styles).toContain('clip: rect(0 0 0 0);');
-    expect(styles).toContain(
-      '.compact-project-bar[data-presentation=\'portrait\']',
-    );
+    expect(styles).toContain('quick-action-drawer-handle');
   });
 
   it('does not add project or history mutation ownership to the presentation seam', () => {

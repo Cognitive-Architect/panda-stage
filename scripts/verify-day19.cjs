@@ -281,9 +281,26 @@ async function readCharacterExpressionUi(window) {
 async function openProject(window) {
   await window.webContents.executeJavaScript(`(() => {
     if (document.querySelector('[data-editor-page="editor"]')) {
-      document.querySelector('[data-testid="open-project-center"]').click();
+      const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+      if (drawer?.dataset.expanded !== 'true') {
+        drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+      }
     }
   })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `!document.querySelector('[data-editor-page="editor"]') || ` +
+        `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+      'Quick Action Drawer did not open for a project switch.',
+    ),
+  );
+  if (await window.webContents.executeJavaScript(
+    `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
+  )) {
+    await window.webContents.executeJavaScript(`
+      document.querySelector('[data-testid="quick-action-home"]').click()
+    `);
+  }
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-editor-page="project-center"]')`,
@@ -839,11 +856,11 @@ async function verifyDay19() {
       ...configuredExpressionUi,
     };
     await window.webContents.executeJavaScript(`
-      document.querySelector('.editor-save-button').click()
+      document.querySelector('[data-testid="quick-action-save"]').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('[data-testid=\"compact-project-bar\"]')" +
+        "document.querySelector('[data-testid=\"quick-action-drawer\"]')" +
           "?.dataset?.saveState === 'saved' && " +
           "!document.querySelector('[data-testid=\"project-save-state\"]')",
         'Character project did not save.',

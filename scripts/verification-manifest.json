@@ -214,7 +214,8 @@
           "scripts/verify-day23*",
           "scripts/verify-issue47*",
           "scripts/verify-issue95*",
-          "scripts/verify-issue99*"
+          "scripts/verify-issue99*",
+          "scripts/verify-issue457*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -287,6 +288,7 @@
         ],
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
+          "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",
           "tests/unit/left-workspace.test.ts",
@@ -303,7 +305,10 @@
           "scripts/verify-issue102-task2*",
           "scripts/verify-issue102-task4*",
           "scripts/verify-issue109*",
-          "scripts/verify-issue410-project-launcher*"
+          "scripts/verify-issue410-project-launcher*",
+          "scripts/verify-issue456*",
+          "scripts/verify-issue457*",
+          "scripts/verify-issue460*"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
@@ -313,7 +318,7 @@
       }
     ]
   },
-  "count": 58,
+  "count": 61,
   "gates": [
     {
       "id": "assets",
@@ -458,6 +463,42 @@
       "owner": "editor",
       "supersedes": null,
       "notes": "Real Windows Electron verifier for Project Launcher v1: current/no-project states, native Open and New entry points, truthful recent-project exceptions, same-session Continue, recovery Restore/Ignore semantics, and no project/session/schema/filesystem ownership drift."
+    },
+    {
+      "id": "issue456",
+      "script": "verify:issue456",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron geometry gate proving the Quick Action Drawer is out of normal Canvas layout flow and that Canvas top/height remain stable across repeated expand/collapse at 1366x768 and 1920x1080."
+    },
+    {
+      "id": "issue457",
+      "script": "verify:issue457",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron geometry gate proving the Canvas consumes the reclaimed editor-body height, Timeline height stays user-sized, and viewport status feedback is non-flow/non-blocking at 1366x768 and 1920x1080."
+    },
+    {
+      "id": "issue460",
+      "script": "verify:issue460",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron gate proving the two-mode Canvas surface, Actual Size stability and native Space+left-drag viewport pan without project/history mutation, Fit no-pan behavior, and the simplified Tools IA at 1366x768 and 1920x1080."
     },
     {
       "id": "fla-v1-5-c3",

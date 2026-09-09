@@ -57,28 +57,28 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
     );
   });
 
-  it('exposes the three viewport mode controls inside the right-side 工具 surface', () => {
+  it('exposes the two viewport mode controls inside the right-side 工具 surface', () => {
     const tools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
     const styles = source('src/renderer/styles.css');
 
     expect(tools).toContain('project-tools-view-mode-card');
     expect(tools).toContain('project-tools-view-mode-heading');
     expect(tools).toContain('project-tools-view-mode-segmented');
-    expect(tools).toContain('画布显示');
-    // The three mode testids live in the option table; the JSX consumes
+    expect(tools).toContain('画布');
+    // The two mode testids live in the option table; the JSX consumes
     // them through `data-testid={option.testId}`.
     expect(tools).toContain("testId: 'canvas-mode-fit'");
-    expect(tools).toContain("testId: 'canvas-mode-half'");
     expect(tools).toContain("testId: 'canvas-mode-actual'");
     expect(tools).toContain('data-testid={option.testId}');
     expect(tools).toContain('适应窗口');
-    expect(tools).toContain('50%');
+    expect(tools).not.toContain('canvas-mode-half');
+    expect(tools).not.toContain('50%');
     expect(tools).toContain('实际尺寸');
     expect(tools).toMatch(
       /canvasViewportStore\.setMode\(\s*option\.mode\s*\)/u,
     );
     expect(styles).toMatch(
-      /\.project-tools-view-mode-segmented\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/u,
+      /\.project-tools-view-mode-segmented\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/u,
     );
   });
 
@@ -116,11 +116,11 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
     expect(tools).toContain('canvasViewportStore.getSnapshot');
   });
 
-  it('removes the three mode controls from the CanvasToolbar (feedback only)', () => {
+  it('removes the mode controls from the CanvasToolbar (feedback only)', () => {
     const toolbar = source('src/renderer/features/canvas/CanvasToolbar.tsx');
     const stage = source('src/renderer/features/canvas/CanvasStage.tsx');
 
-    // Toolbar source must no longer ship the three mode buttons.
+    // Toolbar source must no longer ship the mode buttons.
     expect(toolbar).not.toContain('canvas-mode-fit');
     expect(toolbar).not.toContain('canvas-mode-half');
     expect(toolbar).not.toContain('canvas-mode-actual');
@@ -138,7 +138,7 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
     expect(stage).not.toMatch(/onModeChange=/u);
   });
 
-  it('renders Tools 画布显示 inside RightWorkspace (not a duplicate on the Canvas)', () => {
+  it('renders Tools 画布 inside RightWorkspace (not a duplicate on the Canvas)', () => {
     const right = source('src/renderer/shell/RightWorkspace.tsx');
     const stage = source('src/renderer/features/canvas/CanvasStage.tsx');
     const toolbar = source('src/renderer/features/canvas/CanvasToolbar.tsx');
@@ -178,11 +178,9 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
     );
   });
 
-  it('drives the three mode controls through the live canvasViewportStore singleton', () => {
+  it('drives the two mode controls through the live canvasViewportStore singleton', () => {
     const snapshot = canvasViewportStore.getSnapshot();
     expect(snapshot.mode).toBe('fit');
-    canvasViewportStore.setMode('half');
-    expect(canvasViewportStore.getSnapshot().mode).toBe('half');
     canvasViewportStore.setMode('actual');
     expect(canvasViewportStore.getSnapshot().mode).toBe('actual');
     canvasViewportStore.reset();

@@ -123,19 +123,34 @@ async function ensureProjectCenter(window) {
     `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
   );
   if (editorOpen) {
-    await click(window, '[data-testid="compact-project-more"]');
+    await window.webContents.executeJavaScript(`(() => {
+      const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+      if (drawer?.dataset.expanded !== 'true') {
+        drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+      }
+    })()`);
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="menu-open-project-center"]')`,
-        'Project More menu did not expose the Project Center entry.',
+        `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+        'Quick Action Drawer did not expose the Project Center entry.',
       ),
     );
-    await click(window, '[data-testid="menu-open-project-center"]');
+    await click(window, '[data-testid="quick-action-home"]');
   }
   await window.webContents.executeJavaScript(
     waitFor(
       `document.querySelector('[data-editor-page="project-center"]')`,
       'Project Center did not open for a path-based project switch.',
+    ),
+  );
+}
+
+async function waitForProject(window, projectName, message) {
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector('[data-editor-page="editor"]') && ` +
+        `document.title.includes(${JSON.stringify(projectName)})`,
+      message,
     ),
   );
 }
@@ -162,12 +177,10 @@ async function openFromPath(window, projectRoot) {
     window,
     '[data-testid="project-center-screen"] .recovery-open-row button',
   );
-  await window.webContents.executeJavaScript(
-    waitFor(
-      `document.querySelector('[data-testid="active-project-path"] code')` +
-        `?.textContent === ${JSON.stringify(projectRoot)}`,
-      `Project did not become active: ${projectRoot}`,
-    ),
+  await waitForProject(
+    window,
+    projectRoot === projectBRoot ? projectB.name : projectA.name,
+    `Project did not become active: ${projectRoot}`,
   );
 }
 
@@ -176,10 +189,10 @@ async function snapshot(window) {
     const selectedShot = document.querySelector('.shot-list-item-selected');
     const durationText = selectedShot?.querySelector('small')?.textContent ?? '';
     return {
-    activeRoot: document.querySelector(
-      '[data-testid="active-project-path"] code'
-    )?.textContent ?? null,
-    dirty: Boolean(document.querySelector('.dirty-state')),
+    activeTitle: document.title,
+    dirty:
+      document.querySelector('[data-testid="quick-action-drawer"]')?.dataset
+        .saveState === 'dirty',
     nameDraft: selectedShot?.querySelector('strong')?.textContent?.trim() ?? null,
     durationDraft: Math.round(Number.parseFloat(durationText) * 1000),
     topStatus: document.querySelector(
@@ -207,7 +220,7 @@ async function applyShotName(window, name) {
   await click(window, '[data-testid="shot-quick-rename-apply"]');
   await window.webContents.executeJavaScript(
     waitFor(
-      `Boolean(document.querySelector('.dirty-state'))`,
+      `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'dirty'`,
       'Applying a shot name did not mark the project dirty.',
     ),
   );
@@ -334,13 +347,7 @@ async function verifyIssue73() {
       ),
     );
     await click(window, '.recovery-open-row button');
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector('[data-testid="active-project-path"] code')` +
-          `?.textContent === ${JSON.stringify(projectARoot)}`,
-        'Project A did not open.',
-      ),
-    );
+    await waitForProject(window, projectA.name, 'Project A did not open.');
     await ensureCloudTouchEditor(window);
     const openedA = await snapshot(window);
 
@@ -351,12 +358,10 @@ async function verifyIssue73() {
       'A 未应用草稿',
     );
     await clickRecent(window, projectBRoot);
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector('[data-testid="active-project-path"] code')` +
-          `?.textContent === ${JSON.stringify(projectBRoot)}`,
-        'Clean recent-project switch to B failed.',
-      ),
+    await waitForProject(
+      window,
+      projectB.name,
+      'Clean recent-project switch to B failed.',
     );
     const switchedB = await snapshot(window);
     await openFromPath(window, projectARoot);
@@ -373,24 +378,19 @@ async function verifyIssue73() {
       ),
     );
     await click(window, '[data-testid="return-to-editor"]');
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector('[data-editor-page="editor"]') && ` +
-          `document.querySelector('[data-testid="active-project-path"] code')` +
-          `?.textContent === ${JSON.stringify(projectARoot)}`,
-        'Cancelled switch did not retain project A in the editor.',
-      ),
+    await waitForProject(
+      window,
+      projectA.name,
+      'Cancelled switch did not retain project A in the editor.',
     );
     const cancelledSwitch = await snapshot(window);
 
     nextGuardOutcome = 'discarded';
     await clickRecent(window, projectBRoot);
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector('[data-testid="active-project-path"] code')` +
-          `?.textContent === ${JSON.stringify(projectBRoot)}`,
-        'Recent-project discard switch failed.',
-      ),
+    await waitForProject(
+      window,
+      projectB.name,
+      'Recent-project discard switch failed.',
     );
     const discardedSwitch = await snapshot(window);
 
@@ -420,13 +420,10 @@ async function verifyIssue73() {
       ),
     );
     await click(window, '[data-testid="return-to-editor"]');
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector('[data-editor-page="editor"]') && ` +
-          `document.querySelector('[data-testid="active-project-path"] code')` +
-          `?.textContent === ${JSON.stringify(projectARoot)}`,
-        'Returning to the editor after a save-failed switch did not retain A.',
-      ),
+    await waitForProject(
+      window,
+      projectA.name,
+      'Returning to the editor after a save-failed switch did not retain A.',
     );
     const failedSwitch = await snapshot(window);
 
@@ -472,14 +469,14 @@ async function verifyIssue73() {
       switchedB.durationDraft !== Math.round(projectB.shots[0].durationMs / 100) * 100 ||
       returnedA.nameDraft !== projectA.shots[0].name ||
       returnedA.durationDraft !== projectA.shots[0].durationMs ||
-      cancelledSwitch.activeRoot !== projectARoot ||
+      !cancelledSwitch.activeTitle.includes(projectA.name) ||
       !cancelledSwitch.dirty ||
       cancelledSwitch.nameDraft !== 'A 取消切换草稿' ||
-      discardedSwitch.activeRoot !== projectBRoot ||
+      !discardedSwitch.activeTitle.includes(projectB.name) ||
       discardedSwitch.dirty ||
-      savedSwitch.activeRoot !== projectARoot ||
+      !savedSwitch.activeTitle.includes(projectA.name) ||
       savedSwitch.dirty ||
-      failedSwitch.activeRoot !== projectARoot ||
+      !failedSwitch.activeTitle.includes(projectA.name) ||
       !failedSwitch.dirty ||
       failedSwitch.nameDraft !== 'A 保存失败保留' ||
       recovery.recoverySummary !== '检测到未保存的恢复内容' ||

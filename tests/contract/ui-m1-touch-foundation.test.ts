@@ -58,16 +58,15 @@ describe('UI-M1 touch foundation contract', () => {
     expect(styles.length).toBeGreaterThan(3000);
   });
 
-  it('makes CompactProjectBar the first real production consumer', () => {
+  it('makes the quick action drawer the first real production consumer', () => {
     const bar = readSource('src/renderer/shell/CompactProjectBar.tsx');
 
     expect(bar).toContain("from '../ui'");
     expect(bar).toContain('<PanelSurface');
-    expect(bar).toContain('<Button');
+    expect(bar).toContain('<IconButton');
     expect(bar).toContain('variant="primary"');
     expect(bar).toContain('variant="secondary"');
-    expect(bar).toContain('variant="danger"');
-    expect(bar).not.toMatch(/<button\b/u);
+    expect(bar).toContain('data-testid="quick-action-drawer-handle"');
     expect(bar).toContain('onSaveProject');
     expect(bar).toContain('disabled={saveDisabled}');
   });

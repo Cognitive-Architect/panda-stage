@@ -25,9 +25,10 @@ describe('Issue #342 Lucide icon pilot', () => {
     const history = source('src/renderer/features/editor/HistoryControls.tsx');
     const switcher = source('src/renderer/shell/AdaptiveWorkspaceSwitcher.tsx');
 
-    for (const name of ['MoreHorizontal', 'Save']) {
+    for (const name of ['Home', 'FolderOpen', 'Play', 'Save', 'X']) {
       expect(bar).toContain(name);
     }
+    expect(bar).not.toContain('MoreHorizontal');
     for (const name of ['Undo2', 'Redo2']) {
       expect(history).toContain(name);
     }
@@ -56,7 +57,7 @@ describe('Issue #342 Lucide icon pilot', () => {
     const tools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
 
     // Issue #436 LM-004: the Canvas feedback keeps the readable mode label
-    // and the scale percentage; the three mode controls themselves now
+    // and the scale percentage; the two mode controls themselves now
     // live in the right-side 工具 surface (decorative icons there still
     // carry aria-hidden="true" per the shared chrome treatment).
     expect(markup).toContain('1:1 像素');
@@ -65,10 +66,10 @@ describe('Issue #342 Lucide icon pilot', () => {
     expect(markup).toContain('canvas-pointer-coordinate');
     expect(toolbar).toContain('canvas-mode-feedback');
     expect(tools).toContain('适应窗口');
-    expect(tools).toContain('50%');
+    expect(tools).not.toContain('50%');
     expect(tools).toContain('实际尺寸');
     expect(tools).toContain('canvas-mode-fit');
-    expect(tools).toContain('canvas-mode-half');
+    expect(tools).not.toContain('canvas-mode-half');
     expect(tools).toContain('canvas-mode-actual');
     expect(tools).toContain('aria-hidden="true"');
   });

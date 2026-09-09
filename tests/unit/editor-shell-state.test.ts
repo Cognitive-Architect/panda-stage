@@ -228,7 +228,7 @@ describe('EditorShell state boundary', () => {
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
   });
 
-  it('keeps project state, controller, preview, and create behavior out of CompactProjectBar', () => {
+  it('keeps project state, controller, preview, and create behavior out of the Quick Action Drawer', () => {
     const topBar = readFileSync(
       'src/renderer/shell/CompactProjectBar.tsx',
       'utf8',
@@ -240,16 +240,17 @@ describe('EditorShell state boundary', () => {
     expect(topBar).not.toContain('StagePreview');
     expect(topBar).not.toMatch(/\.project\.create\s*\(/u);
     expect(topBar).not.toContain('createAt');
-    // The top bar owns the entry only; the overlay itself lives in the shell.
+    // The drawer owns the entry only; the overlay itself lives in the shell.
     expect(topBar).not.toContain('ProductPreviewOverlay');
     expect(topBar).not.toContain('evaluateShotAtTime');
-    expect(topBar).toContain('产品预览');
-    expect(topBar).not.toContain('产品预览（后续阶段启用）');
+    expect(topBar).toContain('Play');
+    expect(topBar).not.toContain('MoreHorizontal');
+    expect(topBar).not.toContain('compact-project-menu');
     expect(topBar).toContain('打开项目中心');
     expect(topBar).toContain('打开项目文件夹');
     expect(topBar).toContain('关闭当前项目');
     expect(topBar).toMatch(
-      /data-testid="menu-open-product-preview"[\s\S]*?onOpenProductPreview/u,
+      /data-testid="quick-action-play"[\s\S]*?onOpenProductPreview/u,
     );
   });
 
@@ -296,11 +297,12 @@ describe('EditorShell state boundary', () => {
       'utf8',
     );
 
-    // The compact bar stays presentational: it reports intent, nothing else.
+    // The drawer stays presentational: it reports intent, nothing else.
     expect(topBar).toContain('onRequestCloseProject(): void;');
-    expect(topBar).toContain('onRequestCloseProject();');
+    expect(topBar).toContain('onClick={onRequestCloseProject}');
     expect(topBar).not.toContain('closeProject(');
     expect(topBar).not.toContain('editorProjectStore');
+    expect(topBar).toContain('data-testid="quick-action-close"');
     // The dialog is a pure choice reporter with no lifecycle authority.
     expect(dialog).not.toContain('useState');
     expect(dialog).not.toContain('editorProjectStore');

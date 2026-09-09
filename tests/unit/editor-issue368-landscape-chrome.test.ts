@@ -42,29 +42,38 @@ function renderBar(
 }
 
 describe('Issue #368 landscape editor chrome', () => {
-  it('keeps the top bar compact, ordered, and free of persistent project chrome', () => {
+  it('keeps the top drawer compact, ordered, and free of persistent project chrome', () => {
     const markup = renderBar();
 
+    expect(markup).toContain('data-testid="quick-action-drawer"');
+    expect(markup).toContain('data-expanded="false"');
     expect(markup).toContain('data-history-presentation="compact"');
-    expect(markup).not.toContain('data-testid="open-project-center"');
-    expect(markup).toContain('data-testid="active-project-path"');
-    expect(markup).toContain('compact-project-path-visually-hidden');
-    expect(markup).not.toContain('class="compact-project-path"');
-    expect(markup).toContain(`title="${snapshot.projectRoot}"`);
+    expect(markup).not.toContain('active-project-path');
+    expect(markup).not.toContain('compact-project-name');
+    expect(markup).not.toContain(snapshot.projectRoot);
     expect(markup).not.toContain('data-testid="editor-action-status"');
     expect(markup).not.toContain('data-testid="project-save-state"');
-    expect(markup).not.toContain('已保存');
+    expect(markup).not.toContain('data-testid="project-save-state"');
 
-    const historyIndex = markup.indexOf('data-history-presentation="compact"');
-    const saveIndex = markup.indexOf('data-testid="compact-project-save"');
-    const moreIndex = markup.indexOf('data-testid="compact-project-more"');
-    expect(historyIndex).toBeGreaterThanOrEqual(0);
-    expect(historyIndex).toBeLessThan(saveIndex);
-    expect(saveIndex).toBeLessThan(moreIndex);
+    const actionIds = [
+      'quick-action-home',
+      'quick-action-folder',
+      'quick-action-save',
+      'quick-action-play',
+      'quick-action-history',
+      'quick-action-close',
+    ];
+    let previousIndex = -1;
+    for (const id of actionIds) {
+      const index = markup.indexOf(`data-testid="${id}"`);
+      expect(index).toBeGreaterThan(previousIndex);
+      previousIndex = index;
+    }
 
     const bar = source('src/renderer/shell/CompactProjectBar.tsx');
     expect(bar).toContain('<HistoryControls presentation="compact" />');
-    expect(bar).toContain('data-testid="menu-open-project-center"');
+    expect(bar).toContain('data-testid="quick-action-home"');
+    expect(bar).not.toContain('MoreHorizontal');
   });
 
   it('keeps actionable feedback while suppressing ordinary success copy', () => {
@@ -113,7 +122,7 @@ describe('Issue #368 landscape editor chrome', () => {
     expect(styles).toContain(".history-controls[data-history-presentation='compact']");
   });
 
-  it('mounts one History owner in the top bar and removes landscape headings/history', () => {
+  it('mounts one History owner in the top drawer and removes landscape headings/history', () => {
     const shell = source('src/renderer/shell/EditorShell.tsx');
     const bottom = source('src/renderer/shell/BottomWorkspace.tsx');
 

@@ -140,13 +140,18 @@ async function clickCardButton(window, status, label) {
 }
 
 async function openProjectCenter(window) {
-  await clickSelector(window, '[data-testid="compact-project-more"]');
+  await window.webContents.executeJavaScript(`(() => {
+    const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+    if (drawer?.dataset.expanded !== 'true') {
+      drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+    }
+  })()`);
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="compact-project-menu"]')`,
-    'Compact project menu did not open.',
+    `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+    'Quick Action Drawer did not open.',
   );
-  await clickSelector(window, '[data-testid="menu-open-project-center"]');
+  await clickSelector(window, '[data-testid="quick-action-home"]');
 }
 
 async function snapshot(window) {
@@ -155,7 +160,7 @@ async function snapshot(window) {
     shellState: document.querySelector('.editor-shell')?.dataset.editorShellState ?? null,
     hasProjectCenter: Boolean(document.querySelector('[data-testid="project-center-screen"]')),
     hasEditorLayout: Boolean(document.querySelector('[data-testid="editor-layout"]')),
-    activeRoot: document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() ?? null,
+    activeTitle: document.title,
     currentProjectRoot: document.querySelector('.project-center-current-path')?.textContent?.trim() ?? null,
     currentProjectName: document.querySelector('[data-testid="project-center-current-project"] h3')?.textContent?.trim() ?? null,
     recentCards: [...document.querySelectorAll('[data-testid="recent-projects-list"] [data-project-status]')].map((card) => ({
@@ -273,12 +278,12 @@ async function run(window, fixture) {
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="editor"]') &&
-      document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(fixture.projectA.projectRoot)}`,
+      document.title.includes(${JSON.stringify(fixture.projectA.project.name)})`,
     'Opening a recent available project did not enter the editor.',
   );
   const opened = await snapshot(window);
   assert(opened.shellState === 'editor', 'Recent project did not become the active project.');
-  assert(opened.activeRoot === fixture.projectA.projectRoot, 'Recent project root was not preserved.');
+  assert(opened.activeTitle.includes(fixture.projectA.project.name), 'Recent project identity was not preserved.');
   result.snapshots.opened = opened;
   result.checks.push('Recent available project opens through the existing session flow');
 
@@ -346,11 +351,11 @@ async function run(window, fixture) {
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="editor"]') &&
-      document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(fixture.projectA.projectRoot)}`,
+      document.title.includes(${JSON.stringify(fixture.projectA.project.name)})`,
     'Returning from Project Center did not restore the editor page.',
   );
   const returned = await snapshot(window);
-  assert(returned.activeRoot === fixture.projectA.projectRoot, 'Return to editor changed the active project.');
+  assert(returned.activeTitle.includes(fixture.projectA.project.name), 'Return to editor changed the active project.');
   result.snapshots.returned = returned;
   result.checks.push('Returning to editor keeps the same active project');
   return result;

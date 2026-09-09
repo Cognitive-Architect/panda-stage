@@ -24,10 +24,10 @@ describe('canvas drop coordinate mapping', () => {
       scroll: { x: 0, y: 0 },
     },
     {
-      label: '0.5',
+      label: 'actual 1:1',
       transform: calculateViewportTransform(
-        { width: 800, height: 600 },
-        'half',
+        { width: 1920, height: 1080 },
+        'actual',
       ),
       point: { x: 1280, y: 720 },
       scroll: { x: 0, y: 0 },

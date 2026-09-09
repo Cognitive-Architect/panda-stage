@@ -134,6 +134,19 @@ async function clickSelector(window, selector) {
   await delay(140);
 }
 
+async function expandQuickActionDrawer(window) {
+  const alreadyExpanded = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+  );
+  if (alreadyExpanded) return;
+  await clickSelector(window, '[data-testid="quick-action-drawer-handle"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="quick-action-drawer"][data-expanded="true"]')`,
+    'Quick Action Drawer did not expand.',
+  );
+}
+
 async function capture(window, fileName) {
   await delay(220);
   writeFileSync(
@@ -159,15 +172,17 @@ async function snapshot(window) {
         : null;
     };
     const shell = document.querySelector('.editor-shell');
-    const bar = document.querySelector('[data-testid="compact-project-bar"]');
+    const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
     const topRegion = document.querySelector('[data-testid="editor-top-region"]');
     const body = document.querySelector('[data-testid="editor-body"]');
     const layout = document.querySelector('[data-testid="editor-layout"]');
     const bottomWorkspace = document.querySelector('[data-testid="bottom-workspace"]');
-    const name = bar?.querySelector('.compact-project-name');
-    const controls = bar?.querySelector('.compact-project-controls');
-    const save = bar?.querySelector('[data-testid="compact-project-save"]');
-    const menu = document.querySelector('[data-testid="compact-project-menu"]');
+    const surface = drawer?.querySelector('[data-testid="quick-action-drawer-surface"]');
+    const controls = drawer?.querySelector('.quick-action-drawer-actions');
+    const save = drawer?.querySelector('[data-testid="quick-action-save"]');
+    const actionButtons = drawer
+      ? [...drawer.querySelectorAll('.quick-action-drawer-actions button')]
+      : [];
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       page: shell?.dataset.editorPage ?? null,
@@ -175,53 +190,42 @@ async function snapshot(window) {
       editorShellLayout: shell?.dataset.editorShellLayout ?? null,
       shellState:
         document.querySelector('.editor-shell')?.dataset.editorShellState ?? null,
-      projectName: name?.textContent?.trim() ?? null,
-      projectPath:
-        bar?.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() ?? null,
-      // The saved pill is intentionally hidden; data-save-state remains the truth.
-      saveState: bar?.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() ?? null,
-      saveStateCode: bar?.getAttribute('data-save-state') ?? null,
+      nativeTitle: document.title,
+      projectName: null,
+      projectPath: null,
+      // The saved state is only rendered for actionable states; the drawer root
+      // remains the truth even while the surface is collapsed.
+      saveState: drawer?.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() ?? null,
+      saveStateCode: drawer?.getAttribute('data-save-state') ?? null,
       saveDisabled: save instanceof HTMLButtonElement ? save.disabled : null,
-      pathInputs: bar?.querySelectorAll('input').length ?? 0,
-      nameEllipsis: name
-        ? {
-            clientWidth: name.clientWidth,
-            scrollWidth: name.scrollWidth,
-            overflow: getComputedStyle(name).overflow,
-            textOverflow: getComputedStyle(name).textOverflow,
-            whiteSpace: getComputedStyle(name).whiteSpace,
-          }
-        : null,
-      compactBar: rect(bar),
+      pathInputs: drawer?.querySelectorAll('input').length ?? 0,
+      nameEllipsis: null,
+      drawerExpanded: drawer?.dataset.expanded === 'true',
+      compactBar: rect(drawer),
       topRegion: rect(topRegion),
       editorBody: rect(body),
       editorLayout: rect(layout),
       bottomWorkspace: rect(bottomWorkspace),
       controls: rect(controls),
       save: rect(save),
-      menu: rect(menu),
+      menu: rect(surface),
       deviceModeSelector: Boolean(
         document.querySelector('[data-testid="editor-device-mode-selector"]'),
       ),
-      menuItems: menu
-        ? [...menu.querySelectorAll('[role="menuitem"]')].map((item) => ({
-            testId: item.getAttribute('data-testid'),
-            text: item.textContent?.trim() ?? '',
-            disabled: item instanceof HTMLButtonElement ? item.disabled : false,
-          }))
-        : [],
+      menuItems: actionButtons.map((item) => ({
+        testId: item.getAttribute('data-testid'),
+        action:
+          item.getAttribute('data-quick-action') ??
+          (item.getAttribute('aria-label') === '撤销'
+            ? 'undo'
+            : item.getAttribute('aria-label') === '重做'
+              ? 'redo'
+              : null),
+        text: item.getAttribute('aria-label') ?? '',
+        disabled: item instanceof HTMLButtonElement ? item.disabled : false,
+      })),
     };
   })()`);
-}
-
-function overlaps(first, second) {
-  if (!first || !second) return false;
-  return !(
-    first.right <= second.x ||
-    second.right <= first.x ||
-    first.bottom <= second.y ||
-    second.bottom <= first.y
-  );
 }
 
 async function waitForMainWindow() {
@@ -318,7 +322,8 @@ async function run(window, fixture) {
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="editor"]') &&
-      document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(fixture.projectRoot)}`,
+      document.title === ${JSON.stringify(`Panda Stage（${projectName}）`)} &&
+      document.querySelector('[data-testid="quick-action-drawer"]')`,
     'Opening the Task 2 fixture did not enter the editor.',
   );
 
@@ -332,8 +337,12 @@ async function run(window, fixture) {
     clean.editorShellLayout === 'landscape',
     'Wide verifier window did not use the Cloud Touch landscape layout.',
   );
-  assert(clean.projectName === projectName, 'Current project name is not visible.');
-  assert(clean.projectPath === fixture.projectRoot, 'Current project path is not visible.');
+  assert(
+    clean.nativeTitle === `Panda Stage（${projectName}）`,
+    'Native title does not carry the current project name.',
+  );
+  assert(clean.projectName === null, 'Project name leaked into the editor drawer.');
+  assert(clean.projectPath === null, 'Project path leaked into the editor drawer.');
   assert(
     clean.saveState === null,
     'Clean save-state pill should be absent from the compact bar.',
@@ -341,19 +350,14 @@ async function run(window, fixture) {
   assert(clean.saveStateCode === 'saved', 'Clean save-state code is not saved.');
   assert(clean.saveDisabled === true, 'Save button must be disabled when clean.');
   assert(clean.pathInputs === 0, 'Editor top project area still contains a path input.');
-  assert(clean.compactBar && clean.compactBar.height <= 56.5, 'Compact project bar exceeds 56px.');
-  assert(clean.topRegion && clean.topRegion.height <= 56.5, 'Editor top project region exceeds 56px.');
+  assert(!clean.drawerExpanded, 'Quick Action Drawer must start collapsed.');
+  assert(clean.compactBar && clean.compactBar.height <= 56.5, 'Collapsed Quick Action Drawer exceeds 56px.');
+  assert(clean.topRegion && clean.topRegion.height <= 56.5, 'Collapsed editor top region exceeds 56px.');
   assert(
     clean.viewport.width === 1280 && clean.viewport.height === 720,
     'Task 2 measurement did not run at the required 1280x720 window size.',
   );
-  assert(
-    clean.nameEllipsis?.overflow === 'hidden' &&
-      clean.nameEllipsis?.textOverflow === 'ellipsis' &&
-      clean.nameEllipsis?.whiteSpace === 'nowrap' &&
-      clean.nameEllipsis.scrollWidth > clean.nameEllipsis.clientWidth,
-    'Long project names do not have the required ellipsis CSS contract.',
-  );
+  assert(clean.nameEllipsis === null, 'Editor drawer still owns project-name layout.');
   const reclaimedTopChrome =
     (baseline.oldProjectArea?.height ?? 0) - (clean.topRegion?.height ?? 0);
   const editorBodyNetGain =
@@ -366,10 +370,10 @@ async function run(window, fixture) {
   clean.editorBodyNetGainComparedWithOld = editorBodyNetGain;
   result.snapshots.clean = clean;
   result.checks.push(
-    'Compact bar is <=56px, saved truth stays on the bar, and old editor input is gone',
+    'Quick Action Drawer starts collapsed, saved truth stays on its root, and editor identity is native-only',
   );
   result.checks.push(
-    `Compact project chrome reclaims ${reclaimedTopChrome.toFixed(2)}px at the same 1280x720 window size`,
+    `Collapsed quick-action chrome reclaims ${reclaimedTopChrome.toFixed(2)}px at the same 1280x720 window size`,
   );
   result.checks.push(
     `Editor body net gain is ${editorBodyNetGain.toFixed(2)}px after the separately owned BottomWorkspace allocation`,
@@ -410,6 +414,7 @@ async function run(window, fixture) {
     'Unified Properties surface has one inline close affordance and no outer duplicate',
   );
 
+  await expandQuickActionDrawer(window);
   await clickSelector(window, '[data-testid="shot-quick-rename"]');
   await setInput(
     window,
@@ -420,7 +425,7 @@ async function run(window, fixture) {
   await waitForDom(
     window,
     `document.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() === '有未保存更改' &&
-      document.querySelector('[data-testid="compact-project-save"]')?.disabled === false`,
+      document.querySelector('[data-testid="quick-action-save"]')?.disabled === false`,
     'Dirty state did not expose the required label and enabled save button.',
   );
   const dirty = await snapshot(window);
@@ -430,12 +435,12 @@ async function run(window, fixture) {
   result.snapshots.dirty = dirty;
   result.checks.push('Dirty project shows 有未保存更改 and enables 保存');
 
-  await clickSelector(window, '[data-testid="compact-project-save"]');
+  await clickSelector(window, '[data-testid="quick-action-save"]');
   await waitForDom(
     window,
     `document.querySelector('[data-testid="project-save-state"]') === null &&
-      document.querySelector('[data-testid="compact-project-bar"]')?.getAttribute('data-save-state') === 'saved' &&
-      document.querySelector('[data-testid="compact-project-save"]')?.disabled === true`,
+      document.querySelector('[data-testid="quick-action-drawer"]')?.getAttribute('data-save-state') === 'saved' &&
+      document.querySelector('[data-testid="quick-action-save"]')?.disabled === true`,
     'Save action did not restore saved truth while keeping the saved-state pill hidden.',
   );
   const saved = await snapshot(window);
@@ -447,43 +452,47 @@ async function run(window, fixture) {
     'Save action restores saved truth, keeps the saved-state pill hidden, and disables 保存',
   );
 
-  await clickSelector(window, '[data-testid="compact-project-more"]');
+  await expandQuickActionDrawer(window);
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="compact-project-menu"]')`,
-    'Compact project menu did not open.',
+    `document.querySelector('[data-testid="quick-action-drawer-surface"]')`,
+    'Quick Action Drawer surface did not render.',
   );
   const menu = await snapshot(window);
-  const menuIds = new Set(menu.menuItems.map((item) => item.testId));
-  for (const requiredId of [
-    'menu-open-project-center',
-    'menu-open-project-folder',
-    'menu-close-project',
-  ]) {
-    assert(menuIds.has(requiredId), `Project menu is missing ${requiredId}.`);
-  }
+  assert(menu.drawerExpanded, 'Quick Action Drawer did not report expanded state.');
+  const actionIds = menu.menuItems.map((item) => item.action);
+  assert(
+    JSON.stringify(actionIds) ===
+      JSON.stringify(['home', 'folder', 'save', 'play', 'undo', 'redo', 'close']),
+    `Quick Action Drawer action order changed: ${JSON.stringify(actionIds)}`,
+  );
+  assert(
+    menu.menuItems.filter((item) => item.testId === 'history-controls').length === 0,
+    'HistoryControls must remain the single nested owner, not a duplicate quick action.',
+  );
   assert(
     menu.menuItems.some((item) => item.text === '打开项目中心') &&
       menu.menuItems.some((item) => item.text === '打开项目文件夹') &&
+      menu.menuItems.some((item) => item.text === '预览当前镜头') &&
       menu.menuItems.some((item) => item.text === '关闭当前项目'),
-    'Project menu labels do not match the Task 2 requirements.',
+    'Quick Action Drawer labels do not match the Task 2 requirements.',
   );
   assert(
     menu.deviceModeSelector === false,
-    'More menu still exposes the removed editor device mode selector.',
+    'Quick Action Drawer still exposes the removed editor device mode selector.',
   );
-  assert(menu.menu && menu.menu.right <= menu.viewport.width + 1, 'Project menu overflows the right edge.');
-  assert(menu.menu && !overlaps(menu.menu, menu.controls), 'Project menu blocks the save/identity controls.');
+  assert(menu.menu && menu.menu.right <= menu.viewport.width + 1, 'Quick Action Drawer overflows the right edge.');
+  assert(menu.menu && menu.menu.width < menu.viewport.width, 'Quick Action Drawer is not content-sized.');
   result.snapshots.menu = menu;
-  result.checks.push('更多 menu exposes Project Center / folder / close actions without covering bar controls');
-  await capture(window, 'new-editor-menu.png');
+  result.checks.push('Expanded Quick Action Drawer exposes the exact centered action order without the old More menu');
+  await capture(window, 'new-quick-action-drawer.png');
 
-  await clickSelector(window, '[data-testid="menu-open-project-center"]');
+  await clickSelector(window, '[data-testid="quick-action-home"]');
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="project-center"]') &&
       document.querySelector('[data-testid="project-center-current-project"]')`,
-    'Menu Project Center entry did not retain the current project.',
+    'Home action did not retain the current project in Project Center.',
   );
   result.snapshots.projectCenter = await window.webContents.executeJavaScript(`(() => ({
     page: document.querySelector('.editor-shell')?.dataset.editorPage ?? null,
@@ -496,8 +505,8 @@ async function run(window, fixture) {
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="editor"]') &&
-      document.querySelector('[data-testid="compact-project-bar"]')`,
-    'Returning from Project Center did not restore the compact editor bar.',
+      document.querySelector('[data-testid="quick-action-drawer"]')`,
+    'Returning from Project Center did not restore the Quick Action Drawer.',
   );
   result.checks.push('打开项目中心 returns to editor with the same project identity');
   return result;

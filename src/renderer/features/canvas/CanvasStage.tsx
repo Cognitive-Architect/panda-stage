@@ -223,6 +223,7 @@ export function CanvasStage({
       aria-label={showHeading ? undefined : '画布'}
       aria-labelledby={showHeading ? 'canvas-heading' : undefined}
       className="project-canvas"
+      data-with-heading={showHeading ? 'true' : 'false'}
     >
       {showHeading ? (
         <div className="project-canvas-heading">
@@ -261,6 +262,13 @@ export function CanvasStage({
         }
         onTransform={setToolbarTransform}
         onViewportChromePointerDown={() => selectionStore.clear()}
+        viewportChrome={showToolbar ? (
+          <CanvasToolbar
+            mode={viewport.mode}
+            point={viewport.lastStagePoint}
+            transform={toolbarTransform}
+          />
+        ) : null}
       >
         {(transform) => (
           <>
@@ -429,13 +437,6 @@ export function CanvasStage({
           </>
         )}
       </CanvasViewport>
-      {showToolbar ? (
-        <CanvasToolbar
-          mode={viewport.mode}
-          point={viewport.lastStagePoint}
-          transform={toolbarTransform}
-        />
-      ) : null}
       <output
         className="canvas-interaction-status"
         data-testid="canvas-interaction-status"

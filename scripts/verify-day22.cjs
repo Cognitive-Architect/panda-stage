@@ -116,16 +116,21 @@ async function openProject(
   );
   if (editorOpen) {
     await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="compact-project-more"]').click()
+      (() => {
+        const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+        if (drawer?.dataset.expanded !== 'true') {
+          drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+        }
+      })()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="compact-project-menu"]')`,
-        'Project menu did not open for a project switch.',
+        `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+        'Quick Action Drawer did not expand for a project switch.',
       ),
     );
     await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="menu-open-project-center"]').click()
+      document.querySelector('[data-testid="quick-action-home"]').click()
     `);
   }
   await window.webContents.executeJavaScript(
@@ -598,37 +603,6 @@ async function verifyDay22() {
 
     await selectRightActivity(window, 'tools');
     await window.webContents.executeJavaScript(
-      `document.querySelector('[data-testid="canvas-mode-half"]').click()`,
-    );
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `document.querySelector(` +
-          `'[data-testid="project-canvas-viewport"]'` +
-          `).dataset.displayScale === '0.500000'`,
-        '50% mode did not activate.',
-      ),
-    );
-    const characterAssetId =
-      project.characters[0].expressions[0].assetId;
-    await selectCategory(window, 0, characterAssetId);
-    const halfPreview = await dispatchAssetDrop(
-      window,
-      characterAssetId,
-      { x: 500, y: 700 },
-    );
-    await window.webContents.executeJavaScript(
-      waitFor(
-        `JSON.parse(document.querySelector(` +
-          `'[data-testid="project-canvas-stage"]'` +
-          `).dataset.layerJson).length === 4`,
-        '50% drop did not create a layer.',
-      ),
-    );
-    const halfDrop = await stageSnapshot(window);
-    const halfLayer = halfDrop.layers.at(-1);
-
-    await selectRightActivity(window, 'tools');
-    await window.webContents.executeJavaScript(
       `document.querySelector('[data-testid="canvas-mode-actual"]').click()`,
     );
     await window.webContents.executeJavaScript(
@@ -639,6 +613,24 @@ async function verifyDay22() {
         'Actual mode did not activate.',
       ),
     );
+    const characterAssetId =
+      project.characters[0].expressions[0].assetId;
+    await selectCategory(window, 0, characterAssetId);
+    const characterPreview = await dispatchAssetDrop(
+      window,
+      characterAssetId,
+      { x: 500, y: 700 },
+    );
+    await window.webContents.executeJavaScript(
+      waitFor(
+        `JSON.parse(document.querySelector(` +
+          `'[data-testid="project-canvas-stage"]'` +
+          `).dataset.layerJson).length === 4`,
+        'Actual character drop did not create a layer.',
+      ),
+    );
+    const characterDrop = await stageSnapshot(window);
+    const characterLayer = characterDrop.layers.at(-1);
     await selectCategory(window, 1, stickerAssetId);
     await logicalClientPoint(window, { x: 1400, y: 700 }, true);
     const actualPreview = await dispatchAssetDrop(
@@ -859,11 +851,11 @@ async function verifyDay22() {
     const invalidAfter = await stageSnapshot(window);
 
     await window.webContents.executeJavaScript(
-      `document.querySelector('[data-testid="compact-project-save"]').click()`,
+      `document.querySelector('[data-testid="quick-action-save"]').click()`,
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="compact-project-bar"]')` +
+        `document.querySelector('[data-testid="quick-action-drawer"]')` +
           `?.dataset?.saveState === 'saved' && ` +
           `!document.querySelector('[data-testid="project-save-state"]')`,
         'Day 22 project did not save cleanly.',
@@ -991,16 +983,16 @@ async function verifyDay22() {
           ghost: fitPreview.ghost,
           highlighted: fitPreview.highlighted,
         },
-        half: {
-          scale: halfPreview.scale,
-          requested: { x: 500, y: 700 },
-          actual: { x: halfLayer.x, y: halfLayer.y },
-          source: halfLayer.source,
-        },
         actual: {
           scale: actualPreview.scale,
           requested: { x: 1400, y: 700 },
           actual: { x: actualLayer.x, y: actualLayer.y },
+        },
+        character: {
+          scale: characterPreview.scale,
+          requested: { x: 500, y: 700 },
+          actual: { x: characterLayer.x, y: characterLayer.y },
+          source: characterLayer.source,
         },
       },
       selection: {
@@ -1108,13 +1100,13 @@ async function verifyDay22() {
       fitPreview.scale === 1 ||
       !closeAtScale(fitLayer.x, 1200, fitPreview.scale) ||
       !closeAtScale(fitLayer.y, 300, fitPreview.scale) ||
-      halfPreview.scale !== 0.5 ||
-      !closeAtScale(halfLayer.x, 500, halfPreview.scale) ||
-      !closeAtScale(halfLayer.y, 700, halfPreview.scale) ||
-      halfLayer.source.kind !== 'character' ||
       actualPreview.scale !== 1 ||
       !closeAtScale(actualLayer.x, 1400, actualPreview.scale) ||
       !closeAtScale(actualLayer.y, 700, actualPreview.scale) ||
+      characterPreview.scale !== 1 ||
+      !closeAtScale(characterLayer.x, 500, characterPreview.scale) ||
+      !closeAtScale(characterLayer.y, 700, characterPreview.scale) ||
+      characterLayer.source.kind !== 'character' ||
       actualDrop.selectedLayerId !== actualLayer.id ||
       dragDuring.revision !== actualDrop.revision ||
       JSON.stringify(dragDuring.layers) !==

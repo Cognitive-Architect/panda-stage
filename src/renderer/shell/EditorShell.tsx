@@ -97,6 +97,12 @@ export function getEditorShellPage(
     : 'project-center';
 }
 
+export function getEditorWindowTitle(
+  snapshot: Pick<EditorProjectSnapshot, 'project'> | null,
+): string {
+  return snapshot ? `Panda Stage（${snapshot.project.name}）` : 'Panda Stage';
+}
+
 export function shouldRenderProductSurface(gateA: boolean): boolean {
   return !gateA;
 }
@@ -471,6 +477,12 @@ export function EditorShell({
       isPortrait && portraitWorkspace === 'canvas' ? 'shots' : 'none',
     );
   }, [isPortrait, portraitWorkspace]);
+
+  useEffect(() => {
+    // Electron uses the renderer document title for the native window title.
+    // The formal project snapshot remains the only project-name owner.
+    document.title = getEditorWindowTitle(projectSnapshot);
+  }, [projectSnapshot?.project.name]);
 
   useEffect(() => {
     session.activateAutosaveErrors((error) => setStatus(error.message));
@@ -998,23 +1010,13 @@ export function EditorShell({
           className="editor-layout"
           data-active-workspace={portraitWorkspace}
           data-shell-mode={layoutMode}
+          data-top-region-layout={recoveryCandidate || isPortrait ? 'flow' : 'overlay'}
           data-testid="editor-layout"
         >
-          <div className="editor-top-region" data-testid="editor-top-region">
-            <CompactProjectBar
-              busy={busy}
-              closeConfirmOpen={closeConfirmOpen}
-              onOpenProductPreview={openProductPreview}
-              onOpenProjectCenter={openProjectCenter}
-              onOpenProjectFolder={openProjectFolder}
-              onRequestCloseProject={requestCloseProject}
-              onSaveProject={saveProject}
-              productPreviewOpen={productPreviewOpen}
-              projectSnapshot={projectSnapshot}
-              saveState={saveState}
-              status={status}
-              presentation={layoutMode}
-            />
+          <div
+            className="editor-top-region"
+            data-testid="editor-top-region"
+          >
             {recoveryCandidate ? (
               <RecoveryCandidateBanner
                 busy={busy}
@@ -1038,6 +1040,21 @@ export function EditorShell({
               data-shell-mode={layoutMode}
               data-testid="editor-body"
             >
+              <CompactProjectBar
+                busy={busy}
+                closeConfirmOpen={closeConfirmOpen}
+                key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
+                onOpenProductPreview={openProductPreview}
+                onOpenProjectCenter={openProjectCenter}
+                onOpenProjectFolder={openProjectFolder}
+                onRequestCloseProject={requestCloseProject}
+                onSaveProject={saveProject}
+                productPreviewOpen={productPreviewOpen}
+                projectSnapshot={projectSnapshot}
+                saveState={saveState}
+                status={status}
+                presentation={layoutMode}
+              />
             <div
               aria-hidden={!portraitResourcesVisible}
               className="editor-workspace-slot editor-workspace-slot-resources"
@@ -1109,9 +1126,6 @@ export function EditorShell({
               ) : (
                 <RightWorkspace
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
-                  onOpenRecentProject={switchToRecentProject}
-                  projectSnapshot={projectSnapshot}
-                  recentRefreshToken={recentRefreshToken}
                 />
               )}
             </div>
@@ -1126,6 +1140,7 @@ export function EditorShell({
           </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
             <ProductPreviewOverlay
+              autoPlay
               onClose={closeProductPreview}
               project={projectSnapshot.project}
               projectRoot={projectSnapshot.projectRoot}

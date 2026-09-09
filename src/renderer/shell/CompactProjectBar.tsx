@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { HistoryControls } from '../features/editor/HistoryControls';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
-import { Button, PanelSurface } from '../ui';
-import { MoreHorizontal, Save } from 'lucide-react';
+import { IconButton, PanelSurface } from '../ui';
+import {
+  FolderOpen,
+  Home,
+  LoaderCircle,
+  Play,
+  Save,
+  X,
+} from 'lucide-react';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 
 export type CompactProjectSaveState =
@@ -45,7 +52,12 @@ const QUIET_STATUS_MESSAGES = new Set([
   '已忽略本次恢复内容，恢复文件仍保留。',
 ]);
 
-export function CompactProjectBar({
+/**
+ * The top editor action owner. The legacy file name is retained for the
+ * existing shell seam, but its user-facing presentation is now the
+ * Issue #454 Quick Action Drawer rather than the old project bar/menu.
+ */
+export function QuickActionDrawer({
   projectSnapshot,
   saveState,
   status,
@@ -59,77 +71,187 @@ export function CompactProjectBar({
   onRequestCloseProject,
   presentation = 'landscape',
 }: CompactProjectBarProps): React.JSX.Element {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-
-    const closeOnOutsidePointer = (event: PointerEvent): void => {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOnOutsidePointer);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [menuOpen]);
-
-  const closeMenu = (): void => setMenuOpen(false);
+  const [expanded, setExpanded] = useState(false);
+  const panelId = `quick-action-drawer-panel-${useId()}`;
+  const statusText = status.trim();
+  const showFeedback =
+    saveState === 'failed' ||
+    (Boolean(statusText) && !QUIET_STATUS_MESSAGES.has(statusText));
   const saveDisabled =
     busy || saveState === 'saving' || !projectSnapshot.dirty;
   const saveStateLabel = SAVE_STATE_LABELS[saveState];
-  const saveStateSemanticClass =
-    saveState === 'saved' ? 'clean-state' : 'dirty-state';
-  const isPortrait = presentation === 'portrait';
-  const showFeedback =
-    Boolean(status.trim()) && !QUIET_STATUS_MESSAGES.has(status.trim());
+  const saveTitle =
+    saveState === 'saving'
+      ? '保存中'
+      : saveState === 'failed'
+        ? statusText || '保存失败'
+        : projectSnapshot.dirty
+          ? '保存项目'
+          : '保存项目（已保存）';
+
+  useEffect(() => {
+    // Switching projects remounts this presentation in EditorShell, and this
+    // guard also keeps the UI-only state correct for direct callers.
+    setExpanded(false);
+  }, [projectSnapshot.projectRoot]);
+
+  useEffect(() => {
+    if (!expanded) return undefined;
+
+    const collapseOnEscape = (event: KeyboardEvent): void => {
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        productPreviewOpen ||
+        closeConfirmOpen
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setExpanded(false);
+    };
+
+    document.addEventListener('keydown', collapseOnEscape);
+    return () => document.removeEventListener('keydown', collapseOnEscape);
+  }, [closeConfirmOpen, expanded, productPreviewOpen]);
 
   return (
-    <PanelSurface
-      aria-label="当前项目状态"
-      className="compact-project-bar"
+    <section
+      aria-label="快捷操作抽屉"
+      className="quick-action-drawer"
+      data-expanded={String(expanded)}
       data-presentation={presentation}
       data-save-state={saveState}
-      data-testid="compact-project-bar"
+      data-testid="quick-action-drawer"
     >
-      <div className="compact-project-identity">
-        <div
-          className="compact-project-details"
-          title={!isPortrait ? projectSnapshot.projectRoot : undefined}
-        >
-          <strong
-            className="compact-project-name"
-            title={projectSnapshot.project.name}
+      <PanelSurface
+        aria-hidden={!expanded}
+        className="quick-action-drawer-surface"
+        data-testid="quick-action-drawer-surface"
+        inert={!expanded ? true : undefined}
+        id={panelId}
+      >
+        <div className="quick-action-drawer-actions">
+          <IconButton
+            aria-label="打开项目中心"
+            className="quick-action-drawer-action"
+            data-task4-core="project-center"
+            data-quick-action="home"
+            data-testid="quick-action-home"
+            disabled={busy}
+            icon={
+              <Home
+                aria-hidden="true"
+                className="ui-icon"
+                focusable="false"
+                size={18}
+              />
+            }
+            onClick={onOpenProjectCenter}
+            title="打开项目中心"
+            variant="secondary"
+          />
+          <IconButton
+            aria-label="打开项目文件夹"
+            className="quick-action-drawer-action"
+            data-task4-core="menu-open-folder"
+            data-quick-action="folder"
+            data-testid="quick-action-folder"
+            disabled={busy}
+            icon={
+              <FolderOpen
+                aria-hidden="true"
+                className="ui-icon"
+                focusable="false"
+                size={18}
+              />
+            }
+            onClick={() => void onOpenProjectFolder()}
+            title="打开项目文件夹"
+            variant="secondary"
+          />
+          <IconButton
+            aria-label="保存项目"
+            aria-busy={saveState === 'saving'}
+            className={`quick-action-drawer-action quick-action-drawer-save quick-action-drawer-save-${saveState}`}
+            data-quick-action="save"
+            data-save-state={saveState}
+            data-task4-core="save-project"
+            data-testid="quick-action-save"
+            disabled={saveDisabled}
+            icon={
+              saveState === 'saving' ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ui-icon quick-action-drawer-spinner"
+                  focusable="false"
+                  size={18}
+                />
+              ) : (
+                <Save
+                  aria-hidden="true"
+                  className="ui-icon"
+                  focusable="false"
+                  size={18}
+                />
+              )
+            }
+            onClick={() => void onSaveProject()}
+            title={saveTitle}
+            variant="secondary"
+          />
+          <IconButton
+            aria-label="预览当前镜头"
+            aria-pressed={productPreviewOpen}
+            className="quick-action-drawer-action quick-action-drawer-play"
+            data-quick-action="play"
+            data-task4-core="product-preview"
+            data-testid="quick-action-play"
+            disabled={busy || productPreviewOpen}
+            icon={
+              <Play
+                aria-hidden="true"
+                className="ui-icon"
+                focusable="false"
+                size={18}
+              />
+            }
+            onClick={onOpenProductPreview}
+            title="预览当前镜头"
+            variant="primary"
+          />
+          <div
+            className="quick-action-drawer-history"
+            data-testid="quick-action-history"
           >
-            {projectSnapshot.project.name}
-          </strong>
-          {!isPortrait ? (
-            <span
-              aria-label="Project path"
-              className="compact-project-path-visually-hidden"
-              data-testid="active-project-path"
-            >
-              <code>{projectSnapshot.projectRoot}</code>
-            </span>
-          ) : null}
+            <HistoryControls presentation="compact" />
+          </div>
+          <IconButton
+            aria-label="关闭当前项目"
+            className="quick-action-drawer-action quick-action-drawer-close"
+            data-quick-action="close"
+            data-task4-core="close-project"
+            data-testid="quick-action-close"
+            disabled={busy || closeConfirmOpen}
+            icon={
+              <X
+                aria-hidden="true"
+                className="ui-icon"
+                focusable="false"
+                size={18}
+              />
+            }
+            onClick={onRequestCloseProject}
+            title="关闭当前项目"
+            variant="secondary"
+          />
         </div>
-      </div>
-
-      <div className="compact-project-controls recovery-status-row">
-        <HistoryControls presentation="compact" />
         {saveState !== 'saved' ? (
           <span
             aria-live="polite"
-            className={`compact-project-save-state compact-project-save-state-${saveState} ${saveStateSemanticClass}`}
+            className={`quick-action-drawer-save-state quick-action-drawer-save-state-${saveState}`}
             data-testid="project-save-state"
-            title={showFeedback ? status : undefined}
+            title={saveState === 'failed' ? statusText || '保存失败' : undefined}
           >
             {saveStateLabel}
           </span>
@@ -137,110 +259,32 @@ export function CompactProjectBar({
         {showFeedback ? (
           <output
             aria-live="polite"
-            className="compact-project-feedback"
+            className="quick-action-drawer-feedback"
             data-testid="editor-action-status"
-            title={status}
+            role="status"
           >
-            {status}
+            {statusText || '保存失败，请重试。'}
           </output>
         ) : null}
-        <Button
-          variant="primary"
-          aria-label="保存整个项目"
-          className="editor-save-button"
-          data-task4-core="save-project"
-          data-testid="compact-project-save"
-          disabled={saveDisabled}
-          onClick={() => void onSaveProject()}
-          type="button"
-        >
-          <Save aria-hidden="true" className="ui-icon" focusable="false" size={18} />
-          <span>保存</span>
-        </Button>
-        <div className="compact-project-menu-wrap" ref={menuRef}>
-          <Button
-            variant="secondary"
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            className="compact-project-more-button task4-hit-target"
-            data-task4-core="more-menu"
-            data-testid="compact-project-more"
-            disabled={busy}
-            onClick={() => setMenuOpen((open) => !open)}
-            type="button"
-          >
-            <MoreHorizontal aria-hidden="true" className="ui-icon" focusable="false" size={18} />
-            <span>更多</span>
-          </Button>
-          {menuOpen ? (
-            <div
-              aria-label="项目操作"
-              className="compact-project-menu"
-              data-testid="compact-project-menu"
-              role="menu"
-            >
-              <Button
-                variant="secondary"
-                className="task4-hit-target"
-                data-task4-core="project-center"
-                data-testid="menu-open-project-center"
-                onClick={() => {
-                  closeMenu();
-                  onOpenProjectCenter();
-                }}
-                role="menuitem"
-                type="button"
-              >
-                打开项目中心
-              </Button>
-              <Button
-                variant="secondary"
-                className="task4-hit-target"
-                data-task4-core="menu-open-folder"
-                data-testid="menu-open-project-folder"
-                onClick={() => {
-                  closeMenu();
-                  void onOpenProjectFolder();
-                }}
-                role="menuitem"
-                type="button"
-              >
-                打开项目文件夹
-              </Button>
-              <Button
-                variant="secondary"
-                className="task4-hit-target"
-                data-task4-core="product-preview"
-                data-testid="menu-open-product-preview"
-                disabled={productPreviewOpen}
-                onClick={() => {
-                  closeMenu();
-                  onOpenProductPreview();
-                }}
-                role="menuitem"
-                type="button"
-              >
-                产品预览
-              </Button>
-              <Button
-                variant="danger"
-                className="task4-hit-target"
-                data-task4-core="close-project"
-                data-testid="menu-close-project"
-                disabled={closeConfirmOpen}
-                onClick={() => {
-                  closeMenu();
-                  onRequestCloseProject();
-                }}
-                role="menuitem"
-                type="button"
-              >
-                关闭当前项目
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </PanelSurface>
+      </PanelSurface>
+      <button
+        aria-controls={panelId}
+        aria-expanded={expanded}
+        aria-label={expanded ? '收起快捷操作' : '展开快捷操作'}
+        className="quick-action-drawer-handle"
+        data-testid="quick-action-drawer-handle"
+        onClick={() => setExpanded((current) => !current)}
+        title={expanded ? '收起快捷操作' : '展开快捷操作'}
+        type="button"
+      >
+        <span
+          aria-hidden="true"
+          className="timeline-resize-grip quick-action-drawer-grip"
+        />
+      </button>
+    </section>
   );
 }
+
+/** Compatibility export for existing shell/test imports. */
+export const CompactProjectBar = QuickActionDrawer;

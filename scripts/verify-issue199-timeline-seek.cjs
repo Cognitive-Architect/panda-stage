@@ -96,7 +96,7 @@ async function measure(window) {
     const track = q('[data-testid="timeline-ruler-track"]');
     const scroll = q('[data-testid="timeline-ruler-scroll"]');
     const dock = q('[data-testid="timeline-dock"]');
-    const bar = q('[data-testid="compact-project-bar"]');
+    const drawer = q('[data-testid="quick-action-drawer"]');
     const history = q('[data-testid="history-controls"]');
     return {
       page: q('.editor-shell')?.dataset.editorPage ?? null,
@@ -107,7 +107,7 @@ async function measure(window) {
       trackWidth: track ? Math.round(track.getBoundingClientRect().width) : null,
       rulerScrollClientWidth: scroll ? scroll.clientWidth : null,
       rulerScrollPresent: !!scroll,
-      saveState: bar?.dataset.saveState ?? null,
+      saveState: drawer?.dataset.saveState ?? null,
       historyState: history
         ? {
             undoCount: history.dataset.undoCount ?? null,

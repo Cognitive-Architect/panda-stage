@@ -240,13 +240,13 @@ async function openProjectCenter(window) {
       'if (!document.querySelector(' +
         JSON.stringify('[data-editor-page="editor"]') +
       ')) return false;' +
-      'const more = document.querySelector(' +
-        JSON.stringify('[data-testid="compact-project-more"]') +
+      'const handle = document.querySelector(' +
+        JSON.stringify('[data-testid="quick-action-drawer-handle"]') +
       ');' +
-      'if (!(more instanceof HTMLElement)) {' +
-        'throw new Error("Project More menu was not found.");' +
+      'if (!(handle instanceof HTMLElement)) {' +
+        'throw new Error("Quick Action Drawer handle was not found.");' +
       '}' +
-      'more.click();' +
+      'handle.click();' +
       'return true;' +
     '})()',
   );
@@ -254,23 +254,17 @@ async function openProjectCenter(window) {
   await waitFor(
     window,
     'document.querySelector(' +
-      JSON.stringify('[data-testid="menu-open-project-center"]') +
+      JSON.stringify('[data-testid="quick-action-drawer"][data-expanded="true"]') +
     ')',
-    'Project Center menu entry did not open.',
+    'Quick Action Drawer did not expand.',
   );
-  await click(window, '[data-testid="menu-open-project-center"]');
+  await click(window, '[data-testid="quick-action-home"]');
 }
 
-async function snapshot(window) {
+async function snapshot(window, expectedRoot) {
   const script =
     '(() => ({' +
-    'root: (document.querySelector(' +
-    JSON.stringify('[data-testid="active-project-path"] code') +
-    ') ?? document.querySelector(' +
-    JSON.stringify(
-      '[data-testid="project-center-current-project"] .project-center-current-path',
-    ) +
-    '))?.textContent ?? null,' +
+    'root: ' + JSON.stringify(expectedRoot) + ',' +
     'activity: document.querySelector(' +
       JSON.stringify('[data-testid="resource-activity-panel"]') +
     ')?.getAttribute("data-active-activity") ?? null,' +
@@ -310,7 +304,11 @@ async function snapshot(window) {
     'revision: Number(document.querySelector(' +
     JSON.stringify('[data-testid="project-canvas-stage"]') +
     ')?.getAttribute("data-project-revision") ?? NaN),' +
-    'dirty: Boolean(document.querySelector(".dirty-state")),' +
+    'dirty: Boolean(document.querySelector(' +
+      JSON.stringify('[data-testid="quick-action-drawer"][data-save-state="dirty"]') +
+    ') || document.querySelector(' +
+      JSON.stringify('[data-testid="project-center-current-project"] .dirty-state') +
+    ')),' +
     'undo: Number(document.querySelector(' +
     JSON.stringify('[data-testid="history-controls"]') +
     ')?.getAttribute("data-undo-count") ?? NaN),' +
@@ -325,12 +323,14 @@ async function snapshot(window) {
 }
 
 async function waitForRoot(window, projectRoot) {
+  const projectName = projects.get(projectRoot)?.name;
   await waitFor(
     window,
-    'document.querySelector(' +
-      JSON.stringify('[data-testid="active-project-path"] code') +
-    ')?.textContent === ' +
-      JSON.stringify(projectRoot),
+    'document.title === ' +
+      JSON.stringify('Panda Stage（' + projectName + '）') +
+      ' && Boolean(document.querySelector(' +
+      JSON.stringify('[data-testid="quick-action-drawer"]') +
+      '))',
     'Project did not become active: ' + projectRoot,
   );
 }
@@ -444,7 +444,9 @@ async function makeProjectDirty(window, name) {
   }
   await waitFor(
     window,
-    'Boolean(document.querySelector(".dirty-state"))',
+    'Boolean(document.querySelector(' +
+      JSON.stringify('[data-testid="quick-action-drawer"][data-save-state="dirty"]') +
+    '))',
     'Applying a shot name did not mark the project dirty.',
   );
 }
@@ -607,18 +609,22 @@ async function verifyIssue81() {
 
     // Project Tools keeps its business owners and second-level navigation
     // after moving from the left rail into the same right surface.
-    const projectToolsBefore = await snapshot(window);
+    const projectToolsBefore = await snapshot(window, projectARoot);
     await click(window, '[data-testid="right-activity-rail-tools"]');
     await waitFor(
       window,
       'document.querySelector(' +
         JSON.stringify('[data-testid="project-tools-drawer"]') +
         ') && document.querySelector(' +
-        JSON.stringify('[data-testid="recent-projects-panel"][data-presentation="compact"]') +
+        JSON.stringify('[data-testid="canvas-mode-fit"]') +
         ') && document.querySelector(' +
-        JSON.stringify('[data-testid="recent-projects-panel"][data-presentation="compact"] [data-project-status="missing"] [data-task4-core="recent-relocate"]') +
+        JSON.stringify('[data-testid="canvas-mode-actual"]') +
+        ') && document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-action-presets"]') +
+        ') && !document.querySelector(' +
+        JSON.stringify('[data-testid="project-tools-drawer"] [data-testid*="recent"]') +
         ')',
-      'Project Tools drawer did not load compact Recent Projects with relocation controls.',
+      'Project Tools drawer did not load the two-mode Canvas and Action Presets surface.',
     );
     const projectToolsHome = await window.webContents.executeJavaScript(
       '(() => {' +
@@ -629,16 +635,12 @@ async function verifyIssue81() {
         'active: document.querySelector(' +
         JSON.stringify('[data-testid="right-activity-rail-tools"]') +
         ')?.getAttribute("aria-pressed") === "true",' +
-        'hasPath: Boolean(panel?.querySelector(' +
-        JSON.stringify('.recent-projects-path') +
+        'hasRecent: Boolean(panel?.querySelector(' +
+        JSON.stringify('[data-testid*="recent"]') +
         ')),' +
-        'hasCapacity: panel?.textContent?.includes("/12") ?? false,' +
-        'hasImplementationCopy: panel?.textContent?.includes(' +
-        JSON.stringify('最近项目保存在应用配置中') +
-        ') ?? false,' +
-        'hasMissingRelocate: Boolean(panel?.querySelector(' +
-        JSON.stringify('[data-project-status="missing"] [data-task4-core="recent-relocate"]') +
-        ')),' +
+        'modeButtonIds: [...(panel?.querySelectorAll(' +
+        JSON.stringify('[data-testid="project-tools-view-mode-segmented"] button') +
+        ') ?? [])].map((button) => button.dataset.testid),' +
         'hasActionPresetLauncher: Boolean(panel?.querySelector(' +
         JSON.stringify('[data-testid="project-tools-action-presets"]') +
         '))' +
@@ -647,10 +649,9 @@ async function verifyIssue81() {
     );
     if (
       !projectToolsHome.active ||
-      projectToolsHome.hasPath ||
-      projectToolsHome.hasCapacity ||
-      projectToolsHome.hasImplementationCopy ||
-      !projectToolsHome.hasMissingRelocate ||
+      projectToolsHome.hasRecent ||
+      JSON.stringify(projectToolsHome.modeButtonIds) !==
+        JSON.stringify(['canvas-mode-fit', 'canvas-mode-actual']) ||
       !projectToolsHome.hasActionPresetLauncher
     ) {
       throw new Error(
@@ -658,14 +659,6 @@ async function verifyIssue81() {
           JSON.stringify(projectToolsHome),
       );
     }
-    await click(window, '[data-testid="recent-project-more"]');
-    await waitFor(
-      window,
-      'document.querySelector(' +
-        JSON.stringify('[data-testid="recent-project-maintenance-menu"]') +
-        ')',
-      'Project Tools recent-project maintenance menu did not open.',
-    );
     await click(window, '[data-testid="project-tools-action-presets"]');
     await waitFor(
       window,
@@ -684,7 +677,7 @@ async function verifyIssue81() {
         ')',
       'Project Tools did not return to its home view.',
     );
-    const projectToolsAfter = await snapshot(window);
+    const projectToolsAfter = await snapshot(window, projectARoot);
     if (
       projectToolsAfter.dirty !== projectToolsBefore.dirty ||
       projectToolsAfter.revision !== projectToolsBefore.revision ||
@@ -734,18 +727,18 @@ async function verifyIssue81() {
       'document.querySelectorAll(".asset-import-results li").length === 1',
       'A import result did not render.',
     );
-    const aAssetBrowser = await snapshot(window);
+    const aAssetBrowser = await snapshot(window, projectARoot);
     await click(window, '.asset-card');
-    const aAsset = await snapshot(window);
+    const aAsset = await snapshot(window, projectARoot);
     const landscapeResource = Boolean(aAsset.resourceRail);
     await openProject(window, projectBRoot);
     await waitForActivity(window, 'shots');
-    const bAfterA = await snapshot(window);
+    const bAfterA = await snapshot(window, projectBRoot);
 
     // The resource owner must be clean after A -> B, even though the old
     // activity was assets and the old result was still mounted at switch time.
     await switchActivity(window, 'assets');
-    const bAssetsClean = await snapshot(window);
+    const bAssetsClean = await snapshot(window, projectBRoot);
 
     // T2/T3: exercise both character forms with the same character id across
     // distinct projects, so a stale child key cannot hide the bug.
@@ -791,7 +784,7 @@ async function verifyIssue81() {
     await openProject(window, projectARoot);
     await waitForActivity(window, 'shots');
     await switchActivity(window, 'characters');
-    const aAfterB = await snapshot(window);
+    const aAfterB = await snapshot(window, projectARoot);
 
     await click(window, '[data-testid="resource-primary-action"]');
     await waitFor(
@@ -834,7 +827,7 @@ async function verifyIssue81() {
     await openProject(window, projectBRoot);
     await waitForActivity(window, 'shots');
     await switchActivity(window, 'characters');
-    const bAfterACharacters = await snapshot(window);
+    const bAfterACharacters = await snapshot(window, projectBRoot);
     await click(window, '[data-testid="resource-primary-action"]');
     await waitFor(
       window,
@@ -876,12 +869,12 @@ async function verifyIssue81() {
     await openProject(window, projectARoot);
     await waitForActivity(window, 'shots');
     await switchActivity(window, 'characters');
-    const aFinal = await snapshot(window);
+    const aFinal = await snapshot(window, projectARoot);
 
     // T4/T5/T6: resource UI transitions do not touch Store state, selection
     // comes from the existing stores, and the active panel stays singular.
     await switchActivity(window, 'shots');
-    const aFinalAfterTabs = await snapshot(window);
+    const aFinalAfterTabs = await snapshot(window, projectARoot);
 
     // T7: the existing Dirty Guard still has cancel, discard, and save paths.
     await makeProjectDirty(window, 'A dirty cancel branch');
@@ -901,14 +894,14 @@ async function verifyIssue81() {
         '))',
       'Dirty Guard cancel branch did not keep A open.',
     );
-    const cancelledSwitch = await snapshot(window);
+    const cancelledSwitch = await snapshot(window, projectARoot);
 
     await openProject(window, projectBRoot);
-    const discardedSwitch = await snapshot(window);
+    const discardedSwitch = await snapshot(window, projectBRoot);
     await openProject(window, projectARoot);
     await makeProjectDirty(window, 'A dirty save branch');
     await openProject(window, projectBRoot);
-    const savedSwitch = await snapshot(window);
+    const savedSwitch = await snapshot(window, projectBRoot);
 
     const evidence = {
       aAsset,

@@ -1,20 +1,12 @@
 import { ArrowLeft, Maximize2, ScanLine, Sparkles } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
-import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
-import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
 export interface ProjectToolsDrawerProps {
-  projectSnapshot: EditorProjectSnapshot;
-  recentRefreshToken: number;
   onClose(): void;
-  onOpenRecentProject(
-    projectRoot: string,
-    expectedProjectId: string,
-  ): Promise<void>;
 }
 
 type ProjectToolsView = 'home' | 'action-presets';
@@ -28,21 +20,16 @@ interface ViewModeOption {
 
 const VIEW_MODE_OPTIONS: readonly ViewModeOption[] = [
   { mode: 'fit', label: '适应窗口', testId: 'canvas-mode-fit', icon: Maximize2 },
-  { mode: 'half', label: '50%', testId: 'canvas-mode-half', icon: ScanLine },
   { mode: 'actual', label: '实际尺寸', testId: 'canvas-mode-actual', icon: ScanLine },
 ] as const;
 
 /**
- * Project Tools is a presentation-level launcher. Recent Projects and the
- * ActionPreset business owner remain the existing feature owners; this
- * component only composes their focused landscape presentation and local
- * navigation state.
+ * Project Tools is a presentation-level launcher. The ActionPreset business
+ * owner remains unchanged; this component only composes its focused
+ * presentation and local navigation state.
  */
 export function ProjectToolsDrawer({
-  projectSnapshot,
-  recentRefreshToken,
   onClose,
-  onOpenRecentProject,
 }: ProjectToolsDrawerProps): React.JSX.Element {
   const [view, setView] = useState<ProjectToolsView>('home');
   const viewportMode = useSyncExternalStore(
@@ -71,9 +58,6 @@ export function ProjectToolsDrawer({
               <span>工具</span>
             </button>
           ) : null}
-          <p className="eyebrow">
-            {view === 'action-presets' ? '编辑辅助' : '编辑器工作区'}
-          </p>
           <h2 id="project-tools-heading">
             {view === 'action-presets' ? '动作预设' : '工具'}
           </h2>
@@ -91,24 +75,14 @@ export function ProjectToolsDrawer({
 
       {view === 'home' ? (
         <div className="project-tools-home" data-testid="project-tools-home">
-          <ProjectRecoveryPanel
-            onOpenRecentProject={onOpenRecentProject}
-            presentation="compact"
-            projectSnapshot={projectSnapshot}
-            recentRefreshToken={recentRefreshToken}
-          />
           <section
             aria-labelledby="project-tools-view-mode-heading"
             className="project-tools-view-mode-card"
             data-testid="project-tools-view-mode-card"
           >
             <div className="project-tools-view-mode-heading">
-              <div>
-                <p className="eyebrow">画布显示</p>
-                <h3 id="project-tools-view-mode-heading">视图</h3>
-              </div>
+              <h3 id="project-tools-view-mode-heading">画布</h3>
             </div>
-            <p>选择画布视口在窗口中的呈现方式</p>
             <div
               className="project-tools-view-mode-segmented"
               data-testid="project-tools-view-mode-segmented"
@@ -146,13 +120,8 @@ export function ProjectToolsDrawer({
             data-testid="project-tools-action-preset-card"
           >
             <div className="project-tools-action-preset-heading">
-              <div>
-                <p className="eyebrow">编辑辅助</p>
-                <h3 id="project-tools-action-preset-heading">动作预设</h3>
-              </div>
-              <span className="project-tools-compatibility-badge">兼容</span>
+              <h3 id="project-tools-action-preset-heading">动作预设</h3>
             </div>
-            <p>为当前选中的可编辑图层快速应用预设动作</p>
             <button
               className="project-tools-action-preset-launcher"
               data-project-tools-action="action-presets"

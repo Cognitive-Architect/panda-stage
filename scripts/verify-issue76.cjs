@@ -85,11 +85,16 @@ async function click(window, selector) {
 }
 
 async function openProjectMenu(window) {
-  await click(window, '[data-testid="compact-project-more"]');
+  await window.webContents.executeJavaScript(`(() => {
+    const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+    if (drawer?.dataset.expanded !== 'true') {
+      drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+    }
+  })()`);
   await window.webContents.executeJavaScript(
     waitFor(
-      `document.querySelector('[data-testid="compact-project-menu"]')`,
-      'Compact project menu did not open.',
+      `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+      'Quick Action Drawer did not open.',
     ),
   );
 }
@@ -107,7 +112,13 @@ async function ensureCloudTouchEditor(window) {
 
 async function clickProjectMenuAction(window, selector) {
   await openProjectMenu(window);
-  await click(window, selector);
+  const actionSelector = {
+    '[data-testid="menu-close-project"]':
+      '[data-testid="quick-action-close"]',
+    '[data-testid="menu-open-product-preview"]':
+      '[data-testid="quick-action-play"]',
+  }[selector] ?? selector;
+  await click(window, actionSelector);
 }
 
 async function readText(window, selector) {
@@ -123,10 +134,12 @@ async function snapshot(window) {
     return {
     shellState: document.querySelector('.editor-shell')
       ?.getAttribute('data-editor-shell-state') ?? null,
-    activeRoot: document.querySelector(
-      '[data-testid="active-project-path"] code'
-    )?.textContent ?? null,
-    dirty: Boolean(document.querySelector('.dirty-state')),
+    activeTitle: document.title,
+    dirty:
+      document.querySelector('[data-testid="quick-action-drawer"]')?.dataset
+        .saveState === 'dirty' ||
+      document.querySelector('[data-testid="quick-action-drawer"]')?.dataset
+        .saveState === 'failed',
     topStatus: document.querySelector(
       '.recovery-status-row output'
     )?.textContent?.trim() ?? '',
@@ -161,7 +174,8 @@ async function applyShotName(window, name) {
   await click(window, '[data-testid="shot-quick-rename-apply"]');
   await window.webContents.executeJavaScript(
     waitFor(
-      `Boolean(document.querySelector('.dirty-state'))`,
+      `(document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'dirty' || ` +
+        `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'failed')`,
       'Applying a shot name did not mark the project dirty.',
     ),
   );
@@ -363,8 +377,8 @@ async function verifyIssue76() {
     await click(window, '[data-testid="new-project-confirm"]');
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="active-project-path"] code')` +
-          `?.textContent === ${JSON.stringify(createdRoot)}`,
+        `document.querySelector('[data-editor-page="editor"]') && ` +
+          `document.title.includes(${JSON.stringify(projectName)})`,
         'Created project did not open in the editor.',
       ),
     );
@@ -438,8 +452,8 @@ async function verifyIssue76() {
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="active-project-path"] code')` +
-          `?.textContent === ${JSON.stringify(createdRoot)}`,
+        `document.querySelector('[data-editor-page="editor"]') && ` +
+          `document.title.includes(${JSON.stringify(projectName)})`,
         'Created project could not be reopened.',
       ),
     );
@@ -449,23 +463,25 @@ async function verifyIssue76() {
     await applyShotName(window, 'Issue 76 预览前草稿');
     const beforePreview = await snapshot(window);
     await openProjectMenu(window);
-    await click(window, '[data-testid="menu-open-product-preview"]');
+    await click(window, '[data-testid="quick-action-play"]');
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="product-preview-overlay"]')`,
+        `document.querySelector('[data-testid="product-preview-overlay"]') && ` +
+          `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'true'`,
         'Product preview overlay did not mount.',
       ),
     );
     await openProjectMenu(window);
     const previewEntryDisabled =
       await window.webContents.executeJavaScript(
-        `document.querySelector('[data-testid="menu-open-product-preview"]')` +
+        `document.querySelector('[data-testid="quick-action-play"]')` +
           `?.disabled === true`,
       );
-    await click(window, '[data-testid="compact-project-more"]');
-    await click(window, '[data-testid="product-preview-play"]');
+    await click(window, '[data-testid="product-preview-play-pause"]');
     await new Promise((resolve) => setTimeout(resolve, 300));
-    await click(window, '[data-testid="product-preview-pause"]');
+    await click(window, '[data-testid="product-preview-play-pause"]');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await click(window, '[data-testid="product-preview-play-pause"]');
     const previewTimecode = await readText(
       window,
       '[data-testid="product-preview-timecode"]',
@@ -550,8 +566,8 @@ async function verifyIssue76() {
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="active-project-path"] code')` +
-          `?.textContent === ${JSON.stringify(createdRoot)}`,
+        `document.querySelector('[data-editor-page="editor"]') && ` +
+          `document.title.includes(${JSON.stringify(projectName)})`,
         'Project could not be reopened before the unsaved close.',
       ),
     );
@@ -641,7 +657,7 @@ async function verifyIssue76() {
         failures.push('project.createAt lost the submitted project name.');
       }
     }
-    if (created.activeRoot !== createdRoot || created.dirty) {
+    if (!created.activeTitle.includes(projectName) || created.dirty) {
       failures.push('The created project did not open clean.');
     }
     if (created.revision !== 0 || created.undoCount !== 0) {
@@ -669,7 +685,7 @@ async function verifyIssue76() {
     }
     if (
       cleanRecentReopen.shellState !== 'editor' ||
-      cleanRecentReopen.activeRoot !== createdRoot ||
+      !cleanRecentReopen.activeTitle.includes(projectName) ||
       cleanRecentReopen.dirty ||
       cleanRecentReopen.revision !== 0 ||
       cleanRecentReopen.undoCount !== 0 ||
@@ -690,8 +706,8 @@ async function verifyIssue76() {
     if (
       beforePreview.nameDraft !== duringPreview.nameDraft ||
       beforePreview.nameDraft !== afterPreview.nameDraft ||
-      duringPreview.activeRoot !== beforePreview.activeRoot ||
-      afterPreview.activeRoot !== beforePreview.activeRoot ||
+      duringPreview.activeTitle !== beforePreview.activeTitle ||
+      afterPreview.activeTitle !== beforePreview.activeTitle ||
       duringPreview.dirty !== beforePreview.dirty ||
       afterPreview.dirty !== beforePreview.dirty
     ) {
@@ -708,7 +724,7 @@ async function verifyIssue76() {
     }
     if (
       cancelledClose.shellState !== 'editor' ||
-      cancelledClose.activeRoot !== createdRoot ||
+      !cancelledClose.activeTitle.includes(projectName) ||
       !cancelledClose.dirty ||
       cancelledClose.closeDialogOpen
     ) {
@@ -736,7 +752,7 @@ async function verifyIssue76() {
     }
     if (
       savedClose.shellState !== 'no-project' ||
-      savedClose.activeRoot !== null ||
+      savedClose.activeTitle.includes(projectName) ||
       savedClose.previewOpen ||
       savedClose.closeDialogOpen ||
       !savedClose.startStatus.includes('项目已保存并关闭')

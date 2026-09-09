@@ -9,7 +9,6 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { DecorativeIcon } from '../ui';
 import { DialogueSheet } from '../features/dialogue/DialogueSheet';
 import { usePendingDialoguePlacement } from '../features/timeline/PendingDialoguePlacement';
@@ -35,20 +34,7 @@ export function getNextRightActivity(
   return current === requested ? null : requested;
 }
 
-export interface RightWorkspaceProps {
-  projectSnapshot: EditorProjectSnapshot;
-  recentRefreshToken: number;
-  onOpenRecentProject(
-    projectRoot: string,
-    expectedProjectId: string,
-  ): Promise<void>;
-}
-
-export function RightWorkspace({
-  projectSnapshot,
-  recentRefreshToken,
-  onOpenRecentProject,
-}: RightWorkspaceProps): React.JSX.Element {
+export function RightWorkspace(): React.JSX.Element {
   const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
     useState<RightActivity | null>(null);
@@ -122,9 +108,6 @@ export function RightWorkspace({
           ) : (
             <ProjectToolsDrawer
               onClose={closeSurface}
-              onOpenRecentProject={onOpenRecentProject}
-              projectSnapshot={projectSnapshot}
-              recentRefreshToken={recentRefreshToken}
             />
           )}
         </div>

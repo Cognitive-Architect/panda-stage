@@ -361,7 +361,7 @@ describe('product preview overlay contract', () => {
 
     expect(overlay).toContain('const [timeMs, setTimeMs] = useState(0)');
     expect(overlay).toContain(
-      'const [playing, setPlaying] = useState(false)',
+      'const [playing, setPlaying] = useState(autoPlay && durationMs > 0)',
     );
     // Project data arrives as a read-only prop; the overlay does not subscribe.
     expect(overlay).not.toContain('useSyncExternalStore');
@@ -452,13 +452,14 @@ describe('product preview overlay contract', () => {
     expect(shell).not.toContain("display: 'none'");
   });
 
-  it('keeps a real preview entry in the compact project menu', () => {
+  it('keeps a real preview entry in the quick action drawer', () => {
     const topBar = readSource(TOP_BAR_PATH);
 
     expect(topBar).not.toContain('product-preview-placeholder');
     expect(topBar).not.toContain('产品预览（后续阶段启用）');
-    expect(topBar).toContain('data-testid="menu-open-product-preview"');
-    expect(topBar).toContain('disabled={productPreviewOpen}');
+    expect(topBar).toContain('data-testid="quick-action-play"');
+    expect(topBar).toContain('aria-pressed={productPreviewOpen}');
+    expect(topBar).toContain('disabled={busy || productPreviewOpen}');
     expect(topBar).toContain('onOpenProductPreview');
   });
 });
