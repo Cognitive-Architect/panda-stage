@@ -1,55 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { migrateProject } from '../../src/domain';
-import {
-  applyAssetImportResponse,
-  formatAssetImportStatus,
-} from '../../src/renderer/features/assets/applyAssetImportResponse';
+import { applyAssetImportResponse } from '../../src/renderer/features/assets/applyAssetImportResponse';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import {
   AssetImportResponseSchema,
-  type AssetImportResult,
   type AssetImportResponse,
 } from '../../src/shared/asset-import-api';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
-function result(
-  status: AssetImportResult['status'],
-  sourceName: string,
-): AssetImportResult {
-  return {
-    sourceName,
-    status,
-    sha256: null,
-    asset: null,
-    duplicateOfAssetId: null,
-    code: null,
-    message: '详情',
-  };
-}
-
 describe('applyAssetImportResponse', () => {
-  it('uses concise single and batch success acknowledgements', () => {
-    expect(formatAssetImportStatus([result('imported', 'voice.mp3')])).toBe(
-      '已导入：voice.mp3',
-    );
-    expect(
-      formatAssetImportStatus([
-        result('imported', 'voice.mp3'),
-        result('imported', 'music.wav'),
-        result('imported', 'bg.png'),
-      ]),
-    ).toBe('已导入 3 个素材');
-  });
-
-  it('keeps partial import details actionable', () => {
-    expect(
-      formatAssetImportStatus([
-        result('imported', 'voice.mp3'),
-        result('failed', 'broken.wav'),
-      ]),
-    ).toBe('已导入 1 个素材；另有 1 个素材未导入，请查看下方详情。');
-  });
-
   it('does not change dirty editor state for a stale response', () => {
     const store = new EditorProjectStore();
     const project = migrateProject(exampleProject);

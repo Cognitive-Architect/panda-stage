@@ -1,8 +1,27 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import {
+  formatAssetImportStatus,
+} from '../../src/renderer/features/assets/applyAssetImportResponse';
+import type { AssetImportResult } from '../../src/shared/asset-import-api';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
+}
+
+function result(
+  status: AssetImportResult['status'],
+  sourceName: string,
+): AssetImportResult {
+  return {
+    sourceName,
+    status,
+    sha256: null,
+    asset: null,
+    duplicateOfAssetId: null,
+    code: null,
+    message: '详情',
+  };
 }
 
 describe('Issue #467 Wave 1 subtitle and feedback cleanup', () => {
@@ -34,6 +53,25 @@ describe('Issue #467 Wave 1 subtitle and feedback cleanup', () => {
     expect(inspector).toContain('formatHumanAudioDuration');
     expect(inspector).toContain('音频');
     expect(inspector).toContain('秒');
+  });
+
+  it('keeps import acknowledgements concise and partial failures actionable', () => {
+    expect(formatAssetImportStatus([result('imported', 'voice.mp3')])).toBe(
+      '已导入：voice.mp3',
+    );
+    expect(
+      formatAssetImportStatus([
+        result('imported', 'voice.mp3'),
+        result('imported', 'music.wav'),
+        result('imported', 'bg.png'),
+      ]),
+    ).toBe('已导入 3 个素材');
+    expect(
+      formatAssetImportStatus([
+        result('imported', 'voice.mp3'),
+        result('failed', 'broken.wav'),
+      ]),
+    ).toBe('已导入 1 个素材；另有 1 个素材未导入，请查看下方详情。');
   });
 
   it('exposes save state outside the collapsed drawer and leaves defaults text-only', () => {
