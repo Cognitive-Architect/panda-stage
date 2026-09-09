@@ -45,6 +45,7 @@ describe('Issue #468 Subtitle Properties alignment repair', () => {
   it('uses the section rhythm and shared heading hierarchy without alignment hacks', () => {
     const styles = source('src/renderer/styles.css');
     const issue468 = styles.slice(styles.lastIndexOf('/* Issue #468:'));
+    const issue388 = styles.slice(styles.lastIndexOf('/* Issue #388:'));
 
     expect(issue468).toContain('grid-template-columns: minmax(0, 1fr);');
     expect(issue468).toContain('grid-column: 1;');
@@ -52,7 +53,7 @@ describe('Issue #468 Subtitle Properties alignment repair', () => {
     expect(issue468).toContain('font-size: 14px;');
     expect(issue468).toContain('font-weight: 700;');
     expect(issue468).toContain('line-height: 1.3;');
-    expect(issue468).toContain('color: var(--ui-color-text-secondary);');
+    expect(issue388).toContain('color: var(--ui-color-text-secondary);');
     expect(issue468).not.toContain('translateX');
     expect(issue468).not.toContain('position: absolute');
     expect(issue468).not.toContain('negative');
