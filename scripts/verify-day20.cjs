@@ -118,17 +118,20 @@ async function openProject(window, root = projectRoot) {
   );
   if (editorOpen) {
     await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="compact-project-more"]').click()
+      (() => {
+        const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+        if (drawer?.dataset.expanded !== 'true') {
+          drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+        }
+      })()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        `document.querySelector('[data-testid="compact-project-menu"]')`,
-        'Project menu did not open for a project switch.',
+        `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+        'Quick Action Drawer did not open for a project switch.',
       ),
     );
-    await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="menu-open-project-center"]').click()
-    `);
+    await click(window, '[data-testid="quick-action-home"]');
   }
   await window.webContents.executeJavaScript(
     waitFor(
@@ -572,7 +575,7 @@ async function verifyDay20() {
           '.shot-manager-heading span'
         ).dataset.projectRevision),
         saveDisabled: document.querySelector(
-          '.editor-save-button'
+          '[data-testid="quick-action-save"]'
         ).disabled
       }))()`);
     const noOpAutosaveBefore = autosaveUpdates.length;
@@ -595,7 +598,7 @@ async function verifyDay20() {
           '.shot-manager-heading span'
         ).dataset.projectRevision),
         saveDisabled: document.querySelector(
-          '.editor-save-button'
+          '[data-testid="quick-action-save"]'
         ).disabled,
         status: document.querySelector(
           '.shot-manager-status'
@@ -794,11 +797,11 @@ async function verifyDay20() {
       await captureSection(window, '.shot-manager');
 
     await window.webContents.executeJavaScript(`
-      document.querySelector('.editor-save-button').click()
+      document.querySelector('[data-testid="quick-action-save"]').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('[data-testid=\"compact-project-bar\"]')" +
+        "document.querySelector('[data-testid=\"quick-action-drawer\"]')" +
           "?.dataset?.saveState === 'saved' && " +
           "document.querySelector('[data-testid=\"project-save-state\"]') === null",
         'Five-shot project did not save.',
@@ -837,7 +840,7 @@ async function verifyDay20() {
           ).dataset.projectDurationMs
         ),
         clean:
-          document.querySelector('[data-testid="compact-project-bar"]')
+          document.querySelector('[data-testid="quick-action-drawer"]')
             ?.dataset?.saveState === 'saved' &&
           document.querySelector('[data-testid="project-save-state"]') === null
       }))()`);

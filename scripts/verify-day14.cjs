@@ -150,10 +150,10 @@ async function verifyDay14Ui() {
         return new Promise((resolve, reject) => {
           const deadline = Date.now() + 10000;
           const poll = () => {
-            const activeProjectRoot = document.querySelector(
-              '[data-testid="active-project-path"] code'
-            )?.textContent;
-            if (activeProjectRoot === ${JSON.stringify(availableRoot)}) {
+            const editorOpen =
+              document.querySelector('[data-editor-page="editor"]') &&
+              document.title.includes(${JSON.stringify(exampleProject.name)});
+            if (editorOpen) {
               return resolve();
             }
             if (Date.now() >= deadline) {
@@ -169,9 +169,7 @@ async function verifyDay14Ui() {
       recoveryStatus: document.querySelector(
         '[data-testid="editor-action-status"]'
       )?.textContent?.trim(),
-      activeProjectRoot: document.querySelector(
-        '[data-testid="active-project-path"] code'
-      )?.textContent
+      activeProjectTitle: document.title,
     }))()`));
     const closeOptions =
       createUnsavedCloseDialogOptions('等待保存的项目');
@@ -210,7 +208,7 @@ async function verifyDay14Ui() {
       result.projects[3]?.actions.length !== 3 ||
       result.recentProjectsApi.join(',') !== 'list,open,relocate,remove' ||
       openedRecentRoot !== availableRoot ||
-      result.activeProjectRoot !== availableRoot ||
+      !result.activeProjectTitle.includes(exampleProject.name) ||
       result.recoveryStatus !== undefined ||
       !evidence.configOutsideProject ||
       result.rendererHasNodeRequire ||

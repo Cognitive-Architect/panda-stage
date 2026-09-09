@@ -103,7 +103,7 @@ async function capture(window, fileName) {
 async function snapshot(window) {
   return window.webContents.executeJavaScript(`(() => {
     const shell = document.querySelector('.editor-shell');
-    const bar = document.querySelector('[data-testid="compact-project-bar"]');
+    const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
     const stage = document.querySelector('[data-testid="project-canvas-stage"]');
     const history = document.querySelector('[data-testid="history-controls"]');
     const current = document.querySelector(
@@ -112,8 +112,7 @@ async function snapshot(window) {
     return {
       page: shell?.dataset.editorPage ?? null,
       shellState: shell?.dataset.editorShellState ?? null,
-      activeRoot: bar?.querySelector('[data-testid="active-project-path"] code')
-        ?.textContent?.trim() ?? null,
+      activeTitle: document.title,
       currentRoot: current?.querySelector('.project-center-current-path')
         ?.textContent?.trim() ?? null,
       currentName: current?.querySelector('h3')?.textContent?.trim() ?? null,
@@ -124,9 +123,11 @@ async function snapshot(window) {
       revision: stage ? Number(stage.dataset.projectRevision) : null,
       undoCount: history ? Number(history.dataset.undoCount) : null,
       redoCount: history ? Number(history.dataset.redoCount) : null,
-      dirty: Boolean(document.querySelector('.dirty-state')),
-      saveStateCode: bar?.dataset.saveState ?? null,
-      saveState: bar?.querySelector('[data-testid="project-save-state"]')
+      dirty:
+        drawer?.dataset.saveState === 'dirty' ||
+        drawer?.dataset.saveState === 'failed',
+      saveStateCode: drawer?.dataset.saveState ?? null,
+      saveState: drawer?.querySelector('[data-testid="project-save-state"]')
         ?.textContent?.trim() ?? null,
       closeDialogOpen: Boolean(
         document.querySelector('[data-testid="close-confirm-dialog"]'),
@@ -140,17 +141,22 @@ async function snapshot(window) {
 }
 
 async function openProjectMenu(window) {
-  await click(window, '[data-testid="compact-project-more"]');
+  await window.webContents.executeJavaScript(`(() => {
+    const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+    if (drawer?.dataset.expanded !== 'true') {
+      drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+    }
+  })()`);
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="compact-project-menu"]')`,
-    'Compact project menu did not open.',
+    `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
+    'Quick Action Drawer did not open.',
   );
 }
 
 async function openProjectCenter(window) {
   await openProjectMenu(window);
-  await click(window, '[data-testid="menu-open-project-center"]');
+  await click(window, '[data-testid="quick-action-home"]');
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="project-center"]')`,
@@ -173,7 +179,7 @@ async function returnToEditor(window, root) {
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="editor"]') &&
-      document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(root)}`,
+      document.title.includes(${JSON.stringify(root === projectARoot ? 'Issue 102 Safety Project A' : 'Issue 102 Safety Project B')})`,
     'Returning from Project Center did not restore the active editor.',
   );
 }
@@ -201,7 +207,7 @@ async function openProject(window, root) {
   await waitForDom(
     window,
     `document.querySelector('[data-editor-page="editor"]') &&
-      document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(root)}`,
+      document.title.includes(${JSON.stringify(root === projectARoot ? 'Issue 102 Safety Project A' : 'Issue 102 Safety Project B')})`,
     `Project did not become active: ${root}`,
   );
 }
@@ -213,7 +219,8 @@ async function applyShotName(window, name) {
   await waitForDom(
     window,
     `Boolean(document.querySelector('[data-testid="project-canvas-stage"]')) &&
-      Boolean(document.querySelector('.dirty-state')) &&
+      (document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'dirty' ||
+        document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'failed') &&
       Number(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision) > 0`,
     'The shot edit did not produce a dirty revision.',
   );
@@ -569,7 +576,7 @@ async function run() {
     await waitForDom(
       window,
       `document.querySelector('[data-editor-page="editor"]') &&
-        document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(projectBRoot)}`,
+        document.title.includes(${JSON.stringify(projectB.name)})`,
       'Discarding Project A did not open Project B.',
     );
     result.snapshots.switchDiscarded = await snapshot(window);
@@ -581,7 +588,7 @@ async function run() {
     guardOutcomes.push('saved');
     await openProject(window, projectARoot);
     result.snapshots.switchSaved = await snapshot(window);
-    assert(result.snapshots.switchSaved.activeRoot === projectARoot, 'Saving before switch did not open Project A.');
+    assert(result.snapshots.switchSaved.activeTitle.includes(projectA.name), 'Saving before switch did not open Project A.');
     assert(!result.snapshots.switchSaved.dirty, 'Project A was not clean after save-before-switch.');
     result.checks.push('Dirty switch save path saves the current revision before opening the next project');
 
@@ -603,8 +610,8 @@ async function run() {
     failOpenRoot = null;
     await returnToEditor(window, projectARoot);
 
-    await click(window, '[data-testid="compact-project-more"]');
-    await click(window, '[data-testid="menu-close-project"]');
+    await openProjectMenu(window);
+    await click(window, '[data-testid="quick-action-close"]');
     await waitForDom(
       window,
       `document.querySelector('[data-testid="close-confirm-dialog"]')`,
@@ -616,21 +623,22 @@ async function run() {
     await waitForDom(
       window,
       `!document.querySelector('[data-testid="close-confirm-dialog"]') &&
-        document.querySelector('[data-testid="active-project-path"] code')?.textContent?.trim() === ${JSON.stringify(projectARoot)} &&
-        Boolean(document.querySelector('.dirty-state'))`,
+        document.title.includes(${JSON.stringify(projectA.name)}) &&
+        (document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'dirty' ||
+          document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'failed')`,
       'Canceling close did not keep Project A open.',
     );
     result.snapshots.closeCancelled = await snapshot(window);
     result.checks.push('Dirty close cancel keeps Project A open and dirty');
 
     failSave = true;
-    await click(window, '[data-testid="compact-project-more"]');
-    await click(window, '[data-testid="menu-close-project"]');
+    await openProjectMenu(window);
+    await click(window, '[data-testid="quick-action-close"]');
     await click(window, '[data-testid="close-confirm-save"]');
     await waitForDom(
       window,
       `document.querySelector('[data-testid="close-confirm-dialog"]') &&
-        document.querySelector('[data-testid="compact-project-bar"]')?.dataset.saveState === 'failed'`,
+        document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'failed'`,
       'Failed close save did not retain the editor or expose the failed save state.',
     );
     result.snapshots.closeSaveFailed = await snapshot(window);
