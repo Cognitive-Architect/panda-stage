@@ -114,16 +114,13 @@ export function ShotCreateForm({
 
   return (
     <section
-      aria-labelledby="shot-create-heading"
+      aria-label={landscape ? '新建镜头' : undefined}
+      aria-labelledby={landscape ? undefined : 'shot-create-heading'}
       className={viewClassName}
       data-shot-create-presentation={presentation}
       data-testid="shot-create-view"
     >
-      {landscape ? (
-        <div className="shot-create-heading shot-create-heading-landscape">
-          <h3 id="shot-create-heading">新建镜头</h3>
-        </div>
-      ) : (
+      {landscape ? null : (
         <div className="shot-create-heading">
           <div>
             <p className="eyebrow">镜头管理</p>

@@ -32,6 +32,7 @@ describe('Issue #480 landscape Shot empty-state visual pass', () => {
         selectedShotId: null,
         shots: project.shots,
         showCreateForm: false,
+        inlineEmptyCopy: true,
         showStoryboardCue: true,
       }),
     );

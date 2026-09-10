@@ -13041,10 +13041,8 @@ h1 {
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='shots']
   .shot-list-empty-inline-copy {
-  grid-template-columns: minmax(0, max-content) minmax(0, max-content);
-  align-items: baseline;
-  justify-content: center;
-  column-gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
   row-gap: 8px;
 }
 
@@ -13056,11 +13054,20 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='shots']
-  .shot-list-empty-inline-copy > strong,
+  .shot-list-empty-inline-copy > .shot-list-empty-copy {
+  min-width: 0;
+  max-width: 360px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='shots']
-  .shot-list-empty-inline-copy > p {
-  min-width: 0;
+  .shot-list-empty-inline-copy > .shot-list-empty-copy > strong {
+  color: #dff3e3;
+  font-size: inherit;
+  font-weight: 700;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -18861,21 +18868,6 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
-  .shot-create-heading-landscape {
-  padding: 2px 2px 0;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
-  .shot-create-heading-landscape
-  h3 {
-  color: var(--ui-color-text-primary, #eef6f0);
-  font-size: 20px;
-  line-height: 1.25;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
   .shot-create-form-landscape {
   padding: 14px 12px 12px;
   border: 1px solid rgb(127 199 148 / 22%);
@@ -19060,7 +19052,7 @@ h1 {
   padding: 10px 12px;
   border-color: var(--ui-color-selected-border, #83d39a);
   border-radius: 9px;
-  color: #07110a;
+  color: var(--ui-color-text-primary, #eef6f0);
   background: var(--ui-color-action-primary, #8ed9a2);
   font-size: 15px;
 }
@@ -19071,8 +19063,15 @@ h1 {
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
   .shot-create-primary-action:focus-visible {
-  color: #07110a;
+  color: var(--ui-color-text-primary, #eef6f0);
   background: #a4eab4;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-primary-action:disabled {
+  color: var(--ui-color-disabled-text, #84958b);
+  background: var(--ui-color-disabled-surface, #142019);
 }
 
 /* Issue #363: turn the landscape Asset Library into a visual-first browsing

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
+import { ShotCreateForm } from '../../src/renderer/features/shots/ShotCreateForm';
 import { ShotList } from '../../src/renderer/features/shots/ShotList';
 
 const noop = () => undefined;
@@ -35,11 +36,12 @@ describe('Issue #481 Shot polish', () => {
     expect(markup).toContain(
       'shot-list-empty shot-list-empty-inline-copy',
     );
-    expect(markup).toContain('还没有镜头');
-    expect(markup).toContain('先新建一个吧。');
+    expect(markup).toContain(
+      '<strong>还没有镜头，</strong>先新建一个吧。',
+    );
     expect(styles).toContain('.shot-list-empty-inline-copy');
     expect(styles).toContain(
-      'grid-template-columns: minmax(0, max-content) minmax(0, max-content);',
+      'grid-template-columns: minmax(0, 1fr);',
     );
     expect(styles).toContain('grid-column: 1 / -1;');
     expect(styles).toContain('min-width: 0;');
@@ -64,5 +66,36 @@ describe('Issue #481 Shot polish', () => {
     );
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr) 44px;');
     expect(styles).toContain('width: auto;');
+  });
+
+  it('removes the visible landscape form heading while preserving an accessible form name', () => {
+    const markup = renderToStaticMarkup(
+      createElement(ShotCreateForm, {
+        onBack: noop,
+        onCreate: () => true,
+        presentation: 'landscape',
+        suggestedName: '镜头 1',
+      }),
+    );
+
+    expect(markup).toContain('aria-label="新建镜头"');
+    expect(markup).not.toContain(
+      '<h3 id="shot-create-heading">新建镜头</h3>',
+    );
+    expect(markup).not.toContain('shot-create-heading-landscape');
+    expect(markup).toContain('data-testid="shot-create-name"');
+    expect(markup).toContain('data-testid="shot-create-submit"');
+  });
+
+  it('keeps the enabled create action white while retaining a distinct disabled state', () => {
+    const styles = source('src/renderer/styles.css');
+
+    expect(styles).toMatch(
+      /\.shot-create-primary-action \{[\s\S]*?color: var\(--ui-color-text-primary, #eef6f0\);[\s\S]*?background: var\(--ui-color-action-primary, #8ed9a2\);/u,
+    );
+    expect(styles).toContain('.shot-create-primary-action:disabled');
+    expect(styles).toContain(
+      'color: var(--ui-color-disabled-text, #84958b);',
+    );
   });
 });

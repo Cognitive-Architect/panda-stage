@@ -127,8 +127,16 @@ export function ShotList({
               </div>
             </div>
           ) : null}
-          <strong>还没有镜头</strong>
-          <p>先新建一个吧。</p>
+          {inlineEmptyCopy ? (
+            <p className="shot-list-empty-copy">
+              <strong>还没有镜头，</strong>先新建一个吧。
+            </p>
+          ) : (
+            <>
+              <strong>还没有镜头</strong>
+              <p>先新建一个吧。</p>
+            </>
+          )}
         </div>
       ) : (
         <ol>
