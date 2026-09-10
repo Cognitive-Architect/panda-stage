@@ -619,7 +619,7 @@ export function DialogueSheet({
                     未加入时间轴 · {untimedDialogues.length}条
                   </span>
                 ) : (
-                  '暂无待安排字幕'
+                  '还没有字幕'
                 )}
               </h3>
             </div>
@@ -1264,11 +1264,9 @@ export function DialogueSheet({
               src="/subtitle-empty-state.png"
             />
           ) : null}
-          <strong>暂无待安排字幕</strong>
+          <strong>还没有字幕</strong>
           <span>
-            {rightWorkspace
-              ? '新建一条字幕，它会先留在这里等待安排。'
-              : '点击下方入口添加字幕，或从时间轴选择已有字幕。'}
+            先写一句，之后再安排它什么时候出现。
           </span>
           {rightWorkspace ? (
             <button

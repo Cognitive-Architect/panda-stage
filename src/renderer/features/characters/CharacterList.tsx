@@ -95,7 +95,11 @@ export function CharacterList({
       {mode !== 'create' ? (
         <div className="character-list-items">
           {characters.length === 0 ? (
-            <p>还没有角色。请先准备至少两张图片素材。</p>
+            <p>
+              <strong>还没有角色</strong>
+              <br />
+              先准备 2 张角色图片，就能创建角色了。
+            </p>
           ) : (
             characters.map((character) => {
               const defaultExpression =

@@ -414,8 +414,8 @@ export function CanvasStage({
                 className="canvas-stage-message"
                 data-testid="canvas-empty-guidance"
               >
-                <strong>当前镜头还没有图层</strong>
-                <span>请从工具中添加背景或角色。</span>
+                <strong>画布还是空的</strong>
+                <span>从左边加个背景或角色，就能开始摆画面了。</span>
               </div>
             ) : null}
             {missingBackground ? (

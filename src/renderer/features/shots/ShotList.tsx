@@ -61,8 +61,8 @@ export function ShotList({
       </div>
       {shots.length === 0 ? (
         <div className="shot-list-empty">
-          <strong>项目还没有镜头</strong>
-          <p>在下方创建第一个镜头；当前选择将自动指向它。</p>
+          <strong>还没有镜头</strong>
+          <p>先新建一个，我们从第一幕开始。</p>
         </div>
       ) : (
         <ol>
