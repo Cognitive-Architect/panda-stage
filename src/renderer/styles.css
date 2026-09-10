@@ -12810,11 +12810,25 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
+  .resource-activity-heading-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
   .resource-activity-header-actions[data-resource-action-group='character-list-landscape'] {
   display: flex;
-  width: auto;
+  width: 100%;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
 }
 
@@ -19440,41 +19454,6 @@ h1 {
   gap: 14px;
   justify-items: center;
   text-align: center;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-empty-state-anchor {
-  display: flex;
-  min-height: 56px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-empty-state-anchor img {
-  width: 56px;
-  height: 56px;
-  border: 1px solid rgb(127 199 148 / 28%);
-  border-radius: 16px;
-  background: rgb(31 82 51 / 42%);
-  box-shadow: 0 7px 16px rgb(0 0 0 / 14%);
-  object-fit: contain;
-  pointer-events: none;
-  user-select: none;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-empty-state-anchor-connector {
-  width: 18px;
-  height: 1px;
-  background: rgb(127 199 148 / 42%);
 }
 
 .editor-layout[data-shell-mode='landscape']

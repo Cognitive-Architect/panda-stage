@@ -102,22 +102,6 @@ export function CharacterList({
                 className="character-empty-state"
                 data-testid="character-empty-state"
               >
-                <div
-                  aria-hidden="true"
-                  className="character-empty-state-anchor"
-                >
-                  <img
-                    alt=""
-                    draggable={false}
-                    src={characterEmptyNormal}
-                  />
-                  <span className="character-empty-state-anchor-connector" />
-                  <img
-                    alt=""
-                    draggable={false}
-                    src={characterEmptyAngry}
-                  />
-                </div>
                 <div className="character-empty-state-copy">
                   <strong>还没有角色</strong>
                   <p>先准备 2 张角色图片，就能创建角色了。</p>
@@ -270,7 +254,9 @@ export function CharacterList({
             });
           }}
         >
-          <strong>创建含普通 / 生气表情的角色</strong>
+          {mode === 'legacy' ? (
+            <strong>创建含普通 / 生气表情的角色</strong>
+          ) : null}
           <label>
             角色名称
             <input
@@ -328,7 +314,7 @@ export function CharacterList({
           <button disabled={!canCreate} type="submit">
             创建角色
           </button>
-          {imageAssets.length < 2 ? (
+          {mode === 'legacy' && imageAssets.length < 2 ? (
             <small>至少需要两张不同的项目图片素材。</small>
           ) : null}
         </form>

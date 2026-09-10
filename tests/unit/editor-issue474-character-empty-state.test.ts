@@ -12,8 +12,8 @@ function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 
-describe('Issue #474 landscape Character empty state', () => {
-  it('renders a compact, non-interactive two-expression cue', () => {
+describe('Issue #475/#478 landscape Character empty state', () => {
+  it('renders only the approved lower two-expression cue after the final trim', () => {
     const project = migrateProject(exampleProject);
     const imageAssets = project.assets.filter(
       (asset) => asset.kind === 'image',
@@ -33,7 +33,7 @@ describe('Issue #474 landscape Character empty state', () => {
     expect(markup).toContain('data-testid="character-empty-state"');
     expect(markup).toContain('还没有角色');
     expect(markup).toContain('先准备 2 张角色图片，就能创建角色了。');
-    expect(markup).toContain('class="character-empty-state-anchor"');
+    expect(markup).not.toContain('character-empty-state-anchor');
     expect(markup).toContain('例如这样的两张图片');
     expect(markup).toContain('alt="普通表情示意图"');
     expect(markup).toContain('alt="生气表情示意图"');
@@ -43,7 +43,7 @@ describe('Issue #474 landscape Character empty state', () => {
       markup.matchAll(/<img[^>]+src="([^"]+)"/gu),
       (match) => match[1] ?? '',
     );
-    expect(imageSources).toHaveLength(4);
+    expect(imageSources).toHaveLength(2);
     expect(imageSources.every(Boolean)).toBe(true);
     expect(imageSources).not.toContain('/character-empty-normal.png');
     expect(imageSources).not.toContain('/character-empty-angry.png');
@@ -74,7 +74,7 @@ describe('Issue #474 landscape Character empty state', () => {
     expect(styles).toContain(
       "data-resource-header-layout='character-list-landscape'",
     );
-    expect(styles).toContain('.character-empty-state-anchor');
+    expect(styles).not.toContain('.character-empty-state-anchor');
     expect(styles).toContain('.character-empty-state-bridge');
     expect(styles).toContain('.character-empty-state-examples');
     expect(styles).toContain('.character-empty-state-example img');

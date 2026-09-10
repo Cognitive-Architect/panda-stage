@@ -10,6 +10,7 @@ import type {
   ShotWorkspaceView,
 } from '../features/shots/ShotManager';
 import {
+  ArrowLeft,
   Clapperboard,
   CirclePlus,
   FileArchive,
@@ -172,9 +173,17 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     !collapseLandscapeCharacterDetailHeader;
+  const hideLandscapeCharacterListTitle =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    (characterView === 'list' || characterView === 'create');
   const showCreateIcon =
     (activeActivity === 'shots' && shotView !== 'create') ||
     (activeActivity === 'characters' && characterView === 'list');
+  const showCharacterBackIcon =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    characterView === 'create';
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
@@ -289,7 +298,14 @@ export function ResourceActivityDock({
         {!collapseLandscapeCharacterDetailHeader ? (
           <div className="resource-activity-header">
           <div
-            className="resource-activity-heading"
+            className={[
+              'resource-activity-heading',
+              hideLandscapeCharacterListTitle
+                ? 'resource-activity-heading-visually-hidden'
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             data-resource-header-layout={
               showLandscapeCharacterListHeader
                 ? 'character-list-landscape'
@@ -337,6 +353,9 @@ export function ResourceActivityDock({
                   onClick={primaryAction.onClick}
                   type="button"
                 >
+                  {showCharacterBackIcon ? (
+                    <DecorativeIcon icon={ArrowLeft} size={18} />
+                  ) : null}
                   {showCreateIcon ? (
                     <DecorativeIcon icon={CirclePlus} size={18} />
                   ) : null}
