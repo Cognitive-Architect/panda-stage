@@ -8,9 +8,16 @@ function source(path: string): string {
 describe('Issue #482 empty-state copy and Subtitle fallback polish', () => {
   it('uses the approved creator-facing Timeline sentence only', () => {
     const timeline = source('src/renderer/features/timeline/TimelineDock.tsx');
+    const verifier = source(
+      'scripts/verify-issue207-neg002-empty-timeline.cjs',
+    );
 
     expect(timeline).toContain('新建镜头后，这里会显示时间轴。');
     expect(timeline).not.toContain('当前没有可定位的镜头或时长为 0。');
+    expect(verifier).toContain(
+      "const EMPTY_TIMELINE_TEXT = '新建镜头后，这里会显示时间轴。';",
+    );
+    expect(verifier).not.toContain('当前没有可定位的镜头或时长为 0。');
   });
 
   it('removes only the visible no-Shot fallback while retaining the guard', () => {
