@@ -168,6 +168,10 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     (characterView === 'detail' || characterView === 'expression');
+  const showLandscapeCharacterListHeader =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    !collapseLandscapeCharacterDetailHeader;
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
@@ -281,7 +285,14 @@ export function ResourceActivityDock({
       >
         {!collapseLandscapeCharacterDetailHeader ? (
           <div className="resource-activity-header">
-          <div className="resource-activity-heading">
+          <div
+            className="resource-activity-heading"
+            data-resource-header-layout={
+              showLandscapeCharacterListHeader
+                ? 'character-list-landscape'
+                : undefined
+            }
+          >
             {hidePortraitShotChrome ? null : (
               <div>
                 {hideSectionLabels || landscapePresentation ? (
@@ -301,9 +312,11 @@ export function ResourceActivityDock({
                   ? 'asset-browser-landscape'
                   : hideLandscapeCharacterPrimaryAction
                     ? 'character-detail-landscape'
-                  : showPortraitAssetActionGroup
-                    ? 'asset-browser-portrait'
-                    : undefined
+                    : showLandscapeCharacterListHeader
+                      ? 'character-list-landscape'
+                      : showPortraitAssetActionGroup
+                        ? 'asset-browser-portrait'
+                        : undefined
               }
             >
               {hideLandscapeCharacterPrimaryAction ? null : (

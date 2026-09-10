@@ -95,11 +95,45 @@ export function CharacterList({
       {mode !== 'create' ? (
         <div className="character-list-items">
           {characters.length === 0 ? (
-            <p>
-              <strong>还没有角色</strong>
-              <br />
-              先准备 2 张角色图片，就能创建角色了。
-            </p>
+            presentation === 'landscape' && mode === 'list' ? (
+              <div
+                className="character-empty-state"
+                data-testid="character-empty-state"
+              >
+                <div className="character-empty-state-copy">
+                  <strong>还没有角色</strong>
+                  <p>先准备 2 张角色图片，就能创建角色了。</p>
+                </div>
+                <div
+                  aria-label="普通和生气表情示意"
+                  className="character-empty-state-examples"
+                  role="group"
+                >
+                  <figure className="character-empty-state-example">
+                    <img
+                      alt="普通表情示意图"
+                      draggable={false}
+                      src="/character-empty-normal.png"
+                    />
+                    <figcaption>普通</figcaption>
+                  </figure>
+                  <figure className="character-empty-state-example">
+                    <img
+                      alt="生气表情示意图"
+                      draggable={false}
+                      src="/character-empty-angry.png"
+                    />
+                    <figcaption>生气</figcaption>
+                  </figure>
+                </div>
+              </div>
+            ) : (
+              <p>
+                <strong>还没有角色</strong>
+                <br />
+                先准备 2 张角色图片，就能创建角色了。
+              </p>
+            )
           ) : (
             characters.map((character) => {
               const defaultExpression =
