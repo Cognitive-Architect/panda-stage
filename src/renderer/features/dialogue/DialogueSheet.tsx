@@ -7,6 +7,8 @@ import {
 } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
+  Clapperboard,
   GripVertical,
   Info,
   MessageCircleMore,
@@ -71,6 +73,65 @@ export interface DialogueSheetProps {
   pendingDragDialogueId?: string | null;
   presentation?: 'timeline' | 'right-workspace';
   unifiedTaskTray?: boolean;
+}
+
+/**
+ * Presentation-only dependency guidance for a Subtitle workspace without a
+ * current Shot. The diagram is deliberately inert: creating and selecting a
+ * Shot remain owned by the existing Shot workspace and shotStore.
+ */
+function SubtitleNoShotEmptyState(): React.JSX.Element {
+  return (
+    <section
+      aria-labelledby="subtitle-no-shot-state-copy"
+      className="subtitle-no-shot-state dialogue-task-body"
+      data-testid="subtitle-no-shot-state"
+    >
+      <div
+        aria-hidden="true"
+        className="subtitle-no-shot-diagram"
+        data-testid="subtitle-no-shot-diagram"
+      >
+        <div
+          className="subtitle-no-shot-card subtitle-no-shot-card-active"
+          data-testid="subtitle-no-shot-shot"
+        >
+          <DecorativeIcon
+            className="subtitle-no-shot-card-icon"
+            icon={Clapperboard}
+            size={28}
+            strokeWidth={1.8}
+          />
+          <span>镜头</span>
+        </div>
+        <DecorativeIcon
+          className="subtitle-no-shot-arrow"
+          icon={ArrowRight}
+          size={18}
+          strokeWidth={1.8}
+        />
+        <div
+          className="subtitle-no-shot-card subtitle-no-shot-card-muted"
+          data-testid="subtitle-no-shot-subtitle"
+        >
+          <DecorativeIcon
+            className="subtitle-no-shot-card-icon"
+            icon={MessageCircleMore}
+            size={26}
+            strokeWidth={1.8}
+          />
+          <span>字幕</span>
+        </div>
+      </div>
+      <p
+        className="subtitle-no-shot-copy"
+        data-testid="subtitle-no-shot-copy"
+        id="subtitle-no-shot-state-copy"
+      >
+        先新建一个镜头吧。
+      </p>
+    </section>
+  );
 }
 
 function pendingDialogueIdFromTarget(target: EventTarget | null): string | null {
@@ -196,7 +257,7 @@ export function DialogueSheet({
   pendingDragDialogueId = null,
   presentation = 'timeline',
   unifiedTaskTray = false,
-}: DialogueSheetProps = {}): React.JSX.Element | null {
+}: DialogueSheetProps = {}): React.JSX.Element {
   const rightWorkspace = presentation === 'right-workspace';
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -288,6 +349,7 @@ export function DialogueSheet({
   const shot = snapshot?.project.shots.find(
     (candidate) => candidate.id === currentShotId,
   );
+  const noCurrentShot = shot === undefined;
   const dialogues = shot?.dialogues ?? [];
   const selectedDialogue = dialogues.find(
     (dialogue) => dialogue.id === selectedDialogueId,
@@ -308,13 +370,6 @@ export function DialogueSheet({
     characters.map((character) => character.id),
   );
   const canAdd = singleErrors.speaker === null && singleErrors.text === null;
-
-  if (!shot) {
-    // Keep the safety boundary before any dialogue authoring surface is
-    // mounted. A project without a current Shot has no valid subtitle target,
-    // so it should expose no creator-facing fallback or unusable CTA.
-    return null;
-  }
 
   const handleAdd = (): void => {
     setSingleTouched({ speaker: true, text: true });
@@ -522,13 +577,16 @@ export function DialogueSheet({
     : selectedUntimedDialogue
       ? 'untimed'
       : 'none';
+  const taskAuthoringMode: DialogueAuthoringMode = noCurrentShot
+    ? 'none'
+    : authoringMode;
   const timelineState = getDialogueSheetState({
-    authoringMode,
+    authoringMode: taskAuthoringMode,
     selectedDialogueState,
     pendingCount: untimedDialogues.length,
   });
   const taskTrayState = getDialogueTaskTrayState({
-    authoringMode,
+    authoringMode: taskAuthoringMode,
     selectedDialogueState,
     pendingCount: untimedDialogues.length,
   });
@@ -560,7 +618,7 @@ export function DialogueSheet({
       data-testid="dialogue-sheet"
       ref={taskSheetRef}
     >
-      {authoringMode === 'none' ? (
+      {noCurrentShot || authoringMode === 'none' ? (
         <header
           className={`dialogue-sheet-header${
             showTimedEditor ? ' dialogue-sheet-header-timed' : ''
@@ -1062,7 +1120,9 @@ export function DialogueSheet({
         </section>
       )}
 
-      {showTimedEditor && selectedTimedDialogue ? (
+      {rightWorkspace && noCurrentShot ? (
+        <SubtitleNoShotEmptyState />
+      ) : showTimedEditor && selectedTimedDialogue ? (
         <section
           className="timeline-subtitle-editor dialogue-task-body dialogue-task-body-timed"
           data-state="selected-timed"

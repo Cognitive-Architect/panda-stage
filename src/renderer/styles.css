@@ -3200,6 +3200,82 @@ button:disabled {
   margin-top: 8px;
 }
 
+/* Issue #483: a no-Shot Subtitle surface explains the dependency without
+   introducing a second action owner. The diagram is decorative and remains
+   inert; Shot creation stays in the Shot workspace. */
+.dialogue-sheet-right-workspace .subtitle-no-shot-state {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 28px 20px;
+  overflow: hidden;
+  align-content: center;
+  justify-items: center;
+  color: var(--ui-color-text-secondary);
+  text-align: center;
+  gap: 18px;
+}
+
+.dialogue-sheet-right-workspace .subtitle-no-shot-diagram {
+  display: flex;
+  width: min(100%, 250px);
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.dialogue-sheet-right-workspace .subtitle-no-shot-card {
+  display: grid;
+  width: 92px;
+  min-height: 78px;
+  padding: 9px 6px;
+  border: 1px solid rgb(131 211 154 / 24%);
+  border-radius: 12px;
+  color: #8fa096;
+  background: rgb(255 255 255 / 3%);
+  place-items: center;
+  gap: 5px;
+}
+
+.dialogue-sheet-right-workspace .subtitle-no-shot-card-active {
+  border-color: rgb(142 217 162 / 58%);
+  color: #dff3e3;
+  background: rgb(45 104 62 / 30%);
+}
+
+.dialogue-sheet-right-workspace .subtitle-no-shot-card-muted {
+  opacity: 0.55;
+}
+
+.dialogue-sheet-right-workspace .subtitle-no-shot-card-icon {
+  color: #8fb99b;
+}
+
+.dialogue-sheet-right-workspace .subtitle-no-shot-card span {
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.dialogue-sheet-right-workspace .subtitle-no-shot-arrow {
+  flex: 0 0 auto;
+  color: #708078;
+}
+
+.dialogue-sheet-right-workspace .subtitle-no-shot-copy {
+  max-width: 100%;
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
 /* Issue #430 P-01/P-02/P-03: R2 subtitle drawer polish.
    - Formal drawer header with subtitle icon + 字幕 + Close ×
    - Pending queue section heading + bottom 新建字幕 CTA

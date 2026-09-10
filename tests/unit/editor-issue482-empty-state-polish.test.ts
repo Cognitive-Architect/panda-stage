@@ -20,12 +20,26 @@ describe('Issue #482 empty-state copy and Subtitle fallback polish', () => {
     expect(verifier).not.toContain('当前没有可定位的镜头或时长为 0。');
   });
 
-  it('removes only the visible no-Shot fallback while retaining the guard', () => {
+  it('keeps no-Shot safety while rendering dependency guidance without a CTA', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
+    const start = sheet.indexOf('function SubtitleNoShotEmptyState');
+    const end = sheet.indexOf('export function DialogueSheet');
+    const noShotState = sheet.slice(start, end);
 
-    expect(sheet).toContain('if (!shot)');
-    expect(sheet).toContain('return null;');
     expect(sheet).not.toContain('请选择一个镜头以编辑对白。');
+    expect(sheet).toContain('const noCurrentShot = shot === undefined;');
+    expect(sheet).toContain('rightWorkspace && noCurrentShot');
+    expect(noShotState).toContain('data-testid="subtitle-no-shot-state"');
+    expect(noShotState).toContain('data-testid="subtitle-no-shot-diagram"');
+    expect(noShotState).toContain('data-testid="subtitle-no-shot-shot"');
+    expect(noShotState).toContain('data-testid="subtitle-no-shot-subtitle"');
+    expect(noShotState).toContain('data-testid="subtitle-no-shot-copy"');
+    expect(noShotState).toContain('Clapperboard');
+    expect(noShotState).toContain('MessageCircleMore');
+    expect(noShotState).toContain('ArrowRight');
+    expect(noShotState).toContain('先新建一个镜头吧。');
+    expect(noShotState).not.toContain('<button');
+    expect(noShotState).not.toContain('新建字幕');
   });
 
   it('keeps the normal Subtitle state compact, decorative, and actionable', () => {
@@ -40,5 +54,8 @@ describe('Issue #482 empty-state copy and Subtitle fallback polish', () => {
     expect(styles).toContain('.subtitle-workspace-empty-art');
     expect(styles).toContain('pointer-events: none;');
     expect(styles).toContain('text-wrap: balance;');
+    expect(styles).toContain('.subtitle-no-shot-diagram');
+    expect(styles).toContain('.subtitle-no-shot-card-active');
+    expect(styles).toContain('.subtitle-no-shot-card-muted');
   });
 });
