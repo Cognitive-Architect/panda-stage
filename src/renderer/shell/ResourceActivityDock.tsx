@@ -173,7 +173,7 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     !collapseLandscapeCharacterDetailHeader;
-  const hideLandscapeCharacterListTitle =
+  const useDirectCharacterWorkspaceLabel =
     landscapePresentation &&
     activeActivity === 'characters' &&
     (characterView === 'list' || characterView === 'create');
@@ -233,12 +233,16 @@ export function ResourceActivityDock({
   return (
     <section
       aria-label={
-        hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
+        hidePortraitShotChrome ||
+        collapseLandscapeCharacterDetailHeader ||
+        useDirectCharacterWorkspaceLabel
           ? activeLabel
           : undefined
       }
       aria-labelledby={
-        hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
+        hidePortraitShotChrome ||
+        collapseLandscapeCharacterDetailHeader ||
+        useDirectCharacterWorkspaceLabel
           ? undefined
           : 'resource-activity-heading'
       }
@@ -298,21 +302,14 @@ export function ResourceActivityDock({
         {!collapseLandscapeCharacterDetailHeader ? (
           <div className="resource-activity-header">
           <div
-            className={[
-              'resource-activity-heading',
-              hideLandscapeCharacterListTitle
-                ? 'resource-activity-heading-sr-only'
-                : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
+            className="resource-activity-heading"
             data-resource-header-layout={
               showLandscapeCharacterListHeader
                 ? 'character-list-landscape'
                 : undefined
             }
           >
-            {hidePortraitShotChrome ? null : (
+            {hidePortraitShotChrome || useDirectCharacterWorkspaceLabel ? null : (
               <div>
                 {hideSectionLabels || landscapePresentation ? (
                   <h2 id="resource-activity-heading">{activeLabel}</h2>

@@ -13,7 +13,7 @@ function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 
-describe('Issue #478 Character header and create-view trim', () => {
+describe('Issue #479 Character header accessibility repair', () => {
   it('removes redundant create-view copy without changing the form rule', () => {
     const project = migrateProject(exampleProject);
     const imageAssets = project.assets.filter(
@@ -41,15 +41,15 @@ describe('Issue #478 Character header and create-view trim', () => {
     expect(markup).toContain('disabled=""');
   });
 
-  it('keeps the approved Character actions and accessibility seam while moving actions left', () => {
+  it('deletes the redundant Character heading without clipping the actions', () => {
     const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
     const styles = source('src/renderer/styles.css');
     const list = source('src/renderer/features/characters/CharacterList.tsx');
 
-    expect(dock).toContain('hideLandscapeCharacterListTitle');
-    expect(dock).toContain(
-      "'resource-activity-heading-sr-only'",
-    );
+    expect(dock).toContain('useDirectCharacterWorkspaceLabel');
+    expect(dock).not.toContain('hideLandscapeCharacterListTitle');
+    expect(dock).not.toContain('resource-activity-heading-sr-only');
+    expect(styles).not.toContain('resource-activity-heading-sr-only');
     expect(dock).toContain('icon={CirclePlus}');
     expect(dock).toContain('icon={ArrowLeft}');
     expect(dock).toContain("label: '新建角色'");
@@ -59,6 +59,7 @@ describe('Issue #478 Character header and create-view trim', () => {
     );
     expect(styles).toContain('width: 100%;');
     expect(styles).toContain('justify-content: space-between;');
+    expect(styles).toContain('grid-template-columns: minmax(0, 1fr);');
     expect(list).not.toContain('character-empty-state-anchor');
     expect(list).toContain('normalAssetId !== angryAssetId');
     expect(list).toContain('onCreate({');
@@ -79,10 +80,9 @@ describe('Issue #478 Character header and create-view trim', () => {
       }),
     );
 
-    expect(markup).toContain(
-      'resource-activity-heading resource-activity-heading-sr-only',
-    );
-    expect(markup).toContain(
+    expect(markup).toContain('<section aria-label="角色"');
+    expect(markup).not.toContain('aria-labelledby="resource-activity-heading"');
+    expect(markup).not.toContain(
       '<h2 id="resource-activity-heading">角色</h2>',
     );
     const actionIndex = markup.indexOf(
@@ -95,5 +95,26 @@ describe('Issue #478 Character header and create-view trim', () => {
     expect(closeIndex).toBeGreaterThan(actionIndex);
     expect(markup).toContain('data-resource-action="characters-新建角色"');
     expect(markup).toContain('data-resource-action-group="character-list-landscape"');
+  });
+
+  it('keeps the existing heading contract for unrelated resource presentations', () => {
+    const project = migrateProject(exampleProject);
+    const markup = renderToStaticMarkup(
+      createElement(ResourceActivityDock, {
+        activeActivity: 'shots',
+        presentation: 'default',
+        snapshot: {
+          projectRoot: 'D:\\PandaStage-Acceptance\\issue-479.pandastage',
+          project,
+          dirty: false,
+          revision: 0,
+        },
+      }),
+    );
+
+    expect(markup).toContain('aria-labelledby="resource-activity-heading"');
+    expect(markup).toContain(
+      '<h2 id="resource-activity-heading">镜头工作区</h2>',
+    );
   });
 });
