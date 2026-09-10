@@ -12880,7 +12880,10 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='shots']
-  .resource-activity-heading[data-resource-header-layout='shot-list-landscape'] {
+  .resource-activity-heading[data-resource-header-layout='shot-list-landscape'],
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-heading[data-resource-header-layout='shot-create-landscape'] {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
@@ -12889,7 +12892,10 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='shots']
-  .resource-activity-header-actions[data-resource-action-group='shot-list-landscape'] {
+  .resource-activity-header-actions[data-resource-action-group='shot-list-landscape'],
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-header-actions[data-resource-action-group='shot-create-landscape'] {
   display: flex;
   width: 100%;
   align-items: center;
@@ -12900,6 +12906,10 @@ h1 {
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='shots']
   .resource-activity-header-actions[data-resource-action-group='shot-list-landscape']
+  .resource-activity-primary-action,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-header-actions[data-resource-action-group='shot-create-landscape']
   .resource-activity-primary-action {
   width: auto;
   min-width: 0;
@@ -13026,6 +13036,31 @@ h1 {
   .resource-activity-dock-landscape[data-active-activity='shots']
   .shot-list-empty > p {
   font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy {
+  grid-template-columns: minmax(0, max-content) minmax(0, max-content);
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 10px;
+  row-gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > .shot-empty-storyboard {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > strong,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > p {
+  min-width: 0;
 }
 
 .editor-layout[data-shell-mode='landscape']

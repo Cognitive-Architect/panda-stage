@@ -29,6 +29,7 @@ export interface ShotListProps {
   selectedActions?: ReactNode;
   compactDuration?: boolean;
   showStoryboardCue?: boolean;
+  inlineEmptyCopy?: boolean;
 }
 
 export function ShotList({
@@ -44,6 +45,7 @@ export function ShotList({
   selectedActions,
   compactDuration = false,
   showStoryboardCue = false,
+  inlineEmptyCopy = false,
 }: ShotListProps): React.JSX.Element {
   const suggestedName = nextAvailableShotName(shots);
 
@@ -64,7 +66,13 @@ export function ShotList({
         <span>{shots.length} 个镜头</span>
       </div>
       {shots.length === 0 ? (
-        <div className="shot-list-empty">
+        <div
+          className={
+            inlineEmptyCopy
+              ? 'shot-list-empty shot-list-empty-inline-copy'
+              : 'shot-list-empty'
+          }
+        >
           {showStoryboardCue ? (
             <div
               aria-hidden="true"

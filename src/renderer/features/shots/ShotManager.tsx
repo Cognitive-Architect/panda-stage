@@ -210,6 +210,7 @@ export function ShotManager({
               ) : undefined
             }
             compactDuration={presentation === 'landscape'}
+            inlineEmptyCopy={presentation === 'landscape'}
             showStoryboardCue={presentation === 'landscape'}
             showHeading={!hideHeading}
             showCreateForm={false}

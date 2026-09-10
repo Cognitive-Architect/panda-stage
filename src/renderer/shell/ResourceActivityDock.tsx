@@ -175,8 +175,12 @@ export function ResourceActivityDock({
     !collapseLandscapeCharacterDetailHeader;
   const useDirectLandscapeShotWorkspaceLabel =
     landscapePresentation &&
-    activeActivity === 'shots' &&
-    shotView === 'list';
+    activeActivity === 'shots';
+  const landscapeShotHeaderLayout = useDirectLandscapeShotWorkspaceLabel
+    ? shotView === 'create'
+      ? 'shot-create-landscape'
+      : 'shot-list-landscape'
+    : undefined;
   const useDirectCharacterWorkspaceLabel =
     landscapePresentation &&
     activeActivity === 'characters' &&
@@ -312,8 +316,8 @@ export function ResourceActivityDock({
             data-resource-header-layout={
               showLandscapeCharacterListHeader
                 ? 'character-list-landscape'
-                : useDirectLandscapeShotWorkspaceLabel
-                  ? 'shot-list-landscape'
+                : landscapeShotHeaderLayout
+                  ? landscapeShotHeaderLayout
                   : undefined
             }
           >
@@ -337,11 +341,11 @@ export function ResourceActivityDock({
                 showLandscapeAssetActionGroup
                   ? 'asset-browser-landscape'
                   : hideLandscapeCharacterPrimaryAction
-                    ? 'character-detail-landscape'
-                    : showLandscapeCharacterListHeader
-                      ? 'character-list-landscape'
-                      : useDirectLandscapeShotWorkspaceLabel
-                        ? 'shot-list-landscape'
+                      ? 'character-detail-landscape'
+                      : showLandscapeCharacterListHeader
+                        ? 'character-list-landscape'
+                      : landscapeShotHeaderLayout
+                        ? landscapeShotHeaderLayout
                         : showPortraitAssetActionGroup
                           ? 'asset-browser-portrait'
                           : undefined
