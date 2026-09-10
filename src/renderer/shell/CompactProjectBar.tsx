@@ -22,7 +22,7 @@ export function shouldRenderRestSaveState(
   expanded: boolean,
   saveState: CompactProjectSaveState,
 ): boolean {
-  return !expanded && saveState !== 'saved';
+  return !expanded && (saveState === 'saving' || saveState === 'failed');
 }
 
 export interface CompactProjectBarProps {
@@ -39,13 +39,6 @@ export interface CompactProjectBarProps {
   onRequestCloseProject(): void;
   presentation?: EditorShellLayoutMode;
 }
-
-const SAVE_STATE_LABELS: Record<CompactProjectSaveState, string> = {
-  saved: '已保存',
-  dirty: '有未保存更改',
-  saving: '保存中',
-  failed: '保存失败',
-};
 
 const QUIET_STATUS_MESSAGES = new Set([
   'Ready',
@@ -86,7 +79,12 @@ export function QuickActionDrawer({
     (Boolean(statusText) && !QUIET_STATUS_MESSAGES.has(statusText));
   const saveDisabled =
     busy || saveState === 'saving' || !projectSnapshot.dirty;
-  const saveStateLabel = SAVE_STATE_LABELS[saveState];
+  const saveStateLabel =
+    saveState === 'saving'
+      ? '保存中'
+      : saveState === 'failed'
+        ? '保存失败'
+        : null;
   const saveTitle =
     saveState === 'saving'
       ? '保存中'
@@ -255,7 +253,7 @@ export function QuickActionDrawer({
             variant="secondary"
           />
         </div>
-        {saveState !== 'saved' ? (
+        {saveStateLabel ? (
           <span
             aria-live="polite"
             className={`quick-action-drawer-save-state quick-action-drawer-save-state-${saveState}`}

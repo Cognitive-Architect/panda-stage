@@ -28348,6 +28348,7 @@ h1 {
 .quick-action-drawer[data-expanded='false'] .quick-action-drawer-surface {
   max-height: 0;
   padding-block: 0;
+  border-width: 0;
   border-color: transparent;
   background: transparent;
   opacity: 0;
@@ -28498,8 +28499,6 @@ h1 {
   font-weight: 800;
 }
 
-.quick-action-drawer-save-state-dirty,
-.quick-action-drawer-rest-state-dirty,
 .quick-action-drawer-save-state-saving,
 .quick-action-drawer-rest-state-saving {
   color: #ffe6ad;
@@ -28514,10 +28513,6 @@ h1 {
 .quick-action-drawer-rest-state-failed {
   color: #ffd4d0;
   background: rgb(124 46 37 / 44%);
-}
-
-.quick-action-drawer-rest-state-dirty {
-  border-color: var(--ui-color-action-warning);
 }
 
 .quick-action-drawer-rest-state-failed {
@@ -28551,6 +28546,10 @@ h1 {
 .quick-action-drawer-handle:focus-visible {
   outline: 2px solid var(--ui-color-focus-ring);
   outline-offset: 2px;
+}
+
+.quick-action-drawer[data-expanded='false'] .quick-action-drawer-handle {
+  align-items: flex-start;
 }
 
 .quick-action-drawer-grip {
