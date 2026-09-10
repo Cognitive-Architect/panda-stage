@@ -48,7 +48,7 @@ describe('Issue #478 Character header and create-view trim', () => {
 
     expect(dock).toContain('hideLandscapeCharacterListTitle');
     expect(dock).toContain(
-      "'resource-activity-heading-visually-hidden'",
+      "'resource-activity-heading-sr-only'",
     );
     expect(dock).toContain('icon={CirclePlus}');
     expect(dock).toContain('icon={ArrowLeft}');
@@ -80,7 +80,7 @@ describe('Issue #478 Character header and create-view trim', () => {
     );
 
     expect(markup).toContain(
-      'resource-activity-heading resource-activity-heading-visually-hidden',
+      'resource-activity-heading resource-activity-heading-sr-only',
     );
     expect(markup).toContain(
       '<h2 id="resource-activity-heading">角色</h2>',

@@ -12810,7 +12810,7 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
-  .resource-activity-heading-visually-hidden {
+  .resource-activity-heading-sr-only {
   position: absolute;
   width: 1px;
   height: 1px;

@@ -301,7 +301,7 @@ export function ResourceActivityDock({
             className={[
               'resource-activity-heading',
               hideLandscapeCharacterListTitle
-                ? 'resource-activity-heading-visually-hidden'
+                ? 'resource-activity-heading-sr-only'
                 : '',
             ]
               .filter(Boolean)
