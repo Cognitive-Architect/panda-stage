@@ -172,6 +172,9 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     !collapseLandscapeCharacterDetailHeader;
+  const showCreateIcon =
+    (activeActivity === 'shots' && shotView !== 'create') ||
+    (activeActivity === 'characters' && characterView === 'list');
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
@@ -334,7 +337,7 @@ export function ResourceActivityDock({
                   onClick={primaryAction.onClick}
                   type="button"
                 >
-                  {activeActivity === 'shots' && shotView !== 'create' ? (
+                  {showCreateIcon ? (
                     <DecorativeIcon icon={CirclePlus} size={18} />
                   ) : null}
                   {activeActivity === 'assets' && assetView === 'browser' ? (

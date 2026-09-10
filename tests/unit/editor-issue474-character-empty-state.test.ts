@@ -33,12 +33,20 @@ describe('Issue #474 landscape Character empty state', () => {
     expect(markup).toContain('data-testid="character-empty-state"');
     expect(markup).toContain('还没有角色');
     expect(markup).toContain('先准备 2 张角色图片，就能创建角色了。');
-    expect(markup).toContain('src="/character-empty-normal.png"');
-    expect(markup).toContain('src="/character-empty-angry.png"');
+    expect(markup).toContain('class="character-empty-state-anchor"');
+    expect(markup).toContain('例如这样的两张图片');
     expect(markup).toContain('alt="普通表情示意图"');
     expect(markup).toContain('alt="生气表情示意图"');
     expect(markup).toContain('<figcaption>普通</figcaption>');
     expect(markup).toContain('<figcaption>生气</figcaption>');
+    const imageSources = Array.from(
+      markup.matchAll(/<img[^>]+src="([^"]+)"/gu),
+      (match) => match[1] ?? '',
+    );
+    expect(imageSources).toHaveLength(4);
+    expect(imageSources.every(Boolean)).toBe(true);
+    expect(imageSources).not.toContain('/character-empty-normal.png');
+    expect(imageSources).not.toContain('/character-empty-angry.png');
     expect(markup).not.toMatch(
       /character-empty-state[\s\S]*?<button/gu,
     );
@@ -53,13 +61,26 @@ describe('Issue #474 landscape Character empty state', () => {
 
     expect(dock).toContain('character-list-landscape');
     expect(list).toContain("presentation === 'landscape' && mode === 'list'");
+    expect(list).toContain(
+      "import characterEmptyNormal from './assets/character-empty-normal.png';",
+    );
+    expect(list).toContain(
+      "import characterEmptyAngry from './assets/character-empty-angry.png';",
+    );
+    expect(list).not.toContain('src="/character-empty-normal.png"');
+    expect(list).not.toContain('src="/character-empty-angry.png"');
     expect(list).toContain('normalAssetId !== angryAssetId');
     expect(list).toContain('onCreate({');
     expect(styles).toContain(
       "data-resource-header-layout='character-list-landscape'",
     );
+    expect(styles).toContain('.character-empty-state-anchor');
+    expect(styles).toContain('.character-empty-state-bridge');
     expect(styles).toContain('.character-empty-state-examples');
     expect(styles).toContain('.character-empty-state-example img');
+    expect(styles).toContain('max-width: 360px');
+    expect(styles).toContain('width: 116px');
+    expect(styles).toContain('object-fit: contain');
     expect(styles).not.toContain('character-empty-state button');
   });
 });

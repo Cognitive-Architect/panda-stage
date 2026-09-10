@@ -5,6 +5,8 @@ import type {
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
+import characterEmptyAngry from './assets/character-empty-angry.png';
+import characterEmptyNormal from './assets/character-empty-normal.png';
 
 export interface CharacterListProps {
   characters: readonly Character[];
@@ -100,10 +102,29 @@ export function CharacterList({
                 className="character-empty-state"
                 data-testid="character-empty-state"
               >
+                <div
+                  aria-hidden="true"
+                  className="character-empty-state-anchor"
+                >
+                  <img
+                    alt=""
+                    draggable={false}
+                    src={characterEmptyNormal}
+                  />
+                  <span className="character-empty-state-anchor-connector" />
+                  <img
+                    alt=""
+                    draggable={false}
+                    src={characterEmptyAngry}
+                  />
+                </div>
                 <div className="character-empty-state-copy">
                   <strong>还没有角色</strong>
                   <p>先准备 2 张角色图片，就能创建角色了。</p>
                 </div>
+                <p className="character-empty-state-bridge">
+                  例如这样的两张图片
+                </p>
                 <div
                   aria-label="普通和生气表情示意"
                   className="character-empty-state-examples"
@@ -113,7 +134,7 @@ export function CharacterList({
                     <img
                       alt="普通表情示意图"
                       draggable={false}
-                      src="/character-empty-normal.png"
+                      src={characterEmptyNormal}
                     />
                     <figcaption>普通</figcaption>
                   </figure>
@@ -121,7 +142,7 @@ export function CharacterList({
                     <img
                       alt="生气表情示意图"
                       draggable={false}
-                      src="/character-empty-angry.png"
+                      src={characterEmptyAngry}
                     />
                     <figcaption>生气</figcaption>
                   </figure>

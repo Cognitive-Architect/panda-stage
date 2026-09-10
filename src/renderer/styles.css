@@ -19434,12 +19434,47 @@ h1 {
   .character-list[data-character-list-presentation='landscape']
   .character-empty-state {
   display: grid;
-  max-width: 282px;
-  padding: clamp(28px, 7vh, 72px) 0 18px;
+  max-width: 360px;
+  padding: clamp(24px, 5vh, 52px) 0 22px;
   margin: 0 auto;
-  gap: 16px;
+  gap: 14px;
   justify-items: center;
   text-align: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-empty-state-anchor {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-empty-state-anchor img {
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 16px;
+  background: rgb(31 82 51 / 42%);
+  box-shadow: 0 7px 16px rgb(0 0 0 / 14%);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-empty-state-anchor-connector {
+  width: 18px;
+  height: 1px;
+  background: rgb(127 199 148 / 42%);
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -19476,6 +19511,38 @@ h1 {
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
+  .character-empty-state-bridge {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  color: var(--ui-color-text-muted, #819188);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-empty-state-bridge::before,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-empty-state-bridge::after {
+  flex: 1;
+  height: 1px;
+  background: rgb(127 199 148 / 18%);
+  content: '';
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
   .character-empty-state-examples {
   display: grid;
   width: 100%;
@@ -19499,13 +19566,13 @@ h1 {
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-empty-state-example img {
-  width: 88px;
-  height: 88px;
-  border: 1px solid rgb(127 199 148 / 24%);
-  border-radius: 14px;
-  background: #08100b;
-  box-shadow: 0 7px 16px rgb(0 0 0 / 18%);
-  object-fit: cover;
+  width: 116px;
+  height: 116px;
+  border: 1px solid rgb(127 199 148 / 32%);
+  border-radius: 16px;
+  background: rgb(31 82 51 / 42%);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 20%);
+  object-fit: contain;
   pointer-events: none;
   user-select: none;
 }
