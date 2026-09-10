@@ -87,11 +87,14 @@ export function ShotManager({
     }
   };
 
-  const createShot = (name: string, durationMs: number): boolean =>
-    mutate(
+  const createShot = (name: string, durationMs: number): boolean => {
+    const next = mutate(
       () => shotStore.create({ name, durationMs }),
       `镜头“${name.trim()}”已创建。`,
-    ) !== null;
+    );
+    if (next && presentation === 'landscape') setStatus('');
+    return next !== null;
+  };
 
   const duplicateSelectedShot = (): void => {
     if (!selectedShot) return;
@@ -115,11 +118,11 @@ export function ShotManager({
       `镜头“${selectedShot.name}”已移除。`,
     );
     if (next?.shots.length === 0) {
-      setStatus(
-        presentation === 'landscape'
-          ? '最后一个镜头已移除，请创建新镜头。'
-          : '最后一个镜头已移除；请创建新镜头继续。项目尚未保存。',
-      );
+      if (presentation === 'landscape') {
+        setStatus('');
+      } else {
+        setStatus('最后一个镜头已移除；请创建新镜头继续。项目尚未保存。');
+      }
     }
   };
 
@@ -207,6 +210,7 @@ export function ShotManager({
               ) : undefined
             }
             compactDuration={presentation === 'landscape'}
+            showStoryboardCue={presentation === 'landscape'}
             showHeading={!hideHeading}
             showCreateForm={false}
             shots={project?.shots ?? []}

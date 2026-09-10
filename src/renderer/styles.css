@@ -9044,6 +9044,62 @@ button:disabled {
   line-height: 1.5;
 }
 
+.shot-empty-storyboard {
+  display: flex;
+  width: min(100%, 300px);
+  min-height: 74px;
+  margin: 0 auto 4px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.shot-empty-storyboard-card {
+  display: grid;
+  width: 72px;
+  min-height: 62px;
+  padding: 8px 5px;
+  border: 1px solid rgb(131 211 154 / 18%);
+  border-radius: 12px;
+  color: #82988a;
+  background: rgb(255 255 255 / 3%);
+  place-items: center;
+  gap: 4px;
+}
+
+.shot-empty-storyboard-card-primary {
+  width: 88px;
+  min-height: 74px;
+  border-color: rgb(142 217 162 / 58%);
+  color: #dff3e3;
+  background: rgb(45 104 62 / 30%);
+}
+
+.shot-empty-storyboard-card-muted {
+  opacity: 0.55;
+}
+
+.shot-empty-storyboard-card-faded {
+  opacity: 0.3;
+}
+
+.shot-empty-storyboard-icon {
+  color: #8fb99b;
+}
+
+.shot-empty-storyboard-card span {
+  color: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.shot-empty-storyboard-arrow {
+  flex: 0 0 auto;
+  color: #708078;
+}
+
 .shot-create-form,
 .shot-fields {
   display: grid;
@@ -12823,6 +12879,36 @@ h1 {
 }
 
 .editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-heading[data-resource-header-layout='shot-list-landscape'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-header-actions[data-resource-action-group='shot-list-landscape'] {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-header-actions[data-resource-action-group='shot-list-landscape']
+  .resource-activity-primary-action {
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
   .resource-activity-close {
   display: inline-grid;
@@ -12918,6 +13004,28 @@ h1 {
   border-radius: 0;
   background: transparent;
   gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty {
+  min-height: 250px;
+  padding: 24px 6px 32px;
+  align-content: center;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty > strong {
+  color: #dff3e3;
+  font-size: 20px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty > p {
+  font-size: 14px;
 }
 
 .editor-layout[data-shell-mode='landscape']

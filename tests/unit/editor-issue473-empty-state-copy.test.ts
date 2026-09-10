@@ -34,7 +34,8 @@ describe('Issue #473 first-use empty-state copy', () => {
     expect(assets).toContain('counts.all === 0');
 
     expect(shots).toContain('还没有镜头');
-    expect(shots).toContain('先新建一个，我们从第一幕开始。');
+    expect(shots).toContain('先新建一个吧。');
+    expect(shots).not.toContain('先新建一个，我们从第一幕开始。');
     expect(shots).not.toContain('当前选择将自动指向它');
 
     expect(characters).toContain('还没有角色');

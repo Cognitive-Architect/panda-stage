@@ -173,6 +173,10 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     !collapseLandscapeCharacterDetailHeader;
+  const useDirectLandscapeShotWorkspaceLabel =
+    landscapePresentation &&
+    activeActivity === 'shots' &&
+    shotView === 'list';
   const useDirectCharacterWorkspaceLabel =
     landscapePresentation &&
     activeActivity === 'characters' &&
@@ -235,6 +239,7 @@ export function ResourceActivityDock({
       aria-label={
         hidePortraitShotChrome ||
         collapseLandscapeCharacterDetailHeader ||
+        useDirectLandscapeShotWorkspaceLabel ||
         useDirectCharacterWorkspaceLabel
           ? activeLabel
           : undefined
@@ -242,6 +247,7 @@ export function ResourceActivityDock({
       aria-labelledby={
         hidePortraitShotChrome ||
         collapseLandscapeCharacterDetailHeader ||
+        useDirectLandscapeShotWorkspaceLabel ||
         useDirectCharacterWorkspaceLabel
           ? undefined
           : 'resource-activity-heading'
@@ -306,10 +312,14 @@ export function ResourceActivityDock({
             data-resource-header-layout={
               showLandscapeCharacterListHeader
                 ? 'character-list-landscape'
-                : undefined
+                : useDirectLandscapeShotWorkspaceLabel
+                  ? 'shot-list-landscape'
+                  : undefined
             }
           >
-            {hidePortraitShotChrome || useDirectCharacterWorkspaceLabel ? null : (
+            {hidePortraitShotChrome ||
+            useDirectLandscapeShotWorkspaceLabel ||
+            useDirectCharacterWorkspaceLabel ? null : (
               <div>
                 {hideSectionLabels || landscapePresentation ? (
                   <h2 id="resource-activity-heading">{activeLabel}</h2>
@@ -330,9 +340,11 @@ export function ResourceActivityDock({
                     ? 'character-detail-landscape'
                     : showLandscapeCharacterListHeader
                       ? 'character-list-landscape'
-                      : showPortraitAssetActionGroup
-                        ? 'asset-browser-portrait'
-                        : undefined
+                      : useDirectLandscapeShotWorkspaceLabel
+                        ? 'shot-list-landscape'
+                        : showPortraitAssetActionGroup
+                          ? 'asset-browser-portrait'
+                          : undefined
               }
             >
               {hideLandscapeCharacterPrimaryAction ? null : (
