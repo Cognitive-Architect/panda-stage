@@ -178,7 +178,11 @@
       },
       {
         "id": "characters",
-        "sourcePatterns": ["src/renderer/features/characters/**"],
+        "sourcePatterns": [
+          "src/renderer/features/characters/**",
+          "public/character-empty-normal.png",
+          "public/character-empty-angry.png"
+        ],
         "testPatterns": ["tests/unit/character-*.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": ["scripts/verify-day19*"],
         "suites": ["character"],
