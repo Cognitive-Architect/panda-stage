@@ -134,6 +134,22 @@ describe('Issue #454 Quick Action Drawer', () => {
     expect(failed).toContain('data-testid="editor-action-status"');
   });
 
+  it('makes only the dirty Save action visibly active without changing failure styling', () => {
+    const styles = source('src/renderer/styles.css');
+    const saved = renderDrawer('saved');
+    const dirty = renderDrawer('dirty');
+
+    expect(saved).toContain('quick-action-drawer-save-saved');
+    expect(saved).not.toContain('quick-action-drawer-save-dirty');
+    expect(dirty).toContain('quick-action-drawer-save-dirty');
+    expect(styles).toMatch(
+      /\.quick-action-drawer\s+button\.quick-action-drawer-action\[data-ui-variant='secondary'\]\.quick-action-drawer-save-dirty\s*\{[\s\S]*?border-color:\s*var\(--ui-color-action-warning\);[\s\S]*?color:\s*#ffe6ad;[\s\S]*?background:\s*rgb\(163 109 25 \/ 28%\);/u,
+    );
+    expect(styles).toMatch(
+      /\.quick-action-drawer button\.quick-action-drawer-save-failed\s*\{[\s\S]*?color:\s*#ffd4d0;/u,
+    );
+  });
+
   it('derives the native title from the one formal project snapshot', () => {
     expect(getEditorWindowTitle(null)).toBe('Panda Stage');
     expect(getEditorWindowTitle(snapshot)).toBe(`Panda Stage（${project.name}）`);
