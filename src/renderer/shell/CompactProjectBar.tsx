@@ -40,6 +40,15 @@ export interface CompactProjectBarProps {
   presentation?: EditorShellLayoutMode;
 }
 
+// Keep the existing four-state vocabulary for shell/static contracts; only
+// saving and failed are rendered as standalone labels in the drawer.
+const SAVE_STATE_LABELS: Record<CompactProjectSaveState, string> = {
+  saved: '已保存',
+  dirty: '有未保存更改',
+  saving: '保存中',
+  failed: '保存失败',
+};
+
 const QUIET_STATUS_MESSAGES = new Set([
   'Ready',
   '项目已打开，暂无未保存更改。',
@@ -80,11 +89,9 @@ export function QuickActionDrawer({
   const saveDisabled =
     busy || saveState === 'saving' || !projectSnapshot.dirty;
   const saveStateLabel =
-    saveState === 'saving'
-      ? '保存中'
-      : saveState === 'failed'
-        ? '保存失败'
-        : null;
+    saveState === 'saving' || saveState === 'failed'
+      ? SAVE_STATE_LABELS[saveState]
+      : null;
   const saveTitle =
     saveState === 'saving'
       ? '保存中'

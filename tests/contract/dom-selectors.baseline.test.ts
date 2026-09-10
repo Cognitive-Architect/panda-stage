@@ -293,7 +293,8 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(topBar).not.toContain('compact-project-more');
     expect(topBar).not.toContain('compact-project-menu');
     expect(topBar).not.toContain('className="editor-save-button"');
-    expect(topBar).not.toContain('有未保存更改');
+    expect(topBar).toContain('已保存');
+    expect(topBar).toContain('有未保存更改');
     expect(topBar).toContain('保存中');
     expect(topBar).toContain('保存失败');
     expect(topBar).not.toContain('data-testid="product-preview-open"');
