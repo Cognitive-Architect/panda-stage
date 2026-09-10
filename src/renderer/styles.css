@@ -3170,15 +3170,24 @@ button:disabled {
 }
 
 .dialogue-sheet-right-workspace .subtitle-workspace-empty-art {
+  display: block;
   width: 132px;
   max-width: 54%;
   height: auto;
   margin-bottom: 4px;
+  pointer-events: none;
+  user-select: none;
 }
 
 .dialogue-sheet-right-workspace .dialogue-task-body-empty strong {
   color: var(--ui-color-text-primary);
   font-size: 16px;
+}
+
+.dialogue-sheet-right-workspace .subtitle-workspace-empty-copy {
+  max-width: 100%;
+  line-height: 1.4;
+  text-wrap: balance;
 }
 
 .dialogue-sheet-right-workspace .dialogue-task-body-empty span {

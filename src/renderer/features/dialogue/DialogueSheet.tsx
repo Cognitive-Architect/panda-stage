@@ -196,7 +196,7 @@ export function DialogueSheet({
   pendingDragDialogueId = null,
   presentation = 'timeline',
   unifiedTaskTray = false,
-}: DialogueSheetProps = {}): React.JSX.Element {
+}: DialogueSheetProps = {}): React.JSX.Element | null {
   const rightWorkspace = presentation === 'right-workspace';
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -310,11 +310,10 @@ export function DialogueSheet({
   const canAdd = singleErrors.speaker === null && singleErrors.text === null;
 
   if (!shot) {
-    return (
-      <div className="dialogue-sheet" data-testid="dialogue-sheet">
-        <p>请选择一个镜头以编辑对白。</p>
-      </div>
-    );
+    // Keep the safety boundary before any dialogue authoring surface is
+    // mounted. A project without a current Shot has no valid subtitle target,
+    // so it should expose no creator-facing fallback or unusable CTA.
+    return null;
   }
 
   const handleAdd = (): void => {
@@ -1261,13 +1260,13 @@ export function DialogueSheet({
               alt=""
               aria-hidden="true"
               className="subtitle-workspace-empty-art"
+              data-testid="subtitle-workspace-empty-art"
               src="/subtitle-empty-state.png"
             />
           ) : null}
-          <strong>还没有字幕</strong>
-          <span>
-            先写一句，之后再安排它什么时候出现。
-          </span>
+          <strong className="subtitle-workspace-empty-copy">
+            还没有字幕，先写一句吧。
+          </strong>
           {rightWorkspace ? (
             <button
               className="dialogue-authoring-open subtitle-workspace-empty-action"
