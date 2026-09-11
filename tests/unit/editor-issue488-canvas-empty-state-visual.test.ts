@@ -7,15 +7,21 @@ function source(path: string): string {
 
 describe('Issue #488 Canvas empty-state visual pass', () => {
   const canvas = source('src/renderer/features/canvas/CanvasStage.tsx');
+  const viewport = source(
+    'src/renderer/features/canvas/CanvasViewport.tsx',
+  );
   const styles = source('src/renderer/styles.css');
 
   it('adds a decorative scene illustration without restoring the old copy', () => {
-    const start = canvas.indexOf('{empty ? (');
-    const end = canvas.indexOf('{missingBackground ?');
+    const start = canvas.indexOf('function CanvasEmptyState()');
+    const end = canvas.indexOf('function useCanvasImages');
     const emptyState = canvas.slice(start, end);
 
     expect(emptyState).toContain(
-      'className="canvas-stage-message canvas-empty-state"',
+      'className="canvas-empty-state-overlay"',
+    );
+    expect(emptyState).toContain(
+      'data-testid="canvas-empty-guidance"',
     );
     expect(emptyState).toContain('<CanvasEmptyStateIllustration />');
     expect(canvas).toContain(
@@ -32,23 +38,61 @@ describe('Issue #488 Canvas empty-state visual pass', () => {
     );
   });
 
-  it('flattens only the real empty-state message and keeps the scene compact', () => {
-    const emptyStateRule = styles.match(
-      /\.canvas-stage-message\.canvas-empty-state\s*\{[^}]*\}/u,
+  it('mounts the empty state outside the scaled logical stage', () => {
+    const logicalChildrenStart = canvas.indexOf('{(transform) => (');
+    const logicalChildrenEnd = canvas.indexOf(
+      '</CanvasViewport>',
+      logicalChildrenStart,
+    );
+    const logicalChildren = canvas.slice(
+      logicalChildrenStart,
+      logicalChildrenEnd,
+    );
+
+    expect(canvas).toContain(
+      'viewportOverlay={empty ? <CanvasEmptyState /> : null}',
+    );
+    expect(viewport).toContain('viewportOverlay?: ReactNode');
+    expect(viewport).toContain('viewportOverlay = null');
+    expect(viewport).toContain('{viewportOverlay}');
+    expect(logicalChildren).not.toContain(
+      'canvas-empty-state-overlay',
+    );
+    expect(viewport).toMatch(
+      /canvas-viewport-content[\s\S]*?\{viewportOverlay\}[\s\S]*?\{viewportChrome\}/u,
+    );
+    expect(viewport).toContain(
+      'transform: `scale(${transform.scale})`,',
+    );
+  });
+
+  it('keeps viewport-space sizing stable and pointer-safe', () => {
+    const overlayRule = styles.match(
+      /\.canvas-empty-state-overlay\s*\{[^}]*\}/u,
+    )?.[0];
+    const illustrationRule = styles.match(
+      /\.canvas-empty-state-illustration\s*\{[^}]*\}/u,
+    )?.[0];
+    const copyRule = styles.match(
+      /\.canvas-empty-state-copy\s*\{[^}]*\}/u,
     )?.[0];
 
-    expect(emptyStateRule).toEqual(expect.any(String));
-    expect(emptyStateRule).toContain('top: 46%;');
-    expect(emptyStateRule).toContain('border: 0;');
-    expect(emptyStateRule).toContain('background: transparent;');
-    expect(emptyStateRule).toContain('font-size: 20px;');
-    expect(emptyStateRule).toContain('font-weight: 700;');
-    expect(styles).toContain('.canvas-empty-state-illustration');
-    expect(styles).toContain('width: 132px;');
-    expect(styles).toContain('height: 88px;');
+    expect(overlayRule).toEqual(expect.any(String));
+    expect(overlayRule).toContain('top: 46%;');
+    expect(overlayRule).toContain('left: 50%;');
+    expect(overlayRule).toContain('pointer-events: none;');
+    expect(overlayRule).toContain('transform: translate(-50%, -50%);');
+    expect(overlayRule).not.toContain('scale(');
+    expect(illustrationRule).toContain('width: clamp(');
+    expect(illustrationRule).toContain('height: clamp(');
+    expect(illustrationRule).toContain('pointer-events: none;');
+    expect(copyRule).toContain('font-size: clamp(');
+    expect(copyRule).toContain('font-weight: 700;');
     expect(styles).toContain('.canvas-empty-state-frame');
     expect(styles).toContain('aspect-ratio: 16 / 9;');
-    expect(styles).toContain('pointer-events: none;');
+    expect(styles).not.toContain(
+      '.canvas-stage-message.canvas-empty-state',
+    );
   });
 
   it('keeps the illustration scoped to a selected zero-layer Shot', () => {

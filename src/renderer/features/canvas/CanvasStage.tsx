@@ -73,15 +73,29 @@ function CanvasEmptyStateIllustration(): React.JSX.Element {
         <DecorativeIcon
           className="canvas-empty-state-background-icon"
           icon={Image}
-          size={46}
+          size={58}
           strokeWidth={1.35}
         />
         <span className="canvas-empty-state-character">
-          <DecorativeIcon icon={UserRound} size={26} strokeWidth={1.7} />
+          <DecorativeIcon icon={UserRound} size={40} strokeWidth={1.7} />
         </span>
       </div>
       <span className="canvas-empty-state-accent">
-        <DecorativeIcon icon={Plus} size={14} strokeWidth={2} />
+        <DecorativeIcon icon={Plus} size={20} strokeWidth={2} />
+      </span>
+    </div>
+  );
+}
+
+function CanvasEmptyState(): React.JSX.Element {
+  return (
+    <div
+      className="canvas-empty-state-overlay"
+      data-testid="canvas-empty-guidance"
+    >
+      <CanvasEmptyStateIllustration />
+      <span className="canvas-empty-state-copy">
+        先往画布里放点东西吧。
       </span>
     </div>
   );
@@ -290,6 +304,7 @@ export function CanvasStage({
         }
         onTransform={setToolbarTransform}
         onViewportChromePointerDown={() => selectionStore.clear()}
+        viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={showToolbar ? (
           <CanvasToolbar
             mode={viewport.mode}
@@ -434,17 +449,6 @@ export function CanvasStage({
                 <span>
                   x {dropPreview.point.x.toFixed(1)} · y{' '}
                   {dropPreview.point.y.toFixed(1)}
-                </span>
-              </div>
-            ) : null}
-            {empty ? (
-              <div
-                className="canvas-stage-message canvas-empty-state"
-                data-testid="canvas-empty-guidance"
-              >
-                <CanvasEmptyStateIllustration />
-                <span className="canvas-empty-state-copy">
-                  先往画布里放点东西吧。
                 </span>
               </div>
             ) : null}

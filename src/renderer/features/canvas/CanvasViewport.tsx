@@ -24,6 +24,7 @@ import {
 export interface CanvasViewportProps {
   mode: CanvasViewportMode;
   children: (transform: ViewportTransform) => ReactNode;
+  viewportOverlay?: ReactNode;
   viewportChrome?: ReactNode;
   dropDisabled?: boolean;
   onAssetDrop?: (payload: AssetDropPayload, point: Point) => void;
@@ -62,6 +63,7 @@ export function isViewportChromePointerTarget<T>(
 export function CanvasViewport({
   mode,
   children,
+  viewportOverlay = null,
   viewportChrome = null,
   dropDisabled = false,
   onAssetDrop = () => undefined,
@@ -302,6 +304,7 @@ export function CanvasViewport({
           {children(transform)}
         </div>
       </div>
+      {viewportOverlay}
       {viewportChrome}
     </div>
   );

@@ -9,8 +9,8 @@ describe('Issue #487 Canvas empty-state copy', () => {
   const canvas = source('src/renderer/features/canvas/CanvasStage.tsx');
 
   it('renders exactly one concise line for a valid empty Shot', () => {
-    const start = canvas.indexOf('{empty ? (');
-    const end = canvas.indexOf('{missingBackground ?');
+    const start = canvas.indexOf('function CanvasEmptyState()');
+    const end = canvas.indexOf('function useCanvasImages');
     const emptyState = canvas.slice(start, end);
 
     expect(canvas).toContain(
