@@ -431,8 +431,13 @@ describe('EditorShell project session integration', () => {
     expect(markup).not.toContain(PROJECT.name);
     expect(markup).not.toContain(PROJECT_ROOT);
     expect(bannerMarkup).toContain(recoveryCandidate.recoveryFilePath);
+    expect(bannerMarkup).toContain(recoveryCandidate.project.name);
+    expect(bannerMarkup).toContain('发现可恢复内容');
+    expect(bannerMarkup).not.toContain('检测到未保存的恢复内容');
     expect(bannerMarkup).toContain('恢复');
     expect(bannerMarkup).toContain('忽略');
+    expect(bannerMarkup).toContain('···');
+    expect(bannerMarkup).toContain('aria-label="查看恢复详情"');
     expect(harness.createController).toHaveBeenCalledTimes(1);
   });
 
