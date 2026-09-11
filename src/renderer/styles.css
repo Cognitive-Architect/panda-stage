@@ -9990,62 +9990,13 @@ h1 {
   text-align: center;
 }
 
-.canvas-empty-state-illustration {
-  position: relative;
-  width: clamp(220px, 23vw, 280px);
-  height: clamp(150px, 15.5vw, 190px);
+.canvas-empty-state-art {
+  display: block;
+  width: clamp(220px, 23vw, 300px);
+  max-width: 100%;
+  height: auto;
   pointer-events: none;
-}
-
-.canvas-empty-state-frame {
-  position: absolute;
-  top: 11%;
-  left: 8%;
-  display: grid;
-  width: 78%;
-  aspect-ratio: 16 / 9;
-  border: 2px solid rgb(142 217 162 / 62%);
-  border-radius: 16px;
-  color: #9ed9aa;
-  background: linear-gradient(
-    145deg,
-    rgb(131 211 154 / 12%),
-    rgb(255 255 255 / 2%)
-  );
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 4%);
-  place-items: center;
-}
-
-.canvas-empty-state-background-icon {
-  color: #9ed9aa;
-  opacity: 0.82;
-}
-
-.canvas-empty-state-character {
-  position: absolute;
-  right: -6%;
-  bottom: -8%;
-  display: grid;
-  width: clamp(54px, 4.8vw, 66px);
-  height: clamp(54px, 4.8vw, 66px);
-  border: 2px solid rgb(177 232 193 / 78%);
-  border-radius: 50%;
-  color: #dff3e3;
-  background: #162a1d;
-  box-shadow: 0 8px 18px rgb(0 0 0 / 24%);
-  place-items: center;
-}
-
-.canvas-empty-state-accent {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: grid;
-  width: clamp(20px, 1.7vw, 24px);
-  height: clamp(20px, 1.7vw, 24px);
-  color: #b1e8c1;
-  opacity: 0.84;
-  place-items: center;
+  user-select: none;
 }
 
 .canvas-empty-state-copy {
