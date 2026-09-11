@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { Image, Plus, UserRound } from 'lucide-react';
 import type Konva from 'konva';
 import {
   Layer as KonvaLayer,
@@ -51,6 +52,7 @@ import {
   EMPTY_CANVAS_IMAGE_STATE,
   type CanvasImageState,
 } from './canvasImageResources';
+import { DecorativeIcon } from '../../ui';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
@@ -59,6 +61,31 @@ const editorDevicePixelRatio =
 const editorCanvasPixelRatio = resolveEditorCanvasPixelRatio(
   editorDevicePixelRatio,
 );
+
+function CanvasEmptyStateIllustration(): React.JSX.Element {
+  return (
+    <div
+      aria-hidden="true"
+      className="canvas-empty-state-illustration"
+      data-testid="canvas-empty-state-illustration"
+    >
+      <div className="canvas-empty-state-frame">
+        <DecorativeIcon
+          className="canvas-empty-state-background-icon"
+          icon={Image}
+          size={46}
+          strokeWidth={1.35}
+        />
+        <span className="canvas-empty-state-character">
+          <DecorativeIcon icon={UserRound} size={26} strokeWidth={1.7} />
+        </span>
+      </div>
+      <span className="canvas-empty-state-accent">
+        <DecorativeIcon icon={Plus} size={14} strokeWidth={2} />
+      </span>
+    </div>
+  );
+}
 
 function useCanvasImages(
   snapshot: EditorProjectSnapshot | null,
@@ -412,10 +439,13 @@ export function CanvasStage({
             ) : null}
             {empty ? (
               <div
-                className="canvas-stage-message"
+                className="canvas-stage-message canvas-empty-state"
                 data-testid="canvas-empty-guidance"
               >
-                <span>先往画布里放点东西吧。</span>
+                <CanvasEmptyStateIllustration />
+                <span className="canvas-empty-state-copy">
+                  先往画布里放点东西吧。
+                </span>
               </div>
             ) : null}
             {missingBackground ? (

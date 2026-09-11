@@ -17,8 +17,9 @@ describe('Issue #487 Canvas empty-state copy', () => {
       'const empty = Boolean(stageModel && stageModel.layers.length === 0);',
     );
     expect(emptyState).toContain(
-      '<span>先往画布里放点东西吧。</span>',
+      '<span className="canvas-empty-state-copy">',
     );
+    expect(emptyState).toContain('先往画布里放点东西吧。');
     expect(emptyState).not.toContain('<strong>');
     expect(emptyState).not.toContain('画布还是空的');
     expect(emptyState).not.toContain(
