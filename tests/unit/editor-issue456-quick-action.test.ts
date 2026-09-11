@@ -10,8 +10,11 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
   const styles = source('src/renderer/styles.css');
   const gate = source('scripts/verify-issue456-quick-action.cjs');
 
-  it('keeps legitimate top surfaces in flow while mounting the drawer in the body overlay', () => {
+  it('keeps only portrait top surfaces in flow while mounting the drawer and recovery card in overlays', () => {
     expect(shell).toContain(
+      "data-top-region-layout={isPortrait ? 'flow' : 'overlay'}",
+    );
+    expect(shell).not.toContain(
       "data-top-region-layout={recoveryCandidate || isPortrait ? 'flow' : 'overlay'}",
     );
     expect(shell).toContain('data-testid="editor-top-region"');

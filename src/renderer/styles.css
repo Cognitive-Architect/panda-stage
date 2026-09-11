@@ -9632,9 +9632,10 @@ button:disabled {
 }
 
 .recovery-prompt-summary {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: 1px;
+  align-items: center;
+  gap: 6px;
 }
 
 .recovery-prompt-summary strong {
@@ -9647,6 +9648,12 @@ button:disabled {
   color: #d8c69c;
   font-size: 12px;
   white-space: nowrap;
+}
+
+.recovery-prompt-summary span::before {
+  margin-right: 6px;
+  color: #b99c5e;
+  content: '·';
 }
 
 .recovery-prompt-actions {
@@ -29103,12 +29110,11 @@ h1 {
   }
 }
 
-/* Issue #456: the Quick Action Drawer is an edge overlay, not an editor row.
-   The top region remains a real grid item only when Recovery or the Portrait
-   workspace switcher has legitimate content to lay out. In the ordinary
-   landscape editor it is a zero-height overlay marker, so the body receives
-   the full reclaimed row while the existing three-row contract stays intact
-   for layouts that still need a top surface. */
+/* Issue #456/#486: the Quick Action Drawer and Recovery Card are overlays, not
+   editor rows. Only the portrait workspace switcher keeps the top region in
+   flow. In landscape the top region is a zero-height overlay marker, so the
+   body receives the full reclaimed row while the existing three-row contract
+   stays intact for layouts that still need a top surface. */
 .editor-layout[data-top-region-layout='overlay'] {
   grid-template-rows: minmax(0, 1fr) auto;
 }
@@ -29125,6 +29131,30 @@ h1 {
   min-height: 0;
   overflow: visible;
   pointer-events: none;
+}
+
+.editor-layout[data-top-region-layout='overlay']
+  > .editor-top-region:has(> .recovery-prompt) {
+  z-index: 45;
+}
+
+.editor-layout[data-top-region-layout='overlay']
+  > .editor-top-region
+  > .recovery-prompt {
+  position: absolute;
+  z-index: 1;
+  top: 52px;
+  left: 50%;
+  pointer-events: auto;
+  transform: translateX(-50%);
+}
+
+.editor-layout[data-top-region-layout='overlay']:has(
+    .quick-action-drawer[data-expanded='true']
+  )
+  > .editor-top-region
+  > .recovery-prompt {
+  top: 116px;
 }
 
 .editor-layout[data-top-region-layout='flow'] > .editor-top-region {

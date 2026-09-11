@@ -540,11 +540,7 @@ export function EditorShell({
       setOpenCandidatePath(nextSession.trackedProjectRoot);
     }
     setRecentRefreshToken((current) => current + 1);
-    setStatus(
-      nextSession.recoveryCandidate
-        ? '检测到未保存的恢复内容，请选择恢复或忽略。'
-        : cleanStatus,
-    );
+    setStatus(nextSession.recoveryCandidate ? '' : cleanStatus);
   };
 
   const switchToProject = async (
@@ -1010,7 +1006,7 @@ export function EditorShell({
           className="editor-layout"
           data-active-workspace={portraitWorkspace}
           data-shell-mode={layoutMode}
-          data-top-region-layout={recoveryCandidate || isPortrait ? 'flow' : 'overlay'}
+          data-top-region-layout={isPortrait ? 'flow' : 'overlay'}
           data-testid="editor-layout"
         >
           <div
