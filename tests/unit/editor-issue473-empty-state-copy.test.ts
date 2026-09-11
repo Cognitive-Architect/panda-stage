@@ -22,8 +22,9 @@ describe('Issue #473 first-use empty-state copy', () => {
     expect(dialogue).not.toContain('先写一句，之后再安排它什么时候出现。');
     expect(dialogue).not.toContain('暂无待安排字幕');
 
-    expect(canvas).toContain('画布还是空的');
-    expect(canvas).toContain(
+    expect(canvas).toContain('先往画布里放点东西吧。');
+    expect(canvas).not.toContain('画布还是空的');
+    expect(canvas).not.toContain(
       '从左边加个背景或角色，就能开始摆画面了。',
     );
     expect(canvas).not.toContain('当前镜头还没有图层');

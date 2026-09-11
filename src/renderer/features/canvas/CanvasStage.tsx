@@ -195,8 +195,9 @@ export function CanvasStage({
   const backgroundImage = backgroundAsset
     ? imageForAsset(backgroundAsset)
     : undefined;
-  const empty = !stageModel || stageModel.layers.length === 0;
+  const empty = Boolean(stageModel && stageModel.layers.length === 0);
   const missingBackground =
+    Boolean(shot) &&
     !empty &&
     (!backgroundLayer ||
       !backgroundAsset ||
@@ -414,8 +415,7 @@ export function CanvasStage({
                 className="canvas-stage-message"
                 data-testid="canvas-empty-guidance"
               >
-                <strong>画布还是空的</strong>
-                <span>从左边加个背景或角色，就能开始摆画面了。</span>
+                <span>先往画布里放点东西吧。</span>
               </div>
             ) : null}
             {missingBackground ? (
