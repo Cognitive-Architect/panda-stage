@@ -41,7 +41,11 @@ describe('Issue #428 Right Subtitle Workspace R2', () => {
     expect(sheet).toContain("!rightWorkspace && selectedTimedDialogue");
     expect(sheet).toContain('创建后进入待安排队列，不会自动定时。');
     expect(sheet).toContain('data-testid="subtitle-workspace-empty-action"');
-    expect(sheet).toContain('src="/subtitle-empty-state.png"');
+    expect(sheet).toContain(
+      "import subtitleEmptyStateArt from './assets/subtitle-empty-state.png';",
+    );
+    expect(sheet).toContain('src={subtitleEmptyStateArt}');
+    expect(sheet).not.toContain('src="/subtitle-empty-state.png"');
     expect(sheet).toContain('aria-hidden="true"');
     // Issue #430 P-01 tightens the card grip to size 14 to better match the
     // "可拖动" affordance label; size 16 is the original default that was used

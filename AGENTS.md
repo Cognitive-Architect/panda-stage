@@ -157,6 +157,13 @@ pnpm build
 - Keep filesystem paths project-relative in persisted project data and route
   filesystem access through Main. Do not describe automated or headless checks
   as a substitute for a required real Electron acceptance run.
+- For renderer-owned static UI assets that must work in production Electron, do
+  not use root-absolute browser paths such as `src="/foo.png"`. Panda Stage
+  builds the renderer with Vite `base: './'` and loads built content locally;
+  prefer bundler imports from renderer asset directories (for example,
+  `import art from './assets/foo.png'` then `src={art}`). A JSX/source test or
+  dev-browser render does not prove that an asset resolves in Windows Electron;
+  use the Issue-required Electron runtime/visual acceptance for asset-path bugs.
 
 ## Documentation navigation
 

@@ -28,6 +28,7 @@ import {
 } from './dialogueAuthoringDraft';
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
+import subtitleEmptyStateArt from './assets/subtitle-empty-state.png';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import { formatTimecode, integerFrameSpanMs } from '../timeline/timeGeometry';
 import { isHorizontalPendingTrayGesture } from '../timeline/pendingDialogueDrag';
@@ -1321,7 +1322,7 @@ export function DialogueSheet({
               aria-hidden="true"
               className="subtitle-workspace-empty-art"
               data-testid="subtitle-workspace-empty-art"
-              src="/subtitle-empty-state.png"
+              src={subtitleEmptyStateArt}
             />
           ) : null}
           <strong className="subtitle-workspace-empty-copy">

@@ -49,6 +49,11 @@ describe('Issue #482 empty-state copy and Subtitle fallback polish', () => {
     expect(sheet).toContain('还没有字幕，先写一句吧。');
     expect(sheet).not.toContain('先写一句，之后再安排它什么时候出现。');
     expect(sheet).toContain('data-testid="subtitle-workspace-empty-art"');
+    expect(sheet).toContain(
+      "import subtitleEmptyStateArt from './assets/subtitle-empty-state.png';",
+    );
+    expect(sheet).toContain('src={subtitleEmptyStateArt}');
+    expect(sheet).not.toContain('src="/subtitle-empty-state.png"');
     expect(sheet).toContain('aria-hidden="true"');
     expect(sheet).toContain('data-testid="subtitle-workspace-empty-action"');
     expect(styles).toContain('.subtitle-workspace-empty-art');
