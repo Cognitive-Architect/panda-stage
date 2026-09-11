@@ -209,7 +209,7 @@ async function snapshot(window) {
     )?.textContent?.trim() ?? null,
     recoveryDetails: document.querySelector(
       '.recovery-details summary'
-    )?.textContent?.trim() ?? null
+    )?.getAttribute('aria-label')?.trim() ?? null
     };
   })()`);
 }
@@ -479,8 +479,8 @@ async function verifyIssue73() {
       !failedSwitch.activeTitle.includes(projectA.name) ||
       !failedSwitch.dirty ||
       failedSwitch.nameDraft !== 'A 保存失败保留' ||
-      recovery.recoverySummary !== '检测到未保存的恢复内容' ||
-      recovery.recoveryDetails !== '查看详情' ||
+      recovery.recoverySummary !== '发现可恢复内容' ||
+      recovery.recoveryDetails !== '查看恢复详情' ||
       guardRequests.map(({ outcome }) => outcome).join(',') !==
         'cancelled,discarded,saved,save-failed,saved'
     ) {
