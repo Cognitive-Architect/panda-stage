@@ -184,7 +184,7 @@ async function verifyDay13Ui() {
       !result.invalidCandidate.disabled ||
       result.invalidCandidate.hint !==
         '项目文件夹路径包含 Windows 不允许的字符。' ||
-      result.candidateSummary !== '检测到未保存的恢复内容' ||
+      result.candidateSummary !== '发现可恢复内容' ||
       result.candidateProject !== '项目：Recovered crash draft' ||
       result.candidateDetails !== '查看恢复详情' ||
       !result.candidateTime ||
