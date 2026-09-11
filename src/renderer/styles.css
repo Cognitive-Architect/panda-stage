@@ -29143,7 +29143,7 @@ h1 {
   > .recovery-prompt {
   position: absolute;
   z-index: 1;
-  top: 52px;
+  top: 64px;
   left: 50%;
   pointer-events: auto;
   transform: translateX(-50%);
@@ -29154,7 +29154,7 @@ h1 {
   )
   > .editor-top-region
   > .recovery-prompt {
-  top: 116px;
+  top: 120px;
 }
 
 .editor-layout[data-top-region-layout='flow'] > .editor-top-region {

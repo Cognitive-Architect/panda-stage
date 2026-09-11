@@ -35,13 +35,13 @@ describe('Issue #486 recovery overlay contract', () => {
       /\.editor-layout\[data-top-region-layout='overlay'\]\s*>\s*\.editor-top-region\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?height:\s*0;[\s\S]*?overflow:\s*visible;/u,
     );
     expect(styles).toMatch(
-      /\.editor-layout\[data-top-region-layout='overlay'\]\s*>\s*\.editor-top-region\s*>\s*\.recovery-prompt\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*52px;[\s\S]*?left:\s*50%;[\s\S]*?pointer-events:\s*auto;/u,
+      /\.editor-layout\[data-top-region-layout='overlay'\]\s*>\s*\.editor-top-region\s*>\s*\.recovery-prompt\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*64px;[\s\S]*?left:\s*50%;[\s\S]*?pointer-events:\s*auto;/u,
     );
   });
 
   it('offsets the floating card only when the Quick Action Drawer is expanded', () => {
     expect(styles).toMatch(
-      /\.editor-layout\[data-top-region-layout='overlay'\]:has\([\s\S]*?quick-action-drawer\[data-expanded='true'\][\s\S]*?\.recovery-prompt\s*\{[\s\S]*?top:\s*116px;/u,
+      /\.editor-layout\[data-top-region-layout='overlay'\]:has\([\s\S]*?quick-action-drawer\[data-expanded='true'\][\s\S]*?\.recovery-prompt\s*\{[\s\S]*?top:\s*120px;/u,
     );
     expect(styles).toContain('transform: translateX(-50%);');
     expect(styles).toContain('display: flex;');
