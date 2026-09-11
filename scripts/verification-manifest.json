@@ -207,7 +207,8 @@
         "sourcePatterns": [
           "src/renderer/features/canvas/**",
           "src/renderer/features/properties/**",
-          "src/renderer/stage/**"
+          "src/renderer/stage/**",
+          "docs/design/huabu.png"
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
