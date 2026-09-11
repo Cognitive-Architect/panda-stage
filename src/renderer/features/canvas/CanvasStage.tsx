@@ -32,6 +32,7 @@ import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
+import canvasEmptyStateArt from './assets/canvas-empty-state.png';
 import {
   isTransformerOverlayVisible,
   LayerTransformer,
@@ -59,6 +60,27 @@ const editorDevicePixelRatio =
 const editorCanvasPixelRatio = resolveEditorCanvasPixelRatio(
   editorDevicePixelRatio,
 );
+
+function CanvasEmptyState(): React.JSX.Element {
+  return (
+    <div
+      className="canvas-empty-state-overlay"
+      data-testid="canvas-empty-guidance"
+    >
+      <img
+        alt=""
+        aria-hidden="true"
+        className="canvas-empty-state-art"
+        data-testid="canvas-empty-state-art"
+        draggable={false}
+        src={canvasEmptyStateArt}
+      />
+      <span className="canvas-empty-state-copy">
+        先往画布里放点东西吧。
+      </span>
+    </div>
+  );
+}
 
 function useCanvasImages(
   snapshot: EditorProjectSnapshot | null,
@@ -195,8 +217,9 @@ export function CanvasStage({
   const backgroundImage = backgroundAsset
     ? imageForAsset(backgroundAsset)
     : undefined;
-  const empty = !stageModel || stageModel.layers.length === 0;
+  const empty = Boolean(stageModel && stageModel.layers.length === 0);
   const missingBackground =
+    Boolean(shot) &&
     !empty &&
     (!backgroundLayer ||
       !backgroundAsset ||
@@ -262,6 +285,7 @@ export function CanvasStage({
         }
         onTransform={setToolbarTransform}
         onViewportChromePointerDown={() => selectionStore.clear()}
+        viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={showToolbar ? (
           <CanvasToolbar
             mode={viewport.mode}
@@ -407,15 +431,6 @@ export function CanvasStage({
                   x {dropPreview.point.x.toFixed(1)} · y{' '}
                   {dropPreview.point.y.toFixed(1)}
                 </span>
-              </div>
-            ) : null}
-            {empty ? (
-              <div
-                className="canvas-stage-message"
-                data-testid="canvas-empty-guidance"
-              >
-                <strong>当前镜头还没有图层</strong>
-                <span>请从工具中添加背景或角色。</span>
               </div>
             ) : null}
             {missingBackground ? (

@@ -148,7 +148,9 @@ export class ProjectService {
             fontFamily: 'Microsoft YaHei',
             fontSize: 44,
             textColor: '#fffdf6',
-            backgroundColor: '#0a1411c7',
+            // Issue #467 R4: new projects start with a text-only subtitle
+            // presentation while retaining the persisted style field.
+            backgroundColor: '#0a141100',
             position: 'bottom',
             align: 'center',
             maxWidth: 1600,
@@ -225,8 +227,9 @@ export class ProjectService {
 
     try {
       const sourceVersion = detectSchemaVersion(input);
-      // Single authoritative pipeline for every persisted envelope (v0-v5).
-      // Current (v6) input is validated as-is; legacy input is migrated.
+      // Single authoritative pipeline for every persisted envelope (v0-v6).
+      // Current (v6) input is validated and receives the narrow compatibility
+      // normalization owned by migrateProject; legacy input is migrated there.
       const project = migrateProject(input);
       const document = this.document(
         projectRoot,

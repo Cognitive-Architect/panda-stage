@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
+import { ArrowRight, Clapperboard, PanelsTopLeft, RectangleHorizontal } from 'lucide-react';
 import type { Shot } from '../../../domain';
 import { ShotCreateForm } from './ShotCreateForm';
 import { ShotListItem } from './ShotListItem';
+import { DecorativeIcon } from '../../ui';
 
 export function nextAvailableShotName(
   shots: readonly Pick<Shot, 'name'>[],
@@ -26,6 +28,8 @@ export interface ShotListProps {
   showHeading?: boolean;
   selectedActions?: ReactNode;
   compactDuration?: boolean;
+  showStoryboardCue?: boolean;
+  inlineEmptyCopy?: boolean;
 }
 
 export function ShotList({
@@ -40,6 +44,8 @@ export function ShotList({
   showHeading = true,
   selectedActions,
   compactDuration = false,
+  showStoryboardCue = false,
+  inlineEmptyCopy = false,
 }: ShotListProps): React.JSX.Element {
   const suggestedName = nextAvailableShotName(shots);
 
@@ -60,9 +66,77 @@ export function ShotList({
         <span>{shots.length} 个镜头</span>
       </div>
       {shots.length === 0 ? (
-        <div className="shot-list-empty">
-          <strong>项目还没有镜头</strong>
-          <p>在下方创建第一个镜头；当前选择将自动指向它。</p>
+        <div
+          className={
+            inlineEmptyCopy
+              ? 'shot-list-empty shot-list-empty-inline-copy'
+              : 'shot-list-empty'
+          }
+        >
+          {showStoryboardCue ? (
+            <div
+              aria-hidden="true"
+              className="shot-empty-storyboard"
+              data-testid="shot-empty-storyboard"
+            >
+              <div
+                className="shot-empty-storyboard-card shot-empty-storyboard-card-primary"
+                data-shot-empty-frame="1"
+              >
+                <DecorativeIcon
+                  className="shot-empty-storyboard-icon"
+                  icon={Clapperboard}
+                  size={26}
+                  strokeWidth={1.8}
+                />
+                <span>镜头 1</span>
+              </div>
+              <DecorativeIcon
+                className="shot-empty-storyboard-arrow"
+                icon={ArrowRight}
+                size={16}
+              />
+              <div
+                className="shot-empty-storyboard-card shot-empty-storyboard-card-muted"
+                data-shot-empty-frame="2"
+              >
+                <DecorativeIcon
+                  className="shot-empty-storyboard-icon"
+                  icon={PanelsTopLeft}
+                  size={22}
+                  strokeWidth={1.8}
+                />
+                <span>镜头 2</span>
+              </div>
+              <DecorativeIcon
+                className="shot-empty-storyboard-arrow"
+                icon={ArrowRight}
+                size={16}
+              />
+              <div
+                className="shot-empty-storyboard-card shot-empty-storyboard-card-faded"
+                data-shot-empty-frame="3"
+              >
+                <DecorativeIcon
+                  className="shot-empty-storyboard-icon"
+                  icon={RectangleHorizontal}
+                  size={22}
+                  strokeWidth={1.8}
+                />
+                <span>镜头 3</span>
+              </div>
+            </div>
+          ) : null}
+          {inlineEmptyCopy ? (
+            <p className="shot-list-empty-copy">
+              <strong>还没有镜头，</strong>先新建一个吧。
+            </p>
+          ) : (
+            <>
+              <strong>还没有镜头</strong>
+              <p>先新建一个吧。</p>
+            </>
+          )}
         </div>
       ) : (
         <ol>

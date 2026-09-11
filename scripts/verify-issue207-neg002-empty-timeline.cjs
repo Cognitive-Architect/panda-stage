@@ -39,7 +39,7 @@ mkdirSync(repositoryEvidenceRoot, { recursive: true });
 
 process.env.VITE_DEV_SERVER_URL = '';
 
-const EMPTY_TIMELINE_TEXT = '当前没有可定位的镜头或时长为 0。';
+const EMPTY_TIMELINE_TEXT = '新建镜头后，这里会显示时间轴。';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

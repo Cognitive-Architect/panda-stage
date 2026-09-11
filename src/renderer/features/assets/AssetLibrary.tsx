@@ -174,6 +174,8 @@ export function AssetLibrary({
         : visibleEntries,
     [currentPage, isPortraitBrowser, visibleEntries],
   );
+  const isSearchActive = searchQuery.trim().length > 0;
+  const isEntireLibraryEmpty = !isSearchActive && counts.all === 0;
   const selectedAsset = useMemo(
     () =>
       snapshot?.project.assets.find(
@@ -852,7 +854,18 @@ export function AssetLibrary({
                   );
                 }}
                 emptyMessage={
-                  searchQuery.trim() ? '没有匹配的素材' : undefined
+                  isSearchActive
+                    ? '没有匹配的素材'
+                    : isEntireLibraryEmpty
+                      ? '素材库还是空的'
+                      : undefined
+                }
+                emptyDescription={
+                  isSearchActive
+                    ? '清除搜索或换一个分类试试。'
+                    : isEntireLibraryEmpty
+                      ? '拖进图片或音频，或者点上面的「导入素材」。'
+                      : undefined
                 }
                 selectedAssetId={selectedAssetId}
                 metadataErrors={metadataErrors}

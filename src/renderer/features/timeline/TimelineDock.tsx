@@ -481,7 +481,7 @@ export function TimelineDock({
           </div>
         ) : (
           <div className="timeline-empty" data-testid="timeline-empty">
-            当前没有可定位的镜头或时长为 0。
+            新建镜头后，这里会显示时间轴。
           </div>
         )
       ) : null}

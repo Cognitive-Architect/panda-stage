@@ -133,8 +133,33 @@ describe('asset library components', () => {
         },
       }),
     );
+    expect(markup).toContain('素材库还是空的');
+    expect(markup).toContain(
+      '拖进图片或音频，或者点上面的「导入素材」。',
+    );
+  });
+
+  it('does not call a merely empty category an empty library', () => {
+    const project = migrateProject(exampleProject);
+    const categoryOnlyProject = {
+      ...project,
+      assets: project.assets.filter((asset) => asset.kind === 'audio'),
+      characters: [],
+      shots: [],
+    };
+    const markup = renderToStaticMarkup(
+      createElement(AssetLibrary, {
+        snapshot: {
+          projectRoot: 'D:\\category-only.pandastage',
+          project: categoryOnlyProject,
+          dirty: false,
+          revision: 0,
+        },
+      }),
+    );
+
     expect(markup).toContain('这个分类还没有素材');
-    expect(markup).toContain('PNG、JPG、MP3、WAV');
+    expect(markup).not.toContain('素材库还是空的');
   });
 
   it('renders 100 lazy thumbnail cards without any original asset URL', () => {

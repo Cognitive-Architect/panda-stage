@@ -64,7 +64,7 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
   it('keeps the empty state and opens authoring explicitly from State A', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
 
-    expect(sheet).toContain('暂无待安排字幕');
+    expect(sheet).toContain('还没有字幕');
     expect(sheet).toContain('timeline-subtitle-empty');
     expect(sheet).toContain("authoringMode === 'none' ? (");
     expect(sheet).toContain("handleOpenAuthoring('single')");

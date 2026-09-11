@@ -18,6 +18,13 @@ export type CompactProjectSaveState =
   | 'saving'
   | 'failed';
 
+export function shouldRenderRestSaveState(
+  expanded: boolean,
+  saveState: CompactProjectSaveState,
+): boolean {
+  return !expanded && (saveState === 'saving' || saveState === 'failed');
+}
+
 export interface CompactProjectBarProps {
   projectSnapshot: EditorProjectSnapshot;
   saveState: CompactProjectSaveState;
@@ -33,6 +40,8 @@ export interface CompactProjectBarProps {
   presentation?: EditorShellLayoutMode;
 }
 
+// Keep the existing four-state vocabulary for shell/static contracts; only
+// saving and failed are rendered as standalone labels in the drawer.
 const SAVE_STATE_LABELS: Record<CompactProjectSaveState, string> = {
   saved: '已保存',
   dirty: '有未保存更改',
@@ -79,7 +88,10 @@ export function QuickActionDrawer({
     (Boolean(statusText) && !QUIET_STATUS_MESSAGES.has(statusText));
   const saveDisabled =
     busy || saveState === 'saving' || !projectSnapshot.dirty;
-  const saveStateLabel = SAVE_STATE_LABELS[saveState];
+  const saveStateLabel =
+    saveState === 'saving' || saveState === 'failed'
+      ? SAVE_STATE_LABELS[saveState]
+      : null;
   const saveTitle =
     saveState === 'saving'
       ? '保存中'
@@ -88,6 +100,8 @@ export function QuickActionDrawer({
         : projectSnapshot.dirty
           ? '保存项目'
           : '保存项目（已保存）';
+
+  const showRestSaveState = shouldRenderRestSaveState(expanded, saveState);
 
   useEffect(() => {
     // Switching projects remounts this presentation in EditorShell, and this
@@ -246,7 +260,7 @@ export function QuickActionDrawer({
             variant="secondary"
           />
         </div>
-        {saveState !== 'saved' ? (
+        {saveStateLabel ? (
           <span
             aria-live="polite"
             className={`quick-action-drawer-save-state quick-action-drawer-save-state-${saveState}`}
@@ -267,6 +281,17 @@ export function QuickActionDrawer({
           </output>
         ) : null}
       </PanelSurface>
+      {showRestSaveState ? (
+        <span
+          aria-live="polite"
+          className={`quick-action-drawer-rest-state quick-action-drawer-rest-state-${saveState}`}
+          data-save-state={saveState}
+          data-testid="project-save-state-rest"
+          title={saveState === 'failed' ? statusText || '保存失败' : undefined}
+        >
+          {saveStateLabel}
+        </span>
+      ) : null}
       <button
         aria-controls={panelId}
         aria-expanded={expanded}

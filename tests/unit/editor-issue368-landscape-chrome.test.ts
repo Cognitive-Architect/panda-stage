@@ -83,8 +83,8 @@ describe('Issue #368 landscape editor chrome', () => {
     const actionableMarkup = renderBar('Actionable save failure', 'failed');
 
     expect(quietMarkup).not.toContain('data-testid="editor-action-status"');
-    expect(dirtyMarkup).toContain('data-testid="project-save-state"');
-    expect(dirtyMarkup).toContain('有未保存更改');
+    expect(dirtyMarkup).not.toContain('data-testid="project-save-state"');
+    expect(dirtyMarkup).not.toContain('有未保存更改');
     expect(savingMarkup).toContain('data-testid="project-save-state"');
     expect(savingMarkup).toContain('保存中');
     expect(actionableMarkup).toContain('data-testid="editor-action-status"');

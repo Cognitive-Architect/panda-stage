@@ -970,7 +970,7 @@ async function verifyDay21() {
       reopened.logicalHeight !== 1080 ||
       !reopened.clean ||
       !missingMessage.includes('背景预览不可用') ||
-      !emptyMessage.includes('当前镜头还没有图层')
+      !emptyMessage.includes('先往画布里放点东西吧。')
     ) {
       throw new Error(
         `Day 21 UI verification failed: ${JSON.stringify(evidence)}`,

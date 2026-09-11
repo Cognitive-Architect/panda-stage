@@ -35,6 +35,10 @@ describe('Issue #362 landscape Shot quick-create', () => {
 
     expect(markup).toContain('data-shot-create-presentation="landscape"');
     expect(markup).toContain('新建镜头');
+    expect(markup).toContain('aria-label="新建镜头"');
+    expect(markup).not.toContain(
+      '<h3 id="shot-create-heading">新建镜头</h3>',
+    );
     expect(markup).toContain('名称');
     expect(markup).toContain('data-testid="shot-create-name"');
     expect(markup).toContain('data-testid="shot-create-duration-decrease"');

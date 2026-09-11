@@ -110,6 +110,8 @@ describe('character management components', () => {
       }),
     );
 
+    expect(markup).toContain('还没有角色');
+    expect(markup).toContain('先准备 2 张角色图片，就能创建角色了。');
     expect(markup).toContain('至少需要两张不同的项目图片素材');
     expect(markup).toContain('disabled=""');
   });

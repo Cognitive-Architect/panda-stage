@@ -7,7 +7,10 @@ import {
 } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
+  Clapperboard,
   GripVertical,
+  Info,
   MessageCircleMore,
   Plus,
   X,
@@ -25,6 +28,7 @@ import {
 } from './dialogueAuthoringDraft';
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
+import subtitleEmptyStateArt from './assets/subtitle-empty-state.png';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import { formatTimecode, integerFrameSpanMs } from '../timeline/timeGeometry';
 import { isHorizontalPendingTrayGesture } from '../timeline/pendingDialogueDrag';
@@ -70,6 +74,65 @@ export interface DialogueSheetProps {
   pendingDragDialogueId?: string | null;
   presentation?: 'timeline' | 'right-workspace';
   unifiedTaskTray?: boolean;
+}
+
+/**
+ * Presentation-only dependency guidance for a Subtitle workspace without a
+ * current Shot. The diagram is deliberately inert: creating and selecting a
+ * Shot remain owned by the existing Shot workspace and shotStore.
+ */
+function SubtitleNoShotEmptyState(): React.JSX.Element {
+  return (
+    <section
+      aria-labelledby="subtitle-no-shot-state-copy"
+      className="subtitle-no-shot-state dialogue-task-body"
+      data-testid="subtitle-no-shot-state"
+    >
+      <div
+        aria-hidden="true"
+        className="subtitle-no-shot-diagram"
+        data-testid="subtitle-no-shot-diagram"
+      >
+        <div
+          className="subtitle-no-shot-card subtitle-no-shot-card-active"
+          data-testid="subtitle-no-shot-shot"
+        >
+          <DecorativeIcon
+            className="subtitle-no-shot-card-icon"
+            icon={Clapperboard}
+            size={28}
+            strokeWidth={1.8}
+          />
+          <span>镜头</span>
+        </div>
+        <DecorativeIcon
+          className="subtitle-no-shot-arrow"
+          icon={ArrowRight}
+          size={18}
+          strokeWidth={1.8}
+        />
+        <div
+          className="subtitle-no-shot-card subtitle-no-shot-card-muted"
+          data-testid="subtitle-no-shot-subtitle"
+        >
+          <DecorativeIcon
+            className="subtitle-no-shot-card-icon"
+            icon={MessageCircleMore}
+            size={26}
+            strokeWidth={1.8}
+          />
+          <span>字幕</span>
+        </div>
+      </div>
+      <p
+        className="subtitle-no-shot-copy"
+        data-testid="subtitle-no-shot-copy"
+        id="subtitle-no-shot-state-copy"
+      >
+        先新建一个镜头吧。
+      </p>
+    </section>
+  );
 }
 
 function pendingDialogueIdFromTarget(target: EventTarget | null): string | null {
@@ -287,6 +350,7 @@ export function DialogueSheet({
   const shot = snapshot?.project.shots.find(
     (candidate) => candidate.id === currentShotId,
   );
+  const noCurrentShot = shot === undefined;
   const dialogues = shot?.dialogues ?? [];
   const selectedDialogue = dialogues.find(
     (dialogue) => dialogue.id === selectedDialogueId,
@@ -307,14 +371,6 @@ export function DialogueSheet({
     characters.map((character) => character.id),
   );
   const canAdd = singleErrors.speaker === null && singleErrors.text === null;
-
-  if (!shot) {
-    return (
-      <div className="dialogue-sheet" data-testid="dialogue-sheet">
-        <p>请选择一个镜头以编辑对白。</p>
-      </div>
-    );
-  }
 
   const handleAdd = (): void => {
     setSingleTouched({ speaker: true, text: true });
@@ -522,13 +578,16 @@ export function DialogueSheet({
     : selectedUntimedDialogue
       ? 'untimed'
       : 'none';
+  const taskAuthoringMode: DialogueAuthoringMode = noCurrentShot
+    ? 'none'
+    : authoringMode;
   const timelineState = getDialogueSheetState({
-    authoringMode,
+    authoringMode: taskAuthoringMode,
     selectedDialogueState,
     pendingCount: untimedDialogues.length,
   });
   const taskTrayState = getDialogueTaskTrayState({
-    authoringMode,
+    authoringMode: taskAuthoringMode,
     selectedDialogueState,
     pendingCount: untimedDialogues.length,
   });
@@ -560,7 +619,7 @@ export function DialogueSheet({
       data-testid="dialogue-sheet"
       ref={taskSheetRef}
     >
-      {authoringMode === 'none' ? (
+      {noCurrentShot || authoringMode === 'none' ? (
         <header
           className={`dialogue-sheet-header${
             showTimedEditor ? ' dialogue-sheet-header-timed' : ''
@@ -618,7 +677,7 @@ export function DialogueSheet({
                     未加入时间轴 · {untimedDialogues.length}条
                   </span>
                 ) : (
-                  '暂无待安排字幕'
+                  '还没有字幕'
                 )}
               </h3>
             </div>
@@ -1062,7 +1121,9 @@ export function DialogueSheet({
         </section>
       )}
 
-      {showTimedEditor && selectedTimedDialogue ? (
+      {rightWorkspace && noCurrentShot ? (
+        <SubtitleNoShotEmptyState />
+      ) : showTimedEditor && selectedTimedDialogue ? (
         <section
           className="timeline-subtitle-editor dialogue-task-body dialogue-task-body-timed"
           data-state="selected-timed"
@@ -1194,7 +1255,7 @@ export function DialogueSheet({
                           selected-card presentation — Timeline is the
                           owner of when content happens. */}
                       <div className="dialogue-untimed-action-info">
-                        <GripVertical
+                        <Info
                           aria-hidden="true"
                           focusable={false}
                           size={12}
@@ -1260,15 +1321,13 @@ export function DialogueSheet({
               alt=""
               aria-hidden="true"
               className="subtitle-workspace-empty-art"
-              src="/subtitle-empty-state.png"
+              data-testid="subtitle-workspace-empty-art"
+              src={subtitleEmptyStateArt}
             />
           ) : null}
-          <strong>暂无待安排字幕</strong>
-          <span>
-            {rightWorkspace
-              ? '新建一条字幕，它会先留在这里等待安排。'
-              : '点击下方入口添加字幕，或从时间轴选择已有字幕。'}
-          </span>
+          <strong className="subtitle-workspace-empty-copy">
+            还没有字幕，先写一句吧。
+          </strong>
           {rightWorkspace ? (
             <button
               className="dialogue-authoring-open subtitle-workspace-empty-action"

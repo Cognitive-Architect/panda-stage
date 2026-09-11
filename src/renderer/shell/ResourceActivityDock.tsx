@@ -10,6 +10,7 @@ import type {
   ShotWorkspaceView,
 } from '../features/shots/ShotManager';
 import {
+  ArrowLeft,
   Clapperboard,
   CirclePlus,
   FileArchive,
@@ -168,6 +169,29 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     (characterView === 'detail' || characterView === 'expression');
+  const showLandscapeCharacterListHeader =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    !collapseLandscapeCharacterDetailHeader;
+  const useDirectLandscapeShotWorkspaceLabel =
+    landscapePresentation &&
+    activeActivity === 'shots';
+  const landscapeShotHeaderLayout = useDirectLandscapeShotWorkspaceLabel
+    ? shotView === 'create'
+      ? 'shot-create-landscape'
+      : 'shot-list-landscape'
+    : undefined;
+  const useDirectCharacterWorkspaceLabel =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    (characterView === 'list' || characterView === 'create');
+  const showCreateIcon =
+    (activeActivity === 'shots' && shotView !== 'create') ||
+    (activeActivity === 'characters' && characterView === 'list');
+  const showCharacterBackIcon =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    characterView === 'create';
   const hidePortraitShotChrome =
     hideSectionLabels && activeActivity === 'shots' && !landscapePresentation;
   const shotEditorPresentation: ShotEditorPresentation =
@@ -217,12 +241,18 @@ export function ResourceActivityDock({
   return (
     <section
       aria-label={
-        hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
+        hidePortraitShotChrome ||
+        collapseLandscapeCharacterDetailHeader ||
+        useDirectLandscapeShotWorkspaceLabel ||
+        useDirectCharacterWorkspaceLabel
           ? activeLabel
           : undefined
       }
       aria-labelledby={
-        hidePortraitShotChrome || collapseLandscapeCharacterDetailHeader
+        hidePortraitShotChrome ||
+        collapseLandscapeCharacterDetailHeader ||
+        useDirectLandscapeShotWorkspaceLabel ||
+        useDirectCharacterWorkspaceLabel
           ? undefined
           : 'resource-activity-heading'
       }
@@ -281,8 +311,19 @@ export function ResourceActivityDock({
       >
         {!collapseLandscapeCharacterDetailHeader ? (
           <div className="resource-activity-header">
-          <div className="resource-activity-heading">
-            {hidePortraitShotChrome ? null : (
+          <div
+            className="resource-activity-heading"
+            data-resource-header-layout={
+              showLandscapeCharacterListHeader
+                ? 'character-list-landscape'
+                : landscapeShotHeaderLayout
+                  ? landscapeShotHeaderLayout
+                  : undefined
+            }
+          >
+            {hidePortraitShotChrome ||
+            useDirectLandscapeShotWorkspaceLabel ||
+            useDirectCharacterWorkspaceLabel ? null : (
               <div>
                 {hideSectionLabels || landscapePresentation ? (
                   <h2 id="resource-activity-heading">{activeLabel}</h2>
@@ -300,10 +341,14 @@ export function ResourceActivityDock({
                 showLandscapeAssetActionGroup
                   ? 'asset-browser-landscape'
                   : hideLandscapeCharacterPrimaryAction
-                    ? 'character-detail-landscape'
-                  : showPortraitAssetActionGroup
-                    ? 'asset-browser-portrait'
-                    : undefined
+                      ? 'character-detail-landscape'
+                      : showLandscapeCharacterListHeader
+                        ? 'character-list-landscape'
+                      : landscapeShotHeaderLayout
+                        ? landscapeShotHeaderLayout
+                        : showPortraitAssetActionGroup
+                          ? 'asset-browser-portrait'
+                          : undefined
               }
             >
               {hideLandscapeCharacterPrimaryAction ? null : (
@@ -321,7 +366,10 @@ export function ResourceActivityDock({
                   onClick={primaryAction.onClick}
                   type="button"
                 >
-                  {activeActivity === 'shots' && shotView !== 'create' ? (
+                  {showCharacterBackIcon ? (
+                    <DecorativeIcon icon={ArrowLeft} size={18} />
+                  ) : null}
+                  {showCreateIcon ? (
                     <DecorativeIcon icon={CirclePlus} size={18} />
                   ) : null}
                   {activeActivity === 'assets' && assetView === 'browser' ? (

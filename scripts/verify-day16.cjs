@@ -266,7 +266,7 @@ async function verifyDay16() {
         ...cleanupUi,
         residualPaths,
         storeUnchangedByError:
-          cleanupUi.resultStatus === 'imported',
+          cleanupUi.resultStatus === '已导入',
       },
       chooseRequest,
       importedAsset,
@@ -325,9 +325,9 @@ async function verifyDay16() {
       !ui.dropText?.includes('JPG') ||
       !ui.dropText?.includes('MP3') ||
       !ui.dropText?.includes('WAV') ||
-      ui.resultStatus !== 'imported' ||
-      !ui.resultMessage?.includes('已导入') ||
-      ui.status !== '素材已复制并保存到项目。' ||
+      ui.resultStatus !== '已导入' ||
+      !ui.resultMessage?.includes('熊猫 图片.png') ||
+      ui.status !== '已导入：熊猫 图片.png' ||
       !ui.assetsApi.includes('choose') ||
       !ui.assetsApi.includes('importDropped') ||
       ui.rendererHasNodeRequire ||

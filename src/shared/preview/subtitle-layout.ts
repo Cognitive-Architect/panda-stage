@@ -14,7 +14,9 @@ export interface SubtitleLayout {
 
 const DEFAULT_FONT_SIZE = 44;
 const DEFAULT_TEXT_COLOR = '#fffdf6';
-const DEFAULT_BACKGROUND_COLOR = 'rgba(10, 20, 17, 0.78)';
+// Issue #467 R4: the default projection is text-only. Keep the background
+// field in the style model so an explicit future style can still opt in.
+const DEFAULT_BACKGROUND_COLOR = '#0a141100';
 
 export const DEFAULT_SUBTITLE_STYLE = {
   fontFamily: 'Microsoft YaHei, Segoe UI, sans-serif',

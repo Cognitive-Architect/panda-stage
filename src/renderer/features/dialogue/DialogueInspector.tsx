@@ -16,7 +16,88 @@ import {
   integerFrameSpanMs,
 } from '../timeline/timeGeometry';
 
+function parseSecondsToMilliseconds(
+  value: string,
+  label: string,
+): number {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    throw new Error(`${label}不能为空。`);
+  }
+  const seconds = Number(trimmed);
+  if (!Number.isFinite(seconds)) {
+    throw new Error(`${label}必须是有效的秒数。`);
+  }
+  const milliseconds = Math.round(seconds * 1_000);
+  if (!Number.isSafeInteger(milliseconds)) {
+    throw new Error(`${label}超出支持的时间范围。`);
+  }
+  return milliseconds;
+}
+
+/** Convert a human-readable seconds draft to the integer-ms project boundary. */
+export function secondsToMilliseconds(value: string, label = '时间'): number {
+  return parseSecondsToMilliseconds(value, label);
+}
+
+/** Display integer-ms project timing with at most millisecond precision. */
+export function millisecondsToSeconds(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds)) return '—';
+  const roundedMilliseconds = Math.round(milliseconds);
+  if (!Number.isSafeInteger(roundedMilliseconds)) return '—';
+  return (
+    roundedMilliseconds / 1_000
+  )
+    .toFixed(3)
+    .replace(/\.0+$/, '')
+    .replace(/(\.\d*?)0+$/, '$1');
+}
+
+/** Keep audio summaries human-readable without changing the integer-ms model. */
+export function formatHumanAudioDuration(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds)) return '—';
+  const roundedMilliseconds = Math.round(milliseconds);
+  if (!Number.isSafeInteger(roundedMilliseconds)) return '—';
+  return `${(Math.max(0, roundedMilliseconds) / 1_000).toFixed(2)} 秒`;
+}
+
 export function normalizeManualDialogueTiming(
+  startSecondsValue: string,
+  durationSecondsValue: string,
+  durationMs: number,
+): { startMs: number; endMs: number } {
+  const startMs = secondsToMilliseconds(startSecondsValue, '开始时间');
+  const durationMilliseconds = secondsToMilliseconds(
+    durationSecondsValue,
+    '时长',
+  );
+  if (startMs < 0) {
+    throw new Error('开始时间不能小于 0 秒。');
+  }
+  if (durationMilliseconds < 1) {
+    throw new Error('时长必须大于 0 秒。');
+  }
+  if (!Number.isSafeInteger(durationMs) || durationMs < 1) {
+    throw new Error('当前镜头时长无效。');
+  }
+  if (startMs > durationMs) {
+    throw new Error('开始时间不能超过当前镜头时长。');
+  }
+  const endMs = startMs + durationMilliseconds;
+  if (!Number.isSafeInteger(endMs)) {
+    throw new Error('开始时间与时长超出支持的时间范围。');
+  }
+  if (endMs > durationMs) {
+    throw new Error('开始时间加时长不能超过当前镜头时长。');
+  }
+
+  return {
+    startMs,
+    endMs,
+  };
+}
+
+function normalizeLegacyManualDialogueTiming(
   startValue: string,
   endValue: string,
   durationMs: number,
@@ -122,12 +203,10 @@ export function DialogueInspector({
     ? Math.max(0, audioAsset.durationMs - audioClip.offsetMs)
     : 0;
   const audioSummary = audioClip
-    ? (audioAsset?.name ?? audioClip.name) +
-      ' · ' +
-      formatTimecode(Math.max(0, audioClip.endMs - audioClip.startMs))
+    ? `音频 ${formatHumanAudioDuration(audioClipDurationMs)}`
     : dialogue?.audioClipId
       ? '绑定配音不可用'
-      : '还没有配音';
+      : null;
   const unavailableAudioCount = audioAssets.filter(
     (asset) =>
       asset.durationMs === undefined || asset.metadata?.status === 'error',
@@ -136,6 +215,14 @@ export function DialogueInspector({
   const [text, setText] = useState(dialogue?.text ?? '');
   const [startMs, setStartMs] = useState(String(dialogue?.startMs ?? 0));
   const [endMs, setEndMs] = useState(String(dialogue?.endMs ?? 0));
+  const [startSeconds, setStartSeconds] = useState(
+    millisecondsToSeconds(dialogue?.startMs ?? 0),
+  );
+  const [durationSeconds, setDurationSeconds] = useState(
+    millisecondsToSeconds(
+      Math.max(0, (dialogue?.endMs ?? 0) - (dialogue?.startMs ?? 0)),
+    ),
+  );
   const [error, setError] = useState<DialogueInspectorError | null>(null);
   const [audioTrimEditorOpen, setAudioTrimEditorOpen] = useState(false);
   const [audioTrimDurationMs, setAudioTrimDurationMs] = useState(
@@ -147,6 +234,12 @@ export function DialogueInspector({
     if (!focusedRef.current) setText(dialogue?.text ?? '');
     setStartMs(String(dialogue?.startMs ?? 0));
     setEndMs(String(dialogue?.endMs ?? 0));
+    setStartSeconds(millisecondsToSeconds(dialogue?.startMs ?? 0));
+    setDurationSeconds(
+      millisecondsToSeconds(
+        Math.max(0, (dialogue?.endMs ?? 0) - (dialogue?.startMs ?? 0)),
+      ),
+    );
     setError(null);
   }, [dialogue?.id, dialogue?.text, dialogue?.startMs, dialogue?.endMs]);
 
@@ -257,19 +350,14 @@ export function DialogueInspector({
           <strong>{audioAsset?.name ?? audioClip.name}</strong>
           {!audioTrimEditorOpen ? (
             <span>
-              片段{' '}
+              音频{' '}
               <time dateTime={`PT${audioClipDurationMs / 1000}S`}>
-                {formatTimecode(audioClipDurationMs)}
+                {formatHumanAudioDuration(audioClipDurationMs)}
               </time>
             </span>
           ) : null}
         </div>
-      ) : (
-        <div className="dialogue-audio-empty-state">
-          <strong>还没有配音</strong>
-          <span>为这条字幕选择角色配音。</span>
-        </div>
-      )}
+      ) : null}
       {audioTrimEditorOpen && audioClip && audioAsset && audioEndRange ? (
         <div
           className="dialogue-audio-duration-editor"
@@ -450,10 +538,10 @@ export function DialogueInspector({
     }
   };
 
-  const commitTiming = (): void => {
+  const commitLegacyTiming = (): void => {
     let timing: { startMs: number; endMs: number };
     try {
-      timing = normalizeManualDialogueTiming(
+      timing = normalizeLegacyManualDialogueTiming(
         startMs,
         endMs,
         shot.durationMs,
@@ -485,20 +573,70 @@ export function DialogueInspector({
     );
   };
 
+  const commitTiming = (): void => {
+    let timing: { startMs: number; endMs: number };
+    try {
+      timing = normalizeManualDialogueTiming(
+        startSeconds,
+        durationSeconds,
+        shot.durationMs,
+      );
+    } catch (nextError) {
+      setError({
+        scope: 'timing',
+        message:
+          nextError instanceof Error
+            ? nextError.message
+            : '开始时间和时长必须是有效的秒数。',
+      });
+      return;
+    }
+    report(
+      'timing',
+      () => {
+        dialogueStore.setTiming(
+          dialogue.id,
+          timing.startMs,
+          timing.endMs,
+        );
+        setStartSeconds(millisecondsToSeconds(timing.startMs));
+        setDurationSeconds(
+          millisecondsToSeconds(timing.endMs - timing.startMs),
+        );
+      },
+      '对白时间段无效。',
+    );
+  };
+
   const timingInputValid = [startMs, endMs].every((value) => {
     if (value.trim() === '') return false;
     const raw = Number(value);
     return Number.isFinite(raw) && Number.isInteger(raw);
   });
 
-  const formatDraftTimecode = (value: string, fallback: number): string => {
-    const raw = Number(value);
-    return value.trim() !== '' && Number.isFinite(raw)
-      ? formatTimecode(raw)
-      : formatTimecode(fallback);
+  const parseSecondsDraft = (value: string): number | null => {
+    if (value.trim() === '') return null;
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds)) return null;
+    const milliseconds = Math.round(seconds * 1_000);
+    return Number.isSafeInteger(milliseconds) ? milliseconds : null;
   };
-  const draftStartTimecode = formatDraftTimecode(startMs, dialogue.startMs);
-  const draftEndTimecode = formatDraftTimecode(endMs, dialogue.endMs);
+  const draftStartMs = parseSecondsDraft(startSeconds);
+  const draftDurationMs = parseSecondsDraft(durationSeconds);
+  const draftEndMs =
+    draftStartMs !== null &&
+    draftDurationMs !== null &&
+    Number.isSafeInteger(draftStartMs + draftDurationMs)
+      ? draftStartMs + draftDurationMs
+      : null;
+  // Keep these readable aliases for the existing presentation markup; they
+  // now intentionally contain seconds, not legacy timecode strings.
+  const draftStartTimecode =
+    draftStartMs === null ? '—' : millisecondsToSeconds(draftStartMs);
+  const draftDurationTimecode =
+    draftDurationMs === null ? '—' : millisecondsToSeconds(draftDurationMs);
+  const draftEndTimecode =
+    draftEndMs === null ? '—' : millisecondsToSeconds(draftEndMs);
 
   if (timelinePresentation) {
     return (
@@ -655,7 +793,7 @@ export function DialogueInspector({
                   className="dialogue-timeline-apply-timing dialogue-timed-apply-timing"
                   data-testid="dialogue-inspector-apply-timing"
                   disabled={!timingInputValid}
-                  onClick={commitTiming}
+                  onClick={commitLegacyTiming}
                   type="button"
                 >
                   应用时间
@@ -746,7 +884,11 @@ export function DialogueInspector({
           data-testid="dialogue-inspector-audio-section"
         >
           <h3>配音</h3>
-          <p data-testid="dialogue-inspector-audio-summary">{audioSummary}</p>
+          {audioSummary ? (
+            <p data-testid="dialogue-inspector-audio-summary">
+              {audioSummary}
+            </p>
+          ) : null}
         </section>
 
         <div className="dialogue-inspector-actions dialogue-timed-actions">
@@ -776,31 +918,33 @@ export function DialogueInspector({
           className="dialogue-properties-identity-editor"
           data-testid="dialogue-properties-header"
         >
-          <DecorativeIcon icon={MessageSquareText} size={18} />
           <div
-            className="dialogue-properties-identity-copy"
+            className="dialogue-properties-identity-row"
             data-testid="dialogue-inspector-copy-section"
           >
-            <strong
-              className="dialogue-properties-identity"
-              data-testid="dialogue-properties-identity"
-            >
-              {character?.name ?? '未知角色'}
-            </strong>
-            <textarea
-              aria-label="台词内容"
-              className="dialogue-properties-inline-text"
-              data-testid="dialogue-inspector-text"
-              value={text}
-              rows={2}
-              onChange={(event) => setText(event.target.value)}
-              onFocus={() => {
-                focusedRef.current = true;
-              }}
-              onBlur={commitText}
-            />
+            <DecorativeIcon icon={MessageSquareText} size={18} />
+            <div className="dialogue-properties-identity-copy">
+              <strong
+                className="dialogue-properties-identity"
+                data-testid="dialogue-properties-identity"
+              >
+                {character?.name ?? '未知角色'}
+              </strong>
+            </div>
+            {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
           </div>
-          {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
+          <textarea
+            aria-label="台词内容"
+            className="dialogue-properties-inline-text"
+            data-testid="dialogue-inspector-text"
+            value={text}
+            rows={2}
+            onChange={(event) => setText(event.target.value)}
+            onFocus={() => {
+              focusedRef.current = true;
+            }}
+            onBlur={commitText}
+          />
         </header>
         <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
@@ -835,7 +979,6 @@ export function DialogueInspector({
               <button
                 className="dialogue-properties-apply-timing"
                 data-testid="dialogue-inspector-apply-timing"
-                disabled={!timingInputValid}
                 onClick={commitTiming}
                 type="button"
               >
@@ -847,52 +990,92 @@ export function DialogueInspector({
             <>
               <div className="dialogue-compact-timing-grid">
                 <label className="dialogue-compact-time-cell">
-                  <span>开始</span>
-                  <span className="dialogue-compact-time-value">
-                    <time data-testid="dialogue-inspector-start-readable">
+                  <span>开始（秒）</span>
+                  <span className="dialogue-compact-time-value dialogue-compact-time-editable">
+                    <output hidden data-testid="dialogue-inspector-start-readable">
                       {draftStartTimecode}
-                    </time>
+                    </output>
                     <input
-                      aria-label="开始时间"
+                      className="dialogue-timing-seconds-input"
+                      aria-label="开始（秒）"
+                      aria-invalid={draftStartMs === null}
                       aria-valuetext={draftStartTimecode}
                       data-display-time={draftStartTimecode}
+                      data-persisted-timecode={formatTimecode(dialogue.startMs)}
                       data-testid="dialogue-inspector-start"
-                      inputMode="numeric"
-                      min={0}
-                      onChange={(event) => setStartMs(event.target.value)}
-                      type="number"
-                      value={startMs}
+                      inputMode="decimal"
+                      onChange={(event) => {
+                        setStartSeconds(event.target.value);
+                        setError((current) =>
+                          current?.scope === 'timing' ? null : current,
+                        );
+                      }}
+                      onClick={(event) => event.currentTarget.select()}
+                      onFocus={(event) => event.currentTarget.select()}
+                      type="text"
+                      value={startSeconds}
                     />
+                    <span aria-hidden="true" className="dialogue-time-unit">
+                      秒
+                    </span>
                   </span>
                 </label>
                 <label className="dialogue-compact-time-cell">
-                  <span>结束</span>
-                  <span className="dialogue-compact-time-value">
-                    <time data-testid="dialogue-inspector-end-readable">
-                      {draftEndTimecode}
-                    </time>
+                  <span>时长（秒）</span>
+                  <span className="dialogue-compact-time-value dialogue-compact-time-editable">
+                    <output hidden data-testid="dialogue-inspector-duration-readable">
+                      {draftDurationTimecode}
+                    </output>
                     <input
-                      aria-label="结束时间"
-                      aria-valuetext={draftEndTimecode}
-                      data-display-time={draftEndTimecode}
-                      data-testid="dialogue-inspector-end"
-                      inputMode="numeric"
-                      min={0}
-                      onChange={(event) => setEndMs(event.target.value)}
-                      type="number"
-                      value={endMs}
+                      className="dialogue-timing-seconds-input"
+                      aria-label="时长（秒）"
+                      aria-invalid={draftDurationMs === null}
+                      aria-valuetext={draftDurationTimecode}
+                      data-display-time={draftDurationTimecode}
+                      data-testid="dialogue-inspector-duration"
+                      inputMode="decimal"
+                      onChange={(event) => {
+                        setDurationSeconds(event.target.value);
+                        setError((current) =>
+                          current?.scope === 'timing' ? null : current,
+                        );
+                      }}
+                      onClick={(event) => event.currentTarget.select()}
+                      onFocus={(event) => event.currentTarget.select()}
+                      type="text"
+                      value={durationSeconds}
                     />
+                    <span aria-hidden="true" className="dialogue-time-unit">
+                      秒
+                    </span>
                   </span>
                 </label>
                 <div
-                  className="dialogue-compact-time-cell is-duration"
-                  data-duration-ms={Math.max(0, dialogue.endMs - dialogue.startMs)}
+                  className="dialogue-compact-time-cell is-derived"
+                  data-duration-ms={draftDurationMs ?? ''}
                   data-testid="dialogue-inspector-timing-summary"
                 >
-                  <span>时长</span>
-                  <time>
-                    {formatTimecode(dialogue.endMs - dialogue.startMs)}
-                  </time>
+                  <span>结束</span>
+                  <span
+                    className="dialogue-compact-time-value dialogue-compact-time-derived"
+                    data-read-only="true"
+                    data-testid="dialogue-inspector-end"
+                  >
+                    <output
+                      aria-label="结束"
+                      aria-readonly="true"
+                      aria-valuetext={draftEndTimecode}
+                      data-display-time={draftEndTimecode}
+                      data-persisted-timecode={formatTimecode(dialogue.endMs)}
+                      data-testid="dialogue-inspector-end-readable"
+                    >
+                      {draftEndTimecode}
+                    </output>
+                    <span aria-hidden="true" className="dialogue-time-unit">
+                      秒
+                    </span>
+                    <span className="dialogue-time-auto-badge">自动计算</span>
+                  </span>
                 </div>
               </div>
               {error?.scope === 'timing' ? (
@@ -1010,31 +1193,33 @@ export function DialogueInspector({
           className="dialogue-properties-identity-editor dialogue-landscape-properties-identity-editor"
           data-testid="dialogue-properties-header"
         >
-          <DecorativeIcon icon={MessageSquareText} size={18} />
           <div
-            className="dialogue-properties-identity-copy"
+            className="dialogue-properties-identity-row dialogue-landscape-properties-identity-row"
             data-testid="dialogue-inspector-copy-section"
           >
-            <strong
-              className="dialogue-properties-identity"
-              data-testid="dialogue-inspector-speaker-name"
-            >
-              {character?.name ?? '未知角色'}
-            </strong>
-            <textarea
-              aria-label="台词内容"
-              className="dialogue-properties-inline-text dialogue-landscape-properties-textarea"
-              data-testid="dialogue-inspector-text"
-              value={text}
-              rows={2}
-              onChange={(event) => setText(event.target.value)}
-              onFocus={() => {
-                focusedRef.current = true;
-              }}
-              onBlur={commitText}
-            />
+            <DecorativeIcon icon={MessageSquareText} size={18} />
+            <div className="dialogue-properties-identity-copy">
+              <strong
+                className="dialogue-properties-identity"
+                data-testid="dialogue-inspector-speaker-name"
+              >
+                {character?.name ?? '未知角色'}
+              </strong>
+            </div>
+            {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
           </div>
-          {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
+          <textarea
+            aria-label="台词内容"
+            className="dialogue-properties-inline-text dialogue-landscape-properties-textarea"
+            data-testid="dialogue-inspector-text"
+            value={text}
+            rows={2}
+            onChange={(event) => setText(event.target.value)}
+            onFocus={() => {
+              focusedRef.current = true;
+            }}
+            onBlur={commitText}
+          />
         </header>
         <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
@@ -1069,7 +1254,6 @@ export function DialogueInspector({
               <button
                 className="dialogue-properties-apply-timing"
                 data-testid="dialogue-inspector-apply-timing"
-                disabled={!timingInputValid}
                 onClick={commitTiming}
                 type="button"
               >
@@ -1081,57 +1265,95 @@ export function DialogueInspector({
             <>
               <div className="dialogue-compact-timing-grid">
                 <label className="dialogue-compact-time-cell">
-                  <span>开始</span>
-                  <span className="dialogue-compact-time-value">
-                    <time data-testid="dialogue-inspector-start-readable">
+                  <span>开始（秒）</span>
+                  <span className="dialogue-compact-time-value dialogue-compact-time-editable">
+                    <output hidden data-testid="dialogue-inspector-start-readable">
                       {draftStartTimecode}
-                    </time>
+                    </output>
                     <input
-                      aria-label="开始时间"
+                      className="dialogue-timing-seconds-input"
+                      aria-label="开始（秒）"
+                      aria-invalid={draftStartMs === null}
                       aria-valuetext={draftStartTimecode}
                       data-testid="dialogue-inspector-start"
                       data-display-time={draftStartTimecode}
                       data-persisted-timecode={formatTimecode(dialogue.startMs)}
-                      inputMode="numeric"
-                      min={0}
-                      onChange={(event) => setStartMs(event.target.value)}
-                      type="number"
-                      value={startMs}
+                      inputMode="decimal"
+                      onChange={(event) => {
+                        setStartSeconds(event.target.value);
+                        setError((current) =>
+                          current?.scope === 'timing' ? null : current,
+                        );
+                      }}
+                      onClick={(event) => event.currentTarget.select()}
+                      onFocus={(event) => event.currentTarget.select()}
+                      type="text"
+                      value={startSeconds}
                     />
+                    <span aria-hidden="true" className="dialogue-time-unit">
+                      秒
+                    </span>
                   </span>
                 </label>
                 <label className="dialogue-compact-time-cell">
-                  <span>结束</span>
-                  <span className="dialogue-compact-time-value">
-                    <time data-testid="dialogue-inspector-end-readable">
-                      {draftEndTimecode}
-                    </time>
+                  <span>时长（秒）</span>
+                  <span className="dialogue-compact-time-value dialogue-compact-time-editable">
+                    <output hidden data-testid="dialogue-inspector-duration-readable">
+                      {draftDurationTimecode}
+                    </output>
                     <input
-                      aria-label="结束时间"
-                      aria-valuetext={draftEndTimecode}
-                      data-testid="dialogue-inspector-end"
-                      data-display-time={draftEndTimecode}
-                      data-persisted-timecode={formatTimecode(dialogue.endMs)}
-                      inputMode="numeric"
-                      min={0}
-                      onChange={(event) => setEndMs(event.target.value)}
-                      type="number"
-                      value={endMs}
+                      className="dialogue-timing-seconds-input"
+                      aria-label="时长（秒）"
+                      aria-invalid={draftDurationMs === null}
+                      aria-valuetext={draftDurationTimecode}
+                      data-display-time={draftDurationTimecode}
+                      data-testid="dialogue-inspector-duration"
+                      inputMode="decimal"
+                      onChange={(event) => {
+                        setDurationSeconds(event.target.value);
+                        setError((current) =>
+                          current?.scope === 'timing' ? null : current,
+                        );
+                      }}
+                      onClick={(event) => event.currentTarget.select()}
+                      onFocus={(event) => event.currentTarget.select()}
+                      type="text"
+                      value={durationSeconds}
                     />
+                    <span aria-hidden="true" className="dialogue-time-unit">
+                      秒
+                    </span>
                   </span>
                 </label>
                 <div
-                  className="dialogue-compact-time-cell is-duration"
+                  className="dialogue-compact-time-cell is-derived"
                   data-duration-ms={Math.max(
                     0,
-                    dialogue.endMs - dialogue.startMs,
+                    draftDurationMs ?? dialogue.endMs - dialogue.startMs,
                   )}
                   data-testid="dialogue-inspector-timing-summary"
                 >
-                  <span>时长</span>
-                  <time>
-                    {formatTimecode(dialogue.endMs - dialogue.startMs)}
-                  </time>
+                  <span>结束</span>
+                  <span
+                    className="dialogue-compact-time-value dialogue-compact-time-derived"
+                    data-read-only="true"
+                    data-testid="dialogue-inspector-end"
+                  >
+                    <output
+                      aria-label="结束"
+                      aria-readonly="true"
+                      aria-valuetext={draftEndTimecode}
+                      data-display-time={draftEndTimecode}
+                      data-persisted-timecode={formatTimecode(dialogue.endMs)}
+                      data-testid="dialogue-inspector-end-readable"
+                    >
+                      {draftEndTimecode}
+                    </output>
+                    <span aria-hidden="true" className="dialogue-time-unit">
+                      秒
+                    </span>
+                    <span className="dialogue-time-auto-badge">自动计算</span>
+                  </span>
                 </div>
               </div>
               {error?.scope === 'timing' ? (
@@ -1341,7 +1563,7 @@ export function DialogueInspector({
             </label>
             <button
               data-testid="dialogue-inspector-apply-timing"
-              onClick={commitTiming}
+              onClick={commitLegacyTiming}
               type="button"
             >
               应用时间

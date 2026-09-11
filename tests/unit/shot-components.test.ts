@@ -75,8 +75,9 @@ describe('shot management components', () => {
       }),
     );
 
-    expect(markup).toContain('项目还没有镜头');
-    expect(markup).toContain('创建第一个镜头');
+    expect(markup).toContain('还没有镜头');
+    expect(markup).toContain('先新建一个吧。');
+    expect(markup).not.toContain('先新建一个，我们从第一幕开始。');
     expect(markup).toContain('创建镜头');
     expect(markup).toContain('0 个镜头');
     expect(markup).not.toContain('/5 验收样例');

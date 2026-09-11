@@ -17,6 +17,7 @@ export interface AssetGridProps {
   onRebuildThumbnail: (assetId: string) => void;
   onThumbnailError: (assetId: string) => void;
   emptyMessage?: string;
+  emptyDescription?: string;
   metadataErrors?: Readonly<Record<string, string>>;
 }
 
@@ -31,6 +32,7 @@ export function AssetGrid({
   onRebuildThumbnail,
   onThumbnailError,
   emptyMessage,
+  emptyDescription,
   metadataErrors,
 }: AssetGridProps): React.JSX.Element {
   if (entries.length === 0) {
@@ -39,9 +41,10 @@ export function AssetGrid({
         <span aria-hidden="true">＋</span>
         <strong>{emptyMessage ?? '这个分类还没有素材'}</strong>
         <p>
-          {emptyMessage
-            ? '清除搜索或换一个分类试试。'
-            : '使用上方导入入口选择文件，或直接拖入 PNG、JPG、MP3、WAV。'}
+          {emptyDescription ??
+            (emptyMessage
+              ? '清除搜索或换一个分类试试。'
+              : '使用上方导入入口选择文件，或直接拖入 PNG、JPG、MP3、WAV。')}
         </p>
       </div>
     );

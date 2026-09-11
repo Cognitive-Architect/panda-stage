@@ -9,6 +9,45 @@ export interface AssetImportUiOutcome {
   results: AssetImportResult[] | null;
 }
 
+/**
+ * Keep the primary import acknowledgement short while retaining a clear
+ * follow-up whenever a batch also contains reused or unsuccessful entries.
+ */
+export function formatAssetImportStatus(
+  results: readonly AssetImportResult[],
+): string {
+  const importedCount = results.filter(
+    (result) => result.status === 'imported',
+  ).length;
+  const duplicateCount = results.filter(
+    (result) => result.status === 'duplicate',
+  ).length;
+  const unsuccessfulCount = results.filter(
+    (result) => result.status === 'rejected' || result.status === 'failed',
+  ).length;
+
+  if (importedCount === 1 && results.length === 1) {
+    return `已导入：${results.find((result) => result.status === 'imported')!.sourceName}`;
+  }
+  if (
+    importedCount > 0 &&
+    duplicateCount === 0 &&
+    unsuccessfulCount === 0
+  ) {
+    return `已导入 ${importedCount} 个素材`;
+  }
+
+  const facts: string[] = [];
+  if (importedCount > 0) facts.push(`已导入 ${importedCount} 个素材`);
+  if (duplicateCount > 0) facts.push(`已复用 ${duplicateCount} 个已有素材`);
+  if (unsuccessfulCount > 0) {
+    facts.push(`另有 ${unsuccessfulCount} 个素材未导入，请查看下方详情`);
+  }
+  return facts.length > 0
+    ? `${facts.join('；')}。`
+    : '没有素材被导入，项目未发生变化。';
+}
+
 export function applyAssetImportResponse(
   response: AssetImportResponse,
   store: EditorProjectStore,
@@ -47,20 +86,17 @@ export function applyAssetImportResponse(
       response.baseRevision,
       response.savedRevision,
     );
+    const importStatus = formatAssetImportStatus(response.results);
     return {
       status:
         acknowledgement === 'current'
-          ? '素材已复制并保存到项目。'
-          : '素材已保存；导入期间的新编辑仍保持未保存状态。',
+          ? importStatus
+          : `${importStatus}；导入期间的新编辑仍保持未保存状态。`,
       results: response.results,
     };
   }
   return {
-    status: response.results.some(
-      (result) => result.status === 'duplicate',
-    )
-      ? '没有复制重复素材；已保留并复用原素材记录。'
-      : '没有素材被导入，项目未发生变化。',
+    status: formatAssetImportStatus(response.results),
     results: response.results,
   };
 }

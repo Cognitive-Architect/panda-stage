@@ -117,17 +117,38 @@ describe('Issue #454 Quick Action Drawer', () => {
     expect(clean).toContain('data-save-state="saved"');
     expect(clean).toContain('data-testid="quick-action-save" disabled');
     expect(clean).not.toContain('data-testid="project-save-state"');
+    expect(clean).not.toContain('data-testid="project-save-state-rest"');
     expect(dirty).toContain('data-save-state="dirty"');
-    expect(dirty).toContain('有未保存更改');
+    expect(dirty).not.toContain('有未保存更改');
+    expect(dirty).not.toContain('data-testid="project-save-state"');
+    expect(dirty).not.toContain('data-testid="project-save-state-rest"');
     expect(dirty).not.toContain('data-testid="quick-action-save" disabled');
     expect(saving).toContain('data-save-state="saving"');
     expect(saving).toContain('保存中');
+    expect(saving).toContain('data-testid="project-save-state-rest"');
     expect(saving).toContain('quick-action-drawer-spinner');
     expect(saving).toContain('data-testid="quick-action-save" disabled');
     expect(failed).toContain('data-save-state="failed"');
     expect(failed).toContain('保存失败');
+    expect(failed).toContain('data-testid="project-save-state-rest"');
     expect(failed).toContain('保存失败：磁盘不可用。');
     expect(failed).toContain('data-testid="editor-action-status"');
+  });
+
+  it('makes only the dirty Save action visibly active without changing failure styling', () => {
+    const styles = source('src/renderer/styles.css');
+    const saved = renderDrawer('saved');
+    const dirty = renderDrawer('dirty');
+
+    expect(saved).toContain('quick-action-drawer-save-saved');
+    expect(saved).not.toContain('quick-action-drawer-save-dirty');
+    expect(dirty).toContain('quick-action-drawer-save-dirty');
+    expect(styles).toMatch(
+      /\.quick-action-drawer\s+button\.quick-action-drawer-action\[data-ui-variant='secondary'\]\.quick-action-drawer-save-dirty\s*\{[\s\S]*?border-color:\s*var\(--ui-color-action-warning\);[\s\S]*?color:\s*#ffe6ad;[\s\S]*?background:\s*rgb\(163 109 25 \/ 28%\);/u,
+    );
+    expect(styles).toMatch(
+      /\.quick-action-drawer button\.quick-action-drawer-save-failed\s*\{[\s\S]*?color:\s*#ffd4d0;/u,
+    );
   });
 
   it('derives the native title from the one formal project snapshot', () => {

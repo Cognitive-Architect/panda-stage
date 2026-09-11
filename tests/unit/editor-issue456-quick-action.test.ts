@@ -10,8 +10,11 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
   const styles = source('src/renderer/styles.css');
   const gate = source('scripts/verify-issue456-quick-action.cjs');
 
-  it('keeps legitimate top surfaces in flow while mounting the drawer in the body overlay', () => {
+  it('keeps only portrait top surfaces in flow while mounting the drawer and recovery card in overlays', () => {
     expect(shell).toContain(
+      "data-top-region-layout={isPortrait ? 'flow' : 'overlay'}",
+    );
+    expect(shell).not.toContain(
       "data-top-region-layout={recoveryCandidate || isPortrait ? 'flow' : 'overlay'}",
     );
     expect(shell).toContain('data-testid="editor-top-region"');
@@ -44,6 +47,15 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
     );
     expect(styles).toMatch(
       /\.quick-action-drawer\s*\{[\s\S]*?min-height:\s*0;/u,
+    );
+    expect(styles).toMatch(
+      /\.quick-action-drawer\[data-expanded='false'\]\s*\.quick-action-drawer-surface\s*\{[\s\S]*?max-height:\s*0;[\s\S]*?padding-block:\s*0;[\s\S]*?border-width:\s*0;[\s\S]*?background:\s*transparent;/u,
+    );
+    expect(styles).toMatch(
+      /\.quick-action-drawer\[data-expanded='false'\]\s*\.quick-action-drawer-handle\s*\{[\s\S]*?align-items:\s*flex-start;/u,
+    );
+    expect(styles).toMatch(
+      /\.quick-action-drawer-handle\s*\{[\s\S]*?height:\s*var\(--ui-touch-icon\);[\s\S]*?min-height:\s*var\(--ui-touch-icon\);/u,
     );
     expect(styles).toContain(
       ".editor-layout[data-top-region-layout='flow'] > .editor-top-region",

@@ -424,16 +424,17 @@ async function run(window, fixture) {
   await clickSelector(window, '[data-testid="shot-quick-rename-apply"]');
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="project-save-state"]')?.textContent?.trim() === '有未保存更改' &&
+    `document.querySelector('[data-testid="project-save-state"]') === null &&
+      document.querySelector('[data-testid="quick-action-drawer"]')?.getAttribute('data-save-state') === 'dirty' &&
       document.querySelector('[data-testid="quick-action-save"]')?.disabled === false`,
-    'Dirty state did not expose the required label and enabled save button.',
+    'Dirty state did not expose the amber Save affordance without redundant label.',
   );
   const dirty = await snapshot(window);
-  assert(dirty.saveState === '有未保存更改', 'Dirty save state is not 有未保存更改.');
+  assert(dirty.saveState === null, 'Dirty save-state label should be absent.');
   assert(dirty.saveStateCode === 'dirty', 'Dirty save-state code is not dirty.');
   assert(dirty.saveDisabled === false, 'Save button must be enabled when dirty.');
   result.snapshots.dirty = dirty;
-  result.checks.push('Dirty project shows 有未保存更改 and enables 保存');
+  result.checks.push('Dirty project keeps dirty root state, shows amber Save, and enables 保存 without duplicate label');
 
   await clickSelector(window, '[data-testid="quick-action-save"]');
   await waitForDom(
