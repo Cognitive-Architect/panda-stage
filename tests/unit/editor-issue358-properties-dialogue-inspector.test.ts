@@ -32,7 +32,7 @@ describe('Issue #358 portrait Properties dialogue inspector', () => {
     const properties = dialogue.slice(dialogue.indexOf('if (propertiesPresentation)'));
 
     for (const marker of [
-      '字幕属性',
+      '编辑字幕',
       'dialogue-properties-identity',
       'dialogue-inspector-copy-section',
       'dialogue-inspector-speaker-section',

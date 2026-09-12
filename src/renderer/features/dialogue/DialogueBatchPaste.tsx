@@ -3,6 +3,10 @@ import type { Character } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
 import {
+  CharacterIdentityPicker,
+  useCharacterAvatarThumbnails,
+} from '../characters/CharacterIdentity';
+import {
   parseDialoguePaste,
   resolveDialoguePaste,
   type ParsedDialogueLine,
@@ -38,15 +42,21 @@ function issueCopy(line: ParsedDialogueLine): React.JSX.Element | null {
 export function DialogueBatchPaste({
   draft,
   onSuccess,
+  showDefaultExpression = true,
 }: {
   draft: DialogueAuthoringDraft;
   onSuccess: () => void;
+  showDefaultExpression?: boolean;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
+  const {
+    onThumbnailError: onCharacterThumbnailError,
+    thumbnails: characterThumbnails,
+  } = useCharacterAvatarThumbnails(snapshot, characters);
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const [commitError, setCommitError] = useState<string | null>(null);
 
@@ -154,28 +164,32 @@ export function DialogueBatchPaste({
                       <p className="dialogue-batch-row-issue">
                         <strong>没找到这个角色</strong>
                       </p>
-                      <label>
+                      <div className="dialogue-batch-character-mapping">
                         <span>对应为</span>
-                        <select
-                          aria-label={`将未知角色 ${line.speaker} 映射为`}
-                          data-testid={`dialogue-batch-map-${line.lineNumber}`}
-                          value={draftState.batchMapping[line.lineNumber] ?? ''}
-                          onChange={(event) => {
+                        <CharacterIdentityPicker
+                          ariaLabel={`将未知角色 ${line.speaker} 映射为`}
+                          characters={characters}
+                          className="dialogue-batch-character-picker"
+                          emptySummaryDescription="选择要对应的角色"
+                          emptySummaryLabel="选择角色"
+                          onClear={() => {
                             setCommitError(null);
-                            draft.setBatchMapping(
-                              line.lineNumber,
-                              event.target.value,
-                            );
+                            draft.setBatchMapping(line.lineNumber, '');
                           }}
-                        >
-                          <option value="">选择角色</option>
-                          {characters.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                          onSelect={(characterId) => {
+                            setCommitError(null);
+                            draft.setBatchMapping(line.lineNumber, characterId);
+                          }}
+                          onThumbnailError={onCharacterThumbnailError}
+                          selectedCharacterId={
+                            draftState.batchMapping[line.lineNumber] ?? null
+                          }
+                          selectedLabel="已映射角色"
+                          showDefaultExpression={showDefaultExpression}
+                          data-testid={`dialogue-batch-map-${line.lineNumber}`}
+                          thumbnails={characterThumbnails}
+                        />
+                      </div>
                     </div>
                   ) : (
                     issueCopy(line)

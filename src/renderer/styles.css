@@ -3562,51 +3562,6 @@ button:disabled {
   border-color: rgb(214 139 102 / 80%);
 }
 
-.dialogue-sheet-right-workspace .dialogue-authoring-advanced {
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 10px;
-  background: rgb(8 18 12 / 50%);
-  padding: 0;
-}
-
-.dialogue-sheet-right-workspace .dialogue-authoring-advanced > summary {
-  cursor: pointer;
-  list-style: none;
-  padding: 8px 12px;
-  color: var(--ui-color-text-secondary, #9ec0a4);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.dialogue-sheet-right-workspace .dialogue-authoring-advanced > summary::-webkit-details-marker {
-  display: none;
-}
-
-.dialogue-sheet-right-workspace .dialogue-authoring-advanced-body {
-  display: grid;
-  gap: 12px;
-  padding: 0 12px 12px;
-}
-
-.dialogue-sheet-right-workspace .dialogue-authoring-field-hint {
-  margin: 0;
-  color: var(--ui-color-text-secondary, #9ec0a4);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.dialogue-sheet-right-workspace .dialogue-authoring-playhead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgb(8 18 12 / 60%);
-  color: var(--ui-color-text-primary, #d6efd9);
-  font-size: 12px;
-}
-
 .dialogue-sheet-right-workspace .dialogue-authoring-footer {
   display: grid;
   gap: 4px;
@@ -3643,13 +3598,6 @@ button:disabled {
   background: rgb(83 145 101 / 20%);
   color: var(--ui-color-text-secondary, #9ec0a4);
   cursor: not-allowed;
-}
-
-.dialogue-sheet-right-workspace .dialogue-authoring-helper {
-  margin: 0;
-  text-align: center;
-  color: var(--ui-color-text-secondary, #9ec0a4);
-  font-size: 12px;
 }
 
 .dialogue-sheet-right-workspace .dialogue-authoring-error {
@@ -8876,7 +8824,7 @@ button:disabled {
   border: 1px solid rgb(255 255 255 / 8%);
   border-radius: 10px;
   background: rgb(255 255 255 / 3%);
-  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
 }
@@ -9417,7 +9365,7 @@ button:disabled {
 }
 
 .resource-activity-panel .expression-list li {
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .resource-activity-panel .expression-actions {
@@ -10665,7 +10613,7 @@ h1 {
   }
 
   .expression-list li {
-    grid-template-columns: 50px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .expression-actions {
@@ -20775,7 +20723,7 @@ h1 {
     .character-expression-preview,
     .character-mouth-preview
   )
-  .character-thumbnail-fallback[data-thumbnail-fallback='missing'] {
+  .character-thumbnail-fallback[data-thumbnail-icon='error'] {
   color: #d7aaa2;
   background:
     repeating-linear-gradient(
@@ -20790,6 +20738,8 @@ h1 {
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-thumbnail-fallback-icon {
+  width: 18px;
+  height: 18px;
   font-size: 18px;
   font-weight: 800;
   line-height: 1;
@@ -21196,7 +21146,7 @@ h1 {
 }
 
 .expression-editor-landscape
-  .expression-thumbnail-fallback[data-thumbnail-fallback='missing'] {
+  .expression-thumbnail-fallback[data-thumbnail-icon='error'] {
   color: #d7aaa2;
   background:
     repeating-linear-gradient(
@@ -21207,7 +21157,9 @@ h1 {
     #170f0d;
 }
 
-.expression-editor-landscape .expression-thumbnail-fallback > span {
+.expression-editor-landscape .expression-thumbnail-fallback-icon {
+  width: 18px;
+  height: 18px;
   font-size: 18px;
   font-weight: 800;
   line-height: 1;
@@ -21403,7 +21355,9 @@ h1 {
 
 .expression-editor-landscape .expression-current-asset-preview
   .expression-thumbnail-fallback
-  > span {
+  .expression-thumbnail-fallback-icon {
+  width: 13px;
+  height: 13px;
   font-size: 13px;
 }
 
@@ -29345,4 +29299,1283 @@ h1 {
   grid-column: 1;
   width: 100%;
   margin: 0;
+}
+
+/* Issue #492: Character image choices are visual-first while staying local to
+   the existing Character surfaces. The thumbnail map still comes from
+   CharacterManager; this component only owns selection presentation/state. */
+.image-asset-picker {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.image-asset-picker-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #93a49a;
+  font-size: 10px;
+}
+
+.image-asset-picker-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-asset-picker-heading small,
+.image-asset-picker-helper,
+.image-asset-picker-conflict {
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.image-asset-picker-heading small,
+.image-asset-picker-helper {
+  color: #8fa096;
+}
+
+.image-asset-picker-conflict {
+  color: #f1c879;
+}
+
+.image-asset-picker-selected {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 70px;
+  padding: 6px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: 9px;
+  color: #e9f5ec;
+  background:
+    linear-gradient(135deg, rgb(127 199 148 / 9%), transparent 65%),
+    #0b140e;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.image-asset-picker-selected:hover:not(:disabled),
+.image-asset-picker-selected:focus-visible {
+  border-color: rgb(127 199 148 / 70%);
+  background:
+    linear-gradient(135deg, rgb(127 199 148 / 14%), transparent 65%),
+    #0d1810;
+}
+
+.image-asset-picker-selected:disabled {
+  cursor: not-allowed;
+  opacity: 0.76;
+}
+
+.image-asset-picker-selected-empty {
+  border-color: rgb(154 216 172 / 28%);
+}
+
+.image-asset-picker-selected-thumbnail,
+.image-asset-picker-candidate-thumbnail {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(127 199 148 / 16%);
+  border-radius: 7px;
+  color: #a3c4ac;
+  background:
+    radial-gradient(circle at 50% 20%, rgb(127 199 148 / 12%), transparent 62%),
+    #08100b;
+  place-items: center;
+}
+
+.image-asset-picker-neutral-empty-thumbnail {
+  border-color: rgb(154 216 172 / 18%);
+  background: rgb(127 199 148 / 4%);
+  color: #91ad98;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.image-asset-picker-selected-thumbnail {
+  width: 58px;
+  height: 58px;
+}
+
+.image-asset-picker-selected-thumbnail img,
+.image-asset-picker-candidate-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.image-asset-picker-thumbnail-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  align-content: center;
+  justify-items: center;
+  color: #a5c4ad;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgb(127 199 148 / 7%) 0 2px,
+      transparent 2px 8px
+    ),
+    #0b140e;
+  font-size: 17px;
+  font-weight: 850;
+  gap: 2px;
+  text-align: center;
+}
+
+.image-asset-picker-thumbnail-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.image-asset-picker-thumbnail-fallback[data-thumbnail-icon='error'] {
+  color: #d7aaa2;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgb(214 113 98 / 10%) 0 2px,
+      transparent 2px 8px
+    ),
+    #170f0d;
+}
+
+.image-asset-picker-selected-thumbnail small {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 8px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-asset-picker-selected-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.image-asset-picker-selected-copy strong,
+.image-asset-picker-selected-copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-asset-picker-selected-copy strong {
+  color: #eef6f0;
+  font-size: 11px;
+}
+
+.image-asset-picker-selected-copy small {
+  color: #8fa89a;
+  font-size: 9px;
+}
+
+.image-asset-picker-selected-action {
+  min-width: 39px;
+  padding: 6px 5px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 6px;
+  color: #cce3d1;
+  background: rgb(127 199 148 / 8%);
+  font-size: 9px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.image-asset-picker-candidates {
+  display: grid;
+  max-height: 270px;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 7px 1px 3px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  background: transparent;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 7px;
+  overscroll-behavior: contain;
+  scrollbar-color: #31583f transparent;
+}
+
+.image-asset-picker-candidate {
+  position: relative;
+  display: grid;
+  height: 124px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 8px;
+  color: #dcebe0;
+  background: rgb(255 255 255 / 3%);
+  grid-template-rows: 64px minmax(0, 1fr);
+  gap: 5px;
+  text-align: left;
+}
+
+.image-asset-picker-candidate:hover:not(:disabled),
+.image-asset-picker-candidate:focus-visible {
+  border-color: rgb(127 199 148 / 48%);
+  background: rgb(127 199 148 / 7%);
+}
+
+.image-asset-picker-candidate:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.image-asset-picker-candidate-selected {
+  border-color: rgb(127 199 148 / 78%);
+  background: rgb(55 122 73 / 18%);
+  box-shadow: inset 0 0 0 1px rgb(127 199 148 / 14%),
+    0 0 0 1px rgb(127 199 148 / 9%);
+}
+
+.image-asset-picker-candidate-thumbnail {
+  width: 100%;
+  height: 64px;
+}
+
+.image-asset-picker-candidate-thumbnail small {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 3px;
+  font-size: 8px;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-asset-picker-candidate-copy {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  align-content: start;
+  gap: 2px;
+}
+
+.image-asset-picker-candidate-copy > strong,
+.image-asset-picker-candidate-copy > small,
+.image-asset-picker-candidate-copy > em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-asset-picker-candidate-copy > strong {
+  color: #eef6f0;
+  font-size: 10px;
+  line-height: 1.25;
+  font-weight: 750;
+}
+
+.image-asset-picker-candidate-copy > small {
+  color: #8fa89a;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.image-asset-picker-candidate-copy > em {
+  color: #f1d39a;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.2;
+}
+
+.image-asset-picker-empty-candidate .image-asset-picker-candidate-copy > small {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.image-asset-picker-candidate-check {
+  position:absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgb(127 199 148 / 64%);
+  border-radius: 999px;
+  color: #07110a;
+  background: #a8e9b7;
+  font-size: 11px;
+  font-weight: 900;
+  z-index: 1;
+  place-items: center;
+}
+
+.image-asset-picker-empty-candidate {
+  color: #c7d9cb;
+}
+
+.image-asset-picker-empty-thumbnail {
+  color: #91ad98;
+}
+
+.image-asset-picker-empty-state {
+  grid-column: 1 / -1;
+  margin: 5px;
+  color: #8fa096;
+  font-size: 10px;
+  text-align: center;
+}
+
+.character-mouth-state > .image-asset-picker {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-mouth-state {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-mouth-state > .image-asset-picker {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .image-asset-picker-selected {
+  min-height: 64px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .image-asset-picker-candidates {
+  max-height: 270px;
+}
+
+/* Issue #495: Character identity is an avatar-assisted Character choice. The
+   image is recognition help only; every action still emits characterId. */
+.character-identity-picker {
+  display: block;
+  min-width: 0;
+}
+
+.character-identity-picker > summary {
+  list-style: none;
+}
+
+.character-identity-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.character-identity-picker-summary {
+  display: grid;
+  min-width: 0;
+  min-height: 56px;
+  padding: 7px 8px;
+  border: 1px solid var(--ui-color-border, #31513f);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-surface-work, #101b15);
+  cursor: pointer;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.character-identity-picker > summary:hover,
+.character-identity-picker > summary:focus-visible,
+.character-identity-picker[open] > summary {
+  border-color: var(--ui-color-selected-border, #74d391);
+  outline: none;
+}
+
+.character-identity-picker > summary:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, rgb(116 211 145 / 28%));
+  outline-offset: 2px;
+}
+
+.character-identity-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.character-identity-avatar {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 10px;
+  color: #8fb59a;
+  background:
+    radial-gradient(circle at 50% 18%, rgb(127 199 148 / 13%), transparent 62%),
+    #08100b;
+  place-items: center;
+}
+
+.character-identity-avatar:not(.character-list-avatar) {
+  width: 42px;
+  height: 42px;
+}
+
+.character-identity-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.character-avatar-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  color: #8fb59a;
+}
+
+.character-avatar-fallback .character-thumbnail-fallback-icon {
+  width: 17px;
+  height: 17px;
+  color: #75b285;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.character-avatar-fallback small {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 2px;
+  color: #779582;
+  font-size: 8px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-identity-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  text-align: left;
+}
+
+.character-identity-copy strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-identity-copy small {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-identity-selected {
+  display: grid;
+  min-width: 0;
+  justify-items: end;
+  color: var(--ui-color-accent, #7fc794);
+  gap: 1px;
+  text-align: right;
+}
+
+.character-identity-selected > span {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  border: 1px solid rgb(127 199 148 / 46%);
+  border-radius: 999px;
+  background: rgb(37 88 51 / 48%);
+  font-size: 11px;
+  place-items: center;
+}
+
+.character-identity-selected small {
+  overflow: hidden;
+  max-width: 78px;
+  color: #a8d7b3;
+  font-size: 8px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-identity-picker-chevron {
+  display: grid;
+  color: var(--ui-color-text-muted, #829589);
+  font-size: 16px;
+  line-height: 1;
+  place-items: center;
+}
+
+.character-identity-empty-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.character-identity-empty-summary > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.character-identity-empty-summary strong {
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 13px;
+}
+
+.character-identity-empty-summary small {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-identity-empty-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  border: 1px dashed rgb(127 199 148 / 28%);
+  border-radius: 10px;
+  color: #75b285;
+  background: rgb(127 199 148 / 5%);
+  font-size: 18px;
+  place-items: center;
+}
+
+.character-identity-options {
+  display: grid;
+  max-height: 252px;
+  min-width: 0;
+  padding: 5px;
+  margin-top: 6px;
+  overflow-y: auto;
+  border: 1px solid rgb(127 199 148 / 16%);
+  border-radius: 9px;
+  background: rgb(7 16 10 / 74%);
+  gap: 5px;
+  scrollbar-color: #3f6d4e #0a100c;
+  scrollbar-width: thin;
+}
+
+.character-identity-option {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.character-identity-option:hover,
+.character-identity-option:focus-visible {
+  border-color: rgb(127 199 148 / 28%);
+  background: rgb(127 199 148 / 7%);
+  outline: none;
+}
+
+.character-identity-option:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, rgb(116 211 145 / 28%));
+  outline-offset: 1px;
+}
+
+.character-identity-option.is-selected {
+  border-color: rgb(127 199 148 / 46%);
+  background: rgb(127 199 148 / 11%);
+  box-shadow: inset 2px 0 0 var(--ui-color-accent, #7fc794);
+}
+
+.character-identity-option .character-identity-row {
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+}
+
+.character-identity-option .character-identity-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+}
+
+.character-identity-option .character-identity-copy strong {
+  font-size: 12px;
+}
+
+.character-identity-option .character-identity-copy small {
+  font-size: 9px;
+}
+
+.character-identity-options-empty {
+  padding: 8px;
+  margin: 0;
+  color: var(--ui-color-text-muted, #829589);
+  font-size: 11px;
+}
+
+.character-identity-clear {
+  width: 100%;
+  padding: 6px 8px;
+  margin-top: 5px;
+  border: 1px solid rgb(127 199 148 / 18%);
+  border-radius: 7px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  background: transparent;
+  font-size: 10px;
+  text-align: left;
+}
+
+.character-identity-clear:hover:not(:disabled),
+.character-identity-clear:focus-visible {
+  border-color: rgb(127 199 148 / 38%);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: rgb(127 199 148 / 7%);
+  outline: none;
+}
+
+.character-identity-clear:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, rgb(116 211 145 / 28%));
+  outline-offset: 1px;
+}
+
+.character-list-items button {
+  position: relative;
+  min-height: 64px;
+  grid-template-columns: 48px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 9px;
+}
+
+.character-list-items .character-list-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+}
+
+.character-list-items .character-list-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.character-list-items .character-list-copy strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-list-items .character-list-copy small {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-list-items .character-list-selected-badge {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgb(127 199 148 / 46%);
+  border-radius: 999px;
+  color: #c8f4d4;
+  background: rgb(37 88 51 / 48%);
+  font-size: 11px;
+  place-items: center;
+}
+
+.character-expression-summary-list li {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+}
+
+.character-expression-summary-preview {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 8px;
+  background: #08100b;
+  place-items: center;
+}
+
+.character-expression-summary-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.character-expression-summary-preview .character-thumbnail-fallback {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+}
+
+.character-expression-summary-preview .character-thumbnail-fallback-icon {
+  width: 15px;
+  height: 15px;
+  color: #75b285;
+  font-size: 15px;
+}
+
+.character-expression-summary-preview small {
+  max-width: 40px;
+  overflow: hidden;
+  color: #779582;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-expression-summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.character-expression-summary-copy > strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-expression-summary-copy > span {
+  overflow: hidden;
+  color: #8fa096;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-authoring-speaker-field .character-identity-picker,
+.dialogue-inspector-speaker-section .character-identity-picker,
+.dialogue-properties-speaker-section .character-identity-picker {
+  width: 100%;
+}
+
+.dialogue-timed-speaker-select > summary,
+.dialogue-landscape-properties-speaker-select > summary {
+  min-height: 44px;
+}
+
+.dialogue-batch-character-mapping {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.dialogue-batch-character-mapping > span {
+  padding-top: 13px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-batch-character-picker > summary {
+  min-height: 44px;
+  padding-block: 5px;
+}
+
+.dialogue-batch-character-picker .character-identity-options {
+  max-height: 208px;
+}
+
+.dialogue-batch-character-picker .character-identity-selected small {
+  display: none;
+}
+
+.dialogue-selection-avatar {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 8px;
+}
+
+.timeline-subtitle-selection-identity,
+.dialogue-properties-identity-row {
+  min-width: 0;
+}
+
+.timeline-subtitle-selection-identity:has(.dialogue-selection-avatar) {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.timeline-subtitle-selection-identity:has(.dialogue-selection-avatar)
+  .dialogue-selection-avatar {
+  grid-column: 1;
+  grid-row: 1 / 3;
+}
+
+.timeline-subtitle-selection-identity:has(.dialogue-selection-avatar) .eyebrow,
+.timeline-subtitle-selection-identity:has(.dialogue-selection-avatar) strong {
+  grid-column: 2;
+}
+
+.timeline-subtitle-selection-identity:has(.dialogue-selection-avatar) .eyebrow {
+  grid-row: 1;
+}
+
+.timeline-subtitle-selection-identity:has(.dialogue-selection-avatar) strong {
+  grid-row: 2;
+}
+
+.dialogue-properties-identity-row:has(.dialogue-selection-avatar) {
+  display: grid;
+  grid-template-columns: auto 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialogue-properties-identity-row:has(.dialogue-selection-avatar)
+  .dialogue-selection-avatar {
+  grid-column: 2;
+}
+
+.dialogue-properties-identity-row:has(.dialogue-selection-avatar)
+  .dialogue-properties-identity-copy {
+  grid-column: 3;
+}
+
+.right-inspector-selection:has(.dialogue-selection-avatar) {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.right-inspector-selection:has(.dialogue-selection-avatar) .eyebrow,
+.right-inspector-selection:has(.dialogue-selection-avatar) strong,
+.right-inspector-selection:has(.dialogue-selection-avatar) > span:not(.dialogue-selection-avatar) {
+  grid-column: 2;
+}
+
+.right-inspector-selection:has(.dialogue-selection-avatar) .eyebrow {
+  grid-row: 1;
+}
+
+.right-inspector-selection:has(.dialogue-selection-avatar) .dialogue-selection-avatar {
+  grid-column: 1;
+  grid-row: 1 / 4;
+}
+
+@media (max-width: 700px) {
+  .character-identity-options {
+    max-height: 224px;
+  }
+
+  .character-identity-selected small {
+    display: none;
+  }
+}
+
+@media (min-width: 701px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-list-items
+    button {
+    grid-template-columns: 64px minmax(0, 1fr) 22px;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-list-avatar {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+/* Issue #496: keep the approved avatar + Character identity language while
+   making the selected summary a compact row. The summary keeps the same
+   fixed minimum height in empty and selected states, so selection does not
+   move the surrounding form. */
+.character-identity-picker-summary {
+  min-height: 56px;
+  padding: 6px 7px;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  gap: 6px;
+}
+
+.character-identity-picker-summary > .character-identity-row {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.character-identity-picker-summary .character-identity-avatar:not(.character-list-avatar),
+.character-identity-picker-summary .character-identity-empty-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.character-identity-picker-summary .character-identity-empty-summary {
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.character-identity-picker-summary .character-identity-copy {
+  gap: 2px;
+}
+
+.character-identity-picker-summary .character-identity-selected {
+  display: inline-flex;
+  max-width: min(108px, 24vw);
+  min-width: 0;
+  align-items: center;
+  justify-self: end;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid rgb(127 199 148 / 42%);
+  border-radius: 999px;
+  color: #c8f4d4;
+  background: rgb(37 88 51 / 38%);
+  text-align: left;
+}
+
+.character-identity-picker-summary .character-identity-selected-check {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.character-identity-picker-summary .character-identity-selected small {
+  display: inline;
+  min-width: 0;
+  max-width: 90px;
+  color: #b7eac3;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.character-identity-picker-summary > .character-identity-picker-chevron {
+  width: 18px;
+  min-width: 18px;
+  justify-self: end;
+  font-size: 15px;
+}
+
+/* The New Dialogue hierarchy stays local to the right-workspace authoring
+   surface: speaker context is compact, subtitle text is the main field,
+   advanced settings are quiet, and the existing submit remains the sole CTA. */
+.dialogue-sheet-right-workspace .dialogue-authoring-scroll-body {
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-mode,
+.dialogue-sheet-right-workspace .dialogue-authoring-single-grid {
+  gap: 10px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-speaker-field {
+  gap: 4px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-speaker-field > label {
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-speaker-field
+  .character-identity-picker-summary {
+  min-height: 52px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-copy-field {
+  gap: 6px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-copy-field > label {
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Issue #498: Cut 1 keeps the New Dialogue task back label and close action
+   in one compact top row; the shared 字幕 identity remains on the activity
+   rail and is not repeated inside the authoring surface. */
+.dialogue-sheet-right-workspace
+  > .dialogue-authoring-shell
+  > .dialogue-authoring-drawer-header
+  > .dialogue-authoring-secondary-nav {
+  min-width: 0;
+  padding: 0;
+  margin-inline: 0;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea {
+  min-height: 104px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-footer {
+  gap: 5px;
+  padding: 8px 0 10px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit:not(:disabled) {
+  min-height: 44px;
+  box-shadow: 0 4px 12px rgb(44 115 64 / 18%);
+}
+
+/* Issue #500: make the authoring control describe its existing destination,
+   using the compact outlined return treatment from the resource create
+   surfaces. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-back {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: var(--ui-radius-medium, 8px);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: rgb(83 145 101 / 10%);
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-back:hover,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-back:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(83 145 101 / 22%);
+}
+
+/* Issue #501: the right-workspace CTA keeps one geometry in both states,
+   reuses the established creation-action icon/tokens, and leaves the sticky
+   footer reachable without the former opaque dark rectangle. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-footer {
+  position: sticky;
+  bottom: -12px;
+  z-index: 2;
+  padding: 8px 0 12px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  background: #122018;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit {
+  display: inline-flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-color-selected-border, #83d39a);
+  border-radius: 9px;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit:not(:disabled) {
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: var(--ui-color-action-primary, #8ed9a2);
+  box-shadow: 0 4px 12px rgb(44 115 64 / 18%);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit:not(:disabled):hover,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit:not(:disabled):focus-visible {
+  background: var(--ui-color-action-hover, #a4e4b3);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit:disabled {
+  color: var(--ui-color-disabled-text, #84958b);
+  background: var(--ui-color-disabled-surface, #142019);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+/* Pending recovery: 自动加入 remains primary; 删除 is visible, compact,
+   and clearly secondary/destructive. It is rendered only in the selected
+   card's existing inline action strip. */
+.dialogue-untimed-action-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange,
+.dialogue-untimed-action-buttons .dialogue-untimed-delete {
+  display: inline-flex;
+  min-height: var(--ui-touch-icon, 44px);
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: var(--ui-radius-small, 6px);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange {
+  min-width: 96px;
+  border: 1px solid var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #d6efd9);
+  background: var(--ui-color-action-primary, #8ed9a2);
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange:hover,
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange:focus-visible {
+  background: var(--ui-color-action-hover, #a4e4b3);
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-delete {
+  min-width: 56px;
+  border: 1px solid rgb(214 139 102 / 58%);
+  color: var(--ui-color-danger, #e28a7a);
+  background: rgb(124 46 37 / 12%);
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-delete:hover,
+.dialogue-untimed-action-buttons .dialogue-untimed-delete:focus-visible {
+  border-color: rgb(214 139 102 / 86%);
+  color: #ffd4d0;
+  background: rgb(124 46 37 / 26%);
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange:focus-visible,
+.dialogue-untimed-action-buttons .dialogue-untimed-delete:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, #b1e8c1);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .character-identity-picker-summary .character-identity-selected {
+    max-width: 88px;
+  }
+
+  .character-identity-picker-summary .character-identity-selected small {
+    max-width: 68px;
+  }
+}
+
+/* Issue #502: final A07 visual correction. Keep the authoring header inset as
+   one intentional gutter, let the sticky footer continue on the parent
+   surface, and make the picker affordance a compact filled triangle. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-drawer-header {
+  padding: 20px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-footer {
+  background: #122018;
+}
+
+.character-identity-picker-summary > .character-identity-picker-chevron {
+  display: inline-flex;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  font-family: "Segoe UI Symbol", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* Issue #503: keep R6 thumbnail fallbacks semantic without changing the
+   existing slots, labels, or thumbnail state model. */
+.thumbnail-state-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.thumbnail-state-icon[data-thumbnail-icon='loading'] {
+  animation: issue-503-thumbnail-state-spin 1.1s linear infinite;
+}
+
+@keyframes issue-503-thumbnail-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.character-identity-empty-icon .thumbnail-state-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.character-thumbnail-fallback[data-thumbnail-icon='error'],
+.expression-thumbnail-fallback[data-thumbnail-icon='error'] {
+  color: #d7aaa2;
+  background: rgb(124 46 37 / 10%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thumbnail-state-icon[data-thumbnail-icon='loading'] {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
 }

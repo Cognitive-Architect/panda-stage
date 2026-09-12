@@ -11,6 +11,11 @@ import { dialogueStore } from '../../stores/dialogueStore';
 import { shotStore } from '../../stores/shotStore';
 import { DecorativeIcon } from '../../ui';
 import {
+  CharacterAvatar,
+  CharacterIdentityPicker,
+  useCharacterAvatarThumbnails,
+} from '../characters/CharacterIdentity';
+import {
   clampTime,
   formatTimecode,
   integerFrameSpanMs,
@@ -165,6 +170,10 @@ export function DialogueInspector({
     (candidate) => candidate.id === dialogueId,
   );
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
+  const {
+    onThumbnailError: onCharacterThumbnailError,
+    thumbnails: characterThumbnails,
+  } = useCharacterAvatarThumbnails(snapshot, characters);
   const audioAssets: readonly AudioAsset[] =
     snapshot?.project.assets.filter(
       (candidate): candidate is AudioAsset => candidate.kind === 'audio',
@@ -653,6 +662,21 @@ export function DialogueInspector({
           data-testid="right-inspector-selection"
         >
           <div className="timeline-subtitle-selection-identity">
+            {character ? (
+              <CharacterAvatar
+                character={character}
+                className="dialogue-selection-avatar"
+                onThumbnailError={onCharacterThumbnailError}
+                thumbnail={
+                  characterThumbnails[
+                    character.expressions.find(
+                      (expression) =>
+                        expression.id === character.defaultExpressionId,
+                    )?.assetId ?? character.expressions[0]?.assetId ?? ''
+                  ]
+                }
+              />
+            ) : null}
             <p className="eyebrow">当前字幕</p>
             <strong data-testid="dialogue-inspector-speaker-name">
               {character?.name ?? '未知角色'}
@@ -844,28 +868,27 @@ export function DialogueInspector({
           <h3>角色</h3>
           <label className="dialogue-field">
             <span>角色</span>
-            <select
-              aria-label="字幕角色"
+            <CharacterIdentityPicker
+              ariaLabel="字幕角色"
               className="dialogue-timed-speaker-select"
-              data-testid="dialogue-inspector-speaker"
-              value={dialogue.characterId}
-              onChange={(event) =>
+              characters={characters}
+              defaultOpen
+              testId="dialogue-inspector-speaker"
+              onSelect={(characterId) => {
                 report(
                   'speaker',
                   () =>
                     dialogueStore.update(dialogue.id, {
-                      characterId: event.target.value,
+                      characterId,
                     }),
                   '角色无效。',
-                )
-              }
-            >
-              {characters.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
+                );
+              }}
+              onThumbnailError={onCharacterThumbnailError}
+              selectedCharacterId={dialogue.characterId}
+              selectedLabel="当前说话人"
+              thumbnails={characterThumbnails}
+            />
           </label>
           {error?.scope === 'speaker' ? (
             <p
@@ -913,23 +936,23 @@ export function DialogueInspector({
         data-dialogue-id={dialogue.id}
         data-testid="dialogue-inspector"
       >
-        <header
-          aria-label="字幕属性"
-          className="dialogue-properties-identity-editor"
+        <section
+          aria-label="编辑字幕"
+          className="dialogue-properties-section dialogue-properties-header dialogue-properties-identity-editor dialogue-properties-copy-section"
           data-testid="dialogue-properties-header"
         >
           <div
-            className="dialogue-properties-identity-row"
+            className="dialogue-properties-section-heading dialogue-properties-identity-row"
             data-testid="dialogue-inspector-copy-section"
           >
             <DecorativeIcon icon={MessageSquareText} size={18} />
             <div className="dialogue-properties-identity-copy">
-              <strong
+              <h3
                 className="dialogue-properties-identity"
                 data-testid="dialogue-properties-identity"
               >
-                {character?.name ?? '未知角色'}
-              </strong>
+                字幕内容
+              </h3>
             </div>
             {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
           </div>
@@ -945,7 +968,7 @@ export function DialogueInspector({
             }}
             onBlur={commitText}
           />
-        </header>
+        </section>
         <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
             <p
@@ -1124,27 +1147,27 @@ export function DialogueInspector({
             <DecorativeIcon icon={UserRound} size={18} />
             <h3>角色</h3>
           </div>
-          <select
-            aria-label="字幕角色"
-            data-testid="dialogue-inspector-speaker"
-            value={dialogue.characterId}
-            onChange={(event) =>
+          <CharacterIdentityPicker
+            ariaLabel="字幕角色"
+            characters={characters}
+            defaultOpen
+            onSelect={(characterId) => {
               report(
                 'speaker',
                 () =>
                   dialogueStore.update(dialogue.id, {
-                    characterId: event.target.value,
+                    characterId,
                   }),
                 '角色无效。',
-              )
-            }
-          >
-            {characters.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.name}
-              </option>
-            ))}
-          </select>
+              );
+            }}
+            onThumbnailError={onCharacterThumbnailError}
+            selectedCharacterId={dialogue.characterId}
+            selectedLabel="当前绑定"
+            showDefaultExpression={false}
+            testId="dialogue-inspector-speaker"
+            thumbnails={characterThumbnails}
+          />
           {error?.scope === 'speaker' ? (
             <p className="dialogue-editor-error" role="alert">
               {error.message}
@@ -1188,23 +1211,23 @@ export function DialogueInspector({
         data-dialogue-id={dialogue.id}
         data-testid="dialogue-inspector"
       >
-        <header
-          aria-label="字幕属性"
-          className="dialogue-properties-identity-editor dialogue-landscape-properties-identity-editor"
+        <section
+          aria-label="编辑字幕"
+          className="dialogue-properties-section dialogue-properties-header dialogue-properties-identity-editor dialogue-landscape-properties-copy-section dialogue-landscape-properties-identity-editor"
           data-testid="dialogue-properties-header"
         >
           <div
-            className="dialogue-properties-identity-row dialogue-landscape-properties-identity-row"
+            className="dialogue-properties-section-heading dialogue-properties-identity-row dialogue-landscape-properties-identity-row"
             data-testid="dialogue-inspector-copy-section"
           >
             <DecorativeIcon icon={MessageSquareText} size={18} />
             <div className="dialogue-properties-identity-copy">
-              <strong
+              <h3
                 className="dialogue-properties-identity"
-                data-testid="dialogue-inspector-speaker-name"
+                data-testid="dialogue-properties-identity"
               >
-                {character?.name ?? '未知角色'}
-              </strong>
+                字幕内容
+              </h3>
             </div>
             {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
           </div>
@@ -1220,7 +1243,7 @@ export function DialogueInspector({
             }}
             onBlur={commitText}
           />
-        </header>
+        </section>
         <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
             <p
@@ -1403,28 +1426,28 @@ export function DialogueInspector({
             <h3>角色</h3>
           </div>
           <label className="dialogue-field">
-            <select
-              aria-label="字幕角色"
+            <CharacterIdentityPicker
+              ariaLabel="字幕角色"
               className="dialogue-landscape-properties-speaker-select"
-              data-testid="dialogue-inspector-speaker"
-              value={dialogue.characterId}
-              onChange={(event) =>
+              characters={characters}
+              defaultOpen
+              onSelect={(characterId) => {
                 report(
                   'speaker',
                   () =>
                     dialogueStore.update(dialogue.id, {
-                      characterId: event.target.value,
+                      characterId,
                     }),
                   '角色无效。',
-                )
-              }
-            >
-              {characters.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
+                );
+              }}
+              onThumbnailError={onCharacterThumbnailError}
+              selectedCharacterId={dialogue.characterId}
+              selectedLabel="当前绑定"
+              showDefaultExpression={false}
+              testId="dialogue-inspector-speaker"
+              thumbnails={characterThumbnails}
+            />
           </label>
           {error?.scope === 'speaker' ? (
             <p
@@ -1483,6 +1506,21 @@ export function DialogueInspector({
         data-testid="right-inspector-selection"
       >
         <p className="eyebrow">当前选择</p>
+        {character ? (
+          <CharacterAvatar
+            character={character}
+            className="dialogue-selection-avatar"
+            onThumbnailError={onCharacterThumbnailError}
+            thumbnail={
+              characterThumbnails[
+                character.expressions.find(
+                  (expression) =>
+                    expression.id === character.defaultExpressionId,
+                )?.assetId ?? character.expressions[0]?.assetId ?? ''
+              ]
+            }
+          />
+        ) : null}
         <strong>{character?.name ?? '未知角色'}</strong>
         <span data-testid="right-inspector-selection-message">
           已选择对白：{character?.name ?? dialogue.characterId}
@@ -1494,26 +1532,26 @@ export function DialogueInspector({
       >
         <label className="dialogue-field">
           <span>角色（说话人）</span>
-          <select
-            data-testid="dialogue-inspector-speaker"
-            value={dialogue.characterId}
-            onChange={(event) =>
+          <CharacterIdentityPicker
+            ariaLabel="字幕角色"
+            characters={characters}
+            defaultOpen
+            onSelect={(characterId) => {
               report(
                 'speaker',
                 () =>
                   dialogueStore.update(dialogue.id, {
-                    characterId: event.target.value,
+                    characterId,
                   }),
                 '角色无效。',
-              )
-            }
-          >
-            {characters.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.name}
-              </option>
-            ))}
-          </select>
+              );
+            }}
+            onThumbnailError={onCharacterThumbnailError}
+            selectedCharacterId={dialogue.characterId}
+            selectedLabel="当前说话人"
+            testId="dialogue-inspector-speaker"
+            thumbnails={characterThumbnails}
+          />
         </label>
         {subtitleWarning ? (
           <p

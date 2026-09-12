@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Clapperboard,
+  CirclePlus,
   GripVertical,
   Info,
   MessageCircleMore,
@@ -28,6 +29,10 @@ import {
 } from './dialogueAuthoringDraft';
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
+import {
+  CharacterIdentityPicker,
+  useCharacterAvatarThumbnails,
+} from '../characters/CharacterIdentity';
 import subtitleEmptyStateArt from './assets/subtitle-empty-state.png';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import { formatTimecode, integerFrameSpanMs } from '../timeline/timeGeometry';
@@ -299,7 +304,13 @@ export function DialogueSheet({
           '[data-testid="dialogue-untimed-select"]',
         ),
         sheet?.querySelector<HTMLButtonElement>(
+          '[data-testid="dialogue-pending-queue-create"]',
+        ),
+        sheet?.querySelector<HTMLButtonElement>(
           '[data-testid="dialogue-authoring-open"]',
+        ),
+        sheet?.querySelector<HTMLButtonElement>(
+          '[data-testid="subtitle-workspace-empty-action"]',
         ),
       ];
       const nextControl = candidates.find(
@@ -347,6 +358,10 @@ export function DialogueSheet({
   }, [currentShotId, selectedDialogueId]);
 
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
+  const {
+    onThumbnailError: onCharacterThumbnailError,
+    thumbnails: characterThumbnails,
+  } = useCharacterAvatarThumbnails(snapshot, characters);
   const shot = snapshot?.project.shots.find(
     (candidate) => candidate.id === currentShotId,
   );
@@ -407,6 +422,25 @@ export function DialogueSheet({
             nextError instanceof Error ? nextError.message : '字幕安排失败。',
         },
       );
+    }
+  };
+
+  const handleDeletePending = (dialogue: Dialogue): void => {
+    try {
+      // Reuse the existing History-tracked DialogueStore mutation. Selection
+      // reconciliation also runs from the EditorProjectStore update, while
+      // the explicit clear keeps this action safe if the selected card is
+      // removed before the next render settles.
+      dialogueStore.remove(dialogue.id);
+      dialogueSelectionStore.clear();
+      setQueueError(null);
+      focusDefaultTaskControl();
+    } catch (nextError) {
+      setQueueError({
+        dialogueId: dialogue.id,
+        message:
+          nextError instanceof Error ? nextError.message : '删除字幕失败。',
+      });
     }
   };
 
@@ -740,22 +774,19 @@ export function DialogueSheet({
               data-testid="dialogue-authoring-drawer-header"
             >
               <div
-                className="dialogue-drawer-header-identity"
-                data-testid="dialogue-drawer-header"
+                className="dialogue-authoring-secondary-nav"
+                data-testid="dialogue-authoring-secondary-nav"
               >
-                <DecorativeIcon
-                  aria-hidden="true"
-                  className="dialogue-drawer-header-icon"
-                  icon={MessageCircleMore}
-                  size={20}
-                  strokeWidth={1.8}
-                />
-                <h2
-                  className="dialogue-drawer-title"
-                  data-testid="dialogue-drawer-title"
+                <button
+                  aria-label="返回字幕列表"
+                  className="dialogue-authoring-back"
+                  data-testid="dialogue-authoring-back"
+                  type="button"
+                  onClick={handleCloseAuthoring}
                 >
-                  字幕
-                </h2>
+                  <ArrowLeft aria-hidden="true" focusable="false" size={16} />
+                  <span>返回字幕列表</span>
+                </button>
               </div>
               <div className="dialogue-sheet-header-actions">
                 {onClose ? (
@@ -776,31 +807,13 @@ export function DialogueSheet({
             className="dialogue-authoring-scroll-body"
             data-testid="dialogue-authoring-scroll-body"
           >
-          <header className="dialogue-authoring-header">
-            {rightWorkspace ? (
-              <div
-                className="dialogue-authoring-secondary-nav"
-                data-testid="dialogue-authoring-secondary-nav"
-              >
-                <button
-                  aria-label="返回待安排字幕"
-                  className="dialogue-authoring-back"
-                  data-testid="dialogue-authoring-back"
-                  type="button"
-                  onClick={handleCloseAuthoring}
-                >
-                  <ArrowLeft aria-hidden="true" focusable="false" size={16} />
-                  <span>新建字幕</span>
-                </button>
-              </div>
-            ) : (
+          {!rightWorkspace ? (
+            <header className="dialogue-authoring-header">
               <div>
                 <p className="eyebrow">字幕任务</p>
                 <h3 id="dialogue-authoring-title">新建字幕</h3>
                 <p>创建新的未定时字幕或批量导入。</p>
               </div>
-            )}
-            {rightWorkspace ? null : (
               <button
                 aria-label="关闭新建字幕"
                 className="dialogue-authoring-close"
@@ -810,8 +823,8 @@ export function DialogueSheet({
               >
                 <X aria-hidden="true" size={20} strokeWidth={2} />
               </button>
-            )}
-          </header>
+            </header>
+          ) : null}
 
           <div
             aria-label="新建字幕方式"
@@ -864,39 +877,52 @@ export function DialogueSheet({
                 data-testid="dialogue-authoring-single-grid"
               >
                 <div className="dialogue-authoring-field dialogue-authoring-speaker-field">
-                  <label htmlFor="dialogue-add-speaker">
-                    {rightWorkspace ? '角色' : '角色（说话人）'}
-                  </label>
-                  <select
-                    aria-describedby={
+                  {rightWorkspace ? null : (
+                    <label htmlFor="dialogue-add-speaker">
+                      角色（说话人）
+                    </label>
+                  )}
+                  <CharacterIdentityPicker
+                    ariaDescribedBy={
                       singleTouched.speaker && singleErrors.speaker
                         ? 'dialogue-add-speaker-error'
                         : undefined
                     }
-                    aria-invalid={Boolean(
+                    ariaInvalid={Boolean(
                       singleTouched.speaker && singleErrors.speaker,
                     )}
+                    ariaLabel={rightWorkspace ? '说话角色' : '角色（说话人）'}
+                    characters={characters}
+                    defaultOpen
                     data-testid="dialogue-add-speaker"
+                    disabled={!snapshot}
+                    emptySummaryDescription={
+                      rightWorkspace ? null : '从项目角色中选择说话人'
+                    }
+                    emptySummaryLabel={
+                      rightWorkspace ? '请绑定角色' : '选择现有角色'
+                    }
                     id="dialogue-add-speaker"
-                    value={draftState.singleCharacterId}
-                    onBlur={() =>
+                    onClear={() => {
+                      setSingleSubmitError(null);
+                      draft.setSingleCharacterId('');
+                    }}
+                    onSelect={(characterId) => {
+                      setSingleSubmitError(null);
+                      draft.setSingleCharacterId(characterId);
                       setSingleTouched((current) => ({
                         ...current,
                         speaker: true,
-                      }))
-                    }
-                    onChange={(event) => {
-                      setSingleSubmitError(null);
-                      draft.setSingleCharacterId(event.target.value);
+                      }));
                     }}
-                  >
-                    <option value="">选择现有角色</option>
-                    {characters.map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.name}
-                      </option>
-                    ))}
-                  </select>
+                    onThumbnailError={onCharacterThumbnailError}
+                    selectedCharacterId={draftState.singleCharacterId || null}
+                    selectedLabel={
+                      rightWorkspace ? '当前绑定' : '当前说话人'
+                    }
+                    showDefaultExpression={!rightWorkspace}
+                    thumbnails={characterThumbnails}
+                  />
                   {singleTouched.speaker && singleErrors.speaker ? (
                     <p
                       className="dialogue-authoring-error"
@@ -937,7 +963,7 @@ export function DialogueSheet({
                       id="dialogue-add-text"
                       placeholder={
                         rightWorkspace
-                          ? '普通 Enter 换行，Ctrl/Cmd + Enter 提交'
+                          ? '普通 Enter 换行，Ctrl + Enter 提交'
                           : '请输入台词内容…'
                       }
                       rows={5}
@@ -987,7 +1013,7 @@ export function DialogueSheet({
                       <span id="dialogue-add-text-message">
                         {singleTouched.text && singleErrors.text
                           ? singleErrors.text
-                          : '普通 Enter 换行，Ctrl/Cmd + Enter 提交'}
+                          : '普通 Enter 换行，Ctrl + Enter 提交'}
                       </span>
                       <output id="dialogue-add-text-count">
                         {`${draftState.singleText.length} / ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH}`}
@@ -996,50 +1022,7 @@ export function DialogueSheet({
                   )}
                 </div>
 
-                {rightWorkspace ? (
-                  <details
-                    className="dialogue-authoring-advanced"
-                    data-testid="dialogue-authoring-advanced"
-                  >
-                    <summary>更多设置</summary>
-                    <div className="dialogue-authoring-advanced-body">
-                      <div className="dialogue-authoring-field dialogue-authoring-placement-field">
-                        <span className="dialogue-authoring-field-label">
-                          创建位置
-                        </span>
-                        <p className="dialogue-authoring-field-hint">
-                          创建后进入待安排队列，不会自动定时。
-                        </p>
-                        <div className="dialogue-authoring-playhead">
-                          <span>当前播放头</span>
-                          <output
-                            data-current-time={timelineUi.currentTimeMs}
-                            data-testid="dialogue-authoring-playhead"
-                          >
-                            {formatTimecode(timelineUi.currentTimeMs)}
-                          </output>
-                        </div>
-                      </div>
-
-                      <div
-                        aria-label="音频绑定状态"
-                        className="dialogue-authoring-field dialogue-authoring-audio-field"
-                        data-audio-state="unbound"
-                        data-testid="dialogue-authoring-audio"
-                      >
-                        <span className="dialogue-authoring-field-label">
-                          音频绑定
-                        </span>
-                        <p
-                          className="dialogue-authoring-field-hint"
-                          data-testid="dialogue-authoring-audio-summary"
-                        >
-                          暂无绑定音频
-                        </p>
-                      </div>
-                    </div>
-                  </details>
-                ) : (
+                {!rightWorkspace ? (
                   <>
                     <section className="dialogue-authoring-section dialogue-authoring-placement">
                       <div>
@@ -1069,7 +1052,7 @@ export function DialogueSheet({
                       </p>
                     </section>
                   </>
-                )}
+                ) : null}
               </div>
 
               {singleSubmitError ? (
@@ -1093,28 +1076,29 @@ export function DialogueSheet({
                   </button>
                 )}
                 <button
-                  className="dialogue-authoring-submit"
+                  className={`dialogue-authoring-submit${rightWorkspace ? ' ui-icon-label' : ''}`}
                   data-testid="dialogue-add"
                   disabled={!canAdd}
                   type="button"
                   onClick={handleAdd}
                 >
-                  {rightWorkspace ? '创建字幕' : '新增字幕'}
+                  {rightWorkspace ? (
+                    <CirclePlus
+                      aria-hidden="true"
+                      className="ui-icon"
+                      focusable="false"
+                      size={18}
+                    />
+                  ) : null}
+                  <span>{rightWorkspace ? '创建字幕' : '新增字幕'}</span>
                 </button>
-                {rightWorkspace ? (
-                  <p
-                    className="dialogue-authoring-helper"
-                    data-testid="dialogue-authoring-helper"
-                  >
-                    创建后将进入待安排队列
-                  </p>
-                ) : null}
               </footer>
             </div>
           ) : (
             <DialogueBatchPaste
               draft={draft}
               onSuccess={handleCloseAuthoring}
+              showDefaultExpression={!rightWorkspace}
             />
           )}
           </div>
@@ -1268,6 +1252,16 @@ export function DialogueSheet({
                         </span>
                       </div>
                       <div className="dialogue-untimed-action-buttons">
+                        <button
+                          aria-label={`删除字幕：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                          className="dialogue-delete dialogue-untimed-delete"
+                          data-dialogue-id={dialogue.id}
+                          data-testid="dialogue-untimed-delete"
+                          onClick={() => handleDeletePending(dialogue)}
+                          type="button"
+                        >
+                          删除
+                        </button>
                         <button
                           type="button"
                           className="dialogue-untimed-arrange"

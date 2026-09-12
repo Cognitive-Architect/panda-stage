@@ -212,6 +212,51 @@ async function setInput(window, selector, value, eventName = 'input') {
   })()`);
 }
 
+async function chooseImageAsset(window, pickerSelector, assetId) {
+  await window.webContents.executeJavaScript(`(() => {
+    const picker = document.querySelector(${JSON.stringify(pickerSelector)});
+    const trigger = picker?.querySelector('.image-asset-picker-selected');
+    if (!(trigger instanceof HTMLButtonElement)) {
+      throw new Error('Image asset picker trigger not found: ${pickerSelector}');
+    }
+    if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `(() => {
+        const picker = document.querySelector(${JSON.stringify(pickerSelector)});
+        return Boolean(
+          picker &&
+          [...picker.querySelectorAll('[data-asset-id]')].some(
+            (candidate) => candidate.dataset.assetId === ${JSON.stringify(assetId)},
+          )
+        );
+      })()`,
+      `Image asset candidate did not render: ${assetId}`,
+    ),
+  );
+  await window.webContents.executeJavaScript(`(() => {
+    const picker = document.querySelector(${JSON.stringify(pickerSelector)});
+    const candidate = [...picker.querySelectorAll('[data-asset-id]')].find(
+      (node) => node.dataset.assetId === ${JSON.stringify(assetId)},
+    );
+    if (!(candidate instanceof HTMLButtonElement)) {
+      throw new Error('Image asset candidate not found: ${assetId}');
+    }
+    if (candidate.disabled) {
+      throw new Error('Image asset candidate is disabled: ${assetId}');
+    }
+    candidate.click();
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      `document.querySelector(${JSON.stringify(pickerSelector)})` +
+        `?.dataset?.selectedAssetId === ${JSON.stringify(assetId)}`,
+      `Image asset selection did not settle: ${assetId}`,
+    ),
+  );
+}
+
 async function readCharacterExpressionUi(window) {
   return window.webContents.executeJavaScript(`(async () => {
     const nextFrames = () => new Promise((resolve) =>
@@ -225,15 +270,12 @@ async function readCharacterExpressionUi(window) {
           ?.querySelector('.expression-edit-trigger')
           ?.click();
         await nextFrames();
-        document.querySelectorAll('.expression-card-list > li')[index]
-          ?.querySelector('.expression-asset-picker-trigger')
-          ?.click();
-        await nextFrames();
         const card = document.querySelectorAll('.expression-card-list > li')[index];
+        const picker = card?.querySelector('[data-image-asset-picker]');
         values.push({
           name: card?.querySelector('.expression-card-copy strong')
             ?.textContent?.trim(),
-          assetId: card?.querySelector('.expression-asset-picker select')?.value,
+          assetId: picker?.dataset.selectedAssetId,
         });
         card?.querySelector('.expression-edit-trigger')?.click();
         await nextFrames();
@@ -261,10 +303,10 @@ async function readCharacterExpressionUi(window) {
         '.expression-list .expression-fields input'
       )].map((input) => input.value),
       expressionAssetIds: [...document.querySelectorAll(
-        '.expression-list .expression-fields select'
-      )].map((select) => select.value),
+        '.expression-list .expression-fields [data-image-asset-picker]'
+      )].map((picker) => picker.dataset.selectedAssetId),
       thumbnailCount: document.querySelectorAll(
-        '.expression-thumbnail img'
+        '.expression-list .image-asset-picker-selected-thumbnail img'
       ).length,
       defaultName: document.querySelector(
         '.expression-default .expression-fields input'
@@ -536,8 +578,8 @@ async function verifyDay19() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelectorAll(" +
-          "'.character-create-form label:nth-of-type(2) option'" +
-          ").length === 5",
+          "'.character-create-form [data-image-asset-picker]'" +
+          ").length === 3",
         'Imported character fixtures did not reach the character activity.',
       ),
     );
@@ -555,42 +597,36 @@ async function verifyDay19() {
       '.character-create-form input',
       'Panda',
     );
-    await setInput(
+    await chooseImageAsset(
       window,
-      '.character-create-form label:nth-of-type(2) select',
+      '[data-testid="character-create-normal-picker"]',
       assetIds.normal,
-      'change',
     );
-    await setInput(
+    await chooseImageAsset(
       window,
-      '.character-create-form label:nth-of-type(3) select',
+      '[data-testid="character-create-angry-picker"]',
       assetIds.angry,
-      'change',
     );
-    await setInput(
+    await chooseImageAsset(
       window,
-      '.character-create-form label:nth-of-type(4) select',
+      '[data-testid="character-create-mouth-picker"]',
       assetIds.mouth,
-      'change',
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-create-form button')" +
+        "document.querySelector('.character-create-form button[type=submit]')" +
           "?.disabled === false && " +
-          "document.querySelector(" +
-          "'.character-create-form label:nth-of-type(2) select')" +
-          `?.value === ${JSON.stringify(assetIds.normal)} && ` +
-          "document.querySelector(" +
-          "'.character-create-form label:nth-of-type(3) select')" +
-          `?.value === ${JSON.stringify(assetIds.angry)} && ` +
-          "document.querySelector(" +
-          "'.character-create-form label:nth-of-type(4) select')" +
-          `?.value === ${JSON.stringify(assetIds.mouth)}`,
+          "document.querySelector('[data-testid=\"character-create-normal-picker\"]')" +
+          `?.dataset?.selectedAssetId === ${JSON.stringify(assetIds.normal)} && ` +
+          "document.querySelector('[data-testid=\"character-create-angry-picker\"]')" +
+          `?.dataset?.selectedAssetId === ${JSON.stringify(assetIds.angry)} && ` +
+          "document.querySelector('[data-testid=\"character-create-mouth-picker\"]')" +
+          `?.dataset?.selectedAssetId === ${JSON.stringify(assetIds.mouth)}`,
         'Character create form did not settle with the selected assets.',
       ),
     );
     await window.webContents.executeJavaScript(`
-      document.querySelector('.character-create-form button').click()
+      document.querySelector('.character-create-form button[type="submit"]').click()
     `);
     await window.webContents.executeJavaScript(
       waitFor(
@@ -686,35 +722,25 @@ async function verifyDay19() {
     })()`);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.expression-asset-picker-trigger, " +
-          ".expression-list li:not(.expression-default) .expression-fields select')",
+        "document.querySelector('.expression-edit-panel [data-image-asset-picker], " +
+          ".expression-list li:not(.expression-default) .expression-fields [data-image-asset-picker]')",
         'Expression asset editor did not render.',
       ),
     );
-    await window.webContents.executeJavaScript(`(() => {
-      document.querySelector('.expression-asset-picker-trigger')?.click();
-    })()`);
-    await window.webContents.executeJavaScript(
-      waitFor(
-        "document.querySelector('.expression-asset-picker select, " +
-          ".expression-list li:not(.expression-default) .expression-fields select')",
-        'Expression asset picker did not render.',
-      ),
-    );
-    await setInput(
+    await chooseImageAsset(
       window,
-      '.expression-asset-picker select, ' +
-        '.expression-list li:not(.expression-default) .expression-fields select',
+      '.expression-edit-panel [data-image-asset-picker], ' +
+        '.expression-list li:not(.expression-default) .expression-fields [data-image-asset-picker]',
       assetIds.replacement,
-      'change',
     );
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('.character-manager-status')" +
           "?.textContent?.includes('原有镜头与时间轴引用保持不变') && " +
           "document.querySelector(" +
-          "'.expression-asset-picker select, " +
-            ".expression-list li:not(.expression-default) .expression-fields select')?.value === " +
+          "'.expression-edit-panel [data-image-asset-picker], " +
+            ".expression-list li:not(.expression-default) .expression-fields [data-image-asset-picker]')" +
+          "?.dataset?.selectedAssetId === " +
           JSON.stringify(assetIds.replacement),
         'Could not replace the angry expression asset.',
       ),
@@ -733,7 +759,8 @@ async function verifyDay19() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
-          "document.querySelector('.character-mouth-picker select, .character-settings select')",
+          "document.querySelector('[data-testid=\"character-detail-mouth-picker\"], " +
+            "[data-testid=\"character-detail-mouth-visual-picker\"]')",
         'Character detail did not reopen after expression editing.',
       ),
     );
@@ -807,8 +834,9 @@ async function verifyDay19() {
           '.character-detail-identity-copy h3, .character-editor-heading h3'
         )?.textContent?.trim(),
         mouthValue: document.querySelector(
-          '.character-mouth-picker select, .character-settings select'
-        )?.value,
+          '[data-testid="character-detail-mouth-picker"], ' +
+            '[data-testid="character-detail-mouth-visual-picker"]'
+        )?.dataset?.selectedAssetId,
         scaleValue: scaleOutput
           ? scaleOutput.textContent?.replace(/[^\\d.]/g, '')
           : scaleInput?.value,
@@ -893,8 +921,9 @@ async function verifyDay19() {
           "document.querySelectorAll(" +
             "'.character-expression-visual-list li, .character-expression-summary-list li'" +
           ").length === 2 && " +
-          "document.querySelector('.character-mouth-picker select, .character-settings select')" +
-          `?.value === ${JSON.stringify(assetIds.mouth)} && ` +
+          "document.querySelector('[data-testid=\"character-detail-mouth-picker\"], " +
+            "[data-testid=\"character-detail-mouth-visual-picker\"]')" +
+          `?.dataset?.selectedAssetId === ${JSON.stringify(assetIds.mouth)} && ` +
           "document.querySelector('.character-detail-identity-copy h3, .character-editor-heading h3')" +
           "?.textContent?.trim() === 'Panda'",
         'Saved character detail did not reopen completely.',
@@ -917,8 +946,9 @@ async function verifyDay19() {
             '.character-detail-identity-copy h3, .character-editor-heading h3'
           )?.textContent?.trim(),
           mouthValue: document.querySelector(
-            '.character-mouth-picker select, .character-settings select'
-          )?.value,
+            '[data-testid="character-detail-mouth-picker"], ' +
+              '[data-testid="character-detail-mouth-visual-picker"]'
+          )?.dataset?.selectedAssetId,
           scaleValue: scaleOutput
             ? scaleOutput.textContent?.replace(/[^\\d.]/g, '')
             : scaleInput?.value,

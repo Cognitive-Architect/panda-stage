@@ -76,7 +76,7 @@ describe('Issue #431 R2 Subtitle Workspace polish P-04 / P-05 / P-06', () => {
     expect(sheet).toContain('dialogue-authoring-textarea-shell');
     expect(sheet).toContain('data-testid="dialogue-add-text-count"');
     expect(sheet).toMatch(
-      /rightWorkspace\s*\?\s*'普通 Enter 换行，Ctrl\/Cmd \+ Enter 提交'\s*:\s*'请输入台词内容…'/u,
+      /rightWorkspace\s*\?\s*'普通 Enter 换行，Ctrl \+ Enter 提交'\s*:\s*'请输入台词内容…'/u,
     );
     expect(sheet).not.toContain("rightWorkspace ? '在这里输入对白'");
     expect(sheet).toContain("id=\"dialogue-add-text-message\"");
