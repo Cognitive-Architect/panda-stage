@@ -269,7 +269,7 @@ export function CharacterList({
           </label>
           <ImageAssetPicker
             assets={imageAssets}
-            emptyOption={{
+            emptyState={{
               description: '从项目图片中选择一张。',
               label: '请选择图片',
             }}
@@ -283,7 +283,7 @@ export function CharacterList({
           />
           <ImageAssetPicker
             assets={imageAssets}
-            emptyOption={{
+            emptyState={{
               description: '不能与普通表情使用同一素材。',
               label: '请选择不同图片',
             }}

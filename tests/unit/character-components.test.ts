@@ -150,7 +150,10 @@ describe('character management components', () => {
       }),
     );
     expect(fallbackMarkup).toContain('暂不配置');
-    expect(fallbackMarkup).toContain('未选择图片');
+    expect(fallbackMarkup).toContain('创建后也可以在角色详情中配置。');
+    expect(fallbackMarkup).toContain(
+      'image-asset-picker-neutral-empty-thumbnail',
+    );
   });
 
   it('gives an explicit empty state when fewer than two images can define normal and angry', () => {
@@ -172,5 +175,17 @@ describe('character management components', () => {
     expect(markup).toContain('先准备 2 张角色图片，就能创建角色了。');
     expect(markup).toContain('至少需要两张不同的项目图片素材');
     expect(markup).toContain('disabled=""');
+
+    const noImageMarkup = renderToStaticMarkup(
+      createElement(CharacterList, {
+        characters: [],
+        imageAssets: [],
+        selectedCharacterId: null,
+        onCreate: noop,
+        onSelect: noop,
+      }),
+    );
+    expect(noImageMarkup).toContain('请选择图片');
+    expect(noImageMarkup).toContain('请选择不同图片');
   });
 });

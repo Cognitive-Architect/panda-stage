@@ -15,6 +15,10 @@ export interface ImageAssetPickerProps {
     description: string;
     optional?: boolean;
   };
+  emptyState?: {
+    label: string;
+    description: string;
+  };
   getDisabledReason?: (asset: ImageAsset) => string | undefined;
   selectionConflict?: string;
   helperText?: string;
@@ -76,10 +80,41 @@ function AssetThumbnail({
   );
 }
 
-function assetMetadata(asset: ImageAsset | undefined, assetId: string | null): string {
+function EmptyAssetThumbnail({
+  className,
+}: {
+  className: string;
+}): React.JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      className={`${className} image-asset-picker-neutral-empty-thumbnail`}
+      data-thumbnail-status="empty"
+    >
+      <span aria-hidden="true">○</span>
+    </span>
+  );
+}
+
+function SelectionCheck(): React.JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      className="image-asset-picker-candidate-check"
+    >
+      ✓
+    </span>
+  );
+}
+
+function assetMetadata(
+  asset: ImageAsset | undefined,
+  assetId: string | null,
+  emptyState?: { description: string },
+): string {
   if (asset) return `${asset.width}×${asset.height}`;
   if (assetId) return `素材 ID：${assetId}`;
-  return '未选择图片';
+  return emptyState?.description ?? '未选择图片';
 }
 
 export function ImageAssetPicker({
@@ -91,6 +126,7 @@ export function ImageAssetPicker({
   onChange,
   onThumbnailError,
   emptyOption,
+  emptyState,
   getDisabledReason,
   selectionConflict,
   helperText,
@@ -98,6 +134,7 @@ export function ImageAssetPicker({
 }: ImageAssetPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId);
+  const selectedEmptyState = emptyOption ?? emptyState;
 
   const selectAsset = (assetId: string | null): void => {
     if (disabled) return;
@@ -109,7 +146,7 @@ export function ImageAssetPicker({
     ? selectedAsset.name
     : selectedAssetId
       ? '素材不可用'
-      : emptyOption?.label ?? '未选择图片';
+      : selectedEmptyState?.label ?? '未选择图片';
 
   return (
     <section
@@ -133,17 +170,21 @@ export function ImageAssetPicker({
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        <AssetThumbnail
-          asset={selectedAsset}
-          className="image-asset-picker-selected-thumbnail"
-          onThumbnailError={onThumbnailError}
-          thumbnail={
-            selectedAssetId ? thumbnails[selectedAssetId] : undefined
-          }
-        />
+        {selectedAssetId ? (
+          <AssetThumbnail
+            asset={selectedAsset}
+            className="image-asset-picker-selected-thumbnail"
+            onThumbnailError={onThumbnailError}
+            thumbnail={thumbnails[selectedAssetId]}
+          />
+        ) : (
+          <EmptyAssetThumbnail className="image-asset-picker-selected-thumbnail" />
+        )}
         <span className="image-asset-picker-selected-copy">
           <strong>{selectedLabel}</strong>
-          <small>{assetMetadata(selectedAsset, selectedAssetId)}</small>
+          <small>
+            {assetMetadata(selectedAsset, selectedAssetId, selectedEmptyState)}
+          </small>
         </span>
         <span aria-hidden="true" className="image-asset-picker-selected-action">
           {open ? '收起' : selectedAssetId ? '更换' : '选择'}
@@ -175,11 +216,12 @@ export function ImageAssetPicker({
               role="option"
               type="button"
             >
-              <span className="image-asset-picker-candidate-thumbnail image-asset-picker-empty-thumbnail">
-                <span aria-hidden="true">＋</span>
+              <EmptyAssetThumbnail className="image-asset-picker-candidate-thumbnail image-asset-picker-empty-thumbnail" />
+              <span className="image-asset-picker-candidate-copy">
+                <strong>{emptyOption.label}</strong>
+                <small>{emptyOption.description}</small>
               </span>
-              <strong>{emptyOption.label}</strong>
-              <small>{emptyOption.description}</small>
+              {!selectedAssetId ? <SelectionCheck /> : null}
             </button>
           ) : null}
           {assets.map((asset) => {
@@ -205,19 +247,12 @@ export function ImageAssetPicker({
                   onThumbnailError={onThumbnailError}
                   thumbnail={thumbnails[asset.id]}
                 />
-                <strong title={asset.name}>{asset.name}</strong>
-                <small>{asset.width}×{asset.height}</small>
-                {disabledReason ? (
-                  <em>{disabledReason}</em>
-                ) : null}
-                {candidateSelected ? (
-                  <span
-                    aria-hidden="true"
-                    className="image-asset-picker-candidate-check"
-                  >
-                    ✓
-                  </span>
-                ) : null}
+                <span className="image-asset-picker-candidate-copy">
+                  <strong title={asset.name}>{asset.name}</strong>
+                  <small>{asset.width}×{asset.height}</small>
+                  {disabledReason ? <em>{disabledReason}</em> : null}
+                </span>
+                {candidateSelected ? <SelectionCheck /> : null}
               </button>
             );
           })}
