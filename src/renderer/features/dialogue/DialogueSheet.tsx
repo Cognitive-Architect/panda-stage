@@ -28,6 +28,10 @@ import {
 } from './dialogueAuthoringDraft';
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
+import {
+  CharacterIdentityPicker,
+  useCharacterAvatarThumbnails,
+} from '../characters/CharacterIdentity';
 import subtitleEmptyStateArt from './assets/subtitle-empty-state.png';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import { formatTimecode, integerFrameSpanMs } from '../timeline/timeGeometry';
@@ -347,6 +351,10 @@ export function DialogueSheet({
   }, [currentShotId, selectedDialogueId]);
 
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
+  const {
+    onThumbnailError: onCharacterThumbnailError,
+    thumbnails: characterThumbnails,
+  } = useCharacterAvatarThumbnails(snapshot, characters);
   const shot = snapshot?.project.shots.find(
     (candidate) => candidate.id === currentShotId,
   );
@@ -867,36 +875,40 @@ export function DialogueSheet({
                   <label htmlFor="dialogue-add-speaker">
                     {rightWorkspace ? '角色' : '角色（说话人）'}
                   </label>
-                  <select
-                    aria-describedby={
+                  <CharacterIdentityPicker
+                    ariaDescribedBy={
                       singleTouched.speaker && singleErrors.speaker
                         ? 'dialogue-add-speaker-error'
                         : undefined
                     }
-                    aria-invalid={Boolean(
+                    ariaInvalid={Boolean(
                       singleTouched.speaker && singleErrors.speaker,
                     )}
+                    ariaLabel={rightWorkspace ? '说话角色' : '角色（说话人）'}
+                    characters={characters}
+                    defaultOpen
                     data-testid="dialogue-add-speaker"
+                    disabled={!snapshot}
+                    emptySummaryDescription="从项目角色中选择说话人"
+                    emptySummaryLabel="选择现有角色"
                     id="dialogue-add-speaker"
-                    value={draftState.singleCharacterId}
-                    onBlur={() =>
+                    onClear={() => {
+                      setSingleSubmitError(null);
+                      draft.setSingleCharacterId('');
+                    }}
+                    onSelect={(characterId) => {
+                      setSingleSubmitError(null);
+                      draft.setSingleCharacterId(characterId);
                       setSingleTouched((current) => ({
                         ...current,
                         speaker: true,
-                      }))
-                    }
-                    onChange={(event) => {
-                      setSingleSubmitError(null);
-                      draft.setSingleCharacterId(event.target.value);
+                      }));
                     }}
-                  >
-                    <option value="">选择现有角色</option>
-                    {characters.map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.name}
-                      </option>
-                    ))}
-                  </select>
+                    onThumbnailError={onCharacterThumbnailError}
+                    selectedCharacterId={draftState.singleCharacterId || null}
+                    selectedLabel="当前说话人"
+                    thumbnails={characterThumbnails}
+                  />
                   {singleTouched.speaker && singleErrors.speaker ? (
                     <p
                       className="dialogue-authoring-error"

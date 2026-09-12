@@ -7,6 +7,10 @@ import type {
 import type { ThumbnailState } from '../assets/AssetCard';
 import characterEmptyAngry from './assets/character-empty-angry.png';
 import characterEmptyNormal from './assets/character-empty-normal.png';
+import {
+  CharacterAvatar,
+  getCharacterDefaultExpression,
+} from './CharacterIdentity';
 import { ImageAssetPicker } from './ImageAssetPicker';
 
 export interface CharacterListProps {
@@ -142,11 +146,7 @@ export function CharacterList({
             )
           ) : (
             characters.map((character) => {
-              const defaultExpression =
-                character.expressions.find(
-                  (expression) =>
-                    expression.id === character.defaultExpressionId,
-                ) ?? character.expressions[0];
+              const defaultExpression = getCharacterDefaultExpression(character);
               const thumbnail = defaultExpression
                 ? thumbnails[defaultExpression.assetId]
                 : undefined;
@@ -160,74 +160,27 @@ export function CharacterList({
                   onClick={() => onSelect(character.id)}
                   type="button"
                 >
-                  {presentation === 'landscape' ? (
-                    <>
-                      <span
-                        className="character-list-avatar"
-                        data-thumbnail-status={thumbnail?.status ?? 'missing'}
-                      >
-                        {thumbnail?.status === 'ready' && defaultExpression ? (
-                          <img
-                            alt={`${character.name} 默认表情`}
-                            onError={() =>
-                              onThumbnailError(defaultExpression.assetId)
-                            }
-                            src={thumbnail.dataUrl}
-                          />
-                        ) : (
-                          <span
-                            aria-label={
-                              thumbnail?.status === 'loading'
-                                ? '加载中'
-                                : thumbnail?.status === 'missing' &&
-                                    thumbnail.reason === 'source'
-                                  ? '源文件缺失'
-                                  : '缩略图缺失'
-                            }
-                            className="character-thumbnail-fallback"
-                            data-thumbnail-fallback={
-                              thumbnail?.status ?? 'missing'
-                            }
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="character-thumbnail-fallback-icon"
-                            >
-                              ▧
-                            </span>
-                            <small>
-                              {thumbnail?.status === 'loading'
-                                ? '加载中'
-                                : thumbnail?.status === 'missing' &&
-                                    thumbnail.reason === 'source'
-                                  ? '源文件缺失'
-                                  : '缩略图缺失'}
-                            </small>
-                          </span>
-                        )}
-                      </span>
-                      <span className="character-list-copy">
-                        <strong>{character.name}</strong>
-                        <small>
-                          {character.expressions.length} 个表情 · 默认{' '}
-                          {defaultExpression?.name ?? '未配置'}
-                        </small>
-                      </span>
-                      {selected ? (
-                        <span
-                          aria-label="当前选择"
-                          className="character-list-selected-badge"
-                        >
-                          ✓
-                        </span>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      <strong>{character.name}</strong>
-                      <span>{character.expressions.length} 个表情</span>
-                    </>
-                  )}
+                  <CharacterAvatar
+                    character={character}
+                    className="character-list-avatar"
+                    onThumbnailError={onThumbnailError}
+                    thumbnail={thumbnail}
+                  />
+                  <span className="character-list-copy">
+                    <strong>{character.name}</strong>
+                    <small>
+                      {character.expressions.length} 个表情 · 默认{' '}
+                      {defaultExpression?.name ?? '未配置'}
+                    </small>
+                  </span>
+                  {selected ? (
+                    <span
+                      aria-label="当前选择"
+                      className="character-list-selected-badge"
+                    >
+                      ✓
+                    </span>
+                  ) : null}
                 </button>
               );
             })

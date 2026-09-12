@@ -5,6 +5,7 @@ import type {
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
+import { CharacterExpressionThumbnail } from './CharacterIdentity';
 import { ExpressionEditor } from './ExpressionEditor';
 import { ImageAssetPicker } from './ImageAssetPicker';
 
@@ -394,9 +395,22 @@ export function CharacterEditor({
                 (candidate) => candidate.id === expression.assetId,
               );
               return (
-                <li key={expression.id}>
-                  <strong>{expression.name}</strong>
-                  <span>{asset?.name ?? expression.assetId}</span>
+                <li
+                  data-expression-default={
+                    expression.id === character.defaultExpressionId
+                  }
+                  key={expression.id}
+                >
+                  <CharacterExpressionThumbnail
+                    className="character-expression-summary-preview"
+                    expression={expression}
+                    onThumbnailError={onThumbnailError}
+                    thumbnail={thumbnails[expression.assetId]}
+                  />
+                  <span className="character-expression-summary-copy">
+                    <strong>{expression.name}</strong>
+                    <span>{asset?.name ?? expression.assetId}</span>
+                  </span>
                   {expression.id === character.defaultExpressionId ? (
                     <em>默认表情</em>
                   ) : null}
