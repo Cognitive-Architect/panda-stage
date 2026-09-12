@@ -1306,6 +1306,16 @@ export function DialogueSheet({
                       </div>
                       <div className="dialogue-untimed-action-buttons">
                         <button
+                          aria-label={`删除字幕：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                          className="dialogue-delete dialogue-untimed-delete"
+                          data-dialogue-id={dialogue.id}
+                          data-testid="dialogue-untimed-delete"
+                          onClick={() => handleDeletePending(dialogue)}
+                          type="button"
+                        >
+                          删除
+                        </button>
+                        <button
                           type="button"
                           className="dialogue-untimed-arrange"
                           aria-label={`自动加入：${characterName(dialogue.characterId)}：${dialogue.text}`}
@@ -1314,16 +1324,6 @@ export function DialogueSheet({
                           onClick={() => handleArrange(dialogue.id)}
                         >
                           自动加入
-                        </button>
-                        <button
-                          aria-label={`删除字幕：${characterName(dialogue.characterId)}：${dialogue.text}`}
-                          className="dialogue-untimed-delete"
-                          data-dialogue-id={dialogue.id}
-                          data-testid="dialogue-untimed-delete"
-                          onClick={() => handleDeletePending(dialogue)}
-                          type="button"
-                        >
-                          删除
                         </button>
                       </div>
                       {queueError?.dialogueId === dialogue.id ? (
