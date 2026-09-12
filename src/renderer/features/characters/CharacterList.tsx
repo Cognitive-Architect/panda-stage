@@ -7,6 +7,7 @@ import type {
 import type { ThumbnailState } from '../assets/AssetCard';
 import characterEmptyAngry from './assets/character-empty-angry.png';
 import characterEmptyNormal from './assets/character-empty-normal.png';
+import { ImageAssetPicker } from './ImageAssetPicker';
 
 export interface CharacterListProps {
   characters: readonly Character[];
@@ -266,51 +267,57 @@ export function CharacterList({
               value={name}
             />
           </label>
-          <label>
-            普通表情图片
-            <select
-              disabled={disabled}
-              onChange={(event) => setNormalAssetId(event.target.value)}
-              value={normalAssetId}
-            >
-              <option value="">请选择图片</option>
-              {imageAssets.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.name} · {asset.width}×{asset.height}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            生气表情图片
-            <select
-              disabled={disabled}
-              onChange={(event) => setAngryAssetId(event.target.value)}
-              value={angryAssetId}
-            >
-              <option value="">请选择不同图片</option>
-              {imageAssets.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.name} · {asset.width}×{asset.height}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            张嘴图（可选）
-            <select
-              disabled={disabled}
-              onChange={(event) => setMouthAssetId(event.target.value)}
-              value={mouthAssetId}
-            >
-              <option value="">暂不配置</option>
-              {imageAssets.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.name} · {asset.width}×{asset.height}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ImageAssetPicker
+            assets={imageAssets}
+            emptyOption={{
+              description: '从项目图片中选择一张。',
+              label: '请选择图片',
+            }}
+            label="普通表情图片"
+            onChange={(assetId) => setNormalAssetId(assetId ?? '')}
+            onThumbnailError={onThumbnailError}
+            selectedAssetId={normalAssetId || null}
+            testId="character-create-normal-picker"
+            thumbnails={thumbnails}
+            disabled={disabled}
+          />
+          <ImageAssetPicker
+            assets={imageAssets}
+            emptyOption={{
+              description: '不能与普通表情使用同一素材。',
+              label: '请选择不同图片',
+            }}
+            getDisabledReason={(asset) =>
+              asset.id === normalAssetId ? '已用于普通表情' : undefined
+            }
+            label="生气表情图片"
+            onChange={(assetId) => setAngryAssetId(assetId ?? '')}
+            onThumbnailError={onThumbnailError}
+            selectedAssetId={angryAssetId || null}
+            selectionConflict={
+              normalAssetId && angryAssetId === normalAssetId
+                ? '已用于普通表情，请选择另一张图片。'
+                : undefined
+            }
+            testId="character-create-angry-picker"
+            thumbnails={thumbnails}
+            disabled={disabled}
+          />
+          <ImageAssetPicker
+            assets={imageAssets}
+            emptyOption={{
+              description: '创建后也可以在角色详情中配置。',
+              label: '暂不配置',
+              optional: true,
+            }}
+            label="张嘴图（可选）"
+            onChange={(assetId) => setMouthAssetId(assetId ?? '')}
+            onThumbnailError={onThumbnailError}
+            selectedAssetId={mouthAssetId || null}
+            testId="character-create-mouth-picker"
+            thumbnails={thumbnails}
+            disabled={disabled}
+          />
           <button disabled={!canCreate} type="submit">
             创建角色
           </button>

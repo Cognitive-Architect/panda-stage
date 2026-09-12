@@ -5,6 +5,7 @@ import type {
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
+import { ImageAssetPicker } from './ImageAssetPicker';
 
 export interface ExpressionEditorProps {
   character: Character;
@@ -148,10 +149,6 @@ function LegacyExpressionEditor({
       </div>
       <ul className="expression-list">
         {character.expressions.map((expression) => {
-          const asset = imageAssets.find(
-            (candidate) => candidate.id === expression.assetId,
-          );
-          const thumbnail = thumbnails[expression.assetId];
           const isDefault =
             expression.id === character.defaultExpressionId;
           return (
@@ -160,17 +157,6 @@ function LegacyExpressionEditor({
               data-expression-id={expression.id}
               key={expression.id}
             >
-              <div className="expression-thumbnail">
-                {thumbnail?.status === 'ready' ? (
-                  <img
-                    alt={`${expression.name} 表情缩略图`}
-                    onError={() => onThumbnailError(expression.assetId)}
-                    src={thumbnail.dataUrl}
-                  />
-                ) : (
-                  <span aria-label="缩略图缺失">图</span>
-                )}
-              </div>
               <div className="expression-fields">
                 <label>
                   表情名称
@@ -185,29 +171,18 @@ function LegacyExpressionEditor({
                     }}
                   />
                 </label>
-                <span>
-                  {asset
-                    ? `${asset.name} · ${asset.width}×${asset.height}`
-                    : expression.assetId}
-                </span>
-                <label>
-                  图片素材
-                  <select
-                    aria-label={`${expression.name} 表情图片素材`}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      onSetAsset(expression.id, event.target.value)
-                    }
-                    value={expression.assetId}
-                  >
-                    {imageAssets.map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.name} · {candidate.width}×
-                        {candidate.height}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <ImageAssetPicker
+                  assets={imageAssets}
+                  label="图片素材"
+                  onChange={(assetId) => {
+                    if (assetId) onSetAsset(expression.id, assetId);
+                  }}
+                  onThumbnailError={onThumbnailError}
+                  selectedAssetId={expression.assetId}
+                  testId={`expression-asset-picker-${expression.id}`}
+                  thumbnails={thumbnails}
+                  disabled={disabled}
+                />
               </div>
               <div className="expression-actions">
                 {isDefault ? (
@@ -257,20 +232,16 @@ function LegacyExpressionEditor({
             value={newName}
           />
         </label>
-        <label>
-          图片素材
-          <select
-            disabled={disabled}
-            onChange={(event) => setNewAssetId(event.target.value)}
-            value={newAssetId}
-          >
-            {imageAssets.map((asset) => (
-              <option key={asset.id} value={asset.id}>
-                {asset.name} · {asset.width}×{asset.height}
-              </option>
-            ))}
-          </select>
-        </label>
+        <ImageAssetPicker
+          assets={imageAssets}
+          label="图片素材"
+          onChange={(assetId) => setNewAssetId(assetId ?? '')}
+          onThumbnailError={onThumbnailError}
+          selectedAssetId={newAssetId || null}
+          testId="expression-add-asset-picker"
+          thumbnails={thumbnails}
+          disabled={disabled}
+        />
         <button
           disabled={disabled || !newName.trim() || !newAssetId}
           type="submit"
@@ -317,7 +288,6 @@ function LandscapeExpressionEditor({
     null,
   );
   const [editingName, setEditingName] = useState('');
-  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
 
   useEffect(() => {
     if (newAssetId && imageAssets.some((asset) => asset.id === newAssetId)) {
@@ -337,19 +307,16 @@ function LandscapeExpressionEditor({
     }
     setEditingExpressionId(null);
     setEditingName('');
-    setAssetPickerOpen(false);
   }, [character.expressions, editingExpressionId]);
 
   const cancelExpressionEdit = (): void => {
     setEditingExpressionId(null);
     setEditingName('');
-    setAssetPickerOpen(false);
   };
 
   const startExpressionEdit = (expression: Character['expressions'][number]): void => {
     setEditingExpressionId(expression.id);
     setEditingName(expression.name);
-    setAssetPickerOpen(false);
   };
 
   const applyExpressionName = (
@@ -417,20 +384,16 @@ function LandscapeExpressionEditor({
               value={newName}
             />
           </label>
-          <label>
-            素材
-            <select
-              disabled={disabled}
-              onChange={(event) => setNewAssetId(event.target.value)}
-              value={newAssetId}
-            >
-              {imageAssets.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.name} · {asset.width}×{asset.height}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ImageAssetPicker
+            assets={imageAssets}
+            label="素材"
+            onChange={(assetId) => setNewAssetId(assetId ?? '')}
+            onThumbnailError={onThumbnailError}
+            selectedAssetId={newAssetId || null}
+            testId="expression-add-asset-picker"
+            thumbnails={thumbnails}
+            disabled={disabled}
+          />
           <div className="expression-form-actions">
             <button onClick={cancelAdd} type="button">
               取消
@@ -550,55 +513,19 @@ function LandscapeExpressionEditor({
                     />
                   </label>
                   <div className="expression-current-asset">
-                    <span className="expression-edit-label">当前素材</span>
-                    <div className="expression-current-asset-row">
-                      <ExpressionThumbnail
-                        assetId={expression.assetId}
-                        className="expression-current-asset-preview"
-                        expressionName={expression.name}
-                        onThumbnailError={onThumbnailError}
-                        thumbnail={thumbnail}
-                      />
-                      <div className="expression-current-asset-copy">
-                        <strong>{asset?.name ?? '素材不可用'}</strong>
-                        <small>
-                          {asset
-                            ? `${asset.width}×${asset.height}`
-                            : '当前素材不可用'}
-                        </small>
-                      </div>
-                      <button
-                        aria-expanded={assetPickerOpen}
-                        className="expression-asset-picker-trigger"
-                        data-testid={`expression-asset-picker-${expression.id}`}
-                        disabled={disabled || imageAssets.length === 0}
-                        onClick={() => setAssetPickerOpen((open) => !open)}
-                        type="button"
-                      >
-                        更换素材
-                      </button>
-                    </div>
-                    {assetPickerOpen ? (
-                      <label className="expression-asset-picker">
-                        选择已有图片素材
-                        <select
-                          aria-label={`${expression.name} 表情图片素材`}
-                          disabled={disabled}
-                          onChange={(event) =>
-                            onSetAsset(expression.id, event.target.value)
-                          }
-                          value={expression.assetId}
-                        >
-                          {imageAssets.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.name} · {candidate.width}×
-                              {candidate.height}
-                            </option>
-                          ))}
-                        </select>
-                        <small>更换素材会立即应用；名称修改请点击应用。</small>
-                      </label>
-                    ) : null}
+                    <ImageAssetPicker
+                      assets={imageAssets}
+                      helperText="更换素材会立即应用；名称修改请点击应用。"
+                      label="当前素材"
+                      onChange={(assetId) => {
+                        if (assetId) onSetAsset(expression.id, assetId);
+                      }}
+                      onThumbnailError={onThumbnailError}
+                      selectedAssetId={expression.assetId}
+                      testId={`expression-asset-picker-${expression.id}`}
+                      thumbnails={thumbnails}
+                      disabled={disabled}
+                    />
                   </div>
                   {cardWarnings.map((warning) => (
                     <ExpressionWarning

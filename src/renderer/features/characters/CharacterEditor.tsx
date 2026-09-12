@@ -6,6 +6,7 @@ import type {
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
 import { ExpressionEditor } from './ExpressionEditor';
+import { ImageAssetPicker } from './ImageAssetPicker';
 
 export type CharacterEditorView = 'full' | 'detail' | 'expression';
 export type CharacterEditorPresentation = 'default' | 'landscape';
@@ -135,14 +136,6 @@ export function CharacterEditor({
     ) ?? character.expressions[0];
   const defaultThumbnail = defaultExpression
     ? thumbnails[defaultExpression.assetId]
-    : undefined;
-  const mouthAsset = character.mouthOpenAssetId
-    ? imageAssets.find(
-        (asset) => asset.id === character.mouthOpenAssetId,
-      ) ?? null
-    : null;
-  const mouthThumbnail = character.mouthOpenAssetId
-    ? thumbnails[character.mouthOpenAssetId]
     : undefined;
   const hasPendingTransform = isDefaultTransformPending(
     character,
@@ -327,23 +320,21 @@ export function CharacterEditor({
               </button>
             </span>
           </label>
-          <label>
-            张嘴图
-            <select
-              disabled={disabled}
-              onChange={(event) =>
-                onSetMouthOpenAsset(event.target.value || null)
-              }
-              value={character.mouthOpenAssetId ?? ''}
-            >
-              <option value="">未配置（安全降级为闭嘴）</option>
-              {imageAssets.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.name} · {asset.width}×{asset.height}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ImageAssetPicker
+            assets={imageAssets}
+            emptyOption={{
+              description: '安全降级为闭嘴。',
+              label: '未配置',
+              optional: true,
+            }}
+            label="张嘴图"
+            onChange={onSetMouthOpenAsset}
+            onThumbnailError={onThumbnailError}
+            selectedAssetId={character.mouthOpenAssetId ?? null}
+            testId="character-detail-mouth-picker"
+            thumbnails={thumbnails}
+            disabled={disabled}
+          />
           <label>
             默认缩放
             <input
@@ -556,58 +547,21 @@ export function CharacterEditor({
               <h4>嘴型</h4>
             </div>
             <div className="character-mouth-state">
-              <div
-                className="character-mouth-preview"
-                data-thumbnail-status={mouthThumbnail?.status ?? 'missing'}
-              >
-                {mouthThumbnail?.status === 'ready' &&
-                character.mouthOpenAssetId ? (
-                  <img
-                    alt="张嘴图预览"
-                    onError={() =>
-                      onThumbnailError(character.mouthOpenAssetId!)
-                    }
-                    src={mouthThumbnail.dataUrl}
-                  />
-                ) : character.mouthOpenAssetId ? (
-                  <CharacterThumbnailFallback thumbnail={mouthThumbnail} />
-                ) : (
-                  <span aria-hidden="true" className="character-mouth-empty">
-                    +
-                  </span>
-                )}
-              </div>
-              <div className="character-mouth-copy">
-                <strong>
-                  {mouthAsset?.name ??
-                    (character.mouthOpenAssetId
-                      ? '素材不可用'
-                      : '未配置 · 张嘴图')}
-                </strong>
-                {character.mouthOpenAssetId ? <span>张嘴图</span> : null}
-              </div>
-              <details className="character-mouth-picker">
-                <summary>
-                  {character.mouthOpenAssetId ? '更换' : '选择'}
-                </summary>
-                <label>
-                  张嘴图素材
-                  <select
-                    disabled={disabled}
-                    onChange={(event) =>
-                      onSetMouthOpenAsset(event.target.value || null)
-                    }
-                    value={character.mouthOpenAssetId ?? ''}
-                  >
-                    <option value="">未配置</option>
-                    {imageAssets.map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.name} · {asset.width}×{asset.height}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </details>
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyOption={{
+                  description: '安全降级为闭嘴。',
+                  label: '未配置',
+                  optional: true,
+                }}
+                label="张嘴图素材"
+                onChange={onSetMouthOpenAsset}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={character.mouthOpenAssetId ?? null}
+                testId="character-detail-mouth-visual-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
               {character.mouthOpenAssetId ? (
                 <button
                   className="character-mouth-clear"

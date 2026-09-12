@@ -11,6 +11,7 @@ import {
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import { CharacterList } from '../../src/renderer/features/characters/CharacterList';
 import { CharacterManager } from '../../src/renderer/features/characters/CharacterManager';
+import { ImageAssetPicker } from '../../src/renderer/features/characters/ImageAssetPicker';
 
 const noop = () => undefined;
 
@@ -88,11 +89,68 @@ describe('character management components', () => {
       }),
     );
 
-    expect(markup.match(/<img/g)).toHaveLength(character.expressions.length);
+    expect(markup.match(/<img/g)).toHaveLength(
+      character.expressions.length +
+        (character.mouthOpenAssetId ? 1 : 0) +
+        (imageAssets.length > 0 ? 1 : 0),
+    );
     expect(markup).toContain('默认表情');
     expect(markup).toContain('请先选择替代表情，再删除默认表情。');
     expect(markup).toContain('图片尺寸差异超过 30%');
     expect(markup).toContain('中心位置 保持不变');
+  });
+
+  it('renders a selected image card with supporting metadata and an explicit optional empty state', () => {
+    const project = migrateProject(exampleProject);
+    const imageAssets = project.assets.filter(
+      (asset) => asset.kind === 'image',
+    );
+    const selected = imageAssets[0]!;
+    const markup = renderToStaticMarkup(
+      createElement(ImageAssetPicker, {
+        assets: imageAssets,
+        emptyOption: {
+          description: '创建后也可以在角色详情中配置。',
+          label: '暂不配置',
+          optional: true,
+        },
+        label: '张嘴图（可选）',
+        onChange: noop,
+        onThumbnailError: noop,
+        selectedAssetId: selected.id,
+        testId: 'character-mouth-picker',
+        thumbnails: {
+          [selected.id]: {
+            dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+            status: 'ready',
+          },
+        },
+      }),
+    );
+
+    expect(markup).toContain('data-image-asset-picker="张嘴图（可选）"');
+    expect(markup).toContain(selected.name);
+    expect(markup).toContain(`${selected.width}×${selected.height}`);
+    expect(markup).toContain('更换');
+    expect(markup).not.toContain('<select');
+
+    const fallbackMarkup = renderToStaticMarkup(
+      createElement(ImageAssetPicker, {
+        assets: imageAssets,
+        emptyOption: {
+          description: '创建后也可以在角色详情中配置。',
+          label: '暂不配置',
+          optional: true,
+        },
+        label: '张嘴图（可选）',
+        onChange: noop,
+        onThumbnailError: noop,
+        selectedAssetId: null,
+        thumbnails: {},
+      }),
+    );
+    expect(fallbackMarkup).toContain('暂不配置');
+    expect(fallbackMarkup).toContain('未选择图片');
   });
 
   it('gives an explicit empty state when fewer than two images can define normal and angry', () => {
