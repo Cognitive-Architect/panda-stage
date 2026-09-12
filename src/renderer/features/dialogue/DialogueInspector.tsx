@@ -936,38 +936,23 @@ export function DialogueInspector({
         data-dialogue-id={dialogue.id}
         data-testid="dialogue-inspector"
       >
-        <header
-          aria-label="字幕属性"
-          className="dialogue-properties-identity-editor"
+        <section
+          aria-label="编辑字幕"
+          className="dialogue-properties-section dialogue-properties-header dialogue-properties-identity-editor dialogue-properties-copy-section"
           data-testid="dialogue-properties-header"
         >
           <div
-            className="dialogue-properties-identity-row"
+            className="dialogue-properties-section-heading dialogue-properties-identity-row"
             data-testid="dialogue-inspector-copy-section"
           >
             <DecorativeIcon icon={MessageSquareText} size={18} />
-            {character ? (
-              <CharacterAvatar
-                character={character}
-                className="dialogue-selection-avatar"
-                onThumbnailError={onCharacterThumbnailError}
-                thumbnail={
-                  characterThumbnails[
-                    character.expressions.find(
-                      (expression) =>
-                        expression.id === character.defaultExpressionId,
-                    )?.assetId ?? character.expressions[0]?.assetId ?? ''
-                  ]
-                }
-              />
-            ) : null}
             <div className="dialogue-properties-identity-copy">
-              <strong
+              <h3
                 className="dialogue-properties-identity"
                 data-testid="dialogue-properties-identity"
               >
-                {character?.name ?? '未知角色'}
-              </strong>
+                字幕内容
+              </h3>
             </div>
             {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
           </div>
@@ -983,7 +968,7 @@ export function DialogueInspector({
             }}
             onBlur={commitText}
           />
-        </header>
+        </section>
         <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
             <p
@@ -1178,7 +1163,8 @@ export function DialogueInspector({
             }}
             onThumbnailError={onCharacterThumbnailError}
             selectedCharacterId={dialogue.characterId}
-            selectedLabel="当前说话人"
+            selectedLabel="当前绑定"
+            showDefaultExpression={false}
             testId="dialogue-inspector-speaker"
             thumbnails={characterThumbnails}
           />
@@ -1225,38 +1211,23 @@ export function DialogueInspector({
         data-dialogue-id={dialogue.id}
         data-testid="dialogue-inspector"
       >
-        <header
-          aria-label="字幕属性"
-          className="dialogue-properties-identity-editor dialogue-landscape-properties-identity-editor"
+        <section
+          aria-label="编辑字幕"
+          className="dialogue-properties-section dialogue-properties-header dialogue-properties-identity-editor dialogue-landscape-properties-copy-section dialogue-landscape-properties-identity-editor"
           data-testid="dialogue-properties-header"
         >
           <div
-            className="dialogue-properties-identity-row dialogue-landscape-properties-identity-row"
+            className="dialogue-properties-section-heading dialogue-properties-identity-row dialogue-landscape-properties-identity-row"
             data-testid="dialogue-inspector-copy-section"
           >
             <DecorativeIcon icon={MessageSquareText} size={18} />
-            {character ? (
-              <CharacterAvatar
-                character={character}
-                className="dialogue-selection-avatar"
-                onThumbnailError={onCharacterThumbnailError}
-                thumbnail={
-                  characterThumbnails[
-                    character.expressions.find(
-                      (expression) =>
-                        expression.id === character.defaultExpressionId,
-                    )?.assetId ?? character.expressions[0]?.assetId ?? ''
-                  ]
-                }
-              />
-            ) : null}
             <div className="dialogue-properties-identity-copy">
-              <strong
+              <h3
                 className="dialogue-properties-identity"
-                data-testid="dialogue-inspector-speaker-name"
+                data-testid="dialogue-properties-identity"
               >
-                {character?.name ?? '未知角色'}
-              </strong>
+                字幕内容
+              </h3>
             </div>
             {!timed ? <span className="dialogue-properties-status">待安排</span> : null}
           </div>
@@ -1272,7 +1243,7 @@ export function DialogueInspector({
             }}
             onBlur={commitText}
           />
-        </header>
+        </section>
         <div className="dialogue-properties-inline-feedback">
           {subtitleWarning ? (
             <p
@@ -1472,7 +1443,8 @@ export function DialogueInspector({
               }}
               onThumbnailError={onCharacterThumbnailError}
               selectedCharacterId={dialogue.characterId}
-              selectedLabel="当前说话人"
+              selectedLabel="当前绑定"
+              showDefaultExpression={false}
               testId="dialogue-inspector-speaker"
               thumbnails={characterThumbnails}
             />

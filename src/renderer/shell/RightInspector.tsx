@@ -332,7 +332,7 @@ export function RightInspector({
   );
   const inspectorModeLabel = dialogueMode
     ? landscapePresentation
-      ? '字幕属性'
+      ? '编辑字幕'
       : '字幕'
     : '属性';
   const selection = getRightInspectorSelection(
@@ -441,7 +441,7 @@ export function RightInspector({
     <div className="right-inspector-heading">
       <h2 id="right-inspector-heading">
         {dialogueMode && landscapePresentation
-          ? '字幕属性'
+          ? '编辑字幕'
           : dialogueMode
             ? '字幕'
             : '属性'}
