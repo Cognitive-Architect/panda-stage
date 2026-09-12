@@ -395,7 +395,7 @@ export function CharacterIdentityPicker({
           </span>
         )}
         <span aria-hidden="true" className="character-identity-picker-chevron">
-          {open ? '⌃' : '⌄'}
+          {open ? '▲' : '▼'}
         </span>
       </summary>
       <div className="character-identity-menu">

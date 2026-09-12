@@ -917,7 +917,9 @@ export function DialogueSheet({
                     }}
                     onThumbnailError={onCharacterThumbnailError}
                     selectedCharacterId={draftState.singleCharacterId || null}
-                    selectedLabel="当前说话人"
+                    selectedLabel={
+                      rightWorkspace ? '当前绑定' : '当前说话人'
+                    }
                     showDefaultExpression={!rightWorkspace}
                     thumbnails={characterThumbnails}
                   />
@@ -961,7 +963,7 @@ export function DialogueSheet({
                       id="dialogue-add-text"
                       placeholder={
                         rightWorkspace
-                          ? '普通 Enter 换行，Ctrl/Cmd + Enter 提交'
+                          ? '普通 Enter 换行，Ctrl + Enter 提交'
                           : '请输入台词内容…'
                       }
                       rows={5}
@@ -1011,7 +1013,7 @@ export function DialogueSheet({
                       <span id="dialogue-add-text-message">
                         {singleTouched.text && singleErrors.text
                           ? singleErrors.text
-                          : '普通 Enter 换行，Ctrl/Cmd + Enter 提交'}
+                          : '普通 Enter 换行，Ctrl + Enter 提交'}
                       </span>
                       <output id="dialogue-add-text-count">
                         {`${draftState.singleText.length} / ${DIALOGUE_AUTHORING_TEXT_MAX_LENGTH}`}

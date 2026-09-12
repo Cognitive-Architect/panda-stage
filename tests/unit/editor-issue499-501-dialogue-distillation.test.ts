@@ -78,6 +78,6 @@ describe('Issue #499–#501 New Dialogue Cut 2 distillation', () => {
     expect(issue501Styles).toContain(
       '.dialogue-authoring-submit:disabled',
     );
-    expect(issue501Styles).toContain('background: linear-gradient(');
+    expect(issue501Styles).toContain('background: #122018;');
   });
 });

@@ -30388,12 +30388,7 @@ h1 {
   z-index: 2;
   padding: 8px 0 12px;
   border-top: 1px solid rgb(255 255 255 / 8%);
-  background: linear-gradient(
-    180deg,
-    rgb(8 14 10 / 0%) 0%,
-    rgb(8 14 10 / 30%) 48%,
-    rgb(8 14 10 / 68%) 100%
-  );
+  background: #122018;
 }
 
 .editor-shell[data-editor-shell-layout='landscape']
@@ -30504,4 +30499,32 @@ h1 {
   .character-identity-picker-summary .character-identity-selected small {
     max-width: 68px;
   }
+}
+
+/* Issue #502: final A07 visual correction. Keep the authoring header inset as
+   one intentional gutter, let the sticky footer continue on the parent
+   surface, and make the picker affordance a compact filled triangle. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-shell
+  > .dialogue-authoring-drawer-header {
+  padding: 20px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-footer {
+  background: #122018;
+}
+
+.character-identity-picker-summary > .character-identity-picker-chevron {
+  display: inline-flex;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  font-family: "Segoe UI Symbol", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  line-height: 1;
 }
