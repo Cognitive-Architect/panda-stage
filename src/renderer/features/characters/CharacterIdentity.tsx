@@ -190,6 +190,7 @@ export interface CharacterIdentityRowProps {
   thumbnail?: ThumbnailState;
   selected?: boolean;
   selectedLabel?: string;
+  showDefaultExpression?: boolean;
   className?: string;
   onThumbnailError?: (assetId: string) => void;
 }
@@ -199,10 +200,10 @@ export function CharacterIdentityRow({
   thumbnail,
   selected = false,
   selectedLabel = '当前说话人',
+  showDefaultExpression = true,
   className,
   onThumbnailError,
 }: CharacterIdentityRowProps): React.JSX.Element {
-  const defaultExpression = getCharacterDefaultExpression(character);
   return (
     <span
       className={['character-identity-row', className].filter(Boolean).join(' ')}
@@ -215,9 +216,12 @@ export function CharacterIdentityRow({
       />
       <span className="character-identity-copy">
         <strong>{character.name}</strong>
-        <small>
-          默认表情：{defaultExpression?.name ?? '未配置'}
-        </small>
+        {showDefaultExpression ? (
+          <small>
+            默认表情：
+            {getCharacterDefaultExpression(character)?.name ?? '未配置'}
+          </small>
+        ) : null}
       </span>
       {selected ? (
         <span
@@ -246,6 +250,7 @@ export interface CharacterIdentityOptionListProps {
   ariaLabel?: string;
   emptyLabel?: string;
   selectedLabel?: string;
+  showDefaultExpression?: boolean;
   testId?: string;
   disabled?: boolean;
   className?: string;
@@ -260,6 +265,7 @@ export function CharacterIdentityOptionList({
   ariaLabel = '角色选择',
   emptyLabel = '暂无可用角色',
   selectedLabel = '当前说话人',
+  showDefaultExpression = true,
   testId,
   disabled = false,
   className,
@@ -294,6 +300,7 @@ export function CharacterIdentityOptionList({
                 onThumbnailError={onThumbnailError}
                 selected={selected}
                 selectedLabel={selectedLabel}
+                showDefaultExpression={showDefaultExpression}
                 thumbnail={thumbnails[getCharacterDefaultExpression(character)?.assetId ?? '']}
               />
             </button>
@@ -339,6 +346,7 @@ export function CharacterIdentityPicker({
   emptySummaryDescription = '从项目角色中选择说话人',
   onClear,
   clearLabel = '清除选择',
+  showDefaultExpression = true,
   disabled = false,
 }: CharacterIdentityPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
@@ -366,6 +374,7 @@ export function CharacterIdentityPicker({
             onThumbnailError={onThumbnailError}
             selected
             selectedLabel={selectedLabel}
+            showDefaultExpression={showDefaultExpression}
             thumbnail={
               thumbnails[
                 getCharacterDefaultExpression(selectedCharacter)?.assetId ?? ''
@@ -400,6 +409,7 @@ export function CharacterIdentityPicker({
           onThumbnailError={onThumbnailError}
           selectedCharacterId={selectedCharacterId}
           selectedLabel={selectedLabel}
+          showDefaultExpression={showDefaultExpression}
           thumbnails={thumbnails}
         />
         {selectedCharacter && onClear ? (

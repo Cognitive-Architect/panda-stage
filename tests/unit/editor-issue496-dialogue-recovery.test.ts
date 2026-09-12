@@ -92,7 +92,7 @@ describe('Issue #496 New Dialogue polish and pending recovery', () => {
       '.dialogue-sheet-right-workspace .dialogue-authoring-copy-field > label',
     );
     expect(issue496Styles).toContain(
-      '.dialogue-sheet-right-workspace .dialogue-authoring-advanced',
+      '.dialogue-sheet-right-workspace .dialogue-authoring-scroll-body',
     );
     expect(issue496Styles).toContain(
       '.dialogue-sheet-right-workspace .dialogue-authoring-submit:not(:disabled)',

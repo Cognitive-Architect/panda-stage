@@ -42,9 +42,11 @@ function issueCopy(line: ParsedDialogueLine): React.JSX.Element | null {
 export function DialogueBatchPaste({
   draft,
   onSuccess,
+  showDefaultExpression = true,
 }: {
   draft: DialogueAuthoringDraft;
   onSuccess: () => void;
+  showDefaultExpression?: boolean;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -183,6 +185,7 @@ export function DialogueBatchPaste({
                             draftState.batchMapping[line.lineNumber] ?? null
                           }
                           selectedLabel="已映射角色"
+                          showDefaultExpression={showDefaultExpression}
                           data-testid={`dialogue-batch-map-${line.lineNumber}`}
                           thumbnails={characterThumbnails}
                         />

@@ -773,22 +773,19 @@ export function DialogueSheet({
               data-testid="dialogue-authoring-drawer-header"
             >
               <div
-                className="dialogue-drawer-header-identity"
-                data-testid="dialogue-drawer-header"
+                className="dialogue-authoring-secondary-nav"
+                data-testid="dialogue-authoring-secondary-nav"
               >
-                <DecorativeIcon
-                  aria-hidden="true"
-                  className="dialogue-drawer-header-icon"
-                  icon={MessageCircleMore}
-                  size={20}
-                  strokeWidth={1.8}
-                />
-                <h2
-                  className="dialogue-drawer-title"
-                  data-testid="dialogue-drawer-title"
+                <button
+                  aria-label="返回待安排字幕"
+                  className="dialogue-authoring-back"
+                  data-testid="dialogue-authoring-back"
+                  type="button"
+                  onClick={handleCloseAuthoring}
                 >
-                  字幕
-                </h2>
+                  <ArrowLeft aria-hidden="true" focusable="false" size={16} />
+                  <span>新建字幕</span>
+                </button>
               </div>
               <div className="dialogue-sheet-header-actions">
                 {onClose ? (
@@ -809,31 +806,13 @@ export function DialogueSheet({
             className="dialogue-authoring-scroll-body"
             data-testid="dialogue-authoring-scroll-body"
           >
-          <header className="dialogue-authoring-header">
-            {rightWorkspace ? (
-              <div
-                className="dialogue-authoring-secondary-nav"
-                data-testid="dialogue-authoring-secondary-nav"
-              >
-                <button
-                  aria-label="返回待安排字幕"
-                  className="dialogue-authoring-back"
-                  data-testid="dialogue-authoring-back"
-                  type="button"
-                  onClick={handleCloseAuthoring}
-                >
-                  <ArrowLeft aria-hidden="true" focusable="false" size={16} />
-                  <span>新建字幕</span>
-                </button>
-              </div>
-            ) : (
+          {!rightWorkspace ? (
+            <header className="dialogue-authoring-header">
               <div>
                 <p className="eyebrow">字幕任务</p>
                 <h3 id="dialogue-authoring-title">新建字幕</h3>
                 <p>创建新的未定时字幕或批量导入。</p>
               </div>
-            )}
-            {rightWorkspace ? null : (
               <button
                 aria-label="关闭新建字幕"
                 className="dialogue-authoring-close"
@@ -843,8 +822,8 @@ export function DialogueSheet({
               >
                 <X aria-hidden="true" size={20} strokeWidth={2} />
               </button>
-            )}
-          </header>
+            </header>
+          ) : null}
 
           <div
             aria-label="新建字幕方式"
@@ -932,6 +911,7 @@ export function DialogueSheet({
                     onThumbnailError={onCharacterThumbnailError}
                     selectedCharacterId={draftState.singleCharacterId || null}
                     selectedLabel="当前说话人"
+                    showDefaultExpression={!rightWorkspace}
                     thumbnails={characterThumbnails}
                   />
                   {singleTouched.speaker && singleErrors.speaker ? (
@@ -1033,50 +1013,7 @@ export function DialogueSheet({
                   )}
                 </div>
 
-                {rightWorkspace ? (
-                  <details
-                    className="dialogue-authoring-advanced"
-                    data-testid="dialogue-authoring-advanced"
-                  >
-                    <summary>更多设置</summary>
-                    <div className="dialogue-authoring-advanced-body">
-                      <div className="dialogue-authoring-field dialogue-authoring-placement-field">
-                        <span className="dialogue-authoring-field-label">
-                          创建位置
-                        </span>
-                        <p className="dialogue-authoring-field-hint">
-                          创建后进入待安排队列，不会自动定时。
-                        </p>
-                        <div className="dialogue-authoring-playhead">
-                          <span>当前播放头</span>
-                          <output
-                            data-current-time={timelineUi.currentTimeMs}
-                            data-testid="dialogue-authoring-playhead"
-                          >
-                            {formatTimecode(timelineUi.currentTimeMs)}
-                          </output>
-                        </div>
-                      </div>
-
-                      <div
-                        aria-label="音频绑定状态"
-                        className="dialogue-authoring-field dialogue-authoring-audio-field"
-                        data-audio-state="unbound"
-                        data-testid="dialogue-authoring-audio"
-                      >
-                        <span className="dialogue-authoring-field-label">
-                          音频绑定
-                        </span>
-                        <p
-                          className="dialogue-authoring-field-hint"
-                          data-testid="dialogue-authoring-audio-summary"
-                        >
-                          暂无绑定音频
-                        </p>
-                      </div>
-                    </div>
-                  </details>
-                ) : (
+                {!rightWorkspace ? (
                   <>
                     <section className="dialogue-authoring-section dialogue-authoring-placement">
                       <div>
@@ -1106,7 +1043,7 @@ export function DialogueSheet({
                       </p>
                     </section>
                   </>
-                )}
+                ) : null}
               </div>
 
               {singleSubmitError ? (
@@ -1138,20 +1075,13 @@ export function DialogueSheet({
                 >
                   {rightWorkspace ? '创建字幕' : '新增字幕'}
                 </button>
-                {rightWorkspace ? (
-                  <p
-                    className="dialogue-authoring-helper"
-                    data-testid="dialogue-authoring-helper"
-                  >
-                    创建后将进入待安排队列
-                  </p>
-                ) : null}
               </footer>
             </div>
           ) : (
             <DialogueBatchPaste
               draft={draft}
               onSuccess={handleCloseAuthoring}
+              showDefaultExpression={!rightWorkspace}
             />
           )}
           </div>
