@@ -116,6 +116,7 @@ export function ImageAssetPicker({
       aria-label={label}
       className="image-asset-picker"
       data-image-asset-picker={label}
+      data-selected-asset-id={selectedAssetId ?? ''}
       data-testid={testId}
     >
       <div className="image-asset-picker-heading">
