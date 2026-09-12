@@ -30348,6 +30348,99 @@ h1 {
   box-shadow: 0 4px 12px rgb(44 115 64 / 18%);
 }
 
+/* Issue #500: make the authoring control describe its existing destination,
+   using the compact outlined return treatment from the resource create
+   surfaces. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-back {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: var(--ui-radius-medium, 8px);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: rgb(83 145 101 / 10%);
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-back:hover,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-back:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(83 145 101 / 22%);
+}
+
+/* Issue #501: the right-workspace CTA keeps one geometry in both states,
+   reuses the established creation-action icon/tokens, and leaves the sticky
+   footer reachable without the former opaque dark rectangle. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-footer {
+  position: sticky;
+  bottom: -12px;
+  z-index: 2;
+  padding: 8px 0 12px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  background: linear-gradient(
+    180deg,
+    rgb(8 14 10 / 0%) 0%,
+    rgb(8 14 10 / 30%) 48%,
+    rgb(8 14 10 / 68%) 100%
+  );
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit {
+  display: inline-flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-color-selected-border, #83d39a);
+  border-radius: 9px;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit:not(:disabled) {
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: var(--ui-color-action-primary, #8ed9a2);
+  box-shadow: 0 4px 12px rgb(44 115 64 / 18%);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit:not(:disabled):hover,
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit:not(:disabled):focus-visible {
+  background: var(--ui-color-action-hover, #a4e4b3);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-submit:disabled {
+  color: var(--ui-color-disabled-text, #84958b);
+  background: var(--ui-color-disabled-surface, #142019);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
 /* Pending recovery: 自动加入 remains primary; 删除 is visible, compact,
    and clearly secondary/destructive. It is rendered only in the selected
    card's existing inline action strip. */

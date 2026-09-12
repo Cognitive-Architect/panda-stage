@@ -321,7 +321,7 @@ export interface CharacterIdentityPickerProps
   ariaDescribedBy?: string;
   ariaInvalid?: boolean;
   emptySummaryLabel?: string;
-  emptySummaryDescription?: string;
+  emptySummaryDescription?: string | null;
   onClear?: () => void;
   clearLabel?: string;
 }
@@ -388,7 +388,9 @@ export function CharacterIdentityPicker({
             </span>
             <span>
               <strong>{emptySummaryLabel}</strong>
-              <small>{emptySummaryDescription}</small>
+              {emptySummaryDescription ? (
+                <small>{emptySummaryDescription}</small>
+              ) : null}
             </span>
           </span>
         )}

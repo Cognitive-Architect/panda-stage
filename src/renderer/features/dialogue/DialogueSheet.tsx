@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Clapperboard,
+  CirclePlus,
   GripVertical,
   Info,
   MessageCircleMore,
@@ -777,14 +778,14 @@ export function DialogueSheet({
                 data-testid="dialogue-authoring-secondary-nav"
               >
                 <button
-                  aria-label="返回待安排字幕"
+                  aria-label="返回字幕列表"
                   className="dialogue-authoring-back"
                   data-testid="dialogue-authoring-back"
                   type="button"
                   onClick={handleCloseAuthoring}
                 >
                   <ArrowLeft aria-hidden="true" focusable="false" size={16} />
-                  <span>新建字幕</span>
+                  <span>返回字幕列表</span>
                 </button>
               </div>
               <div className="dialogue-sheet-header-actions">
@@ -876,9 +877,11 @@ export function DialogueSheet({
                 data-testid="dialogue-authoring-single-grid"
               >
                 <div className="dialogue-authoring-field dialogue-authoring-speaker-field">
-                  <label htmlFor="dialogue-add-speaker">
-                    {rightWorkspace ? '角色' : '角色（说话人）'}
-                  </label>
+                  {rightWorkspace ? null : (
+                    <label htmlFor="dialogue-add-speaker">
+                      角色（说话人）
+                    </label>
+                  )}
                   <CharacterIdentityPicker
                     ariaDescribedBy={
                       singleTouched.speaker && singleErrors.speaker
@@ -893,8 +896,12 @@ export function DialogueSheet({
                     defaultOpen
                     data-testid="dialogue-add-speaker"
                     disabled={!snapshot}
-                    emptySummaryDescription="从项目角色中选择说话人"
-                    emptySummaryLabel="选择现有角色"
+                    emptySummaryDescription={
+                      rightWorkspace ? null : '从项目角色中选择说话人'
+                    }
+                    emptySummaryLabel={
+                      rightWorkspace ? '请绑定角色' : '选择现有角色'
+                    }
                     id="dialogue-add-speaker"
                     onClear={() => {
                       setSingleSubmitError(null);
@@ -1067,13 +1074,21 @@ export function DialogueSheet({
                   </button>
                 )}
                 <button
-                  className="dialogue-authoring-submit"
+                  className={`dialogue-authoring-submit${rightWorkspace ? ' ui-icon-label' : ''}`}
                   data-testid="dialogue-add"
                   disabled={!canAdd}
                   type="button"
                   onClick={handleAdd}
                 >
-                  {rightWorkspace ? '创建字幕' : '新增字幕'}
+                  {rightWorkspace ? (
+                    <CirclePlus
+                      aria-hidden="true"
+                      className="ui-icon"
+                      focusable="false"
+                      size={18}
+                    />
+                  ) : null}
+                  <span>{rightWorkspace ? '创建字幕' : '新增字幕'}</span>
                 </button>
               </footer>
             </div>
