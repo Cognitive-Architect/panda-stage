@@ -20723,7 +20723,7 @@ h1 {
     .character-expression-preview,
     .character-mouth-preview
   )
-  .character-thumbnail-fallback[data-thumbnail-fallback='missing'] {
+  .character-thumbnail-fallback[data-thumbnail-icon='error'] {
   color: #d7aaa2;
   background:
     repeating-linear-gradient(
@@ -20738,6 +20738,8 @@ h1 {
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-thumbnail-fallback-icon {
+  width: 18px;
+  height: 18px;
   font-size: 18px;
   font-weight: 800;
   line-height: 1;
@@ -21144,7 +21146,7 @@ h1 {
 }
 
 .expression-editor-landscape
-  .expression-thumbnail-fallback[data-thumbnail-fallback='missing'] {
+  .expression-thumbnail-fallback[data-thumbnail-icon='error'] {
   color: #d7aaa2;
   background:
     repeating-linear-gradient(
@@ -21155,7 +21157,9 @@ h1 {
     #170f0d;
 }
 
-.expression-editor-landscape .expression-thumbnail-fallback > span {
+.expression-editor-landscape .expression-thumbnail-fallback-icon {
+  width: 18px;
+  height: 18px;
   font-size: 18px;
   font-weight: 800;
   line-height: 1;
@@ -21351,7 +21355,9 @@ h1 {
 
 .expression-editor-landscape .expression-current-asset-preview
   .expression-thumbnail-fallback
-  > span {
+  .expression-thumbnail-fallback-icon {
+  width: 13px;
+  height: 13px;
   font-size: 13px;
 }
 
@@ -29426,7 +29432,13 @@ h1 {
   text-align: center;
 }
 
-.image-asset-picker-thumbnail-fallback[data-thumbnail-fallback='missing'] {
+.image-asset-picker-thumbnail-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.image-asset-picker-thumbnail-fallback[data-thumbnail-icon='error'] {
   color: #d7aaa2;
   background:
     repeating-linear-gradient(
@@ -29739,6 +29751,8 @@ h1 {
 }
 
 .character-avatar-fallback .character-thumbnail-fallback-icon {
+  width: 17px;
+  height: 17px;
   color: #75b285;
   font-size: 17px;
   line-height: 1;
@@ -30029,6 +30043,8 @@ h1 {
 }
 
 .character-expression-summary-preview .character-thumbnail-fallback-icon {
+  width: 15px;
+  height: 15px;
   color: #75b285;
   font-size: 15px;
 }
@@ -30527,4 +30543,39 @@ h1 {
   font-family: "Segoe UI Symbol", "Microsoft YaHei", sans-serif;
   font-size: 12px;
   line-height: 1;
+}
+
+/* Issue #503: keep R6 thumbnail fallbacks semantic without changing the
+   existing slots, labels, or thumbnail state model. */
+.thumbnail-state-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.thumbnail-state-icon[data-thumbnail-icon='loading'] {
+  animation: issue-503-thumbnail-state-spin 1.1s linear infinite;
+}
+
+@keyframes issue-503-thumbnail-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.character-identity-empty-icon .thumbnail-state-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.character-thumbnail-fallback[data-thumbnail-icon='error'],
+.expression-thumbnail-fallback[data-thumbnail-icon='error'] {
+  color: #d7aaa2;
+  background: rgb(124 46 37 / 10%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thumbnail-state-icon[data-thumbnail-icon='loading'] {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
 }

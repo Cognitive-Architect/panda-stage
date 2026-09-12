@@ -8,6 +8,10 @@ import type { ThumbnailState } from '../assets/AssetCard';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
 import { ExpressionEditor } from './ExpressionEditor';
 import { ImageAssetPicker } from './ImageAssetPicker';
+import {
+  getThumbnailFallbackIconKind,
+  ThumbnailStateIcon,
+} from './ThumbnailStateIcon';
 
 export type CharacterEditorView = 'full' | 'detail' | 'expression';
 export type CharacterEditorPresentation = 'default' | 'landscape';
@@ -24,8 +28,12 @@ export function isDefaultTransformPending(
 }
 
 function CharacterThumbnailFallback({
+  assetConfigured = true,
+  assetResolved = true,
   thumbnail,
 }: {
+  assetConfigured?: boolean;
+  assetResolved?: boolean;
   thumbnail?: ThumbnailState;
 }): React.JSX.Element {
   const label =
@@ -33,17 +41,32 @@ function CharacterThumbnailFallback({
       ? '加载中'
       : thumbnail?.status === 'missing' && thumbnail.reason === 'source'
         ? '源文件缺失'
-        : '缩略图缺失';
-  const state = thumbnail?.status ?? 'missing';
+        : thumbnail?.status === 'missing' && thumbnail.reason === 'error'
+          ? '缩略图加载失败'
+          : !assetConfigured
+            ? '未配置默认表情'
+            : !assetResolved
+              ? '素材不可用'
+              : '缩略图缺失';
+  const state =
+    thumbnail?.status ??
+    (assetConfigured && assetResolved ? 'loading' : 'missing');
+  const iconKind = getThumbnailFallbackIconKind(thumbnail, {
+    assetConfigured,
+    assetResolved,
+  });
   return (
     <span
       aria-label={label}
       className="character-thumbnail-fallback"
+      data-thumbnail-icon={iconKind}
       data-thumbnail-fallback={state}
     >
-      <span aria-hidden="true" className="character-thumbnail-fallback-icon">
-        ▧
-      </span>
+      <ThumbnailStateIcon
+        className="character-thumbnail-fallback-icon"
+        kind={iconKind}
+        size={18}
+      />
       <small>{label}</small>
     </span>
   );
@@ -138,6 +161,10 @@ export function CharacterEditor({
   const defaultThumbnail = defaultExpression
     ? thumbnails[defaultExpression.assetId]
     : undefined;
+  const defaultAssetResolved = Boolean(
+    defaultExpression &&
+      imageAssets.some((asset) => asset.id === defaultExpression.assetId),
+  );
   const hasPendingTransform = isDefaultTransformPending(
     character,
     scale,
@@ -223,7 +250,8 @@ export function CharacterEditor({
               className="character-detail-avatar"
               data-preview-fit="contain"
               data-thumbnail-status={
-                defaultThumbnail?.status ?? 'missing'
+                defaultThumbnail?.status ??
+                (defaultAssetResolved ? 'loading' : 'missing')
               }
             >
               {defaultThumbnail?.status === 'ready' && defaultExpression ? (
@@ -235,7 +263,11 @@ export function CharacterEditor({
                   src={defaultThumbnail.dataUrl}
                 />
               ) : (
-                <CharacterThumbnailFallback thumbnail={defaultThumbnail} />
+                <CharacterThumbnailFallback
+                  assetConfigured={Boolean(defaultExpression)}
+                  assetResolved={defaultAssetResolved}
+                  thumbnail={defaultThumbnail}
+                />
               )}
             </div>
             <div className="character-detail-identity-copy">
@@ -439,6 +471,9 @@ export function CharacterEditor({
             <ul className="character-expression-visual-list">
               {character.expressions.map((expression) => {
                 const thumbnail = thumbnails[expression.assetId];
+                const assetResolved = imageAssets.some(
+                  (asset) => asset.id === expression.assetId,
+                );
                 const isDefault =
                   expression.id === character.defaultExpressionId;
                 return (
@@ -450,7 +485,10 @@ export function CharacterEditor({
                   >
                     <div
                       className="character-expression-preview"
-                      data-thumbnail-status={thumbnail?.status ?? 'missing'}
+                      data-thumbnail-status={
+                        thumbnail?.status ??
+                        (assetResolved ? 'loading' : 'missing')
+                      }
                     >
                       {thumbnail?.status === 'ready' ? (
                         <img
@@ -461,7 +499,10 @@ export function CharacterEditor({
                           src={thumbnail.dataUrl}
                         />
                       ) : (
-                        <CharacterThumbnailFallback thumbnail={thumbnail} />
+                        <CharacterThumbnailFallback
+                          assetResolved={assetResolved}
+                          thumbnail={thumbnail}
+                        />
                       )}
                     </div>
                     <strong>{expression.name}</strong>

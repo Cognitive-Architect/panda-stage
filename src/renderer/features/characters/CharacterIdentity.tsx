@@ -9,6 +9,10 @@ import {
   thumbnailStateFromResponse,
   type ThumbnailState,
 } from '../assets/AssetCard';
+import {
+  getThumbnailFallbackIconKind,
+  ThumbnailStateIcon,
+} from './ThumbnailStateIcon';
 
 export function getCharacterDefaultExpression(
   character: Pick<Character, 'expressions' | 'defaultExpressionId'>,
@@ -29,6 +33,9 @@ function thumbnailLabel(
   }
   if (thumbnail?.status === 'missing' && thumbnail.reason === 'source') {
     return '源文件缺失';
+  }
+  if (thumbnail?.status === 'missing' && thumbnail.reason === 'error') {
+    return '缩略图加载失败';
   }
   if (thumbnail?.status === 'missing') return '缩略图不可用';
   return '未配置默认表情';
@@ -149,6 +156,9 @@ export function CharacterAvatar({
   const defaultExpression = getCharacterDefaultExpression(character);
   const status = thumbnail?.status ?? (defaultExpression ? 'loading' : 'missing');
   const label = thumbnailLabel(thumbnail, Boolean(defaultExpression));
+  const iconKind = getThumbnailFallbackIconKind(thumbnail, {
+    assetConfigured: Boolean(defaultExpression),
+  });
   const classes = [
     'character-identity-avatar',
     className,
@@ -173,11 +183,14 @@ export function CharacterAvatar({
         <span
           aria-label={label}
           className="character-thumbnail-fallback character-avatar-fallback"
+          data-thumbnail-icon={iconKind}
           data-thumbnail-fallback={status}
         >
-          <span aria-hidden="true" className="character-thumbnail-fallback-icon">
-            ○
-          </span>
+          <ThumbnailStateIcon
+            className="character-thumbnail-fallback-icon"
+            kind={iconKind}
+            size={18}
+          />
           <small>{label}</small>
         </span>
       )}
@@ -384,7 +397,7 @@ export function CharacterIdentityPicker({
         ) : (
           <span className="character-identity-empty-summary">
             <span aria-hidden="true" className="character-identity-empty-icon">
-              ○
+              <ThumbnailStateIcon kind="unbound" size={20} />
             </span>
             <span>
               <strong>{emptySummaryLabel}</strong>
@@ -445,7 +458,8 @@ export function CharacterExpressionThumbnail({
   onThumbnailError = () => undefined,
   className,
 }: CharacterExpressionThumbnailProps): React.JSX.Element {
-  const status = thumbnail?.status ?? 'missing';
+  const status = thumbnail?.status ?? 'loading';
+  const iconKind = getThumbnailFallbackIconKind(thumbnail);
   return (
     <span
       className={['character-expression-thumbnail', className]
@@ -465,11 +479,14 @@ export function CharacterExpressionThumbnail({
         <span
           aria-label={thumbnailLabel(thumbnail)}
           className="character-thumbnail-fallback"
+          data-thumbnail-icon={iconKind}
           data-thumbnail-fallback={status}
         >
-          <span aria-hidden="true" className="character-thumbnail-fallback-icon">
-            ○
-          </span>
+          <ThumbnailStateIcon
+            className="character-thumbnail-fallback-icon"
+            kind={iconKind}
+            size={18}
+          />
           <small>{thumbnailLabel(thumbnail)}</small>
         </span>
       )}

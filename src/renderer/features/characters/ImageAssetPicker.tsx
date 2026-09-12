@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import type { ImageAsset } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
+import {
+  getThumbnailFallbackIconKind,
+  ThumbnailStateIcon,
+} from './ThumbnailStateIcon';
 
 export interface ImageAssetPickerProps {
   label: string;
@@ -45,8 +49,11 @@ function AssetThumbnail({
   onThumbnailError: (assetId: string) => void;
   thumbnail?: ThumbnailState;
 }): React.JSX.Element {
-  const status = thumbnail?.status ?? 'missing';
+  const status = thumbnail?.status ?? (asset ? 'loading' : 'missing');
   const label = asset ? thumbnailLabel(thumbnail) : '素材不可用';
+  const iconKind = getThumbnailFallbackIconKind(thumbnail, {
+    assetResolved: Boolean(asset),
+  });
 
   return (
     <span
@@ -68,9 +75,14 @@ function AssetThumbnail({
         <span
           aria-hidden="true"
           className="image-asset-picker-thumbnail-fallback"
+          data-thumbnail-icon={iconKind}
           data-thumbnail-fallback={status}
         >
-          {asset ? '▧' : '?'}
+          <ThumbnailStateIcon
+            className="image-asset-picker-thumbnail-icon"
+            kind={iconKind}
+            size={20}
+          />
         </span>
       )}
       {asset && status !== 'ready' ? (
@@ -91,7 +103,11 @@ function EmptyAssetThumbnail({
       className={`${className} image-asset-picker-neutral-empty-thumbnail`}
       data-thumbnail-status="empty"
     >
-      <span aria-hidden="true">○</span>
+      <ThumbnailStateIcon
+        className="image-asset-picker-thumbnail-icon"
+        kind="empty"
+        size={20}
+      />
     </span>
   );
 }

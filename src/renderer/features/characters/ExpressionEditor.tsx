@@ -6,6 +6,10 @@ import type {
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
 import { ImageAssetPicker } from './ImageAssetPicker';
+import {
+  getThumbnailFallbackIconKind,
+  ThumbnailStateIcon,
+} from './ThumbnailStateIcon';
 
 export interface ExpressionEditorProps {
   character: Character;
@@ -38,21 +42,27 @@ function ExpressionThumbnail({
   onThumbnailError,
   thumbnail,
   assetId,
+  assetAvailable,
 }: {
   className: string;
   expressionName: string;
   onThumbnailError: (assetId: string) => void;
   thumbnail?: ThumbnailState;
   assetId: string;
+  assetAvailable: boolean;
 }): React.JSX.Element {
-  const label = thumbnailLabel(thumbnail);
+  const label = assetAvailable ? thumbnailLabel(thumbnail) : '素材不可用';
+  const status = thumbnail?.status ?? (assetAvailable ? 'loading' : 'missing');
+  const iconKind = getThumbnailFallbackIconKind(thumbnail, {
+    assetResolved: assetAvailable,
+  });
   return (
     <div
       className={className}
       data-thumbnail-reason={
         thumbnail?.status === 'missing' ? thumbnail.reason : undefined
       }
-      data-thumbnail-status={thumbnail?.status ?? 'missing'}
+      data-thumbnail-status={status}
     >
       {thumbnail?.status === 'ready' ? (
         <img
@@ -64,9 +74,14 @@ function ExpressionThumbnail({
         <span
           aria-label={label}
           className="expression-thumbnail-fallback"
-          data-thumbnail-fallback={thumbnail?.status ?? 'missing'}
+          data-thumbnail-icon={iconKind}
+          data-thumbnail-fallback={status}
         >
-          <span aria-hidden="true">▧</span>
+          <ThumbnailStateIcon
+            className="expression-thumbnail-fallback-icon"
+            kind={iconKind}
+            size={18}
+          />
           <small>{label}</small>
         </span>
       )}
@@ -429,6 +444,7 @@ function LandscapeExpressionEditor({
               <div className="expression-card-main">
                 <ExpressionThumbnail
                   assetId={expression.assetId}
+                  assetAvailable={Boolean(asset)}
                   className="expression-card-preview"
                   expressionName={expression.name}
                   onThumbnailError={onThumbnailError}
