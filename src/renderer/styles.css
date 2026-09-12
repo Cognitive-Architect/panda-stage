@@ -30257,3 +30257,217 @@ h1 {
     height: 64px;
   }
 }
+
+/* Issue #496: keep the approved avatar + Character identity language while
+   making the selected summary a compact row. The summary keeps the same
+   fixed minimum height in empty and selected states, so selection does not
+   move the surrounding form. */
+.character-identity-picker-summary {
+  min-height: 56px;
+  padding: 6px 7px;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  gap: 6px;
+}
+
+.character-identity-picker-summary > .character-identity-row {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.character-identity-picker-summary .character-identity-avatar:not(.character-list-avatar),
+.character-identity-picker-summary .character-identity-empty-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.character-identity-picker-summary .character-identity-empty-summary {
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.character-identity-picker-summary .character-identity-copy {
+  gap: 2px;
+}
+
+.character-identity-picker-summary .character-identity-selected {
+  display: inline-flex;
+  max-width: min(108px, 24vw);
+  min-width: 0;
+  align-items: center;
+  justify-self: end;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid rgb(127 199 148 / 42%);
+  border-radius: 999px;
+  color: #c8f4d4;
+  background: rgb(37 88 51 / 38%);
+  text-align: left;
+}
+
+.character-identity-picker-summary .character-identity-selected-check {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.character-identity-picker-summary .character-identity-selected small {
+  display: inline;
+  min-width: 0;
+  max-width: 90px;
+  color: #b7eac3;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.character-identity-picker-summary > .character-identity-picker-chevron {
+  width: 18px;
+  min-width: 18px;
+  justify-self: end;
+  font-size: 15px;
+}
+
+/* The New Dialogue hierarchy stays local to the right-workspace authoring
+   surface: speaker context is compact, subtitle text is the main field,
+   advanced settings are quiet, and the existing submit remains the sole CTA. */
+.dialogue-sheet-right-workspace .dialogue-authoring-scroll-body {
+  gap: 8px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-mode,
+.dialogue-sheet-right-workspace .dialogue-authoring-single-grid {
+  gap: 10px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-speaker-field {
+  gap: 4px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-speaker-field > label {
+  color: var(--ui-color-text-secondary, #9ec0a4);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-speaker-field
+  .character-identity-picker-summary {
+  min-height: 52px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-copy-field {
+  gap: 6px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-copy-field > label {
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dialogue-sheet-right-workspace
+  .dialogue-authoring-textarea-shell
+  > textarea {
+  min-height: 104px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced {
+  border: 0;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0;
+  background: transparent;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced > summary {
+  padding: 7px 0;
+  color: var(--ui-color-text-muted, #829589);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-advanced-body {
+  gap: 10px;
+  padding: 6px 0 0;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-footer {
+  gap: 5px;
+  padding: 8px 0 10px;
+}
+
+.dialogue-sheet-right-workspace .dialogue-authoring-submit:not(:disabled) {
+  min-height: 44px;
+  box-shadow: 0 4px 12px rgb(44 115 64 / 18%);
+}
+
+/* Pending recovery: 自动加入 remains primary; 删除 is visible, compact,
+   and clearly secondary/destructive. It is rendered only in the selected
+   card's existing inline action strip. */
+.dialogue-untimed-action-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange,
+.dialogue-untimed-action-buttons .dialogue-untimed-delete {
+  display: inline-flex;
+  min-height: var(--ui-touch-icon, 44px);
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: var(--ui-radius-small, 6px);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange {
+  min-width: 96px;
+  border: 1px solid var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #d6efd9);
+  background: var(--ui-color-action-primary, #8ed9a2);
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange:hover,
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange:focus-visible {
+  background: var(--ui-color-action-hover, #a4e4b3);
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-delete {
+  min-width: 56px;
+  border: 1px solid rgb(214 139 102 / 58%);
+  color: var(--ui-color-danger, #e28a7a);
+  background: rgb(124 46 37 / 12%);
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-delete:hover,
+.dialogue-untimed-action-buttons .dialogue-untimed-delete:focus-visible {
+  border-color: rgb(214 139 102 / 86%);
+  color: #ffd4d0;
+  background: rgb(124 46 37 / 26%);
+}
+
+.dialogue-untimed-action-buttons .dialogue-untimed-arrange:focus-visible,
+.dialogue-untimed-action-buttons .dialogue-untimed-delete:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, #b1e8c1);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .character-identity-picker-summary .character-identity-selected {
+    max-width: 88px;
+  }
+
+  .character-identity-picker-summary .character-identity-selected small {
+    max-width: 68px;
+  }
+}

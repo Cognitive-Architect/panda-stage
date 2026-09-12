@@ -303,7 +303,13 @@ export function DialogueSheet({
           '[data-testid="dialogue-untimed-select"]',
         ),
         sheet?.querySelector<HTMLButtonElement>(
+          '[data-testid="dialogue-pending-queue-create"]',
+        ),
+        sheet?.querySelector<HTMLButtonElement>(
           '[data-testid="dialogue-authoring-open"]',
+        ),
+        sheet?.querySelector<HTMLButtonElement>(
+          '[data-testid="subtitle-workspace-empty-action"]',
         ),
       ];
       const nextControl = candidates.find(
@@ -415,6 +421,25 @@ export function DialogueSheet({
             nextError instanceof Error ? nextError.message : '字幕安排失败。',
         },
       );
+    }
+  };
+
+  const handleDeletePending = (dialogue: Dialogue): void => {
+    try {
+      // Reuse the existing History-tracked DialogueStore mutation. Selection
+      // reconciliation also runs from the EditorProjectStore update, while
+      // the explicit clear keeps this action safe if the selected card is
+      // removed before the next render settles.
+      dialogueStore.remove(dialogue.id);
+      dialogueSelectionStore.clear();
+      setQueueError(null);
+      focusDefaultTaskControl();
+    } catch (nextError) {
+      setQueueError({
+        dialogueId: dialogue.id,
+        message:
+          nextError instanceof Error ? nextError.message : '删除字幕失败。',
+      });
     }
   };
 
@@ -1289,6 +1314,16 @@ export function DialogueSheet({
                           onClick={() => handleArrange(dialogue.id)}
                         >
                           自动加入
+                        </button>
+                        <button
+                          aria-label={`删除字幕：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                          className="dialogue-untimed-delete"
+                          data-dialogue-id={dialogue.id}
+                          data-testid="dialogue-untimed-delete"
+                          onClick={() => handleDeletePending(dialogue)}
+                          type="button"
+                        >
+                          删除
                         </button>
                       </div>
                       {queueError?.dialogueId === dialogue.id ? (

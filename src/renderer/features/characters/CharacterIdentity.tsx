@@ -224,7 +224,12 @@ export function CharacterIdentityRow({
           aria-label={selectedLabel}
           className="character-identity-selected"
         >
-          <span aria-hidden="true">✓</span>
+          <span
+            aria-hidden="true"
+            className="character-identity-selected-check"
+          >
+            ✓
+          </span>
           <small>{selectedLabel}</small>
         </span>
       ) : null}
