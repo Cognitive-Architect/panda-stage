@@ -70,16 +70,13 @@ describe('Issue 221/223 Day28 architecture contracts', () => {
     expect(canvas).not.toContain('evaluateDialogueAtTime');
   });
 
-  it('contains no Day28 audio/mouth scope or persisted subtitle stroke expansion', () => {
+  it('contains no Day28 audio/mouth scope', () => {
     const service = source('domain/services/DialogueService.ts');
     const preview = source('renderer/shell/ProductPreviewOverlay.tsx');
-    const subtitleModel = source('domain/models/subtitle.ts');
     expect(service).not.toContain('attachAudio');
     expect(service).not.toContain('detachAudio');
     expect(preview).not.toContain('AudioScheduler');
     expect(preview).not.toContain('includeMouthMotion');
     expect(preview).not.toContain('readAudio');
-    expect(subtitleModel).not.toContain('strokeColor');
-    expect(subtitleModel).not.toContain('strokeWidth');
   });
 });

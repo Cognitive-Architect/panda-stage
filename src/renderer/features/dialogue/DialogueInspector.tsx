@@ -4,12 +4,15 @@ import {
   getBoundAudioEndRange,
   type AudioAsset,
   type Character,
+  type SubtitleStylePatch,
 } from '../../../domain';
 import { layoutSubtitleText } from '../../../shared/preview/subtitle-layout';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
 import { shotStore } from '../../stores/shotStore';
+import { subtitleStyleStore } from '../../stores/subtitleStyleStore';
 import { DecorativeIcon } from '../../ui';
+import { SubtitleStyleControls } from '../subtitles/SubtitleStyleControls';
 import {
   clampTime,
   formatTimecode,
@@ -126,7 +129,12 @@ export type DialogueInspectorPresentation =
   | 'timeline';
 export type DialogueInspectorLandscapePresentation = 'landscape';
 
-type DialogueInspectorErrorScope = 'text' | 'timing' | 'speaker' | 'audio';
+type DialogueInspectorErrorScope =
+  | 'text'
+  | 'timing'
+  | 'speaker'
+  | 'audio'
+  | 'style';
 
 interface DialogueInspectorError {
   scope: DialogueInspectorErrorScope;
@@ -304,6 +312,31 @@ export function DialogueInspector({
       return false;
     }
   };
+
+  const updateSubtitleStyle = (patch: SubtitleStylePatch): void => {
+    report(
+      'style',
+      () => subtitleStyleStore.update(dialogue.subtitleStyleId, patch),
+      '字幕样式更新失败。',
+    );
+  };
+
+  const subtitleStyleControls = subtitleStyle ? (
+    <SubtitleStyleControls
+      errorMessage={error?.scope === 'style' ? error.message : null}
+      onUpdate={updateSubtitleStyle}
+      presentation={
+        timelinePresentation
+          ? 'timeline'
+          : propertiesPresentation
+            ? 'properties'
+            : landscapePresentation
+              ? 'landscape'
+              : 'inspector'
+      }
+      style={subtitleStyle}
+    />
+  ) : null;
 
   const openAudioTrimEditor = (): void => {
     if (!audioClip || !audioEndRange) return;
@@ -708,6 +741,8 @@ export function DialogueInspector({
           ) : null}
         </section>
 
+        {subtitleStyleControls}
+
         <section
           className="dialogue-inspector-section dialogue-timed-timing-section"
           data-testid="dialogue-inspector-time-section"
@@ -967,6 +1002,8 @@ export function DialogueInspector({
             </p>
           ) : null}
         </div>
+
+        {subtitleStyleControls}
 
         <section
           className="dialogue-properties-section dialogue-properties-time-section"
@@ -1242,6 +1279,8 @@ export function DialogueInspector({
             </p>
           ) : null}
         </div>
+
+        {subtitleStyleControls}
 
         <section
           className="dialogue-properties-section dialogue-landscape-properties-section dialogue-landscape-properties-timing-section"
@@ -1537,6 +1576,7 @@ export function DialogueInspector({
             onBlur={commitText}
           />
         </label>
+        {subtitleStyleControls}
         {timed ? (
           <div className="dialogue-timing-fields">
             <label className="dialogue-field">
