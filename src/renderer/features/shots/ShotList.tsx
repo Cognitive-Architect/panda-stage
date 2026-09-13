@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { ArrowRight, Clapperboard, PanelsTopLeft, RectangleHorizontal } from 'lucide-react';
-import type { Shot } from '../../../domain';
+import type { Project, Shot } from '../../../domain';
 import { ShotCreateForm } from './ShotCreateForm';
 import { ShotListItem } from './ShotListItem';
 import { DecorativeIcon } from '../../ui';
@@ -18,6 +18,8 @@ export function nextAvailableShotName(
 
 export interface ShotListProps {
   disabled?: boolean;
+  project?: Project | null;
+  projectRoot?: string;
   selectedShotId: string | null;
   shots: readonly Shot[];
   onCreate: (name: string, durationMs: number) => boolean;
@@ -34,6 +36,8 @@ export interface ShotListProps {
 
 export function ShotList({
   disabled = false,
+  project,
+  projectRoot,
   selectedShotId,
   shots,
   onCreate,
@@ -148,6 +152,8 @@ export function ShotList({
               onDropShot={onMove}
               onSelect={onSelect}
               selected={shot.id === selectedShotId}
+              project={project}
+              projectRoot={projectRoot}
               selectedActions={
                 shot.id === selectedShotId ? selectedActions : undefined
               }

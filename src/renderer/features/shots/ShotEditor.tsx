@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
-import { SHOT_MIN_DURATION_MS, type Shot } from '../../../domain';
-import { ShotThumbnailPlaceholder } from './ShotThumbnailPlaceholder';
+import {
+  SHOT_MIN_DURATION_MS,
+  type Project,
+  type Shot,
+} from '../../../domain';
+import { ShotThumbnail } from './ShotThumbnailView';
 import {
   Copy,
   Layers3,
@@ -32,6 +36,8 @@ function parseShotDurationInput(value: string): number {
 export interface ShotEditorProps {
   disabled?: boolean;
   index: number;
+  project?: Project | null;
+  projectRoot?: string;
   shot: Shot | null;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -42,6 +48,8 @@ export interface ShotEditorProps {
 export function ShotEditor({
   disabled = false,
   index,
+  project,
+  projectRoot,
   shot,
   onDuplicate,
   onRemove,
@@ -128,7 +136,13 @@ export function ShotEditor({
         </div>
       </div>
       <div className="shot-editor-body">
-        <ShotThumbnailPlaceholder index={index} name={shot.name} />
+        <ShotThumbnail
+          index={index}
+          name={shot.name}
+          project={project}
+          projectRoot={projectRoot}
+          shot={shot}
+        />
         <div className="shot-fields">
           <label className="shot-field">
             <span className="shot-field-label">镜头名称</span>

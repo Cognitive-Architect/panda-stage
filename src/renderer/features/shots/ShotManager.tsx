@@ -195,6 +195,8 @@ export function ShotManager({
               );
             }}
             onSelect={(shotId) => shotStore.select(shotId)}
+            project={project}
+            projectRoot={snapshot?.projectRoot}
             selectedShotId={effectiveSelectedId}
             selectedActions={
               presentation === 'landscape' && selectedShot ? (
@@ -225,6 +227,8 @@ export function ShotManager({
               onRemove={removeSelectedShot}
               onRename={renameSelectedShot}
               onSetDuration={setSelectedShotDuration}
+              project={project}
+              projectRoot={snapshot?.projectRoot}
               shot={selectedShot}
             />
           )}

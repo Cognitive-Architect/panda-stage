@@ -9043,6 +9043,7 @@ button:disabled {
   cursor: grab;
 }
 
+.shot-thumbnail,
 .shot-thumbnail-placeholder {
   display: grid;
   min-height: 62px;
@@ -9056,6 +9057,21 @@ button:disabled {
   place-content: center;
   gap: 3px;
   text-align: center;
+}
+
+.shot-thumbnail {
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgb(78 132 91 / 12%), transparent),
+    #09100c;
+  place-items: center;
+}
+
+.shot-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .shot-thumbnail-placeholder > span {
@@ -9211,6 +9227,7 @@ button:disabled {
   gap: 14px;
 }
 
+.shot-editor-body > .shot-thumbnail,
 .shot-editor-body > .shot-thumbnail-placeholder {
   min-height: 210px;
 }
@@ -13270,6 +13287,9 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
+  .shot-thumbnail,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
   .shot-thumbnail-placeholder {
   min-height: 58px;
   height: 58px;
@@ -15208,6 +15228,11 @@ h1 {
   .resource-activity-dock[data-active-activity='shots']
   .shot-manager[data-shot-editor-presentation='portrait']
   .shot-editor-body
+  > .shot-thumbnail,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body
   > .shot-thumbnail-placeholder {
   width: 100%;
   min-height: 0;
@@ -15220,11 +15245,21 @@ h1 {
   .resource-activity-dock[data-active-activity='shots']
   .shot-manager[data-shot-editor-presentation='portrait']
   .shot-editor-body
+  > .shot-thumbnail,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body
   > .shot-thumbnail-placeholder
   > span {
   font-size: 26px;
 }
 
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body
+  > .shot-thumbnail,
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='shots']
   .shot-manager[data-shot-editor-presentation='portrait']
@@ -15492,6 +15527,11 @@ h1 {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .resource-activity-dock[data-active-activity='shots']
+    .shot-manager[data-shot-editor-presentation='portrait']
+    .shot-editor-body
+    > .shot-thumbnail,
   .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
     .resource-activity-dock[data-active-activity='shots']
     .shot-manager[data-shot-editor-presentation='portrait']
@@ -18799,12 +18839,18 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
+  .shot-thumbnail,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
   .shot-thumbnail-placeholder {
   background:
     linear-gradient(135deg, rgb(78 132 91 / 18%), transparent),
     #09100c;
 }
 
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-thumbnail,
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
   .shot-thumbnail-placeholder
