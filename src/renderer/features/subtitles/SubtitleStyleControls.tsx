@@ -101,75 +101,73 @@ export function SubtitleStyleControls({
           共享
         </span>
       </div>
-      <p className="dialogue-subtitle-style-helper">
-        使用此样式的字幕会同步更新
-      </p>
+      <p className="dialogue-subtitle-style-helper">同样式字幕同步</p>
 
       <div className="dialogue-subtitle-style-controls">
-        <div className="dialogue-subtitle-style-row">
-          <span className="dialogue-subtitle-style-label">字号</span>
-          <div
-            aria-label="字号"
-            className="dialogue-subtitle-style-stepper"
-            data-testid="subtitle-style-font-size-control"
-          >
-            <button
-              aria-label="减小字号"
-              data-testid="subtitle-style-font-size-decrease"
-              disabled={style.fontSize <= SUBTITLE_STYLE_FONT_SIZE_MIN}
-              onClick={() =>
-                onUpdate(
-                  {
+        <div className="dialogue-subtitle-style-row dialogue-subtitle-style-primary-row">
+          <div className="dialogue-subtitle-style-control-group">
+            <span className="dialogue-subtitle-style-label">字号</span>
+            <div
+              aria-label="字号"
+              className="dialogue-subtitle-style-stepper"
+              data-testid="subtitle-style-font-size-control"
+            >
+              <button
+                aria-label="减小字号"
+                data-testid="subtitle-style-font-size-decrease"
+                disabled={style.fontSize <= SUBTITLE_STYLE_FONT_SIZE_MIN}
+                onClick={() =>
+                  onUpdate({
                     fontSize: steppedValue(
                       style.fontSize,
                       -2,
                       SUBTITLE_STYLE_FONT_SIZE_MIN,
                       SUBTITLE_STYLE_FONT_SIZE_MAX,
                     ),
-                  },
-                )
-              }
-              type="button"
-            >
-              −
-            </button>
-            <output data-testid="subtitle-style-font-size-value">
-              {style.fontSize}
-            </output>
-            <button
-              aria-label="增大字号"
-              data-testid="subtitle-style-font-size-increase"
-              disabled={style.fontSize >= SUBTITLE_STYLE_FONT_SIZE_MAX}
-              onClick={() =>
-                onUpdate({
-                  fontSize: steppedValue(
-                    style.fontSize,
-                    2,
-                    SUBTITLE_STYLE_FONT_SIZE_MIN,
-                    SUBTITLE_STYLE_FONT_SIZE_MAX,
-                  ),
-                })
-              }
-              type="button"
-            >
-              +
-            </button>
+                  })
+                }
+                type="button"
+              >
+                −
+              </button>
+              <output data-testid="subtitle-style-font-size-value">
+                {style.fontSize}
+              </output>
+              <button
+                aria-label="增大字号"
+                data-testid="subtitle-style-font-size-increase"
+                disabled={style.fontSize >= SUBTITLE_STYLE_FONT_SIZE_MAX}
+                onClick={() =>
+                  onUpdate({
+                    fontSize: steppedValue(
+                      style.fontSize,
+                      2,
+                      SUBTITLE_STYLE_FONT_SIZE_MIN,
+                      SUBTITLE_STYLE_FONT_SIZE_MAX,
+                    ),
+                  })
+                }
+                type="button"
+              >
+                +
+              </button>
+            </div>
           </div>
+
+          <label className="dialogue-subtitle-style-control-group dialogue-subtitle-style-color-row">
+            <span className="dialogue-subtitle-style-label">文字</span>
+            <input
+              aria-label="文字颜色"
+              className="dialogue-subtitle-style-color-input"
+              data-testid="subtitle-style-text-color"
+              onChange={(event) => onUpdate({ textColor: event.target.value })}
+              type="color"
+              value={colorInputValue(style.textColor, '#fffdf6')}
+            />
+          </label>
         </div>
 
-        <label className="dialogue-subtitle-style-row dialogue-subtitle-style-color-row">
-          <span className="dialogue-subtitle-style-label">文字颜色</span>
-          <input
-            aria-label="文字颜色"
-            className="dialogue-subtitle-style-color-input"
-            data-testid="subtitle-style-text-color"
-            onChange={(event) => onUpdate({ textColor: event.target.value })}
-            type="color"
-            value={colorInputValue(style.textColor, '#fffdf6')}
-          />
-        </label>
-
-        <div className="dialogue-subtitle-style-row">
+        <div className="dialogue-subtitle-style-row dialogue-subtitle-style-outline-row">
           <span className="dialogue-subtitle-style-label">描边</span>
           <button
             aria-checked={outlineEnabled}
@@ -192,14 +190,11 @@ export function SubtitleStyleControls({
           >
             {outlineEnabled ? '开' : '关'}
           </button>
-        </div>
 
-        <div
-          aria-disabled={!outlineEnabled}
-          className="dialogue-subtitle-style-subordinate"
-        >
-          <div className="dialogue-subtitle-style-row">
-            <span className="dialogue-subtitle-style-label">粗细</span>
+          <div
+            aria-disabled={!outlineEnabled}
+            className="dialogue-subtitle-style-subordinate"
+          >
             <div
               aria-label="描边粗细"
               className="dialogue-subtitle-style-stepper"
@@ -248,22 +243,21 @@ export function SubtitleStyleControls({
                 +
               </button>
             </div>
-          </div>
 
-          <label className="dialogue-subtitle-style-row dialogue-subtitle-style-color-row">
-            <span className="dialogue-subtitle-style-label">颜色</span>
-            <input
-              aria-label="描边颜色"
-              className="dialogue-subtitle-style-color-input"
-              data-testid="subtitle-style-stroke-color"
-              disabled={!outlineEnabled}
-              onChange={(event) =>
-                onUpdate({ strokeColor: event.target.value })
-              }
-              type="color"
-              value={strokeColor}
-            />
-          </label>
+            <label className="dialogue-subtitle-style-color-row">
+              <input
+                aria-label="描边颜色"
+                className="dialogue-subtitle-style-color-input"
+                data-testid="subtitle-style-stroke-color"
+                disabled={!outlineEnabled}
+                onChange={(event) =>
+                  onUpdate({ strokeColor: event.target.value })
+                }
+                type="color"
+                value={strokeColor}
+              />
+            </label>
+          </div>
         </div>
 
         <div className="dialogue-subtitle-style-position-row">
