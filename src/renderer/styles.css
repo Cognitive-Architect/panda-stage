@@ -490,6 +490,29 @@ button:disabled {
   background: rgb(7 12 9 / 58%);
 }
 
+.right-inspector-character-layer-reminder {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid rgb(154 216 172 / 18%);
+  border-radius: 8px;
+  color: #b8c7bc;
+  background: rgb(7 12 9 / 42%);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.right-inspector-character-layer-reminder strong {
+  color: #d5e0d8;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.right-inspector-character-layer-reminder span {
+  color: #91a299;
+  font-size: 11px;
+}
+
 .right-inspector-selection[data-selection-state='locked'],
 .right-inspector-selection[data-selection-state='background'],
 .right-inspector-selection[data-selection-state='invalid'] {
@@ -8650,6 +8673,17 @@ button:disabled {
 .voice-profile-notice {
   color: #91a299;
   font-size: 11px;
+}
+
+.character-binding-reminder {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid rgb(154 216 172 / 18%);
+  border-radius: 8px;
+  color: #b8c7bc;
+  background: rgb(7 12 9 / 42%);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .character-manager-heading button,

@@ -6,6 +6,7 @@ import {
 import {
   CharacterService,
   CharacterServiceError,
+  countLegacyCharacterImageLayers,
   type CreateCharacterInput,
   type ImageAsset,
   type Project,
@@ -30,6 +31,7 @@ export type CharacterManagerPresentation = 'default' | 'landscape';
 
 const CHARACTER_IDLE_STATUS =
   '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。';
+const CHARACTER_BINDING_REMINDER_DURATION_MS = 5_500;
 
 export interface CharacterManagerProps {
   snapshot: EditorProjectSnapshot | null;
@@ -55,6 +57,9 @@ export function CharacterManager({
   const [selectedCharacterId, setSelectedCharacterId] =
     useState<string | null>(snapshot?.project.characters[0]?.id ?? null);
   const [status, setStatus] = useState(CHARACTER_IDLE_STATUS);
+  const [bindingReminderCount, setBindingReminderCount] = useState<
+    number | null
+  >(null);
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
@@ -78,6 +83,19 @@ export function CharacterManager({
     presentation === 'landscape' && status === CHARACTER_IDLE_STATUS
       ? ''
       : status;
+
+  useEffect(() => {
+    if (bindingReminderCount === null) return undefined;
+    const timeoutId = window.setTimeout(
+      () => setBindingReminderCount(null),
+      CHARACTER_BINDING_REMINDER_DURATION_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [bindingReminderCount]);
+
+  useEffect(() => {
+    setBindingReminderCount(null);
+  }, [snapshot?.projectRoot]);
 
   useEffect(() => {
     if (
@@ -162,13 +180,27 @@ export function CharacterManager({
     }
   };
 
+  const showBindingReminder = (
+    next: Project,
+    boundAssetIds: Iterable<string>,
+  ): void => {
+    const count = countLegacyCharacterImageLayers(next, boundAssetIds);
+    setBindingReminderCount(count > 0 ? count : null);
+  };
+
   const createCharacter = (input: CreateCharacterInput): void => {
     const next = mutate(
       () => characterStore.create(input),
       '角色与普通 / 生气表情已创建。',
     );
     if (next) {
-      setSelectedCharacterId(next.characters.at(-1)!.id);
+      const createdCharacter = next.characters.at(-1);
+      if (!createdCharacter) return;
+      showBindingReminder(
+        next,
+        createdCharacter.expressions.map((expression) => expression.assetId),
+      );
+      setSelectedCharacterId(createdCharacter.id);
       onViewChange('detail');
     }
   };
@@ -255,7 +287,7 @@ export function CharacterManager({
           key={selectedCharacter?.id ?? 'empty'}
           onAddExpression={(name, assetId) => {
             if (!selectedCharacter) return;
-            mutate(
+            const next = mutate(
               () =>
                 characterStore.addExpression(selectedCharacter.id, {
                   name,
@@ -263,6 +295,7 @@ export function CharacterManager({
                 }),
               `表情“${name.trim()}”已添加。`,
             );
+            if (next) showBindingReminder(next, [assetId]);
           }}
           onDeleteCharacter={() => {
             if (
@@ -329,7 +362,7 @@ export function CharacterManager({
           }}
           onSetExpressionAsset={(expressionId, assetId) => {
             if (!selectedCharacter) return;
-            mutate(
+            const next = mutate(
               () =>
                 characterStore.setExpressionAsset(
                   selectedCharacter.id,
@@ -338,6 +371,7 @@ export function CharacterManager({
                 ),
               '表情图片已更新，原有镜头与时间轴引用保持不变。',
             );
+            if (next) showBindingReminder(next, [assetId]);
           }}
           onSetDefaultTransform={(scale, flipX) => {
             if (!selectedCharacter) return;
@@ -380,6 +414,17 @@ export function CharacterManager({
           />
         ) : null}
       </div>
+      {bindingReminderCount !== null ? (
+        <output
+          aria-atomic="true"
+          aria-live="polite"
+          className="character-binding-reminder"
+          data-testid="character-binding-reminder"
+          role="status"
+        >
+          ⓘ {bindingReminderCount} 个已有图层仍是普通图片
+        </output>
+      ) : null}
       {visibleStatus ? (
         <output className="character-manager-status">{visibleStatus}</output>
       ) : null}
