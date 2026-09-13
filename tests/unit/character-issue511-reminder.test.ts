@@ -69,6 +69,20 @@ describe('Issue #511 R7 V1 legacy Character layer reminder', () => {
     expect(isLegacyCharacterImageLayer(bound, IDS.shot, IDS.layerChar)).toBe(
       false,
     );
+    expect(
+      bound.shots[0]!.layers.find((layer) => layer.id === IDS.layerAsset),
+    ).toMatchObject({
+      x: 500,
+      y: 600,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      zIndex: 1,
+      locked: false,
+      flipX: false,
+    });
   });
 
   it('covers create, add, and replace expression binding trigger inputs', () => {
