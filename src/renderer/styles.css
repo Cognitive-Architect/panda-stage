@@ -9079,7 +9079,7 @@ button:disabled {
   font-weight: 900;
 }
 
-.shot-thumbnail-placeholder small {
+.shot-thumbnail-placeholder .shot-thumbnail-message {
   color: #65776d;
   font-size: 8px;
 }
@@ -15259,13 +15259,8 @@ h1 {
   .resource-activity-dock[data-active-activity='shots']
   .shot-manager[data-shot-editor-presentation='portrait']
   .shot-editor-body
-  > .shot-thumbnail,
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .resource-activity-dock[data-active-activity='shots']
-  .shot-manager[data-shot-editor-presentation='portrait']
-  .shot-editor-body
   > .shot-thumbnail-placeholder
-  > small {
+  > .shot-thumbnail-message {
   font-size: 10px;
 }
 
@@ -18850,11 +18845,8 @@ h1 {
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
-  .shot-thumbnail,
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
   .shot-thumbnail-placeholder
-  small {
+  .shot-thumbnail-message {
   display: none;
 }
 

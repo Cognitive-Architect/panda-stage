@@ -32,7 +32,9 @@ export function ShotThumbnailPlaceholder({
       data-testid="shot-thumbnail"
     >
       <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-      {status ? <small>{message}</small> : null}
+      {status ? (
+        <span className="shot-thumbnail-message">{message}</span>
+      ) : null}
     </div>
   );
 }
