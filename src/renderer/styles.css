@@ -29384,3 +29384,12 @@ h1 {
   width: 100%;
   margin: 0;
 }
+
+/* Issue #508: a ready thumbnail is its own visual surface; placeholders keep their frame. */
+.shot-thumbnail {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  place-content: stretch;
+  gap: 0;
+}
