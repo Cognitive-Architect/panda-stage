@@ -17,7 +17,11 @@ describe('Issue #448 timed Inspector comfort and audio duration editing', () => 
       ),
     );
     const styles = source('src/renderer/styles.css');
-    const issue448 = styles.slice(styles.lastIndexOf('/* Issue #448 A:'));
+    const issue448Start = styles.lastIndexOf('/* Issue #448 A:');
+    const issue448 = styles.slice(
+      issue448Start,
+      styles.indexOf('/* Issue #454:', issue448Start),
+    );
 
     expect(compactPresentations).toContain('dialogue-properties-identity-editor');
     expect(compactPresentations).toContain('dialogue-compact-timing-grid');
@@ -73,7 +77,11 @@ describe('Issue #448 timed Inspector comfort and audio duration editing', () => 
 
   it('raises the selected AudioClip end cap above the subtitle resize quality floor', () => {
     const styles = source('src/renderer/styles.css');
-    const issue448 = styles.slice(styles.lastIndexOf('/* Issue #448 A:'));
+    const issue448Start = styles.lastIndexOf('/* Issue #448 A:');
+    const issue448 = styles.slice(
+      issue448Start,
+      styles.indexOf('/* Issue #454:', issue448Start),
+    );
 
     expect(issue448).toMatch(
       /\.timeline-audio-trim-handle\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?width:\s*32px;/u,

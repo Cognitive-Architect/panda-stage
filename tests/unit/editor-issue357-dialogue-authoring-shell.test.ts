@@ -145,7 +145,10 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
     expect(batch.match(/dialogueStore\.createMany\(/gu)).toHaveLength(1);
     expect(batch).toContain('data-testid="dialogue-batch-preview"');
     expect(batch).toContain('data-testid={`dialogue-batch-map-${line.lineNumber}`}');
-    expect(batch).toContain('没找到这个角色');
+    expect(batch).toContain('mappingIssueCopy(line)');
+    expect(batch).toContain('未找到“');
+    expect(batch).toContain('emptySummaryLabel="请选择对应角色"');
+    expect(batch).not.toContain('没找到这个角色');
     expect(batch).not.toContain('data-testid="dialogue-batch-stats"');
     expect(batch).not.toContain('解析统计');
     expect(batch).toContain('disabled={!resolution.allResolved}');

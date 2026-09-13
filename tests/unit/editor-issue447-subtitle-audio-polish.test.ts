@@ -20,6 +20,7 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     expect(batch).not.toContain('dialogue-batch-stats');
     expect(batch).not.toContain('dialogue-authoring-cancel');
     expect(batch).toContain('`添加 ${resolution.readyCount} 条字幕`');
+    expect(batch).toContain('`还有 ${pendingCount} 条待确认`');
   });
 
   it('keeps deterministic parsing and resolves only problem rows inline with human copy', () => {
@@ -30,11 +31,14 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     expect(batch).toContain('parseDialoguePaste(draftState.batchRaw, characters)');
     expect(batch).toContain('resolveDialoguePaste(parsed, draftState.batchMapping, characters)');
     expect(batch.match(/dialogueStore\.createMany\(/gu)).toHaveLength(1);
-    expect(batch).toContain('没找到这个角色');
-    expect(batch).toContain('对应为');
+    expect(batch).toContain('未找到“');
+    expect(batch).toContain('对应多个角色，请确认');
+    expect(batch).toContain('emptySummaryLabel="请选择对应角色"');
+    expect(batch).not.toContain('没找到这个角色');
+    expect(batch).not.toContain('选择要对应的角色');
     expect(batch).toContain('这一行格式不对');
     expect(batch).toContain('请写成「角色：台词」');
-    expect(batch).toContain('这行还没有台词内容');
+    expect(batch).toContain('缺少台词内容');
     expect(batch).not.toContain('缺少“角色：台词”分隔符');
     expect(batch).not.toContain('角色重名需映射');
   });
@@ -102,7 +106,12 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     expect(issue447).toMatch(/\.timeline-audio-trim-handle\s*\{[\s\S]*?width:\s*24px;/u);
     expect(issue447).toContain('.timeline-audio-trim-grip');
     expect(issue447).toContain('.timeline-audio-trim-handle:focus-visible');
-    expect(issue447).toMatch(/\.dialogue-batch-preview\s*\{[\s\S]*?overflow-y:\s*auto;/u);
+    expect(issue447).toMatch(
+      /\.dialogue-batch-preview\s*\{[\s\S]*?max-height:\s*none;[\s\S]*?overflow:\s*visible;/u,
+    );
+    expect(issue447).not.toMatch(
+      /\.dialogue-batch-preview\s*\{[^}]*overflow-y:\s*auto;/u,
+    );
     expect(issue447).toContain('rgb(8 18 12 / 88%)');
     expect(issue447).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))');
   });
