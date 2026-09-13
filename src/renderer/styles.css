@@ -30709,3 +30709,12 @@ h1 {
   max-height: none;
   overflow: visible;
 }
+
+/* Issue #508: a ready thumbnail is its own visual surface; placeholders keep their frame. */
+.shot-thumbnail {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  place-content: stretch;
+  gap: 0;
+}
