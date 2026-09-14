@@ -99,7 +99,9 @@ export function SubtitleStyleControls({
       <div className="dialogue-subtitle-style-controls">
         <div className="dialogue-subtitle-style-row dialogue-subtitle-style-primary-row">
           <div className="dialogue-subtitle-style-control-group">
-            <span className="dialogue-subtitle-style-label">字号</span>
+            <span className="dialogue-subtitle-style-label dialogue-subtitle-style-main-label">
+              字号
+            </span>
             <div
               aria-label="字号"
               className="dialogue-subtitle-style-stepper"
@@ -161,7 +163,9 @@ export function SubtitleStyleControls({
         </div>
 
         <div className="dialogue-subtitle-style-row dialogue-subtitle-style-outline-row">
-          <span className="dialogue-subtitle-style-label">描边</span>
+          <span className="dialogue-subtitle-style-label dialogue-subtitle-style-main-label">
+            描边
+          </span>
           <button
             aria-checked={outlineEnabled}
             aria-label="描边"
@@ -190,56 +194,64 @@ export function SubtitleStyleControls({
             aria-disabled={!outlineEnabled}
             className="dialogue-subtitle-style-subordinate"
           >
-            <div
-              aria-label="描边粗细"
-              className="dialogue-subtitle-style-stepper"
-              data-testid="subtitle-style-stroke-width-control"
-            >
-              <button
-                aria-label="减小描边粗细"
-                data-testid="subtitle-style-stroke-width-decrease"
-                disabled={!outlineEnabled || strokeWidth <= 0}
-                onClick={() =>
-                  onUpdate({
-                    strokeWidth: steppedValue(
-                      strokeWidth,
-                      -1,
-                      0,
-                      SUBTITLE_STYLE_STROKE_WIDTH_MAX,
-                    ),
-                  })
-                }
-                type="button"
+            <div className="dialogue-subtitle-style-subordinate-field">
+              <span className="dialogue-subtitle-style-subordinate-label">
+                粗细
+              </span>
+              <div
+                aria-label="描边粗细"
+                className="dialogue-subtitle-style-stepper"
+                data-testid="subtitle-style-stroke-width-control"
               >
-                −
-              </button>
-              <output data-testid="subtitle-style-stroke-width-value">
-                {strokeWidth}
-              </output>
-              <button
-                aria-label="增大描边粗细"
-                data-testid="subtitle-style-stroke-width-increase"
-                disabled={
-                  !outlineEnabled ||
-                  strokeWidth >= SUBTITLE_STYLE_STROKE_WIDTH_MAX
-                }
-                onClick={() =>
-                  onUpdate({
-                    strokeWidth: steppedValue(
-                      strokeWidth,
-                      1,
-                      0,
-                      SUBTITLE_STYLE_STROKE_WIDTH_MAX,
-                    ),
-                  })
-                }
-                type="button"
-              >
-                +
-              </button>
+                <button
+                  aria-label="减小描边粗细"
+                  data-testid="subtitle-style-stroke-width-decrease"
+                  disabled={!outlineEnabled || strokeWidth <= 0}
+                  onClick={() =>
+                    onUpdate({
+                      strokeWidth: steppedValue(
+                        strokeWidth,
+                        -1,
+                        0,
+                        SUBTITLE_STYLE_STROKE_WIDTH_MAX,
+                      ),
+                    })
+                  }
+                  type="button"
+                >
+                  −
+                </button>
+                <output data-testid="subtitle-style-stroke-width-value">
+                  {strokeWidth}
+                </output>
+                <button
+                  aria-label="增大描边粗细"
+                  data-testid="subtitle-style-stroke-width-increase"
+                  disabled={
+                    !outlineEnabled ||
+                    strokeWidth >= SUBTITLE_STYLE_STROKE_WIDTH_MAX
+                  }
+                  onClick={() =>
+                    onUpdate({
+                      strokeWidth: steppedValue(
+                        strokeWidth,
+                        1,
+                        0,
+                        SUBTITLE_STYLE_STROKE_WIDTH_MAX,
+                      ),
+                    })
+                  }
+                  type="button"
+                >
+                  +
+                </button>
+              </div>
             </div>
 
-            <label className="dialogue-subtitle-style-color-row">
+            <label className="dialogue-subtitle-style-subordinate-field dialogue-subtitle-style-color-row">
+              <span className="dialogue-subtitle-style-subordinate-label">
+                颜色
+              </span>
               <input
                 aria-label="描边颜色"
                 className="dialogue-subtitle-style-color-input"
@@ -256,7 +268,9 @@ export function SubtitleStyleControls({
         </div>
 
         <div className="dialogue-subtitle-style-position-row">
-          <span className="dialogue-subtitle-style-label">位置</span>
+          <span className="dialogue-subtitle-style-label dialogue-subtitle-style-main-label">
+            位置
+          </span>
           <div
             aria-label="字幕位置"
             className="dialogue-subtitle-style-position-control"

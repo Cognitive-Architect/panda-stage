@@ -30753,10 +30753,12 @@ h1 {
   gap: 0;
 }
 
-/* Issue #520: finish R5 V1 with a balanced compact control language. The rows
-   remain always expanded and subordinate outline controls stay mounted so
-   toggling outline cannot move the following Position/Time controls. */
+/* Issue #521: finish R5 V1 with a calm segmented position control and a clear
+   outline setting hierarchy. The rows remain always expanded and subordinate
+   outline controls stay mounted so toggling outline cannot move the following
+   Position/Time controls. */
 .dialogue-subtitle-style-section {
+  container-type: inline-size;
   display: grid;
   min-width: 0;
   gap: 10px !important;
@@ -30806,7 +30808,7 @@ h1 {
 .dialogue-subtitle-style-primary-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
 }
 
 .dialogue-subtitle-style-control-group {
@@ -30816,6 +30818,10 @@ h1 {
 
 .dialogue-subtitle-style-primary-row
   > .dialogue-subtitle-style-control-group:first-child {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -30956,7 +30962,7 @@ h1 {
 
 .dialogue-subtitle-style-outline-row {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: 52px 38px minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -30966,7 +30972,9 @@ h1 {
   grid-template-columns: minmax(104px, 116px) 36px;
   align-items: center;
   justify-content: start;
-  gap: 6px;
+  gap: 8px;
+  padding-left: 10px;
+  border-left: 1px solid var(--ui-color-separator, rgb(154 216 172 / 24%));
   transition: opacity 120ms ease;
 }
 
@@ -30974,15 +30982,36 @@ h1 {
   opacity: 0.5;
 }
 
+.dialogue-subtitle-style-subordinate-field {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialogue-subtitle-style-subordinate-label {
+  flex: 0 0 auto;
+  color: var(--ui-color-text-muted, #84958b);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .dialogue-subtitle-style-outline-row .dialogue-subtitle-style-stepper {
   width: 100%;
   min-width: 0;
+  flex: 1 1 116px;
 }
 
 .dialogue-subtitle-style-color-row {
   display: flex;
   justify-content: flex-end;
   cursor: pointer;
+}
+
+.dialogue-subtitle-style-subordinate .dialogue-subtitle-style-color-row {
+  justify-content: flex-start;
+  flex: 0 0 auto;
 }
 
 .dialogue-subtitle-style-color-input {
@@ -31010,22 +31039,48 @@ h1 {
 
 .dialogue-subtitle-style-position-control {
   display: grid;
+  width: min(232px, 100%);
+  max-width: 100%;
   min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-border, rgb(127 199 148 / 28%));
+  border-radius: var(--ui-radius-medium, 10px);
+  background: var(--ui-color-surface-work, #16231b);
 }
 
 .dialogue-subtitle-style-position-control button {
   min-width: 0 !important;
-  min-height: 40px !important;
-  padding: 6px 4px;
+  min-height: 38px !important;
+  height: 38px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  color: var(--ui-color-text-secondary, #b5c9ba);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
+.dialogue-subtitle-style-main-label {
+  width: 52px;
+  flex: 0 0 52px;
+}
+
 .dialogue-subtitle-style-position-control button[aria-pressed='true'] {
-  border-color: var(--ui-color-selected-border, rgb(127 199 148 / 52%));
   color: var(--ui-color-text-primary, #edf7ef);
-  background: var(--ui-color-selected-surface, rgb(127 199 148 / 20%));
+  background: var(--ui-color-selected-surface, rgb(65 145 87 / 34%));
+  font-weight: 700;
+}
+
+.dialogue-subtitle-style-position-control button + button {
+  border-left: 1px solid var(--ui-color-separator, rgb(154 216 172 / 24%));
+}
+
+.dialogue-subtitle-style-position-control:focus-within {
+  border-color: var(--ui-color-selected-border, rgb(127 199 148 / 52%));
 }
 
 .dialogue-subtitle-style-section button:focus-visible,
@@ -31084,5 +31139,35 @@ h1 {
 
   .dialogue-subtitle-style-position-row {
     gap: 6px;
+  }
+}
+
+@container (max-width: 300px) {
+  .dialogue-subtitle-style-subordinate {
+    grid-template-columns: minmax(0, 1fr) 36px;
+    align-items: start;
+    gap: 6px;
+    padding-left: 8px;
+  }
+
+  .dialogue-subtitle-style-subordinate-field {
+    display: grid;
+    grid-template-rows: auto 38px;
+    align-items: stretch;
+    gap: 2px;
+  }
+
+  .dialogue-subtitle-style-subordinate .dialogue-subtitle-style-stepper {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+  }
+
+  .dialogue-subtitle-style-subordinate .dialogue-subtitle-style-color-row {
+    justify-items: center;
+  }
+
+  .dialogue-subtitle-style-subordinate-label {
+    font-size: 10px;
   }
 }
