@@ -94,14 +94,7 @@ export function SubtitleStyleControls({
       <div className={headingClassName}>
         <DecorativeIcon icon={Palette} size={18} />
         <h3 id="dialogue-subtitle-style-heading">字幕样式</h3>
-        <span
-          className="dialogue-subtitle-style-shared-badge"
-          data-testid="subtitle-style-shared-badge"
-        >
-          共享
-        </span>
       </div>
-      <p className="dialogue-subtitle-style-helper">同样式字幕同步</p>
 
       <div className="dialogue-subtitle-style-controls">
         <div className="dialogue-subtitle-style-row dialogue-subtitle-style-primary-row">
@@ -155,7 +148,7 @@ export function SubtitleStyleControls({
           </div>
 
           <label className="dialogue-subtitle-style-control-group dialogue-subtitle-style-color-row">
-            <span className="dialogue-subtitle-style-label">文字</span>
+            <span className="dialogue-subtitle-style-label">文字色</span>
             <input
               aria-label="文字颜色"
               className="dialogue-subtitle-style-color-input"
@@ -188,7 +181,9 @@ export function SubtitleStyleControls({
             role="switch"
             type="button"
           >
-            {outlineEnabled ? '开' : '关'}
+            <span aria-hidden="true" className="dialogue-subtitle-style-toggle-track">
+              <span className="dialogue-subtitle-style-toggle-thumb" />
+            </span>
           </button>
 
           <div

@@ -226,9 +226,9 @@ describe('SubtitleStyle R5 V1', () => {
 
     for (const marker of [
       '字幕样式',
-      '共享',
       '字号',
       '文字颜色',
+      '文字色',
       '描边',
       '描边颜色',
       '顶部',
@@ -236,10 +236,14 @@ describe('SubtitleStyle R5 V1', () => {
       '底部',
       'type="color"',
       'role="switch"',
+      'dialogue-subtitle-style-toggle-track',
+      'dialogue-subtitle-style-toggle-thumb',
       'aria-disabled={!outlineEnabled}',
     ]) {
       expect(controls).toContain(marker);
     }
+    expect(controls).not.toContain('共享');
+    expect(controls).not.toContain('同样式字幕同步');
     expect(controls).not.toContain('应用');
     expect(renderer).toContain('stroke={');
     expect(renderer).toContain('strokeWidth={');

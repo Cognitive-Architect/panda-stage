@@ -30753,14 +30753,14 @@ h1 {
   gap: 0;
 }
 
-/* Issue #517: keep R5 V1 always expanded while grouping related controls into
-   three touch-friendly rows. Subordinate outline controls stay mounted so
+/* Issue #520: finish R5 V1 with a balanced compact control language. The rows
+   remain always expanded and subordinate outline controls stay mounted so
    toggling outline cannot move the following Position/Time controls. */
 .dialogue-subtitle-style-section {
   display: grid;
   min-width: 0;
-  gap: 6px !important;
-  padding: 10px 0 12px !important;
+  gap: 10px !important;
+  padding: 12px 0 14px !important;
   border-bottom: 1px solid var(--ui-color-separator, rgb(127 199 148 / 22%));
 }
 
@@ -30785,34 +30785,10 @@ h1 {
   line-height: 1.3;
 }
 
-.dialogue-subtitle-style-shared-badge {
-  display: inline-flex;
-  min-height: 22px;
-  align-items: center;
-  margin-left: auto;
-  padding: 2px 8px;
-  border: 1px solid var(--ui-color-selected-border, rgb(127 199 148 / 40%));
-  border-radius: 999px;
-  color: var(--ui-color-text-secondary, #b5c9ba);
-  background: var(--ui-color-selected-surface, rgb(127 199 148 / 12%));
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.dialogue-subtitle-style-helper {
-  margin: -2px 0 0 24px;
-  color: var(--ui-color-text-secondary, #b5c9ba);
-  font-size: 11px;
-  line-height: 1.3;
-  opacity: 0.84;
-}
-
 .dialogue-subtitle-style-controls {
   display: grid;
   min-width: 0;
-  gap: 6px;
+  gap: 12px;
 }
 
 .dialogue-subtitle-style-row,
@@ -30846,7 +30822,7 @@ h1 {
 .dialogue-subtitle-style-primary-row
   > .dialogue-subtitle-style-control-group:first-child
   .dialogue-subtitle-style-stepper {
-  flex: 1 1 auto;
+  flex: 0 1 116px;
 }
 
 .dialogue-subtitle-style-label {
@@ -30860,35 +30836,49 @@ h1 {
 
 .dialogue-subtitle-style-stepper {
   display: grid;
-  min-width: 112px;
-  grid-template-columns: 38px minmax(28px, 1fr) 38px;
-  align-items: center;
-  gap: 3px;
-}
-
-.dialogue-subtitle-style-stepper button,
-.dialogue-subtitle-style-toggle,
-.dialogue-subtitle-style-position-control button {
-  min-width: 38px !important;
-  min-height: 40px !important;
-  padding: 6px 4px;
+  width: 116px;
+  min-width: 116px;
+  height: 38px;
+  grid-template-columns: 36px minmax(44px, 1fr) 36px;
+  align-items: stretch;
+  gap: 0;
   border: 1px solid var(--ui-color-border, rgb(127 199 148 / 30%));
   border-radius: var(--ui-radius-small, 8px);
-  color: var(--ui-color-text-primary, #edf7ef);
   background: var(--ui-color-surface-work, #16231b);
+}
+
+.dialogue-subtitle-style-stepper button {
+  min-width: 0 !important;
+  min-height: 36px !important;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 0;
+  color: var(--ui-color-text-primary, #edf7ef);
+  background: transparent;
   font: inherit;
   font-weight: 800;
 }
 
+.dialogue-subtitle-style-stepper button:first-child {
+  border-radius: 7px 0 0 7px;
+}
+
+.dialogue-subtitle-style-stepper button:last-child {
+  border-radius: 0 7px 7px 0;
+}
+
 .dialogue-subtitle-style-stepper button:hover:not(:disabled),
-.dialogue-subtitle-style-toggle:hover:not(:disabled),
 .dialogue-subtitle-style-position-control button:hover:not(:disabled) {
-  border-color: var(--ui-color-selected-border, rgb(127 199 148 / 52%));
   background: var(--ui-color-selected-surface, rgb(127 199 148 / 12%));
 }
 
 .dialogue-subtitle-style-stepper output {
+  display: grid;
   min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-inline: 1px solid var(--ui-color-border, rgb(127 199 148 / 30%));
   color: var(--ui-color-text-primary, #edf7ef);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -30896,16 +30886,72 @@ h1 {
   text-align: center;
 }
 
-.dialogue-subtitle-style-toggle {
-  min-width: 48px !important;
-  padding: 6px 8px;
-  white-space: nowrap;
+.dialogue-subtitle-style-stepper:focus-within {
+  border-color: var(--ui-color-selected-border, rgb(127 199 148 / 52%));
 }
 
-.dialogue-subtitle-style-toggle[aria-checked='true'] {
+.dialogue-subtitle-style-toggle {
+  display: inline-flex;
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px;
+  min-height: 38px !important;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.dialogue-subtitle-style-toggle:hover:not(:disabled),
+.dialogue-subtitle-style-toggle:focus-visible {
+  border-color: transparent;
+  background: transparent;
+}
+
+.dialogue-subtitle-style-toggle-track {
+  display: flex;
+  width: 34px;
+  height: 20px;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--ui-color-border, rgb(127 199 148 / 38%));
+  border-radius: 999px;
+  background: rgb(127 199 148 / 13%);
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.dialogue-subtitle-style-toggle-thumb {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border-radius: 50%;
+  background: var(--ui-color-text-secondary, #b5c9ba);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 32%);
+  transform: translateX(0);
+  transition:
+    background 120ms ease,
+    transform 120ms ease;
+}
+
+.dialogue-subtitle-style-toggle[aria-checked='true']
+  .dialogue-subtitle-style-toggle-track {
   border-color: var(--ui-color-selected-border, rgb(127 199 148 / 52%));
-  color: var(--ui-color-text-primary, #edf7ef);
   background: var(--ui-color-selected-surface, rgb(127 199 148 / 20%));
+}
+
+.dialogue-subtitle-style-toggle[aria-checked='true']
+  .dialogue-subtitle-style-toggle-thumb {
+  background: var(--ui-color-accent, #9fe0b0);
+  transform: translateX(14px);
+}
+
+.dialogue-subtitle-style-toggle:hover:not(:disabled)
+  .dialogue-subtitle-style-toggle-track {
+  border-color: var(--ui-color-selected-border, rgb(127 199 148 / 52%));
 }
 
 .dialogue-subtitle-style-outline-row {
@@ -30917,9 +30963,10 @@ h1 {
 .dialogue-subtitle-style-subordinate {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(104px, 1fr) 40px;
+  grid-template-columns: minmax(104px, 116px) 36px;
   align-items: center;
-  gap: 8px;
+  justify-content: start;
+  gap: 6px;
   transition: opacity 120ms ease;
 }
 
@@ -30928,7 +30975,8 @@ h1 {
 }
 
 .dialogue-subtitle-style-outline-row .dialogue-subtitle-style-stepper {
-  min-width: 104px;
+  width: 100%;
+  min-width: 0;
 }
 
 .dialogue-subtitle-style-color-row {
@@ -30938,10 +30986,10 @@ h1 {
 }
 
 .dialogue-subtitle-style-color-input {
-  width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  padding: 3px !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 2px !important;
   border: 1px solid var(--ui-color-border, rgb(127 199 148 / 30%));
   border-radius: var(--ui-radius-small, 8px);
   background: var(--ui-color-surface-work, #16231b);
@@ -30969,6 +31017,7 @@ h1 {
 
 .dialogue-subtitle-style-position-control button {
   min-width: 0 !important;
+  min-height: 40px !important;
   padding: 6px 4px;
   white-space: nowrap;
 }
@@ -30995,8 +31044,8 @@ h1 {
 }
 
 .dialogue-subtitle-style-section.dialogue-landscape-properties-section {
-  gap: 5px !important;
-  padding-block: 8px 10px !important;
+  gap: 8px !important;
+  padding-block: 10px 12px !important;
 }
 
 @media (max-width: 420px) {
@@ -31007,24 +31056,30 @@ h1 {
 
   .dialogue-subtitle-style-stepper {
     min-width: 108px;
-    grid-template-columns: 38px minmax(24px, 1fr) 38px;
+    width: 108px;
+    grid-template-columns: 36px minmax(36px, 1fr) 36px;
   }
 
-  .dialogue-subtitle-style-stepper button,
+  .dialogue-subtitle-style-stepper button {
+    min-width: 0 !important;
+    min-height: 36px !important;
+  }
+
   .dialogue-subtitle-style-toggle {
+    width: 38px !important;
     min-width: 38px !important;
     min-height: 38px !important;
   }
 
   .dialogue-subtitle-style-subordinate {
-    grid-template-columns: minmax(98px, 1fr) 38px;
+    grid-template-columns: minmax(98px, 1fr) 36px;
     gap: 6px;
   }
 
   .dialogue-subtitle-style-color-input {
-    width: 38px !important;
-    height: 38px !important;
-    min-height: 38px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
   }
 
   .dialogue-subtitle-style-position-row {

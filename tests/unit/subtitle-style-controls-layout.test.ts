@@ -7,7 +7,7 @@ const controlsSource = readFileSync(
 );
 const stylesSource = readFileSync('src/renderer/styles.css', 'utf8');
 
-describe('Issue #517 subtitle-style density polish', () => {
+describe('Issue #520 subtitle-style balanced compact polish', () => {
   it('keeps the always-expanded controls in the approved three-row grouping', () => {
     const primaryStart = controlsSource.indexOf(
       'dialogue-subtitle-style-primary-row',
@@ -38,36 +38,49 @@ describe('Issue #517 subtitle-style density polish', () => {
     expect(controlsSource).toContain("center: '中间'");
     expect(controlsSource).toContain("bottom: '底部'");
 
-    expect(controlsSource).toContain('同样式字幕同步');
-    expect(controlsSource).not.toContain('使用此样式的字幕会同步更新');
+    expect(controlsSource).toContain('文字色');
+    expect(controlsSource).not.toContain('subtitle-style-shared-badge');
+    expect(controlsSource).not.toContain('同样式字幕同步');
+    expect(controlsSource).toContain('dialogue-subtitle-style-toggle-track');
+    expect(controlsSource).toContain('dialogue-subtitle-style-toggle-thumb');
     expect(controlsSource).toContain('aria-disabled={!outlineEnabled}');
   });
 
   it('uses compact horizontal rows while retaining touch-sized controls', () => {
-    const issue517Styles = stylesSource.slice(
-      stylesSource.indexOf('/* Issue #517:'),
+    const issue520Styles = stylesSource.slice(
+      stylesSource.indexOf('/* Issue #520:'),
     );
 
-    expect(issue517Styles).toContain(
+    expect(issue520Styles).toContain(
       '.dialogue-subtitle-style-primary-row',
     );
-    expect(issue517Styles).toContain(
+    expect(issue520Styles).toContain(
       'grid-template-columns: minmax(0, 1fr) auto',
     );
-    expect(issue517Styles).toContain(
+    expect(issue520Styles).toContain(
       '.dialogue-subtitle-style-outline-row',
     );
-    expect(issue517Styles).toContain(
+    expect(issue520Styles).toContain(
       'grid-template-columns: auto auto minmax(0, 1fr)',
     );
-    expect(issue517Styles).toContain(
-      'grid-template-columns: minmax(104px, 1fr) 40px',
+    expect(issue520Styles).toContain(
+      'grid-template-columns: minmax(104px, 116px) 36px',
     );
-    expect(issue517Styles).toContain(
+    expect(issue520Styles).toContain(
       'grid-template-columns: repeat(3, minmax(0, 1fr))',
     );
-    expect(issue517Styles).toContain('min-height: 40px !important');
-    expect(issue517Styles).toContain('min-height: 38px !important');
-    expect(issue517Styles).not.toContain('min-width: 148px');
+    expect(issue520Styles).toContain(
+      'grid-template-columns: 36px minmax(44px, 1fr) 36px',
+    );
+    expect(issue520Styles).toContain('gap: 12px');
+    expect(issue520Styles).toContain('gap: 0');
+    expect(issue520Styles).toContain('border-radius: 999px');
+    expect(issue520Styles).toContain(
+      '.dialogue-subtitle-style-toggle-track',
+    );
+    expect(issue520Styles).toContain('width: 36px !important');
+    expect(issue520Styles).toContain('height: 36px !important');
+    expect(issue520Styles).toContain('min-height: 40px !important');
+    expect(issue520Styles).not.toContain('min-width: 148px');
   });
 });
