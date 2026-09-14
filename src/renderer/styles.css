@@ -31356,6 +31356,202 @@ h1 {
   border-top-color: rgb(127 199 148 / 10%);
 }
 
+/* Issue #525: keep the Character Detail header compact and move rename into
+   the existing identity anchor without changing Character mutation owners. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-close {
+  justify-self: end;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation
+  > .character-back-button {
+  display: inline-flex;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: var(--ui-radius-medium, 8px);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: rgb(83 145 101 / 10%);
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation
+  > .character-back-button:hover,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation
+  > .character-back-button:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(83 145 101 / 22%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-copy {
+  grid-template-areas: 'name actions';
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-copy.is-renaming {
+  grid-template-areas: 'rename actions';
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-form {
+  display: grid;
+  min-width: 0;
+  grid-area: name;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-copy.is-renaming
+  .character-inline-rename-form {
+  grid-area: rename;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-form
+  input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 7px 9px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-actions
+  > button {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-cancel {
+  border-color: rgb(127 199 148 / 28%);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-save {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #07110a;
+  background: var(--ui-color-action-primary, #8ed9a2);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-save:disabled {
+  opacity: 0.45;
+}
+
+@media (max-width: 360px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-copy {
+    grid-template-areas:
+      'name'
+      'actions';
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-copy.is-renaming {
+    grid-template-areas:
+      'rename'
+      'actions';
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-inline-rename-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-inline-rename-actions {
+    justify-content: flex-end;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-actions {
+    justify-self: start;
+  }
+}
+
 @media (max-width: 360px) {
   .editor-layout[data-shell-mode='landscape']
     .resource-activity-dock-landscape[data-active-activity='characters']
@@ -32091,6 +32287,18 @@ h1 {
   .character-detail-identity-actions {
   flex-wrap: nowrap;
   justify-self: end;
+}
+
+/* Issue #525 final responsive override: the older consolidated Character
+   cascade keeps the overflow action right-aligned at normal widths, while a
+   genuinely narrow detail drawer may stack it below the inline form. */
+@media (max-width: 360px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-actions {
+    justify-self: start;
+  }
 }
 
 .editor-layout[data-shell-mode='landscape']

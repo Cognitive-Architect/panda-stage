@@ -28,6 +28,14 @@ export function isDefaultTransformPending(
   );
 }
 
+export function characterRenameValue(
+  nextName: string,
+  currentName: string,
+): string | null {
+  const trimmed = nextName.trim();
+  return trimmed.length > 0 && trimmed !== currentName ? trimmed : null;
+}
+
 function CharacterThumbnailFallback({
   assetConfigured = true,
   assetResolved = true,
@@ -180,12 +188,14 @@ export function CharacterEditor({
     scale,
     flipX,
   );
+  const nextRenameValue = characterRenameValue(name, character.name);
 
   return (
     <article
       className={`character-editor${view === 'expression' ? ' character-expression-view' : ''}`}
       data-character-editor-id={character.id}
       data-character-editor-presentation={presentation}
+      aria-labelledby={landscapeDetail ? 'character-detail-title' : undefined}
       data-testid={
         view === 'detail'
           ? 'character-detail-view'
@@ -195,7 +205,9 @@ export function CharacterEditor({
       }
     >
       {landscapeCharacterNavigation ? (
-        <div className="character-detail-navigation">
+        <div
+          className={`character-detail-navigation${landscapeDetail ? ' character-detail-navigation-detail' : ''}`}
+        >
           <button
             className="character-back-button"
             data-testid={
@@ -208,13 +220,20 @@ export function CharacterEditor({
             }
             type="button"
           >
-            {landscapeExpression ? '← 返回角色详情' : '← 角色列表'}
+            {landscapeExpression ? '← 返回角色详情' : '← 返回角色列表'}
           </button>
-          <strong className="character-detail-navigation-title">
-            {landscapeExpression
-              ? `${character.name} · 表情管理`
-              : '角色详情'}
-          </strong>
+          {landscapeDetail ? (
+            <h1
+              className="sr-only character-detail-navigation-title"
+              id="character-detail-title"
+            >
+              角色详情
+            </h1>
+          ) : (
+            <strong className="character-detail-navigation-title">
+              {`${character.name} · 表情管理`}
+            </strong>
+          )}
           <button
             aria-label="关闭角色抽屉"
             className="resource-activity-close character-detail-close"
@@ -280,18 +299,76 @@ export function CharacterEditor({
                 />
               )}
             </div>
-            <div className="character-detail-identity-copy">
-              <h3>{character.name}</h3>
-              <span>{character.expressions.length} 个表情</span>
-              <div className="character-detail-identity-actions">
-                <button
-                  aria-expanded={renameOpen}
-                  className="character-rename-trigger"
-                  onClick={() => setRenameOpen((open) => !open)}
-                  type="button"
+            <div
+              className={`character-detail-identity-copy${renameOpen ? ' is-renaming' : ''}`}
+            >
+              {renameOpen ? (
+                <form
+                  className="character-inline-rename-form"
+                  data-testid="character-inline-rename-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (disabled || !nextRenameValue) return;
+                    onRenameCharacter(nextRenameValue);
+                    setName(nextRenameValue);
+                    setRenameOpen(false);
+                  }}
                 >
-                  编辑名称
-                </button>
+                  <label
+                    className="sr-only"
+                    htmlFor="character-inline-rename-input"
+                  >
+                    角色名称
+                  </label>
+                  <input
+                    autoFocus
+                    data-testid="character-inline-rename-input"
+                    disabled={disabled}
+                    id="character-inline-rename-input"
+                    maxLength={200}
+                    onChange={(event) => setName(event.target.value)}
+                    value={name}
+                  />
+                  <div className="character-inline-rename-actions">
+                    <button
+                      className="character-inline-rename-cancel"
+                      data-testid="character-inline-rename-cancel"
+                      onClick={() => {
+                        setName(character.name);
+                        setRenameOpen(false);
+                      }}
+                      type="button"
+                    >
+                      取消
+                    </button>
+                    <button
+                      className="character-inline-rename-save"
+                      data-testid="character-inline-rename-save"
+                      disabled={disabled || !nextRenameValue}
+                      type="submit"
+                    >
+                      保存
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <h3>{character.name}</h3>
+              )}
+              <div className="character-detail-identity-actions">
+                {!renameOpen ? (
+                  <button
+                    aria-expanded={false}
+                    className="character-rename-trigger"
+                    data-testid="character-rename-trigger"
+                    onClick={() => {
+                      setName(character.name);
+                      setRenameOpen(true);
+                    }}
+                    type="button"
+                  >
+                    编辑名称
+                  </button>
+                ) : null}
                 <details className="character-identity-overflow">
                   <summary
                     aria-label={`${character.name} 更多操作`}
@@ -314,49 +391,6 @@ export function CharacterEditor({
               </div>
             </div>
           </section>
-          {renameOpen ? (
-            <form
-              className="character-rename-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!name.trim() || name.trim() === character.name) return;
-                onRenameCharacter(name.trim());
-                setRenameOpen(false);
-              }}
-            >
-              <label>
-                角色名称
-                <input
-                  autoFocus
-                  disabled={disabled}
-                  maxLength={200}
-                  onChange={(event) => setName(event.target.value)}
-                  value={name}
-                />
-              </label>
-              <div>
-                <button
-                  onClick={() => {
-                    setName(character.name);
-                    setRenameOpen(false);
-                  }}
-                  type="button"
-                >
-                  取消
-                </button>
-                <button
-                  disabled={
-                    disabled ||
-                    !name.trim() ||
-                    name.trim() === character.name
-                  }
-                  type="submit"
-                >
-                  应用名称修改
-                </button>
-              </div>
-            </form>
-          ) : null}
         </>
       ) : null}
       {view !== 'expression' && !landscapeDetail ? (
