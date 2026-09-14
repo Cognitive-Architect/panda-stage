@@ -11,6 +11,7 @@ export interface ImageAssetPickerProps {
   assets: readonly ImageAsset[];
   selectedAssetId: string | null;
   thumbnails: Readonly<Record<string, ThumbnailState>>;
+  presentation?: 'default' | 'inline';
   disabled?: boolean;
   onChange: (assetId: string | null) => void;
   onThumbnailError: (assetId: string) => void;
@@ -140,6 +141,7 @@ export function ImageAssetPicker({
   assets,
   selectedAssetId,
   thumbnails,
+  presentation = 'default',
   disabled = false,
   onChange,
   onThumbnailError,
@@ -204,8 +206,9 @@ export function ImageAssetPicker({
   return (
     <section
       aria-label={label}
-      className="image-asset-picker"
+      className={`image-asset-picker${presentation === 'inline' ? ' image-asset-picker-inline' : ''}`}
       data-image-asset-picker={label}
+      data-image-asset-picker-presentation={presentation}
       data-selected-asset-id={selectedAssetId ?? ''}
       data-testid={testId}
     >

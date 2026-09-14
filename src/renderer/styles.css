@@ -32681,3 +32681,138 @@ h1 {
     border-left: 0;
   }
 }
+
+/* Issue #528: restore the approved single-card inline Expression editor. The
+   card keeps its grid column and the shared picker only changes presentation. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing {
+  grid-column: auto;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing
+  .expression-card-main {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing
+  .expression-card-preview {
+  width: 100%;
+  height: 84px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing
+  .expression-card-actions {
+  grid-column: 1;
+  grid-template-columns: minmax(0, 1fr) 40px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing
+  .expression-card-actions
+  > .expression-overflow {
+  grid-column: 2;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing
+  .expression-edit-panel {
+  grid-column: 1;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing
+  .expression-edit-panel
+  input {
+  min-height: 40px;
+  padding: 6px 8px;
+}
+
+.image-asset-picker-inline {
+  gap: 4px;
+}
+
+.image-asset-picker-inline .image-asset-picker-heading {
+  min-height: 20px;
+  font-size: 10px;
+}
+
+.image-asset-picker-inline .image-asset-picker-selected {
+  min-height: 52px;
+  padding: 3px 5px;
+  grid-template-columns: 44px minmax(0, 1fr) max-content;
+  gap: 7px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .image-asset-picker-inline
+  .image-asset-picker-selected {
+  min-height: 52px;
+}
+
+.image-asset-picker-inline .image-asset-picker-selected-thumbnail {
+  width: 44px;
+  height: 44px;
+}
+
+.image-asset-picker-inline .image-asset-picker-selected-action {
+  min-width: 48px;
+  padding: 6px 7px;
+  font-size: 10px;
+}
+
+.image-asset-picker-inline .image-asset-picker-candidates {
+  max-height: 200px;
+  padding: 6px 0 2px;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 5px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .image-asset-picker-inline
+  .image-asset-picker-candidates {
+  max-height: 200px;
+}
+
+.image-asset-picker-inline .image-asset-picker-candidate {
+  height: 112px;
+  padding: 4px;
+  grid-template-rows: 56px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.image-asset-picker-inline .image-asset-picker-candidate-thumbnail {
+  height: 56px;
+}

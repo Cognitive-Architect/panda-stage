@@ -171,7 +171,7 @@ describe('Issue #366 Cloud Touch landscape Expression Management', () => {
     expect(landscapeEditor).not.toContain('onBlur');
   });
 
-  it('keeps only one editing card, reveals the shared visual picker on demand, and protects default deletion', () => {
+  it('keeps only one editing card, uses the compact shared picker, and protects default deletion', () => {
     const { character } = fixture();
     const markup = expressionMarkup();
     const defaultExpression = character.expressions.find(
@@ -194,7 +194,10 @@ describe('Issue #366 Cloud Touch landscape Expression Management', () => {
       'src/renderer/features/characters/ExpressionEditor.tsx',
     );
     expect(editor).toContain('expression-asset-picker-${expression.id}');
-    expect(editor).toContain('更换素材会立即应用；名称修改请点击应用。');
+    expect(editor).toContain('presentation="inline"');
+    expect(editor).toContain('label="图片"');
+    expect(editor).not.toContain('更换素材会立即应用；名称修改请点击应用。');
+    expect(editor).not.toContain("{isEditing ? '收起' : '编辑'}");
     expect(editor).toContain('setEditingExpressionId(expression.id)');
     expect(editor).toContain('setEditingName(expression.name)');
     expect(editor).toContain('ImageAssetPicker');

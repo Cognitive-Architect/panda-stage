@@ -478,20 +478,17 @@ function LandscapeExpressionEditor({
                     设为默认
                   </button>
                 ) : null}
-                <button
-                  aria-expanded={isEditing}
-                  className="expression-edit-trigger"
-                  data-testid={`expression-edit-${expression.id}`}
-                  disabled={disabled}
-                  onClick={() =>
-                    isEditing
-                      ? cancelExpressionEdit()
-                      : startExpressionEdit(expression)
-                  }
-                  type="button"
-                >
-                  {isEditing ? '收起' : '编辑'}
-                </button>
+                {!isEditing ? (
+                  <button
+                    className="expression-edit-trigger"
+                    data-testid={`expression-edit-${expression.id}`}
+                    disabled={disabled}
+                    onClick={() => startExpressionEdit(expression)}
+                    type="button"
+                  >
+                    编辑
+                  </button>
+                ) : null}
                 <details className="expression-overflow">
                   <summary aria-label={`${expression.name} 更多操作`}>⋯</summary>
                   <div className="expression-overflow-menu">
@@ -530,12 +527,12 @@ function LandscapeExpressionEditor({
                   <div className="expression-current-asset">
                     <ImageAssetPicker
                       assets={imageAssets}
-                      helperText="更换素材会立即应用；名称修改请点击应用。"
-                      label="当前素材"
+                      label="图片"
                       onChange={(assetId) => {
                         if (assetId) onSetAsset(expression.id, assetId);
                       }}
                       onThumbnailError={onThumbnailError}
+                      presentation="inline"
                       selectedAssetId={expression.assetId}
                       testId={`expression-asset-picker-${expression.id}`}
                       thumbnails={thumbnails}
