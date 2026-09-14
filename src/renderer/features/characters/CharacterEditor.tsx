@@ -220,7 +220,7 @@ export function CharacterEditor({
             }
             type="button"
           >
-            {landscapeExpression ? '← 返回角色详情' : '← 返回角色列表'}
+            {landscapeExpression ? '← 返回角色详情' : '返回角色列表'}
           </button>
           {landscapeDetail ? (
             <h1
@@ -601,8 +601,7 @@ export function CharacterEditor({
                 </div>
               </div>
               <div className="character-default-transform-controls">
-                <div className="character-setting-control-row">
-                  <span className="character-setting-label">大小</span>
+                <div className="character-scale-control-group">
                   <div
                     aria-label="默认缩放"
                     className="character-scale-stepper"
@@ -703,17 +702,19 @@ export function CharacterEditor({
                   testId="character-detail-mouth-visual-picker"
                   thumbnails={thumbnails}
                   disabled={disabled}
+                  selectedAction={
+                    character.mouthOpenAssetId ? (
+                      <button
+                        className="character-mouth-clear"
+                        disabled={disabled}
+                        onClick={() => onSetMouthOpenAsset(null)}
+                        type="button"
+                      >
+                        清除
+                      </button>
+                    ) : undefined
+                  }
                 />
-                {character.mouthOpenAssetId ? (
-                  <button
-                    className="character-mouth-clear"
-                    disabled={disabled}
-                    onClick={() => onSetMouthOpenAsset(null)}
-                    type="button"
-                  >
-                    清除
-                  </button>
-                ) : null}
               </div>
             </section>
           </section>

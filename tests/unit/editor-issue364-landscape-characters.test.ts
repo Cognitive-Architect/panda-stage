@@ -88,7 +88,8 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     );
 
     expect(markup).toContain('data-testid="character-detail-back"');
-    expect(markup).toContain('← 返回角色列表');
+    expect(markup).toContain('返回角色列表');
+    expect(markup).not.toContain('← 返回角色列表');
     expect(markup).toContain('character-detail-identity');
     expect(markup).toContain(`${character.name} 默认表情`);
     expect(markup).toContain('角色详情');

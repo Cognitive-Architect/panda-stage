@@ -27,6 +27,7 @@ export interface ImageAssetPickerProps {
   selectionConflict?: string;
   helperText?: string;
   emptyActionLabel?: string;
+  selectedAction?: React.ReactNode;
   testId?: string;
 }
 
@@ -148,6 +149,7 @@ export function ImageAssetPicker({
   selectionConflict,
   helperText,
   emptyActionLabel = '选择',
+  selectedAction,
   testId,
 }: ImageAssetPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -166,6 +168,39 @@ export function ImageAssetPicker({
       ? '素材不可用'
       : selectedEmptyState?.label ?? '未选择图片';
 
+  const selectedButton = (
+    <button
+      aria-expanded={open}
+      aria-haspopup="listbox"
+      aria-label={`${label}：${selectedLabel}`}
+      className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}`}
+      data-testid={testId ? `${testId}-selected` : undefined}
+      disabled={disabled}
+      onClick={() => setOpen((current) => !current)}
+      type="button"
+    >
+      {selectedAssetId ? (
+        <AssetThumbnail
+          asset={selectedAsset}
+          className="image-asset-picker-selected-thumbnail"
+          onThumbnailError={onThumbnailError}
+          thumbnail={thumbnails[selectedAssetId]}
+        />
+      ) : (
+        <EmptyAssetThumbnail className="image-asset-picker-selected-thumbnail" />
+      )}
+      <span className="image-asset-picker-selected-copy">
+        <strong>{selectedLabel}</strong>
+        <small>
+          {assetMetadata(selectedAsset, selectedAssetId, selectedEmptyState)}
+        </small>
+      </span>
+      <span aria-hidden="true" className="image-asset-picker-selected-action">
+        {open ? '收起' : selectedAssetId ? '更换' : emptyActionLabel}
+      </span>
+    </button>
+  );
+
   return (
     <section
       aria-label={label}
@@ -178,36 +213,14 @@ export function ImageAssetPicker({
         <strong>{label}</strong>
         {emptyOption?.optional ? <small>可选</small> : null}
       </div>
-      <button
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={`${label}：${selectedLabel}`}
-        className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}`}
-        data-testid={testId ? `${testId}-selected` : undefined}
-        disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        type="button"
-      >
-        {selectedAssetId ? (
-          <AssetThumbnail
-            asset={selectedAsset}
-            className="image-asset-picker-selected-thumbnail"
-            onThumbnailError={onThumbnailError}
-            thumbnail={thumbnails[selectedAssetId]}
-          />
-        ) : (
-          <EmptyAssetThumbnail className="image-asset-picker-selected-thumbnail" />
-        )}
-        <span className="image-asset-picker-selected-copy">
-          <strong>{selectedLabel}</strong>
-          <small>
-            {assetMetadata(selectedAsset, selectedAssetId, selectedEmptyState)}
-          </small>
-        </span>
-        <span aria-hidden="true" className="image-asset-picker-selected-action">
-          {open ? '收起' : selectedAssetId ? '更换' : emptyActionLabel}
-        </span>
-      </button>
+      {selectedAction && selectedAssetId ? (
+        <div className="image-asset-picker-selected-row">
+          {selectedButton}
+          {selectedAction}
+        </div>
+      ) : (
+        selectedButton
+      )}
       {selectionConflict ? (
         <small className="image-asset-picker-conflict" role="alert">
           {selectionConflict}
