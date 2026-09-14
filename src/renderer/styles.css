@@ -30931,7 +30931,7 @@ h1 {
   border-radius: 50%;
   background: var(--ui-color-text-secondary, #b5c9ba);
   box-shadow: 0 1px 3px rgb(0 0 0 / 32%);
-  transform: translateX(0);
+  transform: translate(0);
   transition:
     background 120ms ease,
     transform 120ms ease;
@@ -30946,7 +30946,7 @@ h1 {
 .dialogue-subtitle-style-toggle[aria-checked='true']
   .dialogue-subtitle-style-toggle-thumb {
   background: var(--ui-color-accent, #9fe0b0);
-  transform: translateX(14px);
+  transform: translate(14px);
 }
 
 .dialogue-subtitle-style-toggle:hover:not(:disabled)
