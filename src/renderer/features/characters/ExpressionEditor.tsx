@@ -361,9 +361,7 @@ function LandscapeExpressionEditor({
     >
       <div className="expression-editor-landscape-heading">
         <div>
-          <p className="eyebrow">角色表情</p>
           <h4 id="character-expression-workspace-heading">表情</h4>
-          <span>在此查看并管理当前角色的表情。</span>
         </div>
         <button
           aria-expanded={isAddOpen}

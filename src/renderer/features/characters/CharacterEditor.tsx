@@ -281,7 +281,6 @@ export function CharacterEditor({
               )}
             </div>
             <div className="character-detail-identity-copy">
-              <p className="eyebrow">角色</p>
               <h3>{character.name}</h3>
               <span>{character.expressions.length} 个表情</span>
               <div className="character-detail-identity-actions">
