@@ -102,7 +102,7 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     expect(markup).toContain(`${character.defaultScale.toFixed(1)}×`);
     expect(markup).toContain('role="switch"');
     expect(markup).toContain('水平翻转');
-    expect(markup).toContain('嘴型');
+    expect(markup).toContain('张嘴图');
     expect(markup).toContain('未设置');
     expect(markup).toContain('选择图片');
     expect(markup).toContain('character-delete-overflow');

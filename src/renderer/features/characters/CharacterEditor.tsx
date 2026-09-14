@@ -536,7 +536,12 @@ export function CharacterEditor({
               type="button"
             >
               <span>表情</span>
-              <span aria-hidden="true">{character.expressions.length}</span>
+              <span
+                aria-hidden="true"
+                className="character-workspace-tab-count"
+              >
+                {character.expressions.length}
+              </span>
             </button>
             <button
               aria-controls="character-workspace-settings"
@@ -585,13 +590,11 @@ export function CharacterEditor({
             id="character-workspace-settings"
           >
             <section
-              aria-labelledby="character-settings-workspace-heading"
               className="character-settings-section character-default-presentation"
               data-default-transform-pending={hasPendingTransform}
             >
               <div className="character-section-heading">
                 <div>
-                  <p className="eyebrow">角色设置</p>
                   <h4 id="character-settings-workspace-heading">
                     默认大小与方向
                   </h4>
@@ -681,23 +684,17 @@ export function CharacterEditor({
                 </div>
               ) : null}
             </section>
-            <section
-              aria-labelledby="character-mouth-heading"
-              className="character-settings-section character-mouth-setting-visual"
-            >
-              <div className="character-section-heading">
-                <div>
-                  <h4 id="character-mouth-heading">嘴型</h4>
-                </div>
-              </div>
-              <div className="character-mouth-state">
+            <section className="character-settings-section character-mouth-setting-visual">
+              <div
+                className={`character-mouth-state${character.mouthOpenAssetId ? ' is-configured' : ''}`}
+                data-mouth-configured={Boolean(character.mouthOpenAssetId)}
+              >
                 <ImageAssetPicker
                   assets={imageAssets}
                   emptyActionLabel="选择图片"
                   emptyOption={{
                     description: '设置张嘴图后，可在表情中使用。',
                     label: '未设置',
-                    optional: true,
                   }}
                   label="张嘴图"
                   onChange={onSetMouthOpenAsset}
