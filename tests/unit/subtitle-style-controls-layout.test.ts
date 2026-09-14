@@ -53,48 +53,50 @@ describe('Issue #521 subtitle-style final visual polish', () => {
   });
 
   it('uses compact horizontal rows while retaining touch-sized controls', () => {
-    const issue520Styles = stylesSource.slice(
+    const issue521Styles = stylesSource.slice(
       stylesSource.indexOf('/* Issue #521:'),
     );
 
-    expect(issue520Styles).toContain(
+    expect(issue521Styles).toContain(
       '.dialogue-subtitle-style-primary-row',
     );
-    expect(issue520Styles).toContain(
+    expect(issue521Styles).toContain(
       'grid-template-columns: minmax(0, 1fr) auto',
     );
-    expect(issue520Styles).toContain(
+    expect(issue521Styles).toContain(
       '.dialogue-subtitle-style-outline-row',
     );
-    expect(issue520Styles).toContain(
+    expect(issue521Styles).toContain(
       'grid-template-columns: 52px 38px minmax(0, 1fr)',
     );
-    expect(issue520Styles).toContain(
-      'grid-template-columns: minmax(104px, 116px) 36px',
+    expect(issue521Styles).toContain(
+      'grid-template-columns: minmax(0, 1fr) auto',
     );
-    expect(issue520Styles).toContain(
+    expect(issue521Styles).toContain(
       'grid-template-columns: repeat(3, minmax(0, 1fr))',
     );
-    expect(issue520Styles).toContain(
+    expect(issue521Styles).toContain(
       'grid-template-columns: 36px minmax(44px, 1fr) 36px',
     );
-    expect(issue520Styles).toContain('gap: 12px');
-    expect(issue520Styles).toContain('gap: 0');
-    expect(issue520Styles).toContain('width: min(232px, 100%)');
-    expect(issue520Styles).toContain('border-radius: var(--ui-radius-medium, 10px)');
-    expect(issue520Styles).toContain(
+    expect(issue521Styles).toContain(
+      'grid-template-columns: 36px minmax(0, 1fr) 36px',
+    );
+    expect(issue521Styles).toContain('gap: 12px');
+    expect(issue521Styles).toContain('gap: 0');
+    expect(issue521Styles).toContain('width: min(232px, 100%)');
+    expect(issue521Styles).toContain('border-radius: var(--ui-radius-medium, 10px)');
+    expect(issue521Styles).toContain(
       '.dialogue-subtitle-style-position-control button + button',
     );
-    expect(issue520Styles).toContain('border-left: 1px solid');
-    expect(issue520Styles).toContain('grid-template-columns: 52px minmax(0, 1fr)');
-    expect(issue520Styles).toContain('padding-left: 10px');
-    expect(issue520Styles).toContain('border-left: 1px solid');
-    expect(issue520Styles).toContain(
+    expect(issue521Styles).toContain('border-left: 1px solid');
+    expect(issue521Styles).toContain('grid-template-columns: 52px minmax(0, 1fr)');
+    expect(issue521Styles).toContain('padding-left: 10px');
+    expect(issue521Styles).toContain(
       '.dialogue-subtitle-style-toggle-track',
     );
-    expect(issue520Styles).toContain('width: 36px !important');
-    expect(issue520Styles).toContain('height: 36px !important');
-    expect(issue520Styles).toContain('min-height: 38px !important');
-    expect(issue520Styles).not.toContain('min-width: 148px');
+    expect(issue521Styles).toContain('width: 36px !important');
+    expect(issue521Styles).toContain('height: 36px !important');
+    expect(issue521Styles).toContain('min-height: 38px !important');
+    expect(issue521Styles).not.toContain('min-width: 148px');
   });
 });

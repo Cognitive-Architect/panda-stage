@@ -30969,7 +30969,7 @@ h1 {
 .dialogue-subtitle-style-subordinate {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(104px, 116px) 36px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   justify-content: start;
   gap: 8px;
@@ -30998,9 +30998,10 @@ h1 {
 }
 
 .dialogue-subtitle-style-outline-row .dialogue-subtitle-style-stepper {
-  width: 100%;
+  width: 116px;
   min-width: 0;
-  flex: 1 1 116px;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  flex: 0 1 116px;
 }
 
 .dialogue-subtitle-style-color-row {
