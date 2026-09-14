@@ -13,7 +13,12 @@ function source(path: string): string {
 describe('Issue #502 final A07 New Dialogue correction', () => {
   const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
   const styles = source('src/renderer/styles.css');
-  const issue502Styles = styles.slice(styles.lastIndexOf('/* Issue #502:'));
+  const issue502Start = styles.lastIndexOf('/* Issue #502:');
+  const nextIssueStart = styles.indexOf('/* Issue #', issue502Start + 1);
+  const issue502Styles = styles.slice(
+    issue502Start,
+    nextIssueStart === -1 ? undefined : nextIssueStart,
+  );
 
   it('uses 当前绑定 only for the selected Character in the right workspace', () => {
     const project = migrateProject(exampleProject);
