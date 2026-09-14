@@ -395,6 +395,46 @@ async function selectResourceActivity(window, activity) {
   );
 }
 
+async function openCharacterExpressions(window) {
+  await window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector(
+      '[data-testid="character-expression-open"], ' +
+        '[data-testid="character-workspace-expressions-tab"]'
+    );
+    if (!(trigger instanceof HTMLButtonElement)) {
+      throw new Error('Character expression navigation did not render.');
+    }
+    trigger.click();
+  })()`);
+}
+
+async function backToCharacterDetail(window) {
+  await window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector(
+      '[data-testid="character-expression-back"]'
+    );
+    if (trigger instanceof HTMLButtonElement) trigger.click();
+  })()`);
+}
+
+async function openCharacterSettings(window) {
+  await window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector(
+      '[data-testid="character-workspace-settings-tab"]'
+    );
+    if (!(trigger instanceof HTMLButtonElement)) {
+      throw new Error('Character settings navigation did not render.');
+    }
+    trigger.click();
+  })()`);
+  await window.webContents.executeJavaScript(
+    waitFor(
+      "document.querySelector('[data-testid=\"character-settings-workspace\"]')?.hidden === false",
+      'Character settings workspace did not open.',
+    ),
+  );
+}
+
 async function verifyDay19() {
   const normal = await fixture('熊猫 normal.png');
   const angry = await fixture('熊猫 angry.png');
@@ -640,12 +680,12 @@ async function verifyDay19() {
         'Character detail did not render.',
       ),
     );
-    await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="character-expression-open"]').click()
-    `);
+    await openCharacterExpressions(window);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
+        "(document.querySelector('[data-testid=\"character-expression-view\"]') || " +
+          "(document.querySelector('[data-testid=\"character-detail-view\"]') && " +
+            "document.querySelector('[data-testid=\"character-expression-workspace\"]')?.hidden === false)) && " +
           "(document.querySelectorAll('.expression-card-list > li').length === 2 || " +
             "document.querySelectorAll('.expression-list li').length === 2) && " +
           "document.querySelector(" +
@@ -754,9 +794,7 @@ async function verifyDay19() {
           .dataset.expressionId
       `);
 
-    await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="character-expression-back"]').click()
-    `);
+    await backToCharacterDetail(window);
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
@@ -772,6 +810,7 @@ async function verifyDay19() {
     const expectedScale = isLandscapeCharacter ? '0.7' : '0.75';
     const expectedScaleNumber = Number(expectedScale);
     if (isLandscapeCharacter) {
+      await openCharacterSettings(window);
       await window.webContents.executeJavaScript(`(async () => {
         const nextFrame = () => new Promise((resolve) =>
           requestAnimationFrame(resolve)
@@ -780,13 +819,16 @@ async function verifyDay19() {
           '.character-scale-stepper button:first-of-type'
         );
         const flipSwitch = document.querySelector('.character-flip-switch');
-        const apply = document.querySelector('.character-default-apply');
-        if (!decrease || !flipSwitch || !apply) {
+        if (!decrease || !flipSwitch) {
           throw new Error('Landscape character transform controls did not render.');
         }
         for (let index = 0; index < 3; index += 1) {
           decrease.click();
           await nextFrame();
+        }
+        const apply = document.querySelector('.character-default-apply');
+        if (!apply) {
+          throw new Error('Landscape character transform apply did not render.');
         }
         flipSwitch.click();
         await nextFrame();
@@ -856,12 +898,12 @@ async function verifyDay19() {
         )?.closest('[data-testid="legacy-workspace-scroll"]'))
         };
       })()`);
-    await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="character-expression-open"]').click()
-    `);
+    await openCharacterExpressions(window);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
+        "(document.querySelector('[data-testid=\"character-expression-view\"]') || " +
+          "(document.querySelector('[data-testid=\"character-detail-view\"]') && " +
+            "document.querySelector('[data-testid=\"character-expression-workspace\"]')?.hidden === false)) && " +
           "(document.querySelectorAll('.expression-card-list > li').length === 2 || " +
             "document.querySelectorAll('.expression-list li').length === 2) && " +
           "document.querySelector(" +
@@ -959,12 +1001,12 @@ async function verifyDay19() {
             : Boolean(flipInput?.checked)
         };
       })()`);
-    await window.webContents.executeJavaScript(`
-      document.querySelector('[data-testid="character-expression-open"]').click()
-    `);
+    await openCharacterExpressions(window);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('[data-testid=\"character-expression-view\"]') && " +
+        "(document.querySelector('[data-testid=\"character-expression-view\"]') || " +
+          "(document.querySelector('[data-testid=\"character-detail-view\"]') && " +
+            "document.querySelector('[data-testid=\"character-expression-workspace\"]')?.hidden === false)) && " +
           "(document.querySelectorAll('.expression-card-list > li').length === 2 || " +
             "document.querySelectorAll('.expression-list li').length === 2) && " +
           "document.querySelector(" +
