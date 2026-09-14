@@ -32080,6 +32080,14 @@ h1 {
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
+  .character-settings-workspace
+  > .character-settings-section.character-default-presentation {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
   .character-detail-identity-actions {
   flex-wrap: nowrap;
   justify-self: end;

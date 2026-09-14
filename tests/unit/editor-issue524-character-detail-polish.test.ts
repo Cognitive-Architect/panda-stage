@@ -90,6 +90,10 @@ describe('Issue #524 R8 Character Detail visual polish', () => {
     expect(polish).toContain('align-self: start');
     expect(polish).toContain('height: 84px');
     expect(polish).toContain(
+      '.character-settings-workspace\n  > .character-settings-section.character-default-presentation',
+    );
+    expect(polish).toContain('grid-template-columns: minmax(0, 1fr);');
+    expect(polish).toContain(
       'grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px',
     );
     expect(polish).toContain('grid-column: auto');
