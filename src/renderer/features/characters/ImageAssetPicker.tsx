@@ -26,6 +26,7 @@ export interface ImageAssetPickerProps {
   getDisabledReason?: (asset: ImageAsset) => string | undefined;
   selectionConflict?: string;
   helperText?: string;
+  emptyActionLabel?: string;
   testId?: string;
 }
 
@@ -146,6 +147,7 @@ export function ImageAssetPicker({
   getDisabledReason,
   selectionConflict,
   helperText,
+  emptyActionLabel = '选择',
   testId,
 }: ImageAssetPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -203,7 +205,7 @@ export function ImageAssetPicker({
           </small>
         </span>
         <span aria-hidden="true" className="image-asset-picker-selected-action">
-          {open ? '收起' : selectedAssetId ? '更换' : '选择'}
+          {open ? '收起' : selectedAssetId ? '更换' : emptyActionLabel}
         </span>
       </button>
       {selectionConflict ? (

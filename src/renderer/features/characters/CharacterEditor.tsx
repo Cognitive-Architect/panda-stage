@@ -15,6 +15,7 @@ import {
 
 export type CharacterEditorView = 'full' | 'detail' | 'expression';
 export type CharacterEditorPresentation = 'default' | 'landscape';
+export type CharacterDetailWorkspace = 'expressions' | 'settings';
 
 export function isDefaultTransformPending(
   character: Pick<Character, 'defaultScale' | 'defaultFlipX'>,
@@ -123,6 +124,15 @@ export function CharacterEditor({
   const [scale, setScale] = useState(character?.defaultScale ?? 1);
   const [flipX, setFlipX] = useState(character?.defaultFlipX ?? false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] =
+    useState<CharacterDetailWorkspace>('expressions');
+
+  useEffect(() => {
+    if (!character) return;
+    setName(character.name);
+    setRenameOpen(false);
+    setActiveWorkspace('expressions');
+  }, [character?.id]);
 
   useEffect(() => {
     if (!character) return;
@@ -203,7 +213,7 @@ export function CharacterEditor({
           <strong className="character-detail-navigation-title">
             {landscapeExpression
               ? `${character.name} · 表情管理`
-              : character.name}
+              : '角色详情'}
           </strong>
           <button
             aria-label="关闭角色抽屉"
@@ -274,14 +284,35 @@ export function CharacterEditor({
               <p className="eyebrow">角色</p>
               <h3>{character.name}</h3>
               <span>{character.expressions.length} 个表情</span>
-              <button
-                aria-expanded={renameOpen}
-                className="character-rename-trigger"
-                onClick={() => setRenameOpen((open) => !open)}
-                type="button"
-              >
-                编辑名称
-              </button>
+              <div className="character-detail-identity-actions">
+                <button
+                  aria-expanded={renameOpen}
+                  className="character-rename-trigger"
+                  onClick={() => setRenameOpen((open) => !open)}
+                  type="button"
+                >
+                  编辑名称
+                </button>
+                <details className="character-identity-overflow">
+                  <summary
+                    aria-label={`${character.name} 更多操作`}
+                    data-testid="character-identity-overflow"
+                  >
+                    ⋯
+                  </summary>
+                  <div className="character-identity-overflow-menu">
+                    <button
+                      className="character-delete-menu-action"
+                      data-testid="character-delete-overflow"
+                      disabled={disabled}
+                      onClick={onDeleteCharacter}
+                      type="button"
+                    >
+                      删除角色
+                    </button>
+                  </div>
+                </details>
+              </div>
             </div>
           </section>
           {renameOpen ? (
@@ -454,191 +485,207 @@ export function CharacterEditor({
       ) : null}
       {landscapeDetail ? (
         <>
-          <section
-            aria-labelledby="character-expression-summary-heading"
-            className="character-expression-summary character-expression-summary-visual"
+          <nav
+            aria-label="角色工作区"
+            className="character-workspace-switcher"
+            data-testid="character-workspace-switcher"
           >
-            <div className="character-section-heading">
-              <h4 id="character-expression-summary-heading">表情</h4>
-              <button
-                data-testid="character-expression-open"
-                onClick={onOpenExpressions}
-                type="button"
-              >
-                管理全部表情
-              </button>
-            </div>
-            <ul className="character-expression-visual-list">
-              {character.expressions.map((expression) => {
-                const thumbnail = thumbnails[expression.assetId];
-                const assetResolved = imageAssets.some(
-                  (asset) => asset.id === expression.assetId,
-                );
-                const isDefault =
-                  expression.id === character.defaultExpressionId;
-                return (
-                  <li
-                    className={isDefault ? 'character-expression-default' : ''}
-                    data-expression-id={expression.id}
-                    data-expression-default={isDefault}
-                    key={expression.id}
-                  >
-                    <div
-                      className="character-expression-preview"
-                      data-thumbnail-status={
-                        thumbnail?.status ??
-                        (assetResolved ? 'loading' : 'missing')
-                      }
-                    >
-                      {thumbnail?.status === 'ready' ? (
-                        <img
-                          alt={`${expression.name} 表情缩略图`}
-                          onError={() =>
-                            onThumbnailError(expression.assetId)
-                          }
-                          src={thumbnail.dataUrl}
-                        />
-                      ) : (
-                        <CharacterThumbnailFallback
-                          assetResolved={assetResolved}
-                          thumbnail={thumbnail}
-                        />
-                      )}
-                    </div>
-                    <strong>{expression.name}</strong>
-                    <span>{isDefault ? '默认 ✓' : '表情'}</span>
-                  </li>
-                );
-              })}
-            </ul>
+            <button
+              aria-controls="character-workspace-expressions"
+              aria-pressed={activeWorkspace === 'expressions'}
+              className={
+                activeWorkspace === 'expressions'
+                  ? 'character-workspace-tab is-active'
+                  : 'character-workspace-tab'
+              }
+              data-testid="character-workspace-expressions-tab"
+              onClick={() => setActiveWorkspace('expressions')}
+              type="button"
+            >
+              <span>表情</span>
+              <span aria-hidden="true">{character.expressions.length}</span>
+            </button>
+            <button
+              aria-controls="character-workspace-settings"
+              aria-pressed={activeWorkspace === 'settings'}
+              className={
+                activeWorkspace === 'settings'
+                  ? 'character-workspace-tab is-active'
+                  : 'character-workspace-tab'
+              }
+              data-testid="character-workspace-settings-tab"
+              onClick={() => setActiveWorkspace('settings')}
+              type="button"
+            >
+              角色设置
+            </button>
+          </nav>
+          <section
+            aria-labelledby="character-expression-workspace-heading"
+            className="character-workspace-panel character-expression-workspace"
+            data-testid="character-expression-workspace"
+            data-workspace="expressions"
+            hidden={activeWorkspace !== 'expressions'}
+            id="character-workspace-expressions"
+          >
+            <ExpressionEditor
+              character={character}
+              disabled={disabled}
+              imageAssets={imageAssets}
+              onAdd={onAddExpression}
+              onRemove={onRemoveExpression}
+              onRename={onRenameExpression}
+              onSetAsset={onSetExpressionAsset}
+              onSetDefault={onSetDefaultExpression}
+              onThumbnailError={onThumbnailError}
+              presentation="landscape"
+              thumbnails={thumbnails}
+              warnings={warnings}
+            />
           </section>
           <section
-            className="character-default-presentation"
-            data-default-transform-pending={hasPendingTransform}
+            aria-labelledby="character-settings-workspace-heading"
+            className="character-workspace-panel character-settings-workspace"
+            data-testid="character-settings-workspace"
+            data-workspace="settings"
+            hidden={activeWorkspace !== 'settings'}
+            id="character-workspace-settings"
           >
-            <div className="character-section-heading">
-              <h4>默认表现</h4>
+            <section
+              aria-labelledby="character-settings-workspace-heading"
+              className="character-settings-section character-default-presentation"
+              data-default-transform-pending={hasPendingTransform}
+            >
+              <div className="character-section-heading">
+                <div>
+                  <p className="eyebrow">角色设置</p>
+                  <h4 id="character-settings-workspace-heading">
+                    默认大小与方向
+                  </h4>
+                </div>
+              </div>
+              <div className="character-default-transform-controls">
+                <div className="character-setting-control-row">
+                  <span className="character-setting-label">大小</span>
+                  <div
+                    aria-label="默认缩放"
+                    className="character-scale-stepper"
+                    role="group"
+                  >
+                    <button
+                      aria-label="减小默认缩放"
+                      disabled={disabled || scale <= 0.1}
+                      onClick={() => adjustScale(-0.1)}
+                      type="button"
+                    >
+                      −
+                    </button>
+                    <output aria-live="polite">{scale.toFixed(1)}×</output>
+                    <button
+                      aria-label="增大默认缩放"
+                      disabled={disabled || scale >= 10}
+                      onClick={() => adjustScale(0.1)}
+                      type="button"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <button
+                  aria-checked={flipX}
+                  className="character-flip-switch"
+                  disabled={disabled}
+                  onClick={() => setFlipX((current) => !current)}
+                  role="switch"
+                  type="button"
+                >
+                  <span>水平翻转</span>
+                  <span aria-hidden="true" className="character-switch-track">
+                    <span />
+                  </span>
+                </button>
+              </div>
               {hasPendingTransform ? (
-                <span
+                <div
                   aria-live="polite"
                   className="character-default-pending"
                   data-testid="character-default-pending"
+                  role="status"
                 >
-                  ● 未应用
-                </span>
+                  <div>
+                    <strong>● 有未应用更改</strong>
+                    <span>当前设置尚未应用到角色</span>
+                  </div>
+                  <div className="character-default-action-row">
+                    <button
+                      aria-label="还原未应用的默认表现"
+                      className="character-default-revert"
+                      data-testid="character-default-revert"
+                      disabled={disabled}
+                      onClick={() => {
+                        setScale(character.defaultScale);
+                        setFlipX(character.defaultFlipX);
+                      }}
+                      type="button"
+                    >
+                      还原
+                    </button>
+                    <button
+                      className="character-default-apply"
+                      data-pending="true"
+                      disabled={
+                        disabled ||
+                        !Number.isFinite(scale) ||
+                        scale < 0.1 ||
+                        scale > 10
+                      }
+                      onClick={() => onSetDefaultTransform(scale, flipX)}
+                      type="button"
+                    >
+                      应用
+                    </button>
+                  </div>
+                </div>
               ) : null}
-            </div>
-            <div
-              aria-label="默认缩放"
-              className="character-scale-stepper"
-              role="group"
+            </section>
+            <section
+              aria-labelledby="character-mouth-heading"
+              className="character-settings-section character-mouth-setting-visual"
             >
-              <button
-                aria-label="减小默认缩放"
-                disabled={disabled || scale <= 0.1}
-                onClick={() => adjustScale(-0.1)}
-                type="button"
-              >
-                −
-              </button>
-              <output aria-live="polite">{scale.toFixed(1)}×</output>
-              <button
-                aria-label="增大默认缩放"
-                disabled={disabled || scale >= 10}
-                onClick={() => adjustScale(0.1)}
-                type="button"
-              >
-                +
-              </button>
-            </div>
-            <button
-              aria-checked={flipX}
-              className="character-flip-switch"
-              disabled={disabled}
-              onClick={() => setFlipX((current) => !current)}
-              role="switch"
-              type="button"
-            >
-              <span>水平翻转</span>
-              <span aria-hidden="true" className="character-switch-track">
-                <span />
-              </span>
-            </button>
-            <div className="character-default-action-row">
-              <button
-                className="character-default-apply"
-                data-pending={hasPendingTransform}
-                disabled={
-                  disabled ||
-                  !Number.isFinite(scale) ||
-                  scale < 0.1 ||
-                  scale > 10 ||
-                  !hasPendingTransform
-                }
-                onClick={() => onSetDefaultTransform(scale, flipX)}
-                type="button"
-              >
-                应用默认表现
-              </button>
-              {hasPendingTransform ? (
-                <button
-                  aria-label="还原未应用的默认表现"
-                  className="character-default-revert"
-                  data-testid="character-default-revert"
-                  disabled={disabled}
-                  onClick={() => {
-                    setScale(character.defaultScale);
-                    setFlipX(character.defaultFlipX);
+              <div className="character-section-heading">
+                <div>
+                  <h4 id="character-mouth-heading">嘴型</h4>
+                </div>
+              </div>
+              <div className="character-mouth-state">
+                <ImageAssetPicker
+                  assets={imageAssets}
+                  emptyActionLabel="选择图片"
+                  emptyOption={{
+                    description: '设置张嘴图后，可在表情中使用。',
+                    label: '未设置',
+                    optional: true,
                   }}
-                  type="button"
-                >
-                  还原
-                </button>
-              ) : null}
-            </div>
-          </section>
-          <section className="character-mouth-setting-visual">
-            <div className="character-section-heading">
-              <h4>嘴型</h4>
-            </div>
-            <div className="character-mouth-state">
-              <ImageAssetPicker
-                assets={imageAssets}
-                emptyOption={{
-                  description: '安全降级为闭嘴。',
-                  label: '未配置',
-                  optional: true,
-                }}
-                label="张嘴图素材"
-                onChange={onSetMouthOpenAsset}
-                onThumbnailError={onThumbnailError}
-                selectedAssetId={character.mouthOpenAssetId ?? null}
-                testId="character-detail-mouth-visual-picker"
-                thumbnails={thumbnails}
-                disabled={disabled}
-              />
-              {character.mouthOpenAssetId ? (
-                <button
-                  className="character-mouth-clear"
+                  label="张嘴图"
+                  onChange={onSetMouthOpenAsset}
+                  onThumbnailError={onThumbnailError}
+                  selectedAssetId={character.mouthOpenAssetId ?? null}
+                  testId="character-detail-mouth-visual-picker"
+                  thumbnails={thumbnails}
                   disabled={disabled}
-                  onClick={() => onSetMouthOpenAsset(null)}
-                  type="button"
-                >
-                  清除
-                </button>
-              ) : null}
-            </div>
-          </section>
-          <section className="character-danger-zone">
-            <h4>危险操作</h4>
-            <button
-              className="character-delete-button"
-              disabled={disabled}
-              onClick={onDeleteCharacter}
-              type="button"
-            >
-              删除角色
-            </button>
+                />
+                {character.mouthOpenAssetId ? (
+                  <button
+                    className="character-mouth-clear"
+                    disabled={disabled}
+                    onClick={() => onSetMouthOpenAsset(null)}
+                    type="button"
+                  >
+                    清除
+                  </button>
+                ) : null}
+              </div>
+            </section>
           </section>
         </>
       ) : null}

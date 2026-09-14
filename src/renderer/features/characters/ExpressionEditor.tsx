@@ -355,15 +355,15 @@ function LandscapeExpressionEditor({
 
   return (
     <section
-      aria-label="表情管理"
+      aria-label="表情管理工作区"
       className="expression-editor expression-editor-landscape"
       data-expression-editor-presentation="landscape"
     >
       <div className="expression-editor-landscape-heading">
         <div>
           <p className="eyebrow">角色表情</p>
-          <h4>表情管理</h4>
-          <span>先查看表情，再按需编辑。</span>
+          <h4 id="character-expression-workspace-heading">表情</h4>
+          <span>在此查看并管理当前角色的表情。</span>
         </div>
         <button
           aria-expanded={isAddOpen}
@@ -471,6 +471,7 @@ function LandscapeExpressionEditor({
               <div className="expression-card-actions">
                 {!isDefault ? (
                   <button
+                    className="expression-default-trigger"
                     data-testid={`expression-default-${expression.id}`}
                     disabled={disabled}
                     onClick={() => onSetDefault(expression.id)}

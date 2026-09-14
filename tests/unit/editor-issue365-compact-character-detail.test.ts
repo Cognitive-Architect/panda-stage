@@ -98,7 +98,8 @@ describe('Issue #365 compact landscape Character Detail', () => {
     expect(markup).toContain('data-detail-close="true"');
     expect(markup).toContain('data-preview-fit="contain"');
     expect(markup).toContain('data-default-transform-pending="false"');
-    expect(markup).toContain('class="character-default-apply" data-pending="false"');
+    expect(markup).toContain('默认大小与方向');
+    expect(markup).not.toContain('class="character-default-apply"');
     expect(markup).not.toContain('character-default-pending');
   });
 
