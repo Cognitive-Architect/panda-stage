@@ -634,7 +634,8 @@ async function verifyDay19() {
           "document.querySelector('.character-detail-identity-copy h3, .character-editor-heading h3')" +
           "?.textContent?.trim() === 'Panda' && " +
           "document.querySelectorAll(" +
-            "'.character-expression-visual-list li, .character-expression-summary-list li'" +
+            "'.character-expression-visual-list li, .character-expression-summary-list li, " +
+              ".expression-card-list > li, .expression-list li'" +
           ").length === 2",
         'Character detail did not render.',
       ),
@@ -919,7 +920,8 @@ async function verifyDay19() {
       waitFor(
         "document.querySelector('[data-testid=\"character-detail-view\"]') && " +
           "document.querySelectorAll(" +
-            "'.character-expression-visual-list li, .character-expression-summary-list li'" +
+            "'.character-expression-visual-list li, .character-expression-summary-list li, " +
+              ".expression-card-list > li, .expression-list li'" +
           ").length === 2 && " +
           "document.querySelector('[data-testid=\"character-detail-mouth-picker\"], " +
             "[data-testid=\"character-detail-mouth-visual-picker\"]')" +
