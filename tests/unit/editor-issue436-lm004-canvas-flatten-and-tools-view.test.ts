@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
   TIMELINE_EXPANDED_MAX_HEIGHT,
   TIMELINE_EXPANDED_MIN_HEIGHT,
@@ -12,7 +13,7 @@ function source(path: string): string {
 
 describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocation', () => {
   it('flattens the outer .canvas-workspace chrome (no panel border / background / padding)', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const mainBlock = styles.match(
       /^\.canvas-workspace\s*\{[\s\S]*?\n\}/um,
     )?.[0] ?? '';
@@ -27,7 +28,7 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
   });
 
   it('flattens the inner .project-canvas panel chrome (no border / background / 1180px cap)', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const mainBlock = styles.match(
       /^\.project-canvas\s*\{[\s\S]*?\n\}/um,
     )?.[0] ?? '';
@@ -40,7 +41,7 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
   });
 
   it('keeps the functional .canvas-viewport, .canvas-viewport-content, .canvas-logical-stage layers intact', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     // The viewport, content wrapper, and logical stage must all still be
     // defined (fit calc, scroll, drop, transform, hit test).
@@ -59,7 +60,7 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
 
   it('exposes the two viewport mode controls inside the right-side 工具 surface', () => {
     const tools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(tools).toContain('project-tools-view-mode-card');
     expect(tools).toContain('project-tools-view-mode-heading');
@@ -152,7 +153,7 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
   });
 
   it('preserves the R1-R3 contracts (no Timeline geometry change, single right rail)', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const timeline = source(
       'src/renderer/features/timeline/timelineUiStore.ts',
     );

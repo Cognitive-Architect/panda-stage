@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 // Issue #195 review-follow-up contracts. These are source/CSS-level locks that
 // pin the confirmed fixes from the verification matrix. Behavioral interaction
@@ -9,7 +10,7 @@ function readSource(path: string): string {
 }
 
 describe('Day 26 review follow-up #195 contracts', () => {
-  const styles = readSource('src/renderer/styles.css');
+  const styles = readOrderedStylesheetSource();
   const timelineDock = readSource(
     'src/renderer/features/timeline/TimelineDock.tsx',
   );

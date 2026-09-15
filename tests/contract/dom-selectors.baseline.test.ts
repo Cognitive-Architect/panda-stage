@@ -26,6 +26,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const srcRoot = resolve(here, '../../src');
@@ -79,7 +80,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const newProjectEntry = readSource(
       'renderer/shell/NewProjectEntry.tsx',
     );
-    const styles = readSource('renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(dialog).toContain('data-testid="new-project-dialog"');
     expect(dialog).toContain('data-testid="new-project-parent-directory"');
@@ -103,7 +104,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const overlay = readSource('renderer/shell/ProductPreviewOverlay.tsx');
     const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
-    const styles = readSource('renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     for (const selector of [
       'data-testid="product-preview-overlay"',
@@ -134,7 +135,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const dialog = readSource('renderer/shell/CloseConfirmDialog.tsx');
     const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
-    const styles = readSource('renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     for (const selector of [
       'data-testid="close-confirm-dialog"',
@@ -197,7 +198,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       'renderer/shell/LegacyWorkspace.tsx',
     );
     const app = readSource('renderer/App.tsx');
-    const styles = readSource('renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(app.match(/<EditorShell/gu)).toHaveLength(1);
     expect(app).not.toContain('beforeRecovery=');
@@ -378,7 +379,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const character = readSource(
       'renderer/features/characters/CharacterManager.tsx',
     );
-    const styles = readSource('renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
     expect(shell.match(/<LegacyWorkspace/gu) ?? []).toHaveLength(0);

@@ -55,7 +55,10 @@ describe('UI-M1 touch foundation contract', () => {
     expect(primitives).toContain(':focus-visible');
     expect(primitives).toContain(':disabled');
     expect(primitives).toContain('ui-segmented-tabs__item--selected');
-    expect(styles.length).toBeGreaterThan(3000);
+    expect(styles).toMatch(
+      /^@import '\.\/styles\/tokens\.css';\n@import '\.\/styles\/primitives\.css';\n@import '\.\/styles\/legacy-slices\/01-shell-import-review-base\.css';\n/u,
+    );
+    expect(styles).not.toContain('.app-shell {');
   });
 
   it('makes the quick action drawer the first real production consumer', () => {

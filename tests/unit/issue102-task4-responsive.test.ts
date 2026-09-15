@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function readSource(path: string): string {
   return readFileSync(path, 'utf8');
@@ -7,7 +8,7 @@ function readSource(path: string): string {
 
 describe('Issue 102 Task 4 responsive contract', () => {
   it('defines the narrow cloud-PC layout and contained menu contract', () => {
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(styles).toContain('.task4-hit-target');
     expect(styles).toContain('max-width: min(320px, calc(100vw - 24px));');

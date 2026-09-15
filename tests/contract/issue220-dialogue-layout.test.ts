@@ -1,9 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-
-function readSource(path: string): string {
-  return readFileSync(path, 'utf8');
-}
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function cssRule(styles: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -16,7 +12,7 @@ function cssRule(styles: string, selector: string): string {
 }
 
 describe('Issue 220 Dialogue Sheet bottom-layout contract', () => {
-  const styles = readSource('src/renderer/styles.css');
+  const styles = readOrderedStylesheetSource();
   const timelineRule = cssRule(styles, '.timeline-dock');
   const headerRule = cssRule(styles, '.timeline-header');
   const dialogueRule = cssRule(styles, '.dialogue-sheet');

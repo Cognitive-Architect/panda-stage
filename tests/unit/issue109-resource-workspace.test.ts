@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function readSource(path: string): string {
   return readFileSync(path, 'utf8');
@@ -7,7 +8,7 @@ function readSource(path: string): string {
 
 describe('Issue 109 adaptive resource workspace contract', () => {
   it('defines a docked wide layout and a viewport-contained narrow drawer', () => {
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(styles).toMatch(
       /\.editor-body\s*\{[\s\S]*?minmax\(320px, 360px\)[\s\S]*?minmax\(160px, 180px\)/u,

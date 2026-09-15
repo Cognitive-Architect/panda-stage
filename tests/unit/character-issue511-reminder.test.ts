@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
   CharacterService,
   ProjectSchema,
@@ -138,7 +139,7 @@ describe('Issue #511 R7 V1 legacy Character layer reminder', () => {
       'src/renderer/features/characters/CharacterManager.tsx',
     );
     const inspector = source('src/renderer/shell/RightInspector.tsx');
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(manager).toContain('countLegacyCharacterImageLayers');
     expect(manager).toContain('CHARACTER_BINDING_REMINDER_DURATION_MS = 5_500');

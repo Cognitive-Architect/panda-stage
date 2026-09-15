@@ -1,0 +1,688 @@
+{
+  "issue": 530,
+  "mode": "final-equivalence",
+  "status": "pass",
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "lineCount": 32818,
+    "scanErrors": []
+  },
+  "map": {
+    "sliceCount": 16,
+    "coverage": {
+      "startLine": 3,
+      "endLine": 32818,
+      "lineEndingNormalization": "CRLF and CR are normalized to LF for hashing and comparison; source text is otherwise not reformatted."
+    },
+    "candidateBoundaries": [
+      {
+        "afterLine": 1951,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 2548,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 5350,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 7264,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 10344,
+        "safe": false,
+        "state": {
+          "braceDepth": 2,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 11053,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 13227,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 15732,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 18827,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 21802,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 25734,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 27898,
+        "safe": false,
+        "state": {
+          "braceDepth": 1,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 29223,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 30426,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 32117,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 32818,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      }
+    ],
+    "actualBoundaries": [
+      {
+        "afterLine": 1951,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 2548,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 5350,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 7264,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 10555,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 11053,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 13227,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 15732,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 18827,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 21802,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 25734,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 27996,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 29223,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 30426,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 32117,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      },
+      {
+        "afterLine": 32818,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null
+        }
+      }
+    ],
+    "adjustments": [
+      {
+        "id": "S05",
+        "plannedAfterLine": 10344,
+        "actualAfterLine": 10555,
+        "reason": "The planned cut is inside @media (max-width: 1100px); keep the complete conditional block together."
+      },
+      {
+        "id": "S12",
+        "plannedAfterLine": 27898,
+        "actualAfterLine": 27996,
+        "reason": "The planned cut is inside @media (max-width: 900px), which also contains the Issue #441 block; keep the complete conditional block together before S13."
+      }
+    ]
+  },
+  "pathSensitive": {
+    "all": [
+      {
+        "line": 1,
+        "text": "@import './styles/tokens.css';",
+        "kind": "import"
+      },
+      {
+        "line": 2,
+        "text": "@import './styles/primitives.css';",
+        "kind": "import"
+      },
+      {
+        "line": 6422,
+        "text": "url('/project-launcher-banner.png')",
+        "kind": "url"
+      }
+    ],
+    "s01": [],
+    "relocationRisk": "none"
+  },
+  "directReaderSearch": {
+    "roots": [
+      "tests",
+      "scripts"
+    ],
+    "mentions": [
+      "tests/contract/right-inspector-narrow-review.test.ts",
+      "tests/contract/ui-m1-touch-foundation.test.ts",
+      "tests/helpers/read-stylesheet-source.ts",
+      "tests/integration/right-inspector-narrow.test.ts",
+      "tests/unit/dialogue-inspector-issue468.test.ts",
+      "tests/unit/editor-issue326-portrait-canvas-cleanup.test.ts",
+      "tests/unit/editor-issue327-portrait-shot-shell.test.ts",
+      "tests/unit/editor-issue328-portrait-assets.test.ts",
+      "tests/unit/editor-issue329-portrait-properties.test.ts",
+      "tests/unit/editor-issue330-portrait-timeline.test.ts",
+      "tests/unit/editor-issue331-landscape-resource-drawers.test.ts",
+      "tests/unit/editor-issue332-contextual-inspector.test.ts",
+      "tests/unit/editor-issue338-portrait-properties.test.ts",
+      "tests/unit/editor-issue339-portrait-timeline.test.ts",
+      "tests/unit/editor-issue340-portrait-chrome.test.ts",
+      "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
+      "tests/unit/editor-issue342-icon-pilot.test.ts",
+      "tests/unit/editor-issue344-portrait-assets.test.ts",
+      "tests/unit/editor-issue345-portrait-assets.test.ts",
+      "tests/unit/editor-issue346-portrait-properties.test.ts",
+      "tests/unit/editor-issue347-portrait-transform.test.ts",
+      "tests/unit/editor-issue348-portrait-appearance.test.ts",
+      "tests/unit/editor-issue349-portrait-layer.test.ts",
+      "tests/unit/editor-issue351-timeline-default.test.ts",
+      "tests/unit/editor-issue352-timeline-selected.test.ts",
+      "tests/unit/editor-issue353-timeline-state-c.test.ts",
+      "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+      "tests/unit/editor-issue358-properties-dialogue-inspector.test.ts",
+      "tests/unit/editor-issue359-portrait-timeline-polish.test.ts",
+      "tests/unit/editor-issue360-landscape-shot-drawer.test.ts",
+      "tests/unit/editor-issue361-landscape-shot-drawer.test.ts",
+      "tests/unit/editor-issue362-landscape-shot-create.test.ts",
+      "tests/unit/editor-issue363-landscape-assets.test.ts",
+      "tests/unit/editor-issue364-landscape-characters.test.ts",
+      "tests/unit/editor-issue365-compact-character-detail.test.ts",
+      "tests/unit/editor-issue366-landscape-expression.test.ts",
+      "tests/unit/editor-issue368-landscape-chrome.test.ts",
+      "tests/unit/editor-issue369-project-tools.test.ts",
+      "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
+      "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
+      "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
+      "tests/unit/editor-issue374-landscape-appearance.test.ts",
+      "tests/unit/editor-issue376-landscape-layer.test.ts",
+      "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
+      "tests/unit/editor-issue380-landscape-pending-tray.test.ts",
+      "tests/unit/editor-issue381-landscape-pending-drag.test.ts",
+      "tests/unit/editor-issue382-landscape-task-tray.test.ts",
+      "tests/unit/editor-issue384-timed-task-tray-polish.test.ts",
+      "tests/unit/editor-issue385-timing-card-density.test.ts",
+      "tests/unit/editor-issue386-authoring-shell-polish.test.ts",
+      "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
+      "tests/unit/editor-issue388-landscape-subtitle-properties.test.ts",
+      "tests/unit/editor-issue390-stage-b-raster-workbench.test.ts",
+      "tests/unit/editor-issue392-stage-b-raster-workbench.test.ts",
+      "tests/unit/editor-issue422-landscape-timeline-geometry.test.ts",
+      "tests/unit/editor-issue423-landscape-timeline-minimum.test.ts",
+      "tests/unit/editor-issue426-right-workspace.test.ts",
+      "tests/unit/editor-issue428-right-subtitle-workspace.test.ts",
+      "tests/unit/editor-issue430-r2-subtitle-polish.test.ts",
+      "tests/unit/editor-issue431-r2-polish-batch-2.test.ts",
+      "tests/unit/editor-issue432-r3-timeline-and-subtitle-workspace.test.ts",
+      "tests/unit/editor-issue433-r3-post-corrective.test.ts",
+      "tests/unit/editor-issue435-r3-ruler-track-height.test.ts",
+      "tests/unit/editor-issue441-subtitle-properties-polish.test.ts",
+      "tests/unit/editor-issue443-subtitle-correction-01.test.ts",
+      "tests/unit/editor-issue447-subtitle-audio-polish.test.ts",
+      "tests/unit/editor-issue448-duration-editor.test.ts",
+      "tests/unit/editor-issue454-quick-action.test.ts",
+      "tests/unit/editor-issue456-quick-action.test.ts",
+      "tests/unit/editor-issue457-canvas-first.test.ts",
+      "tests/unit/editor-issue460-two-mode-pan-tools.test.ts",
+      "tests/unit/editor-issue463-subtitle-timing.test.ts",
+      "tests/unit/editor-issue467-wave1.test.ts",
+      "tests/unit/editor-issue469-subtitle-properties.test.ts",
+      "tests/unit/editor-issue474-character-empty-state.test.ts",
+      "tests/unit/editor-issue478-character-header-trim.test.ts",
+      "tests/unit/editor-issue480-shot-empty-state.test.ts",
+      "tests/unit/editor-issue481-shot-polish.test.ts",
+      "tests/unit/editor-issue482-empty-state-polish.test.ts",
+      "tests/unit/editor-issue485-recovery-card.test.ts",
+      "tests/unit/editor-issue486-recovery-overlay.test.ts",
+      "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+      "tests/unit/editor-issue496-dialogue-recovery.test.ts",
+      "tests/unit/editor-issue498-dialogue-distillation.test.ts",
+      "tests/unit/editor-issue499-501-dialogue-distillation.test.ts",
+      "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
+      "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
+      "tests/unit/editor-issue506-shot-thumbnails.test.ts",
+      "tests/unit/editor-issue508-shot-thumbnail-frame.test.ts",
+      "tests/unit/editor-issue524-character-detail-polish.test.ts",
+      "tests/unit/editor-issue525-character-detail-header.test.ts",
+      "tests/unit/editor-issue526-character-settings-polish.test.ts",
+      "tests/unit/editor-issue527-character-settings-balance.test.ts",
+      "tests/unit/editor-issue528-expression-inline-edit.test.ts",
+      "tests/unit/editor-shell-adaptive.test.ts",
+      "tests/unit/fla-review-ux.test.ts",
+      "tests/unit/fla-stage-d-render-workbench.test.ts",
+      "tests/unit/fla-stage-d-v11-layout.test.ts",
+      "tests/unit/fla-stage-e-frame-sequence.test.ts",
+      "tests/unit/fla-stage-f-presentation.test.ts",
+      "tests/unit/left-workspace.test.ts",
+      "tests/unit/product-preview-overlay.test.ts",
+      "tests/unit/project-launcher.test.ts",
+      "tests/unit/subtitle-style-controls-layout.test.ts",
+      "scripts/css-split-manifest.json",
+      "scripts/verification-manifest.json",
+      "scripts/verify-css-split.cjs",
+      "scripts/verify-issue405-stage-g.cjs",
+      "scripts/verify-issue410-project-launcher.cjs"
+    ],
+    "likelyReaders": [
+      "tests/contract/right-inspector-narrow-review.test.ts",
+      "tests/contract/ui-m1-touch-foundation.test.ts",
+      "tests/integration/right-inspector-narrow.test.ts",
+      "tests/unit/dialogue-inspector-issue468.test.ts",
+      "tests/unit/editor-issue326-portrait-canvas-cleanup.test.ts",
+      "tests/unit/editor-issue327-portrait-shot-shell.test.ts",
+      "tests/unit/editor-issue328-portrait-assets.test.ts",
+      "tests/unit/editor-issue329-portrait-properties.test.ts",
+      "tests/unit/editor-issue330-portrait-timeline.test.ts",
+      "tests/unit/editor-issue331-landscape-resource-drawers.test.ts",
+      "tests/unit/editor-issue332-contextual-inspector.test.ts",
+      "tests/unit/editor-issue338-portrait-properties.test.ts",
+      "tests/unit/editor-issue339-portrait-timeline.test.ts",
+      "tests/unit/editor-issue340-portrait-chrome.test.ts",
+      "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
+      "tests/unit/editor-issue342-icon-pilot.test.ts",
+      "tests/unit/editor-issue344-portrait-assets.test.ts",
+      "tests/unit/editor-issue345-portrait-assets.test.ts",
+      "tests/unit/editor-issue346-portrait-properties.test.ts",
+      "tests/unit/editor-issue347-portrait-transform.test.ts",
+      "tests/unit/editor-issue348-portrait-appearance.test.ts",
+      "tests/unit/editor-issue349-portrait-layer.test.ts",
+      "tests/unit/editor-issue351-timeline-default.test.ts",
+      "tests/unit/editor-issue352-timeline-selected.test.ts",
+      "tests/unit/editor-issue353-timeline-state-c.test.ts",
+      "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+      "tests/unit/editor-issue358-properties-dialogue-inspector.test.ts",
+      "tests/unit/editor-issue359-portrait-timeline-polish.test.ts",
+      "tests/unit/editor-issue360-landscape-shot-drawer.test.ts",
+      "tests/unit/editor-issue361-landscape-shot-drawer.test.ts",
+      "tests/unit/editor-issue362-landscape-shot-create.test.ts",
+      "tests/unit/editor-issue363-landscape-assets.test.ts",
+      "tests/unit/editor-issue364-landscape-characters.test.ts",
+      "tests/unit/editor-issue365-compact-character-detail.test.ts",
+      "tests/unit/editor-issue366-landscape-expression.test.ts",
+      "tests/unit/editor-issue368-landscape-chrome.test.ts",
+      "tests/unit/editor-issue369-project-tools.test.ts",
+      "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
+      "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
+      "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
+      "tests/unit/editor-issue374-landscape-appearance.test.ts",
+      "tests/unit/editor-issue376-landscape-layer.test.ts",
+      "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
+      "tests/unit/editor-issue380-landscape-pending-tray.test.ts",
+      "tests/unit/editor-issue381-landscape-pending-drag.test.ts",
+      "tests/unit/editor-issue382-landscape-task-tray.test.ts",
+      "tests/unit/editor-issue384-timed-task-tray-polish.test.ts",
+      "tests/unit/editor-issue385-timing-card-density.test.ts",
+      "tests/unit/editor-issue386-authoring-shell-polish.test.ts",
+      "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
+      "tests/unit/editor-issue388-landscape-subtitle-properties.test.ts",
+      "tests/unit/editor-issue390-stage-b-raster-workbench.test.ts",
+      "tests/unit/editor-issue392-stage-b-raster-workbench.test.ts",
+      "tests/unit/editor-issue422-landscape-timeline-geometry.test.ts",
+      "tests/unit/editor-issue423-landscape-timeline-minimum.test.ts",
+      "tests/unit/editor-issue426-right-workspace.test.ts",
+      "tests/unit/editor-issue428-right-subtitle-workspace.test.ts",
+      "tests/unit/editor-issue430-r2-subtitle-polish.test.ts",
+      "tests/unit/editor-issue431-r2-polish-batch-2.test.ts",
+      "tests/unit/editor-issue432-r3-timeline-and-subtitle-workspace.test.ts",
+      "tests/unit/editor-issue433-r3-post-corrective.test.ts",
+      "tests/unit/editor-issue435-r3-ruler-track-height.test.ts",
+      "tests/unit/editor-issue441-subtitle-properties-polish.test.ts",
+      "tests/unit/editor-issue443-subtitle-correction-01.test.ts",
+      "tests/unit/editor-issue447-subtitle-audio-polish.test.ts",
+      "tests/unit/editor-issue448-duration-editor.test.ts",
+      "tests/unit/editor-issue454-quick-action.test.ts",
+      "tests/unit/editor-issue456-quick-action.test.ts",
+      "tests/unit/editor-issue457-canvas-first.test.ts",
+      "tests/unit/editor-issue460-two-mode-pan-tools.test.ts",
+      "tests/unit/editor-issue463-subtitle-timing.test.ts",
+      "tests/unit/editor-issue467-wave1.test.ts",
+      "tests/unit/editor-issue469-subtitle-properties.test.ts",
+      "tests/unit/editor-issue474-character-empty-state.test.ts",
+      "tests/unit/editor-issue478-character-header-trim.test.ts",
+      "tests/unit/editor-issue480-shot-empty-state.test.ts",
+      "tests/unit/editor-issue481-shot-polish.test.ts",
+      "tests/unit/editor-issue482-empty-state-polish.test.ts",
+      "tests/unit/editor-issue485-recovery-card.test.ts",
+      "tests/unit/editor-issue486-recovery-overlay.test.ts",
+      "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+      "tests/unit/editor-issue496-dialogue-recovery.test.ts",
+      "tests/unit/editor-issue498-dialogue-distillation.test.ts",
+      "tests/unit/editor-issue499-501-dialogue-distillation.test.ts",
+      "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
+      "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
+      "tests/unit/editor-issue506-shot-thumbnails.test.ts",
+      "tests/unit/editor-issue508-shot-thumbnail-frame.test.ts",
+      "tests/unit/editor-issue524-character-detail-polish.test.ts",
+      "tests/unit/editor-issue525-character-detail-header.test.ts",
+      "tests/unit/editor-issue526-character-settings-polish.test.ts",
+      "tests/unit/editor-issue527-character-settings-balance.test.ts",
+      "tests/unit/editor-issue528-expression-inline-edit.test.ts",
+      "tests/unit/editor-shell-adaptive.test.ts",
+      "tests/unit/fla-review-ux.test.ts",
+      "tests/unit/fla-stage-d-render-workbench.test.ts",
+      "tests/unit/fla-stage-d-v11-layout.test.ts",
+      "tests/unit/fla-stage-e-frame-sequence.test.ts",
+      "tests/unit/fla-stage-f-presentation.test.ts",
+      "tests/unit/left-workspace.test.ts",
+      "tests/unit/product-preview-overlay.test.ts",
+      "tests/unit/project-launcher.test.ts",
+      "tests/unit/subtitle-style-controls-layout.test.ts",
+      "scripts/verify-css-split.cjs"
+    ],
+    "materiallyAffected": [
+      "tests/contract/day26-review-followup.test.ts",
+      "tests/contract/dom-selectors.baseline.test.ts",
+      "tests/contract/issue197-timeline-collapse-space.test.ts",
+      "tests/contract/issue220-dialogue-layout.test.ts",
+      "tests/contract/ui-m1-touch-foundation.test.ts",
+      "tests/integration/editor-shell-layout.test.ts",
+      "tests/unit/character-issue511-reminder.test.ts",
+      "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
+      "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
+      "tests/unit/issue102-task4-responsive.test.ts",
+      "tests/unit/issue109-resource-workspace.test.ts"
+    ],
+    "sharedReader": "tests/helpers/read-stylesheet-source.ts"
+  },
+  "extraction": {
+    "extracted": [
+      {
+        "id": "S01",
+        "path": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css",
+        "range": {
+          "startLine": 3,
+          "endLine": 1951
+        },
+        "expectedSha256": "74fc242df333b3fe0bad7ee7ab912ac88f28c9fd212bf74d6e5379573edce7b7",
+        "actualSha256": "74fc242df333b3fe0bad7ee7ab912ac88f28c9fd212bf74d6e5379573edce7b7",
+        "exact": true
+      }
+    ],
+    "pending": [
+      "S02",
+      "S03",
+      "S04",
+      "S05",
+      "S06",
+      "S07",
+      "S08",
+      "S09",
+      "S10",
+      "S11",
+      "S12",
+      "S13",
+      "S14",
+      "S15",
+      "S16"
+    ],
+    "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+    "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+    "exact": true,
+    "rootEntryBytes": 828648,
+    "rootEntryLines": 30870,
+    "stylesheetScanErrors": []
+  },
+  "warnings": [],
+  "failures": []
+}

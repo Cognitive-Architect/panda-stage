@@ -1,0 +1,187 @@
+{
+  "manifestVersion": 1,
+  "issue": 530,
+  "phase": "phase-1-mechanical-css-split",
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "originalFileEndLine": 32818,
+    "legacySourceStartLine": 3,
+    "baseImportLines": [1, 2]
+  },
+  "rootEntry": {
+    "path": "src/renderer/styles.css",
+    "entryImportOrder": [
+      "./styles/tokens.css",
+      "./styles/primitives.css"
+    ]
+  },
+  "coverage": {
+    "startLine": 3,
+    "endLine": 32818,
+    "lineEndingNormalization": "CRLF and CR are normalized to LF for hashing and comparison; source text is otherwise not reformatted."
+  },
+  "slices": [
+    {
+      "id": "S01",
+      "order": 1,
+      "candidateRange": { "startLine": 3, "endLine": 1951 },
+      "range": { "startLine": 3, "endLine": 1951 },
+      "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S02",
+      "order": 2,
+      "candidateRange": { "startLine": 1952, "endLine": 2548 },
+      "range": { "startLine": 1952, "endLine": 2548 },
+      "targetPath": "src/renderer/styles/legacy-slices/02-fla-review-portal.css",
+      "status": "pending"
+    },
+    {
+      "id": "S03",
+      "order": 3,
+      "candidateRange": { "startLine": 2549, "endLine": 5350 },
+      "range": { "startLine": 2549, "endLine": 5350 },
+      "targetPath": "src/renderer/styles/legacy-slices/03-fla-review-workbench.css",
+      "status": "pending"
+    },
+    {
+      "id": "S04",
+      "order": 4,
+      "candidateRange": { "startLine": 5351, "endLine": 7264 },
+      "range": { "startLine": 5351, "endLine": 7264 },
+      "targetPath": "src/renderer/styles/legacy-slices/04-project-launcher.css",
+      "status": "pending"
+    },
+    {
+      "id": "S05",
+      "order": 5,
+      "candidateRange": { "startLine": 7265, "endLine": 10344 },
+      "range": { "startLine": 7265, "endLine": 10555 },
+      "targetPath": "src/renderer/styles/legacy-slices/05-editor-and-render-workspaces.css",
+      "status": "pending",
+      "boundaryAdjustment": {
+        "plannedAfterLine": 10344,
+        "actualAfterLine": 10555,
+        "reason": "The planned cut is inside @media (max-width: 1100px); keep the complete conditional block together."
+      }
+    },
+    {
+      "id": "S06",
+      "order": 6,
+      "candidateRange": { "startLine": 10345, "endLine": 11053 },
+      "range": { "startLine": 10556, "endLine": 11053 },
+      "targetPath": "src/renderer/styles/legacy-slices/06-responsive-shell-and-preview.css",
+      "status": "pending"
+    },
+    {
+      "id": "S07",
+      "order": 7,
+      "candidateRange": { "startLine": 11054, "endLine": 13227 },
+      "range": { "startLine": 11054, "endLine": 13227 },
+      "targetPath": "src/renderer/styles/legacy-slices/07-dialogue-sheet-and-inspector.css",
+      "status": "pending"
+    },
+    {
+      "id": "S08",
+      "order": 8,
+      "candidateRange": { "startLine": 13228, "endLine": 15732 },
+      "range": { "startLine": 13228, "endLine": 15732 },
+      "targetPath": "src/renderer/styles/legacy-slices/08-landscape-resource-drawers.css",
+      "status": "pending"
+    },
+    {
+      "id": "S09",
+      "order": 9,
+      "candidateRange": { "startLine": 15733, "endLine": 18827 },
+      "range": { "startLine": 15733, "endLine": 18827 },
+      "targetPath": "src/renderer/styles/legacy-slices/09-portrait-workspaces.css",
+      "status": "pending"
+    },
+    {
+      "id": "S10",
+      "order": 10,
+      "candidateRange": { "startLine": 18828, "endLine": 21802 },
+      "range": { "startLine": 18828, "endLine": 21802 },
+      "targetPath": "src/renderer/styles/legacy-slices/10-landscape-shot-and-character-workspaces.css",
+      "status": "pending"
+    },
+    {
+      "id": "S11",
+      "order": 11,
+      "candidateRange": { "startLine": 21803, "endLine": 25734 },
+      "range": { "startLine": 21803, "endLine": 25734 },
+      "targetPath": "src/renderer/styles/legacy-slices/11-landscape-inspector-and-canvas-tools.css",
+      "status": "pending"
+    },
+    {
+      "id": "S12",
+      "order": 12,
+      "candidateRange": { "startLine": 25735, "endLine": 27898 },
+      "range": { "startLine": 25735, "endLine": 27996 },
+      "targetPath": "src/renderer/styles/legacy-slices/12-landscape-timeline.css",
+      "status": "pending",
+      "boundaryAdjustment": {
+        "plannedAfterLine": 27898,
+        "actualAfterLine": 27996,
+        "reason": "The planned cut is inside @media (max-width: 900px), which also contains the Issue #441 block; keep the complete conditional block together before S13."
+      }
+    },
+    {
+      "id": "S13",
+      "order": 13,
+      "candidateRange": { "startLine": 27899, "endLine": 29223 },
+      "range": { "startLine": 27997, "endLine": 29223 },
+      "targetPath": "src/renderer/styles/legacy-slices/13-subtitle-properties-and-batch.css",
+      "status": "pending"
+    },
+    {
+      "id": "S14",
+      "order": 14,
+      "candidateRange": { "startLine": 29224, "endLine": 30426 },
+      "range": { "startLine": 29224, "endLine": 30426 },
+      "targetPath": "src/renderer/styles/legacy-slices/14-overlays-and-quick-actions.css",
+      "status": "pending"
+    },
+    {
+      "id": "S15",
+      "order": 15,
+      "candidateRange": { "startLine": 30427, "endLine": 32117 },
+      "range": { "startLine": 30427, "endLine": 32117 },
+      "targetPath": "src/renderer/styles/legacy-slices/15-dialogue-authoring-and-identity.css",
+      "status": "pending"
+    },
+    {
+      "id": "S16",
+      "order": 16,
+      "candidateRange": { "startLine": 32118, "endLine": 32818 },
+      "range": { "startLine": 32118, "endLine": 32818 },
+      "targetPath": "src/renderer/styles/legacy-slices/16-character-detail-and-expression.css",
+      "status": "pending"
+    }
+  ],
+  "readerReview": {
+    "searchRoots": ["tests", "scripts"],
+    "materiallyAffected": [
+      "tests/contract/day26-review-followup.test.ts",
+      "tests/contract/dom-selectors.baseline.test.ts",
+      "tests/contract/issue197-timeline-collapse-space.test.ts",
+      "tests/contract/issue220-dialogue-layout.test.ts",
+      "tests/contract/ui-m1-touch-foundation.test.ts",
+      "tests/integration/editor-shell-layout.test.ts",
+      "tests/unit/character-issue511-reminder.test.ts",
+      "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
+      "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
+      "tests/unit/issue102-task4-responsive.test.ts",
+      "tests/unit/issue109-resource-workspace.test.ts"
+    ],
+    "sharedReader": "tests/helpers/read-stylesheet-source.ts",
+    "notes": [
+      "The complete search is recorded in the generated receipt; changed-file ledgers are mentions, not source readers.",
+      "Issue 197 reads .bottom-workspace from S01 and must use the ordered legacy reader.",
+      "UI-M1 inspects the real entry import manifest and must not use implementation-body length as a split contract."
+    ]
+  }
+}

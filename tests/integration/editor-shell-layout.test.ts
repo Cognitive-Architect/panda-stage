@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function readSource(path: string): string {
   return readFileSync(path, 'utf8');
@@ -26,7 +27,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
   it('builds one fixed top/body/bottom Grid with one real inspector', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const bottom = readSource('src/renderer/shell/BottomWorkspace.tsx');
 
     for (const selector of [
@@ -110,7 +111,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     const panel = readSource(
       'src/renderer/features/recovery/ProjectRecoveryPanel.tsx',
     );
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(count(shell, /<CanvasWorkspace/gu)).toBe(1);
     expect(count(shell, /<LegacyWorkspace/gu)).toBe(0);
@@ -184,7 +185,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     const compatibility = readSource(
       'src/renderer/shell/LegacyCompatibilityActivity.tsx',
     );
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
     expect(shell).toMatch(
@@ -278,7 +279,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
   it('locks root scrolling and keeps debug and gateA as orthogonal overlays', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const flags = readSource('src/renderer/shell/useDebugFlag.ts');
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(styles).toMatch(
       /html,[\s\S]*?body,[\s\S]*?#root\s*\{[\s\S]*?height:\s*100%;[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*hidden;/u,
@@ -329,7 +330,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
   it('mounts the Stage 1B product preview overlay inside the editor layout only', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const legacy = readSource('src/renderer/shell/LegacyWorkspace.tsx');
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(count(shell, /<ProductPreviewOverlay/gu)).toBe(1);
     expect(legacy).not.toContain('ProductPreviewOverlay');
@@ -354,7 +355,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const legacy = readSource('src/renderer/shell/LegacyWorkspace.tsx');
     const start = readSource('src/renderer/shell/StartScreen.tsx');
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(count(shell, /<CloseConfirmDialog/gu)).toBe(1);
     expect(legacy).not.toContain('CloseConfirmDialog');
@@ -425,7 +426,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     const thumbnail = readSource(
       'src/renderer/features/shots/ShotThumbnailPlaceholder.tsx',
     );
-    const styles = readSource('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(left).toContain(
       "auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}",
