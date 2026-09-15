@@ -138,7 +138,7 @@
       "candidateRange": { "startLine": 23800, "endLine": 25876 },
       "range": { "startLine": 23800, "endLine": 25876 },
       "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S13",
@@ -205,6 +205,10 @@
       "tests/unit/editor-issue374-landscape-appearance.test.ts",
       "tests/unit/editor-issue376-landscape-layer.test.ts",
       "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
+      "tests/unit/editor-issue380-landscape-pending-tray.test.ts",
+      "tests/unit/editor-issue381-landscape-pending-drag.test.ts",
+      "tests/unit/editor-issue382-landscape-task-tray.test.ts",
+      "tests/unit/editor-issue388-landscape-subtitle-properties.test.ts",
       "tests/unit/editor-issue456-quick-action.test.ts",
       "tests/unit/editor-issue457-canvas-first.test.ts",
       "tests/unit/editor-issue474-character-empty-state.test.ts",

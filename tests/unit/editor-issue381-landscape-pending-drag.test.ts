@@ -6,6 +6,7 @@ import {
   isPointInsidePendingDropTarget,
   mapPendingDropXToStartMs,
 } from '../../src/renderer/features/timeline/pendingDialogueDrag';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -95,7 +96,7 @@ describe('Issue #381 Cloud Touch landscape Pending subtitle drag-to-place', () =
   });
 
   it('renders one transient ghost/preview and scopes all Stage D CSS to landscape', () => {
-    const styles = issue381Styles(source('src/renderer/styles.css'));
+    const styles = issue381Styles(readOrderedStylesheetSource());
     const landscapeScope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']";
 

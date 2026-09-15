@@ -5,6 +5,7 @@ import {
   type DialogueAuthoringMode,
   type DialogueSelectionState,
 } from '../../src/renderer/features/dialogue/DialogueSheet';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -70,7 +71,7 @@ describe('Issue #382 Cloud Touch landscape unified Task Tray', () => {
   });
 
   it('bounds long task content within Cloud Touch landscape only', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const start = styles.lastIndexOf('/* Issue #382:');
     const stageE = styles.slice(start);
 
