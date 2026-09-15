@@ -25,7 +25,7 @@
 
 ## P1-07 Windows Electron acceptance
 
-**PASS — 2026-09-15.** Maintainer completed the declared reachable Windows Electron acceptance on the Windows Electron build from code HEAD `ee9c0515c8cf9c9c9161596c680acde607545342`. The current receipt-only HEAD is `0ba48ea99f141306da847a10d77f27ebd2948020`; it changes documentation only.
+**PASS — 2026-09-15.** Maintainer completed the declared reachable Windows Electron acceptance on the Windows Electron build from code HEAD `ee9c0515c8cf9c9c9161596c680acde607545342`. Receipt-only follow-up commits `0ba48ea99f141306da847a10d77f27ebd2948020` and `cd700f342fd5dc4414c994b5cdafce332cc6fc9c` change documentation only.
 
 - `>900px` Timeline collapse/expand: PASS; height, handles, task-tray placement, canvas space recovery, scroll ownership, and adjacent workspace geometry remained normal.
 - `>900px` subtitle task surfaces: PASS for empty, create/form, pending, and arranged-in-Timeline states; cards, controls, selection, and scrolling remained normal.
