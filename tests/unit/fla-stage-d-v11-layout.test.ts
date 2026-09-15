@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const snapshot = readFileSync(
   'src/renderer/fla-import/FlaStaticSnapshotReview.tsx',
@@ -13,7 +14,7 @@ const session = readFileSync(
   'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
   'utf8',
 );
-const styles = readFileSync('src/renderer/styles.css', 'utf8');
+const styles = readOrderedStylesheetSource();
 const verifier = readFileSync('scripts/verify-issue396-stage-d.cjs', 'utf8');
 
 describe('Issue #398 Stage D deletion-first presentation contract', () => {

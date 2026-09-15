@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -43,7 +44,7 @@ describe('Issue #468 Subtitle Properties alignment repair', () => {
   });
 
   it('uses the section rhythm and shared heading hierarchy without alignment hacks', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue468 = styles.slice(styles.lastIndexOf('/* Issue #468:'));
     const issue388 = styles.slice(styles.lastIndexOf('/* Issue #388:'));
 

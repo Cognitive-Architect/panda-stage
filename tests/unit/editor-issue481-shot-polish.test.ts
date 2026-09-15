@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
 import { ShotCreateForm } from '../../src/renderer/features/shots/ShotCreateForm';
@@ -10,6 +11,7 @@ import { ShotList } from '../../src/renderer/features/shots/ShotList';
 const noop = () => undefined;
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 

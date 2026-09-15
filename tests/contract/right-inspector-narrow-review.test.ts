@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 // Issue #195 review-follow-up contracts for the narrow Right Inspector Drawer
 // (owning PR #194). Behavioral click/focus is exercised at the Phase D
@@ -10,7 +11,7 @@ function readSource(path: string): string {
 
 describe('Right Inspector narrow Drawer review follow-up #195 contracts', () => {
   const inspector = readSource('src/renderer/shell/RightInspector.tsx');
-  const styles = readSource('src/renderer/styles.css');
+  const styles = readOrderedStylesheetSource();
 
   it('V-194-01: Properties drawer exposes one inline close entry', () => {
     expect(inspector).not.toContain('inspector-drawer-close');

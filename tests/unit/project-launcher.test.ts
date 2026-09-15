@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
   NewProjectDialog,
   type NewProjectDialogProps,
@@ -203,7 +204,7 @@ describe('Issue #415 Project Launcher copy cleanup', () => {
 
 describe('Issue #417 live-machine polish', () => {
   it('keeps the no-project recent empty state tight and visually balanced', () => {
-    const styles = readFileSync('src/renderer/styles.css', 'utf8');
+    const styles = readOrderedStylesheetSource();
     const emptyStateRule = styles.match(
       /\.project-center-screen\s+\.recent-projects-panel\[data-presentation='launcher'\]\s+\.recent-projects-empty-state\s*\{[^}]*\}/u,
     )?.[0];

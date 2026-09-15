@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
   clampTimelineHeight,
   getTimelineHeightBounds,
@@ -76,7 +77,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
     const timelineUi = source(
       'src/renderer/features/timeline/timelineUiStore.ts',
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue378Start = styles.lastIndexOf('/* Issue #378:');
     const issue378End = styles.indexOf('/* Issue #357:', issue378Start);
     const issue378 = styles.slice(
@@ -120,7 +121,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
   });
 
   it('keeps the base collapse contract outside the explicit resizable scope', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     expect(styles).toMatch(
       /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*132px;[\s\S]*?max-height:\s*168px;[\s\S]*?overflow:\s*hidden;/u,
     );

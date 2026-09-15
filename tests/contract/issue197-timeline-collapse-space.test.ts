@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 // Issue #197 contracts: collapsing the Timeline must release real vertical
 // space so the central Canvas grows. These are source/CSS-level locks with a
@@ -57,7 +58,7 @@ function findResponsiveBlock(
 }
 
 describe('Issue 197 Timeline collapse releases vertical space to Canvas', () => {
-  const styles = readSource('src/renderer/styles.css');
+  const styles = readOrderedStylesheetSource();
   const bottom = readSource('src/renderer/shell/BottomWorkspace.tsx');
   const timelineDock = readSource(
     'src/renderer/features/timeline/TimelineDock.tsx',

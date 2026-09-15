@@ -8,6 +8,7 @@ import {
   TIMELINE_RULER_SCROLL_HEIGHT,
   TIMELINE_TOOLBAR_HEIGHT,
 } from '../../src/renderer/features/timeline/timelineUiStore';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -40,7 +41,7 @@ describe('Issue #423 Cloud Touch landscape Timeline minimum composition', () => 
   });
 
   it('does not retain the obsolete landscape Task Tray CSS reservation', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(styles.lastIndexOf('/* Issue #423:')).toBe(-1);
     expect(styles).toContain('/* Issue #431 P-04:');

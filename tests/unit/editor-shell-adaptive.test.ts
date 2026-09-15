@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
   getEditorShellLayoutMode,
   reconcileEditorWorkspace,
@@ -7,6 +8,7 @@ import {
 } from '../../src/renderer/shell/adaptiveEditorShell';
 
 function readSource(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
 }
 

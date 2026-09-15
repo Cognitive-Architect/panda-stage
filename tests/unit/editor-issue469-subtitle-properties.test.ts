@@ -1,9 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-
-function source(path: string): string {
-  return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
-}
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function sectionBetween(sourceText: string, startMarker: string, endMarker: string): string {
   const start = sourceText.lastIndexOf(startMarker);
@@ -23,7 +19,7 @@ function declarationBlock(sourceText: string, selector: string): string {
 
 describe('Issue #469 Subtitle Properties identity and heading polish', () => {
   it('groups the landscape icon and speaker name before the flexible status space', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue387 = sectionBetween(
       styles,
       '/* Issue #387:',
@@ -48,7 +44,7 @@ describe('Issue #469 Subtitle Properties identity and heading polish', () => {
   });
 
   it('normalizes the landscape speaker name and shared section heading hierarchy', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue387 = sectionBetween(
       styles,
       '/* Issue #387:',
@@ -80,7 +76,7 @@ describe('Issue #469 Subtitle Properties identity and heading polish', () => {
   });
 
   it('preserves the accepted #468 full-width textarea structure', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue468 = styles.slice(styles.lastIndexOf('/* Issue #468:'));
 
     expect(issue468).toContain('grid-template-columns: minmax(0, 1fr);');

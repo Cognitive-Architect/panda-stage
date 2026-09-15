@@ -60,12 +60,15 @@
           "*.config.ts",
           "public/probe/**",
           "demo-project/**",
+          "scripts/css-split-manifest.json",
+          "scripts/css-split-boundary.cjs",
           "scripts/**"
         ],
         "testPatterns": [
           "tests/contract/ci-routing.test.ts",
           "tests/contract/ci-provenance.test.ts",
-          "tests/contract/verification-manifest.test.ts"
+          "tests/contract/verification-manifest.test.ts",
+          "tests/contract/css-split-boundary.test.ts"
         ],
         "verifierPatterns": [],
         "suites": [],
@@ -291,6 +294,7 @@
           "src/renderer/styles.css",
           "src/renderer/styles/**",
           "src/renderer/ui/**",
+          "docs/evidence/issue-530-css-split/receipt.json",
           "public/subtitle-empty-state.png"
         ],
         "testPatterns": [
@@ -306,7 +310,10 @@
           "tests/integration/right-inspector*.test.ts",
           "tests/contract/ui-m1-*.test.ts",
           "tests/contract/dom-selectors.baseline.test.ts",
-          "tests/contract/right-inspector-narrow-review.test.ts"
+          "tests/contract/right-inspector-narrow-review.test.ts",
+          "tests/helpers/read-stylesheet-source.ts",
+          "tests/unit/issue102-task4-responsive.test.ts",
+          "tests/unit/issue109-resource-workspace.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-issue102-task2*",
@@ -315,7 +322,8 @@
           "scripts/verify-issue410-project-launcher*",
           "scripts/verify-issue456*",
           "scripts/verify-issue457*",
-          "scripts/verify-issue460*"
+          "scripts/verify-issue460*",
+          "scripts/verify-css-split.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",

@@ -12,10 +12,12 @@ import {
 import type { ThumbnailState } from '../../src/renderer/features/assets/AssetCard';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import { expressionRenameValue } from '../../src/renderer/features/characters/ExpressionEditor';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const noop = () => undefined;
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 

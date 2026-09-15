@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const inspector = readFileSync(
   'src/renderer/shell/RightInspector.tsx',
   'utf8',
 );
-const styles = readFileSync('src/renderer/styles.css', 'utf8');
+const styles = readOrderedStylesheetSource();
 
 describe('Issue #371 Cloud Touch landscape inspector handle', () => {
   it('keeps one semantic trigger connected to the existing drawer', () => {

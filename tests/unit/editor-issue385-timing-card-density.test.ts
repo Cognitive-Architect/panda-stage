@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -7,7 +8,7 @@ function source(path: string): string {
 
 describe('Issue #385 Stage A.1 timing card density', () => {
   it('keeps Timing intrinsic and places role/audio in the secondary row', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const stageA = styles.slice(styles.lastIndexOf('/* Issue #384:'));
 
     expect(stageA).toMatch(
@@ -24,7 +25,7 @@ describe('Issue #385 Stage A.1 timing card density', () => {
   });
 
   it('keeps shallow Timed controls reachable through bounded scroll', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const start = styles.lastIndexOf('/* Issue #385:');
     const corrective = styles.slice(start);
 

@@ -11,8 +11,10 @@ import { ShotEditor } from '../../src/renderer/features/shots/ShotEditor';
 import { ShotListItem } from '../../src/renderer/features/shots/ShotListItem';
 import { AdaptiveWorkspaceSwitcher } from '../../src/renderer/shell/AdaptiveWorkspaceSwitcher';
 import { readFileSync } from 'node:fs';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
 }
 

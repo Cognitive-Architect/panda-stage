@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -47,7 +48,7 @@ describe('Issue #386 Stage B subtitle authoring shell polish', () => {
   });
 
   it('uses the Stage A dark field grammar and bounds Batch feedback locally', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const stageB = styles.slice(styles.lastIndexOf('/* Issue #386:'));
 
     expect(stageB).toContain(LANDSCAPE_SCOPE);
@@ -70,7 +71,7 @@ describe('Issue #386 Stage B subtitle authoring shell polish', () => {
   });
 
   it('keeps authoring controls reachable at shallow height without changing other tray states', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const stageB = styles.slice(styles.lastIndexOf('/* Issue #386:'));
 
     expect(stageB).toContain('@container stage-e-timeline (max-height: 220px)');

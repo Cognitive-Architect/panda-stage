@@ -2,12 +2,14 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
 import { CompactProjectBar } from '../../src/renderer/shell/CompactProjectBar';
 import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
 }
 

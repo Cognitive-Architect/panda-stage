@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const sequence = readFileSync(
   'src/renderer/fla-import/FlaFrameSequenceReview.tsx',
   'utf8',
 );
-const styles = readFileSync('src/renderer/styles.css', 'utf8');
+const styles = readOrderedStylesheetSource();
 const verifier = readFileSync('scripts/verify-issue399-stage-e.cjs', 'utf8');
 
 describe('Issue #399 Stage E frame-sequence workbench contract', () => {

@@ -1,0 +1,270 @@
+{
+  "manifestVersion": 1,
+  "issue": 530,
+  "phase": "phase-1-mechanical-css-split",
+  "canonicalMap": {
+    "path": "docs/PandaStage_Phase1_Section_Map_v1.0_2026-09-15.md",
+    "commit": "8bac6f217246d25ba4eb6b6bd76ab7bcc11ab332",
+    "description": "Canonical repository Phase 1 Section Map v1.0; candidate ranges and target paths below must match it unless a verifier-proven minimum boundary adjustment is recorded."
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "originalFileEndLine": 32818,
+    "legacySourceStartLine": 3,
+    "baseImportLines": [1, 2]
+  },
+  "rootEntry": {
+    "path": "src/renderer/styles.css",
+    "entryImportOrder": [
+      "./styles/tokens.css",
+      "./styles/primitives.css"
+    ]
+  },
+  "coverage": {
+    "startLine": 3,
+    "endLine": 32818,
+    "lineEndingNormalization": "CRLF and CR are normalized to LF for hashing and comparison; source text is otherwise not reformatted."
+  },
+  "boundaryPolicy": {
+    "proof": "A boundary is complete only when delimiter state is balanced, comments/strings are closed, and no top-level CSS statement prelude is pending. This rejects partial selector lists and other zero-depth rule headers.",
+    "adjustments": "Any changed boundary must retain the canonical candidate range and record the minimum corrected range with structural evidence."
+  },
+  "slices": [
+    {
+      "id": "S01",
+      "order": 1,
+      "workItem": "P1-01",
+      "candidateRange": { "startLine": 3, "endLine": 1951 },
+      "range": { "startLine": 3, "endLine": 1951 },
+      "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S02",
+      "order": 2,
+      "workItem": "P1-02",
+      "candidateRange": { "startLine": 1952, "endLine": 3916 },
+      "range": { "startLine": 1952, "endLine": 3916 },
+      "targetPath": "src/renderer/styles/legacy-slices/02-review-workbench-dialogue.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S03",
+      "order": 3,
+      "workItem": "P1-02",
+      "candidateRange": { "startLine": 3917, "endLine": 6019 },
+      "range": { "startLine": 3917, "endLine": 6019 },
+      "targetPath": "src/renderer/styles/legacy-slices/03-terminal-launcher-sequence.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S04",
+      "order": 4,
+      "workItem": "P1-03",
+      "candidateRange": { "startLine": 6020, "endLine": 8038 },
+      "range": { "startLine": 6020, "endLine": 8038 },
+      "targetPath": "src/renderer/styles/legacy-slices/04-launcher-render-workbench.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S05",
+      "order": 5,
+      "workItem": "P1-03",
+      "candidateRange": { "startLine": 8039, "endLine": 9839 },
+      "range": { "startLine": 8039, "endLine": 9839 },
+      "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S06",
+      "order": 6,
+      "workItem": "P1-04",
+      "candidateRange": { "startLine": 9840, "endLine": 11883 },
+      "range": { "startLine": 9840, "endLine": 11883 },
+      "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S07",
+      "order": 7,
+      "workItem": "P1-04",
+      "candidateRange": { "startLine": 11884, "endLine": 13801 },
+      "range": { "startLine": 11884, "endLine": 13801 },
+      "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S08",
+      "order": 8,
+      "workItem": "P1-05",
+      "candidateRange": { "startLine": 13802, "endLine": 17819 },
+      "range": { "startLine": 13802, "endLine": 17819 },
+      "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S09",
+      "order": 9,
+      "workItem": "P1-06",
+      "candidateRange": { "startLine": 17820, "endLine": 19783 },
+      "range": { "startLine": 17820, "endLine": 19783 },
+      "targetPath": "src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S10",
+      "order": 10,
+      "workItem": "P1-06",
+      "candidateRange": { "startLine": 19784, "endLine": 21802 },
+      "range": { "startLine": 19784, "endLine": 21802 },
+      "targetPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-start.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S11",
+      "order": 11,
+      "workItem": "P1-07",
+      "candidateRange": { "startLine": 21803, "endLine": 23799 },
+      "range": { "startLine": 21803, "endLine": 23799 },
+      "targetPath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S12",
+      "order": 12,
+      "workItem": "P1-07",
+      "candidateRange": { "startLine": 23800, "endLine": 25876 },
+      "range": { "startLine": 23800, "endLine": 25876 },
+      "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S13",
+      "order": 13,
+      "workItem": "P1-07",
+      "candidateRange": { "startLine": 25877, "endLine": 27997 },
+      "range": { "startLine": 25877, "endLine": 27997 },
+      "targetPath": "src/renderer/styles/legacy-slices/13-timed-render-media-tail.css",
+      "status": "extracted"
+    },
+    {
+      "id": "S14",
+      "order": 14,
+      "workItem": "P1-08",
+      "candidateRange": { "startLine": 27998, "endLine": 29794 },
+      "range": { "startLine": 27998, "endLine": 29794 },
+      "targetPath": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker.css",
+      "status": "pending"
+    },
+    {
+      "id": "S15",
+      "order": 15,
+      "workItem": "P1-08",
+      "candidateRange": { "startLine": 29795, "endLine": 31795 },
+      "range": { "startLine": 29795, "endLine": 31795 },
+      "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css",
+      "status": "pending"
+    },
+    {
+      "id": "S16",
+      "order": 16,
+      "workItem": "P1-08",
+      "candidateRange": { "startLine": 31796, "endLine": 32818 },
+      "range": { "startLine": 31796, "endLine": 32818 },
+      "targetPath": "src/renderer/styles/legacy-slices/16-character-settings-final-polish.css",
+      "status": "pending"
+    }
+  ],
+  "readerReview": {
+    "searchRoots": ["tests", "scripts"],
+    "materiallyAffected": [
+      "tests/contract/day26-review-followup.test.ts",
+      "tests/contract/dom-selectors.baseline.test.ts",
+      "tests/contract/issue197-timeline-collapse-space.test.ts",
+      "tests/contract/issue220-dialogue-layout.test.ts",
+      "tests/contract/right-inspector-narrow-review.test.ts",
+      "tests/contract/ui-m1-touch-foundation.test.ts",
+      "tests/integration/editor-shell-layout.test.ts",
+      "tests/integration/right-inspector-narrow.test.ts",
+      "tests/unit/dialogue-inspector-issue468.test.ts",
+      "tests/unit/character-issue511-reminder.test.ts",
+      "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
+      "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
+      "tests/unit/editor-issue326-portrait-canvas-cleanup.test.ts",
+      "tests/unit/editor-issue327-portrait-shot-shell.test.ts",
+      "tests/unit/editor-issue328-portrait-assets.test.ts",
+      "tests/unit/editor-issue329-portrait-properties.test.ts",
+      "tests/unit/editor-issue330-portrait-timeline.test.ts",
+      "tests/unit/editor-issue331-landscape-resource-drawers.test.ts",
+      "tests/unit/editor-issue332-contextual-inspector.test.ts",
+      "tests/unit/editor-issue344-portrait-assets.test.ts",
+      "tests/unit/editor-issue368-landscape-chrome.test.ts",
+      "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
+      "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
+      "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
+      "tests/unit/editor-issue374-landscape-appearance.test.ts",
+      "tests/unit/editor-issue376-landscape-layer.test.ts",
+      "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
+      "tests/unit/editor-issue380-landscape-pending-tray.test.ts",
+      "tests/unit/editor-issue381-landscape-pending-drag.test.ts",
+      "tests/unit/editor-issue382-landscape-task-tray.test.ts",
+      "tests/unit/editor-issue384-timed-task-tray-polish.test.ts",
+      "tests/unit/editor-issue385-timing-card-density.test.ts",
+      "tests/unit/editor-issue386-authoring-shell-polish.test.ts",
+      "tests/unit/editor-issue388-landscape-subtitle-properties.test.ts",
+      "tests/unit/editor-issue422-landscape-timeline-geometry.test.ts",
+      "tests/unit/editor-issue423-landscape-timeline-minimum.test.ts",
+      "tests/unit/editor-issue435-r3-ruler-track-height.test.ts",
+      "tests/unit/editor-issue456-quick-action.test.ts",
+      "tests/unit/editor-issue457-canvas-first.test.ts",
+      "tests/unit/editor-issue474-character-empty-state.test.ts",
+      "tests/unit/editor-issue478-character-header-trim.test.ts",
+      "tests/unit/editor-issue481-shot-polish.test.ts",
+      "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+      "tests/unit/editor-shell-adaptive.test.ts",
+      "tests/unit/left-workspace.test.ts",
+      "tests/unit/product-preview-overlay.test.ts",
+      "tests/unit/editor-issue342-icon-pilot.test.ts",
+      "tests/unit/editor-issue345-portrait-assets.test.ts",
+      "tests/unit/editor-issue366-landscape-expression.test.ts",
+      "tests/unit/editor-issue480-shot-empty-state.test.ts",
+      "tests/unit/editor-issue485-recovery-card.test.ts",
+      "tests/unit/editor-issue486-recovery-overlay.test.ts",
+      "tests/unit/editor-issue506-shot-thumbnails.test.ts",
+      "tests/unit/editor-issue508-shot-thumbnail-frame.test.ts",
+      "tests/unit/fla-stage-d-render-workbench.test.ts",
+      "tests/unit/fla-stage-e-frame-sequence.test.ts",
+      "tests/unit/issue102-task4-responsive.test.ts",
+      "tests/unit/issue109-resource-workspace.test.ts",
+      "tests/unit/editor-issue338-portrait-properties.test.ts",
+      "tests/unit/editor-issue339-portrait-timeline.test.ts",
+      "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
+      "tests/unit/editor-issue346-portrait-properties.test.ts",
+      "tests/unit/editor-issue347-portrait-transform.test.ts",
+      "tests/unit/editor-issue348-portrait-appearance.test.ts",
+      "tests/unit/editor-issue349-portrait-layer.test.ts",
+      "tests/unit/editor-issue351-timeline-default.test.ts",
+      "tests/unit/editor-issue352-timeline-selected.test.ts",
+      "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+      "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
+      "tests/unit/editor-issue441-subtitle-properties-polish.test.ts",
+      "tests/unit/editor-issue469-subtitle-properties.test.ts",
+      "tests/unit/editor-issue353-timeline-state-c.test.ts",
+      "tests/unit/editor-issue358-properties-dialogue-inspector.test.ts",
+      "tests/unit/editor-issue359-portrait-timeline-polish.test.ts",
+      "tests/unit/editor-issue361-landscape-shot-drawer.test.ts",
+      "tests/unit/editor-issue362-landscape-shot-create.test.ts",
+      "tests/unit/editor-issue363-landscape-assets.test.ts",
+      "tests/unit/editor-issue364-landscape-characters.test.ts",
+      "tests/unit/editor-issue365-compact-character-detail.test.ts"
+    ],
+    "sharedReader": "tests/helpers/read-stylesheet-source.ts",
+    "notes": [
+      "The complete search is recorded in the generated receipt; changed-file ledgers are mentions, not source readers.",
+      "Issue 197 reads .bottom-workspace from S01 and must use the ordered legacy reader.",
+      "UI-M1 inspects the real entry import manifest and must not use implementation-body length as a split contract."
+    ]
+  }
+}

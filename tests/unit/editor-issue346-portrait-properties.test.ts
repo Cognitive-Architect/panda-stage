@@ -3,8 +3,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { RightInspectorEmptyState } from '../../src/renderer/shell/RightInspector';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
 }
 

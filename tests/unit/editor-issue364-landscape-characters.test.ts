@@ -7,10 +7,12 @@ import { migrateProject } from '../../src/domain';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import { CharacterList } from '../../src/renderer/features/characters/CharacterList';
 import { CharacterManager } from '../../src/renderer/features/characters/CharacterManager';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const noop = () => undefined;
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 

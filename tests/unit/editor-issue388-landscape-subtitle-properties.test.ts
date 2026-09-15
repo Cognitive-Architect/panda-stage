@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -82,7 +83,7 @@ describe('Issue #388 Stage C.1 landscape subtitle Properties polish', () => {
   });
 
   it('scopes density, touch, timecode and secondary-danger styling to Stage C.1', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const stageC1 = styles.slice(styles.lastIndexOf('/* Issue #388:'));
 
     expect(stageC1).toContain(LANDSCAPE_SCOPE);
