@@ -165,7 +165,7 @@
       "candidateRange": { "startLine": 29795, "endLine": 31795 },
       "range": { "startLine": 29795, "endLine": 31795 },
       "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S16",
