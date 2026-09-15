@@ -1,10 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
-
-function source(path: string): string {
-  return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
-}
 
 describe('Issue #435 R3-A ruler-track height propagation', () => {
   it('lets the ruler-track consume its growing ruler-scroll parent', () => {

@@ -1,10 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
-
-function source(path: string): string {
-  return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
-}
 
 function sectionBetween(sourceText: string, startMarker: string, endMarker: string): string {
   const start = sourceText.lastIndexOf(startMarker);
