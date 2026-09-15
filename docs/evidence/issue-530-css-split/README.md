@@ -28,7 +28,7 @@
 - `pnpm typecheck`: PASS.
 - `pnpm lint`: PASS.
 - No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run.
-- Code CI #881 failed only because `tests/integration/right-inspector-narrow.test.ts` still read the shortened root stylesheet directly; the reader-wiring fix is included in `c96f4168eb616278ed3c339c47ead1d85a1d9533`. Docs-only CI #882 and #883 passed; code-fix CI #884 (`34952506785`) is PASS.
+- Code CI #881 failed only because `tests/integration/right-inspector-narrow.test.ts` still read the shortened root stylesheet directly; the reader-wiring fix is included in `c96f4168eb616278ed3c339c47ead1d85a1d9533`. Docs-only CI #882 and #883 passed; code-fix CI #884 (`34952506785`) is PASS. Docs-only CI #885 (`34953371252`) and #886 (`34953450469`) are also PASS.
 
 ## P1-04 Windows Electron acceptance
 
