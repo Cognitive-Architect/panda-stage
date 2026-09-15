@@ -1,3 +1,34 @@
+# Issue #538 / PR #531 - P1-07 receipt
+
+## Current P1-07 delivery
+
+- Execution lane: Issue #538 continuing PR #531, branch `agent/issue-530-css-split`.
+- Starting reviewed HEAD: `0ce865833f4def824a5f4b6c5159b9d9ab34ec3d`; fixed baseline: `main@35fe7963a50e7bd9be68f1e39d12833c99bb4436`.
+- P1-07 was delivered as three ordered extraction commits: `acf863e6807b742eab85cd4a3438529abb61a3f1` (S11), `c3fce428024859ea06c8dd7386ca0dfadd91876f` (S12), and `6c3a5f7c06c525a6538e2a6c4df96ef403723e73` (S13).
+- S11: canonical `L21803-L23799` (1997 lines) -> `src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css`; exact SHA-256 `8948724bd57b23d85db831e1e706c0536433b01906c0a09ab6a87ce737ec4a5e`.
+- S12: canonical `L23800-L25876` (2077 lines) -> `src/renderer/styles/legacy-slices/12-landscape-task-tray.css`; exact SHA-256 `19e9352766327ce3ca382a2a75ad10ba2386710dc9f25f60c5caf4edbe557e97`.
+- S13: canonical `L25877-L27997` (2121 lines) -> `src/renderer/styles/legacy-slices/13-timed-render-media-tail.css`; exact SHA-256 `432f678c879401be9e7b08eb4205d5e29197b071d1aa758ff02e925379cee39b`.
+- Root order is tokens, primitives, S01-S13, then the untouched S14-S16 remainder; S14-S16 remain pending for P1-08. No selector, declaration, token, geometry, business, data, or feature-behavior change was intended.
+- Reconstructed full stylesheet equals the pinned baseline: `2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7`. All canonical boundaries are complete and unchanged; no gap, duplication, reorder, or boundary adjustment was recorded.
+- The complete S13 `@media (max-width: 900px)` block remains intact: the baseline closing brace is `L27996`, `L27997` is blank, and S14 starts at `L27998` with the existing `Issue #443 Correction 01` marker. S11-S13 path-sensitive scans report no `url(...)`, `@import`, or `@font-face`; relocation risk is `none`.
+- Newly exposed direct stylesheet readers use the existing ordered-source helper without weakening assertions. The generated receipt records the complete search and 79 materially affected paths.
+
+## P1-07 validation
+
+- `node scripts/verify-css-split.cjs --preflight`: PASS.
+- `node scripts/verify-css-split.cjs --write-receipt`: PASS.
+- Exact S11/S12/S13 identity, complete-boundary checks, no-gap/no-duplication/no-reorder reconstruction, conditional `900px` preservation, and P1-07 path scan: PASS.
+- P1-07 focused reader batches: S11 5 files / 22 tests; S12 11 files / 46 tests; direct stylesheet-reader inventory 74 files / 374 tests PASS.
+- Routing/manifest/boundary/UI contracts: 7 files / 114 tests PASS; targeted integrations (`editor-shell-layout`, `right-inspector-narrow`, `timeline-selection`): 3 files / 22 tests PASS.
+- `pnpm test:unit`: PASS, 274 files / 1778 tests. `pnpm typecheck`: PASS. `pnpm lint`: PASS. `pnpm build:renderer`: PASS. `pnpm build:electron`: PASS.
+- No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run. The branch is left for the normal automatic Draft CI route.
+
+## P1-07 Windows Electron acceptance
+
+**PENDING — 2026-09-15.** The current built Windows Electron application must be inspected for Timeline collapse/expand, reachable subtitle create/pending/arranged states, Tools/Properties/Inspector, FLA/render/media-tail surfaces, and cross-surface continuity at both `>900px` and `<=900px`. Unreachable historical states remain not manually covered rather than being recreated. Automated/source-equivalence results are not a substitute for this HUMAN PASS.
+
+PR #531 remains **Draft / Open / Unmerged**. Do not mark Ready or merge.
+
 # Issue #537 / PR #531 - P1-06 receipt
 
 ## Current P1-06 delivery
