@@ -606,6 +606,18 @@
         "relocationRisk": "none"
       }
     ],
+    "p1_05": [
+      {
+        "id": "S08",
+        "range": {
+          "startLine": 13802,
+          "endLine": 17819
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      }
+    ],
     "relocationRisk": "none"
   },
   "directReaderSearch": {
@@ -850,7 +862,18 @@
       "tests/unit/fla-stage-d-render-workbench.test.ts",
       "tests/unit/fla-stage-e-frame-sequence.test.ts",
       "tests/unit/issue102-task4-responsive.test.ts",
-      "tests/unit/issue109-resource-workspace.test.ts"
+      "tests/unit/issue109-resource-workspace.test.ts",
+      "tests/unit/editor-issue338-portrait-properties.test.ts",
+      "tests/unit/editor-issue339-portrait-timeline.test.ts",
+      "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
+      "tests/unit/editor-issue346-portrait-properties.test.ts",
+      "tests/unit/editor-issue347-portrait-transform.test.ts",
+      "tests/unit/editor-issue348-portrait-appearance.test.ts",
+      "tests/unit/editor-issue349-portrait-layer.test.ts",
+      "tests/unit/editor-issue351-timeline-default.test.ts",
+      "tests/unit/editor-issue352-timeline-selected.test.ts",
+      "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+      "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts"
     ],
     "sharedReader": "tests/helpers/read-stylesheet-source.ts"
   },
@@ -932,10 +955,20 @@
         "expectedSha256": "853cb0833eb380e8a5779188225a7bad242de0aeeae9e8dd4fbe3dce59d1a08d",
         "actualSha256": "853cb0833eb380e8a5779188225a7bad242de0aeeae9e8dd4fbe3dce59d1a08d",
         "exact": true
+      },
+      {
+        "id": "S08",
+        "path": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue.css",
+        "range": {
+          "startLine": 13802,
+          "endLine": 17819
+        },
+        "expectedSha256": "6f8fdcc6e4325a441f64b511f21b3cbecfb6212b9cfadbbfa5b9a2ec6a0d92a8",
+        "actualSha256": "6f8fdcc6e4325a441f64b511f21b3cbecfb6212b9cfadbbfa5b9a2ec6a0d92a8",
+        "exact": true
       }
     ],
     "pending": [
-      "S08",
       "S09",
       "S10",
       "S11",
@@ -948,8 +981,8 @@
     "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "exact": true,
-    "rootEntryBytes": 561268,
-    "rootEntryLines": 19026,
+    "rootEntryBytes": 436470,
+    "rootEntryLines": 15009,
     "stylesheetScanErrors": []
   },
   "warnings": [],

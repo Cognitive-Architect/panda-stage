@@ -102,7 +102,7 @@
       "candidateRange": { "startLine": 13802, "endLine": 17819 },
       "range": { "startLine": 13802, "endLine": 17819 },
       "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S09",
@@ -220,7 +220,18 @@
       "tests/unit/fla-stage-d-render-workbench.test.ts",
       "tests/unit/fla-stage-e-frame-sequence.test.ts",
       "tests/unit/issue102-task4-responsive.test.ts",
-      "tests/unit/issue109-resource-workspace.test.ts"
+      "tests/unit/issue109-resource-workspace.test.ts",
+      "tests/unit/editor-issue338-portrait-properties.test.ts",
+      "tests/unit/editor-issue339-portrait-timeline.test.ts",
+      "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
+      "tests/unit/editor-issue346-portrait-properties.test.ts",
+      "tests/unit/editor-issue347-portrait-transform.test.ts",
+      "tests/unit/editor-issue348-portrait-appearance.test.ts",
+      "tests/unit/editor-issue349-portrait-layer.test.ts",
+      "tests/unit/editor-issue351-timeline-default.test.ts",
+      "tests/unit/editor-issue352-timeline-selected.test.ts",
+      "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+      "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts"
     ],
     "sharedReader": "tests/helpers/read-stylesheet-source.ts",
     "notes": [

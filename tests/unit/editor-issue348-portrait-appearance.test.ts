@@ -7,8 +7,10 @@ import {
   formatOpacityPercent,
 } from '../../src/renderer/features/properties/LayerBackgroundControl';
 import type { LayerTransformController } from '../../src/renderer/features/properties/LayerTransformPanel';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 

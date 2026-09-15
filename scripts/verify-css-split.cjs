@@ -398,6 +398,9 @@ function verifyPathInventory(baseline) {
   const p1_04 = manifest.slices
     .filter((slice) => slice.id === 'S06' || slice.id === 'S07')
     .map(proveSliceResources);
+  const p1_05 = manifest.slices
+    .filter((slice) => slice.id === 'S08')
+    .map(proveSliceResources);
   const imports = entries.filter((entry) => entry.kind === 'import');
   if (imports.length !== 2 || imports.some((entry, index) => entry.line !== index + 1)) {
     fail('Baseline imports are not exactly the two fixed top-of-file imports');
@@ -407,10 +410,12 @@ function verifyPathInventory(baseline) {
     s01,
     p1_03,
     p1_04,
+    p1_05,
     relocationRisk:
       s01.length === 0 &&
       p1_03.every((slice) => slice.relocationRisk === 'none') &&
-      p1_04.every((slice) => slice.relocationRisk === 'none')
+      p1_04.every((slice) => slice.relocationRisk === 'none') &&
+      p1_05.every((slice) => slice.relocationRisk === 'none')
       ? 'none'
       : 'unresolved',
   };
