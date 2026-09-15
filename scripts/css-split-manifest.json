@@ -66,7 +66,7 @@
       "candidateRange": { "startLine": 6020, "endLine": 8038 },
       "range": { "startLine": 6020, "endLine": 8038 },
       "targetPath": "src/renderer/styles/legacy-slices/04-launcher-render-workbench.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S05",
@@ -75,7 +75,7 @@
       "candidateRange": { "startLine": 8039, "endLine": 9839 },
       "range": { "startLine": 8039, "endLine": 9839 },
       "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S06",
@@ -189,6 +189,16 @@
       "tests/unit/character-issue511-reminder.test.ts",
       "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
       "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
+      "tests/unit/editor-issue342-icon-pilot.test.ts",
+      "tests/unit/editor-issue345-portrait-assets.test.ts",
+      "tests/unit/editor-issue366-landscape-expression.test.ts",
+      "tests/unit/editor-issue480-shot-empty-state.test.ts",
+      "tests/unit/editor-issue485-recovery-card.test.ts",
+      "tests/unit/editor-issue486-recovery-overlay.test.ts",
+      "tests/unit/editor-issue506-shot-thumbnails.test.ts",
+      "tests/unit/editor-issue508-shot-thumbnail-frame.test.ts",
+      "tests/unit/fla-stage-d-render-workbench.test.ts",
+      "tests/unit/fla-stage-e-frame-sequence.test.ts",
       "tests/unit/issue102-task4-responsive.test.ts",
       "tests/unit/issue109-resource-workspace.test.ts"
     ],

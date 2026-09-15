@@ -6,10 +6,12 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
 import { ShotList } from '../../src/renderer/features/shots/ShotList';
 import { ResourceActivityDock } from '../../src/renderer/shell/ResourceActivityDock';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const noop = () => undefined;
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 

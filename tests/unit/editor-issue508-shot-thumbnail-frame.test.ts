@@ -1,13 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-
-function source(path: string): string {
-  return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
-}
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 describe('Issue #508 ready Shot thumbnail frame polish', () => {
   it('removes the ready-only outer frame while retaining fallback framing', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const readyPolish = styles.match(
       /\/\* Issue #508:[\s\S]*?\*\/\s*\.shot-thumbnail \{[\s\S]*?\n\}/u,
     )?.[0];

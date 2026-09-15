@@ -89,6 +89,68 @@ function inventoryPathSensitive(value) {
   return entries;
 }
 
+function pathSensitiveSliceEntries(entries, slice) {
+  return entries.filter(
+    (entry) => entry.line >= slice.range.startLine && entry.line <= slice.range.endLine,
+  );
+}
+
+function urlValue(text) {
+  const match = /url\s*\(\s*(['"]?)(.*?)\1\s*\)/u.exec(text);
+  return match?.[2] ?? null;
+}
+
+function proveRelocatedUrl(entry) {
+  const value = urlValue(entry.text);
+  if (!value) {
+    return {
+      line: entry.line,
+      kind: entry.kind,
+      source: entry.text,
+      identical: false,
+      reason: 'URL value could not be parsed',
+    };
+  }
+  if (/^(?:data|blob|https?):/iu.test(value) || value.startsWith('#')) {
+    return {
+      line: entry.line,
+      kind: entry.kind,
+      source: entry.text,
+      beforeTarget: value,
+      afterTarget: value,
+      resolution: 'document-or-absolute URL; stylesheet directory does not participate',
+      identical: true,
+    };
+  }
+  if (!value.startsWith('/')) {
+    return {
+      line: entry.line,
+      kind: entry.kind,
+      source: entry.text,
+      beforeTarget: value,
+      afterTarget: value,
+      resolution: 'relative URL requires an explicit relocation proof',
+      identical: false,
+      reason: 'relative resource URL changes meaning when moved deeper under styles/legacy-slices',
+    };
+  }
+
+  const publicPath = join(repoRoot, 'public', value.slice(1));
+  const targetExists = existsSync(publicPath);
+  return {
+    line: entry.line,
+    kind: entry.kind,
+    source: entry.text,
+    beforeTarget: value,
+    afterTarget: value,
+    resolution: 'root-relative browser URL',
+    publicPath: relative(repoRoot, publicPath).replaceAll('\\', '/'),
+    targetExists,
+    identical: targetExists,
+    ...(targetExists ? {} : { reason: 'root-relative public resource is missing' }),
+  };
+}
+
 function walkFiles(directory) {
   if (!existsSync(directory)) return [];
   const output = [];
@@ -297,11 +359,53 @@ function verifyPathInventory(baseline) {
       `S01 contains path-sensitive constructs that need an explicit relocation proof: ${s01.map((entry) => `${entry.kind}@${entry.line}`).join(', ')}`,
     );
   }
+  const p1_03 = manifest.slices
+    .filter((slice) => slice.id === 'S04' || slice.id === 'S05')
+    .map((slice) => {
+      const sliceEntries = pathSensitiveSliceEntries(entries, slice);
+      const proofs = [];
+      for (const entry of sliceEntries) {
+        if (entry.kind !== 'url') {
+          fail(
+            `${slice.id} contains ${entry.kind}@${entry.line}; its relocated resource resolution is not proven`,
+          );
+          proofs.push({
+            line: entry.line,
+            kind: entry.kind,
+            source: entry.text,
+            identical: false,
+            reason: 'imports and font-face declarations require a dedicated target proof',
+          });
+          continue;
+        }
+        const proof = proveRelocatedUrl(entry);
+        proofs.push(proof);
+        if (!proof.identical) {
+          fail(
+            `${slice.id} resource at line ${entry.line} does not have identical relocation proof: ${proof.reason}`,
+          );
+        }
+      }
+      return {
+        id: slice.id,
+        range: slice.range,
+        entries: sliceEntries,
+        relocationProof: proofs,
+        relocationRisk: proofs.every((proof) => proof.identical) ? 'none' : 'unresolved',
+      };
+    });
   const imports = entries.filter((entry) => entry.kind === 'import');
   if (imports.length !== 2 || imports.some((entry, index) => entry.line !== index + 1)) {
     fail('Baseline imports are not exactly the two fixed top-of-file imports');
   }
-  return { all: entries, s01: s01, relocationRisk: s01.length === 0 ? 'none' : 'unresolved' };
+  return {
+    all: entries,
+    s01,
+    p1_03,
+    relocationRisk: s01.length === 0 && p1_03.every((slice) => slice.relocationRisk === 'none')
+      ? 'none'
+      : 'unresolved',
+  };
 }
 
 function verifyExtraction(baseline, scan) {

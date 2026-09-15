@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const shell = readFileSync(
   'src/renderer/fla-import/FlaRenderWorkbench.tsx',
@@ -21,7 +22,7 @@ const route = readFileSync(
   'src/renderer/fla-import/fla-content-route.ts',
   'utf8',
 );
-const styles = readFileSync('src/renderer/styles.css', 'utf8');
+const styles = readOrderedStylesheetSource();
 
 describe('Issue #396 Stage D render workbench contract', () => {
   it('provides one shared shell with mutually exclusive R1/R2 modes', () => {

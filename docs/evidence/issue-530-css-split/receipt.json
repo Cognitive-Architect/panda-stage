@@ -544,6 +544,46 @@
       }
     ],
     "s01": [],
+    "p1_03": [
+      {
+        "id": "S04",
+        "range": {
+          "startLine": 6020,
+          "endLine": 8038
+        },
+        "entries": [
+          {
+            "line": 6422,
+            "text": "url('/project-launcher-banner.png')",
+            "kind": "url"
+          }
+        ],
+        "relocationProof": [
+          {
+            "line": 6422,
+            "kind": "url",
+            "source": "url('/project-launcher-banner.png')",
+            "beforeTarget": "/project-launcher-banner.png",
+            "afterTarget": "/project-launcher-banner.png",
+            "resolution": "root-relative browser URL",
+            "publicPath": "public/project-launcher-banner.png",
+            "targetExists": true,
+            "identical": true
+          }
+        ],
+        "relocationRisk": "none"
+      },
+      {
+        "id": "S05",
+        "range": {
+          "startLine": 8039,
+          "endLine": 9839
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      }
+    ],
     "relocationRisk": "none"
   },
   "directReaderSearch": {
@@ -639,15 +679,12 @@
       "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
       "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
       "tests/unit/editor-issue506-shot-thumbnails.test.ts",
-      "tests/unit/editor-issue508-shot-thumbnail-frame.test.ts",
       "tests/unit/editor-issue524-character-detail-polish.test.ts",
       "tests/unit/editor-issue525-character-detail-header.test.ts",
       "tests/unit/editor-issue526-character-settings-polish.test.ts",
       "tests/unit/editor-issue527-character-settings-balance.test.ts",
       "tests/unit/editor-issue528-expression-inline-edit.test.ts",
       "tests/unit/editor-shell-adaptive.test.ts",
-      "tests/unit/fla-stage-d-render-workbench.test.ts",
-      "tests/unit/fla-stage-e-frame-sequence.test.ts",
       "tests/unit/left-workspace.test.ts",
       "tests/unit/product-preview-overlay.test.ts",
       "tests/unit/subtitle-style-controls-layout.test.ts",
@@ -743,15 +780,12 @@
       "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
       "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
       "tests/unit/editor-issue506-shot-thumbnails.test.ts",
-      "tests/unit/editor-issue508-shot-thumbnail-frame.test.ts",
       "tests/unit/editor-issue524-character-detail-polish.test.ts",
       "tests/unit/editor-issue525-character-detail-header.test.ts",
       "tests/unit/editor-issue526-character-settings-polish.test.ts",
       "tests/unit/editor-issue527-character-settings-balance.test.ts",
       "tests/unit/editor-issue528-expression-inline-edit.test.ts",
       "tests/unit/editor-shell-adaptive.test.ts",
-      "tests/unit/fla-stage-d-render-workbench.test.ts",
-      "tests/unit/fla-stage-e-frame-sequence.test.ts",
       "tests/unit/left-workspace.test.ts",
       "tests/unit/product-preview-overlay.test.ts",
       "tests/unit/subtitle-style-controls-layout.test.ts",
@@ -767,6 +801,16 @@
       "tests/unit/character-issue511-reminder.test.ts",
       "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
       "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
+      "tests/unit/editor-issue342-icon-pilot.test.ts",
+      "tests/unit/editor-issue345-portrait-assets.test.ts",
+      "tests/unit/editor-issue366-landscape-expression.test.ts",
+      "tests/unit/editor-issue480-shot-empty-state.test.ts",
+      "tests/unit/editor-issue485-recovery-card.test.ts",
+      "tests/unit/editor-issue486-recovery-overlay.test.ts",
+      "tests/unit/editor-issue506-shot-thumbnails.test.ts",
+      "tests/unit/editor-issue508-shot-thumbnail-frame.test.ts",
+      "tests/unit/fla-stage-d-render-workbench.test.ts",
+      "tests/unit/fla-stage-e-frame-sequence.test.ts",
       "tests/unit/issue102-task4-responsive.test.ts",
       "tests/unit/issue109-resource-workspace.test.ts"
     ],
@@ -806,11 +850,31 @@
         "expectedSha256": "94ce88b93096dc6fa32b6262ee05b5ff4a1253c920ffe8e71728eeeb2a4b7502",
         "actualSha256": "94ce88b93096dc6fa32b6262ee05b5ff4a1253c920ffe8e71728eeeb2a4b7502",
         "exact": true
+      },
+      {
+        "id": "S04",
+        "path": "src/renderer/styles/legacy-slices/04-launcher-render-workbench.css",
+        "range": {
+          "startLine": 6020,
+          "endLine": 8038
+        },
+        "expectedSha256": "cc359dee1823319b9173d1c441f827c134cbb0ceb3ef3ac214279b94732c2b81",
+        "actualSha256": "cc359dee1823319b9173d1c441f827c134cbb0ceb3ef3ac214279b94732c2b81",
+        "exact": true
+      },
+      {
+        "id": "S05",
+        "path": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence.css",
+        "range": {
+          "startLine": 8039,
+          "endLine": 9839
+        },
+        "expectedSha256": "5f48b8355a80a3b1c0b7d775c10e3aedf76cf9f945c86f6ce698c5e3581b8e86",
+        "actualSha256": "5f48b8355a80a3b1c0b7d775c10e3aedf76cf9f945c86f6ce698c5e3581b8e86",
+        "exact": true
       }
     ],
     "pending": [
-      "S04",
-      "S05",
       "S06",
       "S07",
       "S08",
@@ -826,8 +890,8 @@
     "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "exact": true,
-    "rootEntryBytes": 733830,
-    "rootEntryLines": 26804,
+    "rootEntryBytes": 658222,
+    "rootEntryLines": 22986,
     "stylesheetScanErrors": []
   },
   "warnings": [],
