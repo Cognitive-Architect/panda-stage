@@ -31,7 +31,7 @@
 
 ## P1-06 Windows Electron acceptance
 
-**PENDING — 2026-09-15.** A fresh visible build from the current P1-06 worktree must be reviewed for portrait precise/timed Dialogue, landscape Assets, Character empty/list/detail, Character expressions, and cross-surface switching/scroll sanity. Unreachable historical states must be recorded as not manually covered; no HUMAN PASS is inferred from automated/source-equivalence checks.
+**PASS — 2026-09-15.** The P1-07 Issue #538 execution lane states that P1-06 received maintainer acceptance. This is a receipt bookkeeping backfill only; it does not add per-surface detail beyond that authoritative lane statement. Unreachable historical states remain not manually covered rather than being recreated.
 
 PR #531 remains **Draft / Open / Unmerged**. Do not mark Ready or merge.
 
