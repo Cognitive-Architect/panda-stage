@@ -14,6 +14,7 @@ import {
   parseDialoguePaste,
   resolveDialoguePaste,
 } from '../../src/renderer/features/dialogue/parseDialoguePaste';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB';
 
@@ -96,7 +97,7 @@ describe('Issue #505 R6.2 A09 batch recognition review', () => {
       'src/renderer/features/dialogue/DialogueBatchPaste.tsx',
     );
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue505Styles = styles.slice(styles.lastIndexOf('/* Issue #505:'));
 
     expect(batch).toContain('<CharacterAvatar');

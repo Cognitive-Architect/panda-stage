@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
 import { CharacterIdentityPicker } from '../../src/renderer/features/characters/CharacterIdentity';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -15,7 +16,7 @@ describe('Issue #499–#501 New Dialogue Cut 2 distillation', () => {
   const identity = source(
     'src/renderer/features/characters/CharacterIdentity.tsx',
   );
-  const styles = source('src/renderer/styles.css');
+  const styles = readOrderedStylesheetSource();
 
   it('uses one concise unbound Character prompt only in the right workspace', () => {
     const project = migrateProject(exampleProject);

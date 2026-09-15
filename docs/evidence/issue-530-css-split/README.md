@@ -10,15 +10,16 @@
 - `src/renderer/styles.css` is now an imports-only index: tokens, primitives, then S01 through S16 exactly once; `main.tsx -> ./styles.css` remains unchanged and no functional CSS rule remains in the root entry.
 - The manifest records all S01-S16 as `extracted`; the final reconstruction SHA-256 is `2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7`, identical to the pinned baseline.
 - S14-S16 path-sensitive scan: no `url(...)`, `@import`, or `@font-face`; relocation risk is `none` for all three slices.
-- The one directly affected body reader, `tests/unit/subtitle-style-controls-layout.test.ts`, now uses the existing ordered stylesheet reader and retains its original assertions. The final verifier also handles the empty root remainder explicitly.
+- The existing ordered stylesheet reader is now used by every body-reading test affected by the final split. The P1-08 sweep migrated 17 additional unit readers, including the Issue #443 and #454 readers surfaced by Draft CI, while retaining their original assertions. The final verifier also handles the empty root remainder explicitly.
 
 ## P1-08 automated validation
 
 - `node scripts/verify-css-split.cjs --preflight`: PASS; all 16 canonical complete-rule boundaries are safe.
 - `node scripts/verify-css-split.cjs --write-receipt`: PASS; the machine-readable receipt is `docs/evidence/issue-530-css-split/receipt.json`.
 - Core contracts: 4 files / 88 tests PASS.
-- Manifest-listed affected unit readers: 72 files PASS.
+- Manifest-listed affected unit readers: 89 files PASS.
 - Affected integrations (`editor-shell-layout`, `right-inspector-narrow`): 2 files / 21 tests PASS.
+- `pnpm test:unit`: PASS; 274 files / 1778 tests.
 - `pnpm typecheck`: PASS. `pnpm lint`: PASS. `pnpm build:renderer`: PASS. `pnpm build:electron`: PASS.
 - No manual Full CI, `pnpm verify:project`, or broad historical verifier sweep was run. Draft CI is allowed to run through normal repository policy.
 

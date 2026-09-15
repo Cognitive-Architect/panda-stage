@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -16,7 +17,7 @@ describe('Issue #448 timed Inspector comfort and audio duration editing', () => 
         '\n  return (\n    <>\n      <div className="right-inspector-heading">',
       ),
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue448Start = styles.lastIndexOf('/* Issue #448 A:');
     const issue448 = styles.slice(
       issue448Start,
@@ -76,7 +77,7 @@ describe('Issue #448 timed Inspector comfort and audio duration editing', () => 
   });
 
   it('raises the selected AudioClip end cap above the subtitle resize quality floor', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue448Start = styles.lastIndexOf('/* Issue #448 A:');
     const issue448 = styles.slice(
       issue448Start,

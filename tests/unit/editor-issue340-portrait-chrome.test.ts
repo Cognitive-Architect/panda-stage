@@ -6,6 +6,7 @@ import { CompactProjectBar } from '../../src/renderer/shell/CompactProjectBar';
 import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { readFileSync } from 'node:fs';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
@@ -113,7 +114,7 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
   });
 
   it('scopes the header relocation and quiet state to Cloud Touch portrait', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     expect(styles).toContain('.quick-action-drawer');
     expect(styles).toContain(
       "  .history-controls[data-history-presentation='compact']",

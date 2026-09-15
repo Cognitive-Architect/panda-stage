@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -151,7 +152,7 @@ describe('Issue #443 Subtitle UI Correction 01 — pending list inline selection
   });
 
   it('styles the inline action row locally and only touches the selected card surface', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const start = styles.indexOf('/* Issue #443 Correction 01:');
     expect(start).toBeGreaterThanOrEqual(0);
     const block = styles.slice(start);

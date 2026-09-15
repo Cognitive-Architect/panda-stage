@@ -7,6 +7,7 @@ import { DialogueStore } from '../../src/renderer/stores/dialogueStore';
 import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 import { ShotStore } from '../../src/renderer/stores/shotStore';
 import { buildProject, IDS } from './domain/testProject';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -19,7 +20,7 @@ describe('Issue #496 New Dialogue polish and pending recovery', () => {
   const identity = source(
     'src/renderer/features/characters/CharacterIdentity.tsx',
   );
-  const styles = source('src/renderer/styles.css');
+  const styles = readOrderedStylesheetSource();
   const issue496Styles = styles.slice(styles.lastIndexOf('/* Issue #496:'));
 
   it('shows delete only in the selected pending card action strip', () => {

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const noop = () => undefined;
 
@@ -80,7 +81,7 @@ describe('Issue #524 R8 Character Detail visual polish', () => {
   });
 
   it('scopes the calmer tab state and compact card footer to landscape Character Detail', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const polishStart = styles.indexOf('/* Issue #524:');
     const polish = styles.slice(polishStart);
 

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -58,7 +59,7 @@ describe('Issue #463 subtitle timing editor', () => {
     const dialogue = source(
       'src/renderer/features/dialogue/DialogueInspector.tsx',
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(dialogue).not.toContain('结束时间会自动计算：开始 + 时长');
     expect(dialogue).not.toContain('直接输入秒数即可，例如 3.17');

@@ -8,6 +8,7 @@ import {
   characterRenameValue,
   CharacterEditor,
 } from '../../src/renderer/features/characters/CharacterEditor';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const noop = () => undefined;
 
@@ -99,7 +100,7 @@ describe('Issue #525 Character Detail header and inline rename', () => {
   });
 
   it('scopes the compact back button and inline form fallback to landscape Character Detail', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const polishStart = styles.indexOf('/* Issue #525:');
     const polish = styles.slice(polishStart);
 
