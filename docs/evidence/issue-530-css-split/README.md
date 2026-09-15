@@ -1,6 +1,38 @@
-# Issue #535 / PR #531 - P1-04 receipt
+# Issue #536 / PR #531 - P1-05 receipt
 
-## Current P1-04 delivery
+## Current P1-05 delivery
+
+- Execution lane: PR #531, branch `agent/issue-530-css-split`.
+- Starting reviewed HEAD: `0ec33c5933db8d9c0f59bbf71a45778bcbaa7c3f`.
+- P1-05 implementation commit: `ebd061738859cf2e9503b65d97d2a0911f286c19` (`feat: extract P1-05 inspector dialogue CSS slice`).
+- S08: canonical `L13802-L17819` (4018 lines) -> `src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue.css`; exact SHA-256 `6f8fdcc6e4325a441f64b511f21b3cbecfb6212b9cfadbbfa5b9a2ec6a0d92a8`.
+- S08 remains one intact canonical slice; no S08a/S08b split or boundary remap was introduced.
+- Root order is tokens, primitives, S01, S02, S03, S04, S05, S06, S07, S08, then the untouched S09-S16 remainder; S09-S16 remain pending.
+- Reconstructed full stylesheet equals the pinned baseline: `2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7`.
+- S08 path-sensitive scan: no `url(...)`, `@import`, or `@font-face`; relocation risk `none`.
+- 11 newly exposed direct monolith readers were migrated to the existing ordered stylesheet helper without weakening assertions; all 92 verifier-listed reader paths passed in targeted batches (380 tests across 92 files).
+
+## P1-05 validation
+
+- `node scripts/verify-css-split.cjs --preflight`: PASS.
+- `node scripts/verify-css-split.cjs --write-receipt`: PASS.
+- Focused CSS/routing/manifest/UI contracts: 17 files / 147 tests PASS.
+- `editor-shell-layout` and `right-inspector-narrow` integration contracts: 2 files / 21 tests PASS.
+- `pnpm test:unit`: PASS, 274 files / 1778 tests.
+- `pnpm typecheck`: PASS.
+- `pnpm lint`: PASS.
+- `pnpm build:renderer`: PASS.
+- `pnpm build:electron`: PASS.
+- No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run.
+- Automatic Draft CI for the P1-05 code commit is run #888 (`34959622319`) and is PASS.
+
+## P1-05 Windows Electron acceptance
+
+**PENDING — 2026-09-15.** A fresh visible build from the current P1-05 worktree must be reviewed for Inspector continuation/sections, form/focus states, portrait Dialogue creation, untimed/pending-arrangement state, and narrow overflow/bottom actions. Unreachable historical states must be recorded as not manually covered; no HUMAN PASS is inferred from automated/source-equivalence checks.
+
+PR #531 remains **Draft / Open / Unmerged**. Do not mark Ready or merge.
+
+## P1-04 historical delivery
 
 - Execution lane: PR #531, branch `agent/issue-530-css-split`.
 - Starting reviewed HEAD: `0963890791070d6eb5b39fc75bd6ee036306adb3`.
@@ -32,9 +64,7 @@
 
 ## P1-04 Windows Electron acceptance
 
-HUMAN visual acceptance is pending. The fresh build must be inspected for canvas fit/actual-size presentation, selection feedback, drag/drop affordance, portrait resource workspace, and inspector entry. An unreachable portrait state must be recorded as not manually covered rather than fabricated.
-
-The final automatic Draft CI result is recorded above. HUMAN visual acceptance remains pending until the maintainer completes the Windows review; no HUMAN PASS is inferred from CI or source-equivalence evidence.
+**PASS — 2026-09-15.** Maintainer manually accepted canvas fit/actual-size presentation, selection feedback, canvas drag/drop hint, portrait resource workspace, and the Inspector/property entry surface on the current visible Windows Electron build. No obvious clipping, geometry drift, stuck overlay, double-scroll, or control-layout regression was observed.
 
 ## P1-03 historical receipt
 
