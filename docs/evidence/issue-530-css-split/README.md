@@ -21,7 +21,7 @@
 - P1-07 focused reader batches: S11 5 files / 22 tests; S12 11 files / 46 tests; direct stylesheet-reader inventory 74 files / 374 tests PASS.
 - Routing/manifest/boundary/UI contracts: 7 files / 114 tests PASS; targeted integrations (`editor-shell-layout`, `right-inspector-narrow`, `timeline-selection`): 3 files / 22 tests PASS.
 - `pnpm test:unit`: PASS, 274 files / 1778 tests. `pnpm typecheck`: PASS. `pnpm lint`: PASS. `pnpm build:renderer`: PASS. `pnpm build:electron`: PASS.
-- No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run. The branch is left for the normal automatic Draft CI route.
+- Automatic Draft CI #896 (`34974980940`) for final HEAD `74f9dfacd84fa6e7bf8b71cb1568fe4445745dce`: PASS. The classifier selected targeted quality/regression; Full regression was skipped by policy. No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run.
 
 ## P1-07 Windows Electron acceptance
 
