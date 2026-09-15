@@ -156,7 +156,7 @@
       "candidateRange": { "startLine": 27998, "endLine": 29794 },
       "range": { "startLine": 27998, "endLine": 29794 },
       "targetPath": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S15",
