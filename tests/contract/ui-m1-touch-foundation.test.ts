@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 function readSource(path: string): string {
-  return readFileSync(path, 'utf8');
+  return readFileSync(path, 'utf8').replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
 
 describe('UI-M1 touch foundation contract', () => {
