@@ -6,6 +6,7 @@ import {
   RightInspectorEmptyState,
   type RightInspectorEmptyStateProps,
 } from '../../src/renderer/shell/RightInspector';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
@@ -86,7 +87,7 @@ describe('Issue #372 Cloud Touch landscape Properties Stage B', () => {
   });
 
   it('scopes Stage B styling to the landscape Cloud Touch surface', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const stageB = styles.slice(styles.lastIndexOf('/* Issue #372:'));
 
     expect(stageB).toContain(

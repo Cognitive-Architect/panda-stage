@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -19,7 +20,7 @@ describe('Issue #379 Cloud Touch landscape Timeline shell', () => {
   const dialogueSheet = source(
     'src/renderer/features/dialogue/DialogueSheet.tsx',
   );
-  const styles = source('src/renderer/styles.css');
+  const styles = readOrderedStylesheetSource();
   const issue379 = issue379Styles(styles);
 
   it('keeps the ordered Toolbar, Ruler, and Track Stack after the R2 tray migration', () => {

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -62,7 +63,7 @@ describe('Issue #374 Cloud Touch landscape Appearance hierarchy', () => {
     const background = source(
       'src/renderer/features/properties/LayerBackgroundControl.tsx',
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue374 = styles.slice(styles.lastIndexOf('/* Issue #374:'));
 
     expect(background).toContain('getLayerBackgroundControlModel(');

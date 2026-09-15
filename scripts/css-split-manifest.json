@@ -129,7 +129,7 @@
       "candidateRange": { "startLine": 21803, "endLine": 23799 },
       "range": { "startLine": 21803, "endLine": 23799 },
       "targetPath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S12",
@@ -200,6 +200,11 @@
       "tests/unit/editor-issue344-portrait-assets.test.ts",
       "tests/unit/editor-issue368-landscape-chrome.test.ts",
       "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
+      "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
+      "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
+      "tests/unit/editor-issue374-landscape-appearance.test.ts",
+      "tests/unit/editor-issue376-landscape-layer.test.ts",
+      "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
       "tests/unit/editor-issue456-quick-action.test.ts",
       "tests/unit/editor-issue457-canvas-first.test.ts",
       "tests/unit/editor-issue474-character-empty-state.test.ts",

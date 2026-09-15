@@ -640,6 +640,38 @@
         "relocationRisk": "none"
       }
     ],
+    "p1_07": [
+      {
+        "id": "S11",
+        "range": {
+          "startLine": 21803,
+          "endLine": 23799
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      },
+      {
+        "id": "S12",
+        "range": {
+          "startLine": 23800,
+          "endLine": 25876
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      },
+      {
+        "id": "S13",
+        "range": {
+          "startLine": 25877,
+          "endLine": 27997
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      }
+    ],
     "relocationRisk": "none"
   },
   "directReaderSearch": {
@@ -686,11 +718,6 @@
       "tests/unit/editor-issue366-landscape-expression.test.ts",
       "tests/unit/editor-issue368-landscape-chrome.test.ts",
       "tests/unit/editor-issue369-project-tools.test.ts",
-      "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
-      "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
-      "tests/unit/editor-issue374-landscape-appearance.test.ts",
-      "tests/unit/editor-issue376-landscape-layer.test.ts",
-      "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
       "tests/unit/editor-issue380-landscape-pending-tray.test.ts",
       "tests/unit/editor-issue381-landscape-pending-drag.test.ts",
       "tests/unit/editor-issue382-landscape-task-tray.test.ts",
@@ -785,11 +812,6 @@
       "tests/unit/editor-issue366-landscape-expression.test.ts",
       "tests/unit/editor-issue368-landscape-chrome.test.ts",
       "tests/unit/editor-issue369-project-tools.test.ts",
-      "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
-      "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
-      "tests/unit/editor-issue374-landscape-appearance.test.ts",
-      "tests/unit/editor-issue376-landscape-layer.test.ts",
-      "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
       "tests/unit/editor-issue380-landscape-pending-tray.test.ts",
       "tests/unit/editor-issue381-landscape-pending-drag.test.ts",
       "tests/unit/editor-issue382-landscape-task-tray.test.ts",
@@ -864,6 +886,11 @@
       "tests/unit/editor-issue344-portrait-assets.test.ts",
       "tests/unit/editor-issue368-landscape-chrome.test.ts",
       "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
+      "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
+      "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
+      "tests/unit/editor-issue374-landscape-appearance.test.ts",
+      "tests/unit/editor-issue376-landscape-layer.test.ts",
+      "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
       "tests/unit/editor-issue456-quick-action.test.ts",
       "tests/unit/editor-issue457-canvas-first.test.ts",
       "tests/unit/editor-issue474-character-empty-state.test.ts",
@@ -1018,10 +1045,20 @@
         "expectedSha256": "64c830b0f4ea56fc4b3c963c1a88249551817e933b45c35a650c61edd679e33c",
         "actualSha256": "64c830b0f4ea56fc4b3c963c1a88249551817e933b45c35a650c61edd679e33c",
         "exact": true
+      },
+      {
+        "id": "S11",
+        "path": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
+        "range": {
+          "startLine": 21803,
+          "endLine": 23799
+        },
+        "expectedSha256": "8948724bd57b23d85db831e1e706c0536433b01906c0a09ab6a87ce737ec4a5e",
+        "actualSha256": "8948724bd57b23d85db831e1e706c0536433b01906c0a09ab6a87ce737ec4a5e",
+        "exact": true
       }
     ],
     "pending": [
-      "S11",
       "S12",
       "S13",
       "S14",
@@ -1031,8 +1068,8 @@
     "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "exact": true,
-    "rootEntryBytes": 320406,
-    "rootEntryLines": 11028,
+    "rootEntryBytes": 261640,
+    "rootEntryLines": 9032,
     "stylesheetScanErrors": []
   },
   "warnings": [],

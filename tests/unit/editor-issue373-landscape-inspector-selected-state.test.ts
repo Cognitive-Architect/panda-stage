@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -84,7 +85,7 @@ describe('Issue #373 Cloud Touch landscape selected-object inspector', () => {
 
   it('aligns the landscape header while retaining focus-return and the Stage A handle', () => {
     const inspector = source('src/renderer/shell/RightInspector.tsx');
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue373 = styles.slice(styles.lastIndexOf('/* Issue #373:'));
 
     expect(inspector).toContain(

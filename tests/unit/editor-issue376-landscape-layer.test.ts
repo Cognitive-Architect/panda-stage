@@ -10,6 +10,7 @@ import {
   isLayerOrderActionDisabled,
   shouldDeleteSelectedLayer,
 } from '../../src/renderer/features/properties/LayerOrderControls';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -63,7 +64,7 @@ describe('Issue #376 Cloud Touch landscape Layer hierarchy', () => {
     const order = source(
       'src/renderer/features/properties/LayerOrderControls.tsx',
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue376 = styles.slice(styles.lastIndexOf('/* Issue #376:'));
 
     expect(order).toContain("presentation?: 'portrait' | 'landscape'");
