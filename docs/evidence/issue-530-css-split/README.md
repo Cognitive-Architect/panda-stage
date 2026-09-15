@@ -38,14 +38,25 @@ The machine-readable map is `scripts/css-split-manifest.json`; the reusable veri
 - `git diff --check` - PASS (zero exit status).
 - Local Draft classifier: `focused`, with no unknown paths; no manual Full CI, `pnpm verify:project`, or historical verifier sweep was run.
 
-The automatic Draft CI result for the P1-02 delivery commit is recorded in PR #531
-after the push. Human visual acceptance is intentionally still pending; no automated
-result is recorded as a human PASS.
+- Automatic Draft CI run #876 (`34937749953`) for the P1-02 code commit - PASS:
+  classifier, Typecheck, Lint, Unit, Integration, Build, Electron runtime preparation,
+  and manifest-selected editor/timeline/assets regression suites all succeeded.
+- Automatic docs-only CI run #877 (`34937969849`) for the receipt follow-up commit - PASS:
+  whitespace, docs-only scope, relative-link validation, and final result all succeeded.
+
+Human visual acceptance is intentionally still pending; no automated result is recorded
+as a human PASS.
 
 ## Windows Electron acceptance
 
-The P1-02 acceptance build must be launched from this worktree with a fresh isolated
-user-data directory. The maintainer should inspect the FLA review/workbench and dialogue
-surfaces represented by S02, and the terminal/launcher/project-entry surfaces represented
-by S03, across the normal window states. This receipt will be updated with the exact
-process, clean user-data path, CI run, and maintainer result after that acceptance.
+- Worktree: `D:\panda-issue530-css-split`
+- Branch: `agent/issue-530-css-split`
+- Delivery code commit: `1d96f0cbe64c5e2e4e13b79f39d90dae8d38d368`
+- Receipt follow-up commit: `4ffc3983863fb56ed91a5d0cf72cfa548b96e074`
+- Window: `Panda Stage`, `Responding=True`
+- PID: `11164`
+- Fresh isolated user-data: `D:\PandaStage-Acceptance\issue-533-p1-02-clean-20260915-143837`
+
+The maintainer should inspect the FLA review/workbench and dialogue surfaces represented
+by S02, and the terminal/launcher/project-entry surfaces represented by S03, across the
+normal window states. The application is intentionally left open for that inspection.
