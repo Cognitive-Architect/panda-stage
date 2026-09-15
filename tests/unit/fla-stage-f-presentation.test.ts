@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import type { AnimationImportIR, FlaInspectionResponse } from '../../src/shared/fla-import-api';
 import type { FlaRenderableTargetCatalogEntry } from '../../src/shared/fla-static-snapshot-api';
 import {
@@ -130,7 +131,7 @@ describe('Issue #402 integration/source contracts', () => {
   const snapshot = readFileSync('src/renderer/fla-import/FlaStaticSnapshotReview.tsx', 'utf8');
   const sequence = readFileSync('src/renderer/fla-import/FlaFrameSequenceReview.tsx', 'utf8');
   const builder = readFileSync('src/main/services/fla-static-snapshot-svg-builder.ts', 'utf8');
-  const styles = readFileSync('src/renderer/styles.css', 'utf8').replaceAll('\r\n', '\n');
+  const styles = readOrderedStylesheetSource();
 
   it('preserves routing and mounts F3 only on the existing failed inspection response', () => {
     expect(session).toContain('if (response && !response.ok)');

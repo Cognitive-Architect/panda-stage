@@ -605,8 +605,6 @@
       "tests/unit/editor-issue386-authoring-shell-polish.test.ts",
       "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
       "tests/unit/editor-issue388-landscape-subtitle-properties.test.ts",
-      "tests/unit/editor-issue390-stage-b-raster-workbench.test.ts",
-      "tests/unit/editor-issue392-stage-b-raster-workbench.test.ts",
       "tests/unit/editor-issue422-landscape-timeline-geometry.test.ts",
       "tests/unit/editor-issue423-landscape-timeline-minimum.test.ts",
       "tests/unit/editor-issue426-right-workspace.test.ts",
@@ -648,14 +646,10 @@
       "tests/unit/editor-issue527-character-settings-balance.test.ts",
       "tests/unit/editor-issue528-expression-inline-edit.test.ts",
       "tests/unit/editor-shell-adaptive.test.ts",
-      "tests/unit/fla-review-ux.test.ts",
       "tests/unit/fla-stage-d-render-workbench.test.ts",
-      "tests/unit/fla-stage-d-v11-layout.test.ts",
       "tests/unit/fla-stage-e-frame-sequence.test.ts",
-      "tests/unit/fla-stage-f-presentation.test.ts",
       "tests/unit/left-workspace.test.ts",
       "tests/unit/product-preview-overlay.test.ts",
-      "tests/unit/project-launcher.test.ts",
       "tests/unit/subtitle-style-controls-layout.test.ts",
       "scripts/css-split-manifest.json",
       "scripts/verification-manifest.json",
@@ -715,8 +709,6 @@
       "tests/unit/editor-issue386-authoring-shell-polish.test.ts",
       "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
       "tests/unit/editor-issue388-landscape-subtitle-properties.test.ts",
-      "tests/unit/editor-issue390-stage-b-raster-workbench.test.ts",
-      "tests/unit/editor-issue392-stage-b-raster-workbench.test.ts",
       "tests/unit/editor-issue422-landscape-timeline-geometry.test.ts",
       "tests/unit/editor-issue423-landscape-timeline-minimum.test.ts",
       "tests/unit/editor-issue426-right-workspace.test.ts",
@@ -758,14 +750,10 @@
       "tests/unit/editor-issue527-character-settings-balance.test.ts",
       "tests/unit/editor-issue528-expression-inline-edit.test.ts",
       "tests/unit/editor-shell-adaptive.test.ts",
-      "tests/unit/fla-review-ux.test.ts",
       "tests/unit/fla-stage-d-render-workbench.test.ts",
-      "tests/unit/fla-stage-d-v11-layout.test.ts",
       "tests/unit/fla-stage-e-frame-sequence.test.ts",
-      "tests/unit/fla-stage-f-presentation.test.ts",
       "tests/unit/left-workspace.test.ts",
       "tests/unit/product-preview-overlay.test.ts",
-      "tests/unit/project-launcher.test.ts",
       "tests/unit/subtitle-style-controls-layout.test.ts",
       "scripts/verify-css-split.cjs"
     ],
@@ -796,11 +784,31 @@
         "expectedSha256": "74fc242df333b3fe0bad7ee7ab912ac88f28c9fd212bf74d6e5379573edce7b7",
         "actualSha256": "74fc242df333b3fe0bad7ee7ab912ac88f28c9fd212bf74d6e5379573edce7b7",
         "exact": true
+      },
+      {
+        "id": "S02",
+        "path": "src/renderer/styles/legacy-slices/02-review-workbench-dialogue.css",
+        "range": {
+          "startLine": 1952,
+          "endLine": 3916
+        },
+        "expectedSha256": "ae59a592ceca5184e13bb1a1d59af83ba69ca3d870dcf817ef7eb7169ea6a3a1",
+        "actualSha256": "ae59a592ceca5184e13bb1a1d59af83ba69ca3d870dcf817ef7eb7169ea6a3a1",
+        "exact": true
+      },
+      {
+        "id": "S03",
+        "path": "src/renderer/styles/legacy-slices/03-terminal-launcher-sequence.css",
+        "range": {
+          "startLine": 3917,
+          "endLine": 6019
+        },
+        "expectedSha256": "94ce88b93096dc6fa32b6262ee05b5ff4a1253c920ffe8e71728eeeb2a4b7502",
+        "actualSha256": "94ce88b93096dc6fa32b6262ee05b5ff4a1253c920ffe8e71728eeeb2a4b7502",
+        "exact": true
       }
     ],
     "pending": [
-      "S02",
-      "S03",
       "S04",
       "S05",
       "S06",
@@ -818,8 +826,8 @@
     "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "exact": true,
-    "rootEntryBytes": 828648,
-    "rootEntryLines": 30870,
+    "rootEntryBytes": 733830,
+    "rootEntryLines": 26804,
     "stylesheetScanErrors": []
   },
   "warnings": [],

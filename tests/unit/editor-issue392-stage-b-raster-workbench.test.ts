@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const component = readFileSync(
   'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
   'utf8',
 );
-const styles = readFileSync('src/renderer/styles.css', 'utf8');
+const styles = readOrderedStylesheetSource();
 const issue392Styles = styles.slice(styles.indexOf('/* Issue #392:'));
 const route = readFileSync('src/renderer/fla-import/fla-content-route.ts', 'utf8');
 const card = component.slice(

@@ -48,7 +48,7 @@
       "candidateRange": { "startLine": 1952, "endLine": 3916 },
       "range": { "startLine": 1952, "endLine": 3916 },
       "targetPath": "src/renderer/styles/legacy-slices/02-review-workbench-dialogue.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S03",
@@ -57,7 +57,7 @@
       "candidateRange": { "startLine": 3917, "endLine": 6019 },
       "range": { "startLine": 3917, "endLine": 6019 },
       "targetPath": "src/renderer/styles/legacy-slices/03-terminal-launcher-sequence.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S04",
