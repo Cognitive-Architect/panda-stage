@@ -186,6 +186,7 @@
       "tests/contract/issue220-dialogue-layout.test.ts",
       "tests/contract/ui-m1-touch-foundation.test.ts",
       "tests/integration/editor-shell-layout.test.ts",
+      "tests/integration/right-inspector-narrow.test.ts",
       "tests/unit/character-issue511-reminder.test.ts",
       "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
       "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",

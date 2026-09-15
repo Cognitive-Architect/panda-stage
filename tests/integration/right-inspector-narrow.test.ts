@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const inspector = readFileSync(
   'src/renderer/shell/RightInspector.tsx',
@@ -7,7 +8,7 @@ const inspector = readFileSync(
 );
 const shell = readFileSync('src/renderer/shell/EditorShell.tsx', 'utf8');
 const dock = readFileSync('src/renderer/shell/ResourceActivityDock.tsx', 'utf8');
-const styles = readFileSync('src/renderer/styles.css', 'utf8');
+const styles = readOrderedStylesheetSource();
 
 describe('Issue 192 Right Inspector compact rail and drawer', () => {
   it('reuses the left resource workspace narrow seam instead of a second breakpoint', () => {
