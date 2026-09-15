@@ -9,6 +9,125 @@
     "lineCount": 32818,
     "scanErrors": []
   },
+  "canonicalMap": {
+    "path": "docs/PandaStage_Phase1_Section_Map_v1.0_2026-09-15.md",
+    "commit": "8bac6f217246d25ba4eb6b6bd76ab7bcc11ab332",
+    "sliceCount": 16,
+    "slices": [
+      {
+        "id": "S01",
+        "startLine": 3,
+        "endLine": 1951,
+        "targetPath": "01-shell-import-review-base.css",
+        "workItem": "P1-01"
+      },
+      {
+        "id": "S02",
+        "startLine": 1952,
+        "endLine": 3916,
+        "targetPath": "02-review-workbench-dialogue.css",
+        "workItem": "P1-02"
+      },
+      {
+        "id": "S03",
+        "startLine": 3917,
+        "endLine": 6019,
+        "targetPath": "03-terminal-launcher-sequence.css",
+        "workItem": "P1-02"
+      },
+      {
+        "id": "S04",
+        "startLine": 6020,
+        "endLine": 8038,
+        "targetPath": "04-launcher-render-workbench.css",
+        "workItem": "P1-03"
+      },
+      {
+        "id": "S05",
+        "startLine": 8039,
+        "endLine": 9839,
+        "targetPath": "05-asset-library-stage-sequence.css",
+        "workItem": "P1-03"
+      },
+      {
+        "id": "S06",
+        "startLine": 9840,
+        "endLine": 11883,
+        "targetPath": "06-canvas-portrait-foundation.css",
+        "workItem": "P1-04"
+      },
+      {
+        "id": "S07",
+        "startLine": 11884,
+        "endLine": 13801,
+        "targetPath": "07-portrait-assets-inspector-start.css",
+        "workItem": "P1-04"
+      },
+      {
+        "id": "S08",
+        "startLine": 13802,
+        "endLine": 17819,
+        "targetPath": "08-inspector-portrait-dialogue.css",
+        "workItem": "P1-05"
+      },
+      {
+        "id": "S09",
+        "startLine": 17820,
+        "endLine": 19783,
+        "targetPath": "09-portrait-timed-landscape-assets.css",
+        "workItem": "P1-06"
+      },
+      {
+        "id": "S10",
+        "startLine": 19784,
+        "endLine": 21802,
+        "targetPath": "10-landscape-characters-tools-start.css",
+        "workItem": "P1-06"
+      },
+      {
+        "id": "S11",
+        "startLine": 21803,
+        "endLine": 23799,
+        "targetPath": "11-tools-inspector-timeline-start.css",
+        "workItem": "P1-07"
+      },
+      {
+        "id": "S12",
+        "startLine": 23800,
+        "endLine": 25876,
+        "targetPath": "12-landscape-task-tray.css",
+        "workItem": "P1-07"
+      },
+      {
+        "id": "S13",
+        "startLine": 25877,
+        "endLine": 27997,
+        "targetPath": "13-timed-render-media-tail.css",
+        "workItem": "P1-07"
+      },
+      {
+        "id": "S14",
+        "startLine": 27998,
+        "endLine": 29794,
+        "targetPath": "14-dialogue-polish-image-picker.css",
+        "workItem": "P1-08"
+      },
+      {
+        "id": "S15",
+        "startLine": 29795,
+        "endLine": 31795,
+        "targetPath": "15-character-identity-workspace-start.css",
+        "workItem": "P1-08"
+      },
+      {
+        "id": "S16",
+        "startLine": 31796,
+        "endLine": 32818,
+        "targetPath": "16-character-settings-final-polish.css",
+        "workItem": "P1-08"
+      }
+    ]
+  },
   "map": {
     "sliceCount": 16,
     "coverage": {
@@ -25,95 +144,104 @@
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 2548,
+        "afterLine": 3916,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 5350,
+        "afterLine": 6019,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 7264,
+        "afterLine": 8038,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 10344,
-        "safe": false,
-        "state": {
-          "braceDepth": 2,
-          "parenDepth": 0,
-          "bracketDepth": 0,
-          "inComment": false,
-          "quote": null
-        }
-      },
-      {
-        "afterLine": 11053,
+        "afterLine": 9839,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 13227,
+        "afterLine": 11883,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 15732,
+        "afterLine": 13801,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 18827,
+        "afterLine": 17819,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
+        }
+      },
+      {
+        "afterLine": 19783,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
@@ -124,62 +252,68 @@
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 25734,
+        "afterLine": 23799,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 27898,
-        "safe": false,
-        "state": {
-          "braceDepth": 1,
-          "parenDepth": 0,
-          "bracketDepth": 0,
-          "inComment": false,
-          "quote": null
-        }
-      },
-      {
-        "afterLine": 29223,
+        "afterLine": 25876,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 30426,
+        "afterLine": 27997,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 32117,
+        "afterLine": 29794,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
+        }
+      },
+      {
+        "afterLine": 31795,
+        "safe": true,
+        "state": {
+          "braceDepth": 0,
+          "parenDepth": 0,
+          "bracketDepth": 0,
+          "inComment": false,
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
@@ -190,7 +324,8 @@
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       }
     ],
@@ -203,95 +338,104 @@
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 2548,
+        "afterLine": 3916,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 5350,
+        "afterLine": 6019,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 7264,
+        "afterLine": 8038,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 10555,
+        "afterLine": 9839,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 11053,
+        "afterLine": 11883,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 13227,
+        "afterLine": 13801,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 15732,
+        "afterLine": 17819,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 18827,
+        "afterLine": 19783,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
@@ -302,62 +446,68 @@
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 25734,
+        "afterLine": 23799,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 27996,
+        "afterLine": 25876,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 29223,
+        "afterLine": 27997,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 30426,
+        "afterLine": 29794,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
-        "afterLine": 32117,
+        "afterLine": 31795,
         "safe": true,
         "state": {
           "braceDepth": 0,
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       },
       {
@@ -368,24 +518,12 @@
           "parenDepth": 0,
           "bracketDepth": 0,
           "inComment": false,
-          "quote": null
+          "quote": null,
+          "topLevelStatementPending": false
         }
       }
     ],
-    "adjustments": [
-      {
-        "id": "S05",
-        "plannedAfterLine": 10344,
-        "actualAfterLine": 10555,
-        "reason": "The planned cut is inside @media (max-width: 1100px); keep the complete conditional block together."
-      },
-      {
-        "id": "S12",
-        "plannedAfterLine": 27898,
-        "actualAfterLine": 27996,
-        "reason": "The planned cut is inside @media (max-width: 900px), which also contains the Issue #441 block; keep the complete conditional block together before S13."
-      }
-    ]
+    "adjustments": []
   },
   "pathSensitive": {
     "all": [

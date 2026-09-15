@@ -2,6 +2,11 @@
   "manifestVersion": 1,
   "issue": 530,
   "phase": "phase-1-mechanical-css-split",
+  "canonicalMap": {
+    "path": "docs/PandaStage_Phase1_Section_Map_v1.0_2026-09-15.md",
+    "commit": "8bac6f217246d25ba4eb6b6bd76ab7bcc11ab332",
+    "description": "Canonical repository Phase 1 Section Map v1.0; candidate ranges and target paths below must match it unless a verifier-proven minimum boundary adjustment is recorded."
+  },
   "baseline": {
     "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
     "sourcePath": "src/renderer/styles.css",
@@ -22,10 +27,15 @@
     "endLine": 32818,
     "lineEndingNormalization": "CRLF and CR are normalized to LF for hashing and comparison; source text is otherwise not reformatted."
   },
+  "boundaryPolicy": {
+    "proof": "A boundary is complete only when delimiter state is balanced, comments/strings are closed, and no top-level CSS statement prelude is pending. This rejects partial selector lists and other zero-depth rule headers.",
+    "adjustments": "Any changed boundary must retain the canonical candidate range and record the minimum corrected range with structural evidence."
+  },
   "slices": [
     {
       "id": "S01",
       "order": 1,
+      "workItem": "P1-01",
       "candidateRange": { "startLine": 3, "endLine": 1951 },
       "range": { "startLine": 3, "endLine": 1951 },
       "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css",
@@ -34,131 +44,136 @@
     {
       "id": "S02",
       "order": 2,
-      "candidateRange": { "startLine": 1952, "endLine": 2548 },
-      "range": { "startLine": 1952, "endLine": 2548 },
-      "targetPath": "src/renderer/styles/legacy-slices/02-fla-review-portal.css",
+      "workItem": "P1-02",
+      "candidateRange": { "startLine": 1952, "endLine": 3916 },
+      "range": { "startLine": 1952, "endLine": 3916 },
+      "targetPath": "src/renderer/styles/legacy-slices/02-review-workbench-dialogue.css",
       "status": "pending"
     },
     {
       "id": "S03",
       "order": 3,
-      "candidateRange": { "startLine": 2549, "endLine": 5350 },
-      "range": { "startLine": 2549, "endLine": 5350 },
-      "targetPath": "src/renderer/styles/legacy-slices/03-fla-review-workbench.css",
+      "workItem": "P1-02",
+      "candidateRange": { "startLine": 3917, "endLine": 6019 },
+      "range": { "startLine": 3917, "endLine": 6019 },
+      "targetPath": "src/renderer/styles/legacy-slices/03-terminal-launcher-sequence.css",
       "status": "pending"
     },
     {
       "id": "S04",
       "order": 4,
-      "candidateRange": { "startLine": 5351, "endLine": 7264 },
-      "range": { "startLine": 5351, "endLine": 7264 },
-      "targetPath": "src/renderer/styles/legacy-slices/04-project-launcher.css",
+      "workItem": "P1-03",
+      "candidateRange": { "startLine": 6020, "endLine": 8038 },
+      "range": { "startLine": 6020, "endLine": 8038 },
+      "targetPath": "src/renderer/styles/legacy-slices/04-launcher-render-workbench.css",
       "status": "pending"
     },
     {
       "id": "S05",
       "order": 5,
-      "candidateRange": { "startLine": 7265, "endLine": 10344 },
-      "range": { "startLine": 7265, "endLine": 10555 },
-      "targetPath": "src/renderer/styles/legacy-slices/05-editor-and-render-workspaces.css",
-      "status": "pending",
-      "boundaryAdjustment": {
-        "plannedAfterLine": 10344,
-        "actualAfterLine": 10555,
-        "reason": "The planned cut is inside @media (max-width: 1100px); keep the complete conditional block together."
-      }
+      "workItem": "P1-03",
+      "candidateRange": { "startLine": 8039, "endLine": 9839 },
+      "range": { "startLine": 8039, "endLine": 9839 },
+      "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence.css",
+      "status": "pending"
     },
     {
       "id": "S06",
       "order": 6,
-      "candidateRange": { "startLine": 10345, "endLine": 11053 },
-      "range": { "startLine": 10556, "endLine": 11053 },
-      "targetPath": "src/renderer/styles/legacy-slices/06-responsive-shell-and-preview.css",
+      "workItem": "P1-04",
+      "candidateRange": { "startLine": 9840, "endLine": 11883 },
+      "range": { "startLine": 9840, "endLine": 11883 },
+      "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation.css",
       "status": "pending"
     },
     {
       "id": "S07",
       "order": 7,
-      "candidateRange": { "startLine": 11054, "endLine": 13227 },
-      "range": { "startLine": 11054, "endLine": 13227 },
-      "targetPath": "src/renderer/styles/legacy-slices/07-dialogue-sheet-and-inspector.css",
+      "workItem": "P1-04",
+      "candidateRange": { "startLine": 11884, "endLine": 13801 },
+      "range": { "startLine": 11884, "endLine": 13801 },
+      "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start.css",
       "status": "pending"
     },
     {
       "id": "S08",
       "order": 8,
-      "candidateRange": { "startLine": 13228, "endLine": 15732 },
-      "range": { "startLine": 13228, "endLine": 15732 },
-      "targetPath": "src/renderer/styles/legacy-slices/08-landscape-resource-drawers.css",
+      "workItem": "P1-05",
+      "candidateRange": { "startLine": 13802, "endLine": 17819 },
+      "range": { "startLine": 13802, "endLine": 17819 },
+      "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue.css",
       "status": "pending"
     },
     {
       "id": "S09",
       "order": 9,
-      "candidateRange": { "startLine": 15733, "endLine": 18827 },
-      "range": { "startLine": 15733, "endLine": 18827 },
-      "targetPath": "src/renderer/styles/legacy-slices/09-portrait-workspaces.css",
+      "workItem": "P1-06",
+      "candidateRange": { "startLine": 17820, "endLine": 19783 },
+      "range": { "startLine": 17820, "endLine": 19783 },
+      "targetPath": "src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets.css",
       "status": "pending"
     },
     {
       "id": "S10",
       "order": 10,
-      "candidateRange": { "startLine": 18828, "endLine": 21802 },
-      "range": { "startLine": 18828, "endLine": 21802 },
-      "targetPath": "src/renderer/styles/legacy-slices/10-landscape-shot-and-character-workspaces.css",
+      "workItem": "P1-06",
+      "candidateRange": { "startLine": 19784, "endLine": 21802 },
+      "range": { "startLine": 19784, "endLine": 21802 },
+      "targetPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-start.css",
       "status": "pending"
     },
     {
       "id": "S11",
       "order": 11,
-      "candidateRange": { "startLine": 21803, "endLine": 25734 },
-      "range": { "startLine": 21803, "endLine": 25734 },
-      "targetPath": "src/renderer/styles/legacy-slices/11-landscape-inspector-and-canvas-tools.css",
+      "workItem": "P1-07",
+      "candidateRange": { "startLine": 21803, "endLine": 23799 },
+      "range": { "startLine": 21803, "endLine": 23799 },
+      "targetPath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
       "status": "pending"
     },
     {
       "id": "S12",
       "order": 12,
-      "candidateRange": { "startLine": 25735, "endLine": 27898 },
-      "range": { "startLine": 25735, "endLine": 27996 },
-      "targetPath": "src/renderer/styles/legacy-slices/12-landscape-timeline.css",
-      "status": "pending",
-      "boundaryAdjustment": {
-        "plannedAfterLine": 27898,
-        "actualAfterLine": 27996,
-        "reason": "The planned cut is inside @media (max-width: 900px), which also contains the Issue #441 block; keep the complete conditional block together before S13."
-      }
+      "workItem": "P1-07",
+      "candidateRange": { "startLine": 23800, "endLine": 25876 },
+      "range": { "startLine": 23800, "endLine": 25876 },
+      "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray.css",
+      "status": "pending"
     },
     {
       "id": "S13",
       "order": 13,
-      "candidateRange": { "startLine": 27899, "endLine": 29223 },
-      "range": { "startLine": 27997, "endLine": 29223 },
-      "targetPath": "src/renderer/styles/legacy-slices/13-subtitle-properties-and-batch.css",
+      "workItem": "P1-07",
+      "candidateRange": { "startLine": 25877, "endLine": 27997 },
+      "range": { "startLine": 25877, "endLine": 27997 },
+      "targetPath": "src/renderer/styles/legacy-slices/13-timed-render-media-tail.css",
       "status": "pending"
     },
     {
       "id": "S14",
       "order": 14,
-      "candidateRange": { "startLine": 29224, "endLine": 30426 },
-      "range": { "startLine": 29224, "endLine": 30426 },
-      "targetPath": "src/renderer/styles/legacy-slices/14-overlays-and-quick-actions.css",
+      "workItem": "P1-08",
+      "candidateRange": { "startLine": 27998, "endLine": 29794 },
+      "range": { "startLine": 27998, "endLine": 29794 },
+      "targetPath": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker.css",
       "status": "pending"
     },
     {
       "id": "S15",
       "order": 15,
-      "candidateRange": { "startLine": 30427, "endLine": 32117 },
-      "range": { "startLine": 30427, "endLine": 32117 },
-      "targetPath": "src/renderer/styles/legacy-slices/15-dialogue-authoring-and-identity.css",
+      "workItem": "P1-08",
+      "candidateRange": { "startLine": 29795, "endLine": 31795 },
+      "range": { "startLine": 29795, "endLine": 31795 },
+      "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css",
       "status": "pending"
     },
     {
       "id": "S16",
       "order": 16,
-      "candidateRange": { "startLine": 32118, "endLine": 32818 },
-      "range": { "startLine": 32118, "endLine": 32818 },
-      "targetPath": "src/renderer/styles/legacy-slices/16-character-detail-and-expression.css",
+      "workItem": "P1-08",
+      "candidateRange": { "startLine": 31796, "endLine": 32818 },
+      "range": { "startLine": 31796, "endLine": 32818 },
+      "targetPath": "src/renderer/styles/legacy-slices/16-character-settings-final-polish.css",
       "status": "pending"
     }
   ],

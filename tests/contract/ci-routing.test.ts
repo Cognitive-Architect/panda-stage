@@ -96,6 +96,26 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.suites).toEqual([]);
   });
 
+  it('routes the Phase 1 CSS split control paths without opening the unknown tier', () => {
+    const result = draft([
+      change('scripts/css-split-manifest.json', 'A'),
+      change('scripts/css-split-boundary.cjs', 'A'),
+      change('scripts/verify-css-split.cjs', 'A'),
+      change('src/renderer/styles.css'),
+      change('src/renderer/styles/legacy-slices/01-shell-import-review-base.css', 'A'),
+      change('docs/evidence/issue-530-css-split/receipt.json', 'A'),
+      change('tests/helpers/read-stylesheet-source.ts', 'A'),
+      change('tests/contract/css-split-boundary.test.ts', 'A'),
+      change('tests/unit/issue102-task4-responsive.test.ts'),
+      change('tests/unit/issue109-resource-workspace.test.ts'),
+    ]);
+
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toEqual(['ci-build-infrastructure', 'editor-shell']);
+    expect(result.suites).toEqual(['editor', 'timeline']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it.each([
     'src/domain/services/DialogueService.ts',
     'src/shared/project-contract.ts',

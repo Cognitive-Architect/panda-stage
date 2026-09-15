@@ -11,6 +11,7 @@ const {
   writeFileSync,
 } = require('node:fs');
 const { dirname, join, relative, resolve } = require('node:path');
+const { isCompleteBoundary, scanCss } = require('./css-split-boundary.cjs');
 
 const repoRoot = resolve(__dirname, '..');
 const manifestPath = join(__dirname, 'css-split-manifest.json');
@@ -61,94 +62,6 @@ function readBaseline() {
     fail(`Cannot read pinned baseline: ${error.message}`);
     return '';
   }
-}
-
-function scanCss(value) {
-  const sourceLines = linesOf(value);
-  let braceDepth = 0;
-  let parenDepth = 0;
-  let bracketDepth = 0;
-  let inComment = false;
-  let quote = null;
-  let escaped = false;
-  const states = [{ braceDepth: 0, parenDepth: 0, bracketDepth: 0, inComment: false, quote: null }];
-  const errors = [];
-
-  for (let lineNumber = 1; lineNumber <= sourceLines.length; lineNumber += 1) {
-    const line = sourceLines[lineNumber - 1];
-    for (let index = 0; index < line.length; index += 1) {
-      const character = line[index];
-      const next = line[index + 1];
-
-      if (inComment) {
-        if (character === '*' && next === '/') {
-          inComment = false;
-          index += 1;
-        }
-        continue;
-      }
-      if (quote) {
-        if (escaped) {
-          escaped = false;
-        } else if (character === '\\') {
-          escaped = true;
-        } else if (character === quote) {
-          quote = null;
-        }
-        continue;
-      }
-      if (character === '/' && next === '*') {
-        inComment = true;
-        index += 1;
-        continue;
-      }
-      if (character === '"' || character === "'") {
-        quote = character;
-        continue;
-      }
-      if (character === '{') braceDepth += 1;
-      if (character === '}') {
-        braceDepth -= 1;
-        if (braceDepth < 0) errors.push(`unexpected } at line ${lineNumber}`);
-      }
-      if (character === '(') parenDepth += 1;
-      if (character === ')') {
-        parenDepth -= 1;
-        if (parenDepth < 0) errors.push(`unexpected ) at line ${lineNumber}`);
-      }
-      if (character === '[') bracketDepth += 1;
-      if (character === ']') {
-        bracketDepth -= 1;
-        if (bracketDepth < 0) errors.push(`unexpected ] at line ${lineNumber}`);
-      }
-    }
-    states[lineNumber] = {
-      braceDepth,
-      parenDepth,
-      bracketDepth,
-      inComment,
-      quote,
-    };
-  }
-
-  if (inComment) errors.push('unterminated comment');
-  if (quote) errors.push('unterminated string');
-  if (braceDepth !== 0) errors.push(`unclosed brace depth ${braceDepth}`);
-  if (parenDepth !== 0) errors.push(`unclosed parenthesis depth ${parenDepth}`);
-  if (bracketDepth !== 0) errors.push(`unclosed bracket depth ${bracketDepth}`);
-
-  return { lines: sourceLines, states, errors };
-}
-
-function isCompleteBoundary(state) {
-  return Boolean(
-    state &&
-      state.braceDepth === 0 &&
-      state.parenDepth === 0 &&
-      state.bracketDepth === 0 &&
-      !state.inComment &&
-      !state.quote,
-  );
 }
 
 function stateBefore(scan, lineNumber) {
@@ -235,6 +148,82 @@ function verifyBaseline(baseline, scan) {
       fail(`Baseline line ${line} is not an @import line`);
     }
   }
+}
+
+function readCanonicalMap() {
+  const canonicalMap = manifest.canonicalMap;
+  if (!canonicalMap?.commit || !canonicalMap?.path) {
+    fail('Canonical Section Map commit/path is missing from the manifest');
+    return '';
+  }
+  try {
+    return normalize(
+      execFileSync(
+        'git',
+        ['-C', repoRoot, 'show', `${canonicalMap.commit}:${canonicalMap.path}`],
+        { encoding: 'utf8' },
+      ),
+    );
+  } catch (error) {
+    fail(`Cannot read canonical Section Map: ${error.message}`);
+    return '';
+  }
+}
+
+function parseCanonicalSlices(value) {
+  const slices = [];
+  const rowPattern = /^\|\s*(S\d+)\s*\|\s*([\d,]+)-([\d,]+)\s*\|\s*[\d,]+\s*\|\s*`([^`]+)`\s*\|\s*(P1-\d+)\s*\|$/u;
+  for (const line of linesOf(value)) {
+    const match = rowPattern.exec(line);
+    if (!match) continue;
+    slices.push({
+      id: match[1],
+      startLine: Number(match[2].replaceAll(',', '')),
+      endLine: Number(match[3].replaceAll(',', '')),
+      targetPath: match[4],
+      workItem: match[5],
+    });
+  }
+  return slices;
+}
+
+function verifyCanonicalMap(canonicalMapText) {
+  const canonicalSlices = parseCanonicalSlices(canonicalMapText);
+  if (canonicalSlices.length !== 16) {
+    fail(`Canonical Section Map yielded ${canonicalSlices.length} slices, expected 16`);
+  }
+  for (let index = 0; index < Math.min(canonicalSlices.length, manifest.slices.length); index += 1) {
+    const canonical = canonicalSlices[index];
+    const actual = manifest.slices[index];
+    const expected = {
+      id: canonical.id,
+      order: index + 1,
+      workItem: canonical.workItem,
+      candidateRange: {
+        startLine: canonical.startLine,
+        endLine: canonical.endLine,
+      },
+      targetPath: join('src/renderer/styles/legacy-slices', canonical.targetPath).replaceAll('\\', '/'),
+    };
+    if (
+      actual.id !== expected.id ||
+      actual.order !== expected.order ||
+      actual.workItem !== expected.workItem ||
+      actual.candidateRange.startLine !== expected.candidateRange.startLine ||
+      actual.candidateRange.endLine !== expected.candidateRange.endLine ||
+      actual.targetPath !== expected.targetPath
+    ) {
+      fail(
+        `${actual.id || `slice-${index + 1}`} does not match canonical Section Map: ${JSON.stringify(expected)}`,
+      );
+    }
+  }
+  return {
+    path: manifest.canonicalMap?.path,
+    commit: manifest.canonicalMap?.commit,
+    sliceCount: canonicalSlices.length,
+    slices: canonicalSlices,
+  };
 }
 
 function verifyMap(baseline, scan) {
@@ -390,6 +379,7 @@ if (baselineScan.errors.length > 0) {
   for (const error of baselineScan.errors) fail(`Baseline CSS structure: ${error}`);
 }
 verifyBaseline(baseline, baselineScan);
+const canonicalMap = verifyCanonicalMap(readCanonicalMap());
 const boundaries = verifyMap(baseline, baselineScan);
 const pathInventory = verifyPathInventory(baseline);
 const readers = inventoryReaders();
@@ -411,6 +401,7 @@ const result = {
     lineCount: baselineScan.lines.length,
     scanErrors: baselineScan.errors,
   },
+  canonicalMap,
   map: {
     sliceCount: manifest.slices.length,
     coverage: manifest.coverage,
