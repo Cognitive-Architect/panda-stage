@@ -5,7 +5,8 @@
 - Execution lane: PR #531, branch `agent/issue-530-css-split`.
 - Starting reviewed HEAD: `0963890791070d6eb5b39fc75bd6ee036306adb3`.
 - P1-04 delivery commit: `d16c26062d582ad91eeceefe020ab5e6f798c68c` (`feat: extract P1-04 canvas and portrait CSS slices`).
-- Receipt follow-up commit / current exact HEAD: `3d1480a8f405885037ff1641d86adb66c5126622` (`docs: record P1-04 receipt`).
+- Receipt follow-up commit: `3d1480a8f405885037ff1641d86adb66c5126622` (`docs: record P1-04 receipt`).
+- Reader-wiring fix / current P1-04 code HEAD: `c96f4168eb616278ed3c339c47ead1d85a1d9533` (`test: route P1-04 inspector reader`).
 - Fixed baseline: `main@35fe7963a50e7bd9be68f1e39d12833c99bb4436`.
 - Canonical map: `docs/PandaStage_Phase1_Section_Map_v1.0_2026-09-15.md` at `8bac6f217246d25ba4eb6b6bd76ab7bcc11ab332`.
 - S06: canonical `L9840-L11883` (2044 lines) -> `src/renderer/styles/legacy-slices/06-canvas-portrait-foundation.css`; exact SHA-256 `e93b32b2a395c792ecc3b76f531165dc97c98be56564b58d6d5da40c45c9821f`.
@@ -21,18 +22,19 @@
 - `node scripts/verify-css-split.cjs --write-receipt`: PASS.
 - Reconstructed full stylesheet equals the pinned baseline: `2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7`.
 - S06/S07 path-sensitive scan: no `url(...)`, `@import`, or `@font-face`; relocation risk `none`.
-- Existing ordered-source reader was used for the 19 newly affected historical reader tests; all 93 verifier-listed reader paths were exercised in targeted batches with 380 tests passing.
+- Existing ordered-source reader migration covers 20 newly affected readers (19 unit and 1 integration); all 93 verifier-listed reader paths were exercised in targeted batches with 380 tests passing across 92 discovered test files.
 - Focused CSS/routing/manifest/UI contracts: 5 files / 100 tests PASS.
 - `pnpm build:renderer`: PASS.
 - `pnpm typecheck`: PASS.
 - `pnpm lint`: PASS.
 - No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run.
+- Code CI #881 failed only because `tests/integration/right-inspector-narrow.test.ts` still read the shortened root stylesheet directly; the reader-wiring fix is included in `c96f4168eb616278ed3c339c47ead1d85a1d9533`. Docs-only CI #882 and #883 passed; code-fix CI #884 (`34952506785`) is PASS.
 
 ## P1-04 Windows Electron acceptance
 
 HUMAN visual acceptance is pending. The fresh build must be inspected for canvas fit/actual-size presentation, selection feedback, drag/drop affordance, portrait resource workspace, and inspector entry. An unreachable portrait state must be recorded as not manually covered rather than fabricated.
 
-The automatic Draft CI result and the final HUMAN receipt will be appended after the pushed head is observed and the maintainer completes the Windows review.
+The final automatic Draft CI result is recorded above. HUMAN visual acceptance remains pending until the maintainer completes the Windows review; no HUMAN PASS is inferred from CI or source-equivalence evidence.
 
 ## P1-03 historical receipt
 
