@@ -1,6 +1,41 @@
-# Issue #536 / PR #531 - P1-05 receipt
+# Issue #537 / PR #531 - P1-06 receipt
 
-## Current P1-05 delivery
+## Current P1-06 delivery
+
+- Execution lane: PR #531, branch `agent/issue-530-css-split`.
+- Starting reviewed HEAD: `95c572c958030c9ea9fd8690581464c9fa9e5578`.
+- P1-06 implementation commit: `de33aed655b2364596407378100cb32dc1def5a8` (`feat: extract P1-06 portrait timing character CSS slices`).
+- S09: canonical `L17820-L19783` (1964 lines) -> `src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets.css`; exact SHA-256 `405729b3af501ee28fe3d3eb7a486b090bf3c1e3a475e913f2633c3dd077e735`.
+- S10: canonical `L19784-L21802` (2019 lines) -> `src/renderer/styles/legacy-slices/10-landscape-characters-tools-start.css`; exact SHA-256 `64c830b0f4ea56fc4b3c963c1a88249551817e933b45c35a650c61edd679e33c`.
+- S09 + S10 remain two intact canonical slices (3983 lines total); no regrouping, deduplication, reorder, or boundary remap was introduced.
+- Root order is tokens, primitives, S01, S02, S03, S04, S05, S06, S07, S08, S09, S10, then the untouched S11-S16 remainder; S11-S16 remain pending.
+- Reconstructed full stylesheet equals the pinned baseline: `2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7`.
+- S09/S10 path-sensitive scan: no `url(...)`, `@import`, or `@font-face`; relocation risk `none`.
+- Eight newly exposed direct monolith readers were migrated to the existing ordered stylesheet helper without weakening assertions; all 92 verifier-listed reader paths passed.
+
+## P1-06 validation
+
+- `node scripts/verify-css-split.cjs --preflight`: PASS.
+- `node scripts/verify-css-split.cjs --write-receipt`: PASS.
+- Complete-rule boundaries, canonical map/manifest fidelity, exact S09/S10 identity, no-gap/no-duplication/no-reorder reconstruction: PASS.
+- Focused CSS/routing/manifest/dialogue/timing/Assets/Character contracts: 19 files / 162 tests PASS.
+- Targeted integrations (`timeline-selection`, `asset-import`, `character-lifecycle`, `shot-lifecycle`): 4 files / 25 tests PASS.
+- Full direct-reader inventory: 92 files PASS.
+- `pnpm test:unit`: PASS, 274 files / 1778 tests.
+- `pnpm typecheck`: PASS.
+- `pnpm lint`: PASS.
+- `pnpm build:renderer`: PASS.
+- `pnpm build:electron`: PASS.
+- No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run.
+- Automatic Draft CI #890 (`34966861845`) for the P1-06 implementation commit: PASS; classifier selected focused core quality and Full regression was not run.
+
+## P1-06 Windows Electron acceptance
+
+**PENDING — 2026-09-15.** A fresh visible build from the current P1-06 worktree must be reviewed for portrait precise/timed Dialogue, landscape Assets, Character empty/list/detail, Character expressions, and cross-surface switching/scroll sanity. Unreachable historical states must be recorded as not manually covered; no HUMAN PASS is inferred from automated/source-equivalence checks.
+
+PR #531 remains **Draft / Open / Unmerged**. Do not mark Ready or merge.
+
+## P1-05 historical delivery
 
 - Execution lane: PR #531, branch `agent/issue-530-css-split`.
 - Starting reviewed HEAD: `0ec33c5933db8d9c0f59bbf71a45778bcbaa7c3f`.
@@ -28,7 +63,7 @@
 
 ## P1-05 Windows Electron acceptance
 
-**PENDING — 2026-09-15.** A fresh visible build from the current P1-05 worktree must be reviewed for Inspector continuation/sections, form/focus states, portrait Dialogue creation, untimed/pending-arrangement state, and narrow overflow/bottom actions. Unreachable historical states must be recorded as not manually covered; no HUMAN PASS is inferred from automated/source-equivalence checks.
+**PASS — 2026-09-15.** The current P1-06 execution lane in Issue #537 records that P1-01 through P1-05 have completed maintainer acceptance. This receipt covers the declared reachable focus areas: Inspector continuation/sections, form/focus, portrait Dialogue creation, untimed/pending arrangement, and narrow overflow/bottom actions. No additional per-surface detail is asserted here beyond that acceptance record.
 
 PR #531 remains **Draft / Open / Unmerged**. Do not mark Ready or merge.
 
