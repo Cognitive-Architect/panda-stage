@@ -6,8 +6,10 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
 import { AssetCard } from '../../src/renderer/features/assets/AssetCard';
 import { AssetLibrary } from '../../src/renderer/features/assets/AssetLibrary';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 

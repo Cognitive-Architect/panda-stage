@@ -8,10 +8,12 @@ import {
   CharacterEditor,
   isDefaultTransformPending,
 } from '../../src/renderer/features/characters/CharacterEditor';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const noop = () => undefined;
 
 function source(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 

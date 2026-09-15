@@ -111,7 +111,7 @@
       "candidateRange": { "startLine": 17820, "endLine": 19783 },
       "range": { "startLine": 17820, "endLine": 19783 },
       "targetPath": "src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S10",
@@ -120,7 +120,7 @@
       "candidateRange": { "startLine": 19784, "endLine": 21802 },
       "range": { "startLine": 19784, "endLine": 21802 },
       "targetPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-start.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S11",
@@ -231,7 +231,15 @@
       "tests/unit/editor-issue351-timeline-default.test.ts",
       "tests/unit/editor-issue352-timeline-selected.test.ts",
       "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
-      "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts"
+      "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
+      "tests/unit/editor-issue353-timeline-state-c.test.ts",
+      "tests/unit/editor-issue358-properties-dialogue-inspector.test.ts",
+      "tests/unit/editor-issue359-portrait-timeline-polish.test.ts",
+      "tests/unit/editor-issue361-landscape-shot-drawer.test.ts",
+      "tests/unit/editor-issue362-landscape-shot-create.test.ts",
+      "tests/unit/editor-issue363-landscape-assets.test.ts",
+      "tests/unit/editor-issue364-landscape-characters.test.ts",
+      "tests/unit/editor-issue365-compact-character-detail.test.ts"
     ],
     "sharedReader": "tests/helpers/read-stylesheet-source.ts",
     "notes": [
