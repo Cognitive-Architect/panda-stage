@@ -1,4 +1,4 @@
-# Issue #530 — P1-01 receipt
+# Issue #532 / PR #531 — P1-01 corrective receipt
 
 ## Baseline and canonical map
 
@@ -31,12 +31,16 @@ The new CSS split manifest/boundary helper and focused contract are explicitly r
 
 ## Validation
 
-- `pnpm test:unit` — PASS, 273 files / 1775 tests
-- `pnpm test:integration` — PASS, 32 files / 176 tests
+- `node scripts/verify-css-split.cjs --preflight` — PASS
+- `node scripts/verify-css-split.cjs --write-receipt` — PASS, final source equivalence
+- focused contracts — PASS, 4 files / 88 tests
+- `pnpm test:unit` — PASS, 274 files / 1778 tests
 - `pnpm typecheck` — PASS
 - `pnpm lint` — PASS
 - `pnpm build:renderer` — PASS
 - `git diff --check` — PASS
+- GitHub Actions run `34932636009` / CI #874 — PASS: classifier, Typecheck, Lint, Unit, Integration, Build, and manifest-selected regression suites
+- The focused route completed successfully; Full quality, unknown-route, and unrelated paths were not selected.
 
 ## Windows Electron smoke
 
@@ -46,8 +50,9 @@ The new CSS split manifest/boundary helper and focused contract are explicitly r
 - Process: PID `13364`
 - Isolated clean user data: `D:\PandaStage-Acceptance\clean-latest-20260915-114855`
 
-The application startup/window-response smoke passed. Human visual acceptance remains
-pending maintainer inspection; no automated result is recorded as human PASS.
+The application startup/window-response smoke passed before the final test-only commit;
+the final commit changes no product code. Human visual acceptance remains pending
+maintainer inspection; no automated result is recorded as human PASS.
 
 ## Scope and residual risk
 
