@@ -584,6 +584,28 @@
         "relocationRisk": "none"
       }
     ],
+    "p1_04": [
+      {
+        "id": "S06",
+        "range": {
+          "startLine": 9840,
+          "endLine": 11883
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      },
+      {
+        "id": "S07",
+        "range": {
+          "startLine": 11884,
+          "endLine": 13801
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      }
+    ],
     "relocationRisk": "none"
   },
   "directReaderSearch": {
@@ -631,7 +653,6 @@
       "tests/unit/editor-issue366-landscape-expression.test.ts",
       "tests/unit/editor-issue368-landscape-chrome.test.ts",
       "tests/unit/editor-issue369-project-tools.test.ts",
-      "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
       "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
       "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
       "tests/unit/editor-issue374-landscape-appearance.test.ts",
@@ -732,7 +753,6 @@
       "tests/unit/editor-issue366-landscape-expression.test.ts",
       "tests/unit/editor-issue368-landscape-chrome.test.ts",
       "tests/unit/editor-issue369-project-tools.test.ts",
-      "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
       "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
       "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
       "tests/unit/editor-issue374-landscape-appearance.test.ts",
@@ -801,6 +821,25 @@
       "tests/unit/character-issue511-reminder.test.ts",
       "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
       "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
+      "tests/unit/editor-issue326-portrait-canvas-cleanup.test.ts",
+      "tests/unit/editor-issue327-portrait-shot-shell.test.ts",
+      "tests/unit/editor-issue328-portrait-assets.test.ts",
+      "tests/unit/editor-issue329-portrait-properties.test.ts",
+      "tests/unit/editor-issue330-portrait-timeline.test.ts",
+      "tests/unit/editor-issue331-landscape-resource-drawers.test.ts",
+      "tests/unit/editor-issue332-contextual-inspector.test.ts",
+      "tests/unit/editor-issue344-portrait-assets.test.ts",
+      "tests/unit/editor-issue368-landscape-chrome.test.ts",
+      "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
+      "tests/unit/editor-issue456-quick-action.test.ts",
+      "tests/unit/editor-issue457-canvas-first.test.ts",
+      "tests/unit/editor-issue474-character-empty-state.test.ts",
+      "tests/unit/editor-issue478-character-header-trim.test.ts",
+      "tests/unit/editor-issue481-shot-polish.test.ts",
+      "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+      "tests/unit/editor-shell-adaptive.test.ts",
+      "tests/unit/left-workspace.test.ts",
+      "tests/unit/product-preview-overlay.test.ts",
       "tests/unit/editor-issue342-icon-pilot.test.ts",
       "tests/unit/editor-issue345-portrait-assets.test.ts",
       "tests/unit/editor-issue366-landscape-expression.test.ts",
@@ -872,11 +911,31 @@
         "expectedSha256": "5f48b8355a80a3b1c0b7d775c10e3aedf76cf9f945c86f6ce698c5e3581b8e86",
         "actualSha256": "5f48b8355a80a3b1c0b7d775c10e3aedf76cf9f945c86f6ce698c5e3581b8e86",
         "exact": true
+      },
+      {
+        "id": "S06",
+        "path": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation.css",
+        "range": {
+          "startLine": 9840,
+          "endLine": 11883
+        },
+        "expectedSha256": "e93b32b2a395c792ecc3b76f531165dc97c98be56564b58d6d5da40c45c9821f",
+        "actualSha256": "e93b32b2a395c792ecc3b76f531165dc97c98be56564b58d6d5da40c45c9821f",
+        "exact": true
+      },
+      {
+        "id": "S07",
+        "path": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start.css",
+        "range": {
+          "startLine": 11884,
+          "endLine": 13801
+        },
+        "expectedSha256": "853cb0833eb380e8a5779188225a7bad242de0aeeae9e8dd4fbe3dce59d1a08d",
+        "actualSha256": "853cb0833eb380e8a5779188225a7bad242de0aeeae9e8dd4fbe3dce59d1a08d",
+        "exact": true
       }
     ],
     "pending": [
-      "S06",
-      "S07",
       "S08",
       "S09",
       "S10",
@@ -890,8 +949,8 @@
     "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "exact": true,
-    "rootEntryBytes": 658222,
-    "rootEntryLines": 22986,
+    "rootEntryBytes": 561268,
+    "rootEntryLines": 19026,
     "stylesheetScanErrors": []
   },
   "warnings": [],

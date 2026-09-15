@@ -1,0 +1,1918 @@
+/* Issue #328: the portrait Assets page is a single top-level workspace. Keep
+   the existing ResourceActivityDock and import owners, but remove the second
+   activity switcher and present the library in the v0.3 hierarchy. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets'] {
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.asset-library-heading-visually-hidden,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .asset-import-panel-compact
+  .asset-import-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-header {
+  padding: 14px 16px 12px;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-heading > div {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-header-actions {
+  display: contents;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-primary-action {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  min-height: 48px;
+  border-color: var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-action-primary);
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-primary-action[data-resource-action-layout='asset-browser'] {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: stretch;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-fla-action {
+  display: inline-flex;
+  grid-column: 2;
+  grid-row: 2;
+  align-self: stretch;
+  justify-self: stretch;
+  min-width: 92px;
+  height: 48px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border-color: var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-fla-action:hover:not(:disabled) {
+  background: var(--ui-color-selected-surface);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-close {
+  grid-column: 2;
+  grid-row: 1;
+  width: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library {
+  --asset-library-surface: #0e1410;
+  --asset-library-card-surface: #18221c;
+  --asset-library-preview-surface: #0a110d;
+  padding: 0 16px 16px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-import-panel-compact {
+  padding: 0;
+  margin: 0 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-import-panel-compact .asset-import-actions {
+  min-height: 36px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-import-panel-compact .asset-import-actions > span {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-import-panel-compact .asset-import-drop {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library-browser {
+  display: block;
+  min-height: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library-search {
+  display: grid;
+  margin-bottom: 10px;
+  gap: 6px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library-search > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library-search input {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface);
+  font: inherit;
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library-search-control input {
+  padding-right: 48px;
+  padding-left: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library-search-icon {
+  left: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library-search input:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-category-tabs {
+  display: grid;
+  width: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+  overflow: visible;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-category-tabs button {
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 3px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-category-tabs button:hover:not(:disabled) {
+  background: rgb(65 145 87 / 14%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-category-tabs button.asset-category-active {
+  border-bottom-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-category-tabs button strong {
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.72;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-category-tabs button.asset-category-active strong {
+  opacity: 0.92;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-library-content {
+  display: block;
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-grid {
+  display: grid;
+  max-height: none;
+  padding: 12px 0 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card {
+  padding: 0 0 8px;
+  border-color: var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--asset-library-card-surface);
+  overflow: hidden;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card-preview {
+  aspect-ratio: 16 / 10;
+  border-radius: 0;
+  background: var(--asset-library-preview-surface);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card-copy {
+  padding: 0 10px 1px;
+  gap: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card-selected {
+  border: 2px solid var(--ui-color-selected-border);
+  box-shadow: 0 0 0 2px rgb(131 211 154 / 18%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card-name {
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card-context {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card-metadata {
+  color: var(--ui-color-text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-card-type-badge {
+  top: 10px;
+  right: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-dialog-body .asset-details-preview {
+  width: 100%;
+  max-width: 124px;
+  min-height: 96px;
+  height: 96px;
+  max-height: 96px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-dialog-body .asset-details {
+  grid-template-columns: minmax(96px, 124px) minmax(0, 1fr);
+  grid-template-areas:
+    'preview heading'
+    'preview metadata'
+    'references references'
+    'delete delete';
+  align-items: start;
+  gap: 8px 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-details-preview {
+  grid-area: preview;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-details-heading {
+  min-width: 0;
+  grid-area: heading;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-details-heading .eyebrow {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-details-heading h3 {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait dl {
+  grid-area: metadata;
+  align-self: start;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait dl > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: start;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait dd {
+  min-width: 0;
+  max-width: none;
+  text-align: left;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-reference-warning,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-unreferenced {
+  grid-area: references;
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .asset-details-portrait .asset-delete-button {
+  width: fit-content;
+  min-height: 40px;
+  grid-area: delete;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets'] {
+  --asset-library-surface: #0e1410;
+  --asset-library-card-surface: #18221c;
+  --asset-library-preview-surface: #0a110d;
+  border-color: rgb(255 255 255 / 10%);
+  background: var(--asset-library-surface);
+}
+
+/* Issue #329: keep the portrait Properties surface product-facing and
+   compact while preserving the existing inspector/panel owners. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='assets']
+  .resource-activity-heading
+  h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-drawer {
+  min-height: 0;
+  padding: 14px 16px 24px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  gap: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-drawer:focus {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading {
+  display: block;
+  padding: 0 0 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading h2 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 18px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection {
+  padding: 12px;
+  border-color: var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-thumbnail {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  place-items: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-thumbnail span {
+  padding: 4px;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-copy strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-copy span,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-message {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection[data-selection-state='selected']
+  .right-inspector-selection-message {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-compact-sections {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > summary {
+  display: flex;
+  min-height: 48px;
+  padding: 12px 14px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ui-color-text-primary);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section[open] > summary {
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-transform-panel,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-background-control,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-order-controls {
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel-heading,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel-heading + form > strong,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control > div:first-child .eyebrow,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control > div:first-child h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls > div:first-child {
+  display: none;
+}
+
+/* Issue #330: Cloud Touch portrait Timeline is a real editing workspace.
+   The existing Canvas and Timeline owners are re-slotted into one vertical
+   flow; the editor layout is the only vertical scroll owner for this page. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline'] {
+  grid-template-rows: auto max-content max-content;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-body[data-active-workspace='timeline'] {
+  min-height: 0;
+  overflow: visible;
+  align-content: start;
+  grid-template-rows: max-content;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-body[data-active-workspace='timeline']
+  .editor-workspace-slot-canvas,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-body[data-active-workspace='timeline']
+  .canvas-workspace {
+  min-height: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  > .bottom-workspace[data-presentation='portrait'] {
+  min-height: 0;
+  max-height: none;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  > .bottom-workspace[data-presentation='portrait']
+  .timeline-dock {
+  overflow: visible;
+  gap: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-header {
+  position: static;
+  min-height: 48px;
+  padding: 0 2px;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse {
+  min-height: 40px;
+  padding-inline: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-timecode {
+  color: var(--ui-color-accent);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-zoom button {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--ui-radius-small);
+  font-size: 20px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-zoom-value {
+  min-width: 36px;
+  font-size: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-ruler-scroll {
+  flex-basis: 196px;
+  height: 196px;
+  border-radius: var(--ui-radius-medium);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lanes {
+  top: 42px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lane {
+  height: 76px;
+  grid-template-columns: 82px max-content;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lane-label {
+  padding-inline: 14px;
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-clip {
+  height: 64px;
+  border-radius: var(--ui-radius-small);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-clip-label {
+  padding: 6px 12px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-clip-label strong {
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-clip {
+  top: 10px;
+  bottom: 10px;
+  border-radius: var(--ui-radius-small);
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-timeline {
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-heading .eyebrow {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-header h3 {
+  font-size: 18px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-action {
+  min-height: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-dialogue-empty,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-editor-empty {
+  min-height: 64px;
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  font-size: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-editor {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-selection {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-selection strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-selection span {
+  color: var(--ui-color-accent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline {
+  gap: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline textarea {
+  min-height: 96px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools {
+  min-width: 0;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools > summary {
+  min-height: 48px;
+  padding: 14px;
+  color: var(--ui-color-text-primary);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools .dialogue-list,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-preview {
+  max-height: none;
+  overflow: visible;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add {
+  flex-wrap: wrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  > .bottom-workspace[data-presentation='portrait']
+  > .history-controls {
+  margin-top: 12px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label:nth-of-type(5),
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > .layer-lock-control {
+  grid-column: 1 / -1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label
+  input {
+  min-height: 44px;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control
+  button {
+  min-height: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  > p,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  > output,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control
+  > p,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  > p {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  output:empty {
+  display: none;
+}
+
+/* Keep the Timeline's Canvas context visible without letting it consume the
+   whole first portrait viewport before the ruler and subtitle surface. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .canvas-viewport {
+  height: min(40vh, 420px);
+  min-height: 320px;
+}
+
+/* Issue #331: keep the landscape resource rail persistent and let the same
+   production owners open as a focused drawer. The drawer is the only
+   scrolling surface in this presentation; portrait selectors above remain
+   untouched. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape {
+  gap: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail {
+  position: absolute;
+  z-index: 34;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 56px;
+  height: min(100%, 360px);
+  padding: 0;
+  grid-template-rows: repeat(3, minmax(72px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  button {
+  display: grid;
+  width: 52px;
+  min-height: 72px;
+  padding: 10px 4px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: 12px;
+  color: #a9c5b0;
+  background: #142019;
+  place-items: center;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  button:hover:not(:disabled),
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  button.resource-activity-rail-active {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #07110a;
+  background: var(--ui-color-action-primary, #8ed9a2);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  button:focus-visible {
+  outline: 3px solid rgb(149 224 172 / 42%);
+  outline-offset: 2px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-rail
+  strong {
+  font-size: 12px;
+  line-height: 1.1;
+  writing-mode: vertical-rl;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-surface {
+  left: 64px;
+  display: block;
+  width: min(360px, calc(100vw - 80px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-header {
+  position: sticky;
+  padding: 12px;
+  background: #122018;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-heading
+  h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-header-actions {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-primary-action {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .resource-activity-heading[data-resource-header-layout='character-list-landscape'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .resource-activity-header-actions[data-resource-action-group='character-list-landscape'] {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .resource-activity-header-actions[data-resource-action-group='character-list-landscape']
+  .resource-activity-primary-action {
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-heading[data-resource-header-layout='shot-list-landscape'],
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-heading[data-resource-header-layout='shot-create-landscape'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-header-actions[data-resource-action-group='shot-list-landscape'],
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-header-actions[data-resource-action-group='shot-create-landscape'] {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-header-actions[data-resource-action-group='shot-list-landscape']
+  .resource-activity-primary-action,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .resource-activity-header-actions[data-resource-action-group='shot-create-landscape']
+  .resource-activity-primary-action {
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-close {
+  display: inline-grid;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-size: 0;
+  place-items: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-close::before {
+  content: '×';
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-tabs {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-body {
+  display: block;
+  overflow: visible;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-panel
+  > .shot-manager,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-panel
+  > .asset-library,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .resource-activity-panel
+  > .character-manager {
+  padding: 0 12px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-manager-heading,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-heading,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-heading,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-manager-heading,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Shot drawer: keep the existing list/selection/reorder owner and leave the
+   full selected-shot editor out of the first-glance landscape surface. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-workspace {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty {
+  min-height: 250px;
+  padding: 24px 6px 32px;
+  align-content: center;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty > strong {
+  color: #dff3e3;
+  font-size: 20px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty > p {
+  font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  row-gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > .shot-empty-storyboard {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > .shot-list-empty-copy {
+  min-width: 0;
+  max-width: 360px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > .shot-list-empty-copy > strong {
+  color: #dff3e3;
+  font-size: inherit;
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list
+  ol {
+  max-height: none;
+  padding: 0;
+  overflow: visible;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button {
+  min-height: 76px;
+  padding: 8px;
+  border-radius: 12px;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-thumbnail,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-thumbnail-placeholder {
+  min-height: 58px;
+  height: 58px;
+  padding: 5px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button
+  strong {
+  font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button
+  small {
+  font-size: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-drag-handle {
+  display: grid;
+  min-width: 26px;
+  min-height: 44px;
+  place-items: center;
+  font-size: 18px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-view,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-form {
+  min-height: 0;
+}
+
+/* Assets drawer: use the existing import, filter, search and selection owners
+   with a small two-column grid that fits the narrow overlay. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library {
+  padding: 0 12px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact {
+  padding: 0;
+  margin: 0 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions {
+  display: block;
+  min-height: 48px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions
+  button {
+  width: 100%;
+  min-height: 48px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions
+  > span,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-drop {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-browser {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search {
+  display: grid;
+  margin-bottom: 8px;
+  gap: 5px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search
+  > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search
+  input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search-control
+  input {
+  padding-right: 40px;
+  padding-left: 38px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search-icon {
+  left: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs {
+  display: grid;
+  width: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  overflow: visible;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs
+  button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 2px;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs
+  button
+  strong {
+  min-width: 0;
+  padding: 0;
+  font-size: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-content,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-grid {
+  display: block;
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-grid {
+  display: grid;
+  max-height: none;
+  padding: 10px 0 4px;
+  overflow: visible;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card {
+  min-height: 0;
+  padding: 0 0 8px;
+  border-radius: 10px;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-preview {
+  border-radius: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-copy {
+  margin-inline: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-name {
+  font-size: 11px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-context,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-metadata {
+  font-size: 9px;
+}
+
+/* Characters drawer: the existing list owner is intentionally thin; keep it
+   readable and expose only the existing create route. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-manager {
+  padding: 0 12px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-workspace {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items {
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items
+  button {
+  min-height: 60px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items
+  button {
+  text-align: left;
+}
+
+/* Issue #332: the landscape right side is one contextual inspector. Keep
+   Properties and Subtitle presentation compact without changing their
+   existing state owners or the accepted portrait surface. */
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+  padding: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading {
+  display: block;
+  min-width: 0;
+  padding: 0 0 2px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading
+  h2 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 20px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection {
+  min-width: 0;
+  padding: 12px;
+  border-color: var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-thumbnail {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  place-items: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-thumbnail
+  img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-copy
+  strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-copy
+  span,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-message {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection[data-selection-state='selected']
+  .right-inspector-selection-message {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-compact-sections {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > summary {
+  display: flex;
+  min-height: 48px;
+  padding: 12px 14px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ui-color-text-primary);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section[open]
+  > summary {
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > .layer-transform-panel,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > .layer-background-control,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > .layer-order-controls {
+  min-width: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+

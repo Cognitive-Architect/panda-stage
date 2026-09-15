@@ -11,6 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
   evaluateShotAtTime,
   type Project,
@@ -36,6 +37,7 @@ const SHELL_PATH = 'src/renderer/shell/EditorShell.tsx';
 const TOP_BAR_PATH = 'src/renderer/shell/CompactProjectBar.tsx';
 
 function readSource(path: string): string {
+  if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
   return readFileSync(path, 'utf8');
 }
 

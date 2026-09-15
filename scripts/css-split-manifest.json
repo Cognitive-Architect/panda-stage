@@ -84,7 +84,7 @@
       "candidateRange": { "startLine": 9840, "endLine": 11883 },
       "range": { "startLine": 9840, "endLine": 11883 },
       "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S07",
@@ -93,7 +93,7 @@
       "candidateRange": { "startLine": 11884, "endLine": 13801 },
       "range": { "startLine": 11884, "endLine": 13801 },
       "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start.css",
-      "status": "pending"
+      "status": "extracted"
     },
     {
       "id": "S08",
@@ -189,6 +189,25 @@
       "tests/unit/character-issue511-reminder.test.ts",
       "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
       "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
+      "tests/unit/editor-issue326-portrait-canvas-cleanup.test.ts",
+      "tests/unit/editor-issue327-portrait-shot-shell.test.ts",
+      "tests/unit/editor-issue328-portrait-assets.test.ts",
+      "tests/unit/editor-issue329-portrait-properties.test.ts",
+      "tests/unit/editor-issue330-portrait-timeline.test.ts",
+      "tests/unit/editor-issue331-landscape-resource-drawers.test.ts",
+      "tests/unit/editor-issue332-contextual-inspector.test.ts",
+      "tests/unit/editor-issue344-portrait-assets.test.ts",
+      "tests/unit/editor-issue368-landscape-chrome.test.ts",
+      "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
+      "tests/unit/editor-issue456-quick-action.test.ts",
+      "tests/unit/editor-issue457-canvas-first.test.ts",
+      "tests/unit/editor-issue474-character-empty-state.test.ts",
+      "tests/unit/editor-issue478-character-header-trim.test.ts",
+      "tests/unit/editor-issue481-shot-polish.test.ts",
+      "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+      "tests/unit/editor-shell-adaptive.test.ts",
+      "tests/unit/left-workspace.test.ts",
+      "tests/unit/product-preview-overlay.test.ts",
       "tests/unit/editor-issue342-icon-pilot.test.ts",
       "tests/unit/editor-issue345-portrait-assets.test.ts",
       "tests/unit/editor-issue366-landscape-expression.test.ts",

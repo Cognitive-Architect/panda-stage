@@ -359,9 +359,7 @@ function verifyPathInventory(baseline) {
       `S01 contains path-sensitive constructs that need an explicit relocation proof: ${s01.map((entry) => `${entry.kind}@${entry.line}`).join(', ')}`,
     );
   }
-  const p1_03 = manifest.slices
-    .filter((slice) => slice.id === 'S04' || slice.id === 'S05')
-    .map((slice) => {
+  function proveSliceResources(slice) {
       const sliceEntries = pathSensitiveSliceEntries(entries, slice);
       const proofs = [];
       for (const entry of sliceEntries) {
@@ -393,7 +391,13 @@ function verifyPathInventory(baseline) {
         relocationProof: proofs,
         relocationRisk: proofs.every((proof) => proof.identical) ? 'none' : 'unresolved',
       };
-    });
+  }
+  const p1_03 = manifest.slices
+    .filter((slice) => slice.id === 'S04' || slice.id === 'S05')
+    .map(proveSliceResources);
+  const p1_04 = manifest.slices
+    .filter((slice) => slice.id === 'S06' || slice.id === 'S07')
+    .map(proveSliceResources);
   const imports = entries.filter((entry) => entry.kind === 'import');
   if (imports.length !== 2 || imports.some((entry, index) => entry.line !== index + 1)) {
     fail('Baseline imports are not exactly the two fixed top-of-file imports');
@@ -402,7 +406,11 @@ function verifyPathInventory(baseline) {
     all: entries,
     s01,
     p1_03,
-    relocationRisk: s01.length === 0 && p1_03.every((slice) => slice.relocationRisk === 'none')
+    p1_04,
+    relocationRisk:
+      s01.length === 0 &&
+      p1_03.every((slice) => slice.relocationRisk === 'none') &&
+      p1_04.every((slice) => slice.relocationRisk === 'none')
       ? 'none'
       : 'unresolved',
   };
