@@ -4,6 +4,7 @@
 
 - Execution lane: PR #531, branch `agent/issue-530-css-split`.
 - Starting reviewed head: `4c8d0a40e5acf4639780f7dc4a302887b98c843d`.
+- P1-03 delivery commit: `d8e535c4fbcd9e134bfc897677ab536a2aa82268`.
 - Fixed baseline: `main@35fe7963a50e7bd9be68f1e39d12833c99bb4436`.
 - Canonical map: `docs/PandaStage_Phase1_Section_Map_v1.0_2026-09-15.md` at `8bac6f217246d25ba4eb6b6bd76ab7bcc11ab332`.
 - S04: canonical `L6020-L8038` (2019 lines) -> `src/renderer/styles/legacy-slices/04-launcher-render-workbench.css`.
@@ -42,7 +43,7 @@ The machine-readable map is `scripts/css-split-manifest.json`; the reusable veri
 - `pnpm verify:assets` - PASS; the current package wrapper ran `verify:day16`, `verify:day17`, `verify:day18`, and `verify:issue396-stage-d`.
 - No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run.
 
-Automatic Draft CI is pending the P1-03 commit push. PR #531 remains Draft / Open / Unmerged.
+Automatic Draft CI run #879 (`34944147374`) - PASS after a rerun of the first transient timeout. PR #531 remains Draft / Open / Unmerged.
 
 ## Windows Electron acceptance
 
