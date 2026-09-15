@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const controlsSource = readFileSync(
   'src/renderer/features/subtitles/SubtitleStyleControls.tsx',
   'utf8',
 );
-const stylesSource = readFileSync('src/renderer/styles.css', 'utf8');
+const stylesSource = readOrderedStylesheetSource();
 
 describe('Issue #521 subtitle-style final visual polish', () => {
   it('keeps the always-expanded controls in the approved three-row grouping', () => {

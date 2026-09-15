@@ -174,7 +174,7 @@
       "candidateRange": { "startLine": 31796, "endLine": 32818 },
       "range": { "startLine": 31796, "endLine": 32818 },
       "targetPath": "src/renderer/styles/legacy-slices/16-character-settings-final-polish.css",
-      "status": "pending"
+      "status": "extracted"
     }
   ],
   "readerReview": {
@@ -189,6 +189,7 @@
       "tests/integration/editor-shell-layout.test.ts",
       "tests/integration/right-inspector-narrow.test.ts",
       "tests/unit/dialogue-inspector-issue468.test.ts",
+      "tests/unit/subtitle-style-controls-layout.test.ts",
       "tests/unit/character-issue511-reminder.test.ts",
       "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
       "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
