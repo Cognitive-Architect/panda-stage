@@ -1,6 +1,39 @@
-# Issue #534 / PR #531 - P1-03 receipt
+# Issue #535 / PR #531 - P1-04 receipt
 
-## Delivery
+## Current P1-04 delivery
+
+- Execution lane: PR #531, branch `agent/issue-530-css-split`.
+- Starting reviewed HEAD: `0963890791070d6eb5b39fc75bd6ee036306adb3`.
+- P1-04 delivery commit / current exact HEAD: `d16c26062d582ad91eeceefe020ab5e6f798c68c` (`feat: extract P1-04 canvas and portrait CSS slices`).
+- Fixed baseline: `main@35fe7963a50e7bd9be68f1e39d12833c99bb4436`.
+- Canonical map: `docs/PandaStage_Phase1_Section_Map_v1.0_2026-09-15.md` at `8bac6f217246d25ba4eb6b6bd76ab7bcc11ab332`.
+- S06: canonical `L9840-L11883` (2044 lines) -> `src/renderer/styles/legacy-slices/06-canvas-portrait-foundation.css`; exact SHA-256 `e93b32b2a395c792ecc3b76f531165dc97c98be56564b58d6d5da40c45c9821f`.
+- S07: canonical `L11884-L13801` (1918 lines) -> `src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start.css`; exact SHA-256 `853cb0833eb380e8a5779188225a7bad242de0aeeae9e8dd4fbe3dce59d1a08d`.
+- Root order is tokens, primitives, S01, S02, S03, S04, S05, S06, S07, then the untouched S08-S16 remainder.
+- S08-S16 remain pending; accepted S01-S05 content and history remain intact.
+- No canvas/portrait redesign, selector/declaration/token/value/geometry, DOM, business, data, or feature-behavior change was included.
+
+## P1-04 validation
+
+- Canonical map and all 16 boundary checks: PASS; no boundary adjustment.
+- `node scripts/verify-css-split.cjs --preflight`: PASS.
+- `node scripts/verify-css-split.cjs --write-receipt`: PASS.
+- Reconstructed full stylesheet equals the pinned baseline: `2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7`.
+- S06/S07 path-sensitive scan: no `url(...)`, `@import`, or `@font-face`; relocation risk `none`.
+- Existing ordered-source reader was used for the 19 newly affected historical reader tests; all 93 verifier-listed reader paths were exercised in targeted batches with 380 tests passing.
+- Focused CSS/routing/manifest/UI contracts: 5 files / 100 tests PASS.
+- `pnpm build:renderer`: PASS.
+- `pnpm typecheck`: PASS.
+- `pnpm lint`: PASS.
+- No manual Full CI, `pnpm verify:project`, or unrelated historical verifier sweep was run.
+
+## P1-04 Windows Electron acceptance
+
+HUMAN visual acceptance is pending. The fresh build must be inspected for canvas fit/actual-size presentation, selection feedback, drag/drop affordance, portrait resource workspace, and inspector entry. An unreachable portrait state must be recorded as not manually covered rather than fabricated.
+
+The automatic Draft CI result and the final HUMAN receipt will be appended after the pushed head is observed and the maintainer completes the Windows review.
+
+## P1-03 historical receipt
 
 - Execution lane: PR #531, branch `agent/issue-530-css-split`.
 - Starting reviewed head: `4c8d0a40e5acf4639780f7dc4a302887b98c843d`.
