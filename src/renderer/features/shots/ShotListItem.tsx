@@ -1,7 +1,7 @@
 import type { DragEvent, ReactNode } from 'react';
-import type { Shot } from '../../../domain';
+import type { Project, Shot } from '../../../domain';
 import { formatShotDuration, formatCompactShotDuration } from './ShotEditor';
-import { ShotThumbnailPlaceholder } from './ShotThumbnailPlaceholder';
+import { ShotThumbnail } from './ShotThumbnailView';
 import { GripVertical } from 'lucide-react';
 
 const SHOT_DRAG_TYPE = 'application/x-panda-stage-shot';
@@ -9,6 +9,8 @@ const SHOT_DRAG_TYPE = 'application/x-panda-stage-shot';
 export interface ShotListItemProps {
   disabled?: boolean;
   index: number;
+  project?: Project | null;
+  projectRoot?: string;
   selected: boolean;
   shot: Shot;
   onDropShot: (shotId: string, targetIndex: number) => void;
@@ -20,6 +22,8 @@ export interface ShotListItemProps {
 export function ShotListItem({
   disabled = false,
   index,
+  project,
+  projectRoot,
   selected,
   shot,
   onDropShot,
@@ -52,7 +56,13 @@ export function ShotListItem({
         onClick={() => onSelect(shot.id)}
         type="button"
       >
-        <ShotThumbnailPlaceholder index={index} name={shot.name} />
+        <ShotThumbnail
+          index={index}
+          name={shot.name}
+          project={project}
+          projectRoot={projectRoot}
+          shot={shot}
+        />
         <span>
           <strong>{shot.name}</strong>
           <small>

@@ -34,7 +34,10 @@ describe('Issue #388 Stage C.1 landscape subtitle Properties polish', () => {
     expect(inspector).toContain('data-testid="inspector-inline-close"');
     expect(landscape).toContain('data-testid="dialogue-properties-header"');
     expect(landscape).toContain('dialogue-properties-identity-editor');
-    expect(landscape).toContain('data-testid="dialogue-inspector-speaker-name"');
+    expect(landscape).toContain('字幕内容');
+    expect(landscape).toContain('selectedLabel="当前绑定"');
+    expect(landscape).toContain('showDefaultExpression={false}');
+    expect(landscape).not.toContain('data-testid="dialogue-inspector-speaker-name"');
     expect(landscape).not.toContain("timed ? '已定时'");
     expect(landscape).not.toContain('已安排字幕');
     expect(landscape).not.toContain('dialogue-inspector-context-copy');

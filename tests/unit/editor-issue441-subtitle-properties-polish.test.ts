@@ -63,7 +63,7 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     expect(preview).not.toContain('ProductPreviewAudioTransport');
   });
 
-  it('removes the redundant 当前选择 / 字幕属性 / Panda·已定时字幕 identity stack in the properties header', () => {
+  it('uses 编辑字幕 / 字幕内容 and removes the redundant Character identity stack', () => {
     const dialogue = source(
       'src/renderer/features/dialogue/DialogueInspector.tsx',
     );
@@ -71,16 +71,15 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     const landscapeStart = dialogue.indexOf('if (landscapePresentation)');
     const properties = dialogue.slice(propertiesStart, landscapeStart);
 
-    // The old presentation stacked "当前选择" eyebrow + "字幕属性" h2 +
-    // "Panda · 已定时字幕" identity. The polish keeps 字幕属性 as the
-    // accessible header label (Issue #358 regression guard) but drops the
-    // visible 当前选择 eyebrow and the redundant 字幕 stacked text.
-    expect(properties).toContain('aria-label="字幕属性"');
+    // A08 keeps the existing text editor and owners while making the header
+    // describe the editing task and removing repeated Character identity.
+    expect(properties).toContain('aria-label="编辑字幕"');
     expect(properties).toContain('data-testid="dialogue-properties-header"');
     expect(properties).toContain('data-testid="dialogue-properties-identity"');
     expect(properties).toContain('dialogue-properties-inline-text');
-    // Visible 字幕属性 h2 + 当前选择 eyebrow + 已定时字幕 redundant row all gone.
-    expect(properties).not.toContain('<h2>字幕属性</h2>');
+    expect(properties).toContain('字幕内容');
+    expect(properties).not.toContain('<CharacterAvatar');
+    // The old 当前选择 eyebrow + 已定时字幕 redundant row remain gone.
     expect(properties).not.toContain('当前选择');
     expect(properties).not.toContain('已定时字幕');
     expect(properties).not.toContain('待安排字幕');

@@ -62,7 +62,7 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     expect(markup).toContain('当前选择');
   });
 
-  it('renders identity, visual expressions, compact defaults, mouth state and danger area', () => {
+  it('renders a unified identity header with exactly two Character workspaces', () => {
     const { character, imageAssets, thumbnails } = fixture();
     const markup = renderToStaticMarkup(
       createElement(CharacterEditor, {
@@ -88,22 +88,28 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     );
 
     expect(markup).toContain('data-testid="character-detail-back"');
-    expect(markup).toContain('← 角色列表');
+    expect(markup).toContain('返回角色列表');
+    expect(markup).not.toContain('← 返回角色列表');
     expect(markup).toContain('character-detail-identity');
     expect(markup).toContain(`${character.name} 默认表情`);
-    expect(markup.match(/character-expression-preview/gu)).toHaveLength(
-      character.expressions.length,
-    );
-    expect(markup).toContain('data-expression-default="true"');
-    expect(markup).toContain('管理全部表情');
+    expect(markup).toContain('角色详情');
+    expect(markup).toContain('character-workspace-switcher');
+    expect(markup.match(/data-workspace="(?:expressions|settings)"/gu)).toHaveLength(2);
+    expect(markup).toContain('表情');
+    expect(markup).toContain('角色设置');
+    expect(markup).toContain('expression-card-preview');
+    expect(markup).toContain('默认 ✓');
+    expect(markup).toContain('默认大小与方向');
     expect(markup).toContain(`${character.defaultScale.toFixed(1)}×`);
     expect(markup).toContain('role="switch"');
     expect(markup).toContain('水平翻转');
-    expect(markup).toContain('嘴型');
-    expect(markup).toContain('未配置');
-    expect(markup).toContain('危险操作');
+    expect(markup).toContain('张嘴图');
+    expect(markup).toContain('未设置');
+    expect(markup).toContain('选择图片');
+    expect(markup).toContain('character-delete-overflow');
+    expect(markup).not.toContain('管理全部表情');
+    expect(markup).not.toContain('character-danger-zone');
     expect(markup).toContain('删除角色');
-    expect(markup).not.toContain('未配置（安全降级为闭嘴）');
   });
 
   it('keeps navigation and mutations on the existing owners and quiets only landscape idle status', () => {

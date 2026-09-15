@@ -292,7 +292,7 @@ async function snapshot(window, expectedRoot) {
     ')?.value ?? null,' +
     'charEditorDraft: document.querySelector(' +
     JSON.stringify(
-      '.character-rename-form input, .character-settings input',
+      '.character-inline-rename-form input, .character-settings input',
     ) +
     ')?.value ?? null,' +
     'shotId: document.querySelector(' +
@@ -773,12 +773,12 @@ async function verifyIssue81() {
     );
     await waitFor(
       window,
-      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'document.querySelector(".character-inline-rename-form input, .character-settings input")',
       'Character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-rename-form input, .character-settings input',
+      '.character-inline-rename-form input, .character-settings input',
       'B editor draft must not return',
     );
     await openProject(window, projectARoot);
@@ -816,12 +816,12 @@ async function verifyIssue81() {
     );
     await waitFor(
       window,
-      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'document.querySelector(".character-inline-rename-form input, .character-settings input")',
       'A character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-rename-form input, .character-settings input',
+      '.character-inline-rename-form input, .character-settings input',
       'A editor draft must not enter B',
     );
     await openProject(window, projectBRoot);
@@ -858,12 +858,12 @@ async function verifyIssue81() {
     );
     await waitFor(
       window,
-      'document.querySelector(".character-rename-form input, .character-settings input")',
+      'document.querySelector(".character-inline-rename-form input, .character-settings input")',
       'B second character name draft did not open.',
     );
     await setInput(
       window,
-      '.character-rename-form input, .character-settings input',
+      '.character-inline-rename-form input, .character-settings input',
       'B second editor draft must not enter A',
     );
     await openProject(window, projectARoot);

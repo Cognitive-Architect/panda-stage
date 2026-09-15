@@ -38,7 +38,7 @@ describe('Issue #386 Stage B subtitle authoring shell polish', () => {
     expect(sheet).toContain('dialogue-authoring-field');
     expect(sheet).toContain('dialogue-authoring-speaker-field');
     expect(sheet).toContain('dialogue-authoring-copy-field');
-    expect(sheet).toContain('dialogue-authoring-placement-field');
+    expect(sheet).toContain('dialogue-authoring-placement');
     expect(sheet).toContain('data-testid="dialogue-authoring-playhead"');
     expect(sheet).toContain('data-testid="dialogue-authoring-audio"');
     expect(sheet).toContain('data-audio-state="unbound"');

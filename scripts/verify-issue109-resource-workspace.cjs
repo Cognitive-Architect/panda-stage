@@ -178,6 +178,8 @@ async function measure(window) {
       characterCreateView: visible(document.querySelector('[data-testid="character-create-view"]')),
       characterDetailView: visible(document.querySelector('[data-testid="character-detail-view"]')),
       characterExpressionView: visible(document.querySelector('[data-testid="character-expression-view"]')),
+      characterExpressionWorkspace: visible(document.querySelector('[data-testid="character-expression-workspace"]')),
+      characterEditorPresentation: document.querySelector('[data-character-editor-presentation]')?.getAttribute('data-character-editor-presentation') ?? null,
       activePanelScroll: scroll('[data-testid="resource-activity-panel"]'),
       drawerBodyScroll: scroll('.resource-activity-body'),
       horizontalOverflow,
@@ -626,12 +628,30 @@ async function run() {
     result.screenshots.characterDetail1024 = path.join(evidenceRoot, 'issue109-character-detail-1024.png');
     await capture(window, 'issue109-character-detail-1024.png');
 
-    await click(window, '[data-testid="character-expression-open"]');
-    await waitForDom(window, `document.querySelector('[data-testid="character-expression-view"]')`, 'The character expression subview did not open.');
+    const landscapeCharacter = sample.characterEditorPresentation === 'landscape';
+    if (landscapeCharacter) {
+      await click(window, '[data-testid="character-workspace-expressions-tab"]');
+      await waitForDom(
+        window,
+        `document.querySelector('[data-testid="character-detail-view"]') &&
+          document.querySelector('[data-testid="character-expression-workspace"]')?.hidden === false`,
+        'The landscape character expression workspace did not open.',
+      );
+    } else {
+      await click(window, '[data-testid="character-expression-open"]');
+      await waitForDom(window, `document.querySelector('[data-testid="character-expression-view"]')`, 'The character expression subview did not open.');
+    }
     sample = await measure(window);
     assertNoPageOverflow(sample, '1024px character expression');
     assertDrawer(sample, '1024px character expression');
-    assert(sample.characterExpressionView && !sample.characterDetailView, 'Expression view still overlaps character detail.');
+    assert(
+      landscapeCharacter
+        ? sample.characterDetailView && sample.characterExpressionWorkspace && !sample.characterExpressionView
+        : sample.characterExpressionView && !sample.characterDetailView,
+      landscapeCharacter
+        ? 'Landscape character expression workspace did not remain within the detail view.'
+        : 'Expression view still overlaps character detail.',
+    );
     result.snapshots.characterExpression1024 = sample;
     result.screenshots.characterExpression1024 = path.join(evidenceRoot, 'issue109-character-expression-1024.png');
     await capture(window, 'issue109-character-expression-1024.png');

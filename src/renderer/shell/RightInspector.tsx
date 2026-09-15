@@ -4,7 +4,11 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { Asset, Layer } from '../../domain';
+import {
+  isLegacyCharacterImageLayer,
+  type Asset,
+  type Layer,
+} from '../../domain';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { editorProjectStore } from '../stores/EditorProjectStore';
 import { selectionStore } from '../stores/selectionStore';
@@ -332,7 +336,7 @@ export function RightInspector({
   );
   const inspectorModeLabel = dialogueMode
     ? landscapePresentation
-      ? '字幕属性'
+      ? '编辑字幕'
       : '字幕'
     : '属性';
   const selection = getRightInspectorSelection(
@@ -340,6 +344,15 @@ export function RightInspector({
     currentShotId,
     selectedLayerId,
   );
+  const legacyCharacterLayerSelected =
+    snapshot !== null &&
+    currentShotId !== null &&
+    selection.layer !== null &&
+    isLegacyCharacterImageLayer(
+      snapshot.project,
+      currentShotId,
+      selection.layer.id,
+    );
   const portraitEmptyState =
     compact === true && !dialogueMode && selection.state === 'empty';
   const landscapeEmptyState =
@@ -441,7 +454,7 @@ export function RightInspector({
     <div className="right-inspector-heading">
       <h2 id="right-inspector-heading">
         {dialogueMode && landscapePresentation
-          ? '字幕属性'
+          ? '编辑字幕'
           : dialogueMode
             ? '字幕'
             : '属性'}
@@ -518,6 +531,17 @@ export function RightInspector({
         >
           {selection.message}
         </span>
+      ) : null}
+      {legacyCharacterLayerSelected ? (
+        <aside
+          aria-label="角色表情提示"
+          className="right-inspector-character-layer-reminder"
+          data-testid="right-inspector-character-layer-reminder"
+          role="note"
+        >
+          <strong>仍是普通图片</strong>
+          <span>已用于角色表情；要按角色使用，请从角色栏重新拖入。</span>
+        </aside>
       ) : null}
     </section>
   );

@@ -39,7 +39,8 @@ describe('Issue #428 Right Subtitle Workspace R2', () => {
     expect(right).toContain('pendingTrayInteraction={pendingPlacement.interaction}');
     expect(sheet).toContain("presentation?: 'timeline' | 'right-workspace'");
     expect(sheet).toContain("!rightWorkspace && selectedTimedDialogue");
-    expect(sheet).toContain('创建后进入待安排队列，不会自动定时。');
+    // Issue #498 removes the redundant placement helper from New Dialogue.
+    expect(sheet).not.toContain('创建后进入待安排队列，不会自动定时。');
     expect(sheet).toContain('data-testid="subtitle-workspace-empty-action"');
     expect(sheet).toContain(
       "import subtitleEmptyStateArt from './assets/subtitle-empty-state.png';",

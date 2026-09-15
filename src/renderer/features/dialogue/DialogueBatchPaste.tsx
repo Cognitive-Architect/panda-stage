@@ -3,31 +3,40 @@ import type { Character } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
 import {
+  CharacterAvatar,
+  CharacterIdentityPicker,
+  getCharacterDefaultExpression,
+  useCharacterAvatarThumbnails,
+} from '../characters/CharacterIdentity';
+import { CirclePlus } from 'lucide-react';
+import {
   parseDialoguePaste,
   resolveDialoguePaste,
   type ParsedDialogueLine,
 } from './parseDialoguePaste';
 import type { DialogueAuthoringDraft } from './dialogueAuthoringDraft';
 
-function issueCopy(line: ParsedDialogueLine): React.JSX.Element | null {
-  if (line.status === 'malformed') {
-    return (
-      <p className="dialogue-batch-row-issue">
-        <strong>这一行格式不对</strong>
-        <span>请写成「角色：台词」</span>
-      </p>
-    );
-  }
+function exceptionHeading(line: ParsedDialogueLine): string {
+  if (line.status === 'malformed') return '这一行格式不对';
   if (line.status === 'invalid') {
-    return (
-      <p className="dialogue-batch-row-issue">
-        <strong>
-          {line.speaker ? '这行还没有台词内容' : '这行还没有角色名称'}
-        </strong>
-      </p>
-    );
+    return line.reason === 'empty-speaker' ? '缺少角色名称' : '缺少台词内容';
+  }
+  return line.speaker ?? '未识别角色';
+}
+
+function exceptionDetail(line: ParsedDialogueLine): string | null {
+  if (line.status === 'malformed') return '请写成「角色：台词」';
+  if (line.status === 'unknown' || line.status === 'ambiguous') {
+    return line.text ?? line.raw;
   }
   return null;
+}
+
+function mappingIssueCopy(line: ParsedDialogueLine): string {
+  if (line.status === 'ambiguous') {
+    return `“${line.speaker ?? '未识别角色'}”对应多个角色，请确认`;
+  }
+  return `未找到“${line.speaker ?? '未识别角色'}”`;
 }
 
 /**
@@ -38,15 +47,21 @@ function issueCopy(line: ParsedDialogueLine): React.JSX.Element | null {
 export function DialogueBatchPaste({
   draft,
   onSuccess,
+  showDefaultExpression = true,
 }: {
   draft: DialogueAuthoringDraft;
   onSuccess: () => void;
+  showDefaultExpression?: boolean;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
+  const {
+    onThumbnailError: onCharacterThumbnailError,
+    thumbnails: characterThumbnails,
+  } = useCharacterAvatarThumbnails(snapshot, characters);
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const [commitError, setCommitError] = useState<string | null>(null);
 
@@ -60,7 +75,7 @@ export function DialogueBatchPaste({
     [characters, draftState.batchMapping, parsed],
   );
   const hasContent = draftState.batchRaw.trim().length > 0;
-  const needsAttention = resolution.failureCount + resolution.unknownCount;
+  const pendingCount = Math.max(parsed.lines.length - resolution.readyCount, 0);
 
   const handleCommit = (): void => {
     if (!resolution.allResolved) return;
@@ -109,18 +124,29 @@ export function DialogueBatchPaste({
 
       {hasContent ? (
         <>
-          <p
+          <div
+            aria-label="批量字幕识别结果"
             className="dialogue-batch-recognition"
             data-testid="dialogue-batch-recognition"
             role="status"
           >
-            {needsAttention > 0
-              ? `已识别 ${resolution.readyCount} 条 · ${needsAttention} 条需要确认`
-              : `✓ 已识别 ${resolution.readyCount} 条字幕`}
+            <strong>识别结果</strong>
+            <span className="dialogue-batch-recognition-ready">
+              <span aria-hidden="true">✓</span>
+              {`${resolution.readyCount} 条已识别`}
+            </span>
+            <span className="dialogue-batch-recognition-pending">
+              <span aria-hidden="true">⚠</span>
+              {`${pendingCount} 条待确认`}
+            </span>
             {parsed.ignoredEmpty > 0
-              ? ` · 已忽略 ${parsed.ignoredEmpty} 个空行`
-              : ''}
-          </p>
+              ? (
+                <span className="dialogue-batch-recognition-ignored">
+                  {`已忽略 ${parsed.ignoredEmpty} 个空行`}
+                </span>
+              )
+              : null}
+          </div>
 
           <ol
             aria-label="批量字幕识别结果"
@@ -129,67 +155,100 @@ export function DialogueBatchPaste({
           >
             {parsed.lines.map((line, index) => {
               const resolved = resolution.resolvedLines[index];
-              const resolvedSpeakerName = resolved
-                ? characters.find(
-                    (candidate) => candidate.id === resolved.characterId,
-                  )?.name
-                : undefined;
               const needsMapping =
                 line.status === 'unknown' || line.status === 'ambiguous';
-              const mapped = needsMapping && resolved !== null;
+              const resolvedCharacter = resolved
+                ? characters.find(
+                    (candidate) => candidate.id === resolved.characterId,
+                  )
+                : undefined;
+              const resolvedRow =
+                resolved && resolvedCharacter
+                  ? { character: resolvedCharacter, line: resolved }
+                  : null;
               return (
                 <li
-                  data-status={mapped ? 'mapped' : line.status}
+                  data-status={
+                    resolvedRow ? (needsMapping ? 'mapped' : 'valid') : line.status
+                  }
                   data-testid="dialogue-batch-line"
                   key={line.lineNumber}
                 >
-                  <div className="dialogue-batch-row-copy">
-                    <strong>
-                      {resolvedSpeakerName || line.speaker || '未识别角色'}
-                    </strong>
-                    <span>{line.text || line.raw}</span>
-                  </div>
-                  {needsMapping && !mapped ? (
-                    <div className="dialogue-batch-row-resolution">
-                      <p className="dialogue-batch-row-issue">
-                        <strong>没找到这个角色</strong>
-                      </p>
-                      <label>
-                        <span>对应为</span>
-                        <select
-                          aria-label={`将未知角色 ${line.speaker} 映射为`}
-                          data-testid={`dialogue-batch-map-${line.lineNumber}`}
-                          value={draftState.batchMapping[line.lineNumber] ?? ''}
-                          onChange={(event) => {
-                            setCommitError(null);
-                            draft.setBatchMapping(
-                              line.lineNumber,
-                              event.target.value,
-                            );
-                          }}
-                        >
-                          <option value="">选择角色</option>
-                          {characters.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                  {resolvedRow ? (
+                    <div className="dialogue-batch-row-result dialogue-batch-row-result-resolved">
+                      <span
+                        aria-label="已识别"
+                        className="dialogue-batch-row-status"
+                      >
+                        ✓
+                      </span>
+                      <CharacterAvatar
+                        character={resolvedRow.character}
+                        className="dialogue-batch-row-avatar"
+                        onThumbnailError={onCharacterThumbnailError}
+                        thumbnail={
+                          characterThumbnails[
+                            getCharacterDefaultExpression(resolvedRow.character)
+                              ?.assetId ?? ''
+                          ]
+                        }
+                      />
+                      <div className="dialogue-batch-row-copy">
+                        <strong>{resolvedRow.character.name}</strong>
+                        <span>{resolvedRow.line.text}</span>
+                      </div>
                     </div>
                   ) : (
-                    issueCopy(line)
+                    <div className="dialogue-batch-row-result dialogue-batch-row-result-exception">
+                      <span
+                        aria-hidden="true"
+                        className="dialogue-batch-row-status"
+                      >
+                        ⚠
+                      </span>
+                      <div className="dialogue-batch-row-copy">
+                        <strong>{exceptionHeading(line)}</strong>
+                        {exceptionDetail(line) ? (
+                          <span>{exceptionDetail(line)}</span>
+                        ) : null}
+                      </div>
+                    </div>
                   )}
+                  {needsMapping && !resolvedRow ? (
+                    <div className="dialogue-batch-row-resolution">
+                      <p className="dialogue-batch-row-issue">
+                        <strong>{mappingIssueCopy(line)}</strong>
+                      </p>
+                      <CharacterIdentityPicker
+                        ariaLabel={`为${line.speaker ?? '未识别角色'}选择对应角色`}
+                        characters={characters}
+                        className="dialogue-batch-character-picker"
+                        emptySummaryDescription={null}
+                        emptySummaryLabel="请选择对应角色"
+                        onClear={() => {
+                          setCommitError(null);
+                          draft.setBatchMapping(line.lineNumber, '');
+                        }}
+                        onSelect={(characterId) => {
+                          setCommitError(null);
+                          draft.setBatchMapping(line.lineNumber, characterId);
+                        }}
+                        onThumbnailError={onCharacterThumbnailError}
+                        selectedCharacterId={
+                          draftState.batchMapping[line.lineNumber] ?? null
+                        }
+                        selectedLabel="当前绑定"
+                        showDefaultExpression={showDefaultExpression}
+                        data-testid={`dialogue-batch-map-${line.lineNumber}`}
+                        thumbnails={characterThumbnails}
+                      />
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
           </ol>
 
-          {!resolution.allResolved ? (
-            <p className="dialogue-batch-commit-hint">
-              请先处理上方需要确认的字幕。
-            </p>
-          ) : null}
           {commitError ? (
             <p className="dialogue-authoring-error" role="alert">
               {commitError}
@@ -200,13 +259,25 @@ export function DialogueBatchPaste({
             data-testid="dialogue-authoring-footer"
           >
             <button
-              className="dialogue-authoring-submit"
+              className="dialogue-authoring-submit dialogue-batch-submit"
               data-testid="dialogue-batch-commit"
               disabled={!resolution.allResolved}
               type="button"
               onClick={handleCommit}
             >
-              {`添加 ${resolution.readyCount} 条字幕`}
+              {resolution.allResolved ? (
+                <>
+                  <CirclePlus
+                    aria-hidden="true"
+                    className="ui-icon"
+                    focusable="false"
+                    size={18}
+                  />
+                  <span>{`添加 ${resolution.readyCount} 条字幕`}</span>
+                </>
+              ) : (
+                <span>{`还有 ${pendingCount} 条待确认`}</span>
+              )}
             </button>
           </footer>
         </>

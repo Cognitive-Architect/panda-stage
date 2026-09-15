@@ -1,5 +1,9 @@
 import { Group, Rect, Text } from 'react-konva';
-import { PROJECT_HEIGHT, type SubtitleStyle } from '../../../domain';
+import {
+  DEFAULT_SUBTITLE_STROKE_COLOR,
+  PROJECT_HEIGHT,
+  type SubtitleStyle,
+} from '../../../domain';
 import { STAGE_CAPTION_SAFE_AREA } from '../../../shared/stage/layout';
 import {
   DEFAULT_SUBTITLE_STYLE,
@@ -54,11 +58,14 @@ export function SubtitleRenderer({
         fill={resolvedStyle.textColor ?? DEFAULT_SUBTITLE_STYLE.textColor}
         fontFamily={resolvedStyle.fontFamily ?? DEFAULT_SUBTITLE_STYLE.fontFamily}
         fontSize={layout.fontSize}
+        fillAfterStrokeEnabled
         height={backgroundHeight - STAGE_CAPTION_SAFE_AREA.verticalPadding * 2}
         listening={false}
         lineHeight={1.25}
         name={layout.truncated ? 'subtitle-text-warning' : 'subtitle-text'}
         padding={0}
+        stroke={resolvedStyle.strokeColor ?? DEFAULT_SUBTITLE_STROKE_COLOR}
+        strokeWidth={resolvedStyle.strokeWidth ?? 0}
         text={layout.text}
         verticalAlign="middle"
         width={textWidth}

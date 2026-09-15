@@ -115,21 +115,25 @@ describe('Issue #430 R2 Subtitle Workspace polish P-01 / P-02 / P-03', () => {
 
     // Primary CTA is the 全宽 创建字幕 button.
     expect(sheet).toMatch(/rightWorkspace \? '创建字幕' : '新增字幕'/u);
-    expect(sheet).toContain('创建后将进入待安排队列');
+    // Issue #498 Cut 1 removes the duplicate outcome copy; the CTA remains.
+    expect(sheet).not.toContain('创建后将进入待安排队列');
     expect(styles).toContain('.dialogue-authoring-submit');
   });
 
-  it('P-02: downgrades the placement + audio fields without losing them', () => {
+  it('P-02: removes redundant placement/audio chrome from the right workspace', () => {
     const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
 
-    // The right-workspace authoring mode collapses placement + audio into a
-    // single <details> "更多设置" block; the legacy fields still ship text
-    // content so capability is preserved.
-    expect(sheet).toContain('data-testid="dialogue-authoring-advanced"');
-    expect(sheet).toContain('>更多设置</summary>');
-    expect(sheet).toContain('dialogue-authoring-placement-field');
-    expect(sheet).toContain('dialogue-authoring-audio-field');
-    expect(sheet).toContain('创建后进入待安排队列，不会自动定时。');
+    // Issue #498 removes the entire right-workspace "更多设置" presentation.
+    expect(sheet).not.toContain('data-testid="dialogue-authoring-advanced"');
+    expect(sheet).not.toContain('>更多设置</summary>');
+    expect(sheet).not.toContain('dialogue-authoring-placement-field');
+    expect(sheet).not.toContain('dialogue-authoring-audio-field');
+    expect(sheet).not.toContain('创建后进入待安排队列，不会自动定时。');
+    // The portrait Timeline authoring branch still owns its existing timing
+    // and audio presentation.
+    expect(sheet).toContain('dialogue-authoring-placement');
+    expect(sheet).toContain('data-testid="dialogue-authoring-playhead"');
+    expect(sheet).toContain('dialogue-authoring-audio-section');
     expect(sheet).toContain('暂无绑定音频');
   });
 
