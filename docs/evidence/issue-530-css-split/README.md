@@ -4,7 +4,8 @@
 
 - Execution lane: PR #531, branch `agent/issue-530-css-split`.
 - Starting reviewed HEAD: `0963890791070d6eb5b39fc75bd6ee036306adb3`.
-- P1-04 delivery commit / current exact HEAD: `d16c26062d582ad91eeceefe020ab5e6f798c68c` (`feat: extract P1-04 canvas and portrait CSS slices`).
+- P1-04 delivery commit: `d16c26062d582ad91eeceefe020ab5e6f798c68c` (`feat: extract P1-04 canvas and portrait CSS slices`).
+- Receipt follow-up commit / current exact HEAD: `3d1480a8f405885037ff1641d86adb66c5126622` (`docs: record P1-04 receipt`).
 - Fixed baseline: `main@35fe7963a50e7bd9be68f1e39d12833c99bb4436`.
 - Canonical map: `docs/PandaStage_Phase1_Section_Map_v1.0_2026-09-15.md` at `8bac6f217246d25ba4eb6b6bd76ab7bcc11ab332`.
 - S06: canonical `L9840-L11883` (2044 lines) -> `src/renderer/styles/legacy-slices/06-canvas-portrait-foundation.css`; exact SHA-256 `e93b32b2a395c792ecc3b76f531165dc97c98be56564b58d6d5da40c45c9821f`.
