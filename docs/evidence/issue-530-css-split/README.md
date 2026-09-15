@@ -23,7 +23,7 @@
 - Reconstructed full stylesheet equals the pinned baseline: `2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7`.
 - S06/S07 path-sensitive scan: no `url(...)`, `@import`, or `@font-face`; relocation risk `none`.
 - Existing ordered-source reader migration covers 20 newly affected readers (19 unit and 1 integration); all 93 verifier-listed reader paths were exercised in targeted batches with 380 tests passing across 92 discovered test files.
-- Focused CSS/routing/manifest/UI contracts: 5 files / 100 tests PASS.
+- Focused CSS/routing/manifest/UI contracts: 4 files / 88 tests PASS; `tests/integration/right-inspector-narrow.test.ts`: 1 file / 6 tests PASS under the integration config.
 - `pnpm build:renderer`: PASS.
 - `pnpm typecheck`: PASS.
 - `pnpm lint`: PASS.
