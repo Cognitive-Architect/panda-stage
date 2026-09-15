@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import { AssetCard } from '../../src/renderer/features/assets/AssetCard';
 import { migrateProject } from '../../src/domain';
 import exampleProject from '../../demo-project/project-v1.example.json';
@@ -325,7 +326,7 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
   });
 
   it('adds scoped local styles for the new dialogue-properties-untimed-audio / summary classes', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const tail = sectionBetween(
       styles,
       '/* Issue #441:',

@@ -6,6 +6,7 @@ import {
   TIMELINE_EXPANDED_MAX_HEIGHT,
   TIMELINE_EXPANDED_MIN_HEIGHT,
 } from '../../src/renderer/features/timeline/timelineUiStore';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -60,7 +61,7 @@ describe('Issue #422 / #432 R3-A Cloud Touch landscape Timeline geometry', () =>
   });
 
   it('grows real content lanes with the resize range and removes the fixed-height cavity', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     // Issue #422 + #432 R3-A: the umbrella comment now names both issues.
     const start = styles.lastIndexOf('/* Issue #422 + #432 R3-A:');
     const end = styles.indexOf('/* Issue #398:', start);

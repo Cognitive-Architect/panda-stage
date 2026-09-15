@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -7,7 +8,7 @@ function source(path: string): string {
 
 describe('Issue #435 R3-A ruler-track height propagation', () => {
   it('lets the ruler-track consume its growing ruler-scroll parent', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const start = styles.lastIndexOf('/* Issue #422 + #432 R3-A:');
     const end = styles.indexOf('/* Issue #398:', start);
     const r3 = styles.slice(start, end);
