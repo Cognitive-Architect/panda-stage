@@ -25,9 +25,18 @@
 
 ## P1-07 Windows Electron acceptance
 
-**PENDING — 2026-09-15.** The current built Windows Electron application must be inspected for Timeline collapse/expand, reachable subtitle create/pending/arranged states, Tools/Properties/Inspector, FLA/render/media-tail surfaces, and cross-surface continuity at both `>900px` and `<=900px`. Unreachable historical states remain not manually covered rather than being recreated. Automated/source-equivalence results are not a substitute for this HUMAN PASS.
+**PASS — 2026-09-15.** Maintainer completed the declared reachable Windows Electron acceptance on final HEAD `ee9c0515c8cf9c9c9161596c680acde607545342`.
 
-PR #531 remains **Draft / Open / Unmerged**. Do not mark Ready or merge.
+- `>900px` Timeline collapse/expand: PASS; height, handles, task-tray placement, canvas space recovery, scroll ownership, and adjacent workspace geometry remained normal.
+- `>900px` subtitle task surfaces: PASS for empty, create/form, pending, and arranged-in-Timeline states; cards, controls, selection, and scrolling remained normal.
+- `>900px` Tools and Properties/Inspector: PASS for fit/actual-size, action presets, empty selection, subtitle details, and the scrolled character/voice/delete area; panel width, controls, and bottom content remained stable.
+- FLA/render workbench: PASS at both wide and narrow layouts; the narrow view naturally reflowed to one column without clipping, overflow, or drift.
+- `<=900px` responsive hard gate: PASS for subtitle Properties editing, Timeline expanded state, and Timeline collapsed state; no conditional-style failure, clipping, double scroll, or panel displacement was observed.
+- Cross-surface continuity: PASS while switching among subtitle tasks, Tools, Properties, and the FLA render workbench across wide/narrow layouts.
+
+P1-07 therefore has **CODE REVIEW PASS + AUTOMATED/CI PASS + WINDOWS HUMAN PASS**. Unreachable historical states remain not manually covered rather than being recreated. The acceptance evidence is the maintainer's final Issue #538 receipt; automated/source-equivalence results are not used as a substitute.
+
+PR #531 is now eligible for the Ready-for-review gate and remains **Open / Unmerged**; no merge is authorized.
 
 # Issue #537 / PR #531 - P1-06 receipt
 
