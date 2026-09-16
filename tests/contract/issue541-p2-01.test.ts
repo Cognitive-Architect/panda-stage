@@ -9,9 +9,12 @@ const manifest = JSON.parse(
   readFileSync(resolve(root, 'scripts', 'css-split-manifest.json'), 'utf8'),
 ) as {
   baseline: { commit: string; sourcePath: string };
+  phase2CanonicalMap: { path: string; sha256: string; approvedForAutomaticRelocation: boolean };
   rootEntry: { path: string };
   semanticRelocations: Array<{
     id: string;
+    segment: string;
+    sectionIds: string[];
     sourceSlice: string;
     owner: string;
     migrationMode: string;
@@ -20,7 +23,7 @@ const manifest = JSON.parse(
     successor: string;
     sourceRange: { startLine: number; endLine: number };
     targetPath: string;
-    insertBefore: string;
+    insertBefore?: string;
     sourceSha256: string;
   }>;
 };
@@ -43,6 +46,33 @@ const ledger = JSON.parse(
   legacyReceiptFieldSemantics: Record<string, string>;
 };
 
+const rollingLedger = JSON.parse(
+  readFileSync(resolve(root, 'docs', 'evidence', 'phase2-rolling-ledger.json'), 'utf8'),
+) as {
+  pullRequest: number;
+  livePrHeadAuthority: string;
+  livePrCiAuthority: string;
+  selfReferenceRule: string;
+  batches: Record<
+    string,
+    {
+      preflightBaseHead: string;
+      integrationParentHead: string;
+      implementationHead: string;
+      directImplementationCi?: string;
+      implementationCi?: { automaticCiRun: number; automaticCiResult: string };
+      validatedRollingSnapshotBeforeThisFix: {
+        head: string;
+        automaticCiRun: number;
+        automaticCiResult: string;
+      };
+      legacyReceiptSemantics: Record<string, string>;
+    }
+  >;
+};
+
+const phase2CanonicalMap = readFileSync(resolve(root, manifest.phase2CanonicalMap.path), 'utf8');
+
 function normalize(value: string): string {
   return value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
@@ -62,6 +92,21 @@ function importPaths(): string[] {
     .map((line) => /^\s*@import\s+['"]([^'"]+)['"]\s*;\s*$/u.exec(line)?.[1] ?? null)
     .filter((path): path is string => path !== null);
 }
+
+function markdownCells(line: string): string[] {
+  if (!line.trim().startsWith('|')) return [];
+  return line
+    .split('|')
+    .slice(1, -1)
+    .map((cell) => cell.trim().replaceAll('`', '').replaceAll('**', ''));
+}
+
+const authorizedCanonicalTargetOverrides = new Map<string, string>([
+  [
+    'G097',
+    'src/renderer/styles/shell/tools/s11-01--view-mode-pilot.css',
+  ],
+]);
 
 describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
   it('records the approved S11-01 boundary and ownership chain', () => {
@@ -94,6 +139,80 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     });
     expect(ledger.selfReferenceRule).toContain('Do not store the current/final PR HEAD');
     expect(ledger.legacyReceiptFieldSemantics['receipt.json.finalHead']).toContain('DEPRECATED NAME');
+  });
+
+  it('keeps rolling-batch preflight, integration, implementation, and live-head semantics distinct', () => {
+    expect(rollingLedger).toMatchObject({
+      pullRequest: 542,
+      livePrHeadAuthority: 'GitHub PR #542 metadata',
+      livePrCiAuthority: 'Latest GitHub Actions run attached to the current PR head',
+    });
+    expect(rollingLedger.selfReferenceRule).toContain('Do not embed the current/final PR HEAD');
+    expect(rollingLedger.batches['P2-B06']).toMatchObject({
+      preflightBaseHead: 'f5d25ef8adddbe88d42dcab2cc2212b4c0203590',
+      integrationParentHead: 'f5d25ef8adddbe88d42dcab2cc2212b4c0203590',
+      implementationHead: '51516f27b44d4b0c6b7923643aec75272190552b',
+      directImplementationCi: 'NO_DIRECT_PR_RUN_FOUND',
+      validatedRollingSnapshotBeforeThisFix: {
+        head: 'f3918a9b8bd20a8b888846f47eacd948c6f98dee',
+        automaticCiRun: 35078292960,
+        automaticCiResult: 'PASS',
+      },
+    });
+    expect(rollingLedger.batches['P2-B01']).toMatchObject({
+      preflightBaseHead: '02cddd3d2bb0fadd55926c57a99f021822a18b80',
+      integrationParentHead: '51516f27b44d4b0c6b7923643aec75272190552b',
+      implementationHead: 'e6adbdae2a3c7d7abd6f3973c66c708e2c6a004e',
+      implementationCi: {
+        automaticCiRun: 35077222980,
+        automaticCiResult: 'PASS',
+      },
+      validatedRollingSnapshotBeforeThisFix: {
+        head: 'f3918a9b8bd20a8b888846f47eacd948c6f98dee',
+        automaticCiRun: 35078292960,
+        automaticCiResult: 'PASS',
+      },
+    });
+  });
+
+  it('aligns every registered Phase 2 relocation with the canonical Section/Segment registry', () => {
+    expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
+    expect(sha256(normalize(phase2CanonicalMap))).toBe(manifest.phase2CanonicalMap.sha256);
+
+    const rows = sourceLines(phase2CanonicalMap).map(markdownCells);
+    const sectionRows = new Map(
+      rows
+        .filter(
+          (cells) => /^\d+$/u.test(cells[0] ?? '') && /^S\d{2}-\d{2}$/u.test(cells[1] ?? ''),
+        )
+        .map((cells) => [cells[1]!, cells] as const),
+    );
+    const segmentRows = new Map(
+      rows
+        .filter((cells) => /^G\d{3}$/u.test(cells[0] ?? '') && cells.length >= 5)
+        .map((cells) => [cells[0]!, cells] as const),
+    );
+
+    for (const relocation of manifest.semanticRelocations) {
+      const segmentRow = segmentRows.get(relocation.segment);
+      expect(segmentRow, `${relocation.id} missing canonical Segment ${relocation.segment}`).toBeDefined();
+      expect(segmentRow?.[1]).toBe(relocation.owner);
+      for (const sectionId of relocation.sectionIds) {
+        expect(segmentRow?.[3]).toContain(sectionId);
+        const sectionRow = sectionRows.get(sectionId);
+        expect(sectionRow, `${relocation.id} missing canonical Section ${sectionId}`).toBeDefined();
+        expect(sectionRow?.[2]).toBe(relocation.owner);
+        expect(sectionRow?.[7]).toBe(relocation.segment);
+      }
+
+      const canonicalTarget = authorizedCanonicalTargetOverrides.get(relocation.segment)
+        ?? relocation.targetPath;
+      expect(segmentRow?.[4]).toBe(canonicalTarget);
+    }
+
+    expect(
+      manifest.semanticRelocations.find(({ segment }) => segment === 'G097')?.targetPath,
+    ).toBe('src/renderer/styles/shell/tools/view-mode.css');
   });
 
   it('loads the semantic segment once at the original production position', () => {

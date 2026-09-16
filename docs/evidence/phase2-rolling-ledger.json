@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "pullRequest": 542,
+  "scope": "Rolling Phase 2 evidence/bookkeeping semantics only; no CSS, DOM, store, interaction, breakpoint, visual-value, or product-behavior change.",
+  "livePrHeadAuthority": "GitHub PR #542 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
+  "selfReferenceRule": "Do not embed the current/final PR HEAD inside a repository file committed by that same HEAD. Repository evidence records validated historical snapshots; live/final HEAD and latest CI belong to GitHub PR/Actions metadata.",
+  "batches": {
+    "P2-B06": {
+      "issue": 546,
+      "workItems": ["P2-12", "P2-13", "P2-14"],
+      "preflightBaseHead": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+      "integrationParentHead": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+      "implementationHead": "51516f27b44d4b0c6b7923643aec75272190552b",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedRollingSnapshotBeforeThisFix": {
+        "head": "f3918a9b8bd20a8b888846f47eacd948c6f98dee",
+        "automaticCiRun": 35078292960,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative rolling-branch validation after P2-B06 and P2-B01/evidence landed. This validates the integrated branch state, not an isolated CI run attached directly to the P2-B06 implementation commit."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "Interpret as the P2-B06 preflight/integration base for this batch.",
+        "validation.automaticCi": "PENDING_GITHUB_TARGETED_RUN in the historical receipt means no direct PR CI run was attached to that implementation snapshot; use the validated rolling snapshot here plus live GitHub Actions metadata for current status."
+      }
+    },
+    "P2-B01": {
+      "issue": 545,
+      "workItems": ["P2-02", "P2-03"],
+      "preflightBaseHead": "02cddd3d2bb0fadd55926c57a99f021822a18b80",
+      "integrationParentHead": "51516f27b44d4b0c6b7923643aec75272190552b",
+      "implementationHead": "e6adbdae2a3c7d7abd6f3973c66c708e2c6a004e",
+      "implementationCi": {
+        "automaticCiRun": 35077222980,
+        "automaticCiResult": "PASS"
+      },
+      "validatedRollingSnapshotBeforeThisFix": {
+        "head": "f3918a9b8bd20a8b888846f47eacd948c6f98dee",
+        "automaticCiRun": 35078292960,
+        "automaticCiResult": "PASS",
+        "meaning": "Evidence-only rolling snapshot after the B01 implementation receipt commit."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "Interpret as the B01 preflight base, not the commit that immediately parented the B01 implementation when it landed on the rolling branch."
+      }
+    }
+  }
+}
