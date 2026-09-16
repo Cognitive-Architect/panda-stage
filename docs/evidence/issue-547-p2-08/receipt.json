@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "issue": 547,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "P2-B04",
+  "workItem": "P2-08",
+  "owner": "dialogue-workspace",
+  "status": "validated-implementation-pending-human-acceptance",
+  "preflight": "docs/evidence/issue-547-p2-08/preflight.json",
+  "startingLivePrHead": "12c03e771194b382e71055f50159b89aed5b5bb5",
+  "refreshedRemoteBranchHead": "12c03e771194b382e71055f50159b89aed5b5bb5",
+  "validatedImplementationSnapshot": {
+    "head": "afc075b0b7ad0136a09f2f60a9c11670eff40279",
+    "meaning": "B04 production commit validated locally; this receipt is committed afterward and does not self-reference its own commit."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0"
+  },
+  "segments": [
+    {
+      "id": "G021",
+      "sectionIds": ["S02-04"],
+      "canonicalOrder": 23,
+      "sourceSlice": "S02",
+      "sourceRange": { "startLine": 2898, "endLine": 3903 },
+      "sourceLocalRange": { "startLine": 947, "endLine": 1952 },
+      "sourceStartByte": 20830,
+      "sourceEndByteExclusive": 47111,
+      "sourceSha256": "281b0446516336d6538342f52cd9222c858e057c782c341a9d084e065517fc92",
+      "targetPath": "src/renderer/styles/features/dialogue/workspace/s02-04--right-workspace-queue-authoring.css",
+      "predecessor": "S02-03/G020",
+      "successor": "S02-05/G022"
+    },
+    {
+      "id": "G053",
+      "sectionIds": ["S06-11"],
+      "canonicalOrder": 59,
+      "sourceSlice": "S06",
+      "sourceRange": { "startLine": 11054, "endLine": 11263 },
+      "sourceLocalRange": { "startLine": 1215, "endLine": 1424 },
+      "sourceStartByte": 22894,
+      "sourceEndByteExclusive": 26261,
+      "sourceSha256": "c0f4d78ea9c7e387b045d2d8d68e5b25c8989a5ef9f3ae9993ee7f22d7de8d67",
+      "targetPath": "src/renderer/styles/features/dialogue/workspace/s06-11--dialogue-base.css",
+      "predecessor": "S06-10/G052",
+      "successor": "S06-12/G054"
+    },
+    {
+      "id": "G113",
+      "sectionIds": ["S14-01"],
+      "canonicalOrder": 136,
+      "sourceSlice": "S14",
+      "sourceRange": { "startLine": 27998, "endLine": 28027 },
+      "sourceLocalRange": { "startLine": 1, "endLine": 30 },
+      "sourceStartByte": 0,
+      "sourceEndByteExclusive": 1025,
+      "sourceSha256": "3a6fa3640e29e7fd292af82339e51d80b7dc9ae8655033a8514164a8cad3134d",
+      "targetPath": "src/renderer/styles/features/dialogue/workspace/s14-01--pending-hints-443.css",
+      "predecessor": "S13-05/G112",
+      "successor": "S14-02/G114"
+    },
+    {
+      "id": "G132",
+      "sectionIds": ["S15-07", "S15-08", "S15-09", "S15-10", "S15-11"],
+      "canonicalOrder": 157,
+      "sourceSlice": "S15",
+      "sourceRange": { "startLine": 30427, "endLine": 30634 },
+      "sourceLocalRange": { "startLine": 633, "endLine": 840 },
+      "sourceStartByte": 14303,
+      "sourceEndByteExclusive": 20751,
+      "sourceSha256": "22d5d9e157ad218784074b0b6abbd41047cd67c0e1062ceb6d3a82b1bf56c09b",
+      "targetPath": "src/renderer/styles/features/dialogue/workspace/s15-07--new-dialogue-hierarchy.css",
+      "predecessor": "S15-06/G131",
+      "successor": "S15-12/G133"
+    },
+    {
+      "id": "G134",
+      "sectionIds": ["S15-13"],
+      "canonicalOrder": 163,
+      "sourceSlice": "S15",
+      "sourceRange": { "startLine": 30645, "endLine": 30660 },
+      "sourceLocalRange": { "startLine": 851, "endLine": 866 },
+      "sourceStartByte": 20975,
+      "sourceEndByteExclusive": 21516,
+      "sourceSha256": "03cff3383ad58c1b009acf9d04d30ae10e5a24f999703c96605bb59a01104ea6",
+      "targetPath": "src/renderer/styles/features/dialogue/workspace/s15-13--new-dialogue-header-footer-502.css",
+      "predecessor": "S15-12/G133",
+      "successor": "S15-14/G135"
+    }
+  ],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "behaviorContract": {
+    "singleDialogueStickyFooter": "preserved",
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false,
+    "newConsumers": [],
+    "relativeResourceUrls": []
+  },
+  "validation": {
+    "node scripts/verify-css-split.cjs": "PASS",
+    "focusedContractTests": "PASS (4 files, 18 tests)",
+    "pnpm typecheck": "PASS",
+    "pnpm lint": "PASS",
+    "pnpm test:unit": "PASS (278 files, 1796 tests)",
+    "pnpm build": "PASS",
+    "pnpm test:integration": "NOT RUN; CSS-only scope"
+  },
+  "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+  "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+  "manualFullTriggered": false,
+  "verifyProjectManuallyRun": false,
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "scope": "P2-08 dialogue workspace visual surfaces; Windows Electron, constrained window, DPI, long/Chinese content, and input checks remain to be recorded."
+  },
+  "scopeExceptions": []
+}

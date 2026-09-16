@@ -56,6 +56,28 @@
       "legacyReceiptSemantics": {
         "startingPrHead": "Interpret as the B01 preflight base, not the commit that immediately parented the B01 implementation when it landed on the rolling branch."
       }
+    },
+    "P2-B04": {
+      "issue": 547,
+      "workItems": ["P2-08", "P2-09"],
+      "preflightBaseHead": "12c03e771194b382e71055f50159b89aed5b5bb5",
+      "integrationParentHead": "12c03e771194b382e71055f50159b89aed5b5bb5",
+      "implementationHead": "afc075b0b7ad0136a09f2f60a9c11670eff40279",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedImplementationSnapshot": {
+        "head": "afc075b0b7ad0136a09f2f60a9c11670eff40279",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "localTargetedValidation": "PASS"
+      },
+      "humanAcceptance": {
+        "status": "PENDING_HUMAN_ACCEPTANCE",
+        "scope": "P2-08 dialogue workspace and P2-09 batch dialogue visual surfaces; see the two distinct Issue #547 receipts."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "GitHub PR #542 head refreshed before B04 implementation; remote head was unchanged during the local handoff.",
+        "implementationHead": "Validated B04 production snapshot; receipt commit is intentionally not self-referenced.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
+      }
     }
   }
 }
