@@ -1,0 +1,10 @@
+@media (max-width: 700px) {
+  .character-identity-options {
+    max-height: 224px;
+  }
+
+  .character-identity-selected small {
+    display: none;
+  }
+}
+

@@ -1,0 +1,12 @@
+.character-identity-picker-summary > .character-identity-picker-chevron {
+  display: inline-flex;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  font-family: "Segoe UI Symbol", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  line-height: 1;
+}
+
