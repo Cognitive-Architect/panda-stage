@@ -49,7 +49,8 @@
 @import './styles/features/shots/s09-05--landscape-shot-quick-actions.css';
 @import './styles/features/assets/s09-08--landscape-asset-visual.css';
 @import './styles/features/characters/workspace/s10-02--landscape-character-workbench.css';
-@import './styles/legacy-slices/10-landscape-characters-tools-after-character-workbench.css';
+@import './styles/features/characters/expression/s10-03--landscape-expression-workbench.css';
+@import './styles/legacy-slices/10-landscape-characters-tools-after-expression-workbench.css';
 @import './styles/shell/tools/view-mode.css';
 @import './styles/legacy-slices/11-tools-inspector-timeline-start--before-landscape-layer-controls.css';
 @import './styles/features/properties/s11-05--landscape-layer-controls.css';
@@ -68,7 +69,7 @@
 @import './styles/legacy-slices/14-dialogue-polish-image-picker-after-batch-footer.css';
 @import './styles/features/dialogue/properties/s14-12--timing-seconds-463.css';
 @import './styles/features/characters/image-picker/s14-14--image-picker-base-492.css';
-@import './styles/legacy-slices/14-dialogue-polish-image-picker-tail.css';
+@import './styles/features/characters/settings/s14-15--mouth-picker-host.css';
 @import './styles/features/characters/identity/s15-01--identity-base-495.css';
 @import './styles/features/characters/workspace/s15-02--character-list-and-summary-495.css';
 @import './styles/features/dialogue/identity-adapters/s15-03--dialogue-identity-adapters.css';
@@ -86,7 +87,8 @@
 @import './styles/features/characters/workspace/s15-19--character-detail-polish-524.css';
 @import './styles/features/subtitles/controls/s15-21--subtitle-style-container300.css';
 @import './styles/features/characters/workspace/s15-22--character-workspace-consolidated-523.css';
-@import './styles/legacy-slices/16-character-settings-final-polish.css';
+@import './styles/features/characters/settings/s16-01--character-settings-and-expression-523.css';
 @import './styles/features/characters/workspace/s16-03--character-rename-final-width360.css';
-@import './styles/legacy-slices/16-character-settings-after-rename.css';
+@import './styles/features/characters/settings/s16-04--character-settings-polish-526.css';
+@import './styles/features/characters/expression/s16-06--expression-inline-final-528.css';
 @import './styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css';

@@ -305,16 +305,16 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style relocation', 
       { id: 'S14-R02', kind: 'remainder', sourceRange: { startLine: 888, endLine: 1286 }, targetPath: 'src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-after-batch-footer.css' },
       { id: 'G123', kind: 'semantic', relocationId: 'G123', sourceRange: { startLine: 1287, endLine: 1431 }, targetPath: 'src/renderer/styles/features/dialogue/properties/s14-12--timing-seconds-463.css' },
       { id: 'S14-14', kind: 'semantic', relocationId: 'S14-14', sourceRange: { startLine: 1432, endLine: 1765 }, targetPath: 'src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css' },
-      { id: 'S14-R03', kind: 'remainder', sourceRange: { startLine: 1766, endLine: 1797 }, targetPath: 'src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-tail.css' },
+      { id: 'G125', kind: 'semantic', relocationId: 'G125', sourceRange: { startLine: 1766, endLine: 1797 }, targetPath: 'src/renderer/styles/features/characters/settings/s14-15--mouth-picker-host.css' },
     ]);
 
     const s15 = manifest.slices.find(({ id }) => id === 'S15');
     expect(s15?.sourceParts).toEqual([
       { id: 'S15-01', kind: 'semantic', relocationId: 'S15-01', sourceRange: { startLine: 1, endLine: 299 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-01--identity-base-495.css' },
-      { id: 'S15-R01', kind: 'remainder', sourceRange: { startLine: 300, endLine: 412 }, targetPath: 'src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css' },
+      { id: 'G127', kind: 'semantic', relocationId: 'G127', sourceRange: { startLine: 300, endLine: 412 }, targetPath: 'src/renderer/styles/features/characters/workspace/s15-02--character-list-and-summary-495.css' },
       { id: 'S15-03', kind: 'semantic', relocationId: 'S15-03', sourceRange: { startLine: 413, endLine: 527 }, targetPath: 'src/renderer/styles/features/dialogue/identity-adapters/s15-03--dialogue-identity-adapters.css' },
       { id: 'S15-04', kind: 'semantic', relocationId: 'S15-04', sourceRange: { startLine: 528, endLine: 537 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-04--identity-width700.css' },
-      { id: 'S15-R02', kind: 'remainder', sourceRange: { startLine: 538, endLine: 555 }, targetPath: 'src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-05.css' },
+      { id: 'G130', kind: 'semantic', relocationId: 'G130', sourceRange: { startLine: 538, endLine: 555 }, targetPath: 'src/renderer/styles/features/characters/workspace/s15-05--character-list-width701.css' },
       { id: 'S15-06', kind: 'semantic', relocationId: 'S15-06', sourceRange: { startLine: 556, endLine: 632 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-06--identity-compact-496.css' },
       { id: 'G132', kind: 'semantic', relocationId: 'G132', sourceRange: { startLine: 633, endLine: 840 }, targetPath: 'src/renderer/styles/features/dialogue/workspace/s15-07--new-dialogue-hierarchy.css' },
       { id: 'S15-12', kind: 'semantic', relocationId: 'S15-12', sourceRange: { startLine: 841, endLine: 850 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-12--identity-width520.css' },
@@ -324,9 +324,9 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style relocation', 
       { id: 'G137', kind: 'semantic', relocationId: 'G137', sourceRange: { startLine: 914, endLine: 952 }, targetPath: 'src/renderer/styles/features/dialogue/batch/s15-16--batch-final-505.css' },
       { id: 'G138', kind: 'semantic', relocationId: 'G138', sourceRange: { startLine: 953, endLine: 961 }, targetPath: 'src/renderer/styles/features/shots/s15-17--ready-thumbnail-final-508.css' },
       { id: 'G139', kind: 'semantic', relocationId: 'G139', sourceRange: { startLine: 962, endLine: 1351 }, targetPath: 'src/renderer/styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css' },
-      { id: 'S15-R07', kind: 'remainder', sourceRange: { startLine: 1352, endLine: 1798 }, targetPath: 'src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-16-to-22.css' },
+      { id: 'G140', kind: 'semantic', relocationId: 'G140', sourceRange: { startLine: 1352, endLine: 1798 }, targetPath: 'src/renderer/styles/features/characters/workspace/s15-19--character-detail-polish-524.css' },
       { id: 'G141', kind: 'semantic', relocationId: 'G141', sourceRange: { startLine: 1799, endLine: 1828 }, targetPath: 'src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css' },
-      { id: 'S15-R08', kind: 'remainder', sourceRange: { startLine: 1829, endLine: 2001 }, targetPath: 'src/renderer/styles/legacy-slices/15-character-identity-workspace-after-subtitle-style.css' },
+      { id: 'G142', kind: 'semantic', relocationId: 'G142', sourceRange: { startLine: 1829, endLine: 2001 }, targetPath: 'src/renderer/styles/features/characters/workspace/s15-22--character-workspace-consolidated-523.css' },
     ]);
   });
 

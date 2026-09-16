@@ -258,7 +258,7 @@ describe('Issue #547 P2-B04 dialogue workspace and batch relocation', () => {
         ['G118', 'semantic', 585, 596],
         ['S14-R02', 'remainder', 888, 1286],
         ['S14-14', 'semantic', 1432, 1765],
-        ['S14-R03', 'remainder', 1766, 1797],
+        ['G125', 'semantic', 1766, 1797],
       ],
       S15: [
         ['G132', 'semantic', 633, 840],

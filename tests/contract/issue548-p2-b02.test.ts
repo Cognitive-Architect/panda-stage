@@ -229,7 +229,96 @@ const expectedP204 = [
   },
 ] as const;
 
+const expectedP205 = [
+  {
+    id: 'G091',
+    segment: 'G091',
+    sectionIds: ['S10-03'],
+    sourceSlice: 'S10',
+    owner: 'characters-expression',
+    migrationMode: 'DIRECT+HOST_INTEGRATION',
+    canonicalOrder: 106,
+    predecessor: 'S10-02/G090',
+    successor: 'S10-04/G092',
+    sourceRange: { startLine: 21031, endLine: 21524 },
+    sourceLocalRange: { startLine: 1248, endLine: 1741 },
+    sourceStartByte: 38342,
+    sourceEndByteExclusive: 49345,
+    sourceSha256: '40bbc1319596b69a8d1067c0dfcbd6c743dc5cfd85947251693657098ce0e5ed',
+    targetPath: 'src/renderer/styles/features/characters/expression/s10-03--landscape-expression-workbench.css',
+  },
+  {
+    id: 'G125',
+    segment: 'G125',
+    sectionIds: ['S14-15'],
+    sourceSlice: 'S14',
+    owner: 'characters-settings',
+    migrationMode: 'DIRECT+HOST_INTEGRATION',
+    canonicalOrder: 150,
+    predecessor: 'S14-14/G124',
+    successor: 'S15-01/G126',
+    sourceRange: { startLine: 29763, endLine: 29794 },
+    sourceLocalRange: { startLine: 1766, endLine: 1797 },
+    sourceStartByte: 43004,
+    sourceEndByteExclusive: 44011,
+    sourceSha256: '1bbed87c0472c24aef2ad2cc3f60e422bfe20674ca6e6466d69c40283a88eeba',
+    targetPath: 'src/renderer/styles/features/characters/settings/s14-15--mouth-picker-host.css',
+  },
+  {
+    id: 'G143',
+    segment: 'G143',
+    sectionIds: ['S16-01', 'S16-02'],
+    sourceSlice: 'S16',
+    owner: 'characters-settings',
+    migrationMode: 'DIRECT+HOST_INTEGRATION',
+    canonicalOrder: 173,
+    predecessor: 'S15-22/G142',
+    successor: 'S16-03/G144',
+    sourceRange: { startLine: 31796, endLine: 32291 },
+    sourceLocalRange: { startLine: 1, endLine: 496 },
+    sourceStartByte: 0,
+    sourceEndByteExclusive: 15552,
+    sourceSha256: '096df69c617bc61c40820a24b8b4c2d433211c3df05801b652998d91baeef0d8',
+    targetPath: 'src/renderer/styles/features/characters/settings/s16-01--character-settings-and-expression-523.css',
+  },
+  {
+    id: 'G145',
+    segment: 'G145',
+    sectionIds: ['S16-04', 'S16-05'],
+    sourceSlice: 'S16',
+    owner: 'characters-settings',
+    migrationMode: 'DIRECT+HOST_INTEGRATION',
+    canonicalOrder: 176,
+    predecessor: 'S16-03/G144',
+    successor: 'S16-06/G146',
+    sourceRange: { startLine: 32304, endLine: 32684 },
+    sourceLocalRange: { startLine: 509, endLine: 889 },
+    sourceStartByte: 16060,
+    sourceEndByteExclusive: 28638,
+    sourceSha256: '1b9be030bea32693c92ba07a84a475765e8adc230520dab1e887fcf493a0e713',
+    targetPath: 'src/renderer/styles/features/characters/settings/s16-04--character-settings-polish-526.css',
+  },
+  {
+    id: 'G146',
+    segment: 'G146',
+    sectionIds: ['S16-06'],
+    sourceSlice: 'S16',
+    owner: 'characters-expression',
+    migrationMode: 'DIRECT+HOST_INTEGRATION',
+    canonicalOrder: 178,
+    predecessor: 'S16-05/G145',
+    successor: 'S16-07/G147',
+    sourceRange: { startLine: 32685, endLine: 32756 },
+    sourceLocalRange: { startLine: 890, endLine: 961 },
+    sourceStartByte: 28638,
+    sourceEndByteExclusive: 31109,
+    sourceSha256: '00472563d3fa96f4a49608b3ae0a61cd4cc5f564dd50b04802dbea06dc068ad2',
+    targetPath: 'src/renderer/styles/features/characters/expression/s16-06--expression-inline-final-528.css',
+  },
+] as const;
+
 const p204Ids = expectedP204.map(({ id }) => id);
+const p205Ids = expectedP205.map(({ id }) => id);
 
 describe('Issue #548 P2-B02 character workspace relocation', () => {
   it('pins the non-automatic Phase 2 map and all nine P2-04 identities', () => {
@@ -272,7 +361,7 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
       expect.objectContaining({ id: 'S05-R04', sourceRange: { startLine: 9431, endLine: 9839 } }),
       expect.objectContaining({ id: 'S07-R04', sourceRange: { startLine: 13578, endLine: 13578 } }),
       expect.objectContaining({ id: 'S07-R05', sourceRange: { startLine: 13632, endLine: 13801 } }),
-      expect.objectContaining({ id: 'S10-R01', sourceRange: { startLine: 21031, endLine: 21802 } }),
+      expect.objectContaining({ id: 'S10-R01', sourceRange: { startLine: 21525, endLine: 21802 } }),
     ]));
 
     const s15 = manifest.slices.find(({ id }) => id === 'S15');
@@ -287,14 +376,20 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
 
     const s16 = manifest.slices.find(({ id }) => id === 'S16');
     expect(s16?.sourceParts).toEqual([
-      { id: 'S16-R01', kind: 'remainder', sourceRange: { startLine: 1, endLine: 496 }, targetPath: 'src/renderer/styles/legacy-slices/16-character-settings-final-polish.css' },
+      { id: 'G143', kind: 'semantic', relocationId: 'G143', sourceRange: { startLine: 1, endLine: 496 }, targetPath: 'src/renderer/styles/features/characters/settings/s16-01--character-settings-and-expression-523.css' },
       { id: 'G144', kind: 'semantic', relocationId: 'G144', sourceRange: { startLine: 497, endLine: 508 }, targetPath: 'src/renderer/styles/features/characters/workspace/s16-03--character-rename-final-width360.css' },
-      { id: 'S16-R02', kind: 'remainder', sourceRange: { startLine: 509, endLine: 961 }, targetPath: 'src/renderer/styles/legacy-slices/16-character-settings-after-rename.css' },
+      { id: 'G145', kind: 'semantic', relocationId: 'G145', sourceRange: { startLine: 509, endLine: 889 }, targetPath: 'src/renderer/styles/features/characters/settings/s16-04--character-settings-polish-526.css' },
+      { id: 'G146', kind: 'semantic', relocationId: 'G146', sourceRange: { startLine: 890, endLine: 961 }, targetPath: 'src/renderer/styles/features/characters/expression/s16-06--expression-inline-final-528.css' },
       { id: 'S16-07', kind: 'semantic', relocationId: 'S16-07', sourceRange: { startLine: 962, endLine: 1023 }, targetPath: 'src/renderer/styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css' },
     ]);
 
-    for (const id of ['G091', 'G125', 'G143', 'G145', 'G146']) {
-      expect(manifest.semanticRelocations.some((item) => item.id === id)).toBe(false);
+    const s14 = manifest.slices.find(({ id }) => id === 'S14');
+    expect(s14?.sourceParts).toEqual(expect.arrayContaining([
+      { id: 'G125', kind: 'semantic', relocationId: 'G125', sourceRange: { startLine: 1766, endLine: 1797 }, targetPath: 'src/renderer/styles/features/characters/settings/s14-15--mouth-picker-host.css' },
+    ]));
+
+    for (const id of p205Ids) {
+      expect(manifest.semanticRelocations.some((item) => item.id === id)).toBe(true);
     }
   });
 
@@ -313,8 +408,39 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
     expect(imports.slice(s15Start, s15Start + s15Paths.length)).toEqual(s15Paths);
   });
 
+  it('loads every P2-05 target exactly once in canonical production order', () => {
+    const imports = importPaths();
+    const indexes = expectedP205.map(({ targetPath }) => {
+      const path = entryImportPath(targetPath);
+      expect(imports.filter((candidate) => candidate === path)).toHaveLength(1);
+      return imports.indexOf(path);
+    });
+    expect(indexes).toEqual([...indexes].sort((left, right) => left - right));
+
+    const g124Path = entryImportPath(
+      manifest.semanticRelocations.find(({ id }) => id === 'S14-14')!.targetPath,
+    );
+    const g125Path = entryImportPath(
+      manifest.semanticRelocations.find(({ id }) => id === 'G125')!.targetPath,
+    );
+    expect(imports.indexOf(g125Path)).toBe(imports.indexOf(g124Path) + 1);
+
+    const s16 = manifest.slices.find(({ id }) => id === 'S16')!;
+    const s16Paths = s16.sourceParts!.map(({ targetPath }) => entryImportPath(targetPath));
+    const s16Start = imports.indexOf(s16Paths[0]!);
+    expect(imports.slice(s16Start, s16Start + s16Paths.length)).toEqual(s16Paths);
+  });
+
   it('keeps every P2-04 target byte-exact and reconstructs the pinned stylesheet', () => {
     for (const relocation of expectedP204) {
+      const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
+      expect(sha256(target)).toBe(relocation.sourceSha256);
+      expect(Buffer.byteLength(target, 'utf8')).toBe(
+        relocation.sourceEndByteExclusive - relocation.sourceStartByte,
+      );
+    }
+
+    for (const relocation of expectedP205) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
       expect(sha256(target)).toBe(relocation.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
