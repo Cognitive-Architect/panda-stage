@@ -158,6 +158,53 @@
         "implementationHead": "Validated B05 production snapshot; receipt and ledger commits are intentionally not self-referenced.",
         "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
       }
+    },
+    "P2-B02": {
+      "issue": 548,
+      "workItems": ["P2-04", "P2-05"],
+      "preflightBaseHeads": {
+        "P2-04": "bdb8c1004a819256998fb87697fdf64cd97c3867",
+        "P2-05": "f5f7da81c6be56ad17a0fe7868e7dc56ce0a6749"
+      },
+      "integrationParentHead": "bdb8c1004a819256998fb87697fdf64cd97c3867",
+      "implementationHead": "554f30c2f8333cf20d96bfc5e6dac8b63fc5e7ff",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedImplementationSnapshot": {
+        "head": "554f30c2f8333cf20d96bfc5e6dac8b63fc5e7ff",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "localTargetedValidation": "PASS",
+        "coreValidation": {
+          "typecheck": "PASS",
+          "lint": "PASS",
+          "unit": "PASS (281 files, 1809 tests)",
+          "build": "PASS",
+          "integration": "NOT RUN; CSS-only scope"
+        },
+        "manualFullTriggered": false,
+        "verifyProjectManuallyRun": false
+      },
+      "serialCheckpoints": {
+        "P2-04PreflightRelocationValidation": "PASS",
+        "P2-05PreflightRelocationValidation": "PASS",
+        "B02ProductionEntryOrderAndEquivalence": "PASS",
+        "B05RefreshBeforeB02": "PASS; B05 remote/live head bdb8c1004a819256998fb87697fdf64cd97c3867",
+        "B02DeferredSegments": "NONE"
+      },
+      "receipts": [
+        "docs/evidence/issue-548-p2-04/preflight.json",
+        "docs/evidence/issue-548-p2-04/receipt.json",
+        "docs/evidence/issue-548-p2-05/preflight.json",
+        "docs/evidence/issue-548-p2-05/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PENDING_HUMAN_ACCEPTANCE",
+        "scope": "P2-04 Character Workspace and P2-05 Character Settings/Expression visual surfaces; Windows Electron constrained-window, DPI, long/Chinese content, input, mouth picker/clear, zoom/flip/pending apply, expression cards, and #528 inline single-card checks remain to be recorded."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "GitHub PR #542 head was refreshed/verified at B05 before the B02 preflight; P2-04 and P2-05 then ran serially on the local rolling branch.",
+        "implementationHead": "Validated B02 production snapshot; receipt and ledger commits are intentionally not self-referenced.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
+      }
     }
   }
 }

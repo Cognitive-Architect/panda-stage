@@ -8,11 +8,11 @@
   "status": "preflight-pass",
   "startingLivePrHead": "bdb8c1004a819256998fb87697fdf64cd97c3867",
   "refreshedRemoteBranchHead": "bdb8c1004a819256998fb87697fdf64cd97c3867",
-  "integrationBaseHead": "f5f7da8",
+  "integrationBaseHead": "f5f7da81c6be56ad17a0fe7868e7dc56ce0a6749",
   "predecessorImplementation": {
     "workItem": "P2-04",
-    "commit": "2c9a426",
-    "evidenceCommit": "f5f7da8",
+    "commit": "2c9a426cf08ca72fa53dfab52133e665588b208e",
+    "evidenceCommit": "f5f7da81c6be56ad17a0fe7868e7dc56ce0a6749",
     "verified": true,
     "handoff": "P2-04 Character Workspace relocations are validated; this batch now resolves the deferred expression, mouth-picker, settings, and inline-expression segments against the updated S10/S14/S16 source order."
   },
