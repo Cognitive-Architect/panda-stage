@@ -25,6 +25,24 @@ const manifest = JSON.parse(
   }>;
 };
 
+const preflight = JSON.parse(
+  readFileSync(resolve(root, 'docs', 'evidence', 'issue-541-p2-01', 'preflight.json'), 'utf8'),
+) as {
+  sourceSlice: string;
+  section: string;
+  segment: string;
+};
+
+const ledger = JSON.parse(
+  readFileSync(resolve(root, 'docs', 'evidence', 'issue-541-p2-01', 'ledger.json'), 'utf8'),
+) as {
+  canonicalSection: string;
+  segment: string;
+  livePrHeadAuthority: string;
+  selfReferenceRule: string;
+  legacyReceiptFieldSemantics: Record<string, string>;
+};
+
 function normalize(value: string): string {
   return value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
@@ -60,6 +78,21 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
       targetPath: 'src/renderer/styles/shell/tools/view-mode.css',
       insertBefore: 'src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css',
     });
+  });
+
+  it('keeps Section and Segment identities distinct in the evidence ledger', () => {
+    expect(preflight).toMatchObject({
+      sourceSlice: 'S11',
+      section: 'S11-01',
+      segment: 'G097',
+    });
+    expect(ledger).toMatchObject({
+      canonicalSection: 'S11-01',
+      segment: 'G097',
+      livePrHeadAuthority: 'GitHub PR #542 metadata',
+    });
+    expect(ledger.selfReferenceRule).toContain('Do not store the current/final PR HEAD');
+    expect(ledger.legacyReceiptFieldSemantics['receipt.json.finalHead']).toContain('DEPRECATED NAME');
   });
 
   it('loads the semantic segment once at the original production position', () => {

@@ -12,6 +12,14 @@
 - `styles.css` imports the semantic file immediately before the S11 remainder. The extended verifier and ordered reader reconstruct the real production import traversal and compare it to the pinned baseline without sorting or recursively bundling CSS.
 - `ProjectToolsDrawer` remains the presentation host; `canvasViewportStore` remains the single behavior/state owner. No DOM, copy, store, breakpoint, selector, declaration, or interaction redesign was made.
 
+## Bookkeeping semantics
+
+- `preflight.json` now records the identity correctly as `section = S11-01` and `segment = G097`.
+- [`ledger.json`](ledger.json) is the canonical bookkeeping clarification for HEAD/CI semantics.
+- Repository files must **not** try to embed their own current/final commit SHA. Doing so creates an impossible self-reference loop: changing the file creates a new commit SHA again.
+- Therefore `receipt.json.finalHead` and `receipt.json.automaticCi` are retained only as legacy generated snapshot fields. Interpret them as the validated implementation snapshot recorded at generation time, **not** as the eternal/final PR HEAD or latest CI.
+- The authoritative live/final PR HEAD is GitHub PR #542 metadata; the authoritative latest CI is the GitHub Actions run attached to that current PR head.
+
 ## Automated validation
 
 - `node scripts/verify-css-split.cjs --preflight`: PASS.
@@ -23,10 +31,11 @@
 - `pnpm typecheck`: PASS. `pnpm lint`: PASS. `pnpm build:renderer`: PASS. `pnpm build:electron`: PASS.
 - Native visible Electron smoke from the built worktree: PASS at 1366x768 and 1920x1080 for Tools open, `适应窗口`, `实际尺寸`, return to fit, and action-preset entry. External output: `D:\PandaStage-Acceptance\issue-460-two-mode-pan-tools\geometry-results.json`.
 - `MANUAL_FULL_TRIGGERED=false`; `VERIFY_PROJECT_MANUALLY_RUN=false`.
-- Normal automatic CI targeted run `35056542765`: PASS (including typecheck, lint, unit, integration, build, and manifest-selected editor/timeline suites).
+- Validated implementation snapshot CI: targeted run `35056542765` PASS.
+- Evidence-finalization snapshot CI before this bookkeeping correction: targeted run `35057125530` PASS.
 
 ## Acceptance status
 
-The focused native smoke is automated evidence, not maintainer visual acceptance. Maintainer Windows acceptance of the final exact HEAD remains **PENDING**. Do not mark the PR Ready, merge it, or close the Issue until that acceptance is complete.
+The focused native smoke is automated evidence, not maintainer visual acceptance. Maintainer has visually inspected the Tools panel and accepted the Action Preset surface; PR #542 intentionally remains Draft/Open/Unmerged until the maintainer decides to merge.
 
-The machine-readable receipt is [`receipt.json`](receipt.json).
+The generated machine receipt remains [`receipt.json`](receipt.json); bookkeeping interpretation is governed by [`ledger.json`](ledger.json).

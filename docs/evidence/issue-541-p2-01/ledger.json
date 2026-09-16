@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "issue": 541,
+  "phase": "P2-01",
+  "canonicalSection": "S11-01",
+  "segment": "G097",
+  "startingMainHead": "fb5f91ecb8ee3ecdcea9bf2f242526feb3597859",
+  "validatedImplementationSnapshot": {
+    "head": "17a5ad4f67c834b6ffa04ec5979b2084da4f8098",
+    "automaticCiRun": 35056542765,
+    "automaticCiResult": "PASS",
+    "meaning": "Implementation + contract snapshot validated before later evidence-only bookkeeping commits."
+  },
+  "bookkeepingSnapshotBeforeThisFix": {
+    "head": "ae4a0194cc781371de3a98067e261c91cafa01bd",
+    "automaticCiRun": 35057125530,
+    "automaticCiResult": "PASS",
+    "meaning": "Evidence-finalization snapshot reviewed before this bookkeeping-only correction."
+  },
+  "livePrHeadAuthority": "GitHub PR #542 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
+  "selfReferenceRule": "Do not store the current/final PR HEAD inside a file committed by that same HEAD. Repository receipts may record the last validated snapshot; the live/final PR HEAD belongs in GitHub PR/Issue metadata/comments.",
+  "legacyReceiptFieldSemantics": {
+    "receipt.json.finalHead": "DEPRECATED NAME: interpret as validated implementation snapshot, not eternal/final PR head.",
+    "receipt.json.automaticCi": "DEPRECATED NAME: interpret as CI attached to the validated snapshot recorded by that generated receipt."
+  },
+  "preflightIdentity": {
+    "sourceSlice": "S11",
+    "section": "S11-01",
+    "segment": "G097"
+  },
+  "scope": "Evidence/bookkeeping correction only; no CSS, DOM, store, interaction, breakpoint, visual-value, or product behavior change."
+}

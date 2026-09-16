@@ -4,7 +4,8 @@
   "status": "preflight-pass",
   "startingMainHead": "fb5f91ecb8ee3ecdcea9bf2f242526feb3597859",
   "sourceSlice": "S11",
-  "segment": "S11-01",
+  "section": "S11-01",
+  "segment": "G097",
   "sourcePath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
   "sourceBlob": "acf90acc825c7ffe2ffcdadc56451ad62083b9d3",
   "sourceLocalRange": {
