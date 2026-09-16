@@ -69,9 +69,17 @@
         "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
         "localTargetedValidation": "PASS"
       },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "57736b6a1af4dea3e6f11b29d914eb0767258517",
+        "automaticCiRun": 35096501798,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative rolling branch after Wave 2 review corrective; Focused core quality and final CI result passed, Full quality/regression was skipped by policy."
+      },
       "humanAcceptance": {
-        "status": "PENDING_HUMAN_ACCEPTANCE",
-        "scope": "P2-08 dialogue workspace and P2-09 batch dialogue visual surfaces; see the two distinct Issue #547 receipts."
+        "status": "PASS",
+        "acceptedOn": "2026-09-16",
+        "acceptedBy": "maintainer",
+        "scope": "P2-08 dialogue workspace + P2-09 batch dialogue visual surfaces; maintainer reviewed the Wave 2 Electron surfaces and reported Visual PASS."
       },
       "legacyReceiptSemantics": {
         "startingPrHead": "GitHub PR #542 head refreshed before B04 implementation; remote head was unchanged during the local handoff.",
@@ -91,14 +99,22 @@
         "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
         "localTargetedValidation": "PASS"
       },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "57736b6a1af4dea3e6f11b29d914eb0767258517",
+        "automaticCiRun": 35096501798,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative rolling branch after Wave 2 review corrective; Focused core quality and final CI result passed, Full quality/regression was skipped by policy."
+      },
       "s15Handoff": {
         "b04End": "S15-16/G137",
         "b03Start": "S15-17/G138",
         "conflictOrReorder": false
       },
       "humanAcceptance": {
-        "status": "PENDING_HUMAN_ACCEPTANCE",
-        "scope": "P2-06 assets and P2-07 shots; see the two distinct Issue #547 receipts."
+        "status": "PASS",
+        "acceptedOn": "2026-09-16",
+        "acceptedBy": "maintainer",
+        "scope": "P2-06 assets + P2-07 shots visual surfaces; maintainer reviewed the Wave 2 Electron surfaces and reported Visual PASS."
       },
       "legacyReceiptSemantics": {
         "startingPrHead": "B03 was re-resolved against the B04-updated local rolling tree before production writes.",
