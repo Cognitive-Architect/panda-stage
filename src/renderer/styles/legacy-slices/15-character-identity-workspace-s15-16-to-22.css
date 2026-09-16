@@ -1,12 +1,3 @@
-/* Issue #508: a ready thumbnail is its own visual surface; placeholders keep their frame. */
-.shot-thumbnail {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  place-content: stretch;
-  gap: 0;
-}
-
 /* Issue #521: finish R5 V1 with a calm segmented position control and a clear
    outline setting hierarchy. The rows remain always expanded and subordinate
    outline controls stay mounted so toggling outline cannot move the following

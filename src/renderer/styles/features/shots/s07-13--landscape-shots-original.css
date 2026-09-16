@@ -1,0 +1,140 @@
+
+/* Shot drawer: keep the existing list/selection/reorder owner and leave the
+   full selected-shot editor out of the first-glance landscape surface. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-workspace {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty {
+  min-height: 250px;
+  padding: 24px 6px 32px;
+  align-content: center;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty > strong {
+  color: #dff3e3;
+  font-size: 20px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty > p {
+  font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  row-gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > .shot-empty-storyboard {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > .shot-list-empty-copy {
+  min-width: 0;
+  max-width: 360px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='shots']
+  .shot-list-empty-inline-copy > .shot-list-empty-copy > strong {
+  color: #dff3e3;
+  font-size: inherit;
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list
+  ol {
+  max-height: none;
+  padding: 0;
+  overflow: visible;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button {
+  min-height: 76px;
+  padding: 8px;
+  border-radius: 12px;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-thumbnail,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-thumbnail-placeholder {
+  min-height: 58px;
+  height: 58px;
+  padding: 5px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button
+  strong {
+  font-size: 14px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-list-item
+  > button
+  small {
+  font-size: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-drag-handle {
+  display: grid;
+  min-width: 26px;
+  min-height: 44px;
+  place-items: center;
+  font-size: 18px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-view,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .shot-create-form {
+  min-height: 0;
+}

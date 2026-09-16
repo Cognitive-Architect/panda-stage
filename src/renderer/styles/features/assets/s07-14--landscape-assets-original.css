@@ -1,0 +1,211 @@
+
+/* Assets drawer: use the existing import, filter, search and selection owners
+   with a small two-column grid that fits the narrow overlay. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library {
+  padding: 0 12px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact {
+  padding: 0;
+  margin: 0 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions {
+  display: block;
+  min-height: 48px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions
+  button {
+  width: 100%;
+  min-height: 48px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-actions
+  > span,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-import-panel-compact
+  .asset-import-drop {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-browser {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search {
+  display: grid;
+  margin-bottom: 8px;
+  gap: 5px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search
+  > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search
+  input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search-control
+  input {
+  padding-right: 40px;
+  padding-left: 38px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-search-icon {
+  left: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs {
+  display: grid;
+  width: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  overflow: visible;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs
+  button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 2px;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-category-tabs
+  button
+  strong {
+  min-width: 0;
+  padding: 0;
+  font-size: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-library-content,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-grid {
+  display: block;
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-grid {
+  display: grid;
+  max-height: none;
+  padding: 10px 0 4px;
+  overflow: visible;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card {
+  min-height: 0;
+  padding: 0 0 8px;
+  border-radius: 10px;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-preview {
+  border-radius: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-copy {
+  margin-inline: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-name {
+  font-size: 11px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-context,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .asset-card-metadata {
+  font-size: 9px;
+}
