@@ -47,12 +47,16 @@ const ledger = JSON.parse(
 };
 
 const rollingLedger = JSON.parse(
-  readFileSync(resolve(root, 'docs', 'evidence', 'phase2-rolling-ledger.json'), 'utf8'),
+  readFileSync(
+    resolve(root, 'docs', 'evidence', 'issue-541-p2-01', 'phase2-rolling-ledger.json'),
+    'utf8',
+  ),
 ) as {
   pullRequest: number;
   livePrHeadAuthority: string;
   livePrCiAuthority: string;
   selfReferenceRule: string;
+  humanAcceptanceSemantics: string;
   batches: Record<
     string,
     {
@@ -65,6 +69,12 @@ const rollingLedger = JSON.parse(
         head: string;
         automaticCiRun: number;
         automaticCiResult: string;
+      };
+      humanAcceptance: {
+        status: string;
+        acceptedOn: string;
+        acceptedBy: string;
+        scope: string;
       };
       legacyReceiptSemantics: Record<string, string>;
     }
@@ -141,13 +151,14 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     expect(ledger.legacyReceiptFieldSemantics['receipt.json.finalHead']).toContain('DEPRECATED NAME');
   });
 
-  it('keeps rolling-batch preflight, integration, implementation, and live-head semantics distinct', () => {
+  it('keeps rolling-batch preflight, integration, implementation, live-head, and human-acceptance semantics distinct', () => {
     expect(rollingLedger).toMatchObject({
       pullRequest: 542,
       livePrHeadAuthority: 'GitHub PR #542 metadata',
       livePrCiAuthority: 'Latest GitHub Actions run attached to the current PR head',
     });
     expect(rollingLedger.selfReferenceRule).toContain('Do not embed the current/final PR HEAD');
+    expect(rollingLedger.humanAcceptanceSemantics).toContain('separately from automated');
     expect(rollingLedger.batches['P2-B06']).toMatchObject({
       preflightBaseHead: 'f5d25ef8adddbe88d42dcab2cc2212b4c0203590',
       integrationParentHead: 'f5d25ef8adddbe88d42dcab2cc2212b4c0203590',
@@ -157,6 +168,11 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
         head: 'f3918a9b8bd20a8b888846f47eacd948c6f98dee',
         automaticCiRun: 35078292960,
         automaticCiResult: 'PASS',
+      },
+      humanAcceptance: {
+        status: 'PASS',
+        acceptedOn: '2026-09-16',
+        acceptedBy: 'maintainer',
       },
     });
     expect(rollingLedger.batches['P2-B01']).toMatchObject({
@@ -171,6 +187,11 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
         head: 'f3918a9b8bd20a8b888846f47eacd948c6f98dee',
         automaticCiRun: 35078292960,
         automaticCiResult: 'PASS',
+      },
+      humanAcceptance: {
+        status: 'PASS',
+        acceptedOn: '2026-09-16',
+        acceptedBy: 'maintainer',
       },
     });
   });
