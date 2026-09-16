@@ -1,0 +1,12 @@
+.editor-shell[data-editor-shell-layout='landscape']
+  .dialogue-sheet-right-workspace
+  .dialogue-authoring-batch
+  .dialogue-authoring-footer {
+  position: static;
+  bottom: auto;
+  z-index: auto;
+  padding: 4px 0 0;
+  border-top: 0;
+  background: none;
+}
+

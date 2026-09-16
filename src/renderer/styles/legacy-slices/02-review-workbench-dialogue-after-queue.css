@@ -1,0 +1,13 @@
+@media (max-width: 1050px) {
+  .editor-shell[data-editor-shell-layout='landscape']
+    .editor-body:has(.right-workspace[data-surface-open='true']) {
+    grid-template-columns: 56px minmax(0, 1fr) 320px;
+  }
+
+  .editor-shell[data-editor-shell-layout='landscape']
+    .right-workspace[data-surface-open='true'] {
+    width: 320px;
+    grid-template-columns: minmax(0, 1fr) 56px;
+  }
+}
+

@@ -2,6 +2,8 @@
 @import './styles/primitives.css';
 @import './styles/legacy-slices/01-shell-import-review-base.css';
 @import './styles/legacy-slices/02-review-workbench-dialogue.css';
+@import './styles/features/dialogue/workspace/s02-04--right-workspace-queue-authoring.css';
+@import './styles/legacy-slices/02-review-workbench-dialogue-after-queue.css';
 @import './styles/legacy-slices/03-terminal-launcher-sequence.css';
 @import './styles/legacy-slices/04-launcher-render-workbench.css';
 @import './styles/legacy-slices/05-asset-library-stage-sequence.css';
@@ -12,6 +14,8 @@
 @import './styles/legacy-slices/06-canvas-portrait-foundation--before-product-preview.css';
 @import './styles/shell/product-preview/s06-09--product-preview.css';
 @import './styles/legacy-slices/06-canvas-portrait-foundation.css';
+@import './styles/features/dialogue/workspace/s06-11--dialogue-base.css';
+@import './styles/legacy-slices/06-canvas-portrait-foundation-after-dialogue.css';
 @import './styles/legacy-slices/07-portrait-assets-inspector-start--before-layer-forms.css';
 @import './styles/features/properties/s07-10--portrait-layer-forms.css';
 @import './styles/features/canvas/s07-11--portrait-timeline-canvas.css';
@@ -27,7 +31,11 @@
 @import './styles/legacy-slices/11-tools-inspector-timeline-start.css';
 @import './styles/legacy-slices/12-landscape-task-tray.css';
 @import './styles/legacy-slices/13-timed-render-media-tail.css';
+@import './styles/features/dialogue/workspace/s14-01--pending-hints-443.css';
+@import './styles/features/dialogue/batch/s14-02--batch-447.css';
 @import './styles/legacy-slices/14-dialogue-polish-image-picker.css';
+@import './styles/features/dialogue/batch/s14-06--batch-footer-host.css';
+@import './styles/legacy-slices/14-dialogue-polish-image-picker-after-batch-footer.css';
 @import './styles/features/characters/image-picker/s14-14--image-picker-base-492.css';
 @import './styles/legacy-slices/14-dialogue-polish-image-picker-tail.css';
 @import './styles/features/characters/identity/s15-01--identity-base-495.css';
@@ -36,11 +44,12 @@
 @import './styles/features/characters/identity/s15-04--identity-width700.css';
 @import './styles/legacy-slices/15-character-identity-workspace-s15-05.css';
 @import './styles/features/characters/identity/s15-06--identity-compact-496.css';
-@import './styles/legacy-slices/15-character-identity-workspace-s15-07-to-11.css';
+@import './styles/features/dialogue/workspace/s15-07--new-dialogue-hierarchy.css';
 @import './styles/features/characters/identity/s15-12--identity-width520.css';
-@import './styles/legacy-slices/15-character-identity-workspace-s15-13.css';
+@import './styles/features/dialogue/workspace/s15-13--new-dialogue-header-footer-502.css';
 @import './styles/features/characters/identity/s15-14--identity-chevron-final.css';
 @import './styles/features/characters/thumbnail-status/s15-15--shared-thumbnail-status-503.css';
+@import './styles/features/dialogue/batch/s15-16--batch-final-505.css';
 @import './styles/legacy-slices/15-character-identity-workspace-s15-16-to-22.css';
 @import './styles/legacy-slices/16-character-settings-final-polish.css';
 @import './styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css';

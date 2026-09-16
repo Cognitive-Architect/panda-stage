@@ -338,6 +338,14 @@ function verifyPhase2CanonicalMap(canonicalMapText) {
     );
   }
   const requiredIds = new Set([
+    'G021',
+    'G053',
+    'G113',
+    'G114',
+    'G118',
+    'G132',
+    'G134',
+    'G137',
     'S14-14',
     'S15-01',
     'S15-03',
