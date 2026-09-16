@@ -139,6 +139,12 @@
         "manualFullTriggered": false,
         "verifyProjectManuallyRun": false
       },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "3141fa49cff053a22f996670efde29d4f1864532",
+        "automaticCiRun": 35160071491,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative SER-01 rolling branch after the review routing corrective; CI #926 completed successfully before Human Visual Acceptance was recorded."
+      },
       "serialCheckpoints": {
         "P2-10PreflightRelocationValidation": "PASS",
         "P2-11PreflightRelocationValidation": "PASS",
@@ -150,8 +156,10 @@
         "docs/evidence/issue-548-p2-11/receipt.json"
       ],
       "humanAcceptance": {
-        "status": "PENDING_HUMAN_ACCEPTANCE",
-        "scope": "P2-10 Dialogue Properties and P2-11 Subtitle Style visual surfaces; Windows Electron constrained-window, DPI, long/Chinese content, and input checks remain to be recorded."
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "scope": "P2-10 Dialogue Properties + P2-11 Subtitle Style visual surfaces; maintainer reviewed the real Electron/product entry including normal and constrained-width behavior and reported Human Visual PASS."
       },
       "legacyReceiptSemantics": {
         "startingPrHead": "GitHub PR #542 head at the B05 preflight; P2-10 and P2-11 were then validated serially on the rolling branch.",
@@ -183,6 +191,12 @@
         "manualFullTriggered": false,
         "verifyProjectManuallyRun": false
       },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "3141fa49cff053a22f996670efde29d4f1864532",
+        "automaticCiRun": 35160071491,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative SER-01 rolling branch after the review routing corrective; CI #926 completed successfully before Human Visual Acceptance was recorded."
+      },
       "serialCheckpoints": {
         "P2-04PreflightRelocationValidation": "PASS",
         "P2-05PreflightRelocationValidation": "PASS",
@@ -197,8 +211,10 @@
         "docs/evidence/issue-548-p2-05/receipt.json"
       ],
       "humanAcceptance": {
-        "status": "PENDING_HUMAN_ACCEPTANCE",
-        "scope": "P2-04 Character Workspace and P2-05 Character Settings/Expression visual surfaces; Windows Electron constrained-window, DPI, long/Chinese content, input, mouth picker/clear, zoom/flip/pending apply, expression cards, and #528 inline single-card checks remain to be recorded."
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "scope": "P2-04 Character Workspace + P2-05 Character Settings/Expression visual surfaces; maintainer reviewed the real Electron/product entry including list/detail/settings/expression and constrained-width behavior and reported Human Visual PASS."
       },
       "legacyReceiptSemantics": {
         "startingPrHead": "GitHub PR #542 head was refreshed/verified at B05 before the B02 preflight; P2-04 and P2-05 then ran serially on the local rolling branch.",
