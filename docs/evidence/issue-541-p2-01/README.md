@@ -23,9 +23,10 @@
 - `pnpm typecheck`: PASS. `pnpm lint`: PASS. `pnpm build:renderer`: PASS. `pnpm build:electron`: PASS.
 - Native visible Electron smoke from the built worktree: PASS at 1366x768 and 1920x1080 for Tools open, `适应窗口`, `实际尺寸`, return to fit, and action-preset entry. External output: `D:\PandaStage-Acceptance\issue-460-two-mode-pan-tools\geometry-results.json`.
 - `MANUAL_FULL_TRIGGERED=false`; `VERIFY_PROJECT_MANUALLY_RUN=false`.
+- Normal automatic CI targeted run `35056542765`: PASS (including typecheck, lint, unit, integration, build, and manifest-selected editor/timeline suites).
 
 ## Acceptance status
 
-The focused native smoke is automated evidence, not maintainer visual acceptance. Maintainer Windows acceptance of the final exact HEAD remains **PENDING**. Do not mark the PR Ready, merge it, or close the Issue until that acceptance and the normal required CI are complete.
+The focused native smoke is automated evidence, not maintainer visual acceptance. Maintainer Windows acceptance of the final exact HEAD remains **PENDING**. Do not mark the PR Ready, merge it, or close the Issue until that acceptance is complete.
 
 The machine-readable receipt is [`receipt.json`](receipt.json).
