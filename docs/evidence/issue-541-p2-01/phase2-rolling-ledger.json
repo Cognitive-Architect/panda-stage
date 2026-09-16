@@ -121,6 +121,43 @@
         "implementationHead": "Validated B03 production snapshot; receipt commit is intentionally not self-referenced.",
         "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
       }
+    },
+    "P2-B05": {
+      "issue": 548,
+      "workItems": ["P2-10", "P2-11"],
+      "preflightBaseHeads": {
+        "P2-10": "7877a9067fa572c9ba164d5126aea60259241ca3",
+        "P2-11": "3c1b3178c6e0fd6aeecb7b91432825968b0a25b8"
+      },
+      "integrationParentHead": "3c1b3178c6e0fd6aeecb7b91432825968b0a25b8",
+      "implementationHead": "76cbafbb98d5b93b83a205d186b1f897fce13c2b",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedImplementationSnapshot": {
+        "head": "76cbafbb98d5b93b83a205d186b1f897fce13c2b",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "localTargetedValidation": "PASS",
+        "manualFullTriggered": false,
+        "verifyProjectManuallyRun": false
+      },
+      "serialCheckpoints": {
+        "P2-10PreflightRelocationValidation": "PASS",
+        "P2-11PreflightRelocationValidation": "PASS",
+        "B05ProductionEntryOrderAndEquivalence": "PASS",
+        "B02HandoffOrder": "G138 → G139 → G140 → G141 → G142 preserved for next batch"
+      },
+      "receipts": [
+        "docs/evidence/issue-548-p2-10/receipt.json",
+        "docs/evidence/issue-548-p2-11/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PENDING_HUMAN_ACCEPTANCE",
+        "scope": "P2-10 Dialogue Properties and P2-11 Subtitle Style visual surfaces; Windows Electron constrained-window, DPI, long/Chinese content, and input checks remain to be recorded."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "GitHub PR #542 head at the B05 preflight; P2-10 and P2-11 were then validated serially on the rolling branch.",
+        "implementationHead": "Validated B05 production snapshot; receipt and ledger commits are intentionally not self-referenced.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
+      }
     }
   }
 }

@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "issue": 548,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "P2-B05",
+  "workItem": "P2-10",
+  "owner": "dialogue-properties",
+  "status": "validated-implementation-pending-human-acceptance",
+  "preflight": "docs/evidence/issue-548-p2-10/preflight.json",
+  "startingLivePrHead": "7877a9067fa572c9ba164d5126aea60259241ca3",
+  "refreshedRemoteBranchHead": "7877a9067fa572c9ba164d5126aea60259241ca3",
+  "validatedImplementationSnapshot": {
+    "head": "76cbafbb98d5b93b83a205d186b1f897fce13c2b",
+    "meaning": "B05 production commit validated locally; this receipt is committed afterward and does not self-reference its own commit."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0"
+  },
+  "segments": [
+    {
+      "id": "G073",
+      "sectionIds": ["S08-02"],
+      "canonicalOrder": 82,
+      "sourceSlice": "S08",
+      "sourceRange": { "startLine": 13983, "endLine": 14157 },
+      "sourceLocalRange": { "startLine": 182, "endLine": 356 },
+      "sourceStartByte": 3964,
+      "sourceEndByteExclusive": 7885,
+      "sourceSha256": "db74b4f10b8aa343fd78b97ea171d3dfd7eeb2b0d44d92e968dc2026a2205c5c",
+      "targetPath": "src/renderer/styles/features/dialogue/properties/s08-02--landscape-inspector-original.css",
+      "predecessor": "S08-01/G072",
+      "successor": "S08-03/G074"
+    },
+    {
+      "id": "G083",
+      "sectionIds": ["S09-02"],
+      "canonicalOrder": 97,
+      "sourceSlice": "S09",
+      "sourceRange": { "startLine": 18218, "endLine": 18686 },
+      "sourceLocalRange": { "startLine": 399, "endLine": 867 },
+      "sourceStartByte": 12214,
+      "sourceEndByteExclusive": 27355,
+      "sourceSha256": "4fda011562bc79c6a857cdbadefc9f28d54612e70f2481abf5bd005706bb2a39",
+      "targetPath": "src/renderer/styles/features/dialogue/properties/s09-02--portrait-properties-precision.css",
+      "predecessor": "S09-01/G082",
+      "successor": "S09-03/G084"
+    },
+    {
+      "id": "G106",
+      "sectionIds": ["S12-06", "S12-07"],
+      "canonicalOrder": 127,
+      "sourceSlice": "S12",
+      "sourceRange": { "startLine": 24878, "endLine": 25734 },
+      "sourceLocalRange": { "startLine": 1079, "endLine": 1935 },
+      "sourceStartByte": 32640,
+      "sourceEndByteExclusive": 59072,
+      "sourceSha256": "8c3f14153456c7ac5e1ad928698ef74345de37a920a4c7f8d127a136b49b4b05",
+      "targetPath": "src/renderer/styles/features/dialogue/properties/s12-06--landscape-properties-quick-inspect.css",
+      "predecessor": "S12-05/G105",
+      "successor": "S12-08/G107"
+    },
+    {
+      "id": "G115",
+      "sectionIds": ["S14-03"],
+      "canonicalOrder": 138,
+      "sourceSlice": "S14",
+      "sourceRange": { "startLine": 28218, "endLine": 28409 },
+      "sourceLocalRange": { "startLine": 221, "endLine": 412 },
+      "sourceStartByte": 5132,
+      "sourceEndByteExclusive": 9711,
+      "sourceSha256": "5f42da77b2319f9f3a8d417933300f041f08db92746478d26414fd81cca3ebd3",
+      "targetPath": "src/renderer/styles/features/dialogue/properties/s14-03--properties-447.css",
+      "predecessor": "S14-02/G114",
+      "successor": "S14-04/G116"
+    },
+    {
+      "id": "G117",
+      "sectionIds": ["S14-05"],
+      "canonicalOrder": 140,
+      "sourceSlice": "S14",
+      "sourceRange": { "startLine": 28481, "endLine": 28581 },
+      "sourceLocalRange": { "startLine": 484, "endLine": 584 },
+      "sourceStartByte": 11166,
+      "sourceEndByteExclusive": 13997,
+      "sourceSha256": "8e0a01aa25a594ded75acb9a563247c0a2d31389881318cbe1a838bfae9aad5d",
+      "targetPath": "src/renderer/styles/features/dialogue/properties/s14-05--properties-width420.css",
+      "predecessor": "S14-04/G116",
+      "successor": "S14-06/G118"
+    },
+    {
+      "id": "G119",
+      "sectionIds": ["S14-07", "S14-08"],
+      "canonicalOrder": 142,
+      "sourceSlice": "S14",
+      "sourceRange": { "startLine": 28594, "endLine": 28884 },
+      "sourceLocalRange": { "startLine": 597, "endLine": 887 },
+      "sourceStartByte": 14255,
+      "sourceEndByteExclusive": 22408,
+      "sourceSha256": "d9c7207401f9e8fb9e405131d1e67cef42d7c65482841113728f07ce905c147f",
+      "targetPath": "src/renderer/styles/features/dialogue/properties/s14-07--properties-spacing-448a.css",
+      "predecessor": "S14-06/G118",
+      "successor": "S14-09/G120"
+    },
+    {
+      "id": "G123",
+      "sectionIds": ["S14-12", "S14-13"],
+      "canonicalOrder": 147,
+      "sourceSlice": "S14",
+      "sourceRange": { "startLine": 29284, "endLine": 29428 },
+      "sourceLocalRange": { "startLine": 1287, "endLine": 1431 },
+      "sourceStartByte": 31789,
+      "sourceEndByteExclusive": 36096,
+      "sourceSha256": "003f05a63ec793df04e647149fd5d70c96883e4e4b20bb08abfbc256cd1db37a",
+      "targetPath": "src/renderer/styles/features/dialogue/properties/s14-12--timing-seconds-463.css",
+      "predecessor": "S14-11/G122",
+      "successor": "S14-14/G124"
+    }
+  ],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+    "dialoguePropertiesOrder": "S08-02 → S09-02 → S12-06/S12-07 → S14-03 → S14-05 → S14-07/S14-08 → S14-12/S14-13"
+  },
+  "behaviorContract": {
+    "landscapePortraitDialogueProperties": "preserved",
+    "textWidthStartDurationSpeakerAudioStates": "preserved",
+    "millisecondDataBusinessSemantics": "unchanged",
+    "s13-05Mixed900pxBlock": "out of scope; remains P2-27 ORDERED_COMPAT",
+    "newConsumers": [],
+    "relativeResourceUrls": [],
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false
+  },
+  "validation": {
+    "p2-10Checkpoint": "PASS (node verifier; focused related contracts 3 files/12 tests)",
+    "node scripts/verify-css-split.cjs": "PASS",
+    "focusedContractTests": "PASS (4 files, 24 tests on integrated B05 tree)",
+    "pnpm typecheck": "PASS",
+    "pnpm lint": "PASS",
+    "pnpm test:unit": "PASS (280 files, 1804 tests)",
+    "pnpm build": "PASS",
+    "pnpm test:integration": "NOT RUN; CSS-only scope"
+  },
+  "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+  "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+  "manualFullTriggered": false,
+  "verifyProjectManuallyRun": false,
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "scope": "P2-10 Dialogue Properties visual surfaces; Windows Electron, 360/420/700/701px boundaries, 100%/150% DPI, Chinese/long content, constrained window, and input checks remain to be recorded."
+  },
+  "scopeExceptions": []
+}
