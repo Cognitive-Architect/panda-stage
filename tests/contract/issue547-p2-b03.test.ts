@@ -99,7 +99,7 @@ const expectedB03 = [
     owner: 'assets',
     migrationMode: 'DIRECT',
     canonicalOrder: 36,
-    predecessor: 'S04-10/G032',
+    predecessor: 'S04-05/G032',
     successor: 'S05-02/G034',
     sourceRange: { startLine: 8039, endLine: 8629 },
     sourceLocalRange: { startLine: 1, endLine: 591 },

@@ -51,7 +51,7 @@
       "sourceEndByteExclusive": 10643,
       "sourceSha256": "0e8ceef06c35eab1b712dff64a0ac0545bb8049b307751d17b3d675b0eaba727",
       "targetPath": "src/renderer/styles/features/assets/s05-01--asset-library-base.css",
-      "predecessor": "S04-10/G032",
+      "predecessor": "S04-05/G032",
       "successor": "S05-02/G034"
     },
     {
