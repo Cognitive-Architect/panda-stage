@@ -938,6 +938,48 @@
       "status": "relocated"
     },
     {
+      "id": "G139",
+      "segment": "G139",
+      "sectionIds": ["S15-18"],
+      "sourceSlice": "S15",
+      "owner": "subtitle-style",
+      "migrationMode": "DIRECT+HOST_INTEGRATION",
+      "canonicalOrder": 168,
+      "predecessor": "S15-17/G138",
+      "successor": "S15-19/G140",
+      "sourceRange": { "startLine": 30756, "endLine": 31145 },
+      "sourceLocalRange": { "startLine": 962, "endLine": 1351 },
+      "sourceStartByte": 23817,
+      "sourceEndByteExclusive": 33319,
+      "sourceSha256": "8e1ab587f01c66bd999dd1288736e442e77df623e615fd6583118d26b353015c",
+      "targetPath": "src/renderer/styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css",
+      "startAnchor": "Issue #521:",
+      "endAnchor": "Issue #524:",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G141",
+      "segment": "G141",
+      "sectionIds": ["S15-21"],
+      "sourceSlice": "S15",
+      "owner": "subtitle-style",
+      "migrationMode": "DIRECT+HOST_INTEGRATION",
+      "canonicalOrder": 171,
+      "predecessor": "S15-20/G140",
+      "successor": "S15-22/G142",
+      "sourceRange": { "startLine": 31593, "endLine": 31622 },
+      "sourceLocalRange": { "startLine": 1799, "endLine": 1828 },
+      "sourceStartByte": 48225,
+      "sourceEndByteExclusive": 48908,
+      "sourceSha256": "664de75238cd47de33b238e2232484d1a8e17feeebd57cef68498bf57c438cf2",
+      "targetPath": "src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css",
+      "startAnchor": "@container (max-width: 300px)",
+      "endAnchor": "Issue #523:",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "S16-07",
       "segment": "G147",
       "sectionIds": ["S16-07"],
@@ -1422,10 +1464,30 @@
           "targetPath": "src/renderer/styles/features/shots/s15-17--ready-thumbnail-final-508.css"
         },
         {
-          "id": "S15-R06",
+          "id": "G139",
+          "kind": "semantic",
+          "relocationId": "G139",
+          "sourceRange": { "startLine": 962, "endLine": 1351 },
+          "targetPath": "src/renderer/styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css"
+        },
+        {
+          "id": "S15-R07",
           "kind": "remainder",
-          "sourceRange": { "startLine": 962, "endLine": 2001 },
+          "sourceRange": { "startLine": 1352, "endLine": 1798 },
           "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-16-to-22.css"
+        },
+        {
+          "id": "G141",
+          "kind": "semantic",
+          "relocationId": "G141",
+          "sourceRange": { "startLine": 1799, "endLine": 1828 },
+          "targetPath": "src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css"
+        },
+        {
+          "id": "S15-R08",
+          "kind": "remainder",
+          "sourceRange": { "startLine": 1829, "endLine": 2001 },
+          "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-after-subtitle-style.css"
         }
       ]
     },

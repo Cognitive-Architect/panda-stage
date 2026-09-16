@@ -364,6 +364,8 @@ function verifyPhase2CanonicalMap(canonicalMapText) {
     'G134',
     'G137',
     'G138',
+    'G139',
+    'G141',
     'S14-14',
     'S15-01',
     'S15-03',

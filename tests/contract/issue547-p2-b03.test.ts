@@ -327,9 +327,28 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
         targetPath: 'src/renderer/styles/features/shots/s15-17--ready-thumbnail-final-508.css',
       }),
       expect.objectContaining({
-        id: 'S15-R06',
+        id: 'G139',
+        kind: 'semantic',
+        relocationId: 'G139',
+        sourceRange: { startLine: 962, endLine: 1351 },
+        targetPath: 'src/renderer/styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css',
+      }),
+      expect.objectContaining({
+        id: 'S15-R07',
         kind: 'remainder',
-        sourceRange: { startLine: 962, endLine: 2001 },
+        sourceRange: { startLine: 1352, endLine: 1798 },
+      }),
+      expect.objectContaining({
+        id: 'G141',
+        kind: 'semantic',
+        relocationId: 'G141',
+        sourceRange: { startLine: 1799, endLine: 1828 },
+        targetPath: 'src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css',
+      }),
+      expect.objectContaining({
+        id: 'S15-R08',
+        kind: 'remainder',
+        sourceRange: { startLine: 1829, endLine: 2001 },
       }),
     ]));
   });

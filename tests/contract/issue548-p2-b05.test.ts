@@ -193,12 +193,46 @@ const expectedB05 = [
     sourceSha256: '003f05a63ec793df04e647149fd5d70c96883e4e4b20bb08abfbc256cd1db37a',
     targetPath: 'src/renderer/styles/features/dialogue/properties/s14-12--timing-seconds-463.css',
   },
+  {
+    id: 'G139',
+    segment: 'G139',
+    sectionIds: ['S15-18'],
+    sourceSlice: 'S15',
+    owner: 'subtitle-style',
+    migrationMode: 'DIRECT+HOST_INTEGRATION',
+    canonicalOrder: 168,
+    predecessor: 'S15-17/G138',
+    successor: 'S15-19/G140',
+    sourceRange: { startLine: 30756, endLine: 31145 },
+    sourceLocalRange: { startLine: 962, endLine: 1351 },
+    sourceStartByte: 23817,
+    sourceEndByteExclusive: 33319,
+    sourceSha256: '8e1ab587f01c66bd999dd1288736e442e77df623e615fd6583118d26b353015c',
+    targetPath: 'src/renderer/styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css',
+  },
+  {
+    id: 'G141',
+    segment: 'G141',
+    sectionIds: ['S15-21'],
+    sourceSlice: 'S15',
+    owner: 'subtitle-style',
+    migrationMode: 'DIRECT+HOST_INTEGRATION',
+    canonicalOrder: 171,
+    predecessor: 'S15-20/G140',
+    successor: 'S15-22/G142',
+    sourceRange: { startLine: 31593, endLine: 31622 },
+    sourceLocalRange: { startLine: 1799, endLine: 1828 },
+    sourceStartByte: 48225,
+    sourceEndByteExclusive: 48908,
+    sourceSha256: '664de75238cd47de33b238e2232484d1a8e17feeebd57cef68498bf57c438cf2',
+    targetPath: 'src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css',
+  },
 ] as const;
 
 const b05Ids = expectedB05.map(({ id }) => id);
 
-describe('Issue #548 P2-B05 dialogue properties and subtitle-style foundation relocation', () => {
-  it('pins the non-automatic Phase 2 map and all seven P2-10 identities', () => {
+describe('Issue #548 P2-B05 dialogue properties and subtitle-style relocation', () => {
+  it('pins the non-automatic Phase 2 map and all nine B05 identities', () => {
     expect(manifest.phase2CanonicalMap).toMatchObject({
       path: 'docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md',
       commit: 'f5d25ef8adddbe88d42dcab2cc2212b4c0203590',
@@ -273,6 +307,27 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style foundation re
       { id: 'S14-14', kind: 'semantic', relocationId: 'S14-14', sourceRange: { startLine: 1432, endLine: 1765 }, targetPath: 'src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css' },
       { id: 'S14-R03', kind: 'remainder', sourceRange: { startLine: 1766, endLine: 1797 }, targetPath: 'src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-tail.css' },
     ]);
+
+    const s15 = manifest.slices.find(({ id }) => id === 'S15');
+    expect(s15?.sourceParts).toEqual([
+      { id: 'S15-01', kind: 'semantic', relocationId: 'S15-01', sourceRange: { startLine: 1, endLine: 299 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-01--identity-base-495.css' },
+      { id: 'S15-R01', kind: 'remainder', sourceRange: { startLine: 300, endLine: 412 }, targetPath: 'src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css' },
+      { id: 'S15-03', kind: 'semantic', relocationId: 'S15-03', sourceRange: { startLine: 413, endLine: 527 }, targetPath: 'src/renderer/styles/features/dialogue/identity-adapters/s15-03--dialogue-identity-adapters.css' },
+      { id: 'S15-04', kind: 'semantic', relocationId: 'S15-04', sourceRange: { startLine: 528, endLine: 537 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-04--identity-width700.css' },
+      { id: 'S15-R02', kind: 'remainder', sourceRange: { startLine: 538, endLine: 555 }, targetPath: 'src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-05.css' },
+      { id: 'S15-06', kind: 'semantic', relocationId: 'S15-06', sourceRange: { startLine: 556, endLine: 632 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-06--identity-compact-496.css' },
+      { id: 'G132', kind: 'semantic', relocationId: 'G132', sourceRange: { startLine: 633, endLine: 840 }, targetPath: 'src/renderer/styles/features/dialogue/workspace/s15-07--new-dialogue-hierarchy.css' },
+      { id: 'S15-12', kind: 'semantic', relocationId: 'S15-12', sourceRange: { startLine: 841, endLine: 850 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-12--identity-width520.css' },
+      { id: 'G134', kind: 'semantic', relocationId: 'G134', sourceRange: { startLine: 851, endLine: 866 }, targetPath: 'src/renderer/styles/features/dialogue/workspace/s15-13--new-dialogue-header-footer-502.css' },
+      { id: 'S15-14', kind: 'semantic', relocationId: 'S15-14', sourceRange: { startLine: 867, endLine: 878 }, targetPath: 'src/renderer/styles/features/characters/identity/s15-14--identity-chevron-final.css' },
+      { id: 'S15-15', kind: 'semantic', relocationId: 'S15-15', sourceRange: { startLine: 879, endLine: 913 }, targetPath: 'src/renderer/styles/features/characters/thumbnail-status/s15-15--shared-thumbnail-status-503.css' },
+      { id: 'G137', kind: 'semantic', relocationId: 'G137', sourceRange: { startLine: 914, endLine: 952 }, targetPath: 'src/renderer/styles/features/dialogue/batch/s15-16--batch-final-505.css' },
+      { id: 'G138', kind: 'semantic', relocationId: 'G138', sourceRange: { startLine: 953, endLine: 961 }, targetPath: 'src/renderer/styles/features/shots/s15-17--ready-thumbnail-final-508.css' },
+      { id: 'G139', kind: 'semantic', relocationId: 'G139', sourceRange: { startLine: 962, endLine: 1351 }, targetPath: 'src/renderer/styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css' },
+      { id: 'S15-R07', kind: 'remainder', sourceRange: { startLine: 1352, endLine: 1798 }, targetPath: 'src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-16-to-22.css' },
+      { id: 'G141', kind: 'semantic', relocationId: 'G141', sourceRange: { startLine: 1799, endLine: 1828 }, targetPath: 'src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css' },
+      { id: 'S15-R08', kind: 'remainder', sourceRange: { startLine: 1829, endLine: 2001 }, targetPath: 'src/renderer/styles/legacy-slices/15-character-identity-workspace-after-subtitle-style.css' },
+    ]);
   });
 
   it('loads every P2-10 target exactly once in canonical production order', () => {
@@ -288,6 +343,11 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style foundation re
     const s14Paths = s14.sourceParts!.map(({ targetPath }) => entryImportPath(targetPath));
     const s14Start = imports.indexOf(s14Paths[0]!);
     expect(imports.slice(s14Start, s14Start + s14Paths.length)).toEqual(s14Paths);
+
+    const s15 = manifest.slices.find(({ id }) => id === 'S15')!;
+    const s15Paths = s15.sourceParts!.map(({ targetPath }) => entryImportPath(targetPath));
+    const s15Start = imports.indexOf(s15Paths[0]!);
+    expect(imports.slice(s15Start, s15Start + s15Paths.length)).toEqual(s15Paths);
   });
 
   it('keeps every P2-10 target byte-exact and reconstructs the pinned stylesheet', () => {

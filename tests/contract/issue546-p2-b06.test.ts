@@ -192,7 +192,7 @@ describe('Issue #546 P2-B06 ordered semantic stylesheet continuation', () => {
       expect.objectContaining({
         id: 'S08-R01',
         sourceSlice: 'S08',
-        sourceRange: { startLine: 13802, endLine: 15158 },
+        sourceRange: { startLine: 13802, endLine: 13982 },
       }),
       expect.objectContaining({
         id: 'S11-R01',

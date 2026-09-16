@@ -77,6 +77,9 @@
 @import './styles/features/characters/thumbnail-status/s15-15--shared-thumbnail-status-503.css';
 @import './styles/features/dialogue/batch/s15-16--batch-final-505.css';
 @import './styles/features/shots/s15-17--ready-thumbnail-final-508.css';
+@import './styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css';
 @import './styles/legacy-slices/15-character-identity-workspace-s15-16-to-22.css';
+@import './styles/features/subtitles/controls/s15-21--subtitle-style-container300.css';
+@import './styles/legacy-slices/15-character-identity-workspace-after-subtitle-style.css';
 @import './styles/legacy-slices/16-character-settings-final-polish.css';
 @import './styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css';

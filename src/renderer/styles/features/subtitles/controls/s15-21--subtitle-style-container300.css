@@ -1,0 +1,30 @@
+@container (max-width: 300px) {
+  .dialogue-subtitle-style-subordinate {
+    grid-template-columns: minmax(0, 1fr) 36px;
+    align-items: start;
+    gap: 6px;
+    padding-left: 8px;
+  }
+
+  .dialogue-subtitle-style-subordinate-field {
+    display: grid;
+    grid-template-rows: auto 38px;
+    align-items: stretch;
+    gap: 2px;
+  }
+
+  .dialogue-subtitle-style-subordinate .dialogue-subtitle-style-stepper {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+  }
+
+  .dialogue-subtitle-style-subordinate .dialogue-subtitle-style-color-row {
+    justify-items: center;
+  }
+
+  .dialogue-subtitle-style-subordinate-label {
+    font-size: 10px;
+  }
+}
+
