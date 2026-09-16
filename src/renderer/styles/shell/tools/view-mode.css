@@ -1,0 +1,54 @@
+/* Issue #460: the right-side 工具 surface owns the two Canvas modes
+   (适应窗口 / 实际尺寸).
+   Binds to the existing canvasViewportStore — no second viewport state. */
+.project-tools-view-mode-card {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.project-tools-view-mode-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-tools-view-mode-heading h3 {
+  margin: 0;
+}
+
+.project-tools-view-mode-heading h3 {
+  font-size: 16px;
+}
+
+.project-tools-view-mode-segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.project-tools-view-mode-segmented button {
+  min-height: 40px;
+  padding: 6px 8px;
+  color: #99aaa0;
+  background: rgb(255 255 255 / 4%);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.project-tools-view-mode-segmented button[aria-pressed='true'] {
+  color: #e6f7ea;
+  background: #235739;
+  box-shadow: 0 0 0 1px rgb(131 211 154 / 35%);
+}
+
+.project-tools-view-mode-segmented button .ui-icon {
+  margin-right: 4px;
+}
+

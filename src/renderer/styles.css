@@ -10,6 +10,7 @@
 @import './styles/legacy-slices/08-inspector-portrait-dialogue.css';
 @import './styles/legacy-slices/09-portrait-timed-landscape-assets.css';
 @import './styles/legacy-slices/10-landscape-characters-tools-start.css';
+@import './styles/shell/tools/view-mode.css';
 @import './styles/legacy-slices/11-tools-inspector-timeline-start.css';
 @import './styles/legacy-slices/12-landscape-task-tray.css';
 @import './styles/legacy-slices/13-timed-render-media-tail.css';

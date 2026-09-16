@@ -1,0 +1,40 @@
+{
+  "issue": 541,
+  "phase": "P2-01",
+  "status": "preflight-pass",
+  "startingMainHead": "fb5f91ecb8ee3ecdcea9bf2f242526feb3597859",
+  "sourceSlice": "S11",
+  "segment": "S11-01",
+  "sourcePath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
+  "sourceBlob": "acf90acc825c7ffe2ffcdadc56451ad62083b9d3",
+  "sourceLocalRange": {
+    "startLine": 1,
+    "endLine": 54
+  },
+  "canonicalGlobalRange": {
+    "startLine": 21803,
+    "endLine": 21856
+  },
+  "sectionStartByte": 0,
+  "sectionEndByteExclusive": 1182,
+  "sectionSha256": "5137b65f7ceb77eba12778256b55e697bd47259f0379a5ec9e52076c5eb8bc83",
+  "endAnchor": ".project-tools-action-presets-view",
+  "anchorLocalLine": 55,
+  "boundary": "The complete top-level view-mode rule group ends immediately before the first top-level .project-tools-action-presets-view rule.",
+  "predecessor": "S10-08/G096",
+  "successor": "S11-02/G098",
+  "outerCondition": "none; top-level rules",
+  "dependencies": {
+    "producer": "src/renderer/shell/ProjectToolsDrawer.tsx",
+    "host": "ProjectToolsDrawer -> RightWorkspace",
+    "behaviorOwner": "src/renderer/stores/canvasViewportStore.ts",
+    "behaviorUnchanged": true,
+    "pathSensitiveConstructs": []
+  },
+  "canonicalContract": {
+    "owner": "shell-tools",
+    "migrationMode": "DIRECT+VERIFICATION",
+    "globalOrder": 112,
+    "targetDirectory": "src/renderer/styles/shell/tools/"
+  }
+}

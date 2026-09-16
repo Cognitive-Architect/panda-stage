@@ -16,10 +16,10 @@ function importPath(line: string): string | null {
 }
 
 /**
- * Reads the ordered legacy stylesheet source without inlining tokens or
- * primitives. The returned text is the source-level sequence that existed
- * before the mechanical split: the two base imports, extracted legacy slices,
- * then the untouched root remainder.
+ * Reads the ordered production stylesheet source without inlining tokens or
+ * primitives. The returned text is the source-level sequence represented by
+ * the real entry: the two base imports, each direct stylesheet import in
+ * order, then any root remainder.
  */
 export function readOrderedStylesheetSource(
   entryPath = 'src/renderer/styles.css',
@@ -39,6 +39,8 @@ export function readOrderedStylesheetSource(
   const extractedSlices = imports.slice(2).map((path) =>
     normalize(readFileSync(resolve(dirname(entryAbsolute), path), 'utf8')),
   );
-  const remainder = `${entry.slice(bodyStart).join('\n')}\n`;
+  const remainder = entry.length > bodyStart
+    ? `${entry.slice(bodyStart).join('\n')}\n`
+    : '';
   return `${baseImportLines.join('\n')}\n${extractedSlices.join('')}${remainder}`;
 }

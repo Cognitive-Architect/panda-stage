@@ -18,11 +18,19 @@ const manifestPath = join(__dirname, 'css-split-manifest.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 const preflightOnly = process.argv.includes('--preflight');
 const writeReceipt = process.argv.includes('--write-receipt');
+const writeP2Receipt = process.argv.includes('--write-p2-receipt');
 const receiptPath = join(
   repoRoot,
   'docs',
   'evidence',
   'issue-530-css-split',
+  'receipt.json',
+);
+const p2ReceiptPath = join(
+  repoRoot,
+  'docs',
+  'evidence',
+  'issue-541-p2-01',
   'receipt.json',
 );
 
@@ -436,27 +444,142 @@ function verifyPathInventory(baseline) {
   };
 }
 
+function entryImportPath(entryPath, targetPath) {
+  const importPath = relative(dirname(entryPath), join(repoRoot, targetPath)).replaceAll('\\', '/');
+  return `./${importPath.replace(/^\.\//u, '')}`;
+}
+
+function importPath(line) {
+  return /^\s*@import\s+['"]([^'"]+)['"]\s*;\s*$/u.exec(line)?.[1] ?? null;
+}
+
+function readEntryImports(entry) {
+  const entryLines = linesOf(entry);
+  const imports = [];
+  let bodyStart = 0;
+  while (bodyStart < entryLines.length) {
+    const path = importPath(entryLines[bodyStart]);
+    if (!path) break;
+    imports.push(path);
+    bodyStart += 1;
+  }
+  return { entryLines, imports, bodyStart };
+}
+
+function relocationRangesForSlice(baseline, slice, relocations) {
+  const relevant = relocations
+    .filter((relocation) => relocation.sourceSlice === slice.id)
+    .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
+  const parts = [];
+  let cursor = slice.range.startLine;
+  for (const relocation of relevant) {
+    const startLine = relocation.sourceRange.startLine;
+    const endLine = relocation.sourceRange.endLine;
+    if (
+      startLine < slice.range.startLine ||
+      endLine > slice.range.endLine ||
+      startLine > endLine ||
+      startLine < cursor
+    ) {
+      fail(`${relocation.id} source range overlaps or escapes ${slice.id}`);
+      continue;
+    }
+    if (cursor < startLine) {
+      parts.push(rangeText(baseline, cursor, startLine - 1));
+    }
+    cursor = endLine + 1;
+  }
+  if (cursor <= slice.range.endLine) {
+    parts.push(rangeText(baseline, cursor, slice.range.endLine));
+  }
+  return { relevant, remainder: parts.join('') };
+}
+
+function verifySemanticRelocations(baseline) {
+  const relocations = manifest.semanticRelocations ?? [];
+  const slicesById = new Map(manifest.slices.map((slice) => [slice.id, slice]));
+  for (const relocation of relocations) {
+    const slice = slicesById.get(relocation.sourceSlice);
+    if (!slice) {
+      fail(`${relocation.id || 'semantic relocation'} references unknown source slice ${relocation.sourceSlice}`);
+      continue;
+    }
+    if (relocation.status !== 'relocated') {
+      fail(`${relocation.id || relocation.sourceSlice} does not have relocated status`);
+    }
+    if (relocation.insertBefore !== slice.targetPath) {
+      fail(`${relocation.id || relocation.sourceSlice} must be inserted immediately before ${slice.targetPath}`);
+    }
+    const expectedStart = slice.range.startLine + relocation.sourceLocalRange.startLine - 1;
+    const expectedEnd = slice.range.startLine + relocation.sourceLocalRange.endLine - 1;
+    if (
+      relocation.sourceRange.startLine !== expectedStart ||
+      relocation.sourceRange.endLine !== expectedEnd
+    ) {
+      fail(`${relocation.id || relocation.sourceSlice} local/global source ranges disagree`);
+    }
+    const expected = rangeText(
+      baseline,
+      relocation.sourceRange.startLine,
+      relocation.sourceRange.endLine,
+    );
+    const targetAbsolute = join(repoRoot, relocation.targetPath);
+    if (!existsSync(targetAbsolute)) {
+      fail(`${relocation.id || relocation.sourceSlice} target is missing: ${relocation.targetPath}`);
+      continue;
+    }
+    const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
+    if (actual !== expected) {
+      fail(`${relocation.id || relocation.sourceSlice} target is not an exact baseline range copy`);
+    }
+    if (sha256(expected) !== relocation.sourceSha256) {
+      fail(`${relocation.id || relocation.sourceSlice} source SHA-256 does not match its recorded receipt`);
+    }
+    if (Buffer.byteLength(expected, 'utf8') !== relocation.sourceEndByteExclusive - relocation.sourceStartByte) {
+      fail(`${relocation.id || relocation.sourceSlice} recorded byte range does not match the exact source section`);
+    }
+    if (relocation.sourceStartByte !== 0) {
+      fail(`${relocation.id || relocation.sourceSlice} must start at byte 0 of its source slice`);
+    }
+  }
+  return relocations;
+}
+
 function verifyExtraction(baseline, scan) {
   const entryPath = join(repoRoot, manifest.rootEntry.path);
   const entry = normalize(readFileSync(entryPath, 'utf8'));
-  const entryLines = linesOf(entry);
+  const { entryLines, imports: actualImports, bodyStart } = readEntryImports(entry);
   const extracted = manifest.slices.filter((slice) => slice.status === 'extracted');
+  const relocations = verifySemanticRelocations(baseline);
+  const baseImports = manifest.rootEntry.entryImportOrder;
   const expectedImports = [
-    "@import './styles/tokens.css';",
-    "@import './styles/primitives.css';",
-    ...extracted.map((slice) => {
-      const importPath = relative(dirname(entryPath), join(repoRoot, slice.targetPath)).replaceAll('\\', '/');
-      return `@import './${importPath.replace(/^\.\//u, '')}';`;
-    }),
+    ...baseImports,
+    ...extracted.flatMap((slice) => [
+      ...relocations
+        .filter((relocation) => relocation.insertBefore === slice.targetPath)
+        .map((relocation) => entryImportPath(entryPath, relocation.targetPath)),
+      entryImportPath(entryPath, slice.targetPath),
+    ]),
   ];
-  for (let index = 0; index < expectedImports.length; index += 1) {
-    if (entryLines[index] !== expectedImports[index]) {
-      fail(`Root import order mismatch at line ${index + 1}: expected ${expectedImports[index]}`);
+  if (actualImports.length !== expectedImports.length) {
+    fail(`Production entry import count mismatch: expected ${expectedImports.length}, got ${actualImports.length}`);
+  }
+  for (let index = 0; index < Math.max(actualImports.length, expectedImports.length); index += 1) {
+    if (actualImports[index] !== expectedImports[index]) {
+      fail(
+        `Production entry import order mismatch at position ${index + 1}: expected ${expectedImports[index] ?? '(none)'}, got ${actualImports[index] ?? '(none)'}`,
+      );
     }
   }
-  const importCount = expectedImports.length;
-  const body = entryLines.length > importCount
-    ? `${entryLines.slice(importCount).join('\n')}\n`
+  const semanticImportPaths = relocations.map((relocation) => entryImportPath(entryPath, relocation.targetPath));
+  for (const semanticImportPath of semanticImportPaths) {
+    const occurrences = actualImports.filter((path) => path === semanticImportPath).length;
+    if (occurrences !== 1) {
+      fail(`Semantic relocation ${semanticImportPath} is loaded ${occurrences} times instead of exactly once`);
+    }
+  }
+  const body = entryLines.length > bodyStart
+    ? `${entryLines.slice(bodyStart).join('\n')}\n`
     : '';
   const pending = manifest.slices.filter((slice) => slice.status !== 'extracted');
   const expectedBody = pending
@@ -474,8 +597,10 @@ function verifyExtraction(baseline, scan) {
       continue;
     }
     const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
-    const expected = rangeText(baseline, slice.range.startLine, slice.range.endLine);
-    if (actual !== expected) fail(`${slice.id} target is not an exact baseline range copy`);
+    const { remainder: expected } = relocationRangesForSlice(baseline, slice, relocations);
+    if (actual !== expected) {
+      fail(`${slice.id} target does not contain the baseline remainder after semantic relocation`);
+    }
     sliceTexts.push({
       id: slice.id,
       path: slice.targetPath,
@@ -486,17 +611,40 @@ function verifyExtraction(baseline, scan) {
     });
   }
 
+  const importedSources = actualImports
+    .slice(baseImports.length)
+    .map((path) => {
+      const absolute = resolve(dirname(entryPath), path);
+      if (!existsSync(absolute)) {
+        fail(`Production entry import target is missing: ${path}`);
+        return '';
+      }
+      return normalize(readFileSync(absolute, 'utf8'));
+    });
   const reconstructed =
     rangeText(baseline, 1, 2) +
-    extracted
-      .map((slice) => rangeText(baseline, slice.range.startLine, slice.range.endLine))
-      .join('') +
+    importedSources.join('') +
     body;
   if (reconstructed !== baseline) {
-    fail('Logical source reconstruction is not byte-equivalent to the pinned baseline');
+    fail('Logical source reconstruction from the real production entry is not byte-equivalent to the pinned baseline');
   }
   return {
     extracted: sliceTexts,
+    semanticRelocations: relocations.map((relocation) => ({
+      id: relocation.id,
+      sourceSlice: relocation.sourceSlice,
+      targetPath: relocation.targetPath,
+      sourceRange: relocation.sourceRange,
+      sourceSha256: relocation.sourceSha256,
+      exact: true,
+    })),
+    productionEntry: {
+      path: manifest.rootEntry.path,
+      importOrder: actualImports,
+      expectedImportOrder: expectedImports,
+      orderEquivalent: actualImports.length === expectedImports.length &&
+        actualImports.every((path, index) => path === expectedImports[index]),
+    },
     pending: pending.map((slice) => slice.id),
     baselineSha256: sha256(baseline),
     reconstructedSha256: sha256(reconstructed),
@@ -560,6 +708,57 @@ if (writeReceipt) {
   const directory = dirname(receiptPath);
   require('node:fs').mkdirSync(directory, { recursive: true });
   writeFileSync(receiptPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+if (writeP2Receipt) {
+  const preflightPath = join(
+    repoRoot,
+    'docs',
+    'evidence',
+    'issue-541-p2-01',
+    'preflight.json',
+  );
+  const preflight = existsSync(preflightPath)
+    ? JSON.parse(readFileSync(preflightPath, 'utf8'))
+    : {};
+  const relocation = manifest.semanticRelocations?.[0] ?? {};
+  const productionEntry = result.extraction.productionEntry ?? {};
+  const finalHead = execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const p2Receipt = {
+    issue: 541,
+    phase: 'P2-01',
+    canonicalSection: 'S11-01',
+    segment: 'G097',
+    startingMainHead: preflight.startingMainHead ?? null,
+    finalHead,
+    sourceBlobSha: preflight.sourceBlob ?? null,
+    sectionStartLine: preflight.sourceLocalRange?.startLine ?? null,
+    sectionEndLine: preflight.sourceLocalRange?.endLine ?? null,
+    sectionStartByte: preflight.sectionStartByte ?? null,
+    sectionEndByteExclusive: preflight.sectionEndByteExclusive ?? null,
+    sectionSha256: preflight.sectionSha256 ?? null,
+    predecessor: relocation.predecessor ?? null,
+    successor: relocation.successor ?? null,
+    targetPath: relocation.targetPath ?? null,
+    productionEntryVerified: result.status === 'pass' && Boolean(productionEntry.path),
+    realOrderEquivalent: productionEntry.orderEquivalent ?? false,
+    missingSections: result.status === 'pass' ? 0 : null,
+    duplicateSections: result.status === 'pass' ? 0 : null,
+    viewModeFit: 'PENDING_HUMAN_ACCEPTANCE',
+    viewModeActualSize: 'PENDING_HUMAN_ACCEPTANCE',
+    actionPresetRegression: 'PENDING_HUMAN_ACCEPTANCE',
+    windowsElectronSmoke: 'PENDING_HUMAN_ACCEPTANCE',
+    targetedValidation: 'See verification.output and Issue #541 execution comment.',
+    automaticCi: 'PENDING',
+    MANUAL_FULL_TRIGGERED: false,
+    VERIFY_PROJECT_MANUALLY_RUN: false,
+    scopeExceptions: [],
+    preflight,
+    verification: result,
+  };
+  const directory = dirname(p2ReceiptPath);
+  require('node:fs').mkdirSync(directory, { recursive: true });
+  writeFileSync(p2ReceiptPath, `${JSON.stringify(p2Receipt, null, 2)}\n`, 'utf8');
 }
 
 console.log(JSON.stringify(result, null, 2));

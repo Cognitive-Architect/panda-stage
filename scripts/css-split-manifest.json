@@ -22,6 +22,32 @@
       "./styles/primitives.css"
     ]
   },
+  "semanticRelocations": [
+    {
+      "id": "S11-01",
+      "sourceSlice": "S11",
+      "owner": "shell-tools",
+      "migrationMode": "DIRECT+VERIFICATION",
+      "canonicalOrder": 112,
+      "predecessor": "S10-08/G096",
+      "successor": "S11-02/G098",
+      "sourceRange": {
+        "startLine": 21803,
+        "endLine": 21856
+      },
+      "sourceLocalRange": {
+        "startLine": 1,
+        "endLine": 54
+      },
+      "sourceStartByte": 0,
+      "sourceEndByteExclusive": 1182,
+      "sourceSha256": "5137b65f7ceb77eba12778256b55e697bd47259f0379a5ec9e52076c5eb8bc83",
+      "targetPath": "src/renderer/styles/shell/tools/view-mode.css",
+      "insertBefore": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
+      "endAnchor": ".project-tools-action-presets-view",
+      "status": "relocated"
+    }
+  ],
   "coverage": {
     "startLine": 3,
     "endLine": 32818,
@@ -276,7 +302,8 @@
       "tests/unit/editor-issue362-landscape-shot-create.test.ts",
       "tests/unit/editor-issue363-landscape-assets.test.ts",
       "tests/unit/editor-issue364-landscape-characters.test.ts",
-      "tests/unit/editor-issue365-compact-character-detail.test.ts"
+      "tests/unit/editor-issue365-compact-character-detail.test.ts",
+      "tests/contract/issue541-p2-01.test.ts"
     ],
     "sharedReader": "tests/helpers/read-stylesheet-source.ts",
     "notes": [
