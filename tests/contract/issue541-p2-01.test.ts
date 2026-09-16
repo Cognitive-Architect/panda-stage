@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -29,20 +29,14 @@ function normalize(value: string): string {
   return value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
 
-function baselineSource(): string {
-  return normalize(
-    execFileSync(
-      'git',
-      ['show', `${manifest.baseline.commit}:${manifest.baseline.sourcePath}`],
-      { cwd: root, encoding: 'utf8' },
-    ),
-  );
-}
-
 function sourceLines(value: string): string[] {
   const lines = normalize(value).split('\n');
   if (lines.at(-1) === '') lines.pop();
   return lines;
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 function importPaths(): string[] {
@@ -78,13 +72,13 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
   });
 
   it('reconstructs the pinned source through the real production entry', () => {
-    expect(readOrderedStylesheetSource()).toBe(baselineSource());
+    expect(sha256(readOrderedStylesheetSource())).toBe(
+      '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
+    );
   });
 
   it('keeps the moved bytes exact and leaves the action-preset section in the legacy remainder', () => {
     const relocation = manifest.semanticRelocations[0]!;
-    const baseline = sourceLines(baselineSource());
-    const expected = `${baseline.slice(relocation.sourceRange.startLine - 1, relocation.sourceRange.endLine).join('\n')}\n`;
     const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
     const legacy = normalize(
       readFileSync(
@@ -92,7 +86,7 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
         'utf8',
       ),
     );
-    expect(target).toBe(expected);
+    expect(sha256(target)).toBe(relocation.sourceSha256);
     expect(legacy).not.toContain('.project-tools-view-mode-card');
     expect(legacy.startsWith('.project-tools-action-presets-view {')).toBe(true);
   });
