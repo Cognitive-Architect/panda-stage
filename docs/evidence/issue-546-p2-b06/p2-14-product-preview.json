@@ -1,0 +1,84 @@
+{
+  "issue": 546,
+  "phase": "P2-B06",
+  "workItem": "P2-14",
+  "title": "Product Preview overlay",
+  "status": "IMPLEMENTED_PENDING_HUMAN_ACCEPTANCE",
+  "startingPrHead": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+  "branch": "agent/issue-541-p2-01",
+  "pullRequest": 542,
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "normalizedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "owner": "product-preview",
+  "segments": [
+    {
+      "id": "G051",
+      "sectionIds": ["S06-09"],
+      "sourceSlice": "S06",
+      "sourceBlob": "ed97a6f5b421d0fd2dfc68bd337d36734dfccb0c",
+      "canonicalOrder": 57,
+      "predecessor": "S06-08/G050",
+      "successor": "S06-10/G052",
+      "startAnchor": "Stage 1B",
+      "endAnchor": ".close-project-button",
+      "globalLines": {"start": 10793, "end": 10967},
+      "sourceLocalLines": {"start": 954, "end": 1128},
+      "sliceLocalBytes": {"start": 18294, "endExclusive": 21495},
+      "sha256": "61d0518f7c75107a63e1c12c91a892ffe18eafd0b3193b6f6edf9fea8a1923f1",
+      "targetPath": "src/renderer/styles/shell/product-preview/s06-09--product-preview.css"
+    }
+  ],
+  "outerConditions": ["Top-level Product Preview overlay rules are preserved."],
+  "producers": ["src/renderer/shell/ProductPreviewOverlay.tsx"],
+  "hosts": ["src/renderer/shell/EditorShell.tsx"],
+  "runtimeConsumers": [
+    "Product Preview open and close controls",
+    "Read-only playback, aspect sizing, subtitle rendering, and missing-image warning states"
+  ],
+  "programmaticConsumers": {
+    "stylesEntry": "src/renderer/main.tsx imports src/renderer/styles.css",
+    "behaviorOwner": "Existing ProductPreviewOverlay/productPreviewModel playback path; unchanged",
+    "newConsumersFound": []
+  },
+  "testConsumers": [
+    "tests/unit/product-preview-overlay.test.ts",
+    "tests/unit/product-preview-mouth.test.ts",
+    "tests/unit/editor-issue457-canvas-first.test.ts",
+    "tests/contract/issue546-p2-b06.test.ts"
+  ],
+  "cssDependencyAudit": {
+    "relativeUrls": [],
+    "keyframes": [],
+    "customProperties": ["--product-preview-stage-width"],
+    "keyframesChanged": false,
+    "declarationChanges": false,
+    "pathResolutionRisk": "none"
+  },
+  "validation": {
+    "preflight": "PASS",
+    "cssFinalEquivalence": "PASS in isolated clean verification worktree",
+    "targetedContract": "PASS: 2 files / 8 tests including P2-01 compatibility",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "unit": "PASS: 276 files / 1786 tests",
+    "build": "PASS: renderer and Electron",
+    "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "humanAcceptance": "未测"
+  },
+  "guardrails": {
+    "manualFullCiTriggered": false,
+    "verifyProjectManuallyRun": false,
+    "scopeExceptions": [],
+    "finalHeadEmbedded": false
+  }
+}

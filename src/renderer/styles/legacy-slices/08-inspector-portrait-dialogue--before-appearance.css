@@ -1,0 +1,2655 @@
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel-heading,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel-heading
+  + form
+  > strong,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  .eyebrow,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  h3,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  > div:first-child {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label {
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label
+  input,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  button {
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label
+  input {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > .layer-lock-control {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button {
+  width: 100%;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control {
+  display: flex;
+  min-height: 44px;
+  padding: 10px 0 0;
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control
+  input {
+  width: auto;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  > p,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  > output,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > p,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  > p {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  output:empty {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-delete-button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-delete {
+  border-color: rgb(246 139 118 / 62%);
+  color: #ffd6ca;
+  background: rgb(93 37 32 / 72%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-summary {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy
+  strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy
+  span {
+  flex: 0 0 auto;
+  color: var(--ui-color-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-section {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-section
+  h3 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  textarea {
+  min-height: 96px;
+  padding: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields
+  input,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  select,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  button {
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields
+  input {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-field
+  span
+  time {
+  color: var(--ui-color-accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-audio-section
+  p {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-audio-note {
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-actions {
+  display: grid;
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-actions
+  button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-empty {
+  padding: 14px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface);
+  line-height: 1.5;
+}
+
+/* Issue #338: flatten the portrait Properties hierarchy without changing the
+   single inspector/panel owners or their commit paths. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading {
+  display: flex;
+  min-height: 44px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--ui-color-separator);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading-close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  place-items: center;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading-close:hover {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading-close:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection {
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection[data-selection-state='locked'],
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection[data-selection-state='background'],
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection[data-selection-state='invalid'] {
+  border-bottom-color: rgb(255 209 102 / 62%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-summary {
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-thumbnail {
+  width: 48px;
+  height: 48px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-copy {
+  gap: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-copy strong {
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-compact-sections {
+  gap: 0;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section {
+  overflow: visible;
+  border: 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > summary {
+  min-height: 48px;
+  padding: 12px 0;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > summary::before {
+  width: 18px;
+  color: var(--ui-color-text-secondary);
+  content: '›';
+  font-size: 22px;
+  line-height: 1;
+  text-align: center;
+  transition: transform 120ms ease;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section[open] > summary {
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-transform-panel,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-background-control,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section > .layer-order-controls {
+  padding: 14px 0 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel-heading,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > strong,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  .eyebrow,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  > div:first-child {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-position-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-control-label {
+  align-self: center;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-position-row
+  label {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-position-row
+  input,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-value
+  input {
+  min-height: 44px;
+  padding: 9px 10px;
+  font-size: 15px;
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper
+  > button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper
+  > button:hover:not(:disabled) {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-value {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-value
+  input {
+  padding-right: 28px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-stepper-value
+  > span {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  color: var(--ui-color-text-secondary);
+  font-size: 14px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-color-separator);
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-action-row
+  button {
+  flex: 1 1 112px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-color: var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .layer-transform-action-row
+  button:hover:not(:disabled) {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-actions,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-actions
+  .layer-delete-button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-actions
+  .layer-background-primary {
+  grid-column: 1 / -1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control {
+  display: flex;
+  min-height: 44px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-color-separator);
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control
+  input {
+  width: auto;
+  min-height: 0;
+}
+
+/* Issue #339: make the Cloud Touch portrait Timeline a task surface rather
+   than a stack of Timeline/dialogue admin cards. The production owners stay
+   unchanged; this layer only reshapes their presentation. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-header {
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  background: transparent;
+  color: var(--ui-color-text-secondary);
+  font-size: 22px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse:focus-visible {
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse::before {
+  content: '⌄';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse[data-expanded='false']::before {
+  content: '›';
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-timecode {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 15px;
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-ruler-scroll {
+  border-inline: 0;
+  border-radius: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lane {
+  grid-template-columns: var(--timeline-lane-label-width, 58px) max-content;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lane-label {
+  padding-inline: 8px;
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.is-empty {
+  height: 48px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.has-clips {
+  height: 76px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.is-empty .timeline-audio-empty {
+  padding-inline: 8px;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-timeline {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-header {
+  min-height: 52px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-heading {
+  min-width: 0;
+  gap: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-heading .eyebrow {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-header h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 17px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-count {
+  color: var(--ui-color-accent);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-action {
+  min-height: 44px;
+  padding: 8px 4px 8px 10px;
+  border: 0;
+  color: var(--ui-color-accent);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-action:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-action:focus-visible {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-editor {
+  display: block;
+  min-width: 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline {
+  gap: 14px;
+  padding: 0 0 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-selection {
+  min-height: 24px;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-selection-status {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline > .dialogue-field,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-section {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-field {
+  gap: 6px;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline textarea,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-timing-fields input {
+  min-height: 48px;
+  min-width: 0;
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-section > h3 {
+  margin: 0 0 8px;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-timing-fields {
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-timing-fields button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-arrange {
+  min-height: 44px;
+  border-color: var(--ui-color-separator);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-field time,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-point-time {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-section {
+  display: grid;
+  gap: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-section p,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-note {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-section p {
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-audio-note {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-inspector-actions {
+  padding-top: 12px;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-inspector-timeline .dialogue-delete {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-color: transparent;
+  color: var(--ui-color-danger, #e28a7a);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-queue {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 0 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-queue-intro {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-queue {
+  list-style: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 64px;
+  grid-template-columns: minmax(64px, 0.5fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  text-align: left;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item.selected
+  .dialogue-untimed-select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-speaker {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-text {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-secondary);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-status {
+  display: inline-flex;
+  min-width: 64px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-arrange {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-color: var(--ui-color-separator);
+  color: var(--ui-color-accent);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-subtitle-empty {
+  min-height: 48px;
+  margin: 0;
+  padding: 14px 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools {
+  min-width: 0;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools > summary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: var(--ui-color-text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools > summary::-webkit-details-marker {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools > summary::before {
+  content: '›';
+  display: inline-block;
+  color: var(--ui-color-text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  transform-origin: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-tools-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add input,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-add button {
+  min-width: 0;
+  min-height: 48px;
+}
+
+/* Issue #340: keep the Cloud Touch portrait header quiet and spend its action
+   space on the existing Undo/Redo behavior. The component is moved between
+   the top bar and BottomWorkspace by layout, so this is one compact visual
+   presentation rather than a second History owner. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait'] {
+  height: 56px;
+  max-height: 56px;
+  padding: 4px 8px;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-identity {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-details {
+  min-width: 0;
+  gap: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-controls {
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls[data-history-presentation='compact'] {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls[data-history-presentation='compact']
+  .history-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls[data-history-presentation='compact']
+  .history-actions button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 9px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls[data-history-presentation='compact']
+  .history-actions span,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .history-controls[data-history-presentation='compact']
+  > output {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-save-state {
+  max-width: 120px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .compact-project-bar[data-presentation='portrait']
+  .compact-project-feedback {
+  max-width: 160px;
+}
+
+/* Issue #341: make the selected Shot read as a compact detail inspector in
+   Cloud Touch portrait. The ShotManager and its existing callbacks remain the
+   only owner of selection and mutation behavior. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor {
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+  gap: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-heading {
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-title {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-title h3 {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 18px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-index {
+  flex: 0 0 auto;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-actions {
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-actions button {
+  min-height: 44px;
+  padding: 6px 8px;
+  border-color: transparent;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-actions button:hover:not(:disabled) {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-actions .shot-delete-button {
+  color: #e6aaa3;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body {
+  grid-template-columns: minmax(180px, 0.78fr) minmax(0, 1.22fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body
+  > .shot-thumbnail,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body
+  > .shot-thumbnail-placeholder {
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  padding: 12px;
+  border-radius: var(--ui-radius-medium);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body
+  > .shot-thumbnail,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body
+  > .shot-thumbnail-placeholder
+  > span {
+  font-size: 26px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-editor-body
+  > .shot-thumbnail-placeholder
+  > .shot-thumbnail-message {
+  font-size: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-fields {
+  min-width: 0;
+  gap: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-field {
+  min-width: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-field-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-field-control
+  input,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-input
+  input {
+  min-height: 44px;
+  padding: 9px 10px;
+  border-radius: var(--ui-radius-small);
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-field-control
+  input {
+  flex: 1 1 auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-compact-apply {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 9px;
+  border-color: transparent;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-compact-apply:hover:not(:disabled) {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-control {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(88px, 1fr) 44px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-stepper {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-stepper:hover:not(:disabled) {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-input {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-input
+  input {
+  width: 100%;
+  padding-right: 30px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-input
+  > span {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  color: var(--ui-color-text-secondary);
+  font-size: 14px;
+  font-weight: 400;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-field-invalid
+  .shot-duration-input
+  input {
+  border-color: rgb(255 155 143 / 75%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-help {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-help
+  > summary {
+  width: fit-content;
+  min-height: 32px;
+  padding: 7px 0;
+  color: var(--ui-color-text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-duration-help
+  > p {
+  max-width: none;
+  padding-bottom: 4px;
+  color: #d4bdb7;
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-entity-summary {
+  display: grid;
+  padding: 12px 0 0;
+  margin: 0;
+  border-top: 1px solid var(--ui-color-separator);
+  border-radius: 0;
+  background: transparent;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-entity-summary
+  > div {
+  display: grid;
+  min-width: 0;
+  padding: 0 8px;
+  border-left: 1px solid rgb(154 216 172 / 12%);
+  align-items: start;
+  gap: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-entity-summary
+  > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-entity-summary
+  dt {
+  color: var(--ui-color-text-muted);
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .resource-activity-dock[data-active-activity='shots']
+  .shot-manager[data-shot-editor-presentation='portrait']
+  .shot-entity-summary
+  dd {
+  color: var(--ui-color-text-primary);
+  font-size: 15px;
+}
+
+@media (max-width: 720px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .resource-activity-dock[data-active-activity='shots']
+    .shot-manager[data-shot-editor-presentation='portrait']
+    .shot-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .resource-activity-dock[data-active-activity='shots']
+    .shot-manager[data-shot-editor-presentation='portrait']
+    .shot-editor-body
+    > .shot-thumbnail,
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .resource-activity-dock[data-active-activity='shots']
+    .shot-manager[data-shot-editor-presentation='portrait']
+    .shot-editor-body
+    > .shot-thumbnail-placeholder {
+    max-width: 360px;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .resource-activity-dock[data-active-activity='shots']
+    .shot-manager[data-shot-editor-presentation='portrait']
+    .shot-duration-control {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .resource-activity-dock[data-active-activity='shots']
+    .shot-manager[data-shot-editor-presentation='portrait']
+    .shot-duration-control
+    .shot-compact-apply {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}
+
+/* Issue #346: make portrait Properties empty selection a focused guide while
+   keeping the selected-object inspector and its existing owners unchanged. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-selection-empty {
+  min-height: clamp(320px, 32vh, 460px);
+  padding: var(--ui-space-5) var(--ui-space-4);
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-panel);
+  align-content: center;
+  justify-items: center;
+  gap: var(--ui-space-4);
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-content {
+  display: grid;
+  width: min(100%, 640px);
+  min-width: 0;
+  justify-items: center;
+  gap: var(--ui-space-4);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-icon {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-large);
+  color: var(--ui-color-selected-border);
+  background: var(--ui-color-surface-overlay);
+  place-items: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-icon
+  .ui-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-copy {
+  display: grid;
+  max-width: 560px;
+  min-width: 0;
+  gap: var(--ui-space-2);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-copy
+  h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-copy
+  p {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-copy
+  h3 {
+  color: var(--ui-color-text-primary);
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-copy
+  p {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-body);
+  line-height: 1.6;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-capabilities {
+  display: grid;
+  width: min(100%, 560px);
+  padding: var(--ui-space-3) 0 0;
+  margin: 0;
+  border-top: 1px solid var(--ui-color-separator);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  gap: var(--ui-space-2);
+  text-align: left;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-capabilities
+  li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--ui-space-1);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-capabilities
+  li
+  .ui-icon {
+  margin-top: 1px;
+  color: var(--ui-color-selected-border);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-capabilities
+  li
+  div {
+  display: grid;
+  min-width: 0;
+  gap: var(--ui-space-1);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-capabilities
+  strong {
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-empty-state-capabilities
+  span {
+  color: var(--ui-color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-heading-close-icon {
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 480px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .right-inspector-empty-state-capabilities {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Issue #357: State D/E share one in-flow authoring shell, one draft owner and
+   one mode selector. Canvas/Timeline remain visible and the page keeps the sole
+   vertical scroll owner. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-shell {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--ui-color-separator);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-header .eyebrow,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-header h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-header p {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-header .eyebrow {
+  color: var(--ui-color-text-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-header h3 {
+  color: var(--ui-color-text-primary);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-header p:not(.eyebrow) {
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-close {
+  display: inline-flex;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-tabs {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-tab {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--ui-radius-small) - 2px);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-tab[aria-selected='true'] {
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: rgb(127 199 148 / 16%);
+  box-shadow: inset 3px 0 0 var(--ui-color-selected-border);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-tab[aria-selected='true']::before {
+  content: '✓';
+  color: var(--ui-color-selected-border);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-mode {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section > label,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section > h4 {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section small {
+  color: var(--ui-color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-step {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: 50%;
+  color: var(--ui-color-selected-border);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  font: inherit;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section select {
+  min-height: 48px;
+  padding: 9px 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section textarea {
+  min-height: 120px;
+  padding: 12px;
+  font-size: 15px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section select:focus-visible,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-section textarea:focus-visible,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-tab:focus-visible,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-close:focus-visible,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-footer button:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-field-meta {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-field-meta output {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-placement {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-placement > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-placement h4,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-placement p {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-placement p,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-placement span {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-placement output {
+  color: var(--ui-color-text-primary);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-footer button {
+  min-width: 112px;
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: var(--ui-radius-small);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-cancel {
+  border: 1px solid var(--ui-color-separator);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-submit {
+  border: 1px solid var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-primary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-submit:hover:not(:disabled) {
+  background: var(--ui-color-action-hover);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-submit:disabled {
+  border-color: var(--ui-color-separator);
+  color: var(--ui-color-text-muted);
+  background: var(--ui-color-surface-work);
+  opacity: 0.72;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--ui-color-action-warning);
+  color: #ffd4d0;
+  background: rgb(124 46 37 / 18%);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-hint {
+  margin: 0;
+  color: var(--ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  text-align: left;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table th,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--ui-color-separator);
+  vertical-align: top;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table th {
+  color: var(--ui-color-text-muted);
+  background: var(--ui-color-surface-work);
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table tr[data-status='valid'] td:last-child,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table tr[data-status='mapped'] td:last-child {
+  color: var(--ui-color-selected-border);
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table tr[data-status='malformed'] td:last-child,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-table tr[data-status='invalid'] td:last-child {
+  color: #ffd4d0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-empty {
+  color: var(--ui-color-text-muted);
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-mapping-list {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-mapping-list label {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.8fr);
+  align-items: center;
+  gap: 12px;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-stats dl {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-stats dl > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-stats dt {
+  color: var(--ui-color-text-muted);
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-batch-stats dd {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-queue-heading {
+  margin: 0;
+  padding: 0 0 12px;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-authoring-placement,
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-batch-mapping-list label {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-authoring-placement output {
+    text-align: left;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-batch-stats dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-authoring-footer button {
+    min-width: 96px;
+  }
+}
+
+/* Issue #354: make the State C exit and the mutually-exclusive authoring
+   transitions explicit without adding another Timeline or dialogue owner. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-sheet-header-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-timed-back {
+  color: var(--ui-color-accent);
+}
+
+/* Issue #352: State B keeps the queue browseable and expands only the selected
+   untimed row into a compact, in-context next-step surface. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item:not([data-selected='true']) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item[data-selected='true'] {
+  padding-left: 8px;
+  border-left: 2px solid var(--ui-color-selected-border);
+  background: rgb(127 199 148 / 8%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select {
+  grid-column: 1 / -1;
+  width: 100%;
+  cursor: pointer;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select:hover {
+  background: rgb(127 199 148 / 10%);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-select:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-affordance {
+  display: inline-flex;
+  width: 24px;
+  min-width: 24px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-color-text-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item[data-selected='true']
+  .dialogue-untimed-affordance {
+  color: var(--ui-color-selected-border);
+  font-size: 16px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-strip {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-strip
+  .dialogue-untimed-action-info {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-meta {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-playhead-label {
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-playhead-time {
+  color: var(--ui-color-text-primary);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-action-buttons > button {
+  min-height: 48px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-arrange {
+  min-width: 96px;
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-primary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-arrange:hover {
+  background: var(--ui-color-action-hover);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-untimed-action-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-untimed-action-buttons {
+    justify-content: flex-start;
+  }
+}
+

@@ -1,0 +1,193 @@
+.project-tools-action-presets-view {
+  min-width: 0;
+  padding: 12px;
+}
+
+.project-tools-action-presets-view > .legacy-workspace {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.project-tools-action-presets-view .action-preset-panel > div:first-child {
+  display: none;
+}
+
+.project-tools-action-presets-view .action-preset-grid button {
+  min-height: 48px;
+}
+
+/* Issue #372: Cloud Touch landscape Stage B is one quiet empty state. Keep
+   the existing drawer/selection owner, but remove the future property shells
+   from the first glance until an editable object is selected. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-selection-empty-landscape {
+  min-height: clamp(320px, 44vh, 460px);
+  padding: var(--ui-space-5) var(--ui-space-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  align-content: center;
+  justify-items: center;
+  gap: var(--ui-space-4);
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-empty-state-content {
+  display: grid;
+  width: min(100%, 300px);
+  min-width: 0;
+  justify-items: center;
+  gap: var(--ui-space-4);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-empty-state-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  color: var(--ui-color-text-muted);
+  opacity: 0.82;
+  place-items: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-empty-state-icon
+  .ui-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-empty-state-copy {
+  display: grid;
+  max-width: 300px;
+  min-width: 0;
+  gap: var(--ui-space-2);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-empty-state-copy
+  h3,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-empty-state-copy
+  p {
+  margin: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-empty-state-copy
+  h3 {
+  color: var(--ui-color-text-primary);
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-empty-state-copy
+  p {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-body);
+  line-height: 1.6;
+}
+
+/* Issue #373: selected-object Stage C keeps one contextual drawer, with the
+   identity summary first, compact Transform controls next, and the existing
+   Appearance/Layer owners behind collapsed disclosure rows. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading {
+  display: flex;
+  min-height: 44px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--ui-color-separator);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-2);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading
+  h2 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading-close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  place-items: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading-close:hover {
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-heading-close:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > summary {
+  min-height: 48px;
+  padding: 12px 14px;
+  gap: var(--ui-space-2);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > summary::-webkit-details-marker {
+  display: none;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  > summary::after {
+  color: var(--ui-color-text-secondary);
+  content: '›';
+  font-size: 22px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .right-inspector-section[open]
+  > summary::after {
+  transform: rotate(90deg);
+}
+

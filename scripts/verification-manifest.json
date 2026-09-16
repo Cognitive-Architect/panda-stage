@@ -296,6 +296,9 @@
           "src/renderer/ui/**",
            "docs/evidence/issue-530-css-split/receipt.json",
            "docs/evidence/issue-541-p2-01/**",
+          "docs/evidence/issue-546-p2-b06/**",
+          "docs/evidence/issue-545-p2-02/**",
+          "docs/evidence/issue-545-p2-03/**",
           "public/subtitle-empty-state.png"
         ],
         "testPatterns": [
@@ -313,6 +316,8 @@
       "tests/contract/dom-selectors.baseline.test.ts",
       "tests/contract/right-inspector-narrow-review.test.ts",
       "tests/contract/issue541-p2-01.test.ts",
+      "tests/contract/issue546-p2-b06.test.ts",
+      "tests/contract/issue545-p2-b01.test.ts",
       "tests/helpers/read-stylesheet-source.ts",
           "tests/unit/issue102-task4-responsive.test.ts",
           "tests/unit/issue109-resource-workspace.test.ts"

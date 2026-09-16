@@ -65,8 +65,9 @@ function importPaths(): string[] {
 
 describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
   it('records the approved S11-01 boundary and ownership chain', () => {
-    expect(manifest.semanticRelocations).toHaveLength(1);
-    expect(manifest.semanticRelocations[0]).toMatchObject({
+    const relocation = manifest.semanticRelocations.find(({ id }) => id === 'S11-01');
+    expect(relocation).toBeDefined();
+    expect(relocation).toMatchObject({
       id: 'S11-01',
       sourceSlice: 'S11',
       owner: 'shell-tools',
@@ -98,9 +99,17 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
   it('loads the semantic segment once at the original production position', () => {
     const imports = importPaths();
     const semanticIndex = imports.indexOf('./styles/shell/tools/view-mode.css');
+    const s11RemainderStartIndex = imports.indexOf(
+      './styles/legacy-slices/11-tools-inspector-timeline-start--before-landscape-layer-controls.css',
+    );
+    const layerPropertiesIndex = imports.indexOf(
+      './styles/features/properties/s11-05--landscape-layer-controls.css',
+    );
     const legacyIndex = imports.indexOf('./styles/legacy-slices/11-tools-inspector-timeline-start.css');
     expect(semanticIndex).toBeGreaterThan(-1);
-    expect(legacyIndex).toBe(semanticIndex + 1);
+    expect(s11RemainderStartIndex).toBe(semanticIndex + 1);
+    expect(layerPropertiesIndex).toBe(s11RemainderStartIndex + 1);
+    expect(legacyIndex).toBe(layerPropertiesIndex + 1);
     expect(imports.filter((path) => path === './styles/shell/tools/view-mode.css')).toHaveLength(1);
   });
 
@@ -111,7 +120,7 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
   });
 
   it('keeps the moved bytes exact and leaves the action-preset section in the legacy remainder', () => {
-    const relocation = manifest.semanticRelocations[0]!;
+    const relocation = manifest.semanticRelocations.find(({ id }) => id === 'S11-01')!;
     const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
     const legacy = normalize(
       readFileSync(
@@ -119,8 +128,17 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
         'utf8',
       ),
     );
+    const actionPresetRemainder = normalize(
+      readFileSync(
+        resolve(
+          root,
+          'src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start--before-landscape-layer-controls.css',
+        ),
+        'utf8',
+      ),
+    );
     expect(sha256(target)).toBe(relocation.sourceSha256);
     expect(legacy).not.toContain('.project-tools-view-mode-card');
-    expect(legacy.startsWith('.project-tools-action-presets-view {')).toBe(true);
+    expect(actionPresetRemainder.startsWith('.project-tools-action-presets-view {')).toBe(true);
   });
 });

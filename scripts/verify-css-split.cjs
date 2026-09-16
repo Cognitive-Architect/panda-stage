@@ -466,11 +466,185 @@ function readEntryImports(entry) {
   return { entryLines, imports, bodyStart };
 }
 
-function relocationRangesForSlice(baseline, slice, relocations) {
-  const relevant = relocations
+function byteOffsetAtLine(value, lineNumber) {
+  const lines = linesOf(value);
+  if (!Number.isInteger(lineNumber) || lineNumber < 1 || lineNumber > lines.length + 1) {
+    return null;
+  }
+  const prefix = lines.slice(0, lineNumber - 1).join('\n');
+  return Buffer.byteLength(`${prefix}${lineNumber > 1 ? '\n' : ''}`, 'utf8');
+}
+
+function relevantRelocationsForSlice(slice, relocations) {
+  return relocations
     .filter((relocation) => relocation.sourceSlice === slice.id)
     .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
+}
+
+function verifySemanticRelocations(baseline, scan) {
+  const relocations = manifest.semanticRelocations ?? [];
+  const slicesById = new Map(manifest.slices.map((slice) => [slice.id, slice]));
+  const targetPaths = new Set();
+  for (const relocation of relocations) {
+    const id = relocation.id || relocation.sourceSlice || 'semantic relocation';
+    const slice = slicesById.get(relocation.sourceSlice);
+    if (!slice) {
+      fail(`${id} references unknown source slice ${relocation.sourceSlice}`);
+      continue;
+    }
+    if (relocation.status !== 'relocated') {
+      fail(`${id} does not have relocated status`);
+    }
+    if (relocation.insertBefore && relocation.insertBefore !== slice.targetPath) {
+      fail(`${id} must be inserted immediately before ${slice.targetPath}`);
+    }
+    if (!relocation.insertBefore && relocation.placement !== 'source-order') {
+      fail(`${id} must declare source-order placement when it is not a slice-prefix relocation`);
+    }
+    const expectedStart = slice.range.startLine + relocation.sourceLocalRange.startLine - 1;
+    const expectedEnd = slice.range.startLine + relocation.sourceLocalRange.endLine - 1;
+    if (
+      relocation.sourceRange.startLine !== expectedStart ||
+      relocation.sourceRange.endLine !== expectedEnd
+    ) {
+      fail(`${id} local/global source ranges disagree`);
+    }
+    if (!Array.isArray(relocation.sectionIds) || relocation.sectionIds.length === 0) {
+      fail(`${id} must record at least one canonical Section identity`);
+    }
+    const sourceStart = byteOffsetAtLine(baseline, relocation.sourceRange.startLine);
+    const sourceEnd = byteOffsetAtLine(baseline, relocation.sourceRange.endLine + 1);
+    const sliceStart = byteOffsetAtLine(baseline, slice.range.startLine);
+    if (sourceStart === null || sourceEnd === null || sliceStart === null) {
+      fail(`${id} has an invalid line range for byte verification`);
+    } else {
+      if (relocation.sourceStartByte !== sourceStart - sliceStart) {
+        fail(`${id} sourceStartByte does not match its source-slice-local offset`);
+      }
+      if (relocation.sourceEndByteExclusive !== sourceEnd - sliceStart) {
+        fail(`${id} sourceEndByteExclusive does not match its source-slice-local offset`);
+      }
+    }
+    if (!isCompleteBoundary(stateBefore(scan, relocation.sourceRange.startLine))) {
+      fail(`${id} starts inside a CSS structure`);
+    }
+    if (!isCompleteBoundary(scan.states[relocation.sourceRange.endLine])) {
+      fail(`${id} ends at an unsafe CSS boundary`);
+    }
+    const expected = rangeText(
+      baseline,
+      relocation.sourceRange.startLine,
+      relocation.sourceRange.endLine,
+    );
+    const targetAbsolute = join(repoRoot, relocation.targetPath);
+    if (!existsSync(targetAbsolute)) {
+      fail(`${id} target is missing: ${relocation.targetPath}`);
+      continue;
+    }
+    if (targetPaths.has(relocation.targetPath)) {
+      fail(`${id} reuses semantic target path ${relocation.targetPath}`);
+    }
+    targetPaths.add(relocation.targetPath);
+    const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
+    if (actual !== expected) {
+      fail(`${id} target is not an exact baseline range copy`);
+    }
+    if (sha256(expected) !== relocation.sourceSha256) {
+      fail(`${id} source SHA-256 does not match its recorded receipt`);
+    }
+    if (Buffer.byteLength(expected, 'utf8') !== relocation.sourceEndByteExclusive - relocation.sourceStartByte) {
+      fail(`${id} recorded byte range does not match the exact source section`);
+    }
+  }
+  const ordered = relocations
+    .filter((relocation) => relocation.sourceRange?.startLine !== undefined)
+    .slice()
+    .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1];
+    const current = ordered[index];
+    if (current.sourceRange.startLine <= previous.sourceRange.endLine) {
+      fail(`${current.id} overlaps ${previous.id} in the canonical source order`);
+    }
+    if (
+      Number.isInteger(previous.canonicalOrder) &&
+      Number.isInteger(current.canonicalOrder) &&
+      current.canonicalOrder <= previous.canonicalOrder
+    ) {
+      fail(`${current.id} canonical order is not increasing with its source position`);
+    }
+  }
+  return relocations;
+}
+
+function verifyExactSourceFile(baseline, path, range, label) {
+  const targetAbsolute = join(repoRoot, path);
+  if (!existsSync(targetAbsolute)) {
+    fail(`${label} target is missing: ${path}`);
+    return null;
+  }
+  const expected = rangeText(baseline, range.startLine, range.endLine);
+  const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
+  if (actual !== expected) {
+    fail(`${label} target is not an exact baseline range copy`);
+  }
+  return {
+    path,
+    range,
+    expected,
+    actual,
+    exact: actual === expected,
+  };
+}
+
+function orderedSourceParts(baseline, slice, relocations) {
+  const relevant = relevantRelocationsForSlice(slice, relocations);
+  const declaredRemainders = (manifest.remainderParts ?? [])
+    .filter((part) => part.sourceSlice === slice.id)
+    .slice()
+    .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
+  if (relevant.length === 0) {
+    if (declaredRemainders.length > 0) {
+      fail(`${slice.id} declares remainder parts without a semantic relocation`);
+    }
+    return [{
+      kind: 'remainder',
+      path: slice.targetPath,
+      range: slice.range,
+      id: `${slice.id}-full`,
+    }];
+  }
+
   const parts = [];
+  const usedRemainders = new Set();
+  const appendRemainder = (startLine, endLine) => {
+    if (startLine > endLine) return;
+    const candidates = declaredRemainders.filter(
+      (part) =>
+        part.sourceRange.startLine === startLine &&
+        part.sourceRange.endLine === endLine,
+    );
+    if (candidates.length !== 1) {
+      fail(
+        `${slice.id} needs one remainder part for L${startLine}-L${endLine}, found ${candidates.length}`,
+      );
+      return;
+    }
+    const part = candidates[0];
+    if (usedRemainders.has(part.id)) {
+      fail(`${slice.id} remainder part ${part.id} is used more than once`);
+      return;
+    }
+    usedRemainders.add(part.id);
+    verifyExactSourceFile(baseline, part.targetPath, part.sourceRange, part.id);
+    parts.push({
+      kind: 'remainder',
+      ...part,
+      path: part.targetPath,
+      range: part.sourceRange,
+    });
+  };
+
   let cursor = slice.range.startLine;
   for (const relocation of relevant) {
     const startLine = relocation.sourceRange.startLine;
@@ -484,65 +658,22 @@ function relocationRangesForSlice(baseline, slice, relocations) {
       fail(`${relocation.id} source range overlaps or escapes ${slice.id}`);
       continue;
     }
-    if (cursor < startLine) {
-      parts.push(rangeText(baseline, cursor, startLine - 1));
-    }
+    appendRemainder(cursor, startLine - 1);
+    parts.push({
+      kind: 'semantic',
+      id: relocation.id,
+      path: relocation.targetPath,
+      range: relocation.sourceRange,
+    });
     cursor = endLine + 1;
   }
-  if (cursor <= slice.range.endLine) {
-    parts.push(rangeText(baseline, cursor, slice.range.endLine));
-  }
-  return { relevant, remainder: parts.join('') };
-}
-
-function verifySemanticRelocations(baseline) {
-  const relocations = manifest.semanticRelocations ?? [];
-  const slicesById = new Map(manifest.slices.map((slice) => [slice.id, slice]));
-  for (const relocation of relocations) {
-    const slice = slicesById.get(relocation.sourceSlice);
-    if (!slice) {
-      fail(`${relocation.id || 'semantic relocation'} references unknown source slice ${relocation.sourceSlice}`);
-      continue;
-    }
-    if (relocation.status !== 'relocated') {
-      fail(`${relocation.id || relocation.sourceSlice} does not have relocated status`);
-    }
-    if (relocation.insertBefore !== slice.targetPath) {
-      fail(`${relocation.id || relocation.sourceSlice} must be inserted immediately before ${slice.targetPath}`);
-    }
-    const expectedStart = slice.range.startLine + relocation.sourceLocalRange.startLine - 1;
-    const expectedEnd = slice.range.startLine + relocation.sourceLocalRange.endLine - 1;
-    if (
-      relocation.sourceRange.startLine !== expectedStart ||
-      relocation.sourceRange.endLine !== expectedEnd
-    ) {
-      fail(`${relocation.id || relocation.sourceSlice} local/global source ranges disagree`);
-    }
-    const expected = rangeText(
-      baseline,
-      relocation.sourceRange.startLine,
-      relocation.sourceRange.endLine,
-    );
-    const targetAbsolute = join(repoRoot, relocation.targetPath);
-    if (!existsSync(targetAbsolute)) {
-      fail(`${relocation.id || relocation.sourceSlice} target is missing: ${relocation.targetPath}`);
-      continue;
-    }
-    const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
-    if (actual !== expected) {
-      fail(`${relocation.id || relocation.sourceSlice} target is not an exact baseline range copy`);
-    }
-    if (sha256(expected) !== relocation.sourceSha256) {
-      fail(`${relocation.id || relocation.sourceSlice} source SHA-256 does not match its recorded receipt`);
-    }
-    if (Buffer.byteLength(expected, 'utf8') !== relocation.sourceEndByteExclusive - relocation.sourceStartByte) {
-      fail(`${relocation.id || relocation.sourceSlice} recorded byte range does not match the exact source section`);
-    }
-    if (relocation.sourceStartByte !== 0) {
-      fail(`${relocation.id || relocation.sourceSlice} must start at byte 0 of its source slice`);
+  appendRemainder(cursor, slice.range.endLine);
+  for (const part of declaredRemainders) {
+    if (!usedRemainders.has(part.id)) {
+      fail(`${slice.id} remainder part ${part.id} is not reachable in source order`);
     }
   }
-  return relocations;
+  return parts;
 }
 
 function verifyExtraction(baseline, scan) {
@@ -550,16 +681,17 @@ function verifyExtraction(baseline, scan) {
   const entry = normalize(readFileSync(entryPath, 'utf8'));
   const { entryLines, imports: actualImports, bodyStart } = readEntryImports(entry);
   const extracted = manifest.slices.filter((slice) => slice.status === 'extracted');
-  const relocations = verifySemanticRelocations(baseline);
+  const relocations = verifySemanticRelocations(baseline, scan);
   const baseImports = manifest.rootEntry.entryImportOrder;
+  const sourcePartsBySlice = extracted.map((slice) => ({
+    slice,
+    parts: orderedSourceParts(baseline, slice, relocations),
+  }));
   const expectedImports = [
     ...baseImports,
-    ...extracted.flatMap((slice) => [
-      ...relocations
-        .filter((relocation) => relocation.insertBefore === slice.targetPath)
-        .map((relocation) => entryImportPath(entryPath, relocation.targetPath)),
-      entryImportPath(entryPath, slice.targetPath),
-    ]),
+    ...sourcePartsBySlice.flatMap(({ parts }) =>
+      parts.map((part) => entryImportPath(entryPath, part.path)),
+    ),
   ];
   if (actualImports.length !== expectedImports.length) {
     fail(`Production entry import count mismatch: expected ${expectedImports.length}, got ${actualImports.length}`);
@@ -590,17 +722,18 @@ function verifyExtraction(baseline, scan) {
   }
 
   const sliceTexts = [];
-  for (const slice of extracted) {
-    const targetAbsolute = join(repoRoot, slice.targetPath);
-    if (!existsSync(targetAbsolute)) {
-      fail(`${slice.id} target is missing: ${slice.targetPath}`);
-      continue;
-    }
-    const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
-    const { remainder: expected } = relocationRangesForSlice(baseline, slice, relocations);
-    if (actual !== expected) {
-      fail(`${slice.id} target does not contain the baseline remainder after semantic relocation`);
-    }
+  for (const { slice, parts } of sourcePartsBySlice) {
+    const remainderParts = parts.filter((part) => part.kind === 'remainder');
+    const sourceTexts = remainderParts.map((part) => {
+      const targetAbsolute = join(repoRoot, part.path);
+      return existsSync(targetAbsolute)
+        ? normalize(readFileSync(targetAbsolute, 'utf8'))
+        : '';
+    });
+    const expected = remainderParts
+      .map((part) => rangeText(baseline, part.range.startLine, part.range.endLine))
+      .join('');
+    const actual = sourceTexts.join('');
     sliceTexts.push({
       id: slice.id,
       path: slice.targetPath,
@@ -608,6 +741,7 @@ function verifyExtraction(baseline, scan) {
       expectedSha256: sha256(expected),
       actualSha256: sha256(actual),
       exact: actual === expected,
+      remainderPaths: remainderParts.map((part) => part.path),
     });
   }
 
@@ -721,7 +855,7 @@ if (writeP2Receipt) {
   const preflight = existsSync(preflightPath)
     ? JSON.parse(readFileSync(preflightPath, 'utf8'))
     : {};
-  const relocation = manifest.semanticRelocations?.[0] ?? {};
+  const relocation = manifest.semanticRelocations?.find(({ id }) => id === 'S11-01') ?? {};
   const productionEntry = result.extraction.productionEntry ?? {};
   const finalHead = execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const p2Receipt = {

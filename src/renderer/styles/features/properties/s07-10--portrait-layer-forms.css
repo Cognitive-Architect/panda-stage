@@ -1,0 +1,90 @@
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label:nth-of-type(5),
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > .layer-lock-control {
+  grid-column: 1 / -1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label
+  input {
+  min-height: 44px;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  button,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control
+  button {
+  min-height: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  > p,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-transform-panel
+  > output,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-background-control
+  > p,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  .layer-order-controls
+  > p {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector-section
+  output:empty {
+  display: none;
+}
+
