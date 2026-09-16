@@ -303,13 +303,14 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'S01-R01', sourceRange: { startLine: 3, endLine: 1582 } }),
       expect.objectContaining({ id: 'S01-R02', sourceRange: { startLine: 1672, endLine: 1951 } }),
-      expect.objectContaining({ id: 'S05-R01', sourceRange: { startLine: 8630, endLine: 8949 } }),
       expect.objectContaining({ id: 'S05-R02', sourceRange: { startLine: 9303, endLine: 9331 } }),
-      expect.objectContaining({ id: 'S05-R03', sourceRange: { startLine: 9349, endLine: 9839 } }),
+      expect.objectContaining({ id: 'S05-R03', sourceRange: { startLine: 9349, endLine: 9349 } }),
+      expect.objectContaining({ id: 'S05-R04', sourceRange: { startLine: 9431, endLine: 9839 } }),
       expect.objectContaining({ id: 'S07-R01', sourceRange: { startLine: 11884, endLine: 12000 } }),
       expect.objectContaining({ id: 'S07-R03', sourceRange: { startLine: 12349, endLine: 12853 } }),
       expect.objectContaining({ id: 'S07-R02', sourceRange: { startLine: 12953, endLine: 13226 } }),
-      expect.objectContaining({ id: 'S07-R04', sourceRange: { startLine: 13578, endLine: 13801 } }),
+      expect.objectContaining({ id: 'S07-R04', sourceRange: { startLine: 13578, endLine: 13578 } }),
+      expect.objectContaining({ id: 'S07-R05', sourceRange: { startLine: 13632, endLine: 13801 } }),
       expect.objectContaining({ id: 'S08-R01', sourceRange: { startLine: 13802, endLine: 13982 } }),
       expect.objectContaining({ id: 'S08-R04', sourceRange: { startLine: 14158, endLine: 15158 } }),
       expect.objectContaining({ id: 'S08-R03', sourceRange: { startLine: 15589, endLine: 16456 } }),
@@ -334,9 +335,11 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
         targetPath: 'src/renderer/styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css',
       }),
       expect.objectContaining({
-        id: 'S15-R07',
-        kind: 'remainder',
+        id: 'G140',
+        kind: 'semantic',
+        relocationId: 'G140',
         sourceRange: { startLine: 1352, endLine: 1798 },
+        targetPath: 'src/renderer/styles/features/characters/workspace/s15-19--character-detail-polish-524.css',
       }),
       expect.objectContaining({
         id: 'G141',
@@ -346,9 +349,11 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
         targetPath: 'src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css',
       }),
       expect.objectContaining({
-        id: 'S15-R08',
-        kind: 'remainder',
+        id: 'G142',
+        kind: 'semantic',
+        relocationId: 'G142',
         sourceRange: { startLine: 1829, endLine: 2001 },
+        targetPath: 'src/renderer/styles/features/characters/workspace/s15-22--character-workspace-consolidated-523.css',
       }),
     ]));
   });

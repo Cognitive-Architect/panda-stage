@@ -1,0 +1,53 @@
+/* Characters drawer: the existing list owner is intentionally thin; keep it
+   readable and expose only the existing create route. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-manager {
+  padding: 0 12px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-workspace {
+  display: block;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items {
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items
+  button {
+  min-height: 60px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape
+  .character-list-items
+  button {
+  text-align: left;
+}
+

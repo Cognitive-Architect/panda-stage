@@ -1,0 +1,12 @@
+/* Issue #525 final responsive override: the older consolidated Character
+   cascade keeps the overflow action right-aligned at normal widths, while a
+   genuinely narrow detail drawer may stack it below the inline form. */
+@media (max-width: 360px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-actions {
+    justify-self: start;
+  }
+}
+

@@ -1,0 +1,113 @@
+.character-list-items button {
+  position: relative;
+  min-height: 64px;
+  grid-template-columns: 48px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 9px;
+}
+
+.character-list-items .character-list-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+}
+
+.character-list-items .character-list-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.character-list-items .character-list-copy strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-list-items .character-list-copy small {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-list-items .character-list-selected-badge {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgb(127 199 148 / 46%);
+  border-radius: 999px;
+  color: #c8f4d4;
+  background: rgb(37 88 51 / 48%);
+  font-size: 11px;
+  place-items: center;
+}
+
+.character-expression-summary-list li {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+}
+
+.character-expression-summary-preview {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 8px;
+  background: #08100b;
+  place-items: center;
+}
+
+.character-expression-summary-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.character-expression-summary-preview .character-thumbnail-fallback {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+}
+
+.character-expression-summary-preview .character-thumbnail-fallback-icon {
+  width: 15px;
+  height: 15px;
+  color: #75b285;
+  font-size: 15px;
+}
+
+.character-expression-summary-preview small {
+  max-width: 40px;
+  overflow: hidden;
+  color: #779582;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-expression-summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.character-expression-summary-copy > strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-expression-summary-copy > span {
+  overflow: hidden;
+  color: #8fa096;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

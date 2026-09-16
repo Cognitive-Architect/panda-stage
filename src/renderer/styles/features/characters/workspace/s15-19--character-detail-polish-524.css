@@ -1,335 +1,106 @@
+/* Issue #524: the R8 Character Detail layout is functionally complete; keep
+   this follow-up limited to hierarchy, density, and visual weight. The
+   existing landscape Character scope and mutation owners remain unchanged. */
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
-  .character-settings-workspace > .character-settings-section {
-  display: grid;
-  min-width: 0;
-  padding: 10px 0;
-  border: 0;
-  border-bottom: 1px solid rgb(127 199 148 / 13%);
-  border-radius: 0;
-  background: transparent;
-  gap: 8px;
+  .character-detail-identity {
+  grid-template-columns: 80px minmax(0, 1fr);
+  padding: 10px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgb(127 199 148 / 7%), transparent 58%),
+    var(--character-surface);
+  gap: 10px;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
-  .character-settings-workspace > .character-settings-section:first-child {
-  padding-top: 4px;
+  .character-detail-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 10px;
+  font-size: 26px;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
-  .character-settings-workspace
-  .character-section-heading
-  > div {
-  min-width: 0;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-settings-workspace
-  .character-section-heading
-  .eyebrow {
-  margin: 0 0 2px;
-  color: #86a68e;
-  font-size: 10px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-settings-workspace
-  .character-section-heading
-  h4 {
-  margin: 0;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-transform-controls {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  .character-detail-identity-copy {
+  grid-template-areas:
+    'name actions'
+    'count actions';
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 1px 8px;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
-  .character-setting-control-row {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: center;
+  .character-detail-identity-copy h3 {
+  grid-area: name;
+  font-size: 17px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-copy > span {
+  grid-area: count;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-actions {
+  grid-area: actions;
+  flex-wrap: nowrap;
+  justify-self: end;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-workspace-tab.is-active {
+  color: #e3f5e7;
+  background: rgb(45 104 62 / 62%);
+  box-shadow:
+    inset 0 0 0 1px rgb(131 211 154 / 28%),
+    inset 0 -2px 0 var(--ui-color-selected-border, #83d39a);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .expression-editor-landscape {
   gap: 6px;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
-  .character-setting-label {
-  color: #b7cbbd;
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-transform-controls
-  .character-scale-stepper {
-  grid-template-columns: 36px minmax(0, 1fr) 36px;
-  gap: 4px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-transform-controls
-  .character-scale-stepper
-  button {
-  min-height: 42px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-transform-controls
-  .character-scale-stepper
-  output {
-  font-size: 16px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-transform-controls
-  .character-flip-switch {
-  min-width: 0;
-  min-height: 42px;
-  padding: 4px 0;
-  font-size: 11px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-pending {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  padding: 8px 9px;
-  border: 1px solid rgb(233 181 80 / 25%);
-  border-radius: 9px;
-  color: #e9c27e;
-  background: rgb(101 66 15 / 13%);
-  gap: 8px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-pending
-  > div:first-child {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-pending
-  strong {
-  font-size: 11px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-pending
-  > div:first-child
-  span {
-  overflow: hidden;
-  color: #d8be84;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-pending
-  .character-default-action-row {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: repeat(2, minmax(52px, auto));
-  gap: 5px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-pending
-  .character-default-action-row
-  button {
-  min-height: 38px;
-  padding: 6px 8px;
-  font-size: 11px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-pending
-  .character-default-apply {
-  border-color: rgb(127 199 148 / 48%);
-  color: #07110a;
-  background: var(--character-accent);
-  font-weight: 800;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-default-pending
-  .character-default-revert {
-  min-width: 52px;
-  border-color: rgb(255 255 255 / 14%);
-  color: #bdcfc2;
-  background: transparent;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-setting-optional {
-  color: #86a68e;
-  font-size: 10px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-setting-visual
-  .character-section-heading
-  > div {
+  .expression-editor-landscape-heading > div {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  min-height: 36px;
+  align-items: center;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
-  .character-mouth-setting-visual
-  .character-mouth-state {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 8px;
+  .expression-editor-landscape-heading h4 {
+  font-size: 15px;
 }
 
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-state
-  > .image-asset-picker {
-  display: grid;
-  min-width: 0;
-  grid-column: 1;
-  gap: 5px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-state
-  .image-asset-picker-heading {
-  min-width: 0;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-state
-  .image-asset-picker-selected {
-  min-width: 0;
-  min-height: 64px;
-  padding: 6px;
-  grid-template-columns: 48px minmax(0, 1fr) auto;
-  gap: 7px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-state
-  .image-asset-picker-selected-thumbnail {
-  width: 48px;
-  height: 48px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-state
-  .image-asset-picker-selected-copy {
-  min-width: 0;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-state
-  .image-asset-picker-selected-action {
-  min-width: 52px;
-  padding: 5px;
-  font-size: 10px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-state
-  .image-asset-picker-selected-empty {
-  min-height: 70px;
-  border-style: dashed;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-mouth-clear {
-  grid-column: 2;
-  min-width: 52px;
-  min-height: 40px;
-  padding: 7px 8px;
-  border-color: rgb(214 113 98 / 22%);
-  color: #dfb0a8;
-  background: transparent;
-}
-
-/* Two cards fit at the normal landscape drawer width. An editing card spans
-   both columns so its in-context form remains readable and only one card can
-   be expanded by ExpressionEditor at a time. */
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
   .expression-card-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -337,9 +108,21 @@
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
   .expression-card {
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  gap: 7px;
+  align-self: start;
+  padding: 5px;
+  border-color: rgb(255 255 255 / 6%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 2%);
+  gap: 5px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-default {
+  border-color: rgb(127 199 148 / 30%);
+  background: rgb(45 104 62 / 8%);
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -347,8 +130,7 @@
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
   .expression-card-main {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  gap: 5px;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -356,8 +138,15 @@
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
   .expression-card-preview {
-  width: 100%;
-  height: 92px;
+  height: 84px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card-copy {
+  gap: 3px;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -365,10 +154,6 @@
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
   .expression-card-actions {
-  display: grid;
-  min-width: 0;
-  max-width: none;
-  grid-template-columns: minmax(0, 1fr) 40px;
   gap: 4px;
 }
 
@@ -378,30 +163,35 @@
   .character-expression-workspace
   .expression-card-actions
   > button {
-  min-width: 0;
   min-height: 40px;
-  padding: 6px 5px;
-  font-size: 10px;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
+  .expression-card:not(.expression-default)
+  .expression-card-actions {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card:not(.expression-default)
   .expression-card-actions
   > .expression-default-trigger {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
-  .expression-card-actions
-  .expression-overflow
-  summary {
-  min-width: 40px;
-  min-height: 40px;
+  .expression-card.expression-default
+  .expression-card-actions {
+  grid-template-columns: minmax(0, 1fr) 40px;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -409,8 +199,7 @@
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
   .expression-card-editing {
-  grid-column: 1 / -1;
-  grid-template-columns: minmax(0, 1fr) auto;
+  border-color: rgb(127 199 148 / 30%);
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -418,79 +207,241 @@
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
   .expression-card-editing
-  .expression-card-main {
-  grid-template-columns: 72px minmax(0, 1fr);
+  .expression-edit-panel {
+  border-top-color: rgb(127 199 148 / 10%);
+}
+
+/* Issue #525: keep the Character Detail header compact and move rename into
+   the existing identity anchor without changing Character mutation owners. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail {
+  grid-template-columns: max-content minmax(0, 1fr);
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
-  .character-expression-workspace
-  .expression-card-editing
-  .expression-card-preview {
-  width: 72px;
-  height: 72px;
-}
-
-@media (max-width: 420px) {
-  .editor-layout[data-shell-mode='landscape']
-    .resource-activity-dock-landscape[data-active-activity='characters']
-    .character-manager[data-character-presentation='landscape']
-    .character-default-transform-controls {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .editor-layout[data-shell-mode='landscape']
-    .resource-activity-dock-landscape[data-active-activity='characters']
-    .character-manager[data-character-presentation='landscape']
-    .character-expression-workspace
-    .expression-card-list {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .editor-layout[data-shell-mode='landscape']
-    .resource-activity-dock-landscape[data-active-activity='characters']
-    .character-manager[data-character-presentation='landscape']
-    .character-expression-workspace
-    .expression-card-editing {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .editor-layout[data-shell-mode='landscape']
-    .resource-activity-dock-landscape[data-active-activity='characters']
-    .character-manager[data-character-presentation='landscape']
-    .character-expression-workspace
-    .expression-card-editing
-    .expression-card-main {
-    grid-template-columns: 64px minmax(0, 1fr);
-  }
-
-  .editor-layout[data-shell-mode='landscape']
-    .resource-activity-dock-landscape[data-active-activity='characters']
-    .character-manager[data-character-presentation='landscape']
-    .character-expression-workspace
-    .expression-card-editing
-    .expression-card-preview {
-    width: 64px;
-    height: 64px;
-  }
-}
-
-/* Issue #524 cascade: these rules intentionally follow the older R8
-   presentation block so the polish remains the final landscape override. */
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-settings-workspace
-  > .character-settings-section.character-default-presentation {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-detail-identity-actions {
-  flex-wrap: nowrap;
+  .character-detail-navigation-detail
+  > .character-detail-close {
   justify-self: end;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation
+  > .character-back-button {
+  display: inline-flex;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: var(--ui-radius-medium, 8px);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: rgb(83 145 101 / 10%);
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation
+  > .character-back-button:hover,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation
+  > .character-back-button:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(83 145 101 / 22%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-copy {
+  grid-template-areas: 'name actions';
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-copy.is-renaming {
+  grid-template-areas: 'rename actions';
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-form {
+  display: grid;
+  min-width: 0;
+  grid-area: name;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-copy.is-renaming
+  .character-inline-rename-form {
+  grid-area: rename;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-form
+  input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 7px 9px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-actions
+  > button {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-cancel {
+  border-color: rgb(127 199 148 / 28%);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-save {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #07110a;
+  background: var(--ui-color-action-primary, #8ed9a2);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-inline-rename-save:disabled {
+  opacity: 0.45;
+}
+
+@media (max-width: 360px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-copy {
+    grid-template-areas:
+      'name'
+      'actions';
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-copy.is-renaming {
+    grid-template-areas:
+      'rename'
+      'actions';
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-inline-rename-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-inline-rename-actions {
+    justify-content: flex-end;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-actions {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 360px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity {
+    grid-template-columns: 68px minmax(0, 1fr);
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-avatar {
+    width: 68px;
+    height: 68px;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-copy {
+    grid-template-areas:
+      'name'
+      'count'
+      'actions';
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-identity-actions {
+    justify-self: start;
+  }
 }
 

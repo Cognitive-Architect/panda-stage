@@ -1,0 +1,81 @@
+.resource-activity-panel .character-workspace {
+  display: block;
+}
+
+.resource-activity-panel .character-list,
+.resource-activity-panel .character-editor {
+  min-height: 0;
+}
+
+.resource-activity-panel .character-create-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.resource-activity-panel .character-settings {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.character-name-edit-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+}
+
+.character-expression-summary {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.character-expression-summary-list {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 7px;
+  list-style: none;
+}
+
+.character-expression-summary-list li {
+  display: grid;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.character-expression-summary-list span {
+  min-width: 0;
+  overflow: hidden;
+  color: #8fa096;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-expression-summary-list em {
+  color: #b9efc8;
+  font-size: 10px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.resource-activity-panel .expression-list li {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.resource-activity-panel .expression-actions {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.resource-activity-panel .expression-add-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+

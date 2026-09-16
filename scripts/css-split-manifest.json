@@ -94,6 +94,27 @@
       "status": "relocated"
     },
     {
+      "id": "G034",
+      "segment": "G034",
+      "sectionIds": ["S05-02"],
+      "sourceSlice": "S05",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 37,
+      "predecessor": "S05-01/G033",
+      "successor": "S05-03/G035",
+      "sourceRange": { "startLine": 8630, "endLine": 8949 },
+      "sourceLocalRange": { "startLine": 592, "endLine": 911 },
+      "sourceStartByte": 10643,
+      "sourceEndByteExclusive": 16448,
+      "sourceSha256": "472ddc6d2105306c62a4a6fbc65058f894e2a6cb26473c0737ada5685a4f0012",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s05-02--characters-base.css",
+      "startAnchor": ".character-manager",
+      "endAnchor": "shared resource selector",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G035",
       "segment": "G035",
       "sectionIds": ["S05-03"],
@@ -132,6 +153,27 @@
       "targetPath": "src/renderer/styles/features/shots/s05-05--shot-create-host.css",
       "startAnchor": ".shot-create-view",
       "endAnchor": ".resource-activity-panel .character-workspace",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G038",
+      "segment": "G038",
+      "sectionIds": ["S05-06", "S05-07", "S05-08"],
+      "sourceSlice": "S05",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 41,
+      "predecessor": "S05-05/G037",
+      "successor": "S05-09/G039",
+      "sourceRange": { "startLine": 9350, "endLine": 9430 },
+      "sourceLocalRange": { "startLine": 1312, "endLine": 1392 },
+      "sourceStartByte": 23290,
+      "sourceEndByteExclusive": 24908,
+      "sourceSha256": "70a2144668b76b1f6c7e42d1fa79b6323e89a6acc4606cfc144a96994e403b6e",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s05-06--character-resource-host.css",
+      "startAnchor": ".resource-activity-panel .character-workspace",
+      "endAnchor": ".recent-projects-heading, .recent-projects-list li, .recent-projects-actions",
       "placement": "source-order",
       "status": "relocated"
     },
@@ -339,6 +381,27 @@
       "status": "relocated"
     },
     {
+      "id": "G071",
+      "segment": "G071",
+      "sectionIds": ["S07-15"],
+      "sourceSlice": "S07",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 79,
+      "predecessor": "S07-14/G070",
+      "successor": "S07-16/G072",
+      "sourceRange": { "startLine": 13579, "endLine": 13631 },
+      "sourceLocalRange": { "startLine": 1696, "endLine": 1748 },
+      "sourceStartByte": 49028,
+      "sourceEndByteExclusive": 50165,
+      "sourceSha256": "5003914a5fdd8270ea93c312ee7653abd84ab524d55e62b9beb96644f6d0e4b4",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s07-15--landscape-characters-original.css",
+      "startAnchor": "Characters drawer: the existing",
+      "endAnchor": "Issue #332:",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G073",
       "segment": "G073",
       "sectionIds": ["S08-02"],
@@ -460,6 +523,27 @@
       "targetPath": "src/renderer/styles/features/assets/s09-08--landscape-asset-visual.css",
       "startAnchor": "Issue #363:",
       "endAnchor": "EOF",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G090",
+      "segment": "G090",
+      "sectionIds": ["S10-02"],
+      "sourceSlice": "S10",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 105,
+      "predecessor": "S10-01/G089",
+      "successor": "S10-03/G091",
+      "sourceRange": { "startLine": 19784, "endLine": 21030 },
+      "sourceLocalRange": { "startLine": 1, "endLine": 1247 },
+      "sourceStartByte": 0,
+      "sourceEndByteExclusive": 38342,
+      "sourceSha256": "5274f89c5c4a11da4567623afb7e7fadd29a840802eab548192a5a19d51196c9",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s10-02--landscape-character-workbench.css",
+      "startAnchor": ".editor-layout[data-shell-mode='landscape'] .resource-activity-dock-landscape[data-active-activity='characters'] .character-manager[data-character-presentation='landscape']",
+      "endAnchor": "Issue #366:",
       "placement": "source-order",
       "status": "relocated"
     },
@@ -717,7 +801,28 @@
       "targetPath": "src/renderer/styles/features/characters/identity/s15-01--identity-base-495.css",
       "startAnchor": "BOF",
       "endAnchor": ".character-list-items button",
-      "insertBefore": "src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css",
+      "insertBefore": "src/renderer/styles/features/characters/workspace/s15-02--character-list-and-summary-495.css",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G127",
+      "segment": "G127",
+      "sectionIds": ["S15-02"],
+      "sourceSlice": "S15",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 152,
+      "predecessor": "S15-01/G126",
+      "successor": "S15-03/G128",
+      "sourceRange": { "startLine": 30094, "endLine": 30206 },
+      "sourceLocalRange": { "startLine": 300, "endLine": 412 },
+      "sourceStartByte": 6499,
+      "sourceEndByteExclusive": 8779,
+      "sourceSha256": "4ec3ca21dcfbc6891f1f60e0542f0a8e35fddb9fff48cad4cbb9a95e73fec6eb",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s15-02--character-list-and-summary-495.css",
+      "startAnchor": ".character-list-items button",
+      "endAnchor": ".dialogue-authoring-speaker-field .character-identity-picker, .dialogue-inspector-speaker-section .character-identity-picker, .dialogue-properties-speaker-section .character-identity-picker",
       "placement": "source-order",
       "status": "relocated"
     },
@@ -761,7 +866,28 @@
       "targetPath": "src/renderer/styles/features/characters/identity/s15-04--identity-width700.css",
       "startAnchor": "@media (max-width: 700px)",
       "endAnchor": "@media (min-width: 701px)",
-      "insertBefore": "src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-05.css",
+      "insertBefore": "src/renderer/styles/features/characters/workspace/s15-05--character-list-width701.css",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G130",
+      "segment": "G130",
+      "sectionIds": ["S15-05"],
+      "sourceSlice": "S15",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 155,
+      "predecessor": "S15-04/G129",
+      "successor": "S15-06/G131",
+      "sourceRange": { "startLine": 30332, "endLine": 30349 },
+      "sourceLocalRange": { "startLine": 538, "endLine": 555 },
+      "sourceStartByte": 11806,
+      "sourceEndByteExclusive": 12368,
+      "sourceSha256": "b073c39ed01fef2b64204678036008f763abce9fb17de69c48e49b50496b4dde",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s15-05--character-list-width701.css",
+      "startAnchor": "@media (min-width: 701px)",
+      "endAnchor": "Issue #496:",
       "placement": "source-order",
       "status": "relocated"
     },
@@ -959,6 +1085,27 @@
       "status": "relocated"
     },
     {
+      "id": "G140",
+      "segment": "G140",
+      "sectionIds": ["S15-19", "S15-20"],
+      "sourceSlice": "S15",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 169,
+      "predecessor": "S15-18/G139",
+      "successor": "S15-21/G141",
+      "sourceRange": { "startLine": 31146, "endLine": 31592 },
+      "sourceLocalRange": { "startLine": 1352, "endLine": 1798 },
+      "sourceStartByte": 33319,
+      "sourceEndByteExclusive": 48225,
+      "sourceSha256": "b4e38e23661d1cd61b5ce560a078e85ea559547b0bfed21d72658001a5377d2c",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s15-19--character-detail-polish-524.css",
+      "startAnchor": "Issue #524:",
+      "endAnchor": "Issue #525:",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G141",
       "segment": "G141",
       "sectionIds": ["S15-21"],
@@ -976,6 +1123,48 @@
       "targetPath": "src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css",
       "startAnchor": "@container (max-width: 300px)",
       "endAnchor": "Issue #523:",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G142",
+      "segment": "G142",
+      "sectionIds": ["S15-22"],
+      "sourceSlice": "S15",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 172,
+      "predecessor": "S15-21/G141",
+      "successor": "EOF",
+      "sourceRange": { "startLine": 31623, "endLine": 31795 },
+      "sourceLocalRange": { "startLine": 1829, "endLine": 2001 },
+      "sourceStartByte": 48908,
+      "sourceEndByteExclusive": 54582,
+      "sourceSha256": "68b025472f4d4977e9a0d05d96e7b93fff1c65052e24c41f8325d74bab68bf47",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s15-22--character-workspace-consolidated-523.css",
+      "startAnchor": "Issue #523:",
+      "endAnchor": "EOF",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G144",
+      "segment": "G144",
+      "sectionIds": ["S16-03"],
+      "sourceSlice": "S16",
+      "owner": "characters-workspace",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 175,
+      "predecessor": "S16-02/G143",
+      "successor": "S16-04/G145",
+      "sourceRange": { "startLine": 32292, "endLine": 32303 },
+      "sourceLocalRange": { "startLine": 497, "endLine": 508 },
+      "sourceStartByte": 15552,
+      "sourceEndByteExclusive": 16060,
+      "sourceSha256": "d927995d4b5aec3dc9affe12f364466d7343d43383543e8717158317a9c68724",
+      "targetPath": "src/renderer/styles/features/characters/workspace/s16-03--character-rename-final-width360.css",
+      "startAnchor": "Issue #525 final responsive override:",
+      "endAnchor": "Issue #526:",
       "placement": "source-order",
       "status": "relocated"
     },
@@ -1015,12 +1204,6 @@
       "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-base-after-asset-import.css"
     },
     {
-      "id": "S05-R01",
-      "sourceSlice": "S05",
-      "sourceRange": { "startLine": 8630, "endLine": 8949 },
-      "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence.css"
-    },
-    {
       "id": "S05-R02",
       "sourceSlice": "S05",
       "sourceRange": { "startLine": 9303, "endLine": 9331 },
@@ -1029,8 +1212,14 @@
     {
       "id": "S05-R03",
       "sourceSlice": "S05",
-      "sourceRange": { "startLine": 9349, "endLine": 9839 },
+      "sourceRange": { "startLine": 9349, "endLine": 9349 },
       "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-shot-create.css"
+    },
+    {
+      "id": "S05-R04",
+      "sourceSlice": "S05",
+      "sourceRange": { "startLine": 9431, "endLine": 9839 },
+      "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-character-resource-host.css"
     },
     {
       "id": "S06-R01",
@@ -1089,8 +1278,14 @@
     {
       "id": "S07-R04",
       "sourceSlice": "S07",
-      "sourceRange": { "startLine": 13578, "endLine": 13801 },
+      "sourceRange": { "startLine": 13578, "endLine": 13578 },
       "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-assets.css"
+    },
+    {
+      "id": "S07-R05",
+      "sourceSlice": "S07",
+      "sourceRange": { "startLine": 13632, "endLine": 13801 },
+      "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-characters.css"
     },
     {
       "id": "S08-R01",
@@ -1151,6 +1346,12 @@
       "sourceSlice": "S12",
       "sourceRange": { "startLine": 25735, "endLine": 25876 },
       "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray-after-dialogue-properties.css"
+    },
+    {
+      "id": "S10-R01",
+      "sourceSlice": "S10",
+      "sourceRange": { "startLine": 21031, "endLine": 21802 },
+      "targetPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-after-character-workbench.css"
     }
   ],
   "coverage": {
@@ -1382,10 +1583,11 @@
           "targetPath": "src/renderer/styles/features/characters/identity/s15-01--identity-base-495.css"
         },
         {
-          "id": "S15-R01",
-          "kind": "remainder",
+          "id": "G127",
+          "kind": "semantic",
+          "relocationId": "G127",
           "sourceRange": { "startLine": 300, "endLine": 412 },
-          "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css"
+          "targetPath": "src/renderer/styles/features/characters/workspace/s15-02--character-list-and-summary-495.css"
         },
         {
           "id": "S15-03",
@@ -1402,10 +1604,11 @@
           "targetPath": "src/renderer/styles/features/characters/identity/s15-04--identity-width700.css"
         },
         {
-          "id": "S15-R02",
-          "kind": "remainder",
+          "id": "G130",
+          "kind": "semantic",
+          "relocationId": "G130",
           "sourceRange": { "startLine": 538, "endLine": 555 },
-          "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-05.css"
+          "targetPath": "src/renderer/styles/features/characters/workspace/s15-05--character-list-width701.css"
         },
         {
           "id": "S15-06",
@@ -1471,10 +1674,11 @@
           "targetPath": "src/renderer/styles/features/subtitles/controls/s15-18--subtitle-style-base-521.css"
         },
         {
-          "id": "S15-R07",
-          "kind": "remainder",
+          "id": "G140",
+          "kind": "semantic",
+          "relocationId": "G140",
           "sourceRange": { "startLine": 1352, "endLine": 1798 },
-          "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-16-to-22.css"
+          "targetPath": "src/renderer/styles/features/characters/workspace/s15-19--character-detail-polish-524.css"
         },
         {
           "id": "G141",
@@ -1484,10 +1688,11 @@
           "targetPath": "src/renderer/styles/features/subtitles/controls/s15-21--subtitle-style-container300.css"
         },
         {
-          "id": "S15-R08",
-          "kind": "remainder",
+          "id": "G142",
+          "kind": "semantic",
+          "relocationId": "G142",
           "sourceRange": { "startLine": 1829, "endLine": 2001 },
-          "targetPath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-after-subtitle-style.css"
+          "targetPath": "src/renderer/styles/features/characters/workspace/s15-22--character-workspace-consolidated-523.css"
         }
       ]
     },
@@ -1503,8 +1708,21 @@
         {
           "id": "S16-R01",
           "kind": "remainder",
-          "sourceRange": { "startLine": 1, "endLine": 961 },
+          "sourceRange": { "startLine": 1, "endLine": 496 },
           "targetPath": "src/renderer/styles/legacy-slices/16-character-settings-final-polish.css"
+        },
+        {
+          "id": "G144",
+          "kind": "semantic",
+          "relocationId": "G144",
+          "sourceRange": { "startLine": 497, "endLine": 508 },
+          "targetPath": "src/renderer/styles/features/characters/workspace/s16-03--character-rename-final-width360.css"
+        },
+        {
+          "id": "S16-R02",
+          "kind": "remainder",
+          "sourceRange": { "startLine": 509, "endLine": 961 },
+          "targetPath": "src/renderer/styles/legacy-slices/16-character-settings-after-rename.css"
         },
         {
           "id": "S16-07",
