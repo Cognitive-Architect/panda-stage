@@ -1,3 +1,34 @@
+# Issue #539 / PR #540 - P1-08 final receipt
+
+## Current P1-08 delivery
+
+- Execution lane: Issue #539, fresh Draft PR #540, branch `agent/issue-539-p1-08`.
+- Starting reviewed `main` HEAD: `f1c49620e49119ff22b711c1c9aaccf3dfd7946e` (the merged #531 result); resulting code HEAD: `232c68f167e80a383891c0631e4c535b2e493f09`.
+- S14: canonical `L27998-L29794` (1,797 lines) -> `src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker.css`; exact SHA-256 `b4aafd15d89b9da7f5361741aa95d9e9c2606cabfabe0c02b01b2531dfc4c6f9`.
+- S15: canonical `L29795-L31795` (2,001 lines) -> `src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css`; exact SHA-256 `6e0f56515a3e741d74d2121d339849177aa82fdf0cc0dd2b7232cdcebaa065db`.
+- S16: canonical `L31796-L32818` (1,023 lines) -> `src/renderer/styles/legacy-slices/16-character-settings-final-polish.css`; exact SHA-256 `e2aaf0a4a9bd0090f10c9830756e06ed6ffe846b9cba46dcf257f7c6ca93ba07`.
+- `src/renderer/styles.css` is now an imports-only index: tokens, primitives, then S01 through S16 exactly once; `main.tsx -> ./styles.css` remains unchanged and no functional CSS rule remains in the root entry.
+- The manifest records all S01-S16 as `extracted`; the final reconstruction SHA-256 is `2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7`, identical to the pinned baseline.
+- S14-S16 path-sensitive scan: no `url(...)`, `@import`, or `@font-face`; relocation risk is `none` for all three slices.
+- The existing ordered stylesheet reader is now used by every body-reading test affected by the final split. The P1-08 sweep migrated 17 additional unit readers, including the Issue #443 and #454 readers surfaced by Draft CI, while retaining their original assertions. The final verifier also handles the empty root remainder explicitly.
+
+## P1-08 automated validation
+
+- `node scripts/verify-css-split.cjs --preflight`: PASS; all 16 canonical complete-rule boundaries are safe.
+- `node scripts/verify-css-split.cjs --write-receipt`: PASS; the machine-readable receipt is `docs/evidence/issue-530-css-split/receipt.json`.
+- Core contracts: 4 files / 88 tests PASS.
+- Manifest-listed affected unit readers: 89 files PASS.
+- Affected integrations (`editor-shell-layout`, `right-inspector-narrow`): 2 files / 21 tests PASS.
+- `pnpm test:unit`: PASS; 274 files / 1778 tests.
+- `pnpm typecheck`: PASS. `pnpm lint`: PASS. `pnpm build:renderer`: PASS. `pnpm build:electron`: PASS.
+- No manual Full CI, `pnpm verify:project`, or broad historical verifier sweep was run. Draft CI is allowed to run through normal repository policy.
+
+## Windows HUMAN acceptance
+
+**PENDING.** A real Windows Electron build from the resulting code HEAD is running with clean user data at `D:\PandaStage-Acceptance\issue-539-p1-08-clean-20260916` (PID `11636`, responsive). Direct acceptance must cover reachable subtitle list/batch operations, image-picker empty/selected/expanded states, Character identity/settings, expression single-card editing, and then the compact cumulative S01-S16 smoke. Unreachable historical states must be recorded as `NOT MANUALLY COVERED`.
+
+PR #540 remains **Draft / Open / Unmerged** until code review and both direct and cumulative HUMAN acceptance are complete.
+
 # Issue #538 / PR #531 - P1-07 receipt
 
 ## Current P1-07 delivery

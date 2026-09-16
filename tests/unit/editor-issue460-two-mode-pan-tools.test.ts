@@ -6,6 +6,7 @@ import {
   stageToScreen,
 } from '../../src/domain';
 import { calculateViewportPanScrollPosition } from '../../src/renderer/features/canvas/CanvasViewport';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
@@ -16,7 +17,7 @@ describe('Issue #460 two-mode Canvas and Tools workspace', () => {
     const geometry = source('src/domain/geometry/viewportTransform.ts');
     const tools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
     const toolbar = source('src/renderer/features/canvas/CanvasToolbar.tsx');
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
 
     expect(geometry).toContain("CanvasViewportMode = 'fit' | 'actual'");
     expect(geometry).not.toContain("'half'");

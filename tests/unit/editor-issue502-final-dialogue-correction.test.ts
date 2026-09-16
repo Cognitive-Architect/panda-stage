@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
 import { CharacterIdentityPicker } from '../../src/renderer/features/characters/CharacterIdentity';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -12,7 +13,7 @@ function source(path: string): string {
 
 describe('Issue #502 final A07 New Dialogue correction', () => {
   const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
-  const styles = source('src/renderer/styles.css');
+  const styles = readOrderedStylesheetSource();
   const issue502Start = styles.lastIndexOf('/* Issue #502:');
   const nextIssueStart = styles.indexOf('/* Issue #', issue502Start + 1);
   const issue502Styles = styles.slice(

@@ -12,6 +12,7 @@ import {
 } from '../../src/renderer/shell/CompactProjectBar';
 import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
@@ -136,7 +137,7 @@ describe('Issue #454 Quick Action Drawer', () => {
   });
 
   it('makes only the dirty Save action visibly active without changing failure styling', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const saved = renderDrawer('saved');
     const dirty = renderDrawer('dirty');
 
@@ -165,7 +166,7 @@ describe('Issue #454 Quick Action Drawer', () => {
 
   it('keeps the drawer UI-only and gives the existing Timeline grip language back to the shell', () => {
     const drawer = source('src/renderer/shell/CompactProjectBar.tsx');
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const preview = source('src/renderer/shell/ProductPreviewOverlay.tsx');
 
     expect(drawer).not.toContain('editorProjectStore');

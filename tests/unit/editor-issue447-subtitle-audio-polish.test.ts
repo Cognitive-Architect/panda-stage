@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -100,7 +101,7 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
   });
 
   it('ships a practical hit target, restrained grip, focus response, and one scrolling batch owner', () => {
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const issue447 = styles.slice(styles.lastIndexOf('/* Issue #447:'));
 
     expect(issue447).toMatch(/\.timeline-audio-trim-handle\s*\{[\s\S]*?width:\s*24px;/u);

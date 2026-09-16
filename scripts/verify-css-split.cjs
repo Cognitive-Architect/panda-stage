@@ -407,6 +407,9 @@ function verifyPathInventory(baseline) {
   const p1_07 = manifest.slices
     .filter((slice) => slice.id === 'S11' || slice.id === 'S12' || slice.id === 'S13')
     .map(proveSliceResources);
+  const p1_08 = manifest.slices
+    .filter((slice) => slice.id === 'S14' || slice.id === 'S15' || slice.id === 'S16')
+    .map(proveSliceResources);
   const imports = entries.filter((entry) => entry.kind === 'import');
   if (imports.length !== 2 || imports.some((entry, index) => entry.line !== index + 1)) {
     fail('Baseline imports are not exactly the two fixed top-of-file imports');
@@ -419,13 +422,15 @@ function verifyPathInventory(baseline) {
     p1_05,
     p1_06,
     p1_07,
+    p1_08,
     relocationRisk:
       s01.length === 0 &&
       p1_03.every((slice) => slice.relocationRisk === 'none') &&
       p1_04.every((slice) => slice.relocationRisk === 'none') &&
       p1_05.every((slice) => slice.relocationRisk === 'none') &&
       p1_06.every((slice) => slice.relocationRisk === 'none') &&
-      p1_07.every((slice) => slice.relocationRisk === 'none')
+      p1_07.every((slice) => slice.relocationRisk === 'none') &&
+      p1_08.every((slice) => slice.relocationRisk === 'none')
       ? 'none'
       : 'unresolved',
   };
@@ -450,7 +455,9 @@ function verifyExtraction(baseline, scan) {
     }
   }
   const importCount = expectedImports.length;
-  const body = `${entryLines.slice(importCount).join('\n')}\n`;
+  const body = entryLines.length > importCount
+    ? `${entryLines.slice(importCount).join('\n')}\n`
+    : '';
   const pending = manifest.slices.filter((slice) => slice.status !== 'extracted');
   const expectedBody = pending
     .map((slice) => rangeText(baseline, slice.range.startLine, slice.range.endLine))

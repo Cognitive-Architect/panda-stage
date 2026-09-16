@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -11,12 +10,9 @@ import {
 } from '../../src/domain';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import type { ThumbnailState } from '../../src/renderer/features/assets/AssetCard';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const noop = () => undefined;
-
-function source(path: string): string {
-  return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
-}
 
 function fixture(withMouth = false): {
   character: Character;
@@ -90,7 +86,7 @@ describe('Issue #527 Character Settings balance polish', () => {
 
   it('uses a label-free two-half transform control area', () => {
     const settings = settingsMarkup();
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const polish = styles.slice(styles.indexOf('/* Issue #527:'));
 
     expect(settings).toContain('character-scale-control-group');
@@ -112,7 +108,7 @@ describe('Issue #527 Character Settings balance polish', () => {
     );
     const rowEnd = configuredSettings.indexOf('</div>', rowStart);
     const configuredRow = configuredSettings.slice(rowStart, rowEnd);
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const polish = styles.slice(styles.indexOf('/* Issue #527:'));
 
     expect(cleanSettings).not.toContain('character-mouth-clear');

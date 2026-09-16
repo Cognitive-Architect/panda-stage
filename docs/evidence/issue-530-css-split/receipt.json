@@ -672,6 +672,38 @@
         "relocationRisk": "none"
       }
     ],
+    "p1_08": [
+      {
+        "id": "S14",
+        "range": {
+          "startLine": 27998,
+          "endLine": 29794
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      },
+      {
+        "id": "S15",
+        "range": {
+          "startLine": 29795,
+          "endLine": 31795
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      },
+      {
+        "id": "S16",
+        "range": {
+          "startLine": 31796,
+          "endLine": 32818
+        },
+        "entries": [],
+        "relocationProof": [],
+        "relocationRisk": "none"
+      }
+    ],
     "relocationRisk": "none"
   },
   "directReaderSearch": {
@@ -692,7 +724,6 @@
       "tests/unit/editor-issue332-contextual-inspector.test.ts",
       "tests/unit/editor-issue338-portrait-properties.test.ts",
       "tests/unit/editor-issue339-portrait-timeline.test.ts",
-      "tests/unit/editor-issue340-portrait-chrome.test.ts",
       "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
       "tests/unit/editor-issue342-icon-pilot.test.ts",
       "tests/unit/editor-issue344-portrait-assets.test.ts",
@@ -723,14 +754,8 @@
       "tests/unit/editor-issue431-r2-polish-batch-2.test.ts",
       "tests/unit/editor-issue432-r3-timeline-and-subtitle-workspace.test.ts",
       "tests/unit/editor-issue433-r3-post-corrective.test.ts",
-      "tests/unit/editor-issue443-subtitle-correction-01.test.ts",
-      "tests/unit/editor-issue447-subtitle-audio-polish.test.ts",
-      "tests/unit/editor-issue448-duration-editor.test.ts",
-      "tests/unit/editor-issue454-quick-action.test.ts",
       "tests/unit/editor-issue456-quick-action.test.ts",
       "tests/unit/editor-issue457-canvas-first.test.ts",
-      "tests/unit/editor-issue460-two-mode-pan-tools.test.ts",
-      "tests/unit/editor-issue463-subtitle-timing.test.ts",
       "tests/unit/editor-issue467-wave1.test.ts",
       "tests/unit/editor-issue474-character-empty-state.test.ts",
       "tests/unit/editor-issue478-character-header-trim.test.ts",
@@ -740,21 +765,10 @@
       "tests/unit/editor-issue485-recovery-card.test.ts",
       "tests/unit/editor-issue486-recovery-overlay.test.ts",
       "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
-      "tests/unit/editor-issue496-dialogue-recovery.test.ts",
-      "tests/unit/editor-issue498-dialogue-distillation.test.ts",
-      "tests/unit/editor-issue499-501-dialogue-distillation.test.ts",
-      "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
-      "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
       "tests/unit/editor-issue506-shot-thumbnails.test.ts",
-      "tests/unit/editor-issue524-character-detail-polish.test.ts",
-      "tests/unit/editor-issue525-character-detail-header.test.ts",
-      "tests/unit/editor-issue526-character-settings-polish.test.ts",
-      "tests/unit/editor-issue527-character-settings-balance.test.ts",
-      "tests/unit/editor-issue528-expression-inline-edit.test.ts",
       "tests/unit/editor-shell-adaptive.test.ts",
       "tests/unit/left-workspace.test.ts",
       "tests/unit/product-preview-overlay.test.ts",
-      "tests/unit/subtitle-style-controls-layout.test.ts",
       "scripts/css-split-manifest.json",
       "scripts/verification-manifest.json",
       "scripts/verify-css-split.cjs",
@@ -772,7 +786,6 @@
       "tests/unit/editor-issue332-contextual-inspector.test.ts",
       "tests/unit/editor-issue338-portrait-properties.test.ts",
       "tests/unit/editor-issue339-portrait-timeline.test.ts",
-      "tests/unit/editor-issue340-portrait-chrome.test.ts",
       "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
       "tests/unit/editor-issue342-icon-pilot.test.ts",
       "tests/unit/editor-issue344-portrait-assets.test.ts",
@@ -803,14 +816,8 @@
       "tests/unit/editor-issue431-r2-polish-batch-2.test.ts",
       "tests/unit/editor-issue432-r3-timeline-and-subtitle-workspace.test.ts",
       "tests/unit/editor-issue433-r3-post-corrective.test.ts",
-      "tests/unit/editor-issue443-subtitle-correction-01.test.ts",
-      "tests/unit/editor-issue447-subtitle-audio-polish.test.ts",
-      "tests/unit/editor-issue448-duration-editor.test.ts",
-      "tests/unit/editor-issue454-quick-action.test.ts",
       "tests/unit/editor-issue456-quick-action.test.ts",
       "tests/unit/editor-issue457-canvas-first.test.ts",
-      "tests/unit/editor-issue460-two-mode-pan-tools.test.ts",
-      "tests/unit/editor-issue463-subtitle-timing.test.ts",
       "tests/unit/editor-issue467-wave1.test.ts",
       "tests/unit/editor-issue474-character-empty-state.test.ts",
       "tests/unit/editor-issue478-character-header-trim.test.ts",
@@ -820,21 +827,10 @@
       "tests/unit/editor-issue485-recovery-card.test.ts",
       "tests/unit/editor-issue486-recovery-overlay.test.ts",
       "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
-      "tests/unit/editor-issue496-dialogue-recovery.test.ts",
-      "tests/unit/editor-issue498-dialogue-distillation.test.ts",
-      "tests/unit/editor-issue499-501-dialogue-distillation.test.ts",
-      "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
-      "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
       "tests/unit/editor-issue506-shot-thumbnails.test.ts",
-      "tests/unit/editor-issue524-character-detail-polish.test.ts",
-      "tests/unit/editor-issue525-character-detail-header.test.ts",
-      "tests/unit/editor-issue526-character-settings-polish.test.ts",
-      "tests/unit/editor-issue527-character-settings-balance.test.ts",
-      "tests/unit/editor-issue528-expression-inline-edit.test.ts",
       "tests/unit/editor-shell-adaptive.test.ts",
       "tests/unit/left-workspace.test.ts",
       "tests/unit/product-preview-overlay.test.ts",
-      "tests/unit/subtitle-style-controls-layout.test.ts",
       "scripts/verify-css-split.cjs"
     ],
     "materiallyAffected": [
@@ -846,7 +842,20 @@
       "tests/contract/ui-m1-touch-foundation.test.ts",
       "tests/integration/editor-shell-layout.test.ts",
       "tests/integration/right-inspector-narrow.test.ts",
+      "tests/unit/editor-issue340-portrait-chrome.test.ts",
+      "tests/unit/editor-issue443-subtitle-correction-01.test.ts",
+      "tests/unit/editor-issue447-subtitle-audio-polish.test.ts",
+      "tests/unit/editor-issue448-duration-editor.test.ts",
+      "tests/unit/editor-issue454-quick-action.test.ts",
+      "tests/unit/editor-issue460-two-mode-pan-tools.test.ts",
+      "tests/unit/editor-issue463-subtitle-timing.test.ts",
       "tests/unit/dialogue-inspector-issue468.test.ts",
+      "tests/unit/editor-issue496-dialogue-recovery.test.ts",
+      "tests/unit/editor-issue498-dialogue-distillation.test.ts",
+      "tests/unit/editor-issue499-501-dialogue-distillation.test.ts",
+      "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
+      "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
+      "tests/unit/subtitle-style-controls-layout.test.ts",
       "tests/unit/character-issue511-reminder.test.ts",
       "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
       "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
@@ -909,6 +918,11 @@
       "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
       "tests/unit/editor-issue441-subtitle-properties-polish.test.ts",
       "tests/unit/editor-issue469-subtitle-properties.test.ts",
+      "tests/unit/editor-issue524-character-detail-polish.test.ts",
+      "tests/unit/editor-issue525-character-detail-header.test.ts",
+      "tests/unit/editor-issue526-character-settings-polish.test.ts",
+      "tests/unit/editor-issue527-character-settings-balance.test.ts",
+      "tests/unit/editor-issue528-expression-inline-edit.test.ts",
       "tests/unit/editor-issue353-timeline-state-c.test.ts",
       "tests/unit/editor-issue358-properties-dialogue-inspector.test.ts",
       "tests/unit/editor-issue359-portrait-timeline-polish.test.ts",
@@ -1064,18 +1078,47 @@
         "expectedSha256": "432f678c879401be9e7b08eb4205d5e29197b071d1aa758ff02e925379cee39b",
         "actualSha256": "432f678c879401be9e7b08eb4205d5e29197b071d1aa758ff02e925379cee39b",
         "exact": true
+      },
+      {
+        "id": "S14",
+        "path": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker.css",
+        "range": {
+          "startLine": 27998,
+          "endLine": 29794
+        },
+        "expectedSha256": "b4aafd15d89b9da7f5361741aa95d9e9c2606cabfabe0c02b01b2531dfc4c6f9",
+        "actualSha256": "b4aafd15d89b9da7f5361741aa95d9e9c2606cabfabe0c02b01b2531dfc4c6f9",
+        "exact": true
+      },
+      {
+        "id": "S15",
+        "path": "src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css",
+        "range": {
+          "startLine": 29795,
+          "endLine": 31795
+        },
+        "expectedSha256": "6e0f56515a3e741d74d2121d339849177aa82fdf0cc0dd2b7232cdcebaa065db",
+        "actualSha256": "6e0f56515a3e741d74d2121d339849177aa82fdf0cc0dd2b7232cdcebaa065db",
+        "exact": true
+      },
+      {
+        "id": "S16",
+        "path": "src/renderer/styles/legacy-slices/16-character-settings-final-polish.css",
+        "range": {
+          "startLine": 31796,
+          "endLine": 32818
+        },
+        "expectedSha256": "e2aaf0a4a9bd0090f10c9830756e06ed6ffe846b9cba46dcf257f7c6ca93ba07",
+        "actualSha256": "e2aaf0a4a9bd0090f10c9830756e06ed6ffe846b9cba46dcf257f7c6ca93ba07",
+        "exact": true
       }
     ],
-    "pending": [
-      "S14",
-      "S15",
-      "S16"
-    ],
+    "pending": [],
     "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
     "exact": true,
-    "rootEntryBytes": 132216,
-    "rootEntryLines": 4836,
+    "rootEntryBytes": 1178,
+    "rootEntryLines": 18,
     "stylesheetScanErrors": []
   },
   "warnings": [],

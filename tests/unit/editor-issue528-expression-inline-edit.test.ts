@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -10,7 +11,7 @@ describe('Issue #528 single-card inline Expression editor', () => {
     const editor = source(
       'src/renderer/features/characters/ExpressionEditor.tsx',
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const polishStart = styles.indexOf('/* Issue #528:');
     const polish = styles.slice(polishStart);
 
@@ -35,7 +36,7 @@ describe('Issue #528 single-card inline Expression editor', () => {
     const picker = source(
       'src/renderer/features/characters/ImageAssetPicker.tsx',
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const polish = styles.slice(styles.indexOf('/* Issue #528:'));
 
     expect(editor).toContain('label="图片"');

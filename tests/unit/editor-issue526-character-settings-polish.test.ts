@@ -11,6 +11,7 @@ import {
 } from '../../src/domain';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import type { ThumbnailState } from '../../src/renderer/features/assets/AssetCard';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const noop = () => undefined;
 
@@ -106,7 +107,7 @@ describe('Issue #526 Character Settings visual polish', () => {
     const editor = source(
       'src/renderer/features/characters/CharacterEditor.tsx',
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const polishStart = styles.indexOf('/* Issue #526:');
     const polish = styles.slice(polishStart);
 

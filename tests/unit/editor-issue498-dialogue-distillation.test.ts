@@ -14,6 +14,7 @@ import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 import { ShotStore } from '../../src/renderer/stores/shotStore';
 import { buildProject, IDS } from './domain/testProject';
+import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB';
 
@@ -27,7 +28,7 @@ describe('Issue #498 New Dialogue redundant chrome distillation', () => {
     const batch = source(
       'src/renderer/features/dialogue/DialogueBatchPaste.tsx',
     );
-    const styles = source('src/renderer/styles.css');
+    const styles = readOrderedStylesheetSource();
     const headerStart = sheet.indexOf(
       'data-testid="dialogue-authoring-drawer-header"',
     );
