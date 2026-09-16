@@ -303,6 +303,8 @@
           "docs/evidence/issue-547-p2-07/**",
           "docs/evidence/issue-547-p2-08/**",
           "docs/evidence/issue-547-p2-09/**",
+          "docs/evidence/issue-548-p2-10/**",
+          "docs/evidence/issue-548-p2-11/**",
           "public/subtitle-empty-state.png"
         ],
         "testPatterns": [
@@ -324,6 +326,8 @@
           "tests/contract/issue545-p2-b01.test.ts",
           "tests/contract/issue547-p2-b03.test.ts",
           "tests/contract/issue547-p2-b04.test.ts",
+          "tests/contract/issue548-p2-b05.test.ts",
+          "tests/contract/issue548-p2-b02.test.ts",
           "tests/helpers/read-stylesheet-source.ts",
           "tests/unit/issue102-task4-responsive.test.ts",
           "tests/unit/issue109-resource-workspace.test.ts"

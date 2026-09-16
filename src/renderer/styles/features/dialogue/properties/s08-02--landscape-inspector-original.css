@@ -1,0 +1,175 @@
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-summary {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy
+  strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-context-copy
+  span {
+  flex: 0 0 auto;
+  color: var(--ui-color-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-section {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-section
+  h3 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 16px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  textarea {
+  min-height: 96px;
+  padding: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields
+  input,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  select,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  button {
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-timing-fields
+  input {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-field
+  span
+  time {
+  color: var(--ui-color-accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape
+  .dialogue-inspector-audio-section
+  p {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-audio-note {
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-actions {
+  display: grid;
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-actions
+  button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-empty {
+  padding: 14px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface);
+  line-height: 1.5;
+}
+

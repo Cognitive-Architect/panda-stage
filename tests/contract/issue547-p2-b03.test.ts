@@ -310,9 +310,11 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
       expect.objectContaining({ id: 'S07-R03', sourceRange: { startLine: 12349, endLine: 12853 } }),
       expect.objectContaining({ id: 'S07-R02', sourceRange: { startLine: 12953, endLine: 13226 } }),
       expect.objectContaining({ id: 'S07-R04', sourceRange: { startLine: 13578, endLine: 13801 } }),
-      expect.objectContaining({ id: 'S08-R01', sourceRange: { startLine: 13802, endLine: 15158 } }),
+      expect.objectContaining({ id: 'S08-R01', sourceRange: { startLine: 13802, endLine: 13982 } }),
+      expect.objectContaining({ id: 'S08-R04', sourceRange: { startLine: 14158, endLine: 15158 } }),
       expect.objectContaining({ id: 'S08-R03', sourceRange: { startLine: 15589, endLine: 16456 } }),
-      expect.objectContaining({ id: 'S09-R01', sourceRange: { startLine: 17820, endLine: 18827 } }),
+      expect.objectContaining({ id: 'S09-R01', sourceRange: { startLine: 17820, endLine: 18217 } }),
+      expect.objectContaining({ id: 'S09-R02', sourceRange: { startLine: 18687, endLine: 18827 } }),
     ]));
 
     const s15 = manifest.slices.find(({ id }) => id === 'S15');
