@@ -78,6 +78,33 @@
         "implementationHead": "Validated B04 production snapshot; receipt commit is intentionally not self-referenced.",
         "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
       }
+    },
+    "P2-B03": {
+      "issue": 547,
+      "workItems": ["P2-06", "P2-07"],
+      "preflightBaseHead": "46da2b3debb4d77911c59aee8d3d149cd1439931",
+      "integrationParentHead": "46da2b3debb4d77911c59aee8d3d149cd1439931",
+      "implementationHead": "4f149361921bdd8a2222b2913866bc984e6c07e6",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedImplementationSnapshot": {
+        "head": "4f149361921bdd8a2222b2913866bc984e6c07e6",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "localTargetedValidation": "PASS"
+      },
+      "s15Handoff": {
+        "b04End": "S15-16/G137",
+        "b03Start": "S15-17/G138",
+        "conflictOrReorder": false
+      },
+      "humanAcceptance": {
+        "status": "PENDING_HUMAN_ACCEPTANCE",
+        "scope": "P2-06 assets and P2-07 shots; see the two distinct Issue #547 receipts."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "B03 was re-resolved against the B04-updated local rolling tree before production writes.",
+        "implementationHead": "Validated B03 production snapshot; receipt commit is intentionally not self-referenced.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
+      }
     }
   }
 }
