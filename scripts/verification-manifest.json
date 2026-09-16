@@ -294,7 +294,8 @@
           "src/renderer/styles.css",
           "src/renderer/styles/**",
           "src/renderer/ui/**",
-          "docs/evidence/issue-530-css-split/receipt.json",
+           "docs/evidence/issue-530-css-split/receipt.json",
+           "docs/evidence/issue-541-p2-01/**",
           "public/subtitle-empty-state.png"
         ],
         "testPatterns": [
