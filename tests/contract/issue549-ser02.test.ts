@@ -293,7 +293,7 @@ describe('Issue #549 SER-02 final stylesheet contract', () => {
       expect(receipt.preflight).toBe(`docs/evidence/issue-549-${workItem}/preflight.json`);
     }
 
-    expect(manifest.semanticRelocations.some(({ id }) => id === 'G049')).toBe(false);
-    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(false);
+    expect(manifest.semanticRelocations.some(({ id }) => id === 'G049')).toBe(true);
+    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(true);
   });
 });

@@ -156,7 +156,7 @@ describe('Issue #552 B12 P2-18 editor shell layout contract', () => {
 
   it('preserves shell geometry owners after the serial utility batches', () => {
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
-    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(false);
+    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(true);
     expect(manifest.slices.find(({ id }) => id === 'S14')?.sourceParts).toEqual(expect.arrayContaining([
       { id: 'G122', kind: 'semantic', relocationId: 'G122', sourceRange: { startLine: 1227, endLine: 1286 }, targetPath: 'src/renderer/styles/shell/layout/s14-11--top-overlay-456-486.css' },
     ]));

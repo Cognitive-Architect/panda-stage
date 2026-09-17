@@ -209,10 +209,11 @@ describe('Issue #550 SER-03 / P2-15 Timeline Geometry stylesheet contract', () =
   });
 
   it('preserves the G112 compatibility boundary and the live geometry owners', () => {
-    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(false);
-    expect(manifest.remainderParts.find(({ id }) => id === 'S13-R02')).toEqual(expect.objectContaining({
+    expect(manifest.semanticRelocations.find(({ id }) => id === 'G112')).toMatchObject({
       sourceRange: { startLine: 27860, endLine: 27997 },
-    }));
+      migrationMode: 'ORDERED_COMPAT',
+    });
+    expect(manifest.remainderParts.find(({ id }) => id === 'S13-R02')).toBeUndefined();
 
     const timelineStore = readFileSync(resolve(root, 'src/renderer/features/timeline/timelineUiStore.ts'), 'utf8');
     const bottomWorkspace = readFileSync(resolve(root, 'src/renderer/shell/BottomWorkspace.tsx'), 'utf8');

@@ -254,7 +254,9 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     const trackFoundationIndex = imports.indexOf(
       './styles/features/timeline/s11-09--landscape-track-foundation.css',
     );
-    const legacyIndex = imports.indexOf('./styles/legacy-slices/11-tools-inspector-timeline-start.css');
+    const legacyIndex = imports.indexOf(
+      './styles/compat/retained-task-surfaces/s11-10--landscape-tray-host-original.css',
+    );
     expect(semanticIndex).toBeGreaterThan(-1);
     expect(actionPresetHostIndex).toBe(semanticIndex + 1);
     expect(rightWorkspaceHostIndex).toBe(actionPresetHostIndex + 1);
@@ -276,7 +278,10 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
     const legacy = normalize(
       readFileSync(
-        resolve(root, 'src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css'),
+        resolve(
+          root,
+          'src/renderer/styles/compat/retained-task-surfaces/s11-10--landscape-tray-host-original.css',
+        ),
         'utf8',
       ),
     );

@@ -219,14 +219,14 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     expect(sha256(bottom)).toBe('d890a631c9344b7b33468ba784badd47a761434e9606971f1e831587976d41eb');
     expect(sha256(editorShell)).toBe('888e03e7f96965ae48a44f3593a3864e8fea9fa3eb7592f20bac4ff0ff88a4f0');
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
-    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(false);
+    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(true);
   });
 
   it('records the split remainders without reviving old entry points', () => {
-    expect(manifest.remainderParts.find(({ id }) => id === 'S07-R06')).toMatchObject({
+    expect(manifest.semanticRelocations.find(({ id }) => id === 'G064')).toMatchObject({
       sourceRange: { startLine: 12695, endLine: 12844 },
     });
-    expect(manifest.remainderParts.find(({ id }) => id === 'S08-R05')).toMatchObject({
+    expect(manifest.semanticRelocations.find(({ id }) => id === 'G076')).toMatchObject({
       sourceRange: { startLine: 14620, endLine: 15063 },
     });
     for (const removed of ['S01-R02', 'S01-R04', 'S01-R05', 'S01-R03', 'S06-R01', 'S10-R01', 'S10-R03', 'S10-R02', 'S11-R01']) {

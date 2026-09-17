@@ -213,10 +213,11 @@ describe('Issue #551 P2-16 left Resource Host contract', () => {
 
   it('preserves the Resource rail geometry owners and the G112 boundary', () => {
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
-    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(false);
-    expect(manifest.remainderParts.find(({ id }) => id === 'S13-R02')).toMatchObject({
+    expect(manifest.semanticRelocations.find(({ id }) => id === 'G112')).toMatchObject({
       sourceRange: { startLine: 27860, endLine: 27997 },
+      migrationMode: 'ORDERED_COMPAT',
     });
+    expect(manifest.remainderParts.find(({ id }) => id === 'S13-R02')).toBeUndefined();
 
     const rail = readFileSync(
       resolve(root, 'src/renderer/styles/shell/resources/s07-12--landscape-resource-rail.css'),

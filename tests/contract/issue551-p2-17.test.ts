@@ -246,10 +246,11 @@ describe('Issue #551 P2-17 right Workspace/Inspector Host contract', () => {
 
   it('preserves the Inspector rail geometry owners and the Timeline boundary', () => {
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
-    expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(false);
-    expect(manifest.remainderParts.find(({ id }) => id === 'S13-R02')).toMatchObject({
+    expect(manifest.semanticRelocations.find(({ id }) => id === 'G112')).toMatchObject({
       sourceRange: { startLine: 27860, endLine: 27997 },
+      migrationMode: 'ORDERED_COMPAT',
     });
+    expect(manifest.remainderParts.find(({ id }) => id === 'S13-R02')).toBeUndefined();
 
     const rightWorkspace = readFileSync(
       resolve(root, 'src/renderer/styles/shell/right-workspace/s02-03--right-workspace.css'),

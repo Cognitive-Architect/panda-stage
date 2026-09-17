@@ -266,29 +266,39 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style relocation', 
   });
 
   it('keeps each P2-10 seam and the S14 dialogue cascade contiguous', () => {
-    expect(manifest.remainderParts).toEqual(expect.arrayContaining([
+    expect(manifest.semanticRelocations).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: 'S08-R05',
+        id: 'G076',
         sourceRange: { startLine: 14620, endLine: 15063 },
       }),
       expect.objectContaining({
-        id: 'S09-R01',
-        sourceRange: { startLine: 17820, endLine: 18217 },
+        id: 'G082',
+        sourceRange: { startLine: 17497, endLine: 18217 },
+        sourceSegments: expect.arrayContaining([
+          expect.objectContaining({
+            sourceRange: { startLine: 17820, endLine: 18217 },
+          }),
+        ]),
       }),
       expect.objectContaining({
-        id: 'S09-R02',
+        id: 'G085',
         sourceRange: { startLine: 18755, endLine: 18827 },
       }),
       expect.objectContaining({
-        id: 'S12-R01',
-        sourceRange: { startLine: 23800, endLine: 24447 },
+        id: 'G103',
+        sourceRange: { startLine: 23763, endLine: 24447 },
+        sourceSegments: expect.arrayContaining([
+          expect.objectContaining({
+            sourceRange: { startLine: 23800, endLine: 24447 },
+          }),
+        ]),
       }),
       expect.objectContaining({
-        id: 'S12-R03',
+        id: 'G105',
         sourceRange: { startLine: 24599, endLine: 24877 },
       }),
       expect.objectContaining({
-        id: 'S12-R02',
+        id: 'G107',
         sourceRange: { startLine: 25735, endLine: 25857 },
       }),
     ]));

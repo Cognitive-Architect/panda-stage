@@ -303,12 +303,19 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'S05-R02', sourceRange: { startLine: 9303, endLine: 9303 } }),
       expect.objectContaining({ id: 'S05-R03', sourceRange: { startLine: 9349, endLine: 9349 } }),
-      expect.objectContaining({ id: 'S07-R06', sourceRange: { startLine: 12695, endLine: 12844 } }),
       expect.objectContaining({ id: 'S07-R04', sourceRange: { startLine: 13578, endLine: 13578 } }),
-      expect.objectContaining({ id: 'S08-R05', sourceRange: { startLine: 14620, endLine: 15063 } }),
-      expect.objectContaining({ id: 'S08-R03', sourceRange: { startLine: 15733, endLine: 16456 } }),
-      expect.objectContaining({ id: 'S09-R01', sourceRange: { startLine: 17820, endLine: 18217 } }),
-      expect.objectContaining({ id: 'S09-R02', sourceRange: { startLine: 18755, endLine: 18827 } }),
+    ]));
+
+    expect(manifest.semanticRelocations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'G064', sourceRange: { startLine: 12695, endLine: 12844 } }),
+      expect.objectContaining({ id: 'G076', sourceRange: { startLine: 14620, endLine: 15063 } }),
+      expect.objectContaining({ id: 'G080', sourceRange: { startLine: 15733, endLine: 16456 } }),
+      expect.objectContaining({ id: 'G082', sourceRange: { startLine: 17497, endLine: 18217 } }),
+      expect.objectContaining({ id: 'G085', sourceRange: { startLine: 18755, endLine: 18827 } }),
+      expect.objectContaining({ id: 'G103', sourceRange: { startLine: 23763, endLine: 24447 } }),
+      expect.objectContaining({ id: 'G105', sourceRange: { startLine: 24599, endLine: 24877 } }),
+      expect.objectContaining({ id: 'G107', sourceRange: { startLine: 25735, endLine: 25857 } }),
+      expect.objectContaining({ id: 'G109', sourceRange: { startLine: 25877, endLine: 27503 } }),
     ]));
 
     expect(manifest.semanticRelocations).toEqual(expect.arrayContaining([

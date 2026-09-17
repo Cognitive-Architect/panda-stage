@@ -58,7 +58,7 @@ const mapText = readFileSync(
   'utf8',
 );
 
-const expectedP227 = [
+const expectedP227: Relocation[] = [
   {
     "id": "G049",
     "segment": "G049",
@@ -491,17 +491,17 @@ function canonicalRows() {
   );
   return {
     sections: [...mapText.matchAll(sectionPattern)].map((match) => ({
-      order: Number(match[1]),
-      id: match[2],
-      owner: match[3],
-      mode: match[4],
+      order: Number(match[1]!),
+      id: match[2]!,
+      owner: match[3]!,
+      mode: match[4]!,
     })),
     segments: [...mapText.matchAll(segmentPattern)].map((match) => ({
-      id: match[1],
-      owner: match[2],
-      issue: match[3],
-      sectionText: match[4],
-      targetPath: match[5],
+      id: match[1]!,
+      owner: match[2]!,
+      issue: match[3]!,
+      sectionText: match[4]!,
+      targetPath: match[5]!,
     })),
   };
 }
