@@ -1,0 +1,39 @@
+.transport-bar {
+  justify-content: space-between;
+  gap: 18px;
+  padding-top: 18px;
+}
+
+.transport-controls {
+  gap: 8px;
+}
+
+.probe-metrics {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 16px;
+  color: #8fa096;
+  font-size: 12px;
+}
+
+.probe-metrics strong {
+  color: #dce8df;
+  font-variant-numeric: tabular-nums;
+}
+
+.hidden-stage-shell {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+}
+
+.hidden-stage-shell .stage-viewport {
+  border: 0;
+  border-radius: 0;
+}
+
+/*
+ * 1024px is the narrow cloud-PC target. Keep the editor's three owned regions
+ * visible, but release the fixed desktop widths and let action groups wrap.
+ */

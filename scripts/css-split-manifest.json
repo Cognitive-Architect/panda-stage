@@ -53,6 +53,27 @@
       "status": "relocated"
     },
     {
+      "id": "G014",
+      "segment": "G014",
+      "sectionIds": ["S01-14", "S01-15"],
+      "sourceSlice": "S01",
+      "owner": "debug-preview",
+      "migrationMode": "DIRECT+COMPAT",
+      "canonicalOrder": 14,
+      "predecessor": "S01-13/G013",
+      "successor": "S01-16/G015",
+      "sourceRange": { "startLine": 1392, "endLine": 1560 },
+      "sourceLocalRange": { "startLine": 1390, "endLine": 1558 },
+      "sourceStartByte": 27234,
+      "sourceEndByteExclusive": 29760,
+      "sourceSha256": "055c316d2df707d8a3d42f70c4e0bab34f511e7937a07646e148485d38a05466",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s01-14--gate-probe-and-transport.css",
+      "startAnchor": ".gate-preview-overlay, .debug-probe-surface",
+      "endAnchor": ".recovery-panel",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G015",
       "segment": "G015",
       "sectionIds": ["S01-16"],
@@ -550,6 +571,48 @@
       "status": "relocated"
     },
     {
+      "id": "G041",
+      "segment": "G041",
+      "sectionIds": ["S05-11"],
+      "sourceSlice": "S05",
+      "owner": "debug-preview",
+      "migrationMode": "DIRECT+COMPAT",
+      "canonicalOrder": 46,
+      "predecessor": "S05-10/G040",
+      "successor": "S05-12/G042",
+      "sourceRange": { "startLine": 9757, "endLine": 9771 },
+      "sourceLocalRange": { "startLine": 1719, "endLine": 1733 },
+      "sourceStartByte": 30937,
+      "sourceEndByteExclusive": 31258,
+      "sourceSha256": "e3adfdec3ea92fb3934f882d3f6add199dcd638a9ad9f9bf6d499b48fb8be5aa",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s05-11--preview-panel.css",
+      "startAnchor": ".preview-panel",
+      "endAnchor": ".eyebrow",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G043",
+      "segment": "G043",
+      "sectionIds": ["S05-13"],
+      "sourceSlice": "S05",
+      "owner": "debug-preview",
+      "migrationMode": "DIRECT+COMPAT",
+      "canonicalOrder": 48,
+      "predecessor": "S05-12/G042",
+      "successor": "S06-01/G044",
+      "sourceRange": { "startLine": 9787, "endLine": 9839 },
+      "sourceLocalRange": { "startLine": 1749, "endLine": 1801 },
+      "sourceStartByte": 31489,
+      "sourceEndByteExclusive": 32379,
+      "sourceSha256": "6415e8a1a088550f017ad59ee4f07971b235edb4d657eac940c5ba786c84dd7b",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s05-13--stage-preview-base.css",
+      "startAnchor": ".day-badge",
+      "endAnchor": "EOF",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G044",
       "segment": "G044",
       "sectionIds": ["S06-01"],
@@ -606,6 +669,27 @@
       "sourceSha256": "b7fa7d1c0b4829dab77db0a4e5bb59c844a17a8d7873b9c03b769e858974d141",
       "targetPath": "src/renderer/styles/features/properties/s06-04--transform-order-base.css",
       "endAnchor": ".transport-bar",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G048",
+      "segment": "G048",
+      "sectionIds": ["S06-05"],
+      "sourceSlice": "S06",
+      "owner": "debug-preview",
+      "migrationMode": "DIRECT+COMPAT",
+      "canonicalOrder": 53,
+      "predecessor": "S06-04/G047",
+      "successor": "S06-06/G049",
+      "sourceRange": { "startLine": 10289, "endLine": 10327 },
+      "sourceLocalRange": { "startLine": 450, "endLine": 488 },
+      "sourceStartByte": 8737,
+      "sourceEndByteExclusive": 9398,
+      "sourceSha256": "33709f21ad087a5ea67ee8c3dbded7f6d638ae6f583f280f11b431a6df084f2b",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s06-05--transport-hidden-stage.css",
+      "startAnchor": ".transport-bar",
+      "endAnchor": "@media (max-width: 1100px)",
       "placement": "source-order",
       "status": "relocated"
     },
@@ -1761,7 +1845,7 @@
     {
       "id": "S01-R02",
       "sourceSlice": "S01",
-      "sourceRange": { "startLine": 158, "endLine": 1560 },
+      "sourceRange": { "startLine": 158, "endLine": 1391 },
       "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-project-center.css"
     },
     {
@@ -1779,7 +1863,7 @@
     {
       "id": "S05-R04",
       "sourceSlice": "S05",
-      "sourceRange": { "startLine": 9757, "endLine": 9839 },
+      "sourceRange": { "startLine": 9772, "endLine": 9786 },
       "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-character-resource-host.css"
     },
     {
@@ -1791,7 +1875,7 @@
     {
       "id": "S06-R02",
       "sourceSlice": "S06",
-      "sourceRange": { "startLine": 10289, "endLine": 10699 },
+      "sourceRange": { "startLine": 10328, "endLine": 10699 },
       "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation--before-product-preview.css"
     },
     {

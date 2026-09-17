@@ -1,0 +1,53 @@
+.day-badge {
+  padding: 8px 13px;
+  border: 1px solid rgb(130 207 152 / 35%);
+  border-radius: 999px;
+  color: #a5dfb6;
+  background: rgb(50 103 66 / 24%);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stage-viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 16px;
+  background: #15251d;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 20%);
+}
+
+.stage-scale {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 0 0;
+}
+
+.stage-renderer,
+.stage-renderer > div {
+  width: 1920px;
+  height: 1080px;
+}
+
+.stage-error {
+  display: grid;
+  width: 1920px;
+  height: 1080px;
+  padding: 120px;
+  color: #ffd7d2;
+  background: #351b18;
+  align-content: center;
+  gap: 18px;
+  text-align: center;
+  font-size: 28px;
+}
+
+.stage-error strong {
+  font-size: 52px;
+}
+
