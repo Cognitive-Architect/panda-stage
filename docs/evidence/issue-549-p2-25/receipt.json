@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "issue": 549,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-02-B08",
+  "workItem": "P2-25",
+  "owner": "debug-preview",
+  "status": "validated-implementation-pending-human-acceptance",
+  "preflight": "docs/evidence/issue-549-p2-25/preflight.json",
+  "startingLivePrHead": "a382d827e209eb55eaa09c088682fc2014f622c5",
+  "refreshedRemoteBranchHead": "6c0c0165e1902429c163f4d44a851676080f5643",
+  "validatedImplementationSnapshot": {
+    "head": "6c0c0165e1902429c163f4d44a851676080f5643",
+    "meaning": "P2-25 relocation was validated after the implementation commit; this receipt is committed afterward and does not self-reference its own commit."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0"
+  },
+  "segments": [
+    {
+      "id": "G014",
+      "sectionIds": ["S01-14", "S01-15"],
+      "canonicalOrder": 14,
+      "sourceSlice": "S01",
+      "sourceRange": { "startLine": 1392, "endLine": 1560 },
+      "sourceLocalRange": { "startLine": 1390, "endLine": 1558 },
+      "sourceStartByte": 27234,
+      "sourceEndByteExclusive": 29760,
+      "sourceSha256": "055c316d2df707d8a3d42f70c4e0bab34f511e7937a07646e148485d38a05466",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s01-14--gate-probe-and-transport.css",
+      "predecessor": "S01-13/G013",
+      "successor": "S01-16/G015"
+    },
+    {
+      "id": "G041",
+      "sectionIds": ["S05-11"],
+      "canonicalOrder": 46,
+      "sourceSlice": "S05",
+      "sourceRange": { "startLine": 9757, "endLine": 9771 },
+      "sourceLocalRange": { "startLine": 1719, "endLine": 1733 },
+      "sourceStartByte": 30937,
+      "sourceEndByteExclusive": 31258,
+      "sourceSha256": "e3adfdec3ea92fb3934f882d3f6add199dcd638a9ad9f9bf6d499b48fb8be5aa",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s05-11--preview-panel.css",
+      "predecessor": "S05-10/G040",
+      "successor": "S05-12/G042"
+    },
+    {
+      "id": "G043",
+      "sectionIds": ["S05-13"],
+      "canonicalOrder": 48,
+      "sourceSlice": "S05",
+      "sourceRange": { "startLine": 9787, "endLine": 9839 },
+      "sourceLocalRange": { "startLine": 1749, "endLine": 1801 },
+      "sourceStartByte": 31489,
+      "sourceEndByteExclusive": 32379,
+      "sourceSha256": "6415e8a1a088550f017ad59ee4f07971b235edb4d657eac940c5ba786c84dd7b",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s05-13--stage-preview-base.css",
+      "predecessor": "S05-12/G042",
+      "successor": "S06-01/G044"
+    },
+    {
+      "id": "G048",
+      "sectionIds": ["S06-05"],
+      "canonicalOrder": 53,
+      "sourceSlice": "S06",
+      "sourceRange": { "startLine": 10289, "endLine": 10327 },
+      "sourceLocalRange": { "startLine": 450, "endLine": 488 },
+      "sourceStartByte": 8737,
+      "sourceEndByteExclusive": 9398,
+      "sourceSha256": "33709f21ad087a5ea67ee8c3dbded7f6d638ae6f583f280f11b431a6df084f2b",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s06-05--transport-hidden-stage.css",
+      "predecessor": "S06-04/G047",
+      "successor": "S06-06/G049"
+    }
+  ],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "movedSegmentOrder": ["G014", "G041", "G043", "G048"],
+    "crossSliceTargetImports": {},
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "behaviorContract": {
+    "debugSurfaceGateAAssembly": "preserved",
+    "previewPanelStageViewportTransportAndHiddenStage": "preserved",
+    "s04G032Media1080BlockKeptWhole": true,
+    "s13G112Media900BlockUntouched": true,
+    "newConsumers": [],
+    "relativeResourceUrls": [],
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS",
+    "git diff --check": "PASS",
+    "batchContractTests": "PENDING_FINAL_SER02_CONTRACT",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "scope": "Debug/gate surface, preview panel, stage viewport, transport controls, hidden-stage surface, representative Chinese/long content, and constrained window acceptance remain for final SER-02 Windows Electron verification."
+  },
+  "scopeExceptions": []
+}
