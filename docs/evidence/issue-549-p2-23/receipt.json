@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "issue": 549,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-02-B09",
+  "workItem": "P2-23",
+  "owner": "fla-render",
+  "status": "validated-implementation-pending-human-acceptance",
+  "preflight": "docs/evidence/issue-549-p2-23/preflight.json",
+  "startingLivePrHead": "861b7de659332aad5521aea0f084d8fb6420c30f",
+  "refreshedRemoteBranchHead": "466a52d7a9318899a773c04d0e356515d98b729d",
+  "validatedImplementationSnapshot": {
+    "head": "466a52d7a9318899a773c04d0e356515d98b729d",
+    "meaning": "P2-23 relocation was validated after the implementation commit; this receipt is committed afterward and does not self-reference its own commit."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0"
+  },
+  "segments": [
+    {
+      "id": "G027",
+      "sectionIds": ["S03-05"],
+      "canonicalOrder": 28,
+      "sourceSlice": "S03",
+      "sourceRange": { "startLine": 5071, "endLine": 5350 },
+      "sourceLocalRange": { "startLine": 1155, "endLine": 1434 },
+      "sourceStartByte": 23069,
+      "sourceEndByteExclusive": 30971,
+      "sourceSha256": "e5d9752d0b809ee61794997f5c2f0392dc198d570ff179278c4c29f3656a70ff",
+      "targetPath": "src/renderer/styles/features/fla-import/render/s03-05--render-bounded-v11.css",
+      "predecessor": "S03-04/G026",
+      "successor": "S03-06/G028"
+    },
+    {
+      "id": "G030",
+      "sectionIds": ["S04-03"],
+      "canonicalOrder": 33,
+      "sourceSlice": "S04",
+      "sourceRange": { "startLine": 7265, "endLine": 7948 },
+      "sourceLocalRange": { "startLine": 1246, "endLine": 1929 },
+      "sourceStartByte": 28009,
+      "sourceEndByteExclusive": 41741,
+      "sourceSha256": "acaec6372f82c2eda958178b3ae81ea628378366216cce7912fdb28cd319877b",
+      "targetPath": "src/renderer/styles/features/fla-import/render/s04-03--render-shell-and-snapshot-d.css",
+      "predecessor": "S04-02/G029",
+      "successor": "S04-04/G031"
+    },
+    {
+      "id": "G032",
+      "sectionIds": ["S04-05"],
+      "canonicalOrder": 35,
+      "sourceSlice": "S04",
+      "sourceRange": { "startLine": 7961, "endLine": 8038 },
+      "sourceLocalRange": { "startLine": 1942, "endLine": 2019 },
+      "sourceStartByte": 41918,
+      "sourceEndByteExclusive": 43366,
+      "sourceSha256": "959a51af0d63c7676930c68fd1ef935bca38f1696b2e98a8debeaf5c6d3281d5",
+      "targetPath": "src/renderer/styles/features/fla-import/render/s04-05--render-responsive-tail.css",
+      "predecessor": "S04-04/G031",
+      "successor": "S05-01/G033"
+    },
+    {
+      "id": "G111",
+      "sectionIds": ["S13-04"],
+      "canonicalOrder": 134,
+      "sourceSlice": "S13",
+      "sourceRange": { "startLine": 27612, "endLine": 27859 },
+      "sourceLocalRange": { "startLine": 1736, "endLine": 1983 },
+      "sourceStartByte": 55154,
+      "sourceEndByteExclusive": 61800,
+      "sourceSha256": "d6bacf07d5b1b018450a23f0d128dfa0d0c5dd0c50a7d900c2c7d32343b0b84e",
+      "targetPath": "src/renderer/styles/features/fla-import/render/s13-04--render-final-398.css",
+      "predecessor": "S13-03/G110",
+      "successor": "S13-05/G112"
+    }
+  ],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "movedSegmentOrder": ["G027", "G030", "G032", "G111"],
+    "crossSliceTargetImports": {},
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "behaviorContract": {
+    "flaRenderSurfaces": "preserved",
+    "s03RenderAndS04RenderWorkbenchBoundaries": "preserved",
+    "s13FinalRenderCascade": "preserved",
+    "s04G032Media1080BlockKeptWhole": true,
+    "s13G112Media900BlockUntouched": true,
+    "newConsumers": [],
+    "relativeResourceUrls": [],
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS",
+    "git diff --check": "PASS_WITH_EXPECTED_EXACT_SOURCE_EOF_WARNINGS",
+    "batchContractTests": "PENDING_FINAL_SER02_CONTRACT",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "scope": "FLA render, S04 render workbench, and S13 final render remain for final SER-02 Windows Electron acceptance."
+  },
+  "scopeExceptions": []
+}
