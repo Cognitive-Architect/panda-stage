@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 4,
+  "kind": "phase2-rolling-ledger-extension",
+  "pullRequest": 542,
+  "scope": "Append-only closure bookkeeping for SER-05. No CSS, DOM, store, interaction, breakpoint, visual-value, or product-behavior change.",
+  "baseLedger": {
+    "path": "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v3.json",
+    "blobSha": "543385912e27632d17198bc5f67aecd94959a4fd",
+    "semantics": "The v3 ledger remains the historical closure snapshot through SER-04. This extension records SER-05 B12/B13 acceptance without rewriting earlier evidence."
+  },
+  "livePrHeadAuthority": "GitHub PR #542 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
+  "selfReferenceRule": "Repository evidence records historical validated snapshots; the live/final PR HEAD and latest CI remain authoritative in GitHub PR/Actions metadata.",
+  "ser05": {
+    "issue": 552,
+    "serial": "SER-05",
+    "executionOrder": ["P2-B12", "P2-B13"],
+    "startingHead": "26af33a7d6570f6dcbffe3e2097a29545202aa1c",
+    "validationRecordHead": "055c2a56ef81e5e51b01115685c29be82b7df000",
+    "validatedRollingSnapshotBeforeAcceptanceRecord": {
+      "head": "055c2a56ef81e5e51b01115685c29be82b7df000",
+      "automaticCiRun": 35207809952,
+      "automaticCiNumber": 952,
+      "automaticCiResult": "PASS",
+      "meaning": "SER-05 B12+B13 implementation plus receipts/contracts completed successfully before maintainer Human Visual + Shell Interaction Acceptance was recorded."
+    },
+    "batches": {
+      "P2-B12": {
+        "workItems": ["P2-18"],
+        "implementationHead": "b3d888553c112bfbb80efd6165e898bf8d3854b0",
+        "receiptRecordHead": "701362e109fe30bd53fb5712d730538638848dd4",
+        "receipts": [
+          "docs/evidence/issue-552-p2-18/preflight.json",
+          "docs/evidence/issue-552-p2-18/receipt.json"
+        ],
+        "serialCheckpoints": {
+          "P2-18PreflightRelocationValidation": "PASS",
+          "ProductionEntryOrderAndEquivalence": "PASS",
+          "EditorShellGeometryContract": "PASS",
+          "TimelineBoundsConsumerUnchanged": "PASS",
+          "P2-19P2-21NotAbsorbed": "PASS",
+          "P2-27NotAbsorbed": "PASS"
+        }
+      },
+      "P2-B13": {
+        "workItems": ["P2-19", "P2-21"],
+        "preflightBaseHead": "701362e109fe30bd53fb5712d730538638848dd4",
+        "implementationHead": "54e99ef25c469fc5bc26e36cea450d8760e43803",
+        "receiptRecordHead": "055c2a56ef81e5e51b01115685c29be82b7df000",
+        "handoff": "PASS; B13 boundaries were recomputed after B12 and no B12-start byte ranges were reused.",
+        "receipts": [
+          "docs/evidence/issue-552-p2-19/preflight.json",
+          "docs/evidence/issue-552-p2-19/receipt.json",
+          "docs/evidence/issue-552-p2-21/preflight.json",
+          "docs/evidence/issue-552-p2-21/receipt.json"
+        ],
+        "serialCheckpoints": {
+          "P2-19PreflightRelocationValidation": "PASS",
+          "P2-21PreflightRelocationValidation": "PASS",
+          "ProductionEntryOrderAndEquivalence": "PASS",
+          "QuickHistoryBehaviorContract": "PASS",
+          "ToolsActionPresetHostContract": "PASS",
+          "OldCompactBottomHistoryNotDuplicated": "PASS",
+          "P2-01ViewModeNotDuplicated": "PASS",
+          "P2-27NotAbsorbed": "PASS"
+        }
+      }
+    },
+    "humanAcceptance": {
+      "status": "PASS",
+      "acceptedOn": "2026-09-17",
+      "acceptedBy": "maintainer",
+      "issueCommentId": 5712734237,
+      "acceptanceRecord": "docs/evidence/issue-552-p2-18/acceptance.json",
+      "scope": "Editor Shell portrait/landscape composition, canvas-visible height, left/right workspace plus Timeline composition and resize continuity, overlay/recovery/Quick Drawer stacking, Quick Drawer and History presentation, Tools home and Action Preset states/navigation, and confirmation that old compact History and P2-01 view-mode were not duplicated; no visible layout/style or interaction regression observed."
+    },
+    "executionConstraints": {
+      "manualFullTriggered": false,
+      "verifyProjectManuallyRun": false
+    },
+    "exitGate": "PASS — normal Shell / Quick / History / Tools relocation is closed for Phase 2."
+  },
+  "nextSerialWrapper": {
+    "id": "SER-06",
+    "scope": "B14 / P2-27 ORDERED_COMPAT followed by B15 / P2-28 Final Reconciliation",
+    "status": "READY_FOR_FRESH_PREFLIGHT_AFTER_SER05_CLOSURE_HEAD_IS_GREEN",
+    "rule": "Do not begin P2-27/P2-28 from stale SER-05 offsets. Refresh live PR #542 HEAD, current production entry, manifest, retained compatibility blocks, and final reconciliation boundaries before production writes."
+  }
+}
