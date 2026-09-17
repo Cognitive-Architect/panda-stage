@@ -238,6 +238,69 @@
       "status": "relocated"
     },
     {
+      "id": "G027",
+      "segment": "G027",
+      "sectionIds": ["S03-05"],
+      "sourceSlice": "S03",
+      "owner": "fla-render",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 28,
+      "predecessor": "S03-04/G026",
+      "successor": "S03-06/G028",
+      "sourceRange": { "startLine": 5071, "endLine": 5350 },
+      "sourceLocalRange": { "startLine": 1155, "endLine": 1434 },
+      "sourceStartByte": 23069,
+      "sourceEndByteExclusive": 30971,
+      "sourceSha256": "e5d9752d0b809ee61794997f5c2f0392dc198d570ff179278c4c29f3656a70ff",
+      "targetPath": "src/renderer/styles/features/fla-import/render/s03-05--render-bounded-v11.css",
+      "startAnchor": "Issue #397:",
+      "endAnchor": "Issue #412",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G030",
+      "segment": "G030",
+      "sectionIds": ["S04-03"],
+      "sourceSlice": "S04",
+      "owner": "fla-render",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 33,
+      "predecessor": "S04-02/G029",
+      "successor": "S04-04/G031",
+      "sourceRange": { "startLine": 7265, "endLine": 7948 },
+      "sourceLocalRange": { "startLine": 1246, "endLine": 1929 },
+      "sourceStartByte": 28009,
+      "sourceEndByteExclusive": 41741,
+      "sourceSha256": "acaec6372f82c2eda958178b3ae81ea628378366216cce7912fdb28cd319877b",
+      "targetPath": "src/renderer/styles/features/fla-import/render/s04-03--render-shell-and-snapshot-d.css",
+      "startAnchor": "Issue #396:",
+      "endAnchor": ".sr-only",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G032",
+      "segment": "G032",
+      "sectionIds": ["S04-05"],
+      "sourceSlice": "S04",
+      "owner": "fla-render",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 35,
+      "predecessor": "S04-04/G031",
+      "successor": "S05-01/G033",
+      "sourceRange": { "startLine": 7961, "endLine": 8038 },
+      "sourceLocalRange": { "startLine": 1942, "endLine": 2019 },
+      "sourceStartByte": 41918,
+      "sourceEndByteExclusive": 43366,
+      "sourceSha256": "959a51af0d63c7676930c68fd1ef935bca38f1696b2e98a8debeaf5c6d3281d5",
+      "targetPath": "src/renderer/styles/features/fla-import/render/s04-05--render-responsive-tail.css",
+      "startAnchor": "@media (max-width: 1080px)",
+      "endAnchor": "EOF",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G034",
       "segment": "G034",
       "sectionIds": ["S05-02"],
@@ -776,6 +839,27 @@
       "targetPath": "src/renderer/styles/features/dialogue/properties/s12-06--landscape-properties-quick-inspect.css",
       "startAnchor": "Issue #387:",
       "endAnchor": "At the accepted Stage A shallow heights,",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G111",
+      "segment": "G111",
+      "sectionIds": ["S13-04"],
+      "sourceSlice": "S13",
+      "owner": "fla-render",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 134,
+      "predecessor": "S13-03/G110",
+      "successor": "S13-05/G112",
+      "sourceRange": { "startLine": 27612, "endLine": 27859 },
+      "sourceLocalRange": { "startLine": 1736, "endLine": 1983 },
+      "sourceStartByte": 55154,
+      "sourceEndByteExclusive": 61800,
+      "sourceSha256": "d6bacf07d5b1b018450a23f0d128dfa0d0c5dd0c50a7d900c2c7d32343b0b84e",
+      "targetPath": "src/renderer/styles/features/fla-import/render/s13-04--render-final-398.css",
+      "startAnchor": "Issue #398 final cascade:",
+      "endAnchor": "@media (max-width: 900px)",
       "placement": "source-order",
       "status": "relocated"
     },
@@ -1503,8 +1587,20 @@
     {
       "id": "S03-R01",
       "sourceSlice": "S03",
-      "sourceRange": { "startLine": 5071, "endLine": 6019 },
-      "targetPath": "src/renderer/styles/legacy-slices/03-terminal-launcher-sequence-after-fla-chain.css"
+      "sourceRange": { "startLine": 5351, "endLine": 6019 },
+      "targetPath": "src/renderer/styles/legacy-slices/03-terminal-launcher-sequence-after-fla-render.css"
+    },
+    {
+      "id": "S04-R01",
+      "sourceSlice": "S04",
+      "sourceRange": { "startLine": 6020, "endLine": 7264 },
+      "targetPath": "src/renderer/styles/legacy-slices/04-launcher-render-workbench-before-sequence.css"
+    },
+    {
+      "id": "S04-R02",
+      "sourceSlice": "S04",
+      "sourceRange": { "startLine": 7949, "endLine": 7960 },
+      "targetPath": "src/renderer/styles/legacy-slices/04-launcher-render-workbench-after-snapshot.css"
     },
     {
       "id": "S07-R01",
@@ -1595,6 +1691,18 @@
       "sourceSlice": "S12",
       "sourceRange": { "startLine": 25735, "endLine": 25876 },
       "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray-after-dialogue-properties.css"
+    },
+    {
+      "id": "S13-R01",
+      "sourceSlice": "S13",
+      "sourceRange": { "startLine": 25877, "endLine": 27611 },
+      "targetPath": "src/renderer/styles/legacy-slices/13-timed-render-media-tail-before-final-render.css"
+    },
+    {
+      "id": "S13-R02",
+      "sourceSlice": "S13",
+      "sourceRange": { "startLine": 27860, "endLine": 27997 },
+      "targetPath": "src/renderer/styles/legacy-slices/13-timed-render-media-tail-after-final-render.css"
     },
     {
       "id": "S10-R01",
