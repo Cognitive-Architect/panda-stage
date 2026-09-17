@@ -1,0 +1,381 @@
+{
+  "schemaVersion": 2,
+  "pullRequest": 542,
+  "scope": "Rolling Phase 2 evidence/bookkeeping semantics only; no CSS, DOM, store, interaction, breakpoint, visual-value, or product-behavior change.",
+  "livePrHeadAuthority": "GitHub PR #542 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
+  "selfReferenceRule": "Do not embed the current/final PR HEAD inside a repository file committed by that same HEAD. Repository evidence records validated historical snapshots; live/final HEAD and latest CI belong to GitHub PR/Actions metadata.",
+  "humanAcceptanceSemantics": "Maintainer visual acceptance is a product-surface observation and is recorded separately from automated source/order/CI evidence.",
+  "batches": {
+    "P2-B06": {
+      "issue": 546,
+      "workItems": ["P2-12", "P2-13", "P2-14"],
+      "preflightBaseHead": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+      "integrationParentHead": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+      "implementationHead": "51516f27b44d4b0c6b7923643aec75272190552b",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedRollingSnapshotBeforeThisFix": {
+        "head": "f3918a9b8bd20a8b888846f47eacd948c6f98dee",
+        "automaticCiRun": 35078292960,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative rolling-branch validation after P2-B06 and P2-B01/evidence landed. This validates the integrated branch state, not an isolated CI run attached directly to the P2-B06 implementation commit."
+      },
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-16",
+        "acceptedBy": "maintainer",
+        "scope": "P2-12 Layer Properties + P2-13 Canvas + P2-14 Product Preview visual surfaces; no visible layout/style regression observed."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "Interpret as the P2-B06 preflight/integration base for this batch.",
+        "validation.automaticCi": "PENDING_GITHUB_TARGETED_RUN in the historical receipt means no direct PR CI run was attached to that implementation snapshot; use the validated rolling snapshot here plus live GitHub Actions metadata for current status."
+      }
+    },
+    "P2-B01": {
+      "issue": 545,
+      "workItems": ["P2-02", "P2-03"],
+      "preflightBaseHead": "02cddd3d2bb0fadd55926c57a99f021822a18b80",
+      "integrationParentHead": "51516f27b44d4b0c6b7923643aec75272190552b",
+      "implementationHead": "e6adbdae2a3c7d7abd6f3973c66c708e2c6a004e",
+      "implementationCi": {
+        "automaticCiRun": 35077222980,
+        "automaticCiResult": "PASS"
+      },
+      "validatedRollingSnapshotBeforeThisFix": {
+        "head": "f3918a9b8bd20a8b888846f47eacd948c6f98dee",
+        "automaticCiRun": 35078292960,
+        "automaticCiResult": "PASS",
+        "meaning": "Evidence-only rolling snapshot after the B01 implementation receipt commit."
+      },
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-16",
+        "acceptedBy": "maintainer",
+        "scope": "P2-02 ImagePicker + P2-03 CharacterIdentity/thumbnail/Dialogue identity-host visual surfaces; no visible layout/style regression observed."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "Interpret as the B01 preflight base, not the commit that immediately parented the B01 implementation when it landed on the rolling branch."
+      }
+    },
+    "P2-B04": {
+      "issue": 547,
+      "workItems": ["P2-08", "P2-09"],
+      "preflightBaseHead": "12c03e771194b382e71055f50159b89aed5b5bb5",
+      "integrationParentHead": "12c03e771194b382e71055f50159b89aed5b5bb5",
+      "implementationHead": "afc075b0b7ad0136a09f2f60a9c11670eff40279",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedImplementationSnapshot": {
+        "head": "afc075b0b7ad0136a09f2f60a9c11670eff40279",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "localTargetedValidation": "PASS"
+      },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "57736b6a1af4dea3e6f11b29d914eb0767258517",
+        "automaticCiRun": 35096501798,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative rolling branch after Wave 2 review corrective; Focused core quality and final CI result passed, Full quality/regression was skipped by policy."
+      },
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-16",
+        "acceptedBy": "maintainer",
+        "scope": "P2-08 dialogue workspace + P2-09 batch dialogue visual surfaces; maintainer reviewed the Wave 2 Electron surfaces and reported Visual PASS."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "GitHub PR #542 head refreshed before B04 implementation; remote head was unchanged during the local handoff.",
+        "implementationHead": "Validated B04 production snapshot; receipt commit is intentionally not self-referenced.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
+      }
+    },
+    "P2-B03": {
+      "issue": 547,
+      "workItems": ["P2-06", "P2-07"],
+      "preflightBaseHead": "46da2b3debb4d77911c59aee8d3d149cd1439931",
+      "integrationParentHead": "46da2b3debb4d77911c59aee8d3d149cd1439931",
+      "implementationHead": "4f149361921bdd8a2222b2913866bc984e6c07e6",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedImplementationSnapshot": {
+        "head": "4f149361921bdd8a2222b2913866bc984e6c07e6",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "localTargetedValidation": "PASS"
+      },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "57736b6a1af4dea3e6f11b29d914eb0767258517",
+        "automaticCiRun": 35096501798,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative rolling branch after Wave 2 review corrective; Focused core quality and final CI result passed, Full quality/regression was skipped by policy."
+      },
+      "s15Handoff": {
+        "b04End": "S15-16/G137",
+        "b03Start": "S15-17/G138",
+        "conflictOrReorder": false
+      },
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-16",
+        "acceptedBy": "maintainer",
+        "scope": "P2-06 assets + P2-07 shots visual surfaces; maintainer reviewed the Wave 2 Electron surfaces and reported Visual PASS."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "B03 was re-resolved against the B04-updated local rolling tree before production writes.",
+        "implementationHead": "Validated B03 production snapshot; receipt commit is intentionally not self-referenced.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
+      }
+    },
+    "P2-B05": {
+      "issue": 548,
+      "workItems": ["P2-10", "P2-11"],
+      "preflightBaseHeads": {
+        "P2-10": "7877a9067fa572c9ba164d5126aea60259241ca3",
+        "P2-11": "3c1b3178c6e0fd6aeecb7b91432825968b0a25b8"
+      },
+      "integrationParentHead": "3c1b3178c6e0fd6aeecb7b91432825968b0a25b8",
+      "implementationHead": "76cbafbb98d5b93b83a205d186b1f897fce13c2b",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedImplementationSnapshot": {
+        "head": "76cbafbb98d5b93b83a205d186b1f897fce13c2b",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "localTargetedValidation": "PASS",
+        "manualFullTriggered": false,
+        "verifyProjectManuallyRun": false
+      },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "3141fa49cff053a22f996670efde29d4f1864532",
+        "automaticCiRun": 35160071491,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative SER-01 rolling branch after the review routing corrective; CI #926 completed successfully before Human Visual Acceptance was recorded."
+      },
+      "serialCheckpoints": {
+        "P2-10PreflightRelocationValidation": "PASS",
+        "P2-11PreflightRelocationValidation": "PASS",
+        "B05ProductionEntryOrderAndEquivalence": "PASS",
+        "B02HandoffOrder": "G138 → G139 → G140 → G141 → G142 preserved for next batch"
+      },
+      "receipts": [
+        "docs/evidence/issue-548-p2-10/receipt.json",
+        "docs/evidence/issue-548-p2-11/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "scope": "P2-10 Dialogue Properties + P2-11 Subtitle Style visual surfaces; maintainer reviewed the real Electron/product entry including normal and constrained-width behavior and reported Human Visual PASS."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "GitHub PR #542 head at the B05 preflight; P2-10 and P2-11 were then validated serially on the rolling branch.",
+        "implementationHead": "Validated B05 production snapshot; receipt and ledger commits are intentionally not self-referenced.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
+      }
+    },
+    "P2-B02": {
+      "issue": 548,
+      "workItems": ["P2-04", "P2-05"],
+      "preflightBaseHeads": {
+        "P2-04": "bdb8c1004a819256998fb87697fdf64cd97c3867",
+        "P2-05": "f5f7da81c6be56ad17a0fe7868e7dc56ce0a6749"
+      },
+      "integrationParentHead": "bdb8c1004a819256998fb87697fdf64cd97c3867",
+      "implementationHead": "554f30c2f8333cf20d96bfc5e6dac8b63fc5e7ff",
+      "directImplementationCi": "NO_DIRECT_PR_RUN_FOUND",
+      "validatedImplementationSnapshot": {
+        "head": "554f30c2f8333cf20d96bfc5e6dac8b63fc5e7ff",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "localTargetedValidation": "PASS",
+        "coreValidation": {
+          "typecheck": "PASS",
+          "lint": "PASS",
+          "unit": "PASS (281 files, 1809 tests)",
+          "build": "PASS",
+          "integration": "NOT RUN; CSS-only scope"
+        },
+        "manualFullTriggered": false,
+        "verifyProjectManuallyRun": false
+      },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "3141fa49cff053a22f996670efde29d4f1864532",
+        "automaticCiRun": 35160071491,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative SER-01 rolling branch after the review routing corrective; CI #926 completed successfully before Human Visual Acceptance was recorded."
+      },
+      "serialCheckpoints": {
+        "P2-04PreflightRelocationValidation": "PASS",
+        "P2-05PreflightRelocationValidation": "PASS",
+        "B02ProductionEntryOrderAndEquivalence": "PASS",
+        "B05RefreshBeforeB02": "PASS; B05 remote/live head bdb8c1004a819256998fb87697fdf64cd97c3867",
+        "B02DeferredSegments": "NONE"
+      },
+      "receipts": [
+        "docs/evidence/issue-548-p2-04/preflight.json",
+        "docs/evidence/issue-548-p2-04/receipt.json",
+        "docs/evidence/issue-548-p2-05/preflight.json",
+        "docs/evidence/issue-548-p2-05/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "scope": "P2-04 Character Workspace + P2-05 Character Settings/Expression visual surfaces; maintainer reviewed the real Electron/product entry including list/detail/settings/expression and constrained-width behavior and reported Human Visual PASS."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "GitHub PR #542 head was refreshed/verified at B05 before the B02 preflight; P2-04 and P2-05 then ran serially on the local rolling branch.",
+        "implementationHead": "Validated B02 production snapshot; receipt and ledger commits are intentionally not self-referenced.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means no direct PR CI run was attached to the local implementation snapshot."
+      }
+    },
+    "P2-B09": {
+      "issue": 549,
+      "workItems": ["P2-22", "P2-23", "P2-24"],
+      "preflightBaseHeads": {
+        "P2-22": "1db0f276fc02ae70f76676fa841a6310c9bea816",
+        "P2-23": "861b7de659332aad5521aea0f084d8fb6420c30f",
+        "P2-24": "d139a7b4882596a6cdc54eb86f8d4e4b484424d0"
+      },
+      "implementationHeads": {
+        "P2-22": "62bb38093236fd52f69f4ff2eac8fb3882bc121e",
+        "P2-23": "466a52d7a9318899a773c04d0e356515d98b729d",
+        "P2-24": "4130a1364b86df6536df106a1a4ac5c01fb79052"
+      },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "a6dd828be3f857353b4089f7420ddb55aa24aee8",
+        "automaticCiRun": 35173268212,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative SER-02 rolling branch after B09 → B07 → B08 implementation and the shallow-checkout-safe final contract fix; targeted quality/regression and Final CI result passed before Human Visual Acceptance was recorded."
+      },
+      "serialCheckpoints": {
+        "P2-22PreflightRelocationValidation": "PASS",
+        "P2-23PreflightRelocationValidation": "PASS",
+        "P2-24PreflightRelocationValidation": "PASS",
+        "B09ProductionEntryOrderAndEquivalence": "PASS",
+        "S13-05G112DeferredBoundary": "PASS; G112 / S13-05 remained intact and unmoved for P2-27"
+      },
+      "receipts": [
+        "docs/evidence/issue-549-p2-22/preflight.json",
+        "docs/evidence/issue-549-p2-22/receipt.json",
+        "docs/evidence/issue-549-p2-23/preflight.json",
+        "docs/evidence/issue-549-p2-23/receipt.json",
+        "docs/evidence/issue-549-p2-24/preflight.json",
+        "docs/evidence/issue-549-p2-24/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "issueCommentId": 5707918984,
+        "scope": "FLA Review / Raster / Status, Render / Static Snapshot, Frame Sequence, and constrained-width/responsive presentation; no visible layout/style regression observed."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "Each P2 was re-resolved against the live rolling tree before production writes, with fresh handoff preflight between checkpoints.",
+        "implementationHead": "Validated P2 snapshots are historical and receipts intentionally do not self-reference their own receipt commits.",
+        "automaticCi": "The final cumulative SER-02 implementation snapshot a6dd828be3f857353b4089f7420ddb55aa24aee8 is the authoritative pre-acceptance CI snapshot."
+      }
+    },
+    "P2-B07": {
+      "issue": 549,
+      "workItems": ["P2-20"],
+      "preflightBaseHead": "1887fce11aebfc68480e97c2f49ef410d3a33ff6",
+      "implementationHead": "98a92b98021742326c503e54c9c4587bb5ca66f8",
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "a6dd828be3f857353b4089f7420ddb55aa24aee8",
+        "automaticCiRun": 35173268212,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative SER-02 rolling branch after B09 → B07 → B08 implementation and final contract correction; the complete SER-02 tree passed targeted quality/regression before Human Visual Acceptance was recorded."
+      },
+      "serialCheckpoints": {
+        "B09RefreshBeforeB07": "PASS",
+        "P2-20PreflightRelocationValidation": "PASS",
+        "B07ProductionEntryOrderAndEquivalence": "PASS",
+        "Issue412Before410SourceTruth": "PASS"
+      },
+      "receipts": [
+        "docs/evidence/issue-549-p2-20/preflight.json",
+        "docs/evidence/issue-549-p2-20/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "issueCommentId": 5707918984,
+        "scope": "No-project/project entry, new/open/close lifecycle, recent projects, and recovery-related presentation reviewed as applicable; no visible layout/style regression observed."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "B07 preflight was refreshed after B09 before production writes.",
+        "implementationHead": "Validated P2-20 snapshot is historical; the receipt intentionally does not self-reference its own commit."
+      }
+    },
+    "P2-B08": {
+      "issue": 549,
+      "workItems": ["P2-25", "P2-26"],
+      "preflightBaseHeads": {
+        "P2-25": "a382d827e209eb55eaa09c088682fc2014f622c5",
+        "P2-26": "7e3e7dc2834a63600a0260ca416d1d70520f2e0e"
+      },
+      "implementationHeads": {
+        "P2-25": "6c0c0165e1902429c163f4d44a851676080f5643",
+        "P2-26": "1bb3373a5aab596a3dbddfa30ddca1e467902c1d"
+      },
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "a6dd828be3f857353b4089f7420ddb55aa24aee8",
+        "automaticCiRun": 35173268212,
+        "automaticCiResult": "PASS",
+        "meaning": "Cumulative SER-02 rolling branch after B08 and the shallow-checkout-safe final contract fix; targeted quality/regression and Final CI result passed before Human Visual Acceptance was recorded."
+      },
+      "serialCheckpoints": {
+        "B07RefreshBeforeB08": "PASS",
+        "P2-25PreflightRelocationValidation": "PASS",
+        "P2-26PreflightRelocationValidation": "PASS",
+        "B08ProductionEntryOrderAndEquivalence": "PASS",
+        "UnreachableDebugProbeSemantics": "N/A when no normal-navigation interactive path exists; assembly/gate evidence remains authoritative"
+      },
+      "receipts": [
+        "docs/evidence/issue-549-p2-25/preflight.json",
+        "docs/evidence/issue-549-p2-25/receipt.json",
+        "docs/evidence/issue-549-p2-26/preflight.json",
+        "docs/evidence/issue-549-p2-26/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "issueCommentId": 5707918984,
+        "scope": "Reachable Debug/Gate surfaces reviewed where available; Global/Base behavior sampled on Start / Editor / FLA. Normal-navigation-unreachable debug probes remain N/A rather than receiving fabricated visual PASS."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "B08 preflight was refreshed after B07 before production writes.",
+        "implementationHead": "Validated P2-25/P2-26 snapshots are historical; receipts intentionally do not self-reference their own commits."
+      }
+    },
+    "P2-B10": {
+      "issue": 550,
+      "workItems": ["P2-15"],
+      "preflightBaseHead": "08a324dd1e71fba389397c5bb821ec438b679515",
+      "integrationParentHead": "08a324dd1e71fba389397c5bb821ec438b679515",
+      "implementationHead": "852523f",
+      "directImplementationCi": "PENDING_GITHUB_TARGETED_RUN",
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "852523f",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "automaticCiResult": "PENDING",
+        "localTargetedValidation": "PASS",
+        "meaning": "Cumulative SER-03 rolling branch after the P2-15 Timeline Geometry relocation; local contracts and core validation passed before Human Visual Acceptance."
+      },
+      "serialCheckpoints": {
+        "P2-15PreflightRelocationValidation": "PASS",
+        "B10ProductionEntryOrderAndEquivalence": "PASS",
+        "S13-05G112DeferredBoundary": "PASS; G112 / S13-05 remained intact and unmoved for P2-27"
+      },
+      "receipts": [
+        "docs/evidence/issue-550-p2-15/preflight.json",
+        "docs/evidence/issue-550-p2-15/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PENDING_HUMAN_ACCEPTANCE",
+        "scope": "Windows Electron Timeline Geometry acceptance remains deferred: portrait/landscape, 50px collapsed, 162..324px expanded resize, constrained windows, DPI, Chinese/long content, pending placement/drop, and audio trim."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "P2-15 was refreshed against the live rolling PR #542 head before production writes.",
+        "implementationHead": "The validated P2-15 implementation snapshot is historical; this ledger update intentionally records the prior implementation commit, not its own receipt commit.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means the authoritative post-push result belongs to GitHub Actions and PR metadata."
+      }
+    }
+  }
+}

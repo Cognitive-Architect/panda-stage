@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "issue": 549,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-02-B09",
+  "workItem": "P2-22",
+  "owner": "fla-review/fla-raster/fla-status",
+  "status": "validated-implementation-pending-human-acceptance",
+  "preflight": "docs/evidence/issue-549-p2-22/preflight.json",
+  "startingLivePrHead": "1db0f276fc02ae70f76676fa841a6310c9bea816",
+  "refreshedRemoteBranchHead": "62bb38093236fd52f69f4ff2eac8fb3882bc121e",
+  "validatedImplementationSnapshot": {
+    "head": "62bb38093236fd52f69f4ff2eac8fb3882bc121e",
+    "meaning": "P2-22 relocation and its identity registration were validated after the implementation commit; this receipt is committed afterward and does not self-reference its own commit."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0"
+  },
+  "segments": [
+    {
+      "id": "G018",
+      "sectionIds": ["S01-19", "S02-01"],
+      "canonicalOrder": 19,
+      "sourceSlice": "S01",
+      "sourceRange": { "startLine": 1672, "endLine": 2115 },
+      "sourceSegments": [
+        {
+          "sourceSlice": "S01",
+          "sourceRange": { "startLine": 1672, "endLine": 1951 },
+          "sourceLocalRange": { "startLine": 1670, "endLine": 1949 },
+          "sourceStartByte": 31598,
+          "sourceEndByteExclusive": 37093,
+          "sourceSha256": "e8a9bd57872415703e37749bbba395789f5b8fb7602867d901918244d4d82a27"
+        },
+        {
+          "sourceSlice": "S02",
+          "sourceRange": { "startLine": 1952, "endLine": 2115 },
+          "sourceLocalRange": { "startLine": 1, "endLine": 164 },
+          "sourceStartByte": 0,
+          "sourceEndByteExclusive": 3313,
+          "sourceSha256": "28c31a25dfa2ac283b5ec72250db2b4f80ee7d5f6434ae203692e40c67dc4400"
+        }
+      ],
+      "sourceStartByte": 31598,
+      "sourceEndByteExclusive": 40406,
+      "sourceSha256": "87b541e48194158eb9c611a448e855c5b2e888302b1ac71782924c5a787aa862",
+      "targetPath": "src/renderer/styles/features/fla-import/review/s01-19--review-base.css",
+      "predecessor": "S01-18/G017",
+      "successor": "S02-02/G019"
+    },
+    {
+      "id": "G019",
+      "sectionIds": ["S02-02"],
+      "canonicalOrder": 20,
+      "sourceSlice": "S02",
+      "sourceRange": { "startLine": 2116, "endLine": 2705 },
+      "sourceLocalRange": { "startLine": 165, "endLine": 754 },
+      "sourceStartByte": 3313,
+      "sourceEndByteExclusive": 16381,
+      "sourceSha256": "5a7a95ff63c95bb5ae45f9c6adab06383bd2302223428a5301575c4b75c10257",
+      "targetPath": "src/renderer/styles/features/fla-import/raster/s02-02--raster-workbench-and-shared-header.css",
+      "predecessor": "S02-01/G018",
+      "successor": "S02-03/G020"
+    },
+    {
+      "id": "G023",
+      "sectionIds": ["S03-01"],
+      "canonicalOrder": 24,
+      "sourceSlice": "S03",
+      "sourceRange": { "startLine": 3917, "endLine": 4227 },
+      "sourceLocalRange": { "startLine": 1, "endLine": 311 },
+      "sourceStartByte": 0,
+      "sourceEndByteExclusive": 6217,
+      "sourceSha256": "64280fc0188626b715e10292720858d88c9f73de0c0a4c75c23b1c261b6fb5c7",
+      "targetPath": "src/renderer/styles/features/fla-import/status/s03-01--terminal-g.css",
+      "predecessor": "S02-05/G022",
+      "successor": "S03-02/G024"
+    },
+    {
+      "id": "G024",
+      "sectionIds": ["S03-02"],
+      "canonicalOrder": 25,
+      "sourceSlice": "S03",
+      "sourceRange": { "startLine": 4228, "endLine": 4446 },
+      "sourceLocalRange": { "startLine": 312, "endLine": 530 },
+      "sourceStartByte": 6217,
+      "sourceEndByteExclusive": 11030,
+      "sourceSha256": "f2d8fd938def4f44c4c1c694684303bcb9f6b4424b7539c44554102c4836ca77",
+      "targetPath": "src/renderer/styles/features/fla-import/review/s03-02--inspection-a.css",
+      "predecessor": "S03-01/G023",
+      "successor": "S03-03/G025"
+    },
+    {
+      "id": "G025",
+      "sectionIds": ["S03-03"],
+      "canonicalOrder": 26,
+      "sourceSlice": "S03",
+      "sourceRange": { "startLine": 4447, "endLine": 4682 },
+      "sourceLocalRange": { "startLine": 531, "endLine": 766 },
+      "sourceStartByte": 11030,
+      "sourceEndByteExclusive": 15479,
+      "sourceSha256": "11fd03865d9cf5c4b256751ff6a50b5a63b28e5b02797fa38d8545a03b58294a",
+      "targetPath": "src/renderer/styles/features/fla-import/raster/s03-03--raster-browser-tail.css",
+      "predecessor": "S03-02/G024",
+      "successor": "S03-04/G026"
+    },
+    {
+      "id": "G026",
+      "sectionIds": ["S03-04"],
+      "canonicalOrder": 27,
+      "sourceSlice": "S03",
+      "sourceRange": { "startLine": 4683, "endLine": 5070 },
+      "sourceLocalRange": { "startLine": 767, "endLine": 1154 },
+      "sourceStartByte": 15479,
+      "sourceEndByteExclusive": 23069,
+      "sourceSha256": "7976def2145b51cde87941b3ba9f6cb2b35a8da2df42102188c4c9177a8d7614",
+      "targetPath": "src/renderer/styles/features/fla-import/status/s03-04--severity-f.css",
+      "predecessor": "S03-03/G025",
+      "successor": "S03-05/G027"
+    }
+  ],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "movedSegmentOrder": ["G018", "G019", "G023", "G024", "G025", "G026"],
+    "crossSliceTargetImports": { "G018": 1 },
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "behaviorContract": {
+    "flaReviewRasterStatusSurfaces": "preserved",
+    "statusSuccessPartialFailureCancel": "preserved",
+    "s02-03RightWorkspaceBoundary": "preserved and deferred",
+    "s13-05Mixed900pxBlock": "untouched and deferred to P2-27",
+    "newConsumers": [],
+    "relativeResourceUrls": [],
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS",
+    "git diff --check": "PASS",
+    "batchContractTests": "PENDING_FINAL_SER02_CONTRACT",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "scope": "FLA review portal, raster, status success/partial/failure/cancel, and constrained 1080px presentation remain for final SER-02 Windows Electron acceptance."
+  },
+  "scopeExceptions": []
+}

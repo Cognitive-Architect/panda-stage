@@ -1,0 +1,10 @@
+@media (max-width: 520px) {
+  .character-identity-picker-summary .character-identity-selected {
+    max-width: 88px;
+  }
+
+  .character-identity-picker-summary .character-identity-selected small {
+    max-width: 68px;
+  }
+}
+

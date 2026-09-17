@@ -1,0 +1,181 @@
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel-heading,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel-heading
+  + form
+  > strong,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  .eyebrow,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > div:first-child
+  h3,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  > div:first-child {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label {
+  min-width: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label
+  input,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  button {
+  min-height: 44px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > label
+  input {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > .layer-lock-control {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  form
+  > button {
+  width: 100%;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control {
+  display: flex;
+  min-height: 44px;
+  padding: 10px 0 0;
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  .layer-lock-control
+  input {
+  width: auto;
+  min-height: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  > p,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-transform-panel
+  > output,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-background-control
+  > p,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-order-controls
+  > p {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  output:empty {
+  display: none;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .right-inspector-section
+  .layer-delete-button,
+.editor-layout[data-shell-mode='landscape']
+  .right-inspector-drawer
+  .dialogue-delete {
+  border-color: rgb(246 139 118 / 62%);
+  color: #ffd6ca;
+  background: rgb(93 37 32 / 72%);
+}
+

@@ -1,0 +1,668 @@
+{
+  "schemaVersion": 1,
+  "issue": 553,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "serial": "SER-06",
+  "batch": "B14",
+  "p2": "P2-27",
+  "migrationMode": "ORDERED_COMPAT",
+  "owners": [
+    "legacy-task",
+    "mixed"
+  ],
+  "observedAt": "2026-09-17",
+  "startingLivePrHead": "83f34ce20e1a9c04a2bbb09924c18916a6da3a4a",
+  "immediateParentHead": "368000bbb5119278e510d027b55a9c0dd0230038",
+  "livePrState": {
+    "state": "OPEN",
+    "isDraft": true,
+    "mergeable": "MERGEABLE",
+    "url": "https://github.com/Cognitive-Architect/panda-stage/pull/542",
+    "automaticCiRun": 35209909150,
+    "automaticCiResult": "SUCCESS"
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "endLine": 32818
+  },
+  "productionEntryBeforeWrite": {
+    "path": "src/renderer/styles.css",
+    "blob": "f37c28b4cedda75638d3125f6e52963d1276cf00",
+    "importLines": {
+      "G049": [
+        53
+      ],
+      "G064": [
+        68
+      ],
+      "G076": [
+        81
+      ],
+      "G080": [
+        85
+      ],
+      "G082": [
+        87,
+        88
+      ],
+      "G085": [
+        91
+      ],
+      "G103": [
+        109,
+        110
+      ],
+      "G105": [
+        112
+      ],
+      "G107": [
+        114
+      ],
+      "G109": [
+        116
+      ],
+      "G112": [
+        119
+      ]
+    }
+  },
+  "manifestBeforeWrite": {
+    "path": "scripts/css-split-manifest.json",
+    "blob": "2c54d7a9e31d126a7458a6e478fa1d7071dbca9a"
+  },
+  "phase2CanonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false,
+    "sectionCount": 179,
+    "segmentCount": 147
+  },
+  "sections": [
+    {
+      "id": "S06-06",
+      "segment": "G049",
+      "sourceSlice": "S06",
+      "globalRange": "10328-10556",
+      "localRange": "489-717",
+      "startAnchor": "@media (max-width: 1100px)",
+      "endAnchorExclusive": "S06-07",
+      "endAnchor": "@media (max-width: 1100px)"
+    },
+    {
+      "id": "S06-07",
+      "segment": "G049",
+      "sourceSlice": "S06",
+      "globalRange": "10557-10699",
+      "localRange": "718-860",
+      "startAnchor": "@media (max-width: 720px)",
+      "endAnchorExclusive": "S06-08",
+      "endAnchor": ".new-project-button",
+      "condition": "@media (max-width: 720px)"
+    },
+    {
+      "id": "S07-08",
+      "segment": "G064",
+      "sourceSlice": "S07",
+      "globalRange": "12695-12844",
+      "localRange": "812-961",
+      "startAnchor": "portrait dialogue-sheet-timeline selector",
+      "endAnchorExclusive": "S07-09",
+      "endAnchor": "portrait history selector",
+      "condition": "cloud-touch + portrait + active-workspace=timeline"
+    },
+    {
+      "id": "S08-05",
+      "segment": "G076",
+      "sourceSlice": "S08",
+      "globalRange": "14620-15063",
+      "localRange": "819-1262",
+      "startAnchor": "portrait dialogue-sheet-timeline selector",
+      "endAnchorExclusive": "S08-06",
+      "endAnchor": "Issue #340:",
+      "condition": "cloud-touch + portrait + active-workspace=timeline"
+    },
+    {
+      "id": "S08-09",
+      "segment": "G080",
+      "sourceSlice": "S08",
+      "globalRange": "15733-16273",
+      "localRange": "1932-2472",
+      "startAnchor": "Issue #357:",
+      "endAnchorExclusive": "S08-10",
+      "endAnchor": "Issue #354:",
+      "condition": "cloud-touch + portrait + active-workspace=timeline"
+    },
+    {
+      "id": "S08-10",
+      "segment": "G080",
+      "sourceSlice": "S08",
+      "globalRange": "16274-16291",
+      "localRange": "2473-2490",
+      "startAnchor": "Issue #354:",
+      "endAnchorExclusive": "S08-11",
+      "endAnchor": "Issue #352:",
+      "condition": "cloud-touch + portrait + active-workspace=timeline"
+    },
+    {
+      "id": "S08-11",
+      "segment": "G080",
+      "sourceSlice": "S08",
+      "globalRange": "16292-16456",
+      "localRange": "2491-2655",
+      "startAnchor": "Issue #352:",
+      "endAnchorExclusive": "S08-12",
+      "endAnchor": "Issue #348:",
+      "condition": "cloud-touch + portrait + active-workspace=timeline"
+    },
+    {
+      "id": "S08-15",
+      "segment": "G082",
+      "sourceSlice": "S08",
+      "globalRange": "17497-17819",
+      "localRange": "3696-4018",
+      "startAnchor": "Issue #351:",
+      "endAnchorExclusive": "S09-01",
+      "endAnchor": "BOF",
+      "condition": "cloud-touch + portrait + active-workspace=timeline"
+    },
+    {
+      "id": "S09-01",
+      "segment": "G082",
+      "sourceSlice": "S09",
+      "globalRange": "17820-18217",
+      "localRange": "1-398",
+      "startAnchor": "BOF",
+      "endAnchorExclusive": "S09-02",
+      "endAnchor": "Issue #358:",
+      "condition": "cloud-touch + portrait + active-workspace=timeline"
+    },
+    {
+      "id": "S09-04",
+      "segment": "G085",
+      "sourceSlice": "S09",
+      "globalRange": "18755-18827",
+      "localRange": "936-1008",
+      "startAnchor": "dialogue-secondary-action/dialogue-authoring-open selector",
+      "endAnchorExclusive": "S09-05",
+      "endAnchor": "Issue #360:",
+      "condition": "cloud-touch + portrait + active-workspace=timeline"
+    },
+    {
+      "id": "S11-10",
+      "segment": "G103",
+      "sourceSlice": "S11",
+      "globalRange": "23763-23799",
+      "localRange": "1961-1997",
+      "startAnchor": "landscape timeline-task-tray selector",
+      "endAnchorExclusive": "S12-01",
+      "endAnchor": "BOF",
+      "condition": "cloud-touch + landscape + active-workspace=timeline"
+    },
+    {
+      "id": "S12-01",
+      "segment": "G103",
+      "sourceSlice": "S12",
+      "globalRange": "23800-24178",
+      "localRange": "1-379",
+      "startAnchor": "BOF",
+      "endAnchorExclusive": "S12-02",
+      "endAnchor": "Issue #380:",
+      "condition": "cloud-touch + landscape + active-workspace=timeline"
+    },
+    {
+      "id": "S12-02",
+      "segment": "G103",
+      "sourceSlice": "S12",
+      "globalRange": "24179-24447",
+      "localRange": "380-648",
+      "startAnchor": "Issue #380:",
+      "endAnchorExclusive": "S12-03",
+      "endAnchor": "Issue #381:",
+      "condition": "cloud-touch + landscape + active-workspace=timeline"
+    },
+    {
+      "id": "S12-05",
+      "segment": "G105",
+      "sourceSlice": "S12",
+      "globalRange": "24599-24877",
+      "localRange": "800-1078",
+      "startAnchor": "landscape timeline-task-tray selector",
+      "endAnchorExclusive": "S12-06",
+      "endAnchor": "Issue #387:",
+      "condition": "cloud-touch + landscape + active-workspace=timeline"
+    },
+    {
+      "id": "S12-08",
+      "segment": "G107",
+      "sourceSlice": "S12",
+      "globalRange": "25735-25857",
+      "localRange": "1936-2058",
+      "startAnchor": "At the accepted Stage A shallow heights / @container stage-e-timeline (max-height: 220px)",
+      "endAnchorExclusive": "S12-09",
+      "endAnchor": ".timeline-pending-drop-notice",
+      "condition": "container stage-e-timeline max-height 220px"
+    },
+    {
+      "id": "S13-01",
+      "segment": "G109",
+      "sourceSlice": "S13",
+      "globalRange": "25877-26539",
+      "localRange": "1-663",
+      "startAnchor": "BOF",
+      "endAnchorExclusive": "S13-02",
+      "endAnchor": "Issue #386:",
+      "condition": "cloud-touch + landscape + active-workspace=timeline"
+    },
+    {
+      "id": "S13-02",
+      "segment": "G109",
+      "sourceSlice": "S13",
+      "globalRange": "26540-27503",
+      "localRange": "664-1627",
+      "startAnchor": "Issue #386:",
+      "endAnchorExclusive": "S13-03",
+      "endAnchor": "Issue #422 + #432 R3-A:",
+      "condition": "cloud-touch + landscape + active-workspace=timeline"
+    },
+    {
+      "id": "S13-05",
+      "segment": "G112",
+      "sourceSlice": "S13",
+      "globalRange": "27860-27997",
+      "localRange": "1984-2121",
+      "startAnchor": "@media (max-width: 900px)",
+      "endAnchorExclusive": "EOF",
+      "endAnchor": "EOF",
+      "condition": "mixed @media (max-width: 900px)"
+    }
+  ],
+  "segments": [
+    {
+      "id": "G049",
+      "owner": "mixed",
+      "canonicalOrder": 54,
+      "sourceSlice": "S06",
+      "globalRange": "10328-10699",
+      "localRange": "489-860",
+      "sourceStartByte": 9398,
+      "sourceEndByteExclusive": 16766,
+      "bytes": 7368,
+      "sha256": "983670890d12313330070acff610c342a822ff6bafbdf4c0b2fdfa2ce5a36eae",
+      "predecessor": "S06-05/G048",
+      "successor": "S06-08/G050",
+      "targetPath": "src/renderer/styles/compat/mixed-conditions/s06-06--responsive-1100.css",
+      "currentRemainderPath": "src/renderer/styles.css#S06-R02",
+      "conditionUnits": [
+        "@media (max-width: 1100px)",
+        "@media (max-width: 720px)"
+      ]
+    },
+    {
+      "id": "G064",
+      "owner": "legacy-task",
+      "canonicalOrder": 72,
+      "sourceSlice": "S07",
+      "globalRange": "12695-12844",
+      "localRange": "812-961",
+      "sourceStartByte": 25680,
+      "sourceEndByteExclusive": 30565,
+      "bytes": 4885,
+      "sha256": "c0edfb9fb49454948730d77328b84544853fc3f8851bf40115f23e9747581c00",
+      "predecessor": "S07-07/G063",
+      "successor": "S07-09/G065",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s07-08--portrait-dialogue-original.css",
+      "currentRemainderPath": "src/renderer/styles.css#S07-R06",
+      "conditionUnits": [
+        "cloud-touch",
+        "portrait",
+        "active workspace timeline"
+      ]
+    },
+    {
+      "id": "G076",
+      "owner": "legacy-task",
+      "canonicalOrder": 85,
+      "sourceSlice": "S08",
+      "globalRange": "14620-15063",
+      "localRange": "819-1262",
+      "sourceStartByte": 22176,
+      "sourceEndByteExclusive": 36989,
+      "bytes": 14813,
+      "sha256": "239bb7fe9e7971b75206d58c0c6922e3f4fb3d1466b99e4a773f7e0a31b941cd",
+      "predecessor": "S08-04/G075",
+      "successor": "S08-06/G077",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s08-05--portrait-dialogue-flat.css",
+      "currentRemainderPath": "src/renderer/styles.css#S08-R05",
+      "conditionUnits": [
+        "cloud-touch",
+        "portrait",
+        "active workspace timeline"
+      ]
+    },
+    {
+      "id": "G080",
+      "owner": "legacy-task",
+      "canonicalOrder": 89,
+      "sourceSlice": "S08",
+      "globalRange": "15733-16456",
+      "localRange": "1932-2655",
+      "sourceStartByte": 58701,
+      "sourceEndByteExclusive": 83439,
+      "bytes": 24738,
+      "sha256": "cdffa29e504947accf0275f937fe1eec8ebd1cccdc261881840714282798d173",
+      "predecessor": "S08-08/G079",
+      "successor": "S08-12/G081",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s08-09--portrait-authoring.css",
+      "currentRemainderPath": "src/renderer/styles.css#S08-R03",
+      "conditionUnits": [
+        "cloud-touch",
+        "portrait",
+        "active workspace timeline",
+        "@media (max-width: 480px)"
+      ]
+    },
+    {
+      "id": "G082",
+      "owner": "legacy-task",
+      "canonicalOrder": 95,
+      "sourceSlice": "S08+S09",
+      "globalRange": "17497-18217",
+      "localRange": "S08:3696-4018; S09:1-398",
+      "sourceStartByte": 114224,
+      "sourceEndByteExclusive": 137081,
+      "bytes": 22857,
+      "sha256": "37c26e1eedf656ea5bb7513021f757bcbd682bffb241bc08295faddbde39dfa5",
+      "predecessor": "S08-14/G081",
+      "successor": "S09-02/G083",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s08-15--portrait-pending-base-and-final.css",
+      "currentRemainderPath": "src/renderer/styles.css#S08-R02 + S09-R01",
+      "conditionUnits": [
+        "cloud-touch",
+        "portrait",
+        "active workspace timeline",
+        "@media (max-width: 480px)"
+      ],
+      "sourceSegments": [
+        {
+          "sourceSlice": "S08",
+          "remainderPath": "src/renderer/styles.css#S08-R02",
+          "globalRange": "17497-17819",
+          "localRange": "3696-4018",
+          "sourceStartByte": 114224,
+          "sourceEndByteExclusive": 124867,
+          "bytes": 10643,
+          "sha256": "c1ab29dccb329c860e241fdf9e3b9e2bfc671d2b0983103a7cbd636db72546a6"
+        },
+        {
+          "sourceSlice": "S09",
+          "remainderPath": "src/renderer/styles.css#S09-R01",
+          "globalRange": "17820-18217",
+          "localRange": "1-398",
+          "sourceStartByte": 0,
+          "sourceEndByteExclusive": 12214,
+          "bytes": 12214,
+          "sha256": "4dcea49c6c2faf9fb0eac38eae20f4663706c5a11f226be15122ce2c75b7007a6"
+        }
+      ]
+    },
+    {
+      "id": "G085",
+      "owner": "legacy-task",
+      "canonicalOrder": 99,
+      "sourceSlice": "S09",
+      "globalRange": "18755-18827",
+      "localRange": "936-1008",
+      "sourceStartByte": 29759,
+      "sourceEndByteExclusive": 32286,
+      "bytes": 2527,
+      "sha256": "138c7d966d389c68b5079f832686e61389ddcb9dc05d4a46868c3295b7ae6215",
+      "predecessor": "S09-03/G084",
+      "successor": "S09-05/G086",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s09-04--portrait-pending-polish.css",
+      "currentRemainderPath": "src/renderer/styles.css#S09-R02",
+      "conditionUnits": [
+        "cloud-touch",
+        "portrait",
+        "active workspace timeline",
+        "@media (max-width: 480px)"
+      ]
+    },
+    {
+      "id": "G103",
+      "owner": "legacy-task",
+      "canonicalOrder": 121,
+      "sourceSlice": "S11+S12",
+      "globalRange": "S11:23763-23799; S12:23800-24447",
+      "localRange": "S11:1961-1997; S12:1-648",
+      "sourceStartByte": 57857,
+      "sourceEndByteExclusive": 77955,
+      "bytes": 20098,
+      "sha256": "2ce54b4979aa5bd7ca0ae545c18af3f8eeb30140c1c68825f9e4efe535519ec2",
+      "predecessor": "S11-09/G102",
+      "successor": "S12-03/G104",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s11-10--landscape-tray-host-original.css",
+      "currentRemainderPath": "src/renderer/styles.css#S11-R02 + S12-R01",
+      "conditionUnits": [
+        "cloud-touch",
+        "landscape",
+        "active workspace timeline",
+        "@media (max-width: 620px)"
+      ],
+      "sourceSegments": [
+        {
+          "sourceSlice": "S11",
+          "remainderPath": "src/renderer/styles.css#S11-R02",
+          "globalRange": "23763-23799",
+          "localRange": "1961-1997",
+          "sourceStartByte": 57857,
+          "sourceEndByteExclusive": 58838,
+          "bytes": 981,
+          "sha256": "f2580bfd5d6f84e31454274d6ac29c0052e8c32e14c50dc482c6fb0f93bcada4"
+        },
+        {
+          "sourceSlice": "S12",
+          "remainderPath": "src/renderer/styles.css#S12-R01",
+          "globalRange": "23800-24447",
+          "localRange": "1-648",
+          "sourceStartByte": 0,
+          "sourceEndByteExclusive": 19117,
+          "bytes": 19117,
+          "sha256": "a4aac50e6a525139aa167a495cb52623a5eb196d30bb825532fd5a49d220ecdc"
+        }
+      ]
+    },
+    {
+      "id": "G105",
+      "owner": "legacy-task",
+      "canonicalOrder": 126,
+      "sourceSlice": "S12",
+      "globalRange": "24599-24877",
+      "localRange": "800-1078",
+      "sourceStartByte": 24297,
+      "sourceEndByteExclusive": 32640,
+      "bytes": 8343,
+      "sha256": "68527d26ddafc7d3d7bb645cb6df610c08fc23caa6f5282f4a482035929fa110",
+      "predecessor": "S12-04/G104",
+      "successor": "S12-06/G106",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s12-05--landscape-task-body.css",
+      "currentRemainderPath": "src/renderer/styles.css#S12-R03",
+      "conditionUnits": [
+        "cloud-touch",
+        "landscape",
+        "active workspace timeline",
+        "@media (max-width: 760px)"
+      ]
+    },
+    {
+      "id": "G107",
+      "owner": "mixed",
+      "canonicalOrder": 129,
+      "sourceSlice": "S12",
+      "globalRange": "25735-25857",
+      "localRange": "1936-2058",
+      "sourceStartByte": 59072,
+      "sourceEndByteExclusive": 63233,
+      "bytes": 4161,
+      "sha256": "a975267d9307ce836a191a514f76730df7b187282f3a1f1dda0407ea589f79fe",
+      "predecessor": "S12-07/G106",
+      "successor": "S12-09/G108",
+      "targetPath": "src/renderer/styles/compat/mixed-conditions/s12-08--shallow-container-220.css",
+      "currentRemainderPath": "src/renderer/styles.css#S12-R02",
+      "conditionUnits": [
+        "@container stage-e-timeline (max-height: 220px)",
+        "cloud-touch",
+        "landscape",
+        "active workspace timeline"
+      ]
+    },
+    {
+      "id": "G109",
+      "owner": "legacy-task",
+      "canonicalOrder": 131,
+      "sourceSlice": "S13",
+      "globalRange": "25877-27503",
+      "localRange": "1-1627",
+      "sourceStartByte": 0,
+      "sourceEndByteExclusive": 51140,
+      "bytes": 51140,
+      "sha256": "d8ed9649ab130f09fded9fabca3dd770df77551712da47b03741dffb480308fe",
+      "predecessor": "S12-09/G108",
+      "successor": "S13-03/G110",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s13-01--landscape-timed-384-385.css",
+      "currentRemainderPath": "src/renderer/styles.css#S13-R01",
+      "conditionUnits": [
+        "cloud-touch",
+        "landscape",
+        "active workspace timeline",
+        "@media (max-width: 760px)",
+        "@container stage-e-timeline (min-height: 221px) and (max-height: 320px)",
+        "@container stage-e-timeline (max-height: 220px)"
+      ]
+    },
+    {
+      "id": "G112",
+      "owner": "mixed",
+      "canonicalOrder": 135,
+      "sourceSlice": "S13",
+      "globalRange": "27860-27997",
+      "localRange": "1984-2121",
+      "sourceStartByte": 61800,
+      "sourceEndByteExclusive": 65768,
+      "bytes": 3968,
+      "sha256": "166cc15d2731d40bfba39afa68282fce2a55b5205f76087a26d867c896d95e62",
+      "predecessor": "S13-04/G111",
+      "successor": "S14-01/G113",
+      "targetPath": "src/renderer/styles/compat/mixed-conditions/s13-05--render-dialogue-audio-media900.css",
+      "currentRemainderPath": "src/renderer/styles.css#S13-R02",
+      "conditionUnits": [
+        "@media (max-width: 900px)",
+        "FLA + Dialogue + Audio mixed unit"
+      ]
+    }
+  ],
+  "currentRemainders": {
+    "movedByP227": [
+      "S06-R02",
+      "S07-R06",
+      "S08-R05",
+      "S08-R03",
+      "S08-R02",
+      "S09-R01",
+      "S09-R02",
+      "S11-R02",
+      "S12-R01",
+      "S12-R03",
+      "S12-R02",
+      "S13-R01",
+      "S13-R02"
+    ],
+    "retained": [
+      "S05-R02",
+      "S05-R03",
+      "S07-R04"
+    ],
+    "allP227SourcesAreExactRemainderCopies": true
+  },
+  "consumerEvidence": {
+    "legacyTask": {
+      "producers": [
+        "DialogueSheet",
+        "TimelineDock",
+        "DialogueClip",
+        "AudioClip"
+      ],
+      "hosts": [
+        "BottomWorkspace",
+        "EditorShell",
+        "RightWorkspace"
+      ],
+      "runtime": [
+        "DialogueSheet",
+        "DialogueInspector",
+        "AudioClip"
+      ],
+      "programmaticTests": [
+        "tests/unit/editor-issue330-portrait-timeline.test.ts",
+        "tests/unit/editor-issue351-timeline-default.test.ts",
+        "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+        "tests/unit/editor-issue380-landscape-pending-tray.test.ts",
+        "tests/unit/editor-issue382-landscape-task-tray.test.ts",
+        "tests/unit/editor-issue385-timing-card-density.test.ts",
+        "tests/unit/editor-issue386-authoring-shell-polish.test.ts"
+      ]
+    },
+    "mixed": {
+      "producers": [
+        "FlaRenderWorkbench",
+        "FlaStaticSnapshotReview",
+        "DialogueInspector",
+        "AudioClip"
+      ],
+      "hosts": [
+        "FlaCompatibilityReviewSession",
+        "BottomWorkspace",
+        "RightWorkspace"
+      ],
+      "runtime": [
+        "FlaRenderWorkbench",
+        "DialogueInspector",
+        "AudioClip"
+      ],
+      "programmaticTests": [
+        "tests/unit/fla-stage-d-render-workbench.test.ts",
+        "tests/unit/fla-stage-f-presentation.test.ts",
+        "tests/unit/editor-issue448-duration-editor.test.ts",
+        "tests/unit/editor-issue447-subtitle-audio-polish.test.ts"
+      ]
+    }
+  },
+  "blockers": {
+    "p2_15": "docs/evidence/issue-550-p2-15/receipt.json implementationAndAcceptance PASS",
+    "p2_18": "docs/evidence/issue-552-p2-18/receipt.json PASS",
+    "p2_23": "docs/evidence/issue-549-p2-23/receipt.json plus current SER-02 rolling acceptance PASS; receipt is historical snapshot",
+    "p2_24": "docs/evidence/issue-549-p2-24/receipt.json plus current SER-02 rolling acceptance PASS; receipt is historical snapshot"
+  },
+  "stopChecks": {
+    "pinnedHeadAndBlobs": true,
+    "all18Sections": true,
+    "all11Segments": true,
+    "balancedCssBoundaries": true,
+    "conditionComplete": true,
+    "relativeResourceUrlsPresent": false,
+    "newRuntimeConsumers": false,
+    "domStateStoreIpcBehaviorChanges": false,
+    "legacyEntranceRevived": false,
+    "retainedCssDeleted": false
+  },
+  "validation": {
+    "preflightVerifier": "PASS: node scripts/verify-css-split.cjs --preflight",
+    "status": "preflight-pass",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  }
+}

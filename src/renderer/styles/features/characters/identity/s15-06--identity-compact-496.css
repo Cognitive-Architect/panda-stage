@@ -1,0 +1,77 @@
+/* Issue #496: keep the approved avatar + Character identity language while
+   making the selected summary a compact row. The summary keeps the same
+   fixed minimum height in empty and selected states, so selection does not
+   move the surrounding form. */
+.character-identity-picker-summary {
+  min-height: 56px;
+  padding: 6px 7px;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  gap: 6px;
+}
+
+.character-identity-picker-summary > .character-identity-row {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.character-identity-picker-summary .character-identity-avatar:not(.character-list-avatar),
+.character-identity-picker-summary .character-identity-empty-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.character-identity-picker-summary .character-identity-empty-summary {
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.character-identity-picker-summary .character-identity-copy {
+  gap: 2px;
+}
+
+.character-identity-picker-summary .character-identity-selected {
+  display: inline-flex;
+  max-width: min(108px, 24vw);
+  min-width: 0;
+  align-items: center;
+  justify-self: end;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid rgb(127 199 148 / 42%);
+  border-radius: 999px;
+  color: #c8f4d4;
+  background: rgb(37 88 51 / 38%);
+  text-align: left;
+}
+
+.character-identity-picker-summary .character-identity-selected-check {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.character-identity-picker-summary .character-identity-selected small {
+  display: inline;
+  min-width: 0;
+  max-width: 90px;
+  color: #b7eac3;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.character-identity-picker-summary > .character-identity-picker-chevron {
+  width: 18px;
+  min-width: 18px;
+  justify-self: end;
+  font-size: 15px;
+}
+

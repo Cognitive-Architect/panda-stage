@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "issue": 549,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-02-B07",
+  "workItem": "P2-20",
+  "owner": "project-entry/project-recovery",
+  "status": "preflight-pass",
+  "startingLivePrHead": "1887fce11aebfc68480e97c2f49ef410d3a33ff6",
+  "refreshedRemoteBranchHead": "1887fce11aebfc68480e97c2f49ef410d3a33ff6",
+  "integrationBaseHead": "1887fce11aebfc68480e97c2f49ef410d3a33ff6",
+  "predecessorImplementation": {
+    "workItem": "P2-24",
+    "commit": "1887fce11aebfc68480e97c2f49ef410d3a33ff6",
+    "verified": true,
+    "handoff": "P2-24 G029 is present; this preflight resolves the nine project-entry/project-recovery segments while preserving the existing FLA sequence and render ordering."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "sourceLineEndingNormalization": "LF"
+  },
+  "sections": ["S01-03", "S01-16", "S01-17", "S03-06", "S04-01", "S05-09", "S05-10", "S06-08", "S06-10", "S10-07"],
+  "segments": [
+    {
+      "id": "G003",
+      "sectionIds": ["S01-03"],
+      "canonicalOrder": 3,
+      "sourceSlice": "S01",
+      "globalRange": { "startLine": 78, "endLine": 157 },
+      "sourceLocalRange": { "startLine": 76, "endLine": 155 },
+      "sourceStartByte": 1288,
+      "sourceEndByteExclusive": 2736,
+      "sourceSha256": "ddce4a03bfc06e0291e8d13d8645f10eb0d6b355fe568f7dc58888e3b8445483",
+      "targetPath": "src/renderer/styles/shell/project-entry/s01-03--project-center-start.css",
+      "predecessor": "S01-02/G002",
+      "successor": "S01-04/G004"
+    },
+    {
+      "id": "G015",
+      "sectionIds": ["S01-16"],
+      "canonicalOrder": 16,
+      "sourceSlice": "S01",
+      "globalRange": { "startLine": 1561, "endLine": 1571 },
+      "sourceLocalRange": { "startLine": 1559, "endLine": 1569 },
+      "sourceStartByte": 29760,
+      "sourceEndByteExclusive": 29974,
+      "sourceSha256": "e0ed577d20e8fccbcdc3c748abc57db3ece8e98ac647f5a1d29526d4ed588c0e",
+      "targetPath": "src/renderer/styles/features/recovery/s01-16--recovery-panel-base.css",
+      "predecessor": "S01-15/G014",
+      "successor": "S01-17/G016"
+    },
+    {
+      "id": "G016",
+      "sectionIds": ["S01-17"],
+      "canonicalOrder": 17,
+      "sourceSlice": "S01",
+      "globalRange": { "startLine": 1572, "endLine": 1582 },
+      "sourceLocalRange": { "startLine": 1570, "endLine": 1580 },
+      "sourceStartByte": 29974,
+      "sourceEndByteExclusive": 30195,
+      "sourceSha256": "dffd193a01ba3f2e68ccb96f5184f62136100fdc1540921d1c35d28ee9769893",
+      "targetPath": "src/renderer/styles/shell/project-entry/s01-17--recent-panel-base.css",
+      "predecessor": "S01-16/G015",
+      "successor": "S01-18/G017"
+    },
+    {
+      "id": "G028",
+      "sectionIds": ["S03-06", "S04-01"],
+      "canonicalOrder": 30,
+      "sourceSlice": "S03",
+      "globalRange": { "startLine": 5351, "endLine": 6529 },
+      "sourceLocalRange": { "startLine": 1435, "endLine": 2103 },
+      "sourceSegments": [
+        {
+          "sourceSlice": "S03",
+          "globalRange": { "startLine": 5351, "endLine": 6019 },
+          "sourceLocalRange": { "startLine": 1435, "endLine": 2103 },
+          "sourceStartByte": 30971,
+          "sourceEndByteExclusive": 47457,
+          "sourceSha256": "0e1b80d8eb4fee4920c621d693e698c9668261af45a54790b1d7303422fa0873"
+        },
+        {
+          "sourceSlice": "S04",
+          "globalRange": { "startLine": 6020, "endLine": 6529 },
+          "sourceLocalRange": { "startLine": 1, "endLine": 510 },
+          "sourceStartByte": 0,
+          "sourceEndByteExclusive": 12168,
+          "sourceSha256": "de1dde7facffd33e43930ffa6fa283621c7a0318b28de4a96fe1ed07c79168b9"
+        }
+      ],
+      "sourceStartByte": 30971,
+      "sourceEndByteExclusive": 59625,
+      "sourceSha256": "187c4c5d45172609766e80d13af02ddb93bed1390291640b58dbb78f64cb678a",
+      "targetPath": "src/renderer/styles/shell/project-entry/s03-06--launcher-412.css",
+      "predecessor": "S03-05/G027",
+      "successor": "S04-02/G029"
+    },
+    {
+      "id": "G039",
+      "sectionIds": ["S05-09"],
+      "canonicalOrder": 44,
+      "sourceSlice": "S05",
+      "globalRange": { "startLine": 9431, "endLine": 9506 },
+      "sourceLocalRange": { "startLine": 1393, "endLine": 1468 },
+      "sourceStartByte": 24908,
+      "sourceEndByteExclusive": 26178,
+      "sourceSha256": "fb14b02ff9512441cfdc8bf199e6dda913fc58c4ea363986b3f8c85c6274e3c7",
+      "targetPath": "src/renderer/styles/shell/project-entry/s05-09--recent-projects-base.css",
+      "predecessor": "S05-08/G038",
+      "successor": "S05-10/G040"
+    },
+    {
+      "id": "G040",
+      "sectionIds": ["S05-10"],
+      "canonicalOrder": 45,
+      "sourceSlice": "S05",
+      "globalRange": { "startLine": 9507, "endLine": 9756 },
+      "sourceLocalRange": { "startLine": 1469, "endLine": 1718 },
+      "sourceStartByte": 26178,
+      "sourceEndByteExclusive": 30937,
+      "sourceSha256": "0766152645c539e9e2140a94eb040a9affa5241552f4cdf7385b7eca1a9b5a81",
+      "targetPath": "src/renderer/styles/features/recovery/s05-10--recovery-status-and-prompt.css",
+      "predecessor": "S05-09/G039",
+      "successor": "S05-11/G041"
+    },
+    {
+      "id": "G050",
+      "sectionIds": ["S06-08"],
+      "canonicalOrder": 56,
+      "sourceSlice": "S06",
+      "globalRange": { "startLine": 10700, "endLine": 10792 },
+      "sourceLocalRange": { "startLine": 861, "endLine": 953 },
+      "sourceStartByte": 16766,
+      "sourceEndByteExclusive": 18294,
+      "sourceSha256": "4d681898cb65e1c1c967974b177996dc62050af2b829fe73b4e11ff82579dfc9",
+      "targetPath": "src/renderer/styles/shell/project-entry/s06-08--new-project-dialog.css",
+      "predecessor": "S06-07/G049",
+      "successor": "S06-09/G051"
+    },
+    {
+      "id": "G052",
+      "sectionIds": ["S06-10"],
+      "canonicalOrder": 58,
+      "sourceSlice": "S06",
+      "globalRange": { "startLine": 10968, "endLine": 11053 },
+      "sourceLocalRange": { "startLine": 1129, "endLine": 1214 },
+      "sourceStartByte": 21495,
+      "sourceEndByteExclusive": 22894,
+      "sourceSha256": "10131a65b9f29740aa9eaf0621773f48fe97823ec554780a37615747b3c2f86e",
+      "targetPath": "src/renderer/styles/shell/project-entry/s06-10--close-confirm.css",
+      "predecessor": "S06-09/G051",
+      "successor": "S06-11/G053"
+    },
+    {
+      "id": "G095",
+      "sectionIds": ["S10-07"],
+      "canonicalOrder": 110,
+      "sourceSlice": "S10",
+      "globalRange": { "startLine": 21746, "endLine": 21766 },
+      "sourceLocalRange": { "startLine": 1963, "endLine": 1983 },
+      "sourceStartByte": 54503,
+      "sourceEndByteExclusive": 54898,
+      "sourceSha256": "2180f3c6b91be8141437974435bb6e4730608f212ae7d91bd3f1693f4fac1381",
+      "targetPath": "src/renderer/styles/shell/project-entry/s10-07--recent-maintenance.css",
+      "predecessor": "S10-06/G094",
+      "successor": "S10-08/G096"
+    }
+  ],
+  "currentRemainders": [
+    { "id": "S01-R01", "sourceRange": { "startLine": 3, "endLine": 1582 } },
+    { "id": "S03-R01", "sourceRange": { "startLine": 5351, "endLine": 6019 } },
+    { "id": "S04-R01", "sourceRange": { "startLine": 6020, "endLine": 6529 } },
+    { "id": "S05-R04", "sourceRange": { "startLine": 9431, "endLine": 9839 } },
+    { "id": "S06-R02", "sourceRange": { "startLine": 10289, "endLine": 10792 } },
+    { "id": "S06-R03", "sourceRange": { "startLine": 10968, "endLine": 11053 } },
+    { "id": "S10-R01", "sourceRange": { "startLine": 21525, "endLine": 21802 } }
+  ],
+  "boundaryEvidence": {
+    "candidateBoundariesSafe": true,
+    "allOwnedLocalBoundariesSafe": true,
+    "delimiterStateBalanced": true,
+    "topLevelPreludePending": false,
+    "relativeResourceUrls": [],
+    "newConsumers": [],
+    "productionEntryOnly": true,
+    "g028CrossSliceConcatenationOrder": ["S03", "S04"],
+    "s04G032Media1080BlockKeptWhole": true,
+    "s13G112Media900BlockUntouched": true,
+    "p2-22AndP2-24Existing": ["G018", "G019", "G023", "G024", "G025", "G026", "G027", "G029", "G030", "G032", "G111"],
+    "p2-25Deferred": ["G014", "G041", "G043", "G048"],
+    "p2-26Deferred": ["G001", "G031", "G042"]
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS (nine owned segment ranges; pinned baseline CSS scan)",
+    "productionEntryBeforeWrite": "PASS (P2-24 root entry reconstructs pinned baseline)",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "scopeExceptions": []
+}

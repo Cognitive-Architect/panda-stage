@@ -1,0 +1,125 @@
+{
+  "issue": 552,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "batch": "B13",
+  "p2": "P2-21",
+  "owner": "shell-tools",
+  "migrationMode": "DIRECT+HOST_INTEGRATION",
+  "capturedAfterMandatoryB12Handoff": true,
+  "liveAuthority": {
+    "prHead": "701362e109fe30bd53fb5712d730538638848dd4",
+    "remoteBranchHead": "701362e109fe30bd53fb5712d730538638848dd4",
+    "prState": "OPEN_DRAFT",
+    "mergeable": "MERGEABLE",
+    "b12ImplementationHead": "b3d888553c112bfbb80efd6165e898bf8d3854b0",
+    "handoffRule": "B13 ranges were recomputed from the B12-updated tree; no B12 byte ranges were reused."
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "originalLineCount": 32818,
+    "lineEndingNormalization": "CRLF/CR to LF for comparison"
+  },
+  "phase2CanonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "entryAndManifestAfterB12Handoff": {
+    "entryPath": "src/renderer/styles.css",
+    "entryBlob": "e78c35e345b3542b983536d4fd38591b517b7733",
+    "entryImportCount": 152,
+    "manifestPath": "scripts/css-split-manifest.json",
+    "manifestBlob": "82e2bc78305d7a6daf4d92fb7ce697bd8f02689f",
+    "cssSplitPreflight": "PASS before B13 implementation"
+  },
+  "sections": ["S01-09", "S01-11", "S10-06", "S10-08", "S11-02"],
+  "segments": [
+    {
+      "id": "G009",
+      "section": "S01-09",
+      "sourceRange": { "startLine": 852, "endLine": 885 },
+      "sourceLocalRange": { "startLine": 850, "endLine": 883 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-resources.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 34 },
+      "sourceStartByte": 16288,
+      "sourceEndByteExclusive": 16880,
+      "sourceSha256": "f7142037492b2ee11d66d6f5985a21dbf820afbdca317579d52f5fe6868e5730",
+      "targetPath": "src/renderer/styles/shell/tools/s01-09--legacy-compatibility.css"
+    },
+    {
+      "id": "G011",
+      "section": "S01-11",
+      "sourceRange": { "startLine": 911, "endLine": 949 },
+      "sourceLocalRange": { "startLine": 909, "endLine": 947 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-canvas-host.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 39 },
+      "sourceStartByte": 17652,
+      "sourceEndByteExclusive": 18358,
+      "sourceSha256": "4af1bf0e8469c0fed1131bd60981bdf3be52f59b73aa116f130fce27f73d7490",
+      "targetPath": "src/renderer/styles/shell/tools/s01-11--legacy-workspace-placeholder.css"
+    },
+    {
+      "id": "G094",
+      "section": "S10-06",
+      "sourceRange": { "startLine": 21672, "endLine": 21745 },
+      "sourceLocalRange": { "startLine": 1889, "endLine": 1962 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-after-resource-rail.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 74 },
+      "sourceStartByte": 53229,
+      "sourceEndByteExclusive": 54503,
+      "sourceSha256": "473c0db00cfc21896db2ac72b5e0ead7b7822037eb0d6f3d1c11aa176ef00218",
+      "targetPath": "src/renderer/styles/shell/tools/s10-06--tools-drawer.css"
+    },
+    {
+      "id": "G096",
+      "section": "S10-08",
+      "sourceRange": { "startLine": 21767, "endLine": 21802 },
+      "sourceLocalRange": { "startLine": 1984, "endLine": 2019 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-after-maintenance.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 36 },
+      "sourceStartByte": 54898,
+      "sourceEndByteExclusive": 55559,
+      "sourceSha256": "f14369b4dfed72211a32c400b4e4f58166217ac6077e1424458e531d1098ab9b",
+      "targetPath": "src/renderer/styles/shell/tools/s10-08--tools-action-launcher.css"
+    },
+    {
+      "id": "G098",
+      "section": "S11-02",
+      "sourceRange": { "startLine": 21857, "endLine": 21878 },
+      "sourceLocalRange": { "startLine": 55, "endLine": 76 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start--before-landscape-layer-controls.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 22 },
+      "sourceStartByte": 1182,
+      "sourceEndByteExclusive": 1610,
+      "sourceSha256": "1768d5122e980e8b7591a72a81f03ba9c29f9f9bfa258ba95600594d2d377596",
+      "targetPath": "src/renderer/styles/shell/tools/s11-02--action-preset-host.css"
+    }
+  ],
+  "producerHostRuntime": {
+    "toolsHome": "ProjectToolsDrawer -> RightWorkspace tools activity; view-mode card remains the P2-01-owned surface",
+    "actionPresets": "LegacyWorkspace -> ActionPresetPanel -> ProjectToolsDrawer -> RightWorkspace; actionPresetStore remains the business owner",
+    "consumers": ["canvasViewportStore", "selectionStore", "shotStore", "editorProjectStore", "actionPresetStore"],
+    "newConsumers": [],
+    "preservedStates": ["home", "action presets", "back", "empty selection", "selected layer", "locked layer", "background-disabled"]
+  },
+  "geometryBoundary": {
+    "RightWorkspace": "unchanged unified right host",
+    "BottomWorkspace": "unchanged; no duplicate tools/history host introduced",
+    "DOMStateStoreIpcBusinessChanges": false,
+    "p2_01ViewModeDuplicated": false
+  },
+  "stopChecks": {
+    "b12RangesReused": false,
+    "p2_19Absorbed": false,
+    "p2_27Absorbed": false,
+    "newViewModeStylesInvented": false,
+    "breakpointChanges": false,
+    "manualFullCiTriggered": false,
+    "manualVerifyProjectRun": false
+  }
+}

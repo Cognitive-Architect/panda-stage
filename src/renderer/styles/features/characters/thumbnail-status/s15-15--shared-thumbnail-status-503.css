@@ -1,0 +1,35 @@
+/* Issue #503: keep R6 thumbnail fallbacks semantic without changing the
+   existing slots, labels, or thumbnail state model. */
+.thumbnail-state-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.thumbnail-state-icon[data-thumbnail-icon='loading'] {
+  animation: issue-503-thumbnail-state-spin 1.1s linear infinite;
+}
+
+@keyframes issue-503-thumbnail-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.character-identity-empty-icon .thumbnail-state-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.character-thumbnail-fallback[data-thumbnail-icon='error'],
+.expression-thumbnail-fallback[data-thumbnail-icon='error'] {
+  color: #d7aaa2;
+  background: rgb(124 46 37 / 10%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thumbnail-state-icon[data-thumbnail-icon='loading'] {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+

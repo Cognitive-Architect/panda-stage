@@ -1,0 +1,34 @@
+.legacy-compatibility-activity {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgb(127 199 148 / 20%);
+  border-radius: 12px;
+  background: rgb(18 31 23 / 74%);
+  gap: 10px;
+}
+
+.legacy-compatibility-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.legacy-compatibility-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.legacy-compatibility-heading > span {
+  color: #91a299;
+  font-size: 11px;
+  text-align: right;
+}
+
+.legacy-compatibility-activity > button {
+  min-width: 0;
+  padding: 8px 10px;
+}
+

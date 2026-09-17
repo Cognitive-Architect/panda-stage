@@ -1,0 +1,138 @@
+@media (max-width: 900px) {
+  .fla-review-portal .fla-review-session[data-workbench-route='render'] {
+    height: calc(100vh - 24px);
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-review-body {
+    overflow-y: auto;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-review-zero-raster,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel-slot,
+  .fla-review-session[data-workbench-route='render'] .fla-render-workbench-panel,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-review,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+    height: auto;
+    flex: none;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-source-region,
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-details-region {
+    overflow: visible;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-targets {
+    max-height: 280px;
+  }
+
+  .fla-review-session[data-workbench-route='render'] .fla-snapshot-preview-region {
+    min-height: 440px;
+  }
+
+/* Issue #441: subtitle Properties UI polish - product-language identity,
+   unboxed audio surface, and Untimed progressive disclosure. The current
+   single Right Workspace owner remains the layout authority; this block
+   only adds local presentation refinements for the dialogue Properties
+   surface without changing geometry, owners, or copy in other panels. */
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-summary {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-untimed-audio {
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--ui-color-border, rgb(127 199 148 / 22%));
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-properties-audio-summary-line {
+  min-width: 0;
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.timeline-audio-clip.selected {
+  border-color: #a8e9f4;
+  box-shadow: 0 0 0 1px rgb(168 233 244 / 35%);
+}
+
+.timeline-audio-trim-handle {
+  position: absolute;
+  z-index: 2;
+  top: -1px;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  border-right: 3px solid #d8f3f7;
+  border-radius: 0 5px 5px 0;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.timeline-audio-clip-error {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  color: var(--ui-color-danger, #ff9f9f);
+  font-size: 10px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind {
+  min-height: 32px;
+  justify-self: start;
+  padding: 5px 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind:hover,
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-audio-unbind:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .dialogue-landscape-properties-audio-summary {
+  min-width: 0;
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+}
+

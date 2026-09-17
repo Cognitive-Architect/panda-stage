@@ -1,0 +1,187 @@
+{
+  "issue": 552,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "batch": "B12",
+  "p2": "P2-18",
+  "owner": "shell-layout",
+  "migrationMode": "HOST_INTEGRATION",
+  "capturedBeforeImplementation": true,
+  "liveAuthority": {
+    "prHead": "26af33a7d6570f6dcbffe3e2097a29545202aa1c",
+    "remoteBranchHead": "26af33a7d6570f6dcbffe3e2097a29545202aa1c",
+    "prState": "OPEN_DRAFT",
+    "mergeable": "MERGEABLE",
+    "priorCiRun": 35197413882,
+    "priorCiResult": "PASS"
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "originalLineCount": 32818,
+    "lineEndingNormalization": "CRLF/CR to LF for comparison"
+  },
+  "phase2CanonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "entryAndManifestBeforeImplementation": {
+    "entryPath": "src/renderer/styles.css",
+    "entryBlob": "91e8ec34cfb55f35c59057e017a9551c316b486d",
+    "entryImportCount": 147,
+    "manifestPath": "scripts/css-split-manifest.json",
+    "manifestBlob": "f09af6a15c930668f31cfd1200d48c7192feaf89",
+    "cssSplitPreflight": "PASS"
+  },
+  "sections": [
+    "S01-02", "S01-04", "S01-06", "S01-10", "S06-12", "S06-14", "S06-15", "S07-06", "S14-11"
+  ],
+  "segments": [
+    {
+      "id": "G002",
+      "sourceSlice": "S01",
+      "sourceRange": { "startLine": 60, "endLine": 77 },
+      "sourceLocalRange": { "startLine": 58, "endLine": 75 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 18 },
+      "sourceStartByte": 954,
+      "sourceEndByteExclusive": 1288,
+      "sourceSha256": "8a8b430ffd4551cecbed2fb777f21f30511d53dbaf08dbfdf714043161a8b3e7",
+      "predecessor": "S01-01/G001",
+      "successor": "S01-03/G003",
+      "targetPath": "src/renderer/styles/shell/layout/s01-02--root-frame.css"
+    },
+    {
+      "id": "G004",
+      "sourceSlice": "S01",
+      "sourceRange": { "startLine": 158, "endLine": 176 },
+      "sourceLocalRange": { "startLine": 156, "endLine": 174 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-project-center.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 19 },
+      "sourceStartByte": 2736,
+      "sourceEndByteExclusive": 3043,
+      "sourceSha256": "a469fa76907d9436429749b40094888a2ecac30b40eccf3a6903831d270533b8",
+      "predecessor": "S01-03/G003",
+      "successor": "S01-05/G005",
+      "targetPath": "src/renderer/styles/shell/layout/s01-04--editor-grid.css"
+    },
+    {
+      "id": "G006",
+      "sourceSlice": "S01",
+      "sourceRange": { "startLine": 409, "endLine": 431 },
+      "sourceLocalRange": { "startLine": 407, "endLine": 429 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-project-center.css",
+      "currentRemainderLocalRange": { "startLine": 252, "endLine": 274 },
+      "sourceStartByte": 7661,
+      "sourceEndByteExclusive": 8060,
+      "sourceSha256": "d9ea315b76f9ca103296a1016f681f45372dea720973490350e8a2748c2e980d",
+      "predecessor": "S01-05/G005",
+      "successor": "S01-07/G007",
+      "targetPath": "src/renderer/styles/shell/layout/s01-06--recovery-host-and-body.css"
+    },
+    {
+      "id": "G010",
+      "sourceSlice": "S01",
+      "sourceRange": { "startLine": 886, "endLine": 910 },
+      "sourceLocalRange": { "startLine": 884, "endLine": 908 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-resources.css",
+      "currentRemainderLocalRange": { "startLine": 35, "endLine": 59 },
+      "sourceStartByte": 16880,
+      "sourceEndByteExclusive": 17652,
+      "sourceSha256": "53da50909869b46cece966d117adb56e64c9242ca50450e01399407c7ae48bee",
+      "predecessor": "S01-09/G009",
+      "successor": "S01-11/G011",
+      "targetPath": "src/renderer/styles/shell/layout/s01-10--canvas-host.css"
+    },
+    {
+      "id": "G054",
+      "sourceSlice": "S06",
+      "sourceRange": { "startLine": 11264, "endLine": 11440 },
+      "sourceLocalRange": { "startLine": 1425, "endLine": 1601 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation-after-dialogue.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 177 },
+      "sourceStartByte": 26261,
+      "sourceEndByteExclusive": 30487,
+      "sourceSha256": "730ec3f5d101d1c46d4fc34ba4f79b054a1dcdac0ccb9edd9e7d3412c854b26e",
+      "predecessor": "S06-11/G053",
+      "successor": "S06-13/G055",
+      "targetPath": "src/renderer/styles/shell/layout/s06-12--adaptive-shell.css"
+    },
+    {
+      "id": "G056",
+      "sourceSlice": "S06",
+      "sourceRange": { "startLine": 11516, "endLine": 11800 },
+      "sourceLocalRange": { "startLine": 1677, "endLine": 1961 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation-after-inspector-handle.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 285 },
+      "sourceStartByte": 32709,
+      "sourceEndByteExclusive": 40314,
+      "sourceSha256": "d3a9aa9b318a3b2f83ae5369e6cce39e7506010ba3cb8778cacffe00e12782ce",
+      "predecessor": "S06-13/G055",
+      "successor": "S06-16/G057",
+      "targetPath": "src/renderer/styles/shell/layout/s06-14--portrait-layout.css"
+    },
+    {
+      "id": "G062",
+      "sourceSlice": "S07",
+      "sourceRange": { "startLine": 12549, "endLine": 12576 },
+      "sourceLocalRange": { "startLine": 666, "endLine": 693 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start--after-assets.css",
+      "currentRemainderLocalRange": { "startLine": 1, "endLine": 28 },
+      "sourceStartByte": 21081,
+      "sourceEndByteExclusive": 22168,
+      "sourceSha256": "69bd9b8aa3644c563ac2eb876214c45368c7e2c0b2f26261cb407f0a880bdb63",
+      "predecessor": "S07-05/G061",
+      "successor": "S07-07/G063",
+      "targetPath": "src/renderer/styles/shell/layout/s07-06--portrait-timeline-host.css"
+    },
+    {
+      "id": "G122",
+      "sourceSlice": "S14",
+      "sourceRange": { "startLine": 29224, "endLine": 29283 },
+      "sourceLocalRange": { "startLine": 1227, "endLine": 1286 },
+      "currentRemainderPath": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-after-batch-footer.css",
+      "currentRemainderLocalRange": { "startLine": 304, "endLine": 363 },
+      "sourceStartByte": 30324,
+      "sourceEndByteExclusive": 31789,
+      "sourceSha256": "b03a4754bf1d93761ef8e1e5648838e8042773d299418bf99baf7fcb1aa8cf3f",
+      "predecessor": "S14-10/G121",
+      "successor": "S14-12/G123",
+      "targetPath": "src/renderer/styles/shell/layout/s14-11--top-overlay-456-486.css"
+    }
+  ],
+  "geometryAndRuntimeBoundaries": {
+    "BottomWorkspace": {
+      "path": "src/renderer/shell/BottomWorkspace.tsx",
+      "sha256BeforeImplementation": "d890a631c9344b7b33468ba784badd47a761434e9606971f1e831587976d41eb",
+      "consumerContract": [
+        "resource-activity-rail computed min-height and gap",
+        "inspector-rail-handle computed min-height/height",
+        "editor-body live bounding rectangle",
+        "timelineUiStore.setHeightMax(bounds.maxHeight)"
+      ]
+    },
+    "EditorShell": {
+      "path": "src/renderer/shell/EditorShell.tsx",
+      "sha256BeforeImplementation": "888e03e7f96965ae48a44f3593a3864e8fea9fa3eb7592f20bac4ff0ff88a4f0",
+      "role": "single editor shell construction and lifecycle owner"
+    },
+    "TimelineUiStore": {
+      "path": "src/renderer/features/timeline/timelineUiStore.ts",
+      "sha256BeforeImplementation": "c907538f462e9229bca74e9ca83d0c2e6f3a0c63162649e82495b9ff96005c3c",
+      "role": "Timeline height state consumer"
+    }
+  },
+  "stopChecks": {
+    "domChanges": false,
+    "stateStoreIpcBusinessChanges": false,
+    "breakpointChanges": false,
+    "p2_27Absorbed": false,
+    "manualFullCiTriggered": false,
+    "manualVerifyProjectRun": false
+  }
+}

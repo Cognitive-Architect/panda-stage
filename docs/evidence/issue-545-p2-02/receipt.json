@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 2,
+  "issue": 545,
+  "phase": "P2-B01",
+  "workItem": "P2-02",
+  "status": "validated-implementation-pending-human-acceptance",
+  "sectionIds": ["S14-14", "S16-07"],
+  "segments": ["G124", "G147"],
+  "startingPrHead": "02cddd3d2bb0fadd55926c57a99f021822a18b80",
+  "validatedImplementationSnapshot": {
+    "head": "e6adbdae2a3c7d7abd6f3973c66c708e2c6a004e",
+    "automaticCiRun": 35077222980,
+    "automaticCiResult": "PASS",
+    "meaning": "CSS relocation, manifest/verifier integration, contract, focused tests, and normal CI were validated at this implementation snapshot; this receipt commit is evidence-only."
+  },
+  "livePrHeadAuthority": "GitHub PR #542 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "normalizedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "sections": [
+    {
+      "section": "S14-14",
+      "segment": "G124",
+      "sourceSlice": "S14",
+      "sourceBlob": "46f0564fbefa6233325982c7010dd5c20dd4f4bc",
+      "localRange": { "startLine": 1432, "endLine": 1765 },
+      "globalRange": { "startLine": 29429, "endLine": 29762 },
+      "byteRange": { "start": 36096, "endExclusive": 43004 },
+      "sha256": "303ebb3eed342c61a3803c37b44fe7d5dfea29f265b92a1feedb124cd07d1c4a",
+      "predecessor": "S14-13/G123",
+      "successor": "S14-15/G125",
+      "targetPath": "src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css",
+      "outerConditions": "none; top-level rules"
+    },
+    {
+      "section": "S16-07",
+      "segment": "G147",
+      "sourceSlice": "S16",
+      "sourceBlob": "ac8b1e6390abe334158ce6b4c3399908ef6e664c",
+      "localRange": { "startLine": 962, "endLine": 1023 },
+      "globalRange": { "startLine": 32757, "endLine": 32818 },
+      "byteRange": { "start": 31109, "endExclusive": 32664 },
+      "sha256": "4b73250b8cd1816d79458cd7185935f3f61c59def83254047d6ff8c495cedfb5",
+      "predecessor": "S16-06/G146",
+      "successor": "EOF",
+      "targetPath": "src/renderer/styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css",
+      "outerConditions": "none; top-level rules"
+    }
+  ],
+  "dependencies": {
+    "producerPaths": ["src/renderer/features/characters/ImageAssetPicker.tsx"],
+    "hostPaths": [
+      "src/renderer/features/characters/CharacterEditor.tsx",
+      "src/renderer/features/characters/ExpressionEditor.tsx"
+    ],
+    "uiRuntimeConsumers": [
+      "Character image asset selection and inline picker presentation",
+      "Character and expression image-picker host states"
+    ],
+    "programmaticTestConsumers": [
+      "tests/unit/character-components.test.ts",
+      "tests/unit/editor-issue364-landscape-characters.test.ts",
+      "tests/unit/editor-issue366-landscape-expression.test.ts",
+      "tests/unit/editor-issue503-semantic-thumbnail-fallback.test.ts",
+      "tests/unit/editor-issue526-character-settings-polish.test.ts",
+      "tests/unit/editor-issue527-character-settings-balance.test.ts",
+      "tests/unit/editor-issue528-expression-inline-edit.test.ts",
+      "scripts/verify-day19.cjs"
+    ],
+    "cssVariables": [],
+    "keyframes": [],
+    "resourceUrls": [],
+    "jsGeometryContracts": []
+  },
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "order": "S14-14 and S16-07 are loaded once in canonical source order with all untouched remainders",
+    "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+    "exact": true
+  },
+  "validation": {
+    "cssPreflight": "PASS",
+    "cssFinalEquivalence": "PASS",
+    "focusedContracts": "6 files / 96 tests PASS",
+    "focusedCharacterDialogueTests": "15 files / 56 tests PASS",
+    "pnpmTestUnit": "277 files / 1790 tests PASS",
+    "pnpmTypecheck": "PASS",
+    "pnpmLint": "PASS",
+    "pnpmBuild": "PASS",
+    "gitDiffCheck": "PASS on the post-implementation working tree",
+    "automaticCi": {
+      "run": 35077222980,
+      "result": "PASS",
+      "fullQualityAndRegression": "SKIPPED by normal Draft policy"
+    },
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "windowsElectronSmoke": {
+    "result": "PASS",
+    "worktree": "D:/panda-issue541-p2-01",
+    "userData": "D:/PandaStage-Acceptance/issue-545-b01-clean-20260916-165809",
+    "windowTitle": "Panda Stage",
+    "responding": true,
+    "stoppedAfterConfirmation": true,
+    "userDataPreserved": true
+  },
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "surfaces": [
+      "Character image asset picker normal/selected/empty states",
+      "Inline picker and character/expression hosts",
+      "Constrained window and representative Chinese/long content"
+    ],
+    "note": "Automated source equivalence and launch smoke do not substitute for maintainer visual acceptance."
+  },
+  "scopeExceptions": [],
+  "prDisposition": "Keep PR #542 Draft/Open/Unmerged; no merge or close action taken."
+}

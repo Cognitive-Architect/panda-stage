@@ -1,0 +1,60 @@
+/* Issue #456/#486: the Quick Action Drawer and Recovery Card are overlays, not
+   editor rows. Only the portrait workspace switcher keeps the top region in
+   flow. In landscape the top region is a zero-height overlay marker, so the
+   body receives the full reclaimed row while the existing three-row contract
+   stays intact for layouts that still need a top surface. */
+.editor-layout[data-top-region-layout='overlay'] {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.editor-layout[data-top-region-layout='overlay'] > .editor-top-region {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: block;
+  width: auto;
+  height: 0;
+  min-height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.editor-layout[data-top-region-layout='overlay']
+  > .editor-top-region:has(> .recovery-prompt) {
+  z-index: 45;
+}
+
+.editor-layout[data-top-region-layout='overlay']
+  > .editor-top-region
+  > .recovery-prompt {
+  position: absolute;
+  z-index: 1;
+  top: 64px;
+  left: 50%;
+  pointer-events: auto;
+  transform: translateX(-50%);
+}
+
+.editor-layout[data-top-region-layout='overlay']:has(
+    .quick-action-drawer[data-expanded='true']
+  )
+  > .editor-top-region
+  > .recovery-prompt {
+  top: 120px;
+}
+
+.editor-layout[data-top-region-layout='flow'] > .editor-top-region {
+  position: relative;
+}
+
+.editor-body > .quick-action-drawer {
+  position: absolute;
+  z-index: 40;
+  top: 0;
+  left: 50%;
+  min-height: 0;
+  transform: translateX(-50%);
+}
+

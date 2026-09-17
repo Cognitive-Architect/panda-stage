@@ -1,0 +1,101 @@
+@media (max-width: 420px) {
+  .dialogue-compact-timing-grid {
+    gap: 4px;
+  }
+
+  .dialogue-compact-time-value,
+  .dialogue-compact-time-cell.is-duration time {
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-identity-editor {
+  min-height: 0;
+  align-items: start;
+  gap: 8px;
+  padding: 6px 0 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-inline-text {
+  height: 38px;
+  min-height: 38px;
+  padding: 3px 5px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section {
+  gap: 5px;
+  padding: 6px 0 7px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 7px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-properties-section-heading
+  .dialogue-properties-apply-timing {
+  width: auto;
+  min-width: 52px;
+  min-height: 28px;
+  margin-left: auto;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-compact-time-value,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-compact-time-cell.is-duration
+  time {
+  min-height: 30px;
+  padding-inline: 6px;
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-landscape-properties-speaker-select {
+  min-height: 32px;
+  padding-block: 3px;
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-audio-actions
+  > select,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .right-inspector-drawer
+  .dialogue-inspector-landscape-properties
+  .dialogue-audio-actions
+  > button {
+  min-height: 30px;
+  padding: 4px 8px;
+}
+

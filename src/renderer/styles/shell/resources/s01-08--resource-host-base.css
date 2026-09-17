@@ -1,0 +1,297 @@
+.left-workspace {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 14px;
+  background: rgb(8 14 10 / 74%);
+  scrollbar-color: #3f6d4e #0a100c;
+  align-content: start;
+  gap: 10px;
+}
+
+.left-workspace .recent-projects-panel,
+.left-workspace .resource-activity-dock,
+.left-workspace .shot-manager,
+.left-workspace .asset-library,
+.left-workspace .character-manager {
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+}
+
+.left-workspace .recent-projects-list li {
+  display: grid;
+  align-items: start;
+}
+
+.left-workspace .recent-projects-actions {
+  flex-wrap: wrap;
+}
+
+.resource-activity-dock {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid rgb(127 199 148 / 20%);
+  border-radius: 12px;
+  background: rgb(18 31 23 / 74%);
+  gap: 10px;
+}
+
+.resource-activity-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.resource-activity-header {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  background: rgb(18 31 23 / 98%);
+  gap: 8px;
+}
+
+.resource-activity-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.resource-activity-primary-action,
+.resource-activity-close {
+  min-height: 44px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.resource-activity-primary-action {
+  border-color: rgb(131 211 154 / 48%);
+  background: #235739;
+  color: #e6f7ea;
+}
+
+.resource-activity-close {
+  display: none;
+}
+
+.resource-workspace-handle {
+  display: none;
+}
+
+.resource-activity-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.resource-activity-heading > span {
+  color: #91a299;
+  font-size: 11px;
+  text-align: right;
+}
+
+.resource-activity-tabs {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.resource-activity-tabs button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 4px;
+  color: #a9c5b0;
+  background: rgb(18 44 28 / 80%);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.resource-activity-tabs button.resource-activity-tab-active {
+  color: #0a130d;
+  background: #8ed9a2;
+}
+
+.resource-activity-panel {
+  min-width: 0;
+}
+
+.resource-activity-surface,
+.resource-activity-body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.resource-activity-surface {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.resource-activity-body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-color: #3f6d4e #0a100c;
+}
+
+.resource-activity-auxiliary {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  gap: 10px;
+}
+
+.resource-activity-auxiliary > * {
+  max-width: none;
+  margin: 0;
+}
+
+.resource-activity-panel > .shot-manager,
+.resource-activity-panel > .asset-library,
+.resource-activity-panel > .character-manager {
+  max-width: none;
+  padding: 10px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.resource-activity-panel > .shot-manager > .shot-manager-heading,
+.resource-activity-panel > .asset-library > .asset-library-heading,
+.resource-activity-panel > .character-manager > .character-manager-heading {
+  display: none;
+}
+
+.resource-activity-panel button {
+  min-height: 44px;
+  writing-mode: horizontal-tb;
+}
+
+.resource-activity-panel .asset-import-panel {
+  max-width: none;
+  padding: 10px;
+  margin: 0 0 10px;
+  border-radius: 10px;
+}
+
+.left-workspace .shot-workspace,
+.left-workspace .character-workspace {
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.left-workspace .asset-library-browser,
+.left-workspace .asset-library-content {
+  min-height: 0;
+  flex-direction: column;
+}
+
+.left-workspace .asset-category-tabs {
+  width: auto;
+  flex: none;
+  flex-direction: row;
+  overflow-x: auto;
+}
+
+.left-workspace .asset-category-tabs button {
+  min-width: 82px;
+}
+
+.left-workspace .asset-details {
+  width: auto;
+  flex: none;
+}
+
+.left-workspace .asset-grid {
+  max-height: 280px;
+}
+
+.resource-activity-panel .asset-library-browser {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.resource-activity-panel .asset-library-content {
+  display: block;
+  min-height: 0;
+}
+
+.resource-activity-panel .asset-category-tabs {
+  display: grid;
+  width: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  overflow: visible;
+}
+
+.resource-activity-panel .asset-category-tabs button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px;
+  white-space: normal;
+}
+
+.resource-activity-panel .asset-grid {
+  max-height: none;
+  padding: 4px 0 8px;
+  overflow: visible;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.resource-activity-panel .asset-details {
+  width: auto;
+  padding: 12px;
+}
+
+.asset-details-view {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  gap: 10px;
+}
+
+.asset-details-view-heading,
+.shot-create-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.asset-details-view-heading h3,
+.shot-create-heading h3 {
+  margin: 0;
+}
+
+.asset-details-view-heading button,
+.shot-create-heading button,
+.character-list-heading button,
+.character-expression-summary button,
+.character-back-button {
+  min-height: 44px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.resource-activity-panel .asset-details-view .asset-details {
+  border: 1px solid rgb(255 255 255 / 9%);
+}
+

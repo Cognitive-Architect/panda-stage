@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "issue": 553,
+  "pullRequest": 542,
+  "serial": "SER-06",
+  "batch": "B15",
+  "p2": "P2-28",
+  "kind": "maintainer-human-acceptance",
+  "acceptedOn": "2026-09-17",
+  "acceptedBy": "maintainer",
+  "status": "PASS",
+  "issueCommentId": 5714621044,
+  "acceptedPrHeadSnapshot": "2f7a0378125e9197ba86aa6d722a5fa06627a06e",
+  "automaticCi": {
+    "runId": 35217473145,
+    "runNumber": 956,
+    "result": "SUCCESS"
+  },
+  "reachableSurfaces": {
+    "G049": {
+      "status": "PASS",
+      "scope": "Windows Electron narrow-window responsive behavior through <=1100px and <=720px states; left Resource rail/drawer, right Inspector rail/drawer, central Canvas composition, compact layout, and narrow responsive behavior showed no visible layout or interaction regression."
+    },
+    "G107": {
+      "status": "PASS",
+      "scope": "Windows Electron shallow Timeline container <=220px; toolbar, ruler, lanes, and workspace containment showed no visible overflow or interaction regression."
+    },
+    "G112": {
+      "status": "PASS",
+      "scope": "Windows Electron <=900px mixed compatibility unit; reachable FLA Render/Snapshot surfaces, Dialogue Properties/audio presentation, and Timeline AudioClip selection/trim/error-related presentation showed no visible layout or interaction regression."
+    }
+  },
+  "unreachableRetainedLegacy": {
+    "segments": ["G064", "G076", "G080", "G082", "G085", "G103", "G105", "G109"],
+    "humanVisual": "N/A",
+    "reason": "unreachable through current normal navigation; no new product entrance authorized",
+    "evidence": "producer/host/runtime/assembly evidence plus exact source/order/equivalence verification recorded in P2-27 preflight/receipt"
+  },
+  "closureFactsReviewed": {
+    "p227Sections": 18,
+    "p227Segments": 11,
+    "canonicalSections": 179,
+    "canonicalSegments": 147,
+    "missing": 0,
+    "duplicate": 0,
+    "silentReorder": 0,
+    "byteExactProductionReconstruction": true,
+    "g112IntactMixedMediaUnit": true,
+    "phase3Started": false,
+    "phase4Started": false,
+    "manualFullCiTriggered": false,
+    "manualVerifyProjectRun": false
+  },
+  "phase2ClosureDecision": "ACCEPTED",
+  "prDisposition": "PR #542 remains OPEN_DRAFT; Ready/merge is a separate maintainer decision."
+}

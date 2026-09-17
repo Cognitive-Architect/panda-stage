@@ -1,0 +1,117 @@
+/* Issue #339: make the Cloud Touch portrait Timeline a task surface rather
+   than a stack of Timeline/dialogue admin cards. The production owners stay
+   unchanged; this layer only reshapes their presentation. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-header {
+  gap: 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  background: transparent;
+  color: var(--ui-color-text-secondary);
+  font-size: 22px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse:hover,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse:focus-visible {
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse::before {
+  content: '⌄';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse[data-expanded='false']::before {
+  content: '›';
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-collapse-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-timecode {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 15px;
+  text-align: center;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-ruler-scroll {
+  border-inline: 0;
+  border-radius: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lane {
+  grid-template-columns: var(--timeline-lane-label-width, 58px) max-content;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-lane-label {
+  padding-inline: 8px;
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.is-empty {
+  height: 48px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.has-clips {
+  height: 76px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-audio-lane.is-empty .timeline-audio-empty {
+  padding-inline: 8px;
+  color: var(--ui-color-text-secondary);
+  font-size: 13px;
+}
+

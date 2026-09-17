@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 2,
+  "issue": 545,
+  "phase": "P2-B01",
+  "workItem": "P2-03",
+  "status": "validated-implementation-pending-human-acceptance",
+  "sectionIds": ["S15-01", "S15-03", "S15-04", "S15-06", "S15-12", "S15-14", "S15-15"],
+  "segments": ["G126", "G128", "G129", "G131", "G133", "G135", "G136"],
+  "startingPrHead": "02cddd3d2bb0fadd55926c57a99f021822a18b80",
+  "validatedImplementationSnapshot": {
+    "head": "e6adbdae2a3c7d7abd6f3973c66c708e2c6a004e",
+    "automaticCiRun": 35077222980,
+    "automaticCiResult": "PASS",
+    "meaning": "CSS relocation, manifest/verifier integration, contract, focused tests, and normal CI were validated at this implementation snapshot; this receipt commit is evidence-only."
+  },
+  "livePrHeadAuthority": "GitHub PR #542 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "normalizedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "sourceSlice": {
+    "id": "S15",
+    "sourcePath": "src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css",
+    "sourceBlob": "b78e0ccecb56336509a1eb78b0e592604c840a6c",
+    "range": { "startLine": 29795, "endLine": 31795 },
+    "orderedParts": [
+      "S15-01",
+      "S15-R01",
+      "S15-03",
+      "S15-04",
+      "S15-R02",
+      "S15-06",
+      "S15-R03",
+      "S15-12",
+      "S15-R04",
+      "S15-14",
+      "S15-15",
+      "S15-R05"
+    ]
+  },
+  "sections": [
+    {
+      "section": "S15-01",
+      "segment": "G126",
+      "owner": "character-identity",
+      "migrationMode": "DIRECT",
+      "localRange": { "startLine": 1, "endLine": 299 },
+      "globalRange": { "startLine": 29795, "endLine": 30093 },
+      "byteRange": { "start": 0, "endExclusive": 6499 },
+      "sha256": "bc8de214a0a4f6440eaa6d5dbb35c11fcf44ca1b4f341f522855095e690c39cd",
+      "predecessor": "S14-15/G125",
+      "successor": "S15-02/G127",
+      "targetPath": "src/renderer/styles/features/characters/identity/s15-01--identity-base-495.css",
+      "outerConditions": "none; top-level rules"
+    },
+    {
+      "section": "S15-03",
+      "segment": "G128",
+      "owner": "dialogue-identity-host",
+      "migrationMode": "HOST_INTEGRATION",
+      "localRange": { "startLine": 413, "endLine": 527 },
+      "globalRange": { "startLine": 30207, "endLine": 30321 },
+      "byteRange": { "start": 8779, "endExclusive": 11653 },
+      "sha256": "1548144261b137d350a1ce1ad3522afe62225ad3ff6c0b8eaf606484ec850206",
+      "predecessor": "S15-02/G127",
+      "successor": "S15-04/G129",
+      "targetPath": "src/renderer/styles/features/dialogue/identity-adapters/s15-03--dialogue-identity-adapters.css",
+      "outerConditions": "none; top-level rules"
+    },
+    {
+      "section": "S15-04",
+      "segment": "G129",
+      "owner": "character-identity",
+      "migrationMode": "DIRECT",
+      "localRange": { "startLine": 528, "endLine": 537 },
+      "globalRange": { "startLine": 30322, "endLine": 30331 },
+      "byteRange": { "start": 11653, "endExclusive": 11806 },
+      "sha256": "9e474454b68743ed7bd1c42bb91fc61b93ae990d6bc862e935526cf99dcaddb8",
+      "predecessor": "S15-03/G128",
+      "successor": "S15-05/G130",
+      "targetPath": "src/renderer/styles/features/characters/identity/s15-04--identity-width700.css",
+      "outerConditions": "@media (max-width: 700px)"
+    },
+    {
+      "section": "S15-06",
+      "segment": "G131",
+      "owner": "character-identity",
+      "migrationMode": "DIRECT",
+      "localRange": { "startLine": 556, "endLine": 632 },
+      "globalRange": { "startLine": 30350, "endLine": 30426 },
+      "byteRange": { "start": 12368, "endExclusive": 14303 },
+      "sha256": "3190d1362a36b06e26ef47a0e3d3a04091b0d30c85048da8151d22ba1357f22c",
+      "predecessor": "S15-05/G130",
+      "successor": "S15-07/G132",
+      "targetPath": "src/renderer/styles/features/characters/identity/s15-06--identity-compact-496.css",
+      "outerConditions": "none; top-level rules"
+    },
+    {
+      "section": "S15-12",
+      "segment": "G133",
+      "owner": "character-identity",
+      "migrationMode": "DIRECT",
+      "localRange": { "startLine": 841, "endLine": 850 },
+      "globalRange": { "startLine": 30635, "endLine": 30644 },
+      "byteRange": { "start": 20751, "endExclusive": 20975 },
+      "sha256": "2633c374a82269e9b231836dbd9e128adb22d0d62b27e57f17b35e8d1711d335",
+      "predecessor": "S15-11/G132",
+      "successor": "S15-13/G134",
+      "targetPath": "src/renderer/styles/features/characters/identity/s15-12--identity-width520.css",
+      "outerConditions": "@media (max-width: 520px)"
+    },
+    {
+      "section": "S15-14",
+      "segment": "G135",
+      "owner": "character-identity",
+      "migrationMode": "DIRECT",
+      "localRange": { "startLine": 867, "endLine": 878 },
+      "globalRange": { "startLine": 30661, "endLine": 30672 },
+      "byteRange": { "start": 21516, "endExclusive": 21819 },
+      "sha256": "3d7a050e89639a90e7975f95690484c4336f0393ff9629d17321e3d0dd3da5ec",
+      "predecessor": "S15-13/G134",
+      "successor": "S15-15/G136",
+      "targetPath": "src/renderer/styles/features/characters/identity/s15-14--identity-chevron-final.css",
+      "outerConditions": "none; top-level rules"
+    },
+    {
+      "section": "S15-15",
+      "segment": "G136",
+      "owner": "thumbnail-status",
+      "migrationMode": "DIRECT",
+      "localRange": { "startLine": 879, "endLine": 913 },
+      "globalRange": { "startLine": 30673, "endLine": 30707 },
+      "byteRange": { "start": 21819, "endExclusive": 22664 },
+      "sha256": "71416d959f2507ba7f4affa7611e2f3de9a4f0b9802d3aec8e87f43c742c6d6b",
+      "predecessor": "S15-14/G135",
+      "successor": "S15-16/G137",
+      "targetPath": "src/renderer/styles/features/characters/thumbnail-status/s15-15--shared-thumbnail-status-503.css",
+      "outerConditions": "@keyframes issue-503-thumbnail-state-spin; @media (prefers-reduced-motion: reduce)"
+    }
+  ],
+  "dependencies": {
+    "cssVariables": [
+      "--ui-color-border",
+      "--ui-radius-small",
+      "--ui-color-text-primary",
+      "--ui-color-surface-work",
+      "--ui-color-selected-border",
+      "--ui-color-focus-ring",
+      "--ui-color-text-secondary",
+      "--ui-color-accent",
+      "--ui-color-text-muted"
+    ],
+    "keyframes": ["issue-503-thumbnail-state-spin"],
+    "resourceUrls": [],
+    "jsGeometryContracts": [],
+    "producerPaths": [
+      "src/renderer/features/characters/CharacterIdentity.tsx",
+      "src/renderer/features/characters/ThumbnailStateIcon.tsx"
+    ],
+    "hostPaths": [
+      "src/renderer/features/characters/CharacterEditor.tsx",
+      "src/renderer/features/characters/CharacterList.tsx",
+      "src/renderer/features/dialogue/DialogueBatchPaste.tsx",
+      "src/renderer/features/dialogue/DialogueInspector.tsx",
+      "src/renderer/features/dialogue/DialogueSheet.tsx"
+    ],
+    "uiRuntimeConsumers": [
+      "Character identity picker selection, summary, clear, and responsive states",
+      "Dialogue authoring, inspector, and properties speaker identity hosts",
+      "Shared thumbnail ready/loading/error/empty status presentation"
+    ],
+    "programmaticTestConsumers": [
+      "tests/unit/editor-issue495-character-visual-identity.test.ts",
+      "tests/unit/editor-issue496-dialogue-recovery.test.ts",
+      "tests/unit/editor-issue498-dialogue-distillation.test.ts",
+      "tests/unit/editor-issue499-501-dialogue-distillation.test.ts",
+      "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
+      "tests/unit/editor-issue503-semantic-thumbnail-fallback.test.ts",
+      "tests/unit/editor-issue504-a08-properties-cleanup.test.ts",
+      "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
+      "tests/unit/editor-issue524-character-detail-polish.test.ts",
+      "tests/unit/editor-issue525-character-detail-header.test.ts",
+      "tests/unit/editor-issue526-character-settings-polish.test.ts",
+      "tests/unit/editor-issue527-character-settings-balance.test.ts",
+      "tests/unit/editor-issue528-expression-inline-edit.test.ts"
+    ]
+  },
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "order": "S15-01 → S15-03 → S15-04 → S15-05 → S15-06 → S15-07..11 → S15-12 → S15-13 → S15-14 → S15-15 → S15-16..22",
+    "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+    "exact": true
+  },
+  "validation": {
+    "cssPreflight": "PASS",
+    "cssFinalEquivalence": "PASS",
+    "focusedContracts": "6 files / 96 tests PASS",
+    "focusedCharacterDialogueTests": "15 files / 56 tests PASS",
+    "pnpmTestUnit": "277 files / 1790 tests PASS",
+    "pnpmTypecheck": "PASS",
+    "pnpmLint": "PASS",
+    "pnpmBuild": "PASS",
+    "gitDiffCheck": "PASS on the post-implementation working tree",
+    "automaticCi": {
+      "run": 35077222980,
+      "result": "PASS",
+      "fullQualityAndRegression": "SKIPPED by normal Draft policy"
+    },
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "windowsElectronSmoke": {
+    "result": "PASS",
+    "worktree": "D:/panda-issue541-p2-01",
+    "userData": "D:/PandaStage-Acceptance/issue-545-b01-clean-20260916-165809",
+    "windowTitle": "Panda Stage",
+    "responding": true,
+    "stoppedAfterConfirmation": true,
+    "userDataPreserved": true
+  },
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "surfaces": [
+      "Character identity selection, summary, clear, and selected/unselected states",
+      "Dialogue authoring/inspector/properties speaker identity hosts",
+      "Thumbnail loading/ready/error/empty status and reduced-motion state",
+      "Constrained window and representative Chinese/long content"
+    ],
+    "note": "Automated source equivalence and launch smoke do not substitute for maintainer visual acceptance."
+  },
+  "scopeExceptions": [],
+  "prDisposition": "Keep PR #542 Draft/Open/Unmerged; no merge or close action taken."
+}

@@ -1,0 +1,73 @@
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-secondary-action,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-authoring-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item:not([data-selected='true']) {
+  min-height: 56px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item:not([data-selected='true'])
+  .dialogue-untimed-select {
+  min-height: 56px;
+  grid-template-columns: minmax(60px, 0.45fr) minmax(0, 1fr) auto 24px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item:not([data-selected='true'])
+  .dialogue-untimed-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item[data-selected='true'] {
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item[data-selected='true']
+  .dialogue-untimed-select {
+  min-height: 56px;
+  grid-template-columns: minmax(60px, 0.45fr) minmax(0, 1fr) auto 24px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .dialogue-untimed-item[data-selected='true']
+  .dialogue-untimed-action-strip {
+  min-height: 60px;
+}
+
+@media (max-width: 480px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .editor-layout[data-active-workspace='timeline']
+    .dialogue-untimed-item:not([data-selected='true'])
+    .dialogue-untimed-select {
+    min-height: 56px;
+    grid-template-columns: minmax(52px, 0.5fr) minmax(0, 1fr) auto 24px;
+  }
+}
+

@@ -1,0 +1,28 @@
+/* Issue #330: Cloud Touch portrait Timeline is a real editing workspace.
+   The existing Canvas and Timeline owners are re-slotted into one vertical
+   flow; the editor layout is the only vertical scroll owner for this page. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline'] {
+  grid-template-rows: auto max-content max-content;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-body[data-active-workspace='timeline'] {
+  min-height: 0;
+  overflow: visible;
+  align-content: start;
+  grid-template-rows: max-content;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-body[data-active-workspace='timeline']
+  .editor-workspace-slot-canvas,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-body[data-active-workspace='timeline']
+  .canvas-workspace {
+  min-height: 0;
+}
+

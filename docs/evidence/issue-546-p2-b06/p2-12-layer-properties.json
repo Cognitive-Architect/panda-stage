@@ -1,0 +1,209 @@
+{
+  "issue": 546,
+  "phase": "P2-B06",
+  "workItem": "P2-12",
+  "title": "Layer Properties: position, transform, appearance, and order",
+  "status": "IMPLEMENTED_PENDING_HUMAN_ACCEPTANCE",
+  "startingPrHead": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+  "branch": "agent/issue-541-p2-01",
+  "pullRequest": 542,
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "normalizedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "owner": "layer-properties",
+  "segments": [
+    {
+      "id": "G045",
+      "sectionIds": ["S06-02"],
+      "sourceSlice": "S06",
+      "sourceBlob": "ed97a6f5b421d0fd2dfc68bd337d36734dfccb0c",
+      "canonicalOrder": 50,
+      "predecessor": "S06-01/G044",
+      "successor": "S06-03/G046",
+      "startAnchor": ".layer-position-panel",
+      "endAnchor": ".history-controls",
+      "globalLines": {"start": 10084, "end": 10189},
+      "sourceLocalLines": {"start": 245, "end": 350},
+      "sliceLocalBytes": {"start": 5220, "endExclusive": 7035},
+      "sha256": "fb759b13c769fa86e7483385ecdbdb6b863c5546f964472cb8c6cb6e6bdd695c",
+      "targetPath": "src/renderer/styles/features/properties/s06-02--position-background-base.css"
+    },
+    {
+      "id": "G047",
+      "sectionIds": ["S06-04"],
+      "sourceSlice": "S06",
+      "sourceBlob": "ed97a6f5b421d0fd2dfc68bd337d36734dfccb0c",
+      "canonicalOrder": 52,
+      "predecessor": "S06-03/G046",
+      "successor": "S06-05/G048",
+      "startAnchor": ".layer-transform-panel h3, .layer-transform-panel p, .layer-order-controls h3, .layer-order-controls p",
+      "endAnchor": ".transport-bar",
+      "globalLines": {"start": 10212, "end": 10288},
+      "sourceLocalLines": {"start": 373, "end": 449},
+      "sliceLocalBytes": {"start": 7394, "endExclusive": 8737},
+      "sha256": "b7fa7d1c0b4829dab77db0a4e5bb59c844a17a8d7873b9c03b769e858974d141",
+      "targetPath": "src/renderer/styles/features/properties/s06-04--transform-order-base.css"
+    },
+    {
+      "id": "G066",
+      "sectionIds": ["S07-10"],
+      "sourceSlice": "S07",
+      "sourceBlob": "1fa93bd66efe97283e14834e74cd17ea1a6a9b73",
+      "canonicalOrder": 74,
+      "predecessor": "S07-09/G065",
+      "successor": "S07-11/G067",
+      "startAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .right-inspector-section .layer-transform-panel form",
+      "endAnchor": "Keep the Timeline's Canvas context visible",
+      "globalLines": {"start": 12854, "end": 12943},
+      "sourceLocalLines": {"start": 971, "end": 1060},
+      "sliceLocalBytes": {"start": 30877, "endExclusive": 33408},
+      "sha256": "1feae07aabf0609b2f348a4328ec8d0cd2deda840d9cd8fe4c0f40aea846a803",
+      "targetPath": "src/renderer/styles/features/properties/s07-10--portrait-layer-forms.css"
+    },
+    {
+      "id": "G081",
+      "sectionIds": ["S08-12", "S08-13", "S08-14"],
+      "sourceSlice": "S08",
+      "sourceBlob": "eea0e2b9c11a2d51837257f88349a395865fbc84",
+      "canonicalOrder": 92,
+      "predecessor": "S08-11/G080",
+      "successor": "S08-15/G082",
+      "startAnchor": "Issue #348:",
+      "endAnchor": "Issue #351:",
+      "globalLines": {"start": 16457, "end": 17496},
+      "sourceLocalLines": {"start": 2656, "end": 3695},
+      "sliceLocalBytes": {"start": 83439, "endExclusive": 114224},
+      "sha256": "4d4417bfac716156926b0137c0d7f137cf19cd027a99cd3cf14e4d750d36e5ed",
+      "targetPath": "src/renderer/styles/features/properties/s08-12--portrait-appearance.css",
+      "sectionBoundaries": [
+        {"id": "S08-12", "globalLines": {"start": 16457, "end": 16740}, "sourceLocalLines": {"start": 2656, "end": 2939}, "sliceLocalBytes": {"start": 83439, "endExclusive": 91589}, "sha256": "cd132d2c6d2657cfd065702973b1d3db98ea9f686add1680b195c6c2c85d8a74", "endAnchor": "Issue #347:"},
+        {"id": "S08-13", "globalLines": {"start": 16741, "end": 17005}, "sourceLocalLines": {"start": 2940, "end": 3204}, "sliceLocalBytes": {"start": 91589, "endExclusive": 99309}, "sha256": "02a88d3588d81f6f30363bec4956ee2d79bb102c72caea3406d1ddd9b08ddfe4", "endAnchor": "Issue #349:"},
+        {"id": "S08-14", "globalLines": {"start": 17006, "end": 17496}, "sourceLocalLines": {"start": 3205, "end": 3695}, "sliceLocalBytes": {"start": 99309, "endExclusive": 114224}, "sha256": "726d606bd15e1ea94590e13c8fa4f3115d6a21d1d164b8d50394cf9ea06863ca", "endAnchor": "Issue #351:"}
+      ]
+    },
+    {
+      "id": "G100",
+      "sectionIds": ["S11-05", "S11-06", "S11-07"],
+      "sourceSlice": "S11",
+      "sourceBlob": "acf90acc825c7ffe2ffcdadc56451ad62083b9d3",
+      "canonicalOrder": 116,
+      "predecessor": "S11-04/G099",
+      "successor": "S11-08/G101",
+      "startAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape'] .right-inspector-drawer .right-inspector-section > .layer-transform-panel[data-compact='true']",
+      "endAnchor": "Issue #378:",
+      "globalLines": {"start": 22050, "end": 23436},
+      "sourceLocalLines": {"start": 248, "end": 1634},
+      "postP201AssembledLocalLines": {"start": 194, "end": 1580},
+      "sliceLocalBytes": {"start": 6631, "endExclusive": 47761},
+      "sha256": "06bd4050590607ad3c8eb1a6cf3e6b14bd3262cdcff1098e6f3d99089124c20d",
+      "targetPath": "src/renderer/styles/features/properties/s11-05--landscape-layer-controls.css",
+      "sectionBoundaries": [
+        {"id": "S11-05", "globalLines": {"start": 22050, "end": 22555}, "sourceLocalLines": {"start": 248, "end": 753}, "sliceLocalBytes": {"start": 6631, "endExclusive": 20673}, "sha256": "35f997ef7f9e612a9c65aefa7bac510949f4a1eac6b69b63d79ffeb5b0cd5952", "endAnchor": "Issue #374:"},
+        {"id": "S11-06", "globalLines": {"start": 22556, "end": 22897}, "sourceLocalLines": {"start": 754, "end": 1095}, "sliceLocalBytes": {"start": 20673, "endExclusive": 31540}, "sha256": "385f567a371c32d76eade3cfb20319e99b3bcc60fab664c111aee095784e799f", "endAnchor": "Issue #376:"},
+        {"id": "S11-07", "globalLines": {"start": 22898, "end": 23436}, "sourceLocalLines": {"start": 1096, "end": 1634}, "sliceLocalBytes": {"start": 31540, "endExclusive": 47761}, "sha256": "c1aafb6bab9d9c72094e6999fb8d7febb9182ccbc68bd3c0974957feced5f44c", "endAnchor": "Issue #378:"}
+      ]
+    }
+  ],
+  "outerConditions": [
+    "Top-level stylesheet rules are preserved.",
+    "Portrait cloud-touch selectors retain data-editor-device-mode='cloud-touch' and data-editor-shell-layout='portrait'.",
+    "Landscape cloud-touch selectors retain data-editor-device-mode='cloud-touch', data-editor-shell-layout='landscape', and data-compact='true'.",
+    "Existing internal @media (max-width: 480px) blocks in G081 and G100 remain inside their moved ranges."
+  ],
+  "producers": [
+    "src/renderer/features/properties/LayerPositionPanel.tsx",
+    "src/renderer/features/properties/LayerTransformPanel.tsx",
+    "src/renderer/features/properties/LayerBackgroundControl.tsx",
+    "src/renderer/features/properties/LayerOrderControls.tsx"
+  ],
+  "hosts": [
+    "src/renderer/shell/RightInspector.tsx",
+    "src/renderer/shell/PortraitPropertiesSections.tsx",
+    "src/renderer/shell/RightWorkspace.tsx"
+  ],
+  "runtimeConsumers": [
+    "Selected and unselected layer summaries in the shared Right Inspector",
+    "Portrait and landscape Cloud Touch Layer Position/Transform/Background/Appearance/Order surfaces",
+    "Background/protected/locked, opacity, order/delete, and compact responsive presentation states"
+  ],
+  "programmaticConsumers": {
+    "stylesEntry": "src/renderer/main.tsx imports src/renderer/styles.css",
+    "behaviorOwner": "Existing formal project/layer stores and services; unchanged",
+    "newConsumersFound": []
+  },
+  "testConsumers": [
+    "tests/unit/editor-issue329-portrait-properties.test.ts",
+    "tests/unit/editor-issue346-portrait-properties.test.ts",
+    "tests/unit/editor-issue347-portrait-transform.test.ts",
+    "tests/unit/editor-issue348-portrait-appearance.test.ts",
+    "tests/unit/editor-issue349-portrait-layer.test.ts",
+    "tests/unit/editor-issue374-landscape-appearance.test.ts",
+    "tests/unit/editor-issue376-landscape-layer.test.ts",
+    "tests/integration/right-inspector.test.ts",
+    "tests/integration/layer-transform-lifecycle.test.ts",
+    "tests/contract/issue546-p2-b06.test.ts"
+  ],
+  "cssDependencyAudit": {
+    "relativeUrls": [],
+    "keyframes": [],
+    "customProperties": [
+      "--ui-color-action-hover",
+      "--ui-color-disabled-surface",
+      "--ui-color-disabled-text",
+      "--ui-color-focus-ring",
+      "--ui-color-selected-border",
+      "--ui-color-separator",
+      "--ui-color-surface-overlay",
+      "--ui-color-surface-panel",
+      "--ui-color-surface-work",
+      "--ui-color-text-muted",
+      "--ui-color-text-primary",
+      "--ui-color-text-secondary",
+      "--ui-radius-medium",
+      "--ui-radius-pill",
+      "--ui-radius-small",
+      "--ui-space-1",
+      "--ui-space-2",
+      "--ui-space-3"
+    ],
+    "declarationChanges": false,
+    "pathResolutionRisk": "none"
+  },
+  "remainderParts": [
+    "S06-R01",
+    "S06-R02",
+    "S06-R03",
+    "S07-R01",
+    "S07-R02",
+    "S08-R01",
+    "S08-R02",
+    "S11-R01",
+    "S11-R02"
+  ],
+  "validation": {
+    "preflight": "PASS",
+    "cssFinalEquivalence": "PASS in isolated clean verification worktree",
+    "targetedContract": "PASS: 2 files / 8 tests including P2-01 compatibility",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "unit": "PASS: 276 files / 1786 tests",
+    "build": "PASS: renderer and Electron",
+    "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "humanAcceptance": "未测"
+  },
+  "guardrails": {
+    "manualFullCiTriggered": false,
+    "verifyProjectManuallyRun": false,
+    "scopeExceptions": [],
+    "finalHeadEmbedded": false
+  }
+}

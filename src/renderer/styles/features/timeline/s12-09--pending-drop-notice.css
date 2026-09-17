@@ -1,0 +1,19 @@
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .bottom-workspace[data-resizable='true']
+  .timeline-pending-drop-notice {
+  position: fixed;
+  z-index: 101;
+  right: 18px;
+  bottom: 18px;
+  max-width: min(360px, calc(100vw - 36px));
+  padding: 8px 12px;
+  border: 1px solid rgb(214 139 102 / 56%);
+  border-radius: 8px;
+  background: rgb(55 31 27 / 96%);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 26%);
+  color: var(--ui-color-text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+

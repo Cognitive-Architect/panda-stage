@@ -1,0 +1,106 @@
+.layer-position-panel {
+  display: grid;
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 12px;
+  background: rgb(7 12 9 / 58%);
+  gap: 10px;
+}
+
+.layer-position-panel h3,
+.layer-position-panel p {
+  margin: 0;
+}
+
+.layer-position-panel > p,
+.layer-position-panel output {
+  color: #91a299;
+  font-size: 11px;
+}
+
+.layer-position-panel form {
+  display: grid;
+  grid-template-columns:
+    minmax(150px, 1fr)
+    minmax(110px, 0.7fr)
+    minmax(110px, 0.7fr)
+    auto
+    auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.layer-position-panel label {
+  display: grid;
+  color: #a9b8ae;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.layer-position-panel input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgb(154 216 172 / 25%);
+  border-radius: 8px;
+  color: #eef6f0;
+  background: #0b100e;
+  font: inherit;
+}
+
+.layer-position-panel input:disabled {
+  color: #77847c;
+  background: #161b18;
+}
+
+.layer-position-panel .layer-lock-control {
+  display: flex;
+  align-items: center;
+  padding-bottom: 8px;
+  white-space: nowrap;
+}
+
+.layer-position-panel .layer-lock-control input {
+  width: auto;
+}
+
+.layer-position-panel button {
+  padding: 8px 11px;
+}
+
+.layer-background-control,
+.layer-transform-panel,
+.layer-order-controls {
+  display: grid;
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 12px;
+  background: rgb(7 12 9 / 58%);
+  gap: 10px;
+}
+
+.layer-background-control h3,
+.layer-background-control p,
+.layer-background-control strong {
+  margin: 0;
+}
+
+.layer-background-control > p,
+.layer-background-control strong {
+  color: #91a299;
+  font-size: 11px;
+}
+
+.layer-background-control strong {
+  display: block;
+  margin-top: 4px;
+  color: #dce8df;
+  font-size: 12px;
+}
+
+.layer-background-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+

@@ -1,0 +1,32 @@
+.character-mouth-state > .image-asset-picker {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-mouth-state {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-mouth-state > .image-asset-picker {
+  grid-column: 1 / -1;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .image-asset-picker-selected {
+  min-height: 64px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .image-asset-picker-candidates {
+  max-height: 270px;
+}
+

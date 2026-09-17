@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "issue": 551,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-04",
+  "workItem": "P2-16",
+  "owner": "shell-resources",
+  "status": "validated-implementation-human-accepted",
+  "preflight": "docs/evidence/issue-551-p2-16/preflight.json",
+  "startingLivePrHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "refreshedRemoteBranchHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "validatedImplementationSnapshot": {
+    "head": "9f213c4f63c092cd92be25780cfd45d8f0b4032d",
+    "meaning": "P2-16 implementation was committed and validated; this receipt is updated later for maintainer acceptance and does not self-reference the acceptance bookkeeping commit."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "segments": ["G008/S01-08", "G036/S05-04", "G057/S06-16+S07-01", "G060/S07-04", "G068/S07-12", "G087/S09-07", "G089/S10-01", "G093/S10-05"],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "targetImportOrder": ["G008", "G036", "G057", "G060", "G068", "G087", "G089", "G093"]
+  },
+  "geometryContract": {
+    "resourceRailMinHeightPx": 72,
+    "resourceRailGapPx": 8,
+    "liveBounds": "BottomWorkspace -> timelineUiStore.setHeightMax",
+    "g112S13_05Media900BlockUntouched": true
+  },
+  "behaviorContract": {
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false,
+    "timelineUiStoreChanged": false,
+    "bottomWorkspaceChanged": false,
+    "g112S13_05Media900BlockUntouched": true,
+    "newConsumers": [],
+    "relativeResourceUrls": []
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs --preflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS (exact=true; pending=0)",
+    "focusedContractSuite": "PASS (25 files, 190 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "unit": "PASS (285 files, 1825 tests)",
+    "integration": "PASS (32 files, 176 tests)",
+    "build": "PASS (renderer, Electron and preload bundles)",
+    "gitDiffCheck": "EXPECTED_EXACT_SLICE_EOF_DIAGNOSTICS; only required blank-at-EOF bytes in exact baseline slices were reported",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false,
+    "automaticCi": "PASS (CI #947 / run 35188873124 on acceptance-predecessor snapshot 32c324847d601fa904c8293924392cfe92178e59)"
+  },
+  "humanAcceptance": {
+    "status": "PASS",
+    "result": "PASS",
+    "acceptedOn": "2026-09-17",
+    "acceptedBy": "maintainer",
+    "issueCommentId": 5710897845,
+    "windowsElectronSmoke": "PASS",
+    "reviewedMatrix": ["Windows Electron product entry", "portrait and landscape resource host", "Assets/Shots/Characters open-close-header-detail-scroll", "Activity Rail dimensions", "Host ↔ Timeline resize/max-height continuity", "representative constrained/larger-window behavior", "available input paths"],
+    "scope": "Maintainer reviewed P2-16 Left Resource Host surfaces and Host ↔ Timeline geometry continuity; no visible host layout/style or geometry regression observed."
+  },
+  "scopeExceptions": ["No new PR was created; work continues on rolling Draft PR #542.", "No P2-17/18/19/21/27 or Phase 3/4 work was included.", "No DOM, state/store, IPC, behavior, copy, breakpoint, or CSS-value redesign was included."]
+}

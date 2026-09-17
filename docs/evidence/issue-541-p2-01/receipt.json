@@ -1,0 +1,1256 @@
+{
+  "issue": 541,
+  "phase": "P2-01",
+  "canonicalSection": "S11-01",
+  "segment": "G097",
+  "startingMainHead": "fb5f91ecb8ee3ecdcea9bf2f242526feb3597859",
+  "finalHead": "17a5ad4f67c834b6ffa04ec5979b2084da4f8098",
+  "sourceBlobSha": "acf90acc825c7ffe2ffcdadc56451ad62083b9d3",
+  "sectionStartLine": 1,
+  "sectionEndLine": 54,
+  "sectionStartByte": 0,
+  "sectionEndByteExclusive": 1182,
+  "sectionSha256": "5137b65f7ceb77eba12778256b55e697bd47259f0379a5ec9e52076c5eb8bc83",
+  "predecessor": "S10-08/G096",
+  "successor": "S11-02/G098",
+  "targetPath": "src/renderer/styles/shell/tools/view-mode.css",
+  "productionEntryVerified": true,
+  "realOrderEquivalent": true,
+  "missingSections": 0,
+  "duplicateSections": 0,
+  "viewModeFit": "PASS",
+  "viewModeActualSize": "PASS",
+  "actionPresetRegression": "PASS",
+  "windowsElectronSmoke": "PASS",
+  "targetedValidation": "See verification.output and Issue #541 execution comment.",
+  "automaticCi": "targeted / 35056542765 / PASS",
+  "MANUAL_FULL_TRIGGERED": false,
+  "VERIFY_PROJECT_MANUALLY_RUN": false,
+  "scopeExceptions": [],
+  "preflight": {
+    "issue": 541,
+    "phase": "P2-01",
+    "status": "preflight-pass",
+    "startingMainHead": "fb5f91ecb8ee3ecdcea9bf2f242526feb3597859",
+    "sourceSlice": "S11",
+    "segment": "S11-01",
+    "sourcePath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
+    "sourceBlob": "acf90acc825c7ffe2ffcdadc56451ad62083b9d3",
+    "sourceLocalRange": {
+      "startLine": 1,
+      "endLine": 54
+    },
+    "canonicalGlobalRange": {
+      "startLine": 21803,
+      "endLine": 21856
+    },
+    "sectionStartByte": 0,
+    "sectionEndByteExclusive": 1182,
+    "sectionSha256": "5137b65f7ceb77eba12778256b55e697bd47259f0379a5ec9e52076c5eb8bc83",
+    "endAnchor": ".project-tools-action-presets-view",
+    "anchorLocalLine": 55,
+    "boundary": "The complete top-level view-mode rule group ends immediately before the first top-level .project-tools-action-presets-view rule.",
+    "predecessor": "S10-08/G096",
+    "successor": "S11-02/G098",
+    "outerCondition": "none; top-level rules",
+    "dependencies": {
+      "producer": "src/renderer/shell/ProjectToolsDrawer.tsx",
+      "host": "ProjectToolsDrawer -> RightWorkspace",
+      "behaviorOwner": "src/renderer/stores/canvasViewportStore.ts",
+      "behaviorUnchanged": true,
+      "pathSensitiveConstructs": []
+    },
+    "canonicalContract": {
+      "owner": "shell-tools",
+      "migrationMode": "DIRECT+VERIFICATION",
+      "globalOrder": 112,
+      "targetDirectory": "src/renderer/styles/shell/tools/"
+    }
+  },
+  "verification": {
+    "issue": 530,
+    "mode": "final-equivalence",
+    "status": "pass",
+    "baseline": {
+      "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+      "sourcePath": "src/renderer/styles.css",
+      "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+      "lineCount": 32818,
+      "scanErrors": []
+    },
+    "canonicalMap": {
+      "path": "docs/PandaStage_Phase1_Section_Map_v1.0_2026-09-15.md",
+      "commit": "8bac6f217246d25ba4eb6b6bd76ab7bcc11ab332",
+      "sliceCount": 16,
+      "slices": [
+        {
+          "id": "S01",
+          "startLine": 3,
+          "endLine": 1951,
+          "targetPath": "01-shell-import-review-base.css",
+          "workItem": "P1-01"
+        },
+        {
+          "id": "S02",
+          "startLine": 1952,
+          "endLine": 3916,
+          "targetPath": "02-review-workbench-dialogue.css",
+          "workItem": "P1-02"
+        },
+        {
+          "id": "S03",
+          "startLine": 3917,
+          "endLine": 6019,
+          "targetPath": "03-terminal-launcher-sequence.css",
+          "workItem": "P1-02"
+        },
+        {
+          "id": "S04",
+          "startLine": 6020,
+          "endLine": 8038,
+          "targetPath": "04-launcher-render-workbench.css",
+          "workItem": "P1-03"
+        },
+        {
+          "id": "S05",
+          "startLine": 8039,
+          "endLine": 9839,
+          "targetPath": "05-asset-library-stage-sequence.css",
+          "workItem": "P1-03"
+        },
+        {
+          "id": "S06",
+          "startLine": 9840,
+          "endLine": 11883,
+          "targetPath": "06-canvas-portrait-foundation.css",
+          "workItem": "P1-04"
+        },
+        {
+          "id": "S07",
+          "startLine": 11884,
+          "endLine": 13801,
+          "targetPath": "07-portrait-assets-inspector-start.css",
+          "workItem": "P1-04"
+        },
+        {
+          "id": "S08",
+          "startLine": 13802,
+          "endLine": 17819,
+          "targetPath": "08-inspector-portrait-dialogue.css",
+          "workItem": "P1-05"
+        },
+        {
+          "id": "S09",
+          "startLine": 17820,
+          "endLine": 19783,
+          "targetPath": "09-portrait-timed-landscape-assets.css",
+          "workItem": "P1-06"
+        },
+        {
+          "id": "S10",
+          "startLine": 19784,
+          "endLine": 21802,
+          "targetPath": "10-landscape-characters-tools-start.css",
+          "workItem": "P1-06"
+        },
+        {
+          "id": "S11",
+          "startLine": 21803,
+          "endLine": 23799,
+          "targetPath": "11-tools-inspector-timeline-start.css",
+          "workItem": "P1-07"
+        },
+        {
+          "id": "S12",
+          "startLine": 23800,
+          "endLine": 25876,
+          "targetPath": "12-landscape-task-tray.css",
+          "workItem": "P1-07"
+        },
+        {
+          "id": "S13",
+          "startLine": 25877,
+          "endLine": 27997,
+          "targetPath": "13-timed-render-media-tail.css",
+          "workItem": "P1-07"
+        },
+        {
+          "id": "S14",
+          "startLine": 27998,
+          "endLine": 29794,
+          "targetPath": "14-dialogue-polish-image-picker.css",
+          "workItem": "P1-08"
+        },
+        {
+          "id": "S15",
+          "startLine": 29795,
+          "endLine": 31795,
+          "targetPath": "15-character-identity-workspace-start.css",
+          "workItem": "P1-08"
+        },
+        {
+          "id": "S16",
+          "startLine": 31796,
+          "endLine": 32818,
+          "targetPath": "16-character-settings-final-polish.css",
+          "workItem": "P1-08"
+        }
+      ]
+    },
+    "map": {
+      "sliceCount": 16,
+      "coverage": {
+        "startLine": 3,
+        "endLine": 32818,
+        "lineEndingNormalization": "CRLF and CR are normalized to LF for hashing and comparison; source text is otherwise not reformatted."
+      },
+      "candidateBoundaries": [
+        {
+          "afterLine": 1951,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 3916,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 6019,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 8038,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 9839,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 11883,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 13801,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 17819,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 19783,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 21802,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 23799,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 25876,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 27997,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 29794,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 31795,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 32818,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        }
+      ],
+      "actualBoundaries": [
+        {
+          "afterLine": 1951,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 3916,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 6019,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 8038,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 9839,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 11883,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 13801,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 17819,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 19783,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 21802,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 23799,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 25876,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 27997,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 29794,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 31795,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        },
+        {
+          "afterLine": 32818,
+          "safe": true,
+          "state": {
+            "braceDepth": 0,
+            "parenDepth": 0,
+            "bracketDepth": 0,
+            "inComment": false,
+            "quote": null,
+            "topLevelStatementPending": false
+          }
+        }
+      ],
+      "adjustments": []
+    },
+    "pathSensitive": {
+      "all": [
+        {
+          "line": 1,
+          "text": "@import './styles/tokens.css';",
+          "kind": "import"
+        },
+        {
+          "line": 2,
+          "text": "@import './styles/primitives.css';",
+          "kind": "import"
+        },
+        {
+          "line": 6422,
+          "text": "url('/project-launcher-banner.png')",
+          "kind": "url"
+        }
+      ],
+      "s01": [],
+      "p1_03": [
+        {
+          "id": "S04",
+          "range": {
+            "startLine": 6020,
+            "endLine": 8038
+          },
+          "entries": [
+            {
+              "line": 6422,
+              "text": "url('/project-launcher-banner.png')",
+              "kind": "url"
+            }
+          ],
+          "relocationProof": [
+            {
+              "line": 6422,
+              "kind": "url",
+              "source": "url('/project-launcher-banner.png')",
+              "beforeTarget": "/project-launcher-banner.png",
+              "afterTarget": "/project-launcher-banner.png",
+              "resolution": "root-relative browser URL",
+              "publicPath": "public/project-launcher-banner.png",
+              "targetExists": true,
+              "identical": true
+            }
+          ],
+          "relocationRisk": "none"
+        },
+        {
+          "id": "S05",
+          "range": {
+            "startLine": 8039,
+            "endLine": 9839
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        }
+      ],
+      "p1_04": [
+        {
+          "id": "S06",
+          "range": {
+            "startLine": 9840,
+            "endLine": 11883
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        },
+        {
+          "id": "S07",
+          "range": {
+            "startLine": 11884,
+            "endLine": 13801
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        }
+      ],
+      "p1_05": [
+        {
+          "id": "S08",
+          "range": {
+            "startLine": 13802,
+            "endLine": 17819
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        }
+      ],
+      "p1_06": [
+        {
+          "id": "S09",
+          "range": {
+            "startLine": 17820,
+            "endLine": 19783
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        },
+        {
+          "id": "S10",
+          "range": {
+            "startLine": 19784,
+            "endLine": 21802
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        }
+      ],
+      "p1_07": [
+        {
+          "id": "S11",
+          "range": {
+            "startLine": 21803,
+            "endLine": 23799
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        },
+        {
+          "id": "S12",
+          "range": {
+            "startLine": 23800,
+            "endLine": 25876
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        },
+        {
+          "id": "S13",
+          "range": {
+            "startLine": 25877,
+            "endLine": 27997
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        }
+      ],
+      "p1_08": [
+        {
+          "id": "S14",
+          "range": {
+            "startLine": 27998,
+            "endLine": 29794
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        },
+        {
+          "id": "S15",
+          "range": {
+            "startLine": 29795,
+            "endLine": 31795
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        },
+        {
+          "id": "S16",
+          "range": {
+            "startLine": 31796,
+            "endLine": 32818
+          },
+          "entries": [],
+          "relocationProof": [],
+          "relocationRisk": "none"
+        }
+      ],
+      "relocationRisk": "none"
+    },
+    "directReaderSearch": {
+      "roots": [
+        "tests",
+        "scripts"
+      ],
+      "mentions": [
+        "tests/contract/ci-routing.test.ts",
+        "tests/contract/ui-m1-touch-foundation.test.ts",
+        "tests/helpers/read-stylesheet-source.ts",
+        "tests/unit/editor-issue326-portrait-canvas-cleanup.test.ts",
+        "tests/unit/editor-issue327-portrait-shot-shell.test.ts",
+        "tests/unit/editor-issue328-portrait-assets.test.ts",
+        "tests/unit/editor-issue329-portrait-properties.test.ts",
+        "tests/unit/editor-issue330-portrait-timeline.test.ts",
+        "tests/unit/editor-issue331-landscape-resource-drawers.test.ts",
+        "tests/unit/editor-issue332-contextual-inspector.test.ts",
+        "tests/unit/editor-issue338-portrait-properties.test.ts",
+        "tests/unit/editor-issue339-portrait-timeline.test.ts",
+        "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
+        "tests/unit/editor-issue342-icon-pilot.test.ts",
+        "tests/unit/editor-issue344-portrait-assets.test.ts",
+        "tests/unit/editor-issue345-portrait-assets.test.ts",
+        "tests/unit/editor-issue346-portrait-properties.test.ts",
+        "tests/unit/editor-issue347-portrait-transform.test.ts",
+        "tests/unit/editor-issue348-portrait-appearance.test.ts",
+        "tests/unit/editor-issue349-portrait-layer.test.ts",
+        "tests/unit/editor-issue351-timeline-default.test.ts",
+        "tests/unit/editor-issue352-timeline-selected.test.ts",
+        "tests/unit/editor-issue353-timeline-state-c.test.ts",
+        "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+        "tests/unit/editor-issue358-properties-dialogue-inspector.test.ts",
+        "tests/unit/editor-issue359-portrait-timeline-polish.test.ts",
+        "tests/unit/editor-issue360-landscape-shot-drawer.test.ts",
+        "tests/unit/editor-issue361-landscape-shot-drawer.test.ts",
+        "tests/unit/editor-issue362-landscape-shot-create.test.ts",
+        "tests/unit/editor-issue363-landscape-assets.test.ts",
+        "tests/unit/editor-issue364-landscape-characters.test.ts",
+        "tests/unit/editor-issue365-compact-character-detail.test.ts",
+        "tests/unit/editor-issue366-landscape-expression.test.ts",
+        "tests/unit/editor-issue368-landscape-chrome.test.ts",
+        "tests/unit/editor-issue369-project-tools.test.ts",
+        "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
+        "tests/unit/editor-issue426-right-workspace.test.ts",
+        "tests/unit/editor-issue428-right-subtitle-workspace.test.ts",
+        "tests/unit/editor-issue430-r2-subtitle-polish.test.ts",
+        "tests/unit/editor-issue431-r2-polish-batch-2.test.ts",
+        "tests/unit/editor-issue432-r3-timeline-and-subtitle-workspace.test.ts",
+        "tests/unit/editor-issue433-r3-post-corrective.test.ts",
+        "tests/unit/editor-issue456-quick-action.test.ts",
+        "tests/unit/editor-issue457-canvas-first.test.ts",
+        "tests/unit/editor-issue467-wave1.test.ts",
+        "tests/unit/editor-issue474-character-empty-state.test.ts",
+        "tests/unit/editor-issue478-character-header-trim.test.ts",
+        "tests/unit/editor-issue480-shot-empty-state.test.ts",
+        "tests/unit/editor-issue481-shot-polish.test.ts",
+        "tests/unit/editor-issue482-empty-state-polish.test.ts",
+        "tests/unit/editor-issue485-recovery-card.test.ts",
+        "tests/unit/editor-issue486-recovery-overlay.test.ts",
+        "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+        "tests/unit/editor-issue506-shot-thumbnails.test.ts",
+        "tests/unit/editor-shell-adaptive.test.ts",
+        "tests/unit/left-workspace.test.ts",
+        "tests/unit/product-preview-overlay.test.ts",
+        "scripts/css-split-manifest.json",
+        "scripts/verification-manifest.json",
+        "scripts/verify-css-split.cjs",
+        "scripts/verify-issue405-stage-g.cjs",
+        "scripts/verify-issue410-project-launcher.cjs"
+      ],
+      "likelyReaders": [
+        "tests/contract/ui-m1-touch-foundation.test.ts",
+        "tests/unit/editor-issue326-portrait-canvas-cleanup.test.ts",
+        "tests/unit/editor-issue327-portrait-shot-shell.test.ts",
+        "tests/unit/editor-issue328-portrait-assets.test.ts",
+        "tests/unit/editor-issue329-portrait-properties.test.ts",
+        "tests/unit/editor-issue330-portrait-timeline.test.ts",
+        "tests/unit/editor-issue331-landscape-resource-drawers.test.ts",
+        "tests/unit/editor-issue332-contextual-inspector.test.ts",
+        "tests/unit/editor-issue338-portrait-properties.test.ts",
+        "tests/unit/editor-issue339-portrait-timeline.test.ts",
+        "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
+        "tests/unit/editor-issue342-icon-pilot.test.ts",
+        "tests/unit/editor-issue344-portrait-assets.test.ts",
+        "tests/unit/editor-issue345-portrait-assets.test.ts",
+        "tests/unit/editor-issue346-portrait-properties.test.ts",
+        "tests/unit/editor-issue347-portrait-transform.test.ts",
+        "tests/unit/editor-issue348-portrait-appearance.test.ts",
+        "tests/unit/editor-issue349-portrait-layer.test.ts",
+        "tests/unit/editor-issue351-timeline-default.test.ts",
+        "tests/unit/editor-issue352-timeline-selected.test.ts",
+        "tests/unit/editor-issue353-timeline-state-c.test.ts",
+        "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+        "tests/unit/editor-issue358-properties-dialogue-inspector.test.ts",
+        "tests/unit/editor-issue359-portrait-timeline-polish.test.ts",
+        "tests/unit/editor-issue360-landscape-shot-drawer.test.ts",
+        "tests/unit/editor-issue361-landscape-shot-drawer.test.ts",
+        "tests/unit/editor-issue362-landscape-shot-create.test.ts",
+        "tests/unit/editor-issue363-landscape-assets.test.ts",
+        "tests/unit/editor-issue364-landscape-characters.test.ts",
+        "tests/unit/editor-issue365-compact-character-detail.test.ts",
+        "tests/unit/editor-issue366-landscape-expression.test.ts",
+        "tests/unit/editor-issue368-landscape-chrome.test.ts",
+        "tests/unit/editor-issue369-project-tools.test.ts",
+        "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
+        "tests/unit/editor-issue426-right-workspace.test.ts",
+        "tests/unit/editor-issue428-right-subtitle-workspace.test.ts",
+        "tests/unit/editor-issue430-r2-subtitle-polish.test.ts",
+        "tests/unit/editor-issue431-r2-polish-batch-2.test.ts",
+        "tests/unit/editor-issue432-r3-timeline-and-subtitle-workspace.test.ts",
+        "tests/unit/editor-issue433-r3-post-corrective.test.ts",
+        "tests/unit/editor-issue456-quick-action.test.ts",
+        "tests/unit/editor-issue457-canvas-first.test.ts",
+        "tests/unit/editor-issue467-wave1.test.ts",
+        "tests/unit/editor-issue474-character-empty-state.test.ts",
+        "tests/unit/editor-issue478-character-header-trim.test.ts",
+        "tests/unit/editor-issue480-shot-empty-state.test.ts",
+        "tests/unit/editor-issue481-shot-polish.test.ts",
+        "tests/unit/editor-issue482-empty-state-polish.test.ts",
+        "tests/unit/editor-issue485-recovery-card.test.ts",
+        "tests/unit/editor-issue486-recovery-overlay.test.ts",
+        "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+        "tests/unit/editor-issue506-shot-thumbnails.test.ts",
+        "tests/unit/editor-shell-adaptive.test.ts",
+        "tests/unit/left-workspace.test.ts",
+        "tests/unit/product-preview-overlay.test.ts",
+        "scripts/verify-css-split.cjs"
+      ],
+      "materiallyAffected": [
+        "tests/contract/day26-review-followup.test.ts",
+        "tests/contract/dom-selectors.baseline.test.ts",
+        "tests/contract/issue197-timeline-collapse-space.test.ts",
+        "tests/contract/issue220-dialogue-layout.test.ts",
+        "tests/contract/right-inspector-narrow-review.test.ts",
+        "tests/contract/ui-m1-touch-foundation.test.ts",
+        "tests/integration/editor-shell-layout.test.ts",
+        "tests/integration/right-inspector-narrow.test.ts",
+        "tests/unit/editor-issue340-portrait-chrome.test.ts",
+        "tests/unit/editor-issue443-subtitle-correction-01.test.ts",
+        "tests/unit/editor-issue447-subtitle-audio-polish.test.ts",
+        "tests/unit/editor-issue448-duration-editor.test.ts",
+        "tests/unit/editor-issue454-quick-action.test.ts",
+        "tests/unit/editor-issue460-two-mode-pan-tools.test.ts",
+        "tests/unit/editor-issue463-subtitle-timing.test.ts",
+        "tests/unit/dialogue-inspector-issue468.test.ts",
+        "tests/unit/editor-issue496-dialogue-recovery.test.ts",
+        "tests/unit/editor-issue498-dialogue-distillation.test.ts",
+        "tests/unit/editor-issue499-501-dialogue-distillation.test.ts",
+        "tests/unit/editor-issue502-final-dialogue-correction.test.ts",
+        "tests/unit/editor-issue505-a09-batch-recognition-review.test.ts",
+        "tests/unit/subtitle-style-controls-layout.test.ts",
+        "tests/unit/character-issue511-reminder.test.ts",
+        "tests/unit/editor-issue378-landscape-timeline-resize.test.ts",
+        "tests/unit/editor-issue436-lm004-canvas-flatten-and-tools-view.test.ts",
+        "tests/unit/editor-issue326-portrait-canvas-cleanup.test.ts",
+        "tests/unit/editor-issue327-portrait-shot-shell.test.ts",
+        "tests/unit/editor-issue328-portrait-assets.test.ts",
+        "tests/unit/editor-issue329-portrait-properties.test.ts",
+        "tests/unit/editor-issue330-portrait-timeline.test.ts",
+        "tests/unit/editor-issue331-landscape-resource-drawers.test.ts",
+        "tests/unit/editor-issue332-contextual-inspector.test.ts",
+        "tests/unit/editor-issue344-portrait-assets.test.ts",
+        "tests/unit/editor-issue368-landscape-chrome.test.ts",
+        "tests/unit/editor-issue371-landscape-inspector-handle.test.ts",
+        "tests/unit/editor-issue372-landscape-inspector-empty-state.test.ts",
+        "tests/unit/editor-issue373-landscape-inspector-selected-state.test.ts",
+        "tests/unit/editor-issue374-landscape-appearance.test.ts",
+        "tests/unit/editor-issue376-landscape-layer.test.ts",
+        "tests/unit/editor-issue379-landscape-timeline-shell.test.ts",
+        "tests/unit/editor-issue380-landscape-pending-tray.test.ts",
+        "tests/unit/editor-issue381-landscape-pending-drag.test.ts",
+        "tests/unit/editor-issue382-landscape-task-tray.test.ts",
+        "tests/unit/editor-issue384-timed-task-tray-polish.test.ts",
+        "tests/unit/editor-issue385-timing-card-density.test.ts",
+        "tests/unit/editor-issue386-authoring-shell-polish.test.ts",
+        "tests/unit/editor-issue388-landscape-subtitle-properties.test.ts",
+        "tests/unit/editor-issue422-landscape-timeline-geometry.test.ts",
+        "tests/unit/editor-issue423-landscape-timeline-minimum.test.ts",
+        "tests/unit/editor-issue435-r3-ruler-track-height.test.ts",
+        "tests/unit/editor-issue456-quick-action.test.ts",
+        "tests/unit/editor-issue457-canvas-first.test.ts",
+        "tests/unit/editor-issue474-character-empty-state.test.ts",
+        "tests/unit/editor-issue478-character-header-trim.test.ts",
+        "tests/unit/editor-issue481-shot-polish.test.ts",
+        "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+        "tests/unit/editor-shell-adaptive.test.ts",
+        "tests/unit/left-workspace.test.ts",
+        "tests/unit/product-preview-overlay.test.ts",
+        "tests/unit/editor-issue342-icon-pilot.test.ts",
+        "tests/unit/editor-issue345-portrait-assets.test.ts",
+        "tests/unit/editor-issue366-landscape-expression.test.ts",
+        "tests/unit/editor-issue480-shot-empty-state.test.ts",
+        "tests/unit/editor-issue485-recovery-card.test.ts",
+        "tests/unit/editor-issue486-recovery-overlay.test.ts",
+        "tests/unit/editor-issue506-shot-thumbnails.test.ts",
+        "tests/unit/editor-issue508-shot-thumbnail-frame.test.ts",
+        "tests/unit/fla-stage-d-render-workbench.test.ts",
+        "tests/unit/fla-stage-e-frame-sequence.test.ts",
+        "tests/unit/issue102-task4-responsive.test.ts",
+        "tests/unit/issue109-resource-workspace.test.ts",
+        "tests/unit/editor-issue338-portrait-properties.test.ts",
+        "tests/unit/editor-issue339-portrait-timeline.test.ts",
+        "tests/unit/editor-issue341-portrait-shot-inspector.test.ts",
+        "tests/unit/editor-issue346-portrait-properties.test.ts",
+        "tests/unit/editor-issue347-portrait-transform.test.ts",
+        "tests/unit/editor-issue348-portrait-appearance.test.ts",
+        "tests/unit/editor-issue349-portrait-layer.test.ts",
+        "tests/unit/editor-issue351-timeline-default.test.ts",
+        "tests/unit/editor-issue352-timeline-selected.test.ts",
+        "tests/unit/editor-issue357-dialogue-authoring-shell.test.ts",
+        "tests/unit/editor-issue387-landscape-subtitle-properties.test.ts",
+        "tests/unit/editor-issue441-subtitle-properties-polish.test.ts",
+        "tests/unit/editor-issue469-subtitle-properties.test.ts",
+        "tests/unit/editor-issue524-character-detail-polish.test.ts",
+        "tests/unit/editor-issue525-character-detail-header.test.ts",
+        "tests/unit/editor-issue526-character-settings-polish.test.ts",
+        "tests/unit/editor-issue527-character-settings-balance.test.ts",
+        "tests/unit/editor-issue528-expression-inline-edit.test.ts",
+        "tests/unit/editor-issue353-timeline-state-c.test.ts",
+        "tests/unit/editor-issue358-properties-dialogue-inspector.test.ts",
+        "tests/unit/editor-issue359-portrait-timeline-polish.test.ts",
+        "tests/unit/editor-issue361-landscape-shot-drawer.test.ts",
+        "tests/unit/editor-issue362-landscape-shot-create.test.ts",
+        "tests/unit/editor-issue363-landscape-assets.test.ts",
+        "tests/unit/editor-issue364-landscape-characters.test.ts",
+        "tests/unit/editor-issue365-compact-character-detail.test.ts",
+        "tests/contract/issue541-p2-01.test.ts"
+      ],
+      "sharedReader": "tests/helpers/read-stylesheet-source.ts"
+    },
+    "extraction": {
+      "extracted": [
+        {
+          "id": "S01",
+          "path": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css",
+          "range": {
+            "startLine": 3,
+            "endLine": 1951
+          },
+          "expectedSha256": "74fc242df333b3fe0bad7ee7ab912ac88f28c9fd212bf74d6e5379573edce7b7",
+          "actualSha256": "74fc242df333b3fe0bad7ee7ab912ac88f28c9fd212bf74d6e5379573edce7b7",
+          "exact": true
+        },
+        {
+          "id": "S02",
+          "path": "src/renderer/styles/legacy-slices/02-review-workbench-dialogue.css",
+          "range": {
+            "startLine": 1952,
+            "endLine": 3916
+          },
+          "expectedSha256": "ae59a592ceca5184e13bb1a1d59af83ba69ca3d870dcf817ef7eb7169ea6a3a1",
+          "actualSha256": "ae59a592ceca5184e13bb1a1d59af83ba69ca3d870dcf817ef7eb7169ea6a3a1",
+          "exact": true
+        },
+        {
+          "id": "S03",
+          "path": "src/renderer/styles/legacy-slices/03-terminal-launcher-sequence.css",
+          "range": {
+            "startLine": 3917,
+            "endLine": 6019
+          },
+          "expectedSha256": "94ce88b93096dc6fa32b6262ee05b5ff4a1253c920ffe8e71728eeeb2a4b7502",
+          "actualSha256": "94ce88b93096dc6fa32b6262ee05b5ff4a1253c920ffe8e71728eeeb2a4b7502",
+          "exact": true
+        },
+        {
+          "id": "S04",
+          "path": "src/renderer/styles/legacy-slices/04-launcher-render-workbench.css",
+          "range": {
+            "startLine": 6020,
+            "endLine": 8038
+          },
+          "expectedSha256": "cc359dee1823319b9173d1c441f827c134cbb0ceb3ef3ac214279b94732c2b81",
+          "actualSha256": "cc359dee1823319b9173d1c441f827c134cbb0ceb3ef3ac214279b94732c2b81",
+          "exact": true
+        },
+        {
+          "id": "S05",
+          "path": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence.css",
+          "range": {
+            "startLine": 8039,
+            "endLine": 9839
+          },
+          "expectedSha256": "5f48b8355a80a3b1c0b7d775c10e3aedf76cf9f945c86f6ce698c5e3581b8e86",
+          "actualSha256": "5f48b8355a80a3b1c0b7d775c10e3aedf76cf9f945c86f6ce698c5e3581b8e86",
+          "exact": true
+        },
+        {
+          "id": "S06",
+          "path": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation.css",
+          "range": {
+            "startLine": 9840,
+            "endLine": 11883
+          },
+          "expectedSha256": "e93b32b2a395c792ecc3b76f531165dc97c98be56564b58d6d5da40c45c9821f",
+          "actualSha256": "e93b32b2a395c792ecc3b76f531165dc97c98be56564b58d6d5da40c45c9821f",
+          "exact": true
+        },
+        {
+          "id": "S07",
+          "path": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start.css",
+          "range": {
+            "startLine": 11884,
+            "endLine": 13801
+          },
+          "expectedSha256": "853cb0833eb380e8a5779188225a7bad242de0aeeae9e8dd4fbe3dce59d1a08d",
+          "actualSha256": "853cb0833eb380e8a5779188225a7bad242de0aeeae9e8dd4fbe3dce59d1a08d",
+          "exact": true
+        },
+        {
+          "id": "S08",
+          "path": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue.css",
+          "range": {
+            "startLine": 13802,
+            "endLine": 17819
+          },
+          "expectedSha256": "6f8fdcc6e4325a441f64b511f21b3cbecfb6212b9cfadbbfa5b9a2ec6a0d92a8",
+          "actualSha256": "6f8fdcc6e4325a441f64b511f21b3cbecfb6212b9cfadbbfa5b9a2ec6a0d92a8",
+          "exact": true
+        },
+        {
+          "id": "S09",
+          "path": "src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets.css",
+          "range": {
+            "startLine": 17820,
+            "endLine": 19783
+          },
+          "expectedSha256": "405729b3af501ee28fe3d3eb7a486b090bf3c1e3a475e913f2633c3dd077e735",
+          "actualSha256": "405729b3af501ee28fe3d3eb7a486b090bf3c1e3a475e913f2633c3dd077e735",
+          "exact": true
+        },
+        {
+          "id": "S10",
+          "path": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-start.css",
+          "range": {
+            "startLine": 19784,
+            "endLine": 21802
+          },
+          "expectedSha256": "64c830b0f4ea56fc4b3c963c1a88249551817e933b45c35a650c61edd679e33c",
+          "actualSha256": "64c830b0f4ea56fc4b3c963c1a88249551817e933b45c35a650c61edd679e33c",
+          "exact": true
+        },
+        {
+          "id": "S11",
+          "path": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
+          "range": {
+            "startLine": 21803,
+            "endLine": 23799
+          },
+          "expectedSha256": "2b105d5650e187afec7e6a7eeb05cb5d3e85a33a4d0b567c6e63374c5474c494",
+          "actualSha256": "2b105d5650e187afec7e6a7eeb05cb5d3e85a33a4d0b567c6e63374c5474c494",
+          "exact": true
+        },
+        {
+          "id": "S12",
+          "path": "src/renderer/styles/legacy-slices/12-landscape-task-tray.css",
+          "range": {
+            "startLine": 23800,
+            "endLine": 25876
+          },
+          "expectedSha256": "19e9352766327ce3ca382a2a75ad10ba2386710dc9f25f60c5caf4edbe557e97",
+          "actualSha256": "19e9352766327ce3ca382a2a75ad10ba2386710dc9f25f60c5caf4edbe557e97",
+          "exact": true
+        },
+        {
+          "id": "S13",
+          "path": "src/renderer/styles/legacy-slices/13-timed-render-media-tail.css",
+          "range": {
+            "startLine": 25877,
+            "endLine": 27997
+          },
+          "expectedSha256": "432f678c879401be9e7b08eb4205d5e29197b071d1aa758ff02e925379cee39b",
+          "actualSha256": "432f678c879401be9e7b08eb4205d5e29197b071d1aa758ff02e925379cee39b",
+          "exact": true
+        },
+        {
+          "id": "S14",
+          "path": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker.css",
+          "range": {
+            "startLine": 27998,
+            "endLine": 29794
+          },
+          "expectedSha256": "b4aafd15d89b9da7f5361741aa95d9e9c2606cabfabe0c02b01b2531dfc4c6f9",
+          "actualSha256": "b4aafd15d89b9da7f5361741aa95d9e9c2606cabfabe0c02b01b2531dfc4c6f9",
+          "exact": true
+        },
+        {
+          "id": "S15",
+          "path": "src/renderer/styles/legacy-slices/15-character-identity-workspace-start.css",
+          "range": {
+            "startLine": 29795,
+            "endLine": 31795
+          },
+          "expectedSha256": "6e0f56515a3e741d74d2121d339849177aa82fdf0cc0dd2b7232cdcebaa065db",
+          "actualSha256": "6e0f56515a3e741d74d2121d339849177aa82fdf0cc0dd2b7232cdcebaa065db",
+          "exact": true
+        },
+        {
+          "id": "S16",
+          "path": "src/renderer/styles/legacy-slices/16-character-settings-final-polish.css",
+          "range": {
+            "startLine": 31796,
+            "endLine": 32818
+          },
+          "expectedSha256": "e2aaf0a4a9bd0090f10c9830756e06ed6ffe846b9cba46dcf257f7c6ca93ba07",
+          "actualSha256": "e2aaf0a4a9bd0090f10c9830756e06ed6ffe846b9cba46dcf257f7c6ca93ba07",
+          "exact": true
+        }
+      ],
+      "semanticRelocations": [
+        {
+          "id": "S11-01",
+          "sourceSlice": "S11",
+          "targetPath": "src/renderer/styles/shell/tools/view-mode.css",
+          "sourceRange": {
+            "startLine": 21803,
+            "endLine": 21856
+          },
+          "sourceSha256": "5137b65f7ceb77eba12778256b55e697bd47259f0379a5ec9e52076c5eb8bc83",
+          "exact": true
+        }
+      ],
+      "productionEntry": {
+        "path": "src/renderer/styles.css",
+        "importOrder": [
+          "./styles/tokens.css",
+          "./styles/primitives.css",
+          "./styles/legacy-slices/01-shell-import-review-base.css",
+          "./styles/legacy-slices/02-review-workbench-dialogue.css",
+          "./styles/legacy-slices/03-terminal-launcher-sequence.css",
+          "./styles/legacy-slices/04-launcher-render-workbench.css",
+          "./styles/legacy-slices/05-asset-library-stage-sequence.css",
+          "./styles/legacy-slices/06-canvas-portrait-foundation.css",
+          "./styles/legacy-slices/07-portrait-assets-inspector-start.css",
+          "./styles/legacy-slices/08-inspector-portrait-dialogue.css",
+          "./styles/legacy-slices/09-portrait-timed-landscape-assets.css",
+          "./styles/legacy-slices/10-landscape-characters-tools-start.css",
+          "./styles/shell/tools/view-mode.css",
+          "./styles/legacy-slices/11-tools-inspector-timeline-start.css",
+          "./styles/legacy-slices/12-landscape-task-tray.css",
+          "./styles/legacy-slices/13-timed-render-media-tail.css",
+          "./styles/legacy-slices/14-dialogue-polish-image-picker.css",
+          "./styles/legacy-slices/15-character-identity-workspace-start.css",
+          "./styles/legacy-slices/16-character-settings-final-polish.css"
+        ],
+        "expectedImportOrder": [
+          "./styles/tokens.css",
+          "./styles/primitives.css",
+          "./styles/legacy-slices/01-shell-import-review-base.css",
+          "./styles/legacy-slices/02-review-workbench-dialogue.css",
+          "./styles/legacy-slices/03-terminal-launcher-sequence.css",
+          "./styles/legacy-slices/04-launcher-render-workbench.css",
+          "./styles/legacy-slices/05-asset-library-stage-sequence.css",
+          "./styles/legacy-slices/06-canvas-portrait-foundation.css",
+          "./styles/legacy-slices/07-portrait-assets-inspector-start.css",
+          "./styles/legacy-slices/08-inspector-portrait-dialogue.css",
+          "./styles/legacy-slices/09-portrait-timed-landscape-assets.css",
+          "./styles/legacy-slices/10-landscape-characters-tools-start.css",
+          "./styles/shell/tools/view-mode.css",
+          "./styles/legacy-slices/11-tools-inspector-timeline-start.css",
+          "./styles/legacy-slices/12-landscape-task-tray.css",
+          "./styles/legacy-slices/13-timed-render-media-tail.css",
+          "./styles/legacy-slices/14-dialogue-polish-image-picker.css",
+          "./styles/legacy-slices/15-character-identity-workspace-start.css",
+          "./styles/legacy-slices/16-character-settings-final-polish.css"
+        ],
+        "orderEquivalent": true
+      },
+      "pending": [],
+      "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+      "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+      "exact": true,
+      "rootEntryBytes": 1224,
+      "rootEntryLines": 19,
+      "stylesheetScanErrors": []
+    },
+    "warnings": [],
+    "failures": []
+  }
+}

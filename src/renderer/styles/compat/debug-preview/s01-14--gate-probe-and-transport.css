@@ -1,0 +1,169 @@
+.gate-preview-overlay,
+.debug-probe-surface {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #0b100e;
+}
+
+.gate-preview-overlay {
+  display: grid;
+  padding: 20px;
+  place-items: center;
+}
+
+.gate-preview-overlay > .preview-panel {
+  width: min(100%, 1180px);
+}
+
+.debug-probe-surface {
+  padding: 20px clamp(16px, 3vw, 38px) 34px;
+}
+
+.app-header,
+.preview-heading,
+.transport-bar,
+.brand-lockup,
+.ipc-check,
+.transport-controls,
+.probe-metrics {
+  display: flex;
+  align-items: center;
+}
+
+.preview-status-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.playback-status {
+  padding: 7px 11px;
+  border-radius: 999px;
+  color: #a9b8ae;
+  background: rgb(255 255 255 / 6%);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.playback-status-playing {
+  color: #d5f7de;
+  background: rgb(59 148 85 / 32%);
+  box-shadow: 0 0 0 1px rgb(124 212 150 / 25%);
+}
+
+.playback-status-error {
+  color: #ffd7d2;
+  background: rgb(148 59 59 / 32%);
+}
+
+.preview-error {
+  margin: 14px 0 0;
+  color: #ffd7d2;
+  font-size: 13px;
+}
+
+.app-header {
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  justify-content: space-between;
+}
+
+.brand-lockup {
+  gap: 12px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  border: 3px solid #08100b;
+  border-radius: 50%;
+  color: #101713;
+  background: #f3f1e7;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 900;
+  box-shadow: 0 0 0 3px #7bc68f;
+}
+
+.brand-lockup div {
+  display: grid;
+  gap: 2px;
+}
+
+.brand-lockup strong {
+  font-size: 18px;
+}
+
+.brand-lockup div span {
+  color: #84968a;
+  font-size: 12px;
+}
+
+.ipc-check {
+  gap: 10px;
+}
+
+.ping-button,
+.transport-controls button {
+  padding: 9px 14px;
+}
+
+.ping-result {
+  min-width: 48px;
+  color: #9aaca0;
+  font-size: 13px;
+}
+
+.export-probe {
+  display: grid;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  padding: 16px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 16px;
+  background: rgb(18 26 21 / 88%);
+  gap: 10px;
+}
+
+.export-probe h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.export-probe label {
+  display: grid;
+  color: #a9b8ae;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.export-probe input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgb(154 216 172 / 25%);
+  border-radius: 8px;
+  color: #eef6f0;
+  background: #0b100e;
+  font: inherit;
+}
+
+.export-probe div {
+  display: flex;
+  gap: 8px;
+}
+
+.export-probe button {
+  padding: 8px 12px;
+}
+
+.export-probe output {
+  color: #9aaca0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+

@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "issue": 549,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-02-B08",
+  "workItem": "P2-26",
+  "owner": "base-global",
+  "status": "preflight-pass",
+  "startingLivePrHead": "7e3e7dc2834a63600a0260ca416d1d70520f2e0e",
+  "refreshedRemoteBranchHead": "7e3e7dc2834a63600a0260ca416d1d70520f2e0e",
+  "integrationBaseHead": "7e3e7dc2834a63600a0260ca416d1d70520f2e0e",
+  "predecessorImplementation": {
+    "workItem": "P2-25",
+    "commit": "6c0c0165e1902429c163f4d44a851676080f5643",
+    "verified": true,
+    "handoff": "P2-25 debug-preview relocations and the S01/S05/S06 remainder boundaries are present; this preflight isolates the three remaining base-global segments."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "sourceLineEndingNormalization": "LF"
+  },
+  "sections": ["S01-01", "S04-04", "S05-12"],
+  "segments": [
+    {
+      "id": "G001",
+      "sectionIds": ["S01-01"],
+      "canonicalOrder": 1,
+      "sourceSlice": "S01",
+      "globalRange": { "startLine": 3, "endLine": 59 },
+      "sourceLocalRange": { "startLine": 1, "endLine": 57 },
+      "sourceStartByte": 0,
+      "sourceEndByteExclusive": 954,
+      "sourceSha256": "f845b78c236e703cd5a3afe2b0714a8bd325cb14736bb4ae83acc61e811971b8",
+      "targetPath": "src/renderer/styles/base/native-foundation/s01-01--native-foundation.css",
+      "predecessor": "BOF",
+      "successor": "S01-02/G002"
+    },
+    {
+      "id": "G031",
+      "sectionIds": ["S04-04"],
+      "canonicalOrder": 34,
+      "sourceSlice": "S04",
+      "globalRange": { "startLine": 7949, "endLine": 7960 },
+      "sourceLocalRange": { "startLine": 1930, "endLine": 1941 },
+      "sourceStartByte": 41741,
+      "sourceEndByteExclusive": 41918,
+      "sourceSha256": "8deaf216cbe074a9a49c8f9430948c44c6785cd2bc666483e46831b3951f77c6",
+      "targetPath": "src/renderer/styles/base/native-foundation/s04-04--sr-only.css",
+      "predecessor": "S04-03/G030",
+      "successor": "S04-05/G032"
+    },
+    {
+      "id": "G042",
+      "sectionIds": ["S05-12"],
+      "canonicalOrder": 47,
+      "sourceSlice": "S05",
+      "globalRange": { "startLine": 9772, "endLine": 9786 },
+      "sourceLocalRange": { "startLine": 1734, "endLine": 1748 },
+      "sourceStartByte": 31258,
+      "sourceEndByteExclusive": 31489,
+      "sourceSha256": "db4e0810a311d6483b261fb82d192ee03db318e5f69e2cd87d670b4a5d29cf6e",
+      "targetPath": "src/renderer/styles/base/native-foundation/s05-12--eyebrow-and-h1.css",
+      "predecessor": "S05-11/G041",
+      "successor": "S05-13/G043"
+    }
+  ],
+  "currentRemainders": [
+    {
+      "id": "S01-R01",
+      "sourceRange": { "startLine": 3, "endLine": 77 },
+      "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css"
+    },
+    {
+      "id": "S04-R02",
+      "sourceRange": { "startLine": 7949, "endLine": 7960 },
+      "targetPath": "src/renderer/styles/legacy-slices/04-launcher-render-workbench-after-snapshot.css"
+    },
+    {
+      "id": "S05-R04",
+      "sourceRange": { "startLine": 9772, "endLine": 9786 },
+      "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-character-resource-host.css"
+    }
+  ],
+  "boundaryEvidence": {
+    "candidateBoundariesSafe": true,
+    "beforeStart": {
+      "G001": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G031": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G042": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false }
+    },
+    "afterEnd": {
+      "G001": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G031": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G042": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false }
+    },
+    "allOwnedLocalBoundariesSafe": true,
+    "delimiterStateBalanced": true,
+    "topLevelPreludePending": false,
+    "relativeResourceUrls": [],
+    "newConsumers": [],
+    "productionEntryOnly": true,
+    "s04G032Media1080BlockKeptWhole": true,
+    "s13G112Media900BlockUntouched": true,
+    "p2-20Existing": ["G003", "G015", "G016", "G028", "G039", "G040", "G050", "G052", "G095"],
+    "p2-22ToP2-25Existing": ["G014", "G018", "G019", "G023", "G024", "G025", "G026", "G027", "G029", "G030", "G041", "G043", "G048", "G111"],
+    "p2-27Deferred": ["G049", "G112"]
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS (pinned baseline CSS scan; three base-global ranges are top-level and section-complete)",
+    "productionEntryBeforeWrite": "PASS (P2-25 root entry reconstructs pinned baseline)",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "scopeExceptions": []
+}

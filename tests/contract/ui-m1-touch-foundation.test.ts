@@ -56,7 +56,7 @@ describe('UI-M1 touch foundation contract', () => {
     expect(primitives).toContain(':disabled');
     expect(primitives).toContain('ui-segmented-tabs__item--selected');
     expect(styles).toMatch(
-      /^@import '\.\/styles\/tokens\.css';\n@import '\.\/styles\/primitives\.css';\n@import '\.\/styles\/legacy-slices\/01-shell-import-review-base\.css';\n/u,
+      /^@import '\.\/styles\/tokens\.css';\n@import '\.\/styles\/primitives\.css';\n@import '\.\/styles\/base\/native-foundation\/s01-01--native-foundation\.css';\n@import '\.\/styles\/shell\/layout\/s01-02--root-frame\.css';\n/u,
     );
     expect(styles).not.toContain('.app-shell {');
   });

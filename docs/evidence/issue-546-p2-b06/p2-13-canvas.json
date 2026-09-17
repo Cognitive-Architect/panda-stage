@@ -1,0 +1,120 @@
+{
+  "issue": 546,
+  "phase": "P2-B06",
+  "workItem": "P2-13",
+  "title": "Canvas internals and Timeline Canvas context",
+  "status": "IMPLEMENTED_PENDING_HUMAN_ACCEPTANCE",
+  "startingPrHead": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+  "branch": "agent/issue-541-p2-01",
+  "pullRequest": 542,
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "normalizedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "owner": "canvas",
+  "segments": [
+    {
+      "id": "G044",
+      "sectionIds": ["S06-01"],
+      "sourceSlice": "S06",
+      "sourceBlob": "ed97a6f5b421d0fd2dfc68bd337d36734dfccb0c",
+      "canonicalOrder": 49,
+      "predecessor": "S05-13/G043",
+      "successor": "S06-02/G045",
+      "startAnchor": "BOF of S06-01",
+      "endAnchor": ".layer-position-panel",
+      "globalLines": {"start": 9840, "end": 10083},
+      "sourceLocalLines": {"start": 1, "end": 244},
+      "sliceLocalBytes": {"start": 0, "endExclusive": 5220},
+      "sha256": "89a21ad2e95a374096db5bd63ef87e198afee865a473bf5994d0ed52959b6fcf",
+      "targetPath": "src/renderer/styles/features/canvas/s06-01--canvas-internals.css"
+    },
+    {
+      "id": "G067",
+      "sectionIds": ["S07-11"],
+      "sourceSlice": "S07",
+      "sourceBlob": "1fa93bd66efe97283e14834e74cd17ea1a6a9b73",
+      "canonicalOrder": 75,
+      "predecessor": "S07-10/G066",
+      "successor": "S07-12/G068",
+      "startAnchor": "Keep the Timeline's Canvas context visible",
+      "endAnchor": "Issue #331:",
+      "globalLines": {"start": 12944, "end": 12952},
+      "sourceLocalLines": {"start": 1061, "end": 1069},
+      "sliceLocalBytes": {"start": 33408, "endExclusive": 33774},
+      "sha256": "c4e030ec7a7cb799ce8cdce3154a1c1da89374ad2fd844163b79c8cc9e7ac6f7",
+      "targetPath": "src/renderer/styles/features/canvas/s07-11--portrait-timeline-canvas.css"
+    }
+  ],
+  "outerConditions": [
+    "Top-level Canvas rules are preserved.",
+    "G067 retains the portrait Cloud Touch and active Timeline workspace selector conditions."
+  ],
+  "producers": [
+    "src/renderer/features/canvas/CanvasStage.tsx",
+    "src/renderer/features/canvas/CanvasViewport.tsx",
+    "src/renderer/features/canvas/CanvasToolbar.tsx",
+    "src/renderer/features/canvas/SelectableLayer.tsx"
+  ],
+  "hosts": [
+    "src/renderer/shell/CanvasWorkspace.tsx",
+    "src/renderer/shell/EditorShell.tsx",
+    "src/renderer/features/timeline/TimelineDock.tsx"
+  ],
+  "runtimeConsumers": [
+    "Canvas fit and actual-size view modes",
+    "Canvas pan/drag-over/selection/placement visual states",
+    "Portrait Timeline Canvas context and logical geometry presentation"
+  ],
+  "programmaticConsumers": {
+    "stylesEntry": "src/renderer/main.tsx imports src/renderer/styles.css",
+    "behaviorOwner": "src/renderer/stores/canvasViewportStore.ts; unchanged",
+    "behaviorChanges": [],
+    "newConsumersFound": []
+  },
+  "testConsumers": [
+    "tests/unit/canvas-viewport-store.test.ts",
+    "tests/unit/canvas-layer-interaction.test.ts",
+    "tests/unit/canvas-components.test.ts",
+    "tests/unit/editor-issue330-portrait-timeline.test.ts",
+    "tests/unit/editor-issue457-canvas-first.test.ts",
+    "tests/unit/editor-issue488-canvas-empty-state-visual.test.ts",
+    "tests/unit/editor-issue460-two-mode-pan-tools.test.ts",
+    "tests/integration/editor-shell-layout.test.ts",
+    "tests/contract/issue546-p2-b06.test.ts"
+  ],
+  "cssDependencyAudit": {
+    "relativeUrls": [],
+    "keyframes": [],
+    "customProperties": [],
+    "importantDeclarations": 1,
+    "declarationChanges": false,
+    "pathResolutionRisk": "none",
+    "canvasViewportStoreChanged": false
+  },
+  "validation": {
+    "preflight": "PASS",
+    "cssFinalEquivalence": "PASS in isolated clean verification worktree",
+    "targetedContract": "PASS: 2 files / 8 tests including P2-01 compatibility",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "unit": "PASS: 276 files / 1786 tests",
+    "build": "PASS: renderer and Electron",
+    "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "humanAcceptance": "未测"
+  },
+  "guardrails": {
+    "manualFullCiTriggered": false,
+    "verifyProjectManuallyRun": false,
+    "scopeExceptions": [],
+    "finalHeadEmbedded": false
+  }
+}

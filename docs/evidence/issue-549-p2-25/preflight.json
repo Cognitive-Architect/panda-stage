@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "issue": 549,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-02-B08",
+  "workItem": "P2-25",
+  "owner": "debug-preview",
+  "status": "preflight-pass",
+  "startingLivePrHead": "a382d827e209eb55eaa09c088682fc2014f622c5",
+  "refreshedRemoteBranchHead": "a382d827e209eb55eaa09c088682fc2014f622c5",
+  "integrationBaseHead": "a382d827e209eb55eaa09c088682fc2014f622c5",
+  "predecessorImplementation": {
+    "workItem": "P2-20",
+    "commit": "98a92b98021742326c503e54c9c4587bb5ca66f8",
+    "verified": true,
+    "handoff": "P2-20 project lifecycle relocations and the updated S01/S05/S06 remainder boundaries are present; this preflight isolates the remaining debug-preview segments before the P2-26 base-global pass."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "sourceLineEndingNormalization": "LF"
+  },
+  "sections": ["S01-14", "S01-15", "S05-11", "S05-13", "S06-05"],
+  "segments": [
+    {
+      "id": "G014",
+      "sectionIds": ["S01-14", "S01-15"],
+      "canonicalOrder": 14,
+      "sourceSlice": "S01",
+      "globalRange": { "startLine": 1392, "endLine": 1560 },
+      "sourceLocalRange": { "startLine": 1390, "endLine": 1558 },
+      "sourceStartByte": 27234,
+      "sourceEndByteExclusive": 29760,
+      "sourceSha256": "055c316d2df707d8a3d42f70c4e0bab34f511e7937a07646e148485d38a05466",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s01-14--gate-probe-and-transport.css",
+      "predecessor": "S01-13/G013",
+      "successor": "S01-16/G015"
+    },
+    {
+      "id": "G041",
+      "sectionIds": ["S05-11"],
+      "canonicalOrder": 46,
+      "sourceSlice": "S05",
+      "globalRange": { "startLine": 9757, "endLine": 9771 },
+      "sourceLocalRange": { "startLine": 1719, "endLine": 1733 },
+      "sourceStartByte": 30937,
+      "sourceEndByteExclusive": 31258,
+      "sourceSha256": "e3adfdec3ea92fb3934f882d3f6add199dcd638a9ad9f9bf6d499b48fb8be5aa",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s05-11--preview-panel.css",
+      "predecessor": "S05-10/G040",
+      "successor": "S05-12/G042"
+    },
+    {
+      "id": "G043",
+      "sectionIds": ["S05-13"],
+      "canonicalOrder": 48,
+      "sourceSlice": "S05",
+      "globalRange": { "startLine": 9787, "endLine": 9839 },
+      "sourceLocalRange": { "startLine": 1749, "endLine": 1801 },
+      "sourceStartByte": 31489,
+      "sourceEndByteExclusive": 32379,
+      "sourceSha256": "6415e8a1a088550f017ad59ee4f07971b235edb4d657eac940c5ba786c84dd7b",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s05-13--stage-preview-base.css",
+      "predecessor": "S05-12/G042",
+      "successor": "S06-01/G044"
+    },
+    {
+      "id": "G048",
+      "sectionIds": ["S06-05"],
+      "canonicalOrder": 53,
+      "sourceSlice": "S06",
+      "globalRange": { "startLine": 10289, "endLine": 10327 },
+      "sourceLocalRange": { "startLine": 450, "endLine": 488 },
+      "sourceStartByte": 8737,
+      "sourceEndByteExclusive": 9398,
+      "sourceSha256": "33709f21ad087a5ea67ee8c3dbded7f6d638ae6f583f280f11b431a6df084f2b",
+      "targetPath": "src/renderer/styles/compat/debug-preview/s06-05--transport-hidden-stage.css",
+      "predecessor": "S06-04/G047",
+      "successor": "S06-06/G049"
+    }
+  ],
+  "currentRemainders": [
+    {
+      "id": "S01-R02",
+      "sourceRange": { "startLine": 158, "endLine": 1560 },
+      "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-project-center.css"
+    },
+    {
+      "id": "S05-R04",
+      "sourceRange": { "startLine": 9757, "endLine": 9839 },
+      "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-character-resource-host.css"
+    },
+    {
+      "id": "S06-R02",
+      "sourceRange": { "startLine": 10289, "endLine": 10699 },
+      "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation--before-product-preview.css"
+    }
+  ],
+  "boundaryEvidence": {
+    "candidateBoundariesSafe": true,
+    "beforeStart": {
+      "G014": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G041": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G043": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G048": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false }
+    },
+    "afterEnd": {
+      "G014": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G041": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G043": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false },
+      "G048": { "braceDepth": 0, "parenDepth": 0, "bracketDepth": 0, "inComment": false, "quote": null, "topLevelStatementPending": false }
+    },
+    "allOwnedLocalBoundariesSafe": true,
+    "delimiterStateBalanced": true,
+    "topLevelPreludePending": false,
+    "relativeResourceUrls": [],
+    "newConsumers": [],
+    "productionEntryOnly": true,
+    "s04G032Media1080BlockKeptWhole": true,
+    "s13G112Media900BlockUntouched": true,
+    "p2-20Existing": ["G003", "G015", "G016", "G028", "G039", "G040", "G050", "G052", "G095"],
+    "p2-22ToP2-24Existing": ["G018", "G019", "G023", "G024", "G025", "G026", "G027", "G029", "G030", "G032", "G111"],
+    "p2-26Deferred": ["G001", "G031", "G042"],
+    "p2-27Deferred": ["G049", "G112"]
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS (pinned baseline CSS scan; four debug-preview ranges are top-level and section-complete)",
+    "productionEntryBeforeWrite": "PASS (P2-20 root entry reconstructs pinned baseline)",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "scopeExceptions": []
+}

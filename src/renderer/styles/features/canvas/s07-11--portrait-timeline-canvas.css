@@ -1,0 +1,9 @@
+/* Keep the Timeline's Canvas context visible without letting it consume the
+   whole first portrait viewport before the ruler and subtitle surface. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .editor-layout[data-active-workspace='timeline']
+  .canvas-viewport {
+  height: min(40vh, 420px);
+  min-height: 320px;
+}
+

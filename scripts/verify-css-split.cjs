@@ -18,11 +18,19 @@ const manifestPath = join(__dirname, 'css-split-manifest.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 const preflightOnly = process.argv.includes('--preflight');
 const writeReceipt = process.argv.includes('--write-receipt');
+const writeP2Receipt = process.argv.includes('--write-p2-receipt');
 const receiptPath = join(
   repoRoot,
   'docs',
   'evidence',
   'issue-530-css-split',
+  'receipt.json',
+);
+const p2ReceiptPath = join(
+  repoRoot,
+  'docs',
+  'evidence',
+  'issue-541-p2-01',
   'receipt.json',
 );
 
@@ -288,6 +296,194 @@ function verifyCanonicalMap(canonicalMapText) {
   };
 }
 
+function readPhase2CanonicalMap() {
+  const canonicalMap = manifest.phase2CanonicalMap;
+  if (!canonicalMap?.commit || !canonicalMap?.path) {
+    fail('Phase 2 Canonical Section Map commit/path is missing from the manifest');
+    return '';
+  }
+  try {
+    return normalize(
+      execFileSync(
+        'git',
+        ['-C', repoRoot, 'show', canonicalMap.commit + ':' + canonicalMap.path],
+        { encoding: 'utf8' },
+      ),
+    );
+  } catch (error) {
+    fail('Cannot read Phase 2 Canonical Section Map: ' + error.message);
+    return '';
+  }
+}
+
+function verifyPhase2CanonicalMap(canonicalMapText) {
+  const canonicalMap = manifest.phase2CanonicalMap ?? {};
+  if (canonicalMap.approvedForAutomaticRelocation !== false) {
+    fail('Phase 2 Canonical Section Map must remain explicitly non-automatic');
+  }
+  if (canonicalMap.sha256 && sha256(canonicalMapText) !== canonicalMap.sha256) {
+    fail(
+      'Phase 2 Canonical Section Map SHA-256 mismatch: expected ' +
+        canonicalMap.sha256 +
+        ', got ' +
+        sha256(canonicalMapText),
+    );
+  }
+  if (canonicalMap.lineCount && linesOf(canonicalMapText).length !== canonicalMap.lineCount) {
+    fail(
+      'Phase 2 Canonical Section Map line count mismatch: expected ' +
+        canonicalMap.lineCount +
+        ', got ' +
+        linesOf(canonicalMapText).length,
+    );
+  }
+  const requiredIds = new Set([
+    'G001',
+    'G003',
+    'G014',
+    'G015',
+    'G016',
+    'G017',
+    'G018',
+    'G019',
+    'G021',
+    'G023',
+    'G024',
+    'G025',
+    'G026',
+    'G027',
+    'G028',
+    'G029',
+    'G030',
+    'G031',
+    'G032',
+    'G033',
+    'G034',
+    'G035',
+    'G037',
+    'G038',
+    'G039',
+    'G040',
+    'G041',
+    'G042',
+    'G043',
+    'G048',
+    'G053',
+    'G058',
+    'G069',
+    'G070',
+    'G071',
+    'G073',
+    'G078',
+    'G083',
+    'G086',
+    'G088',
+    'G090',
+    'G007',
+    'G008',
+    'G020',
+    'G022',
+    'G036',
+    'G055',
+    'G057',
+    'G059',
+    'G060',
+    'G061',
+    'G068',
+    'G072',
+    'G074',
+    'G079',
+    'G087',
+    'G089',
+    'G093',
+    'G099',
+    'G091',
+    'G095',
+    'G012',
+    'G063',
+    'G075',
+    'G084',
+    'G101',
+    'G102',
+    'G104',
+    'G108',
+    'G110',
+    'G116',
+    'G120',
+    'G111',
+    'G106',
+    'G113',
+    'G114',
+    'G115',
+    'G117',
+    'G118',
+    'G119',
+    'G123',
+    'G125',
+    'G127',
+    'G130',
+    'G132',
+    'G134',
+    'G137',
+    'G138',
+    'G139',
+    'G140',
+    'G141',
+    'G142',
+    'G143',
+    'G144',
+    'G145',
+    'G146',
+    'G049',
+    'G064',
+    'G076',
+    'G080',
+    'G082',
+    'G085',
+    'G103',
+    'G105',
+    'G107',
+    'G109',
+    'G112',
+    'S14-14',
+    'S15-01',
+    'S15-03',
+    'S15-04',
+    'S15-06',
+    'S15-12',
+    'S15-14',
+    'S15-15',
+    'S16-07',
+  ]);
+  const marker = String.fromCharCode(96);
+  const mappings = [];
+  for (const relocation of (manifest.semanticRelocations ?? []).filter(({ id }) => requiredIds.has(id))) {
+    const segmentRow = '| ' + marker + relocation.segment + marker + ' |';
+    const hasSegment = canonicalMapText.includes(segmentRow);
+    const hasTarget = canonicalMapText.includes(marker + relocation.targetPath + marker);
+    if (!hasSegment) {
+      fail(relocation.id + ' / ' + relocation.segment + ' is absent from the pinned Phase 2 Segment registry');
+    }
+    if (!hasTarget) {
+      fail(relocation.id + ' target is absent from the pinned Phase 2 Segment registry');
+    }
+    mappings.push({
+      id: relocation.id,
+      segment: relocation.segment,
+      targetPath: relocation.targetPath,
+      present: hasSegment && hasTarget,
+    });
+  }
+  return {
+    path: canonicalMap.path,
+    commit: canonicalMap.commit,
+    sha256: sha256(canonicalMapText),
+    lineCount: linesOf(canonicalMapText).length,
+    automaticRelocationApproved: false,
+    mappings,
+  };
+}
+
 function verifyMap(baseline, scan) {
   const slices = manifest.slices;
   if (slices.length !== 16) fail(`Expected 16 slices, got ${slices.length}`);
@@ -436,27 +632,464 @@ function verifyPathInventory(baseline) {
   };
 }
 
+function entryImportPath(entryPath, targetPath) {
+  const importPath = relative(dirname(entryPath), join(repoRoot, targetPath)).replaceAll('\\', '/');
+  return `./${importPath.replace(/^\.\//u, '')}`;
+}
+
+function importPath(line) {
+  return /^\s*@import\s+['"]([^'"]+)['"]\s*;\s*$/u.exec(line)?.[1] ?? null;
+}
+
+function readEntryImports(entry) {
+  const entryLines = linesOf(entry);
+  const imports = [];
+  let bodyStart = 0;
+  while (bodyStart < entryLines.length) {
+    const path = importPath(entryLines[bodyStart]);
+    if (!path) break;
+    imports.push(path);
+    bodyStart += 1;
+  }
+  return { entryLines, imports, bodyStart };
+}
+
+function byteOffsetAtLine(value, lineNumber) {
+  const lines = linesOf(value);
+  if (!Number.isInteger(lineNumber) || lineNumber < 1 || lineNumber > lines.length + 1) {
+    return null;
+  }
+  const prefix = lines.slice(0, lineNumber - 1).join('\n');
+  return Buffer.byteLength(`${prefix}${lineNumber > 1 ? '\n' : ''}`, 'utf8');
+}
+
+function relocationSourceSegments(relocation) {
+  if (Array.isArray(relocation.sourceSegments) && relocation.sourceSegments.length > 0) {
+    return relocation.sourceSegments;
+  }
+  return [{
+    sourceSlice: relocation.sourceSlice,
+    sourceRange: relocation.sourceRange,
+    sourceLocalRange: relocation.sourceLocalRange,
+  }];
+}
+
+function relocationSegmentViews(relocation) {
+  const segments = relocationSourceSegments(relocation);
+  let targetStartLine = 1;
+  return segments.map((segment, index) => {
+    const lineCount = segment.sourceRange.endLine - segment.sourceRange.startLine + 1;
+    const view = {
+      ...relocation,
+      sourceSlice: segment.sourceSlice,
+      sourceRange: segment.sourceRange,
+      sourceLocalRange: segment.sourceLocalRange,
+      targetRange: { startLine: targetStartLine, endLine: targetStartLine + lineCount - 1 },
+      sourceSegmentIndex: index,
+      sourceSegmentCount: segments.length,
+      sourceSegmentContinuation: index > 0,
+    };
+    targetStartLine += lineCount;
+    return view;
+  });
+}
+
+function relevantRelocationsForSlice(slice, relocations) {
+  return relocations
+    .flatMap((relocation) => relocationSegmentViews(relocation))
+    .filter((relocation) => relocation.sourceSlice === slice.id)
+    .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
+}
+
+function verifySemanticRelocations(baseline, scan) {
+  const relocations = manifest.semanticRelocations ?? [];
+  const slicesById = new Map(manifest.slices.map((slice) => [slice.id, slice]));
+  const targetPaths = new Set();
+  for (const relocation of relocations) {
+    const id = relocation.id || relocation.sourceSlice || 'semantic relocation';
+    const sourceSegments = relocationSourceSegments(relocation);
+    const firstSegment = sourceSegments[0];
+    const slice = slicesById.get(firstSegment?.sourceSlice ?? relocation.sourceSlice);
+    if (!slice) {
+      fail(`${id} references unknown source slice ${firstSegment?.sourceSlice ?? relocation.sourceSlice}`);
+      continue;
+    }
+    if (relocation.status !== 'relocated') {
+      fail(`${id} does not have relocated status`);
+    }
+    const sourceParts = Array.isArray(slice.sourceParts) ? slice.sourceParts : [];
+    const declaredPart = sourceParts.find(
+      (part) => (part.relocationId ?? part.id) === relocation.id,
+    );
+    if (declaredPart) {
+      if (declaredPart.kind !== 'semantic') {
+        fail(`${id} is not declared as a semantic source part`);
+      }
+      if (declaredPart.targetPath !== relocation.targetPath) {
+        fail(`${id} source part target differs from the semantic relocation target`);
+      }
+      if (
+        declaredPart.sourceRange?.startLine !== relocation.sourceLocalRange.startLine ||
+        declaredPart.sourceRange?.endLine !== relocation.sourceLocalRange.endLine
+      ) {
+        fail(`${id} source part range differs from the semantic relocation range`);
+      }
+    }
+    if (relocation.insertBefore) {
+      const partIndex = declaredPart ? sourceParts.indexOf(declaredPart) : -1;
+      const nextPart = partIndex >= 0 ? sourceParts[partIndex + 1] : null;
+      const expectedInsertBefore = sourceParts.length === 0
+        ? slice.targetPath
+        : nextPart?.targetPath;
+      if (expectedInsertBefore && relocation.insertBefore !== expectedInsertBefore) {
+        fail(`${id} must be inserted immediately before ${expectedInsertBefore}`);
+      }
+    }
+    if (!relocation.insertBefore && relocation.placement !== 'source-order') {
+      fail(`${id} must declare source-order placement when it is not a slice-prefix relocation`);
+    }
+    const expectedStart = slice.range.startLine + firstSegment.sourceLocalRange.startLine - 1;
+    const expectedEnd = slice.range.startLine + firstSegment.sourceLocalRange.endLine - 1;
+    if (
+      firstSegment.sourceRange.startLine !== expectedStart ||
+      firstSegment.sourceRange.endLine !== expectedEnd
+    ) {
+      fail(`${id} local/global source ranges disagree`);
+    }
+    if (!Array.isArray(relocation.sectionIds) || relocation.sectionIds.length === 0) {
+      fail(`${id} must record at least one canonical Section identity`);
+    }
+    const expectedPieces = [];
+    for (const [index, segment] of sourceSegments.entries()) {
+      const segmentSlice = slicesById.get(segment.sourceSlice);
+      if (!segmentSlice) {
+        fail(`${id} references unknown source slice ${segment.sourceSlice}`);
+        continue;
+      }
+      const expectedSegmentStart = segmentSlice.range.startLine + segment.sourceLocalRange.startLine - 1;
+      const expectedSegmentEnd = segmentSlice.range.startLine + segment.sourceLocalRange.endLine - 1;
+      if (
+        segment.sourceRange.startLine !== expectedSegmentStart ||
+        segment.sourceRange.endLine !== expectedSegmentEnd
+      ) {
+        fail(`${id} source segment ${index + 1} local/global ranges disagree`);
+      }
+      const sourceStart = byteOffsetAtLine(baseline, segment.sourceRange.startLine);
+      const sourceEnd = byteOffsetAtLine(baseline, segment.sourceRange.endLine + 1);
+      const sliceStart = byteOffsetAtLine(baseline, segmentSlice.range.startLine);
+      if (sourceStart === null || sourceEnd === null || sliceStart === null) {
+        fail(`${id} source segment ${index + 1} has an invalid line range for byte verification`);
+      } else if (
+        Number.isInteger(segment.sourceStartByte) &&
+        segment.sourceStartByte !== sourceStart - sliceStart
+      ) {
+        fail(`${id} source segment ${index + 1} sourceStartByte does not match its source-slice-local offset`);
+      } else if (
+        Number.isInteger(segment.sourceEndByteExclusive) &&
+        segment.sourceEndByteExclusive !== sourceEnd - sliceStart
+      ) {
+        fail(`${id} source segment ${index + 1} sourceEndByteExclusive does not match its source-slice-local offset`);
+      }
+      if (!isCompleteBoundary(stateBefore(scan, segment.sourceRange.startLine))) {
+        fail(`${id} source segment ${index + 1} starts inside a CSS structure`);
+      }
+      if (!isCompleteBoundary(scan.states[segment.sourceRange.endLine])) {
+        fail(`${id} source segment ${index + 1} ends at an unsafe CSS boundary`);
+      }
+      expectedPieces.push(rangeText(
+        baseline,
+        segment.sourceRange.startLine,
+        segment.sourceRange.endLine,
+      ));
+    }
+    const expected = expectedPieces.join('');
+    const sourceStart = byteOffsetAtLine(baseline, firstSegment.sourceRange.startLine);
+    const firstSliceStart = byteOffsetAtLine(baseline, slice.range.startLine);
+    const sourceEnd = byteOffsetAtLine(
+      baseline,
+      sourceSegments.at(-1).sourceRange.endLine + 1,
+    );
+    if (sourceStart === null || sourceEnd === null || firstSliceStart === null) {
+      fail(`${id} has an invalid composite line range for byte verification`);
+    } else {
+      if (relocation.sourceStartByte !== sourceStart - firstSliceStart) {
+        fail(`${id} sourceStartByte does not match its first source-slice-local offset`);
+      }
+      if (relocation.sourceEndByteExclusive !== sourceEnd - firstSliceStart) {
+        fail(`${id} sourceEndByteExclusive does not match its composite source range`);
+      }
+    }
+    const targetAbsolute = join(repoRoot, relocation.targetPath);
+    if (!existsSync(targetAbsolute)) {
+      fail(`${id} target is missing: ${relocation.targetPath}`);
+      continue;
+    }
+    if (targetPaths.has(relocation.targetPath)) {
+      fail(`${id} reuses semantic target path ${relocation.targetPath}`);
+    }
+    targetPaths.add(relocation.targetPath);
+    const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
+    if (actual !== expected) {
+      fail(`${id} target is not an exact baseline range copy`);
+    }
+    if (sha256(expected) !== relocation.sourceSha256) {
+      fail(`${id} source SHA-256 does not match its recorded receipt`);
+    }
+    if (Buffer.byteLength(expected, 'utf8') !== relocation.sourceEndByteExclusive - relocation.sourceStartByte) {
+      fail(`${id} recorded byte range does not match the exact source section`);
+    }
+  }
+  const orderedSegments = relocations
+    .flatMap((relocation) => relocationSegmentViews(relocation))
+    .filter((relocation) => relocation.sourceRange?.startLine !== undefined)
+    .slice()
+    .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
+  for (let index = 1; index < orderedSegments.length; index += 1) {
+    const previous = orderedSegments[index - 1];
+    const current = orderedSegments[index];
+    if (current.sourceRange.startLine <= previous.sourceRange.endLine) {
+      fail(`${current.id} overlaps ${previous.id} in the canonical source order`);
+    }
+  }
+  const ordered = relocations
+    .map((relocation) => ({ relocation, firstSegment: relocationSourceSegments(relocation)[0] }))
+    .filter(({ firstSegment }) => firstSegment?.sourceRange?.startLine !== undefined)
+    .sort((left, right) => left.firstSegment.sourceRange.startLine - right.firstSegment.sourceRange.startLine);
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1].relocation;
+    const current = ordered[index].relocation;
+    if (
+      Number.isInteger(previous.canonicalOrder) &&
+      Number.isInteger(current.canonicalOrder) &&
+      current.canonicalOrder <= previous.canonicalOrder
+    ) {
+      fail(`${current.id} canonical order is not increasing with its source position`);
+    }
+  }
+  return relocations;
+}
+
+function verifyExactSourceFile(baseline, path, range, label) {
+  const targetAbsolute = join(repoRoot, path);
+  if (!existsSync(targetAbsolute)) {
+    fail(`${label} target is missing: ${path}`);
+    return null;
+  }
+  const expected = rangeText(baseline, range.startLine, range.endLine);
+  const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
+  if (actual !== expected) {
+    fail(`${label} target is not an exact baseline range copy`);
+  }
+  return {
+    path,
+    range,
+    expected,
+    actual,
+    exact: actual === expected,
+  };
+}
+
+function globalRangeForLocal(slice, localRange) {
+  return {
+    startLine: slice.range.startLine + localRange.startLine - 1,
+    endLine: slice.range.startLine + localRange.endLine - 1,
+  };
+}
+
+function orderedSourceParts(baseline, slice, relocations) {
+  const relevant = relevantRelocationsForSlice(slice, relocations);
+  if (Array.isArray(slice.sourceParts)) {
+    const parts = [];
+    const usedIds = new Set();
+    const usedPaths = new Set();
+    let cursor = 1;
+    for (const declared of slice.sourceParts) {
+      const id = declared.id || slice.id + '-part-' + (parts.length + 1);
+      const localRange = declared.sourceRange;
+      if (usedIds.has(id)) {
+        fail(slice.id + ' source part ' + id + ' is declared more than once');
+      }
+      usedIds.add(id);
+      if (usedPaths.has(declared.targetPath)) {
+        fail(slice.id + ' source part target is reused: ' + declared.targetPath);
+      }
+      usedPaths.add(declared.targetPath);
+      if (!localRange || !Number.isInteger(localRange.startLine) || !Number.isInteger(localRange.endLine)) {
+        fail(slice.id + ' source part ' + id + ' has no complete local range');
+        continue;
+      }
+      if (localRange.startLine !== cursor || localRange.startLine > localRange.endLine) {
+        fail(slice.id + ' source parts are not contiguous at ' + id);
+        continue;
+      }
+      if (localRange.endLine > slice.range.endLine - slice.range.startLine + 1) {
+        fail(slice.id + ' source part ' + id + ' escapes the slice range');
+        continue;
+      }
+      if (declared.kind !== 'remainder' && declared.kind !== 'semantic') {
+        fail(slice.id + ' source part ' + id + ' has an unknown kind');
+        continue;
+      }
+      const relocationId = declared.relocationId ?? declared.id;
+      const relocation = declared.kind === 'semantic'
+        ? relevant.find((candidate) => candidate.id === relocationId)
+        : null;
+      if (declared.kind === 'semantic') {
+        if (!relocation) {
+          fail(slice.id + ' source part ' + id + ' has no matching semantic relocation');
+        } else if (
+          relocation.sourceLocalRange.startLine !== localRange.startLine ||
+          relocation.sourceLocalRange.endLine !== localRange.endLine ||
+          relocation.targetPath !== declared.targetPath
+        ) {
+          fail(slice.id + ' source part ' + id + ' disagrees with its semantic relocation');
+        }
+      } else if (declared.relocationId) {
+        fail(slice.id + ' remainder source part ' + id + ' must not carry relocationId');
+      }
+      const range = globalRangeForLocal(slice, localRange);
+      verifyExactSourceFile(baseline, declared.targetPath, range, slice.id + '/' + id);
+      parts.push({
+        ...declared,
+        id,
+        path: declared.targetPath,
+        range,
+        localRange,
+        targetRange: { startLine: 1, endLine: localRange.endLine - localRange.startLine + 1 },
+      });
+      cursor = localRange.endLine + 1;
+    }
+    const expectedCursor = slice.range.endLine - slice.range.startLine + 2;
+    if (cursor !== expectedCursor) {
+      fail(slice.id + ' source parts do not cover the complete slice');
+    }
+    for (const relocation of relevant) {
+      if (!parts.some((part) => part.kind === 'semantic' && (part.relocationId ?? part.id) === relocation.id)) {
+        fail(slice.id + ' is missing source part for ' + relocation.id);
+      }
+    }
+    return parts;
+  }
+
+  const declaredRemainders = (manifest.remainderParts ?? [])
+    .filter((part) => part.sourceSlice === slice.id)
+    .slice()
+    .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
+  if (relevant.length === 0) {
+    if (declaredRemainders.length > 0) {
+      fail(slice.id + ' declares remainder parts without a semantic relocation');
+    }
+    return [{
+      kind: 'remainder',
+      path: slice.targetPath,
+      range: slice.range,
+      id: slice.id + '-full',
+    }];
+  }
+
+  const parts = [];
+  const usedRemainders = new Set();
+  const appendRemainder = (startLine, endLine) => {
+    if (startLine > endLine) return;
+    const candidates = declaredRemainders.filter(
+      (part) =>
+        part.sourceRange.startLine === startLine &&
+        part.sourceRange.endLine === endLine,
+    );
+    if (candidates.length !== 1) {
+      fail(
+        slice.id + ' needs one remainder part for L' + startLine + '-L' + endLine + ', found ' + candidates.length,
+      );
+      return;
+    }
+    const part = candidates[0];
+    if (usedRemainders.has(part.id)) {
+      fail(slice.id + ' remainder part ' + part.id + ' is used more than once');
+      return;
+    }
+    usedRemainders.add(part.id);
+    verifyExactSourceFile(baseline, part.targetPath, part.sourceRange, part.id);
+    parts.push({
+      kind: 'remainder',
+      ...part,
+      path: part.targetPath,
+      range: part.sourceRange,
+    });
+  };
+
+  let cursor = slice.range.startLine;
+  for (const relocation of relevant) {
+    const startLine = relocation.sourceRange.startLine;
+    const endLine = relocation.sourceRange.endLine;
+    if (
+      startLine < slice.range.startLine ||
+      endLine > slice.range.endLine ||
+      startLine > endLine ||
+      startLine < cursor
+    ) {
+      fail(relocation.id + ' source range overlaps or escapes ' + slice.id);
+      continue;
+    }
+    appendRemainder(cursor, startLine - 1);
+    parts.push({
+      kind: relocation.sourceSegmentContinuation ? 'semantic-continuation' : 'semantic',
+      id: relocation.sourceSegmentContinuation
+        ? `${relocation.id}@${relocation.sourceSlice}`
+        : relocation.id,
+      path: relocation.sourceSegmentContinuation ? null : relocation.targetPath,
+      targetPath: relocation.targetPath,
+      relocationId: relocation.id,
+      range: relocation.sourceRange,
+      targetRange: relocation.targetRange,
+    });
+    cursor = endLine + 1;
+  }
+  appendRemainder(cursor, slice.range.endLine);
+  for (const part of declaredRemainders) {
+    if (!usedRemainders.has(part.id)) {
+      fail(slice.id + ' remainder part ' + part.id + ' is not reachable in source order');
+    }
+  }
+  return parts;
+}
 function verifyExtraction(baseline, scan) {
   const entryPath = join(repoRoot, manifest.rootEntry.path);
   const entry = normalize(readFileSync(entryPath, 'utf8'));
-  const entryLines = linesOf(entry);
+  const { entryLines, imports: actualImports, bodyStart } = readEntryImports(entry);
   const extracted = manifest.slices.filter((slice) => slice.status === 'extracted');
+  const relocations = verifySemanticRelocations(baseline, scan);
+  const baseImports = manifest.rootEntry.entryImportOrder;
+  const sourcePartsBySlice = extracted.map((slice) => ({
+    slice,
+    parts: orderedSourceParts(baseline, slice, relocations),
+  }));
   const expectedImports = [
-    "@import './styles/tokens.css';",
-    "@import './styles/primitives.css';",
-    ...extracted.map((slice) => {
-      const importPath = relative(dirname(entryPath), join(repoRoot, slice.targetPath)).replaceAll('\\', '/');
-      return `@import './${importPath.replace(/^\.\//u, '')}';`;
-    }),
+    ...baseImports,
+    ...sourcePartsBySlice.flatMap(({ parts }) =>
+      parts
+        .filter((part) => part.kind !== 'semantic-continuation')
+        .map((part) => entryImportPath(entryPath, part.path)),
+    ),
   ];
-  for (let index = 0; index < expectedImports.length; index += 1) {
-    if (entryLines[index] !== expectedImports[index]) {
-      fail(`Root import order mismatch at line ${index + 1}: expected ${expectedImports[index]}`);
+  if (actualImports.length !== expectedImports.length) {
+    fail(`Production entry import count mismatch: expected ${expectedImports.length}, got ${actualImports.length}`);
+  }
+  for (let index = 0; index < Math.max(actualImports.length, expectedImports.length); index += 1) {
+    if (actualImports[index] !== expectedImports[index]) {
+      fail(
+        `Production entry import order mismatch at position ${index + 1}: expected ${expectedImports[index] ?? '(none)'}, got ${actualImports[index] ?? '(none)'}`,
+      );
     }
   }
-  const importCount = expectedImports.length;
-  const body = entryLines.length > importCount
-    ? `${entryLines.slice(importCount).join('\n')}\n`
+  const semanticImportPaths = relocations.map((relocation) => entryImportPath(entryPath, relocation.targetPath));
+  for (const semanticImportPath of semanticImportPaths) {
+    const occurrences = actualImports.filter((path) => path === semanticImportPath).length;
+    if (occurrences !== 1) {
+      fail(`Semantic relocation ${semanticImportPath} is loaded ${occurrences} times instead of exactly once`);
+    }
+  }
+  const body = entryLines.length > bodyStart
+    ? `${entryLines.slice(bodyStart).join('\n')}\n`
     : '';
   const pending = manifest.slices.filter((slice) => slice.status !== 'extracted');
   const expectedBody = pending
@@ -467,15 +1100,20 @@ function verifyExtraction(baseline, scan) {
   }
 
   const sliceTexts = [];
-  for (const slice of extracted) {
-    const targetAbsolute = join(repoRoot, slice.targetPath);
-    if (!existsSync(targetAbsolute)) {
-      fail(`${slice.id} target is missing: ${slice.targetPath}`);
-      continue;
-    }
-    const actual = normalize(readFileSync(targetAbsolute, 'utf8'));
-    const expected = rangeText(baseline, slice.range.startLine, slice.range.endLine);
-    if (actual !== expected) fail(`${slice.id} target is not an exact baseline range copy`);
+  for (const { slice, parts } of sourcePartsBySlice) {
+    const sourceTexts = parts.map((part) => {
+      const targetPath = part.targetPath ?? part.path;
+      const targetAbsolute = targetPath ? join(repoRoot, targetPath) : null;
+      if (!targetAbsolute || !existsSync(targetAbsolute)) return '';
+      const target = normalize(readFileSync(targetAbsolute, 'utf8'));
+      return part.targetRange
+        ? rangeText(target, part.targetRange.startLine, part.targetRange.endLine)
+        : target;
+    });
+    const expected = parts
+      .map((part) => rangeText(baseline, part.range.startLine, part.range.endLine))
+      .join('');
+    const actual = sourceTexts.join('');
     sliceTexts.push({
       id: slice.id,
       path: slice.targetPath,
@@ -483,20 +1121,45 @@ function verifyExtraction(baseline, scan) {
       expectedSha256: sha256(expected),
       actualSha256: sha256(actual),
       exact: actual === expected,
+      partPaths: parts.map((part) => part.path),
+      remainderPaths: parts.filter((part) => part.kind === 'remainder').map((part) => part.path),
     });
   }
 
+  const importedSources = actualImports
+    .slice(baseImports.length)
+    .map((path) => {
+      const absolute = resolve(dirname(entryPath), path);
+      if (!existsSync(absolute)) {
+        fail(`Production entry import target is missing: ${path}`);
+        return '';
+      }
+      return normalize(readFileSync(absolute, 'utf8'));
+    });
   const reconstructed =
     rangeText(baseline, 1, 2) +
-    extracted
-      .map((slice) => rangeText(baseline, slice.range.startLine, slice.range.endLine))
-      .join('') +
+    importedSources.join('') +
     body;
   if (reconstructed !== baseline) {
-    fail('Logical source reconstruction is not byte-equivalent to the pinned baseline');
+    fail('Logical source reconstruction from the real production entry is not byte-equivalent to the pinned baseline');
   }
   return {
     extracted: sliceTexts,
+    semanticRelocations: relocations.map((relocation) => ({
+      id: relocation.id,
+      sourceSlice: relocation.sourceSlice,
+      targetPath: relocation.targetPath,
+      sourceRange: relocation.sourceRange,
+      sourceSha256: relocation.sourceSha256,
+      exact: true,
+    })),
+    productionEntry: {
+      path: manifest.rootEntry.path,
+      importOrder: actualImports,
+      expectedImportOrder: expectedImports,
+      orderEquivalent: actualImports.length === expectedImports.length &&
+        actualImports.every((path, index) => path === expectedImports[index]),
+    },
     pending: pending.map((slice) => slice.id),
     baselineSha256: sha256(baseline),
     reconstructedSha256: sha256(reconstructed),
@@ -514,6 +1177,7 @@ if (baselineScan.errors.length > 0) {
 }
 verifyBaseline(baseline, baselineScan);
 const canonicalMap = verifyCanonicalMap(readCanonicalMap());
+const phase2CanonicalMap = verifyPhase2CanonicalMap(readPhase2CanonicalMap());
 const boundaries = verifyMap(baseline, baselineScan);
 const pathInventory = verifyPathInventory(baseline);
 const readers = inventoryReaders();
@@ -536,6 +1200,7 @@ const result = {
     scanErrors: baselineScan.errors,
   },
   canonicalMap,
+  phase2CanonicalMap,
   map: {
     sliceCount: manifest.slices.length,
     coverage: manifest.coverage,
@@ -560,6 +1225,57 @@ if (writeReceipt) {
   const directory = dirname(receiptPath);
   require('node:fs').mkdirSync(directory, { recursive: true });
   writeFileSync(receiptPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+if (writeP2Receipt) {
+  const preflightPath = join(
+    repoRoot,
+    'docs',
+    'evidence',
+    'issue-541-p2-01',
+    'preflight.json',
+  );
+  const preflight = existsSync(preflightPath)
+    ? JSON.parse(readFileSync(preflightPath, 'utf8'))
+    : {};
+  const relocation = manifest.semanticRelocations?.find(({ id }) => id === 'S11-01') ?? {};
+  const productionEntry = result.extraction.productionEntry ?? {};
+  const finalHead = execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const p2Receipt = {
+    issue: 541,
+    phase: 'P2-01',
+    canonicalSection: 'S11-01',
+    segment: 'G097',
+    startingMainHead: preflight.startingMainHead ?? null,
+    finalHead,
+    sourceBlobSha: preflight.sourceBlob ?? null,
+    sectionStartLine: preflight.sourceLocalRange?.startLine ?? null,
+    sectionEndLine: preflight.sourceLocalRange?.endLine ?? null,
+    sectionStartByte: preflight.sectionStartByte ?? null,
+    sectionEndByteExclusive: preflight.sectionEndByteExclusive ?? null,
+    sectionSha256: preflight.sectionSha256 ?? null,
+    predecessor: relocation.predecessor ?? null,
+    successor: relocation.successor ?? null,
+    targetPath: relocation.targetPath ?? null,
+    productionEntryVerified: result.status === 'pass' && Boolean(productionEntry.path),
+    realOrderEquivalent: productionEntry.orderEquivalent ?? false,
+    missingSections: result.status === 'pass' ? 0 : null,
+    duplicateSections: result.status === 'pass' ? 0 : null,
+    viewModeFit: 'PENDING_HUMAN_ACCEPTANCE',
+    viewModeActualSize: 'PENDING_HUMAN_ACCEPTANCE',
+    actionPresetRegression: 'PENDING_HUMAN_ACCEPTANCE',
+    windowsElectronSmoke: 'PENDING_HUMAN_ACCEPTANCE',
+    targetedValidation: 'See verification.output and Issue #541 execution comment.',
+    automaticCi: 'PENDING',
+    MANUAL_FULL_TRIGGERED: false,
+    VERIFY_PROJECT_MANUALLY_RUN: false,
+    scopeExceptions: [],
+    preflight,
+    verification: result,
+  };
+  const directory = dirname(p2ReceiptPath);
+  require('node:fs').mkdirSync(directory, { recursive: true });
+  writeFileSync(p2ReceiptPath, `${JSON.stringify(p2Receipt, null, 2)}\n`, 'utf8');
 }
 
 console.log(JSON.stringify(result, null, 2));

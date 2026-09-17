@@ -1,0 +1,22 @@
+.project-tools-action-presets-view {
+  min-width: 0;
+  padding: 12px;
+}
+
+.project-tools-action-presets-view > .legacy-workspace {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.project-tools-action-presets-view .action-preset-panel > div:first-child {
+  display: none;
+}
+
+.project-tools-action-presets-view .action-preset-grid button {
+  min-height: 48px;
+}
+

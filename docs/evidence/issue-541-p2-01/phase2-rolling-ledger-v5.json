@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 5,
+  "kind": "phase2-final-closure-ledger-extension",
+  "pullRequest": 542,
+  "issue": 553,
+  "serial": "SER-06",
+  "scope": "Append-only final Phase 2 closure bookkeeping after maintainer Human Acceptance. No CSS, DOM, store, interaction, breakpoint, visual-value, or product-behavior change.",
+  "baseLedger": {
+    "path": "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v4.json",
+    "semantics": "v4 remains the historical closure snapshot through SER-05. This v5 extension records SER-06 B14/B15 final acceptance and Phase 2 closure without rewriting historical evidence."
+  },
+  "ser06": {
+    "issue": 553,
+    "executionOrder": ["P2-B14", "P2-B15"],
+    "startingHead": "83f34ce20e1a9c04a2bbb09924c18916a6da3a4a",
+    "validatedImplementationHeadBeforeAcceptanceBookkeeping": "2f7a0378125e9197ba86aa6d722a5fa06627a06e",
+    "automaticCi": {
+      "runId": 35217473145,
+      "runNumber": 956,
+      "result": "SUCCESS"
+    },
+    "b14": {
+      "p2": "P2-27",
+      "mode": "ORDERED_COMPAT",
+      "sections": 18,
+      "segments": 11,
+      "preflight": "docs/evidence/issue-553-p2-27/preflight.json",
+      "receipt": "docs/evidence/issue-553-p2-27/receipt.json",
+      "status": "PASS",
+      "reachableHumanAcceptance": {
+        "segments": ["G049", "G107", "G112"],
+        "status": "PASS"
+      },
+      "unreachableRetainedLegacy": {
+        "segments": ["G064", "G076", "G080", "G082", "G085", "G103", "G105", "G109"],
+        "humanVisual": "N/A",
+        "reason": "unreachable through current normal navigation; accepted via producer/host/runtime/assembly evidence plus exact source/order/equivalence verification"
+      },
+      "g112Intact": true,
+      "legacyEntranceRevived": false,
+      "retainedLegacyDeleted": false
+    },
+    "b15": {
+      "p2": "P2-28",
+      "mode": "CLOSURE",
+      "newSections": 0,
+      "historicalClosureSnapshot": "docs/evidence/issue-553-p2-28/closure.json",
+      "maintainerAcceptance": "docs/evidence/issue-553-p2-28/acceptance.json",
+      "acceptanceCommentId": 5714621044,
+      "canonicalSections": 179,
+      "reconciledSections": 179,
+      "canonicalSegments": 147,
+      "reconciledSegments": 147,
+      "missing": 0,
+      "duplicate": 0,
+      "silentReorder": 0,
+      "productionReconstructionExact": true,
+      "phase3Started": false,
+      "phase4Started": false,
+      "status": "PASS"
+    },
+    "maintainerAcceptance": {
+      "status": "PASS",
+      "acceptedOn": "2026-09-17",
+      "acceptedBy": "maintainer",
+      "issueCommentId": 5714621044,
+      "acceptanceRecord": "docs/evidence/issue-553-p2-28/acceptance.json",
+      "scope": "Required Windows Electron acceptance for G049 narrow-window responsive behavior, G107 shallow Timeline containment, and G112 <=900px FLA/Dialogue/Audio mixed compatibility surfaces; no visible layout or interaction regression observed."
+    },
+    "executionConstraints": {
+      "manualFullTriggered": false,
+      "verifyProjectManuallyRun": false,
+      "phase3Started": false,
+      "phase4Started": false
+    },
+    "exitGate": "PASS — P2-01 through P2-28 are reconciled and Phase 2 is accepted closed."
+  },
+  "phase2": {
+    "status": "COMPLETE_ACCEPTED",
+    "canonicalSections": 179,
+    "canonicalSegments": 147,
+    "missing": 0,
+    "duplicate": 0,
+    "silentReorder": 0,
+    "productionReconstructionExact": true,
+    "maintainerAcceptance": "PASS"
+  },
+  "pullRequestDisposition": {
+    "state": "OPEN_DRAFT",
+    "readyAuthorized": false,
+    "mergeAuthorized": false,
+    "rule": "Phase 2 closure does not itself authorize marking PR #542 Ready or merging it; disposition remains a separate maintainer decision."
+  },
+  "liveAuthority": {
+    "prHead": "GitHub PR #542 metadata after this bookkeeping commit",
+    "ci": "latest automatic GitHub Actions run attached to the current PR head"
+  }
+}
