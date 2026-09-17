@@ -1,0 +1,67 @@
+.bottom-workspace > .history-controls {
+  display: grid;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 5px 8px;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 4px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.bottom-workspace > .history-controls > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.bottom-workspace > .history-controls > div:first-child .eyebrow {
+  display: none;
+}
+
+.bottom-workspace > .history-controls > div:first-child h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.bottom-workspace > .history-controls .history-actions {
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.bottom-workspace > .history-controls .history-actions button {
+  min-height: 30px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.bottom-workspace > .history-controls .history-actions span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+
+.bottom-workspace > .history-controls > output {
+  min-width: 0;
+  overflow: hidden;
+  color: #91a299;
+  font-size: 0.72rem;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

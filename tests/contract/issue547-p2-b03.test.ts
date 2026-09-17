@@ -302,19 +302,22 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
   it('declares every untouched gap around the interior asset and shot relocations', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'S01-R01', sourceRange: { startLine: 60, endLine: 77 } }),
-      expect.objectContaining({ id: 'S01-R02', sourceRange: { startLine: 158, endLine: 1391 } }),
+      expect.objectContaining({ id: 'S01-R02', sourceRange: { startLine: 158, endLine: 949 } }),
+      expect.objectContaining({ id: 'S01-R03', sourceRange: { startLine: 1325, endLine: 1391 } }),
       expect.objectContaining({ id: 'S05-R02', sourceRange: { startLine: 9303, endLine: 9331 } }),
       expect.objectContaining({ id: 'S05-R03', sourceRange: { startLine: 9349, endLine: 9349 } }),
       expect.objectContaining({ id: 'S07-R01', sourceRange: { startLine: 11884, endLine: 12000 } }),
-      expect.objectContaining({ id: 'S07-R03', sourceRange: { startLine: 12349, endLine: 12853 } }),
+      expect.objectContaining({ id: 'S07-R03', sourceRange: { startLine: 12349, endLine: 12576 } }),
+      expect.objectContaining({ id: 'S07-R06', sourceRange: { startLine: 12695, endLine: 12853 } }),
       expect.objectContaining({ id: 'S07-R02', sourceRange: { startLine: 12953, endLine: 13226 } }),
       expect.objectContaining({ id: 'S07-R04', sourceRange: { startLine: 13578, endLine: 13578 } }),
       expect.objectContaining({ id: 'S07-R05', sourceRange: { startLine: 13632, endLine: 13801 } }),
       expect.objectContaining({ id: 'S08-R01', sourceRange: { startLine: 13802, endLine: 13982 } }),
-      expect.objectContaining({ id: 'S08-R04', sourceRange: { startLine: 14158, endLine: 15158 } }),
+      expect.objectContaining({ id: 'S08-R04', sourceRange: { startLine: 14158, endLine: 14502 } }),
+      expect.objectContaining({ id: 'S08-R05', sourceRange: { startLine: 14620, endLine: 15158 } }),
       expect.objectContaining({ id: 'S08-R03', sourceRange: { startLine: 15589, endLine: 16456 } }),
       expect.objectContaining({ id: 'S09-R01', sourceRange: { startLine: 17820, endLine: 18217 } }),
-      expect.objectContaining({ id: 'S09-R02', sourceRange: { startLine: 18687, endLine: 18827 } }),
+      expect.objectContaining({ id: 'S09-R02', sourceRange: { startLine: 18755, endLine: 18827 } }),
     ]));
 
     const s15 = manifest.slices.find(({ id }) => id === 'S15');

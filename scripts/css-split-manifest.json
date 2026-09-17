@@ -11,7 +11,7 @@
     "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
     "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
     "approvedForAutomaticRelocation": false,
-    "usedFor": "P2-B01 (P2-02 + P2-03), P2-B06, P2-B04 (P2-08 + P2-09), P2-B03 (P2-06 + P2-07), P2-B05 (P2-10 + P2-11), and P2-B02 (P2-04 + P2-05) local Section/Segment boundary and destination resolution",
+    "usedFor": "P2-B01 (P2-02 + P2-03), P2-B06, P2-B04 (P2-08 + P2-09), P2-B03 (P2-06 + P2-07), P2-B05 (P2-10 + P2-11), P2-B02 (P2-04 + P2-05), and P2-B10 (P2-15) local Section/Segment boundary and destination resolution",
     "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
     "lineCount": 1462
   },
@@ -1896,6 +1896,237 @@
       "endAnchor": "EOF",
       "placement": "source-order",
       "status": "relocated"
+    },
+    {
+      "id": "G012",
+      "segment": "G012",
+      "sectionIds": ["S01-12"],
+      "sourceSlice": "S01",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 12,
+      "predecessor": "S01-11/G011",
+      "successor": "S01-13/G013",
+      "sourceRange": { "startLine": 950, "endLine": 1324 },
+      "sourceLocalRange": { "startLine": 948, "endLine": 1322 },
+      "sourceStartByte": 18358,
+      "sourceEndByteExclusive": 25874,
+      "sourceSha256": "278f4fe731012f8059f91c8ef1b07c02354c6c33ab5da029033191b9e1e9c7f8",
+      "targetPath": "src/renderer/styles/features/timeline/s01-12--bottom-and-track-base.css",
+      "startAnchor": ".bottom-workspace",
+      "endAnchor": ".bottom-workspace > .history-controls",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G063",
+      "segment": "G063",
+      "sectionIds": ["S07-07"],
+      "sourceSlice": "S07",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 71,
+      "predecessor": "S07-06/G062",
+      "successor": "S07-08/G064",
+      "sourceRange": { "startLine": 12577, "endLine": 12694 },
+      "sourceLocalRange": { "startLine": 694, "endLine": 811 },
+      "sourceStartByte": 22168,
+      "sourceEndByteExclusive": 25680,
+      "sourceSha256": "b5c423fd1c8fffa09a958c0bf0f3d82b015c415311663f70de7e62ca1b549c9b",
+      "targetPath": "src/renderer/styles/features/timeline/s07-07--portrait-track-internals.css",
+      "startAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .editor-layout[data-active-workspace='timeline'] > .bottom-workspace[data-presentation='portrait']",
+      "endAnchor": ".dialogue-sheet-timeline",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G075",
+      "segment": "G075",
+      "sectionIds": ["S08-04"],
+      "sourceSlice": "S08",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 84,
+      "predecessor": "S08-03/G074",
+      "successor": "S08-05/G076",
+      "sourceRange": { "startLine": 14503, "endLine": 14619 },
+      "sourceLocalRange": { "startLine": 702, "endLine": 818 },
+      "sourceStartByte": 18427,
+      "sourceEndByteExclusive": 22176,
+      "sourceSha256": "764d90441ccaa3cfebf605a9ee6182bfb1d33e09f00d00b6695597248f43ebe8",
+      "targetPath": "src/renderer/styles/features/timeline/s08-04--portrait-track-polish.css",
+      "startAnchor": "Issue #339:",
+      "endAnchor": ".dialogue-sheet-timeline",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G084",
+      "segment": "G084",
+      "sectionIds": ["S09-03"],
+      "sourceSlice": "S09",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 98,
+      "predecessor": "S09-02/G083",
+      "successor": "S09-04/G085",
+      "sourceRange": { "startLine": 18687, "endLine": 18754 },
+      "sourceLocalRange": { "startLine": 868, "endLine": 935 },
+      "sourceStartByte": 27355,
+      "sourceEndByteExclusive": 29759,
+      "sourceSha256": "50b85aac9a36eab4b8f720a36e46e57976f95f75ae67fb538b68384ca2b4197e",
+      "targetPath": "src/renderer/styles/features/timeline/s09-03--portrait-track-icons.css",
+      "startAnchor": "Issue #359:",
+      "endAnchor": ".dialogue-secondary-action",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G101",
+      "segment": "G101",
+      "sectionIds": ["S11-08"],
+      "sourceSlice": "S11",
+      "owner": "shell-timeline",
+      "migrationMode": "HOST_INTEGRATION",
+      "canonicalOrder": 119,
+      "predecessor": "S11-07/G100",
+      "successor": "S11-09/G102",
+      "sourceRange": { "startLine": 23437, "endLine": 23520 },
+      "sourceLocalRange": { "startLine": 1635, "endLine": 1718 },
+      "sourceStartByte": 47761,
+      "sourceEndByteExclusive": 50691,
+      "sourceSha256": "de16fcdb177b0a31a8dee6106fbe8bae733bb0a4e013c7daa12a43c80a27d98b",
+      "targetPath": "src/renderer/styles/shell/timeline-boundary/s11-08--resize-boundary.css",
+      "startAnchor": "Issue #378:",
+      "endAnchor": "Issue #379:",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G102",
+      "segment": "G102",
+      "sectionIds": ["S11-09"],
+      "sourceSlice": "S11",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 120,
+      "predecessor": "S11-08/G101",
+      "successor": "S11-10/G103",
+      "sourceRange": { "startLine": 23521, "endLine": 23762 },
+      "sourceLocalRange": { "startLine": 1719, "endLine": 1960 },
+      "sourceStartByte": 50691,
+      "sourceEndByteExclusive": 57857,
+      "sourceSha256": "a170c1a6437151280c5138428114e6e4d85979c2021531c71f5bc873824866a7",
+      "targetPath": "src/renderer/styles/features/timeline/s11-09--landscape-track-foundation.css",
+      "startAnchor": "Issue #379:",
+      "endAnchor": ".timeline-task-tray",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G104",
+      "segment": "G104",
+      "sectionIds": ["S12-03", "S12-04"],
+      "sourceSlice": "S12",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 124,
+      "predecessor": "S12-02/G103",
+      "successor": "S12-05/G105",
+      "sourceRange": { "startLine": 24448, "endLine": 24598 },
+      "sourceLocalRange": { "startLine": 649, "endLine": 799 },
+      "sourceStartByte": 19117,
+      "sourceEndByteExclusive": 24297,
+      "sourceSha256": "53073eeb9efdebe2b60da11508cc82aa78933ff2822130a078101c0207581731",
+      "targetPath": "src/renderer/styles/features/timeline/s12-03--pending-placement-and-overlays.css",
+      "startAnchor": "Issue #381:",
+      "endAnchor": ".timeline-task-tray",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G108",
+      "segment": "G108",
+      "sectionIds": ["S12-09"],
+      "sourceSlice": "S12",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 130,
+      "predecessor": "S12-08/G107",
+      "successor": "S13-01/G109",
+      "sourceRange": { "startLine": 25858, "endLine": 25876 },
+      "sourceLocalRange": { "startLine": 2059, "endLine": 2077 },
+      "sourceStartByte": 63233,
+      "sourceEndByteExclusive": 63782,
+      "sourceSha256": "036d3497ecfecd40cbdc6781bf3cb5567803971072e1bdde4f8a5ee68c7b8f35",
+      "targetPath": "src/renderer/styles/features/timeline/s12-09--pending-drop-notice.css",
+      "startAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape'] .bottom-workspace[data-resizable='true'] .timeline-pending-drop-notice",
+      "endAnchor": "EOF",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G110",
+      "segment": "G110",
+      "sectionIds": ["S13-03"],
+      "sourceSlice": "S13",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 133,
+      "predecessor": "S13-02/G109",
+      "successor": "S13-04/G111",
+      "sourceRange": { "startLine": 27504, "endLine": 27611 },
+      "sourceLocalRange": { "startLine": 1628, "endLine": 1735 },
+      "sourceStartByte": 51140,
+      "sourceEndByteExclusive": 55154,
+      "sourceSha256": "6d6f140baf86a0b908beb6b175366beb5a60490ab0f71a013e4e11965b1f8513",
+      "targetPath": "src/renderer/styles/features/timeline/s13-03--final-resize-flex-422-432.css",
+      "startAnchor": "Issue #422 + #432 R3-A:",
+      "endAnchor": "Issue #398 final cascade:",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G116",
+      "segment": "G116",
+      "sectionIds": ["S14-04"],
+      "sourceSlice": "S14",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 139,
+      "predecessor": "S14-03/G115",
+      "successor": "S14-05/G117",
+      "sourceRange": { "startLine": 28410, "endLine": 28480 },
+      "sourceLocalRange": { "startLine": 413, "endLine": 483 },
+      "sourceStartByte": 9711,
+      "sourceEndByteExclusive": 11166,
+      "sourceSha256": "ecf205b2d6bed97cbeb4b6611f07fdf6770ecbadf211dd3ead87205f4adb174c",
+      "targetPath": "src/renderer/styles/features/timeline/s14-04--audio-trim-447.css",
+      "startAnchor": ".timeline-audio-clip.selected",
+      "endAnchor": "@media (max-width: 420px)",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G120",
+      "segment": "G120",
+      "sectionIds": ["S14-09"],
+      "sourceSlice": "S14",
+      "owner": "timeline",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 144,
+      "predecessor": "S14-08/G119",
+      "successor": "S14-10/G121",
+      "sourceRange": { "startLine": 28885, "endLine": 28920 },
+      "sourceLocalRange": { "startLine": 888, "endLine": 923 },
+      "sourceStartByte": 22408,
+      "sourceEndByteExclusive": 23020,
+      "sourceSha256": "933134b284d50bf17ad48a68126ac5257f36674c8ca48e75fa468eb2dfac860c",
+      "targetPath": "src/renderer/styles/features/timeline/s14-09--audio-trim-448b.css",
+      "startAnchor": ".timeline-audio-trim-handle",
+      "endAnchor": "Issue #454:",
+      "placement": "source-order",
+      "status": "relocated"
     }
   ],
   "remainderParts": [
@@ -1908,8 +2139,14 @@
     {
       "id": "S01-R02",
       "sourceSlice": "S01",
-      "sourceRange": { "startLine": 158, "endLine": 1391 },
+      "sourceRange": { "startLine": 158, "endLine": 949 },
       "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-project-center.css"
+    },
+    {
+      "id": "S01-R03",
+      "sourceSlice": "S01",
+      "sourceRange": { "startLine": 1325, "endLine": 1391 },
+      "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-timeline.css"
     },
     {
       "id": "S05-R02",
@@ -1968,8 +2205,14 @@
     {
       "id": "S07-R03",
       "sourceSlice": "S07",
-      "sourceRange": { "startLine": 12349, "endLine": 12853 },
+      "sourceRange": { "startLine": 12349, "endLine": 12576 },
       "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start--after-assets.css"
+    },
+    {
+      "id": "S07-R06",
+      "sourceSlice": "S07",
+      "sourceRange": { "startLine": 12695, "endLine": 12853 },
+      "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-timeline.css"
     },
     {
       "id": "S07-R04",
@@ -1992,8 +2235,14 @@
     {
       "id": "S08-R04",
       "sourceSlice": "S08",
-      "sourceRange": { "startLine": 14158, "endLine": 15158 },
+      "sourceRange": { "startLine": 14158, "endLine": 14502 },
       "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-dialogue-properties.css"
+    },
+    {
+      "id": "S08-R05",
+      "sourceSlice": "S08",
+      "sourceRange": { "startLine": 14620, "endLine": 15158 },
+      "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-timeline.css"
     },
     {
       "id": "S08-R03",
@@ -2016,7 +2265,7 @@
     {
       "id": "S11-R02",
       "sourceSlice": "S11",
-      "sourceRange": { "startLine": 23437, "endLine": 23799 },
+      "sourceRange": { "startLine": 23763, "endLine": 23799 },
       "targetPath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css"
     },
     {
@@ -2028,25 +2277,31 @@
     {
       "id": "S09-R02",
       "sourceSlice": "S09",
-      "sourceRange": { "startLine": 18687, "endLine": 18827 },
+      "sourceRange": { "startLine": 18755, "endLine": 18827 },
       "targetPath": "src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets-after-dialogue-properties.css"
     },
     {
       "id": "S12-R01",
       "sourceSlice": "S12",
-      "sourceRange": { "startLine": 23800, "endLine": 24877 },
+      "sourceRange": { "startLine": 23800, "endLine": 24447 },
       "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray.css"
+    },
+    {
+      "id": "S12-R03",
+      "sourceSlice": "S12",
+      "sourceRange": { "startLine": 24599, "endLine": 24877 },
+      "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray-after-pending-placement.css"
     },
     {
       "id": "S12-R02",
       "sourceSlice": "S12",
-      "sourceRange": { "startLine": 25735, "endLine": 25876 },
+      "sourceRange": { "startLine": 25735, "endLine": 25857 },
       "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray-after-dialogue-properties.css"
     },
     {
       "id": "S13-R01",
       "sourceSlice": "S13",
-      "sourceRange": { "startLine": 25877, "endLine": 27611 },
+      "sourceRange": { "startLine": 25877, "endLine": 27503 },
       "targetPath": "src/renderer/styles/legacy-slices/13-timed-render-media-tail-before-final-render.css"
     },
     {
@@ -2226,10 +2481,11 @@
           "targetPath": "src/renderer/styles/features/dialogue/properties/s14-03--properties-447.css"
         },
         {
-          "id": "S14-R01",
-          "kind": "remainder",
+          "id": "G116",
+          "kind": "semantic",
+          "relocationId": "G116",
           "sourceRange": { "startLine": 413, "endLine": 483 },
-          "targetPath": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker.css"
+          "targetPath": "src/renderer/styles/features/timeline/s14-04--audio-trim-447.css"
         },
         {
           "id": "G117",
@@ -2253,9 +2509,16 @@
           "targetPath": "src/renderer/styles/features/dialogue/properties/s14-07--properties-spacing-448a.css"
         },
         {
+          "id": "G120",
+          "kind": "semantic",
+          "relocationId": "G120",
+          "sourceRange": { "startLine": 888, "endLine": 923 },
+          "targetPath": "src/renderer/styles/features/timeline/s14-09--audio-trim-448b.css"
+        },
+        {
           "id": "S14-R02",
           "kind": "remainder",
-          "sourceRange": { "startLine": 888, "endLine": 1286 },
+          "sourceRange": { "startLine": 924, "endLine": 1286 },
           "targetPath": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-after-batch-footer.css"
         },
         {

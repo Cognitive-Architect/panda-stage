@@ -1,0 +1,375 @@
+.bottom-workspace {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 132px;
+  max-height: 168px;
+  padding: 6px 8px;
+  overflow: hidden;
+  gap: 6px;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 10px;
+  background: rgb(8 14 10 / 74%);
+}
+
+/* Issue 197: the rule above stays the approved Day 26 *expanded* contract.
+   Collapsing the Timeline must release real vertical space, so the collapsed
+   state drops the expanded floor and is capped strictly below it
+   (112px < 132px), which proves collapsed height < expanded height. The freed
+   height flows into the `minmax(0, 1fr)` middle row of `.editor-layout`, i.e.
+   the row `.editor-body` / CanvasWorkspace grows into. The collapsed height
+   stays content-driven (`min-height: 0`), so the reopen entry, timecode and
+   History controls keep their natural size instead of being clipped. */
+.bottom-workspace[data-timeline-expanded='false'] {
+  min-height: 0;
+  max-height: 112px;
+}
+
+.timeline-dock {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  gap: 4px;
+  scrollbar-color: #3f6d4e #0a100c;
+}
+
+/* Collapse hides the ruler and dialogue authoring bodies while keeping them
+   mounted (the latter preserves an unfinished draft). The header with the
+   reopen button must stay reachable so the user can expand the Timeline again
+   without a reload. */
+.timeline-dock[data-expanded='false'] .timeline-ruler-scroll,
+.timeline-dock[data-expanded='false'] .timeline-empty,
+.timeline-dock[data-expanded='false'] > .timeline-task-tray,
+.timeline-dock[data-expanded='false'] > .dialogue-sheet {
+  display: none;
+}
+
+/* These semantic wrappers stay layout-transparent for the incumbent
+   desktop/portrait presentations. Cloud Touch landscape opts into the
+   explicit Stage B layer boxes below without creating another scroll owner. */
+.timeline-ruler,
+.timeline-track-stack {
+  display: contents;
+}
+
+.timeline-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  background: rgb(8 14 10 / 96%);
+}
+
+.timeline-collapse {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid rgb(127 199 148 / 30%);
+  border-radius: 8px;
+  background: rgb(18 31 23 / 90%);
+  color: #d7ebdc;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.timeline-timecode {
+  flex: 0 1 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: #b7c7bd;
+  white-space: nowrap;
+}
+
+.timeline-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.timeline-zoom button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgb(127 199 148 / 30%);
+  border-radius: 6px;
+  background: rgb(18 31 23 / 90%);
+  color: #d7ebdc;
+  cursor: pointer;
+}
+
+.timeline-zoom-value {
+  font-size: 12px;
+  color: #b7c7bd;
+  min-width: 28px;
+  text-align: center;
+}
+
+.timeline-ruler-scroll {
+  position: relative;
+  flex: 0 0 96px;
+  min-width: 0;
+  height: 96px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgb(127 199 148 / 18%);
+  border-radius: 8px;
+  background: rgb(10 18 12 / 92%);
+}
+
+.timeline-ruler-track {
+  position: relative;
+  height: 100%;
+  min-width: 100%;
+}
+
+.dialogue-track {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  pointer-events: none;
+}
+
+.timeline-lanes {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  display: flex;
+  width: max-content;
+  flex-direction: column;
+}
+
+.timeline-lane {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  height: 34px;
+  grid-template-columns: 82px max-content;
+  border-top: 1px solid rgb(127 199 148 / 18%);
+}
+
+.timeline-lane-label {
+  position: sticky;
+  z-index: 4;
+  left: 0;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 0 10px;
+  border-right: 1px solid rgb(127 199 148 / 18%);
+  background: rgb(10 18 12 / 96%);
+  color: #d7ebdc;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.timeline-lane-content {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+}
+
+.timeline-audio-clip {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  display: flex;
+  min-width: 8px;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid rgb(82 175 199 / 60%);
+  border-radius: 6px;
+  background: rgb(35 105 122 / 72%);
+  color: #d8f3f7;
+  font-size: 10px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-audio-clip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-audio-empty {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding: 0 8px;
+  color: #7e968a;
+  font-size: 10px;
+}
+
+.dialogue-clip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  min-width: 10px;
+  height: 30px;
+  overflow: visible;
+  border: 1px solid #67d39a;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #245d42, #327d57);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 26%);
+  color: #f0fff4;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.dialogue-clip:active {
+  cursor: grabbing;
+}
+
+.dialogue-clip.selected {
+  border-color: #ffe08a;
+  box-shadow: 0 0 0 2px rgb(255 224 138 / 32%);
+}
+
+.dialogue-clip.untimed {
+  border-style: dashed;
+  border-color: #ffd477;
+  border-radius: 50%;
+  background: #694d1f;
+  cursor: pointer;
+}
+
+.dialogue-clip.untimed .dialogue-clip-label {
+  position: absolute;
+  left: 16px;
+  display: none;
+  min-width: 86px;
+  border-radius: 5px;
+  background: #302719;
+}
+
+.dialogue-clip.untimed:hover .dialogue-clip-label,
+.dialogue-clip.untimed:focus-visible .dialogue-clip-label,
+.dialogue-clip.untimed.selected .dialogue-clip-label {
+  display: flex;
+}
+
+.dialogue-clip-label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2px 9px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.15;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.dialogue-clip-label strong,
+.dialogue-clip-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dialogue-clip-label strong {
+  color: #ffe6a5;
+  font-size: 9px;
+}
+
+.dialogue-clip-handle {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.dialogue-clip-handle-start {
+  left: -2px;
+}
+
+.dialogue-clip-handle-end {
+  right: -2px;
+}
+
+.dialogue-clip-error {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 5;
+  min-width: 180px;
+  padding: 4px 6px;
+  border: 1px solid #a85d43;
+  border-radius: 4px;
+  background: #321d19;
+  color: #ffd2bd;
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.timeline-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgb(127 199 148 / 26%);
+  pointer-events: none;
+}
+
+.timeline-tick-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 10px;
+  color: #8fa897;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #7ddc9a;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.timeline-playhead-handle {
+  position: absolute;
+  top: -2px;
+  left: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #7ddc9a;
+}
+
+.timeline-empty {
+  flex: 0 0 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: #8fa897;
+  font-size: 12px;
+  border: 1px dashed rgb(127 199 148 / 24%);
+  border-radius: 8px;
+}
+

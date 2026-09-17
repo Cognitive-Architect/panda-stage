@@ -245,11 +245,19 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     const layerPropertiesIndex = imports.indexOf(
       './styles/features/properties/s11-05--landscape-layer-controls.css',
     );
+    const resizeBoundaryIndex = imports.indexOf(
+      './styles/shell/timeline-boundary/s11-08--resize-boundary.css',
+    );
+    const trackFoundationIndex = imports.indexOf(
+      './styles/features/timeline/s11-09--landscape-track-foundation.css',
+    );
     const legacyIndex = imports.indexOf('./styles/legacy-slices/11-tools-inspector-timeline-start.css');
     expect(semanticIndex).toBeGreaterThan(-1);
     expect(s11RemainderStartIndex).toBe(semanticIndex + 1);
     expect(layerPropertiesIndex).toBe(s11RemainderStartIndex + 1);
-    expect(legacyIndex).toBe(layerPropertiesIndex + 1);
+    expect(resizeBoundaryIndex).toBe(layerPropertiesIndex + 1);
+    expect(trackFoundationIndex).toBe(resizeBoundaryIndex + 1);
+    expect(legacyIndex).toBe(trackFoundationIndex + 1);
     expect(imports.filter((path) => path === './styles/shell/tools/view-mode.css')).toHaveLength(1);
   });
 
