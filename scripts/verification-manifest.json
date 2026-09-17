@@ -308,6 +308,8 @@
           "docs/evidence/issue-552-p2-18/**",
           "docs/evidence/issue-552-p2-19/**",
           "docs/evidence/issue-552-p2-21/**",
+          "docs/evidence/issue-553-p2-27/**",
+          "docs/evidence/issue-553-p2-28/**",
           "docs/evidence/issue-546-p2-b06/**",
           "docs/evidence/issue-545-p2-02/**",
           "docs/evidence/issue-545-p2-03/**",
@@ -348,6 +350,7 @@
           "tests/contract/issue551-p2-17.test.ts",
           "tests/contract/issue552-p2-18.test.ts",
           "tests/contract/issue552-p2-19-p2-21.test.ts",
+          "tests/contract/issue553-ser06.test.ts",
           "tests/helpers/read-stylesheet-source.ts",
           "tests/unit/issue102-task4-responsive.test.ts",
           "tests/unit/issue109-resource-workspace.test.ts"
