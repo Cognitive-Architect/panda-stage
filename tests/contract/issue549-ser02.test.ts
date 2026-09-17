@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -9,7 +8,6 @@ const root = resolve(process.cwd());
 const manifest = JSON.parse(
   readFileSync(resolve(root, 'scripts', 'css-split-manifest.json'), 'utf8'),
 ) as {
-  baseline: { commit: string; sourcePath: string };
   rootEntry: { path: string };
   semanticRelocations: Array<{
     id: string;
@@ -26,14 +24,6 @@ const manifest = JSON.parse(
     sourceEndByteExclusive: number;
     sourceSha256: string;
     targetPath: string;
-    sourceSegments?: Array<{
-      sourceSlice: string;
-      sourceRange: { startLine: number; endLine: number };
-      sourceLocalRange: { startLine: number; endLine: number };
-      sourceStartByte: number;
-      sourceEndByteExclusive: number;
-      sourceSha256: string;
-    }>;
   }>;
 };
 
@@ -183,11 +173,35 @@ const expectedSer02: ExpectedSegment[] = [
   },
 ];
 
-const baseline = normalize(execFileSync(
-  'git',
-  ['show', `${manifest.baseline.commit}:${manifest.baseline.sourcePath}`],
-  { encoding: 'utf8' },
-));
+const expectedSer02TargetSha256: Record<string, string> = {
+  G001: 'f845b78c236e703cd5a3afe2b0714a8bd325cb14736bb4ae83acc61e811971b8',
+  G003: 'ddce4a03bfc06e0291e8d13d8645f10eb0d6b355fe568f7dc58888e3b8445483',
+  G014: '055c316d2df707d8a3d42f70c4e0bab34f511e7937a07646e148485d38a05466',
+  G015: 'e0ed577d20e8fccbcdc3c748abc57db3ece8e98ac647f5a1d29526d4ed588c0e',
+  G016: 'dffd193a01ba3f2e68ccb96f5184f62136100fdc1540921d1c35d28ee9769893',
+  G018: '87b541e48194158eb9c611a448e855c5b2e888302b1ac71782924c5a787aa862',
+  G019: '5a7a95ff63c95bb5ae45f9c6adab06383bd2302223428a5301575c4b75c10257',
+  G023: '64280fc0188626b715e10292720858d88c9f73de0c0a4c75c23b1c261b6fb5c7',
+  G024: 'f2d8fd938def4f44c4c1c694684303bcb9f6b4424b7539c44554102c4836ca77',
+  G025: '11fd03865d9cf5c4b256751ff6a50b5a63b28e5b02797fa38d8545a03b58294a',
+  G026: '7976def2145b51cde87941b3ba9f6cb2b35a8da2df42102188c4c9177a8d7614',
+  G027: 'e5d9752d0b809ee61794997f5c2f0392dc198d570ff179278c4c29f3656a70ff',
+  G028: '187c4c5d45172609766e80d13af02ddb93bed1390291640b58dbb78f64cb678a',
+  G029: 'f30f5352822cf731d9b1a31fd69274c1cd3389cbcf4b8273ae1257fb9cca42ed',
+  G030: 'acaec6372f82c2eda958178b3ae81ea628378366216cce7912fdb28cd319877b',
+  G031: '8deaf216cbe074a9a49c8f9430948c44c6785cd2bc666483e46831b3951f77c6',
+  G032: '959a51af0d63c7676930c68fd1ef935bca38f1696b2e98a8debeaf5c6d3281d5',
+  G039: 'fb14b02ff9512441cfdc8bf199e6dda913fc58c4ea363986b3f8c85c6274e3c7',
+  G040: '0766152645c539e9e2140a94eb040a9affa5241552f4cdf7385b7eca1a9b5a81',
+  G041: 'e3adfdec3ea92fb3934f882d3f6add199dcd638a9ad9f9bf6d499b48fb8be5aa',
+  G042: 'db4e0810a311d6483b261fb82d192ee03db318e5f69e2cd87d670b4a5d29cf6e',
+  G043: '6415e8a1a088550f017ad59ee4f07971b235edb4d657eac940c5ba786c84dd7b',
+  G048: '33709f21ad087a5ea67ee8c3dbded7f6d638ae6f583f280f11b431a6df084f2b',
+  G050: '4d681898cb65e1c1c967974b177996dc62050af2b829fe73b4e11ff82579dfc9',
+  G052: '10131a65b9f29740aa9eaf0621773f48fe97823ec554780a37615747b3c2f86e',
+  G095: '2180f3c6b91be8141437974435bb6e4730608f212ae7d91bd3f1693f4fac1381',
+  G111: 'd6bacf07d5b1b018450a23f0d128dfa0d0c5dd0c50a7d900c2c7d32343b0b84e',
+};
 
 function normalize(value: string): string {
   return value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -197,10 +211,6 @@ function sourceLines(value: string): string[] {
   const lines = normalize(value).split('\n');
   if (lines.at(-1) === '') lines.pop();
   return lines;
-}
-
-function rangeText(value: string, startLine: number, endLine: number): string {
-  return `${sourceLines(value).slice(startLine - 1, endLine).join('\n')}\n`;
 }
 
 function sha256(value: string): string {
@@ -218,19 +228,6 @@ function entryImportPath(targetPath: string): string {
   const importPath = relative(dirname(entryPath), resolve(root, targetPath))
     .replaceAll(String.fromCharCode(92), '/');
   return './' + importPath.replace(/^\.\//u, '');
-}
-
-function relocationText(relocation: (typeof manifest.semanticRelocations)[number]): string {
-  if (relocation.sourceSegments?.length) {
-    return relocation.sourceSegments
-      .map(({ sourceRange }) => rangeText(baseline, sourceRange.startLine, sourceRange.endLine))
-      .join('');
-  }
-  return rangeText(
-    baseline,
-    relocation.sourceRange.startLine,
-    relocation.sourceRange.endLine,
-  );
 }
 
 describe('Issue #549 SER-02 final stylesheet contract', () => {
@@ -269,9 +266,9 @@ describe('Issue #549 SER-02 final stylesheet contract', () => {
       const relocation = manifest.semanticRelocations.find(({ id }) => id === expected.id);
       expect(relocation).toBeDefined();
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
-      const expectedText = relocationText(relocation!);
 
-      expect(target).toBe(expectedText);
+      expect(expectedSer02TargetSha256[expected.id]).toBeDefined();
+      expect(sha256(target)).toBe(expectedSer02TargetSha256[expected.id]);
       expect(sha256(target)).toBe(relocation!.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         relocation!.sourceEndByteExclusive - relocation!.sourceStartByte,
@@ -281,7 +278,6 @@ describe('Issue #549 SER-02 final stylesheet contract', () => {
     expect(sha256(readOrderedStylesheetSource())).toBe(
       '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
     );
-    expect(normalize(readOrderedStylesheetSource())).toBe(baseline);
   });
 
   it('keeps all six rolling receipts and the deferred compatibility boundary explicit', () => {
