@@ -259,6 +259,27 @@
       "status": "relocated"
     },
     {
+      "id": "G029",
+      "segment": "G029",
+      "sectionIds": ["S04-02"],
+      "sourceSlice": "S04",
+      "owner": "fla-sequence",
+      "migrationMode": "DIRECT",
+      "canonicalOrder": 32,
+      "predecessor": "S04-01/G028",
+      "successor": "S04-03/G030",
+      "sourceRange": { "startLine": 6530, "endLine": 7264 },
+      "sourceLocalRange": { "startLine": 511, "endLine": 1245 },
+      "sourceStartByte": 12168,
+      "sourceEndByteExclusive": 28009,
+      "sourceSha256": "f30f5352822cf731d9b1a31fd69274c1cd3389cbcf4b8273ae1257fb9cca42ed",
+      "targetPath": "src/renderer/styles/features/fla-import/sequence/s04-02--sequence-e-and-scroll.css",
+      "startAnchor": "Issue #399:",
+      "endAnchor": "Issue #396:",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G030",
       "segment": "G030",
       "sectionIds": ["S04-03"],
@@ -1593,7 +1614,7 @@
     {
       "id": "S04-R01",
       "sourceSlice": "S04",
-      "sourceRange": { "startLine": 6020, "endLine": 7264 },
+      "sourceRange": { "startLine": 6020, "endLine": 6529 },
       "targetPath": "src/renderer/styles/legacy-slices/04-launcher-render-workbench-before-sequence.css"
     },
     {

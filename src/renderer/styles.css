@@ -14,6 +14,7 @@
 @import './styles/features/fla-import/render/s03-05--render-bounded-v11.css';
 @import './styles/legacy-slices/03-terminal-launcher-sequence-after-fla-render.css';
 @import './styles/legacy-slices/04-launcher-render-workbench-before-sequence.css';
+@import './styles/features/fla-import/sequence/s04-02--sequence-e-and-scroll.css';
 @import './styles/features/fla-import/render/s04-03--render-shell-and-snapshot-d.css';
 @import './styles/legacy-slices/04-launcher-render-workbench-after-snapshot.css';
 @import './styles/features/fla-import/render/s04-05--render-responsive-tail.css';
