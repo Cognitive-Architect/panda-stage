@@ -1,0 +1,477 @@
+{
+  "schemaVersion": 1,
+  "issue": 553,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "serial": "SER-06",
+  "batch": "B14",
+  "p2": "P2-27",
+  "canonicalIdentity": {
+    "owner": ["legacy-task", "mixed"],
+    "migrationMode": "ORDERED_COMPAT",
+    "sectionCount": 18,
+    "segmentCount": 11,
+    "sectionIds": [
+      "S06-06", "S06-07", "S07-08", "S08-05", "S08-09", "S08-10",
+      "S08-11", "S08-15", "S09-01", "S09-04", "S11-10", "S12-01",
+      "S12-02", "S12-05", "S12-08", "S13-01", "S13-02", "S13-05"
+    ],
+    "segmentIds": [
+      "G049", "G064", "G076", "G080", "G082", "G085", "G103", "G105",
+      "G107", "G109", "G112"
+    ]
+  },
+  "observedAt": "2026-09-17",
+  "preflight": {
+    "evidencePath": "docs/evidence/issue-553-p2-27/preflight.json",
+    "startingLivePrHead": "83f34ce20e1a9c04a2bbb09924c18916a6da3a4a",
+    "immediateParentHead": "368000bbb5119278e510d027b55a9c0dd0230038",
+    "preflightRecordCommit": "9c71bfd82b07971158816d513f2dc91a544d0b1d",
+    "implementationCommit": "1bb7365065f03016b8e667b9e2649f3e525ce7e1",
+    "livePrAtPreflight": {
+      "state": "OPEN",
+      "draft": true,
+      "mergeable": "MERGEABLE",
+      "automaticCiRun": 35209909150,
+      "automaticCiResult": "SUCCESS"
+    }
+  },
+  "sourceAuthority": {
+    "canonicalMap": {
+      "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+      "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+      "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+      "approvedForAutomaticRelocation": false,
+      "sectionCount": 179,
+      "segmentCount": 147
+    },
+    "baseline": {
+      "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+      "sourcePath": "src/renderer/styles.css",
+      "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+      "endLine": 32818,
+      "sha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+    },
+    "currentImplementation": {
+      "commit": "1bb7365065f03016b8e667b9e2649f3e525ce7e1",
+      "productionEntry": {
+        "path": "src/renderer/styles.css",
+        "blob": "8a09e947e0defbdeef39dfa6303fbd33e0d00d16"
+      },
+      "manifest": {
+        "path": "scripts/css-split-manifest.json",
+        "blob": "209f99e729c475fab56274e82ec9df7cc0f5b993"
+      }
+    }
+  },
+  "segments": [
+    {
+      "id": "G049",
+      "sectionIds": ["S06-06", "S06-07"],
+      "sourceSlice": "S06",
+      "owner": "mixed",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 54,
+      "predecessor": "S06-05/G048",
+      "successor": "S06-08/G050",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/06-canvas-portrait-foundation--before-product-preview.css"],
+      "sourceRange": {"startLine": 10328, "endLine": 10699},
+      "sourceLocalRange": {"startLine": 489, "endLine": 860},
+      "sourceStartByte": 9398,
+      "sourceEndByteExclusive": 16766,
+      "sourceSha256": "983670890d12313330070acff610c342a822ff6bafbdf4c0b2fdfa2ce5a36eae",
+      "targetPath": "src/renderer/styles/compat/mixed-conditions/s06-06--responsive-1100.css",
+      "startAnchor": "@media (max-width: 1100px)",
+      "endAnchor": "EOF",
+      "completeConditionUnits": ["@media (max-width: 1100px)", "@media (max-width: 720px)"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G064",
+      "sectionIds": ["S07-08"],
+      "sourceSlice": "S07",
+      "owner": "legacy-task",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 72,
+      "predecessor": "S07-07/G063",
+      "successor": "S07-09/G065",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-timeline.css"],
+      "sourceRange": {"startLine": 12695, "endLine": 12844},
+      "sourceLocalRange": {"startLine": 812, "endLine": 961},
+      "sourceStartByte": 25680,
+      "sourceEndByteExclusive": 30565,
+      "sourceSha256": "c0edfb9fb49454948730d77328b84544853fc3f8851bf40115f23e9747581c00",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s07-08--portrait-dialogue-original.css",
+      "startAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .editor-layout[data-active-workspace='timeline'] .dialogue-sheet-timeline",
+      "endAnchor": "S07-09 history selector",
+      "completeConditionUnits": ["cloud-touch + portrait + active timeline shared selector"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G076",
+      "sectionIds": ["S08-05"],
+      "sourceSlice": "S08",
+      "owner": "legacy-task",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 85,
+      "predecessor": "S08-04/G075",
+      "successor": "S08-06/G077",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-timeline.css"],
+      "sourceRange": {"startLine": 14620, "endLine": 15063},
+      "sourceLocalRange": {"startLine": 819, "endLine": 1262},
+      "sourceStartByte": 22176,
+      "sourceEndByteExclusive": 36989,
+      "sourceSha256": "239bb7fe9e7971b75206d58c0c6922e3f4fb3d1466b99e4a773f7e0a31b941cd",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s08-05--portrait-dialogue-flat.css",
+      "startAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .editor-layout[data-active-workspace='timeline'] .dialogue-sheet-timeline",
+      "endAnchor": "Issue #340:",
+      "completeConditionUnits": ["cloud-touch + portrait + active timeline shared selector"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G080",
+      "sectionIds": ["S08-09", "S08-10", "S08-11"],
+      "sourceSlice": "S08",
+      "owner": "legacy-task",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 89,
+      "predecessor": "S08-08/G079",
+      "successor": "S08-12/G081",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-shot-detail.css"],
+      "sourceRange": {"startLine": 15733, "endLine": 16456},
+      "sourceLocalRange": {"startLine": 1932, "endLine": 2655},
+      "sourceStartByte": 58701,
+      "sourceEndByteExclusive": 83439,
+      "sourceSha256": "cdffa29e504947accf0275f937fe1eec8ebd1cccdc261881840714282798d173",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s08-09--portrait-authoring.css",
+      "startAnchor": "Issue #357:",
+      "endAnchor": "Issue #348:",
+      "completeConditionUnits": ["cloud-touch + portrait + active timeline shared selector"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G082",
+      "sectionIds": ["S08-15", "S09-01"],
+      "sourceSlice": "S08",
+      "owner": "legacy-task",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 95,
+      "predecessor": "S08-14/G081",
+      "successor": "S09-02/G083",
+      "sourceRemainderPaths": [
+        "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue.css",
+        "src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets.css"
+      ],
+      "sourceRange": {"startLine": 17497, "endLine": 18217},
+      "sourceLocalRange": {"startLine": 3696, "endLine": 4018},
+      "sourceStartByte": 114224,
+      "sourceEndByteExclusive": 137081,
+      "sourceSha256": "37c26e1eedf656ea5bb7513021f757bcbd682bffb241bc08295faddbde39dfa5",
+      "sourceSegments": [
+        {
+          "sourceSlice": "S08",
+          "sourceRange": {"startLine": 17497, "endLine": 17819},
+          "sourceLocalRange": {"startLine": 3696, "endLine": 4018},
+          "sourceStartByte": 114224,
+          "sourceEndByteExclusive": 124867,
+          "sourceSha256": "c1ab29dccb329c860e241fdf9e3b9e2bfc671d2b0983103a7cbd636db72546a6"
+        },
+        {
+          "sourceSlice": "S09",
+          "sourceRange": {"startLine": 17820, "endLine": 18217},
+          "sourceLocalRange": {"startLine": 1, "endLine": 398},
+          "sourceStartByte": 0,
+          "sourceEndByteExclusive": 12214,
+          "sourceSha256": "4dcea49c6c2faf9fb0eac38eae20f4663706c5a11f226be15122ce2c75b7007a"
+        }
+      ],
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s08-15--portrait-pending-base-and-final.css",
+      "startAnchor": "Issue #351:",
+      "endAnchor": "Issue #358:",
+      "completeConditionUnits": ["cloud-touch + portrait + active timeline shared selector", "two complete @media (max-width: 480px) units"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G085",
+      "sectionIds": ["S09-04"],
+      "sourceSlice": "S09",
+      "owner": "legacy-task",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 99,
+      "predecessor": "S09-03/G084",
+      "successor": "S09-05/G086",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets-after-dialogue-properties.css"],
+      "sourceRange": {"startLine": 18755, "endLine": 18827},
+      "sourceLocalRange": {"startLine": 936, "endLine": 1008},
+      "sourceStartByte": 29759,
+      "sourceEndByteExclusive": 32286,
+      "sourceSha256": "138c7d966d389c68b5079f832686e61389ddcb9dc05d4a46868c3295b7ae6215",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s09-04--portrait-pending-polish.css",
+      "startAnchor": "dialogue-secondary-action/dialogue-authoring-open selector",
+      "endAnchor": "Issue #360:",
+      "completeConditionUnits": ["cloud-touch + portrait + active timeline shared selector", "@media (max-width: 480px)"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G103",
+      "sectionIds": ["S11-10", "S12-01", "S12-02"],
+      "sourceSlice": "S11",
+      "owner": "legacy-task",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 121,
+      "predecessor": "S11-09/G102",
+      "successor": "S12-03/G104",
+      "sourceRemainderPaths": [
+        "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css",
+        "src/renderer/styles/legacy-slices/12-landscape-task-tray.css"
+      ],
+      "sourceRange": {"startLine": 23763, "endLine": 24447},
+      "sourceLocalRange": {"startLine": 1961, "endLine": 1997},
+      "sourceStartByte": 57857,
+      "sourceEndByteExclusive": 77955,
+      "sourceSha256": "2ce54b4979aa5bd7ca0ae545c18af3f8eeb30140c1c68825f9e4efe535519ec2",
+      "sourceSegments": [
+        {
+          "sourceSlice": "S11",
+          "sourceRange": {"startLine": 23763, "endLine": 23799},
+          "sourceLocalRange": {"startLine": 1961, "endLine": 1997},
+          "sourceStartByte": 57857,
+          "sourceEndByteExclusive": 58838,
+          "sourceSha256": "f2580bfd5d6f84e31454274d6ac29c0052e8c32e14c50dc482c6fb0f93bcada4"
+        },
+        {
+          "sourceSlice": "S12",
+          "sourceRange": {"startLine": 23800, "endLine": 24447},
+          "sourceLocalRange": {"startLine": 1, "endLine": 648},
+          "sourceStartByte": 0,
+          "sourceEndByteExclusive": 19117,
+          "sourceSha256": "a4aac50e6a525139aa167a495cb52623a5eb196d30bb825532fd5a49d220ecdc"
+        }
+      ],
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s11-10--landscape-tray-host-original.css",
+      "startAnchor": "landscape timeline-task-tray selector",
+      "endAnchor": "Issue #381:",
+      "completeConditionUnits": ["cloud-touch + landscape + timeline-task-tray shared selector", "preserve nested dialogue-sheet selectors"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G105",
+      "sectionIds": ["S12-05"],
+      "sourceSlice": "S12",
+      "owner": "legacy-task",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 126,
+      "predecessor": "S12-04/G104",
+      "successor": "S12-06/G106",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/12-landscape-task-tray-after-pending-placement.css"],
+      "sourceRange": {"startLine": 24599, "endLine": 24877},
+      "sourceLocalRange": {"startLine": 800, "endLine": 1078},
+      "sourceStartByte": 24297,
+      "sourceEndByteExclusive": 32640,
+      "sourceSha256": "68527d26ddafc7d3d7bb645cb6df610c08fc23caa6f5282f4a482035929fa110",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s12-05--landscape-task-body.css",
+      "startAnchor": "landscape timeline-task-tray selector",
+      "endAnchor": "@media (max-width: 760px)",
+      "completeConditionUnits": ["cloud-touch + landscape + timeline-task-tray shared selector", "@media (max-width: 760px)"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G107",
+      "sectionIds": ["S12-08"],
+      "sourceSlice": "S12",
+      "owner": "mixed",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 129,
+      "predecessor": "S12-07/G106",
+      "successor": "S12-09/G108",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/12-landscape-task-tray-after-dialogue-properties.css"],
+      "sourceRange": {"startLine": 25735, "endLine": 25857},
+      "sourceLocalRange": {"startLine": 1936, "endLine": 2058},
+      "sourceStartByte": 59072,
+      "sourceEndByteExclusive": 63233,
+      "sourceSha256": "a975267d9307ce836a191a514f76730df7b187282f3a1f1dda0407ea589f79fe",
+      "targetPath": "src/renderer/styles/compat/mixed-conditions/s12-08--shallow-container-220.css",
+      "startAnchor": "At the accepted Stage A shallow heights,",
+      "endAnchor": ".timeline-pending-drop-notice",
+      "completeConditionUnits": ["@container stage-e-timeline (max-height: 220px)", "cloud-touch + landscape + timeline-task-tray shared selector"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G109",
+      "sectionIds": ["S13-01", "S13-02"],
+      "sourceSlice": "S13",
+      "owner": "legacy-task",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 131,
+      "predecessor": "S12-09/G108",
+      "successor": "S13-03/G110",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/13-timed-render-media-tail-before-final-render.css"],
+      "sourceRange": {"startLine": 25877, "endLine": 27503},
+      "sourceLocalRange": {"startLine": 1, "endLine": 1627},
+      "sourceStartByte": 0,
+      "sourceEndByteExclusive": 51140,
+      "sourceSha256": "d8ed9649ab130f09fded9fabca3dd770df77551712da47b03741dffb480308fe",
+      "targetPath": "src/renderer/styles/compat/retained-task-surfaces/s13-01--landscape-timed-384-385.css",
+      "startAnchor": "BOF",
+      "endAnchor": "Issue #422 + #432 R3-A:",
+      "completeConditionUnits": ["cloud-touch + landscape + timeline-task-tray shared selector"],
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G112",
+      "sectionIds": ["S13-05"],
+      "sourceSlice": "S13",
+      "owner": "mixed",
+      "migrationMode": "ORDERED_COMPAT",
+      "canonicalOrder": 135,
+      "predecessor": "S13-04/G111",
+      "successor": "S14-01/G113",
+      "sourceRemainderPaths": ["src/renderer/styles/legacy-slices/13-timed-render-media-tail-after-final-render.css"],
+      "sourceRange": {"startLine": 27860, "endLine": 27997},
+      "sourceLocalRange": {"startLine": 1984, "endLine": 2121},
+      "sourceStartByte": 61800,
+      "sourceEndByteExclusive": 65768,
+      "sourceSha256": "166cc15d2731d40bfba39afa68282fce2a55b5205f76087a26d867c896d95e62",
+      "targetPath": "src/renderer/styles/compat/mixed-conditions/s13-05--render-dialogue-audio-media900.css",
+      "startAnchor": "@media (max-width: 900px)",
+      "endAnchor": "EOF",
+      "completeConditionUnits": ["one intact @media (max-width: 900px) unit", "FLA render + Dialogue Properties + AudioClip mixed selectors"],
+      "placement": "source-order",
+      "status": "relocated"
+    }
+  ],
+  "retainedRemainders": [
+    {
+      "id": "S05-R02",
+      "path": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--between-shots-create.css",
+      "reason": "explicit non-P2-27 remainder; retained in current production order"
+    },
+    {
+      "id": "S05-R03",
+      "path": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-shot-create.css",
+      "reason": "explicit non-P2-27 remainder; retained in current production order"
+    },
+    {
+      "id": "S07-R04",
+      "path": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-assets.css",
+      "reason": "explicit non-P2-27 remainder; retained in current production order"
+    }
+  ],
+  "consumersAndOwnership": {
+    "producers": [
+      "src/renderer/features/dialogue/DialogueSheet.tsx -> dialogue-sheet-timeline",
+      "src/renderer/features/dialogue/DialogueInspector.tsx -> dialogue-inspector-audio-section",
+      "src/renderer/features/timeline/AudioClip.tsx -> timeline-audio-clip-error",
+      "src/renderer/fla-import/FlaCompatibilityReviewSession.tsx -> FlaRenderWorkbench + FlaStaticSnapshotReview"
+    ],
+    "hosts": [
+      "src/renderer/shell/EditorShell.tsx -> current editor root/data attributes",
+      "src/renderer/shell/BottomWorkspace.tsx -> timelineUiStore.setHeightMax",
+      "src/renderer/features/timeline/TimelineDock.tsx -> current timeline owner; no timeline-task-tray entrance"
+    ],
+    "assemblyEvidence": [
+      "EditorShell remains the sole editor shell lifecycle owner",
+      "TimelineDock does not mount timeline-task-tray",
+      "no new DOM/state/store/IPC/business consumer was added",
+      "compat targets remain passive CSS containment and do not revive Task/Tray navigation"
+    ]
+  },
+  "validation": {
+    "preflight": "PASS",
+    "realProductionEntry": {
+      "path": "src/renderer/styles.css",
+      "p227Imports": 11,
+      "duplicateP227Imports": 0,
+      "removedOldImports": 13,
+      "retainedRemainderImports": 3,
+      "order": "canonical source order preserved"
+    },
+    "sourceOrderAndEquivalence": {
+      "command": "node scripts/verify-css-split.cjs",
+      "status": "PASS",
+      "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+      "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+      "exact": true,
+      "manualFullVerifier": false,
+      "manualVerifyProject": false
+    },
+    "compatibility": {
+      "allTargetsUtf8ByteAndSha256Exact": true,
+      "importsUrlsFontFacesAndKeyframesIntroduced": false,
+      "G049MediaUnitsComplete": true,
+      "G082Media480Units": 2,
+      "G103LandscapeHostUnitComplete": true,
+      "G107Container220UnitComplete": true,
+      "G112Media900Units": 1,
+      "G112MixedFamiliesRemainTogether": true
+    },
+    "runtimeAssembly": {
+      "producersAndHostsUnchanged": true,
+      "taskTrayNavigationRevived": false,
+      "retainedCssContentDeleted": false,
+      "humanWindowsElectronAcceptance": "PENDING"
+    },
+    "normalRouteChecks": {
+      "typecheck": "PENDING",
+      "lint": "PENDING",
+      "unit": "PENDING",
+      "integration": "PENDING",
+      "build": "PENDING",
+      "automaticCi": "PENDING until current B14/B15 head is pushed"
+    }
+  },
+  "humanAcceptance": {
+    "reachableMixedCompatibility": {
+      "segments": ["G049", "G107", "G112"],
+      "status": "PENDING_MAINTAINER_HUMAN_ACCEPTANCE",
+      "reason": "real Windows Electron visual acceptance has not yet been performed"
+    },
+    "unreachableRetainedLegacy": {
+      "segments": ["G064", "G076", "G080", "G082", "G085", "G103", "G105", "G109"],
+      "status": "N/A",
+      "reason": "unreachable retained compatibility surface; no new product entrance is authorized",
+      "requiredEvidence": "producer/assembly/ownership evidence plus source/order/equivalence verification",
+      "evidenceProvided": true
+    }
+  },
+  "scopeAndStopChecks": {
+    "domStateStoreIpcBusinessBehaviorChanged": false,
+    "copyBreakpointMeaningOrDesignChanged": false,
+    "phase3DedupOrNormalizationStarted": false,
+    "phase4DeletionStarted": false,
+    "retainedLegacyEntranceRevived": false,
+    "unexplainedP2BytesStranded": false,
+    "exceptions": [],
+    "evidenceGaps": [
+      "maintainer Human Acceptance and automatic CI for the final pushed head remain pending"
+    ]
+  },
+  "handoff": {
+    "status": "READY_FOR_B14_TO_B15_HANDOFF_AFTER_RECEIPT_COMMIT",
+    "requiredNextReads": [
+      "src/renderer/styles.css",
+      "scripts/css-split-manifest.json",
+      "docs/evidence/issue-553-p2-27/receipt.json"
+    ],
+    "missingP227Segments": 0,
+    "duplicateP227Segments": 0,
+    "silentReorder": 0,
+    "b15MayStartOnlyAfterReceiptCommit": true
+  },
+  "noDeletionOrRevival": {
+    "oldRemainderImportsRemovedOnlyWhenTheirBytesWereRelocated": true,
+    "retainedRemainderPathsExplicit": true,
+    "legacyTaskNavigationOrEntranceRevived": false,
+    "retainedCssRulesDeleted": false
+  }
+}
