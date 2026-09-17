@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "issue": 552,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-05",
+  "workItem": "P2-18",
+  "batch": "B12",
+  "owner": "shell-layout",
+  "mode": "HOST_INTEGRATION",
+  "status": "validated-implementation-human-acceptance-deferred",
+  "preflight": "docs/evidence/issue-552-p2-18/preflight.json",
+  "startingLivePrHead": "26af33a7d6570f6dcbffe3e2097a29545202aa1c",
+  "refreshedRemoteBranchHead": "b3d888553c112bfbb80efd6165e898bf8d3854b0",
+  "validatedImplementationSnapshot": {
+    "head": "b3d888553c112bfbb80efd6165e898bf8d3854b0",
+    "meaning": "B12/P2-18 implementation was committed and validated; this receipt is written separately and must not self-reference the later receipt commit or final rolling PR head."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "sections": [
+    "S01-02", "S01-04", "S01-06", "S01-10", "S06-12", "S06-14", "S06-15", "S07-06", "S14-11"
+  ],
+  "segments": [
+    "G002/S01-02", "G004/S01-04", "G006/S01-06", "G010/S01-10",
+    "G054/S06-12", "G056/S06-14+S06-15", "G062/S07-06", "G122/S14-11"
+  ],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "targetImportOrder": ["G002", "G004", "G006", "G010", "G054", "G056", "G062", "G122"]
+  },
+  "geometryContract": {
+    "editorShellGrid": "top / body / bottom fixed composition preserved",
+    "portraitLandscape": "original selectors and nesting preserved",
+    "editorBody": "BottomWorkspace live editor-body bounds consumer unchanged",
+    "resourceRailMinHeightPx": 72,
+    "resourceRailGapPx": 8,
+    "inspectorRailMinHeightPx": 132,
+    "timelineBoundsConsumer": "BottomWorkspace -> timelineUiStore.setHeightMax(bounds.maxHeight)"
+  },
+  "behaviorContract": {
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false,
+    "bottomWorkspaceChanged": false,
+    "editorShellChanged": false,
+    "timelineUiStoreChanged": false,
+    "newConsumers": [],
+    "relativeResourceUrls": [],
+    "p2_19OrP2_21Absorbed": false,
+    "p2_27Absorbed": false
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs --preflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS (exact=true; pending=0)",
+    "focusedContractSuite": "PASS (5 files, 23 tests including Issue #552 B12)",
+    "targetedShellIntegration": "PASS (4 files, 30 tests; build/typecheck also passed)",
+    "gitDiffCheck": "EXPECTED_EXACT_SLICE_EOF_DIAGNOSTICS; only required blank-at-EOF bytes in exact baseline slices were reported",
+    "manualFullCiTriggered": false,
+    "verifyProjectManuallyRun": false,
+    "automaticCi": "PENDING on B12 implementation snapshot; prior PR run 35205476874 was attached while the push was settling"
+  },
+  "humanAcceptance": {
+    "status": "DEFERRED",
+    "result": "未测",
+    "windowsElectronSmoke": "未测",
+    "reason": "本批完成自动化与生产入口等价性核验；维护者 Windows Electron 视觉/交互验收待执行。",
+    "scopeToReview": [
+      "Windows Electron product entry",
+      "portrait and landscape shell layout",
+      "top overlay/flow and canvas height",
+      "left/right workspace plus Timeline composition",
+      "recovery overlay and Quick drawer stacking",
+      "representative constrained and larger window sizes"
+    ]
+  },
+  "scopeExceptions": [
+    "No new PR was created; work continues on rolling Draft PR #542.",
+    "No P2-19, P2-21, P2-27, or Phase 3/4 work was included in B12.",
+    "No DOM, state/store, IPC, behavior, copy, breakpoint, or CSS-value redesign was included.",
+    "No manual Full CI or pnpm verify:project was run."
+  ]
+}
