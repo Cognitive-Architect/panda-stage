@@ -1,0 +1,80 @@
+.project-center-screen {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.project-center-screen > .start-screen {
+  width: min(100%, 1180px);
+  height: auto;
+  min-height: 100%;
+  padding: 24px;
+  margin: 0 auto;
+  align-content: center;
+}
+
+.project-center-screen[data-project-open='true'] > .start-screen {
+  align-content: start;
+}
+
+.project-center-current-project {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 12px;
+  background: rgb(17 35 24 / 72%);
+  gap: 14px;
+}
+
+.project-center-current-project > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.project-center-current-project h3 {
+  margin: 0;
+  color: #eef8f1;
+  font-size: 16px;
+}
+
+.project-center-current-path {
+  max-width: min(100%, 720px);
+  overflow: hidden;
+  color: #aebfb4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+}
+
+.project-center-current-project button {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+
+.start-screen {
+  display: grid;
+  width: min(100%, 1180px);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px;
+  margin: 0 auto;
+  overflow-y: auto;
+  align-content: center;
+  gap: 18px;
+}
+
+.start-screen > .recovery-panel,
+.start-screen > .recent-projects-panel {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+

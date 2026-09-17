@@ -1,0 +1,76 @@
+.recent-projects-heading,
+.recent-projects-list li,
+.recent-projects-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recent-projects-heading,
+.recent-projects-list li {
+  justify-content: space-between;
+}
+
+.recent-projects-heading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.recent-projects-heading > span,
+.recent-projects-list li > div > span,
+.recent-projects-status,
+.recent-projects-empty,
+.recent-projects-safety-note {
+  color: #9aaca0;
+  font-size: 12px;
+}
+
+.recent-projects-safety-note {
+  margin: 0;
+}
+
+.recent-projects-list {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 8px;
+  list-style: none;
+}
+
+.recent-projects-list li {
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.recent-project-card {
+  align-items: flex-start;
+}
+
+.recent-projects-list li > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.recent-project-path {
+  max-width: min(100%, 720px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-project-meta {
+  font-variant-numeric: tabular-nums;
+}
+
+.recent-projects-actions {
+  flex: 0 0 auto;
+}
+
+.project-center-button {
+  border-color: rgb(127 199 148 / 34%);
+  background: rgb(31 66 43 / 72%);
+}
+

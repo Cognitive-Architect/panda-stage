@@ -1,0 +1,11 @@
+.recent-projects-panel {
+  display: grid;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  padding: 16px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 16px;
+  background: rgb(18 31 23 / 94%);
+  gap: 12px;
+}
+
