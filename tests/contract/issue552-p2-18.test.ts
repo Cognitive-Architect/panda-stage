@@ -154,21 +154,10 @@ describe('Issue #552 B12 P2-18 editor shell layout contract', () => {
     );
   });
 
-  it('preserves shell geometry owners and leaves the next quick/history/tools blocks pending', () => {
+  it('preserves shell geometry owners after the serial utility batches', () => {
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
     expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(false);
-
-    expect(manifest.remainderParts.find(({ id }) => id === 'S01-R02')).toMatchObject({
-      sourceRange: { startLine: 177, endLine: 408 },
-    });
-    expect(manifest.remainderParts.find(({ id }) => id === 'S01-R04')).toMatchObject({
-      sourceRange: { startLine: 852, endLine: 885 },
-    });
-    expect(manifest.remainderParts.find(({ id }) => id === 'S01-R05')).toMatchObject({
-      sourceRange: { startLine: 911, endLine: 949 },
-    });
     expect(manifest.slices.find(({ id }) => id === 'S14')?.sourceParts).toEqual(expect.arrayContaining([
-      { id: 'S14-R02', kind: 'remainder', sourceRange: { startLine: 924, endLine: 1226 }, targetPath: 'src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-after-batch-footer.css' },
       { id: 'G122', kind: 'semantic', relocationId: 'G122', sourceRange: { startLine: 1227, endLine: 1286 }, targetPath: 'src/renderer/styles/shell/layout/s14-11--top-overlay-456-486.css' },
     ]));
 

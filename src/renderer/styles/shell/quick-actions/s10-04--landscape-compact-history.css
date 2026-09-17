@@ -1,0 +1,84 @@
+/* Issue #368: LANDSCAPE-A7 keeps the editor chrome quiet and groups the
+   existing owners into one touch-friendly visual language. */
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-bar {
+  gap: 10px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-identity {
+  min-width: 0;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-details {
+  gap: 0;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls {
+  gap: 6px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact'] {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  align-items: center;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions
+  button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 9px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  .history-actions
+  > span,
+.editor-shell[data-editor-shell-layout='landscape']
+  .editor-layout[data-shell-mode='landscape']
+  .compact-project-controls
+  .history-controls[data-history-presentation='compact']
+  > output {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+

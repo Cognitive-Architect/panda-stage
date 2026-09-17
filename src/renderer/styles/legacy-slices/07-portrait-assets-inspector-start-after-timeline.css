@@ -148,12 +148,3 @@
   flex-wrap: wrap;
 }
 
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .editor-layout[data-active-workspace='timeline']
-  > .bottom-workspace[data-presentation='portrait']
-  > .history-controls {
-  margin-top: 12px;
-  padding: 12px 0 0;
-  border-top: 1px solid var(--ui-color-separator);
-}
-

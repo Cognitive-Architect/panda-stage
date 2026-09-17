@@ -175,17 +175,20 @@ describe('Issue #546 P2-B06 ordered semantic stylesheet continuation', () => {
   it('declares the ordered remainder boundaries required for interior relocations', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: 'S06-R01',
-        sourceSlice: 'S06',
-        sourceRange: { startLine: 10190, endLine: 10211 },
-      }),
-      expect.objectContaining({
         id: 'S06-R02',
         sourceSlice: 'S06',
         sourceRange: { startLine: 10328, endLine: 10699 },
       }),
+    ]));
+
+    expect(manifest.semanticRelocations).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: 'S11-R01',
+        id: 'G046',
+        sourceSlice: 'S06',
+        sourceRange: { startLine: 10190, endLine: 10211 },
+      }),
+      expect.objectContaining({
+        id: 'G098',
         sourceSlice: 'S11',
         sourceRange: { startLine: 21857, endLine: 21878 },
       }),

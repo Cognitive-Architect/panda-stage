@@ -257,7 +257,8 @@ describe('Issue #547 P2-B04 dialogue workspace and batch relocation', () => {
         ['G116', 'semantic', 413, 483],
         ['G118', 'semantic', 585, 596],
         ['G120', 'semantic', 888, 923],
-        ['S14-R02', 'remainder', 924, 1286],
+        ['G121', 'semantic', 924, 1226],
+        ['G122', 'semantic', 1227, 1286],
         ['S14-14', 'semantic', 1432, 1765],
         ['G125', 'semantic', 1766, 1797],
       ],
@@ -280,13 +281,13 @@ describe('Issue #547 P2-B04 dialogue workspace and batch relocation', () => {
       }
     }
 
-    expect(manifest.remainderParts).toEqual(expect.arrayContaining([
+    expect(manifest.semanticRelocations).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: 'S06-R04',
+        id: 'G054',
         sourceRange: { startLine: 11264, endLine: 11440 },
       }),
       expect.objectContaining({
-        id: 'S06-R05',
+        id: 'G056',
         sourceRange: { startLine: 11516, endLine: 11800 },
       }),
     ]));

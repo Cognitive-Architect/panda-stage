@@ -269,7 +269,7 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style relocation', 
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'S08-R05',
-        sourceRange: { startLine: 14620, endLine: 15158 },
+        sourceRange: { startLine: 14620, endLine: 15063 },
       }),
       expect.objectContaining({
         id: 'S09-R01',
@@ -303,7 +303,8 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style relocation', 
       { id: 'G118', kind: 'semantic', relocationId: 'G118', sourceRange: { startLine: 585, endLine: 596 }, targetPath: 'src/renderer/styles/features/dialogue/batch/s14-06--batch-footer-host.css' },
       { id: 'G119', kind: 'semantic', relocationId: 'G119', sourceRange: { startLine: 597, endLine: 887 }, targetPath: 'src/renderer/styles/features/dialogue/properties/s14-07--properties-spacing-448a.css' },
       { id: 'G120', kind: 'semantic', relocationId: 'G120', sourceRange: { startLine: 888, endLine: 923 }, targetPath: 'src/renderer/styles/features/timeline/s14-09--audio-trim-448b.css' },
-      { id: 'S14-R02', kind: 'remainder', sourceRange: { startLine: 924, endLine: 1286 }, targetPath: 'src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-after-batch-footer.css' },
+      { id: 'G121', kind: 'semantic', relocationId: 'G121', sourceRange: { startLine: 924, endLine: 1226 }, targetPath: 'src/renderer/styles/shell/quick-actions/s14-10--quick-drawer-454.css' },
+      { id: 'G122', kind: 'semantic', relocationId: 'G122', sourceRange: { startLine: 1227, endLine: 1286 }, targetPath: 'src/renderer/styles/shell/layout/s14-11--top-overlay-456-486.css' },
       { id: 'G123', kind: 'semantic', relocationId: 'G123', sourceRange: { startLine: 1287, endLine: 1431 }, targetPath: 'src/renderer/styles/features/dialogue/properties/s14-12--timing-seconds-463.css' },
       { id: 'S14-14', kind: 'semantic', relocationId: 'S14-14', sourceRange: { startLine: 1432, endLine: 1765 }, targetPath: 'src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css' },
       { id: 'G125', kind: 'semantic', relocationId: 'G125', sourceRange: { startLine: 1766, endLine: 1797 }, targetPath: 'src/renderer/styles/features/characters/settings/s14-15--mouth-picker-host.css' },

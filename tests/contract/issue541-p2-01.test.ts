@@ -239,11 +239,11 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
   it('loads the semantic segment once at the original production position', () => {
     const imports = importPaths();
     const semanticIndex = imports.indexOf('./styles/shell/tools/view-mode.css');
-    const s11RemainderStartIndex = imports.indexOf(
-      './styles/legacy-slices/11-tools-inspector-timeline-start--before-landscape-layer-controls.css',
-    );
     const rightWorkspaceHostIndex = imports.indexOf(
       './styles/shell/right-workspace/s11-03--landscape-empty-properties.css',
+    );
+    const actionPresetHostIndex = imports.indexOf(
+      './styles/shell/tools/s11-02--action-preset-host.css',
     );
     const layerPropertiesIndex = imports.indexOf(
       './styles/features/properties/s11-05--landscape-layer-controls.css',
@@ -256,8 +256,8 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     );
     const legacyIndex = imports.indexOf('./styles/legacy-slices/11-tools-inspector-timeline-start.css');
     expect(semanticIndex).toBeGreaterThan(-1);
-    expect(s11RemainderStartIndex).toBe(semanticIndex + 1);
-    expect(rightWorkspaceHostIndex).toBe(s11RemainderStartIndex + 1);
+    expect(actionPresetHostIndex).toBe(semanticIndex + 1);
+    expect(rightWorkspaceHostIndex).toBe(actionPresetHostIndex + 1);
     expect(layerPropertiesIndex).toBe(rightWorkspaceHostIndex + 1);
     expect(resizeBoundaryIndex).toBe(layerPropertiesIndex + 1);
     expect(trackFoundationIndex).toBe(resizeBoundaryIndex + 1);
