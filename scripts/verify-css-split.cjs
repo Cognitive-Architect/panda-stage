@@ -598,8 +598,40 @@ function byteOffsetAtLine(value, lineNumber) {
   return Buffer.byteLength(`${prefix}${lineNumber > 1 ? '\n' : ''}`, 'utf8');
 }
 
+function relocationSourceSegments(relocation) {
+  if (Array.isArray(relocation.sourceSegments) && relocation.sourceSegments.length > 0) {
+    return relocation.sourceSegments;
+  }
+  return [{
+    sourceSlice: relocation.sourceSlice,
+    sourceRange: relocation.sourceRange,
+    sourceLocalRange: relocation.sourceLocalRange,
+  }];
+}
+
+function relocationSegmentViews(relocation) {
+  const segments = relocationSourceSegments(relocation);
+  let targetStartLine = 1;
+  return segments.map((segment, index) => {
+    const lineCount = segment.sourceRange.endLine - segment.sourceRange.startLine + 1;
+    const view = {
+      ...relocation,
+      sourceSlice: segment.sourceSlice,
+      sourceRange: segment.sourceRange,
+      sourceLocalRange: segment.sourceLocalRange,
+      targetRange: { startLine: targetStartLine, endLine: targetStartLine + lineCount - 1 },
+      sourceSegmentIndex: index,
+      sourceSegmentCount: segments.length,
+      sourceSegmentContinuation: index > 0,
+    };
+    targetStartLine += lineCount;
+    return view;
+  });
+}
+
 function relevantRelocationsForSlice(slice, relocations) {
   return relocations
+    .flatMap((relocation) => relocationSegmentViews(relocation))
     .filter((relocation) => relocation.sourceSlice === slice.id)
     .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
 }
@@ -610,9 +642,11 @@ function verifySemanticRelocations(baseline, scan) {
   const targetPaths = new Set();
   for (const relocation of relocations) {
     const id = relocation.id || relocation.sourceSlice || 'semantic relocation';
-    const slice = slicesById.get(relocation.sourceSlice);
+    const sourceSegments = relocationSourceSegments(relocation);
+    const firstSegment = sourceSegments[0];
+    const slice = slicesById.get(firstSegment?.sourceSlice ?? relocation.sourceSlice);
     if (!slice) {
-      fail(`${id} references unknown source slice ${relocation.sourceSlice}`);
+      fail(`${id} references unknown source slice ${firstSegment?.sourceSlice ?? relocation.sourceSlice}`);
       continue;
     }
     if (relocation.status !== 'relocated') {
@@ -649,41 +683,77 @@ function verifySemanticRelocations(baseline, scan) {
     if (!relocation.insertBefore && relocation.placement !== 'source-order') {
       fail(`${id} must declare source-order placement when it is not a slice-prefix relocation`);
     }
-    const expectedStart = slice.range.startLine + relocation.sourceLocalRange.startLine - 1;
-    const expectedEnd = slice.range.startLine + relocation.sourceLocalRange.endLine - 1;
+    const expectedStart = slice.range.startLine + firstSegment.sourceLocalRange.startLine - 1;
+    const expectedEnd = slice.range.startLine + firstSegment.sourceLocalRange.endLine - 1;
     if (
-      relocation.sourceRange.startLine !== expectedStart ||
-      relocation.sourceRange.endLine !== expectedEnd
+      firstSegment.sourceRange.startLine !== expectedStart ||
+      firstSegment.sourceRange.endLine !== expectedEnd
     ) {
       fail(`${id} local/global source ranges disagree`);
     }
     if (!Array.isArray(relocation.sectionIds) || relocation.sectionIds.length === 0) {
       fail(`${id} must record at least one canonical Section identity`);
     }
-    const sourceStart = byteOffsetAtLine(baseline, relocation.sourceRange.startLine);
-    const sourceEnd = byteOffsetAtLine(baseline, relocation.sourceRange.endLine + 1);
-    const sliceStart = byteOffsetAtLine(baseline, slice.range.startLine);
-    if (sourceStart === null || sourceEnd === null || sliceStart === null) {
-      fail(`${id} has an invalid line range for byte verification`);
-    } else {
-      if (relocation.sourceStartByte !== sourceStart - sliceStart) {
-        fail(`${id} sourceStartByte does not match its source-slice-local offset`);
+    const expectedPieces = [];
+    for (const [index, segment] of sourceSegments.entries()) {
+      const segmentSlice = slicesById.get(segment.sourceSlice);
+      if (!segmentSlice) {
+        fail(`${id} references unknown source slice ${segment.sourceSlice}`);
+        continue;
       }
-      if (relocation.sourceEndByteExclusive !== sourceEnd - sliceStart) {
-        fail(`${id} sourceEndByteExclusive does not match its source-slice-local offset`);
+      const expectedSegmentStart = segmentSlice.range.startLine + segment.sourceLocalRange.startLine - 1;
+      const expectedSegmentEnd = segmentSlice.range.startLine + segment.sourceLocalRange.endLine - 1;
+      if (
+        segment.sourceRange.startLine !== expectedSegmentStart ||
+        segment.sourceRange.endLine !== expectedSegmentEnd
+      ) {
+        fail(`${id} source segment ${index + 1} local/global ranges disagree`);
       }
+      const sourceStart = byteOffsetAtLine(baseline, segment.sourceRange.startLine);
+      const sourceEnd = byteOffsetAtLine(baseline, segment.sourceRange.endLine + 1);
+      const sliceStart = byteOffsetAtLine(baseline, segmentSlice.range.startLine);
+      if (sourceStart === null || sourceEnd === null || sliceStart === null) {
+        fail(`${id} source segment ${index + 1} has an invalid line range for byte verification`);
+      } else if (
+        Number.isInteger(segment.sourceStartByte) &&
+        segment.sourceStartByte !== sourceStart - sliceStart
+      ) {
+        fail(`${id} source segment ${index + 1} sourceStartByte does not match its source-slice-local offset`);
+      } else if (
+        Number.isInteger(segment.sourceEndByteExclusive) &&
+        segment.sourceEndByteExclusive !== sourceEnd - sliceStart
+      ) {
+        fail(`${id} source segment ${index + 1} sourceEndByteExclusive does not match its source-slice-local offset`);
+      }
+      if (!isCompleteBoundary(stateBefore(scan, segment.sourceRange.startLine))) {
+        fail(`${id} source segment ${index + 1} starts inside a CSS structure`);
+      }
+      if (!isCompleteBoundary(scan.states[segment.sourceRange.endLine])) {
+        fail(`${id} source segment ${index + 1} ends at an unsafe CSS boundary`);
+      }
+      expectedPieces.push(rangeText(
+        baseline,
+        segment.sourceRange.startLine,
+        segment.sourceRange.endLine,
+      ));
     }
-    if (!isCompleteBoundary(stateBefore(scan, relocation.sourceRange.startLine))) {
-      fail(`${id} starts inside a CSS structure`);
-    }
-    if (!isCompleteBoundary(scan.states[relocation.sourceRange.endLine])) {
-      fail(`${id} ends at an unsafe CSS boundary`);
-    }
-    const expected = rangeText(
+    const expected = expectedPieces.join('');
+    const sourceStart = byteOffsetAtLine(baseline, firstSegment.sourceRange.startLine);
+    const firstSliceStart = byteOffsetAtLine(baseline, slice.range.startLine);
+    const sourceEnd = byteOffsetAtLine(
       baseline,
-      relocation.sourceRange.startLine,
-      relocation.sourceRange.endLine,
+      sourceSegments.at(-1).sourceRange.endLine + 1,
     );
+    if (sourceStart === null || sourceEnd === null || firstSliceStart === null) {
+      fail(`${id} has an invalid composite line range for byte verification`);
+    } else {
+      if (relocation.sourceStartByte !== sourceStart - firstSliceStart) {
+        fail(`${id} sourceStartByte does not match its first source-slice-local offset`);
+      }
+      if (relocation.sourceEndByteExclusive !== sourceEnd - firstSliceStart) {
+        fail(`${id} sourceEndByteExclusive does not match its composite source range`);
+      }
+    }
     const targetAbsolute = join(repoRoot, relocation.targetPath);
     if (!existsSync(targetAbsolute)) {
       fail(`${id} target is missing: ${relocation.targetPath}`);
@@ -704,16 +774,25 @@ function verifySemanticRelocations(baseline, scan) {
       fail(`${id} recorded byte range does not match the exact source section`);
     }
   }
-  const ordered = relocations
+  const orderedSegments = relocations
+    .flatMap((relocation) => relocationSegmentViews(relocation))
     .filter((relocation) => relocation.sourceRange?.startLine !== undefined)
     .slice()
     .sort((left, right) => left.sourceRange.startLine - right.sourceRange.startLine);
-  for (let index = 1; index < ordered.length; index += 1) {
-    const previous = ordered[index - 1];
-    const current = ordered[index];
+  for (let index = 1; index < orderedSegments.length; index += 1) {
+    const previous = orderedSegments[index - 1];
+    const current = orderedSegments[index];
     if (current.sourceRange.startLine <= previous.sourceRange.endLine) {
       fail(`${current.id} overlaps ${previous.id} in the canonical source order`);
     }
+  }
+  const ordered = relocations
+    .map((relocation) => ({ relocation, firstSegment: relocationSourceSegments(relocation)[0] }))
+    .filter(({ firstSegment }) => firstSegment?.sourceRange?.startLine !== undefined)
+    .sort((left, right) => left.firstSegment.sourceRange.startLine - right.firstSegment.sourceRange.startLine);
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1].relocation;
+    const current = ordered[index].relocation;
     if (
       Number.isInteger(previous.canonicalOrder) &&
       Number.isInteger(current.canonicalOrder) &&
@@ -811,6 +890,7 @@ function orderedSourceParts(baseline, slice, relocations) {
         path: declared.targetPath,
         range,
         localRange,
+        targetRange: { startLine: 1, endLine: localRange.endLine - localRange.startLine + 1 },
       });
       cursor = localRange.endLine + 1;
     }
@@ -887,10 +967,15 @@ function orderedSourceParts(baseline, slice, relocations) {
     }
     appendRemainder(cursor, startLine - 1);
     parts.push({
-      kind: 'semantic',
-      id: relocation.id,
-      path: relocation.targetPath,
+      kind: relocation.sourceSegmentContinuation ? 'semantic-continuation' : 'semantic',
+      id: relocation.sourceSegmentContinuation
+        ? `${relocation.id}@${relocation.sourceSlice}`
+        : relocation.id,
+      path: relocation.sourceSegmentContinuation ? null : relocation.targetPath,
+      targetPath: relocation.targetPath,
+      relocationId: relocation.id,
       range: relocation.sourceRange,
+      targetRange: relocation.targetRange,
     });
     cursor = endLine + 1;
   }
@@ -916,7 +1001,9 @@ function verifyExtraction(baseline, scan) {
   const expectedImports = [
     ...baseImports,
     ...sourcePartsBySlice.flatMap(({ parts }) =>
-      parts.map((part) => entryImportPath(entryPath, part.path)),
+      parts
+        .filter((part) => part.kind !== 'semantic-continuation')
+        .map((part) => entryImportPath(entryPath, part.path)),
     ),
   ];
   if (actualImports.length !== expectedImports.length) {
@@ -950,10 +1037,13 @@ function verifyExtraction(baseline, scan) {
   const sliceTexts = [];
   for (const { slice, parts } of sourcePartsBySlice) {
     const sourceTexts = parts.map((part) => {
-      const targetAbsolute = join(repoRoot, part.path);
-      return existsSync(targetAbsolute)
-        ? normalize(readFileSync(targetAbsolute, 'utf8'))
-        : '';
+      const targetPath = part.targetPath ?? part.path;
+      const targetAbsolute = targetPath ? join(repoRoot, targetPath) : null;
+      if (!targetAbsolute || !existsSync(targetAbsolute)) return '';
+      const target = normalize(readFileSync(targetAbsolute, 'utf8'));
+      return part.targetRange
+        ? rangeText(target, part.targetRange.startLine, part.targetRange.endLine)
+        : target;
     });
     const expected = parts
       .map((part) => rangeText(baseline, part.range.startLine, part.range.endLine))
