@@ -343,6 +343,7 @@
           "tests/contract/issue550-p2-15.test.ts",
           "tests/contract/issue551-p2-16.test.ts",
           "tests/contract/issue551-p2-17.test.ts",
+          "tests/contract/issue552-p2-18.test.ts",
           "tests/helpers/read-stylesheet-source.ts",
           "tests/unit/issue102-task4-responsive.test.ts",
           "tests/unit/issue109-resource-workspace.test.ts"
