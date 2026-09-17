@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "issue": 553,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "serial": "SER-06",
+  "batch": "B15",
+  "p2": "P2-28",
+  "migrationMode": "CLOSURE",
+  "owner": "integration",
+  "newSections": 0,
+  "observedAt": "2026-09-17",
+  "reconciliationBaseHead": "a6f13dde701c9c873829f601eaf902b53747c5ee",
+  "counts": {
+    "canonicalSections": 179,
+    "reconciledSections": 179,
+    "missingSections": 0,
+    "duplicateSections": 0,
+    "canonicalSegments": 147,
+    "reconciledSegments": 147,
+    "missingSegments": 0,
+    "duplicateSegments": 0
+  },
+  "productionEntry": {
+    "missing": 0,
+    "duplicates": 0,
+    "silentReorders": 0
+  },
+  "phase3Started": false,
+  "phase4Started": false,
+  "historicalReceiptsSelfReferential": false,
+  "b14Handoff": {
+    "receiptPath": "docs/evidence/issue-553-p2-27/receipt.json",
+    "receiptCommit": "a6f13dde701c9c873829f601eaf902b53747c5ee",
+    "livePrHeadAfterB14": "a6f13dde701c9c873829f601eaf902b53747c5ee",
+    "livePrState": "OPEN_DRAFT",
+    "reRead": [
+      "src/renderer/styles.css",
+      "scripts/css-split-manifest.json",
+      "docs/evidence/issue-553-p2-27/receipt.json"
+    ],
+    "p227MissingSegments": 0,
+    "p227DuplicateSegments": 0,
+    "p227SilentReorders": 0,
+    "handoffStatus": "PASS"
+  },
+  "canonicalAccounting": {
+    "canonicalMapPath": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "canonicalMapCommit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "canonicalMapSha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "approvedForAutomaticRelocation": false,
+    "sections": {
+      "canonical": 179,
+      "reconciled": 179,
+      "missing": 0,
+      "duplicates": 0,
+      "silentReorders": 0
+    },
+    "segments": {
+      "canonical": 147,
+      "reconciled": 147,
+      "missing": 0,
+      "duplicates": 0,
+      "silentReorders": 0
+    },
+    "p2LogicalIdentities": "P2-01 through P2-27 audited below; P2-28 is closure-only",
+    "relocationDisposition": "each canonical segment maps to exactly one manifest semanticRelocation and each sectionId is assigned exactly once",
+    "retainedDisposition": "three explicit non-P2-27 remainder parts remain in legacy-slices with reasons"
+  },
+  "productionEntryVerification": {
+    "path": "src/renderer/styles.css",
+    "sourceOfTruth": true,
+    "baselineCommit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "baselineSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+    "reconstructedSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7",
+    "exact": true,
+    "missing": 0,
+    "duplicates": 0,
+    "silentReorders": 0,
+    "verificationCommand": "node scripts/verify-css-split.cjs",
+    "verificationStatus": "PASS",
+    "currentEntryBlobAtB14Handoff": "8a09e947e0defbdeef39dfa6303fbd33e0d00d16",
+    "currentManifestBlobAtB14Handoff": "209f99e729c475fab56274e82ec9df7cc0f5b993"
+  },
+  "canonicalTargetOverrides": [
+    {
+      "segment": "G097",
+      "canonicalTarget": "src/renderer/styles/shell/tools/s11-01--view-mode-pilot.css",
+      "currentTarget": "src/renderer/styles/shell/tools/view-mode.css",
+      "reason": "existing Issue #541 authorized alias; CSS bytes, import position, and production reconstruction remain unchanged",
+      "authority": "tests/contract/issue541-p2-01.test.ts authorizedCanonicalTargetOverrides",
+      "contentDisposition": "historical accepted alias, not a stranded Section or duplicate"
+    }
+  ],
+  "conditionAndBoundaryAudit": {
+    "allRelocatedTargetsExist": true,
+    "allRecordedRangesAndHashesMatch": true,
+    "completeMediaContainerAndSharedSelectorUnits": true,
+    "G049": ["@media (max-width: 1100px)", "@media (max-width: 720px)"],
+    "G082": ["cloud-touch + portrait + active timeline shared selector", "two complete @media (max-width: 480px) units"],
+    "G103": ["cloud-touch + landscape + timeline-task-tray shared selector"],
+    "G107": ["@container stage-e-timeline (max-height: 220px)", "cloud-touch + landscape + timeline-task-tray shared selector"],
+    "G112": ["one intact @media (max-width: 900px) unit", "FLA render + Dialogue Properties + AudioClip mixed selectors"],
+    "G112WasSplitByResponsibility": false
+  },
+  "priorP2Audit": [
+    {"p2": "P2-01", "evidence": ["docs/evidence/issue-541-p2-01/receipt.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v4.json"], "disposition": "PASS; historical G097 alias explicitly carried forward"},
+    {"p2": "P2-02", "evidence": ["docs/evidence/issue-545-p2-02/receipt.json", "docs/evidence/issue-545-p2-02/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-03", "evidence": ["docs/evidence/issue-545-p2-03/receipt.json", "docs/evidence/issue-545-p2-03/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-04", "evidence": ["docs/evidence/issue-548-p2-04/receipt.json", "docs/evidence/issue-548-p2-04/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-05", "evidence": ["docs/evidence/issue-548-p2-05/receipt.json", "docs/evidence/issue-548-p2-05/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-06", "evidence": ["docs/evidence/issue-547-p2-06/receipt.json", "docs/evidence/issue-547-p2-06/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-07", "evidence": ["docs/evidence/issue-547-p2-07/receipt.json", "docs/evidence/issue-547-p2-07/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-08", "evidence": ["docs/evidence/issue-547-p2-08/receipt.json", "docs/evidence/issue-547-p2-08/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-09", "evidence": ["docs/evidence/issue-547-p2-09/receipt.json", "docs/evidence/issue-547-p2-09/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-10", "evidence": ["docs/evidence/issue-548-p2-10/receipt.json", "docs/evidence/issue-548-p2-10/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-11", "evidence": ["docs/evidence/issue-548-p2-11/receipt.json", "docs/evidence/issue-548-p2-11/preflight.json"], "disposition": "PASS in rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-12", "evidence": ["docs/evidence/issue-546-p2-b06/p2-12-layer-properties.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in P2-B06 rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-13", "evidence": ["docs/evidence/issue-546-p2-b06/p2-13-canvas.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in P2-B06 rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-14", "evidence": ["docs/evidence/issue-546-p2-b06/p2-14-product-preview.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in P2-B06 rolling ledger; historical receipt retained as snapshot"},
+    {"p2": "P2-15", "evidence": ["docs/evidence/issue-550-p2-15/receipt.json", "docs/evidence/issue-550-p2-15/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v3.json"], "disposition": "PASS with maintainer acceptance"},
+    {"p2": "P2-16", "evidence": ["docs/evidence/issue-551-p2-16/receipt.json", "docs/evidence/issue-551-p2-16/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v3.json"], "disposition": "PASS with maintainer acceptance"},
+    {"p2": "P2-17", "evidence": ["docs/evidence/issue-551-p2-17/receipt.json", "docs/evidence/issue-551-p2-17/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v3.json"], "disposition": "PASS with maintainer acceptance"},
+    {"p2": "P2-18", "evidence": ["docs/evidence/issue-552-p2-18/receipt.json", "docs/evidence/issue-552-p2-18/acceptance.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v4.json"], "disposition": "PASS through SER-05 maintainer acceptance"},
+    {"p2": "P2-19", "evidence": ["docs/evidence/issue-552-p2-19/receipt.json", "docs/evidence/issue-552-p2-19/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v4.json"], "disposition": "PASS through SER-05 maintainer acceptance; historical receipt remains a snapshot"},
+    {"p2": "P2-20", "evidence": ["docs/evidence/issue-549-p2-20/receipt.json", "docs/evidence/issue-549-p2-20/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in SER-02 rolling ledger"},
+    {"p2": "P2-21", "evidence": ["docs/evidence/issue-552-p2-21/receipt.json", "docs/evidence/issue-552-p2-21/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger-v4.json"], "disposition": "PASS through SER-05 maintainer acceptance; historical receipt remains a snapshot"},
+    {"p2": "P2-22", "evidence": ["docs/evidence/issue-549-p2-22/receipt.json", "docs/evidence/issue-549-p2-22/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in SER-02 rolling ledger"},
+    {"p2": "P2-23", "evidence": ["docs/evidence/issue-549-p2-23/receipt.json", "docs/evidence/issue-549-p2-23/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in SER-02 rolling ledger; receipt snapshot acceptance field not rewritten"},
+    {"p2": "P2-24", "evidence": ["docs/evidence/issue-549-p2-24/receipt.json", "docs/evidence/issue-549-p2-24/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in SER-02 rolling ledger; receipt snapshot acceptance field not rewritten"},
+    {"p2": "P2-25", "evidence": ["docs/evidence/issue-549-p2-25/receipt.json", "docs/evidence/issue-549-p2-25/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in SER-02 rolling ledger"},
+    {"p2": "P2-26", "evidence": ["docs/evidence/issue-549-p2-26/receipt.json", "docs/evidence/issue-549-p2-26/preflight.json", "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json"], "disposition": "PASS in SER-02 rolling ledger"},
+    {"p2": "P2-27", "evidence": ["docs/evidence/issue-553-p2-27/preflight.json", "docs/evidence/issue-553-p2-27/receipt.json"], "disposition": "B14 implementation and equivalence PASS; reachable visual acceptance pending, retained unreachable surfaces explicit N/A"}
+  ],
+  "historicalReceiptRules": {
+    "allPriorEvidencePathsExist": true,
+    "historicalSnapshotsSelfReferential": false,
+    "currentFinalHeadAuthority": "GitHub PR #542 metadata",
+    "currentCiAuthority": "Latest GitHub Actions run attached to current PR head",
+    "historicalReceiptsWereNotRewritten": true
+  },
+  "auditEvidencePaths": [
+    "docs/evidence/issue-541-p2-01",
+    "docs/evidence/issue-545-p2-02",
+    "docs/evidence/issue-545-p2-03",
+    "docs/evidence/issue-548-p2-04",
+    "docs/evidence/issue-548-p2-05",
+    "docs/evidence/issue-547-p2-06",
+    "docs/evidence/issue-547-p2-07",
+    "docs/evidence/issue-547-p2-08",
+    "docs/evidence/issue-547-p2-09",
+    "docs/evidence/issue-548-p2-10",
+    "docs/evidence/issue-548-p2-11",
+    "docs/evidence/issue-546-p2-b06",
+    "docs/evidence/issue-550-p2-15",
+    "docs/evidence/issue-551-p2-16",
+    "docs/evidence/issue-551-p2-17",
+    "docs/evidence/issue-552-p2-18",
+    "docs/evidence/issue-552-p2-19",
+    "docs/evidence/issue-552-p2-21",
+    "docs/evidence/issue-549-p2-20",
+    "docs/evidence/issue-549-p2-22",
+    "docs/evidence/issue-549-p2-23",
+    "docs/evidence/issue-549-p2-24",
+    "docs/evidence/issue-549-p2-25",
+    "docs/evidence/issue-549-p2-26",
+    "docs/evidence/issue-553-p2-27",
+    "docs/evidence/issue-553-p2-28"
+  ],
+  "remainderAudit": {
+    "existingRemainderParts": [
+      {"id": "S05-R02", "path": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--between-shots-create.css", "reason": "non-P2-27 explicit remainder"},
+      {"id": "S05-R03", "path": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-shot-create.css", "reason": "non-P2-27 explicit remainder"},
+      {"id": "S07-R04", "path": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-assets.css", "reason": "non-P2-27 explicit remainder"}
+    ],
+    "unexplainedRemainders": 0,
+    "unassignedP2Bytes": 0,
+    "p227SourcePathsAccountedFor": 13,
+    "retainedCssDeleted": false,
+    "legacyEntrancesRevived": false
+  },
+  "phaseBoundary": {
+    "phase2Only": true,
+    "phase3Started": false,
+    "phase4Started": false,
+    "p228MovedNewFeatureSections": false,
+    "p228ChangedDomStateStoreIpcOrBusinessBehavior": false,
+    "p228PerformedDedupOrDesignNormalization": false
+  },
+  "maintainerAcceptance": {
+    "status": "PENDING",
+    "result": "未测",
+    "reason": "B15 automated reconciliation and production-entry equivalence are PASS, but maintainer Windows Electron visual/interaction acceptance of the final SER-06 closure has not been recorded.",
+    "humanAcceptanceRequiredBeforePhase2Complete": true,
+    "runtimeSmokeIsNotSubstitute": true
+  },
+  "finalState": {
+    "status": "PENDING_MAINTAINER_ACCEPTANCE",
+    "prMustRemain": "OPEN_DRAFT",
+    "readyOrMergeAutomatically": false,
+    "manualFullCiTriggered": false,
+    "manualVerifyProjectRun": false,
+    "evidenceGap": "maintainer acceptance for final closure and final pushed-head CI are still live external state"
+  }
+}
