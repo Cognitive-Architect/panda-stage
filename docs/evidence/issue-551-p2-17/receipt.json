@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "issue": 551,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-04",
+  "workItem": "P2-17",
+  "owner": "shell-right",
+  "status": "validated-implementation-pending-human-acceptance",
+  "preflight": "docs/evidence/issue-551-p2-17/preflight.json",
+  "startingLivePrHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "refreshedRemoteBranchHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "validatedImplementationSnapshot": {
+    "head": "9f213c4",
+    "meaning": "P2-17 implementation was committed and validated; this receipt is committed afterward and does not self-reference its own receipt commit."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "segments": ["G007/S01-07", "G020/S02-03", "G022/S02-05", "G055/S06-13", "G059/S07-03", "G061/S07-05", "G072/S07-16+S08-01", "G074/S08-03", "G079/S08-08", "G099/S11-03+S11-04"],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "targetImportOrder": ["G007", "G020", "G022", "G055", "G059", "G061", "G072", "G074", "G079", "G099"]
+  },
+  "geometryContract": {
+    "inspectorRailMinHeightPx": 132,
+    "inspectorRailMaxHeightPx": 168,
+    "resourceRailMinHeightPx": 72,
+    "resourceRailGapPx": 8,
+    "liveBounds": "BottomWorkspace -> timelineUiStore.setHeightMax",
+    "g112S13_05Media900BlockUntouched": true
+  },
+  "behaviorContract": {
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false,
+    "timelineUiStoreChanged": false,
+    "bottomWorkspaceChanged": false,
+    "g112S13_05Media900BlockUntouched": true,
+    "newConsumers": [],
+    "relativeResourceUrls": []
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs --preflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS (exact=true; pending=0)",
+    "focusedContractSuite": "PASS (25 files, 190 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "unit": "PASS (285 files, 1825 tests)",
+    "integration": "PASS (32 files, 176 tests)",
+    "build": "PASS (renderer, Electron and preload bundles)",
+    "gitDiffCheck": "EXPECTED_EXACT_SLICE_EOF_DIAGNOSTICS; only required blank-at-EOF bytes in exact baseline slices were reported",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false,
+    "automaticCi": "PENDING_AFTER_PUSH"
+  },
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "result": "未测",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "requiredMatrix": ["Windows Electron product entry", "portrait and landscape inspector workspace", "Timeline/resource/inspector geometry continuity", "1366x768 and 1920x1080", "100% and 150% DPI", "representative Chinese and long content", "mouse/touch/cloud input"],
+    "reason": "Automated contracts prove source order, byte identity, and geometry ownership; the real Windows Electron visual/touch pass remains explicitly deferred."
+  },
+  "scopeExceptions": ["No new PR was created; work continues on rolling Draft PR #542.", "No P2-16/18/19/21/27 or Phase 3/4 work was included.", "No DOM, state/store, IPC, behavior, copy, breakpoint, or CSS-value redesign was included."]
+}
