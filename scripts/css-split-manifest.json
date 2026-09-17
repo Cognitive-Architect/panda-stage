@@ -32,6 +32,27 @@
   },
   "semanticRelocations": [
     {
+      "id": "G001",
+      "segment": "G001",
+      "sectionIds": ["S01-01"],
+      "sourceSlice": "S01",
+      "owner": "base-global",
+      "migrationMode": "DIRECT+COMPAT",
+      "canonicalOrder": 1,
+      "predecessor": "BOF",
+      "successor": "S01-02/G002",
+      "sourceRange": { "startLine": 3, "endLine": 59 },
+      "sourceLocalRange": { "startLine": 1, "endLine": 57 },
+      "sourceStartByte": 0,
+      "sourceEndByteExclusive": 954,
+      "sourceSha256": "f845b78c236e703cd5a3afe2b0714a8bd325cb14736bb4ae83acc61e811971b8",
+      "targetPath": "src/renderer/styles/base/native-foundation/s01-01--native-foundation.css",
+      "startAnchor": "BOF",
+      "endAnchor": ".app-shell",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G003",
       "segment": "G003",
       "sectionIds": ["S01-03"],
@@ -424,6 +445,27 @@
       "status": "relocated"
     },
     {
+      "id": "G031",
+      "segment": "G031",
+      "sectionIds": ["S04-04"],
+      "sourceSlice": "S04",
+      "owner": "base-global",
+      "migrationMode": "DIRECT+COMPAT",
+      "canonicalOrder": 34,
+      "predecessor": "S04-03/G030",
+      "successor": "S04-05/G032",
+      "sourceRange": { "startLine": 7949, "endLine": 7960 },
+      "sourceLocalRange": { "startLine": 1930, "endLine": 1941 },
+      "sourceStartByte": 41741,
+      "sourceEndByteExclusive": 41918,
+      "sourceSha256": "8deaf216cbe074a9a49c8f9430948c44c6785cd2bc666483e46831b3951f77c6",
+      "targetPath": "src/renderer/styles/base/native-foundation/s04-04--sr-only.css",
+      "startAnchor": ".sr-only",
+      "endAnchor": "@media (max-width: 1080px)",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
       "id": "G032",
       "segment": "G032",
       "sectionIds": ["S04-05"],
@@ -588,6 +630,27 @@
       "targetPath": "src/renderer/styles/compat/debug-preview/s05-11--preview-panel.css",
       "startAnchor": ".preview-panel",
       "endAnchor": ".eyebrow",
+      "placement": "source-order",
+      "status": "relocated"
+    },
+    {
+      "id": "G042",
+      "segment": "G042",
+      "sectionIds": ["S05-12"],
+      "sourceSlice": "S05",
+      "owner": "base-global",
+      "migrationMode": "DIRECT+COMPAT",
+      "canonicalOrder": 47,
+      "predecessor": "S05-11/G041",
+      "successor": "S05-13/G043",
+      "sourceRange": { "startLine": 9772, "endLine": 9786 },
+      "sourceLocalRange": { "startLine": 1734, "endLine": 1748 },
+      "sourceStartByte": 31258,
+      "sourceEndByteExclusive": 31489,
+      "sourceSha256": "db4e0810a311d6483b261fb82d192ee03db318e5f69e2cd87d670b4a5d29cf6e",
+      "targetPath": "src/renderer/styles/base/native-foundation/s05-12--eyebrow-and-h1.css",
+      "startAnchor": ".eyebrow",
+      "endAnchor": ".day-badge",
       "placement": "source-order",
       "status": "relocated"
     },
@@ -1839,7 +1902,7 @@
     {
       "id": "S01-R01",
       "sourceSlice": "S01",
-      "sourceRange": { "startLine": 3, "endLine": 77 },
+      "sourceRange": { "startLine": 60, "endLine": 77 },
       "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css"
     },
     {
@@ -1859,12 +1922,6 @@
       "sourceSlice": "S05",
       "sourceRange": { "startLine": 9349, "endLine": 9349 },
       "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-shot-create.css"
-    },
-    {
-      "id": "S05-R04",
-      "sourceSlice": "S05",
-      "sourceRange": { "startLine": 9772, "endLine": 9786 },
-      "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-character-resource-host.css"
     },
     {
       "id": "S06-R01",
@@ -1895,12 +1952,6 @@
       "sourceSlice": "S02",
       "sourceRange": { "startLine": 3904, "endLine": 3916 },
       "targetPath": "src/renderer/styles/legacy-slices/02-review-workbench-dialogue-after-queue.css"
-    },
-    {
-      "id": "S04-R02",
-      "sourceSlice": "S04",
-      "sourceRange": { "startLine": 7949, "endLine": 7960 },
-      "targetPath": "src/renderer/styles/legacy-slices/04-launcher-render-workbench-after-snapshot.css"
     },
     {
       "id": "S07-R01",

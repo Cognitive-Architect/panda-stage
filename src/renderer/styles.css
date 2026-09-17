@@ -1,5 +1,6 @@
 @import './styles/tokens.css';
 @import './styles/primitives.css';
+@import './styles/base/native-foundation/s01-01--native-foundation.css';
 @import './styles/legacy-slices/01-shell-import-review-base.css';
 @import './styles/shell/project-entry/s01-03--project-center-start.css';
 @import './styles/legacy-slices/01-shell-import-review-after-project-center.css';
@@ -20,7 +21,7 @@
 @import './styles/shell/project-entry/s03-06--launcher-412.css';
 @import './styles/features/fla-import/sequence/s04-02--sequence-e-and-scroll.css';
 @import './styles/features/fla-import/render/s04-03--render-shell-and-snapshot-d.css';
-@import './styles/legacy-slices/04-launcher-render-workbench-after-snapshot.css';
+@import './styles/base/native-foundation/s04-04--sr-only.css';
 @import './styles/features/fla-import/render/s04-05--render-responsive-tail.css';
 @import './styles/features/assets/s05-01--asset-library-base.css';
 @import './styles/features/characters/workspace/s05-02--characters-base.css';
@@ -32,7 +33,7 @@
 @import './styles/shell/project-entry/s05-09--recent-projects-base.css';
 @import './styles/features/recovery/s05-10--recovery-status-and-prompt.css';
 @import './styles/compat/debug-preview/s05-11--preview-panel.css';
-@import './styles/legacy-slices/05-asset-library-stage-sequence--after-character-resource-host.css';
+@import './styles/base/native-foundation/s05-12--eyebrow-and-h1.css';
 @import './styles/compat/debug-preview/s05-13--stage-preview-base.css';
 @import './styles/features/canvas/s06-01--canvas-internals.css';
 @import './styles/features/properties/s06-02--position-background-base.css';
