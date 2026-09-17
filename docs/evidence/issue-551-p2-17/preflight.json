@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "issue": 551,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-04",
+  "workItem": "P2-17",
+  "owner": "shell-right",
+  "mode": "HOST_INTEGRATION",
+  "status": "preflight-pass",
+  "startingLivePrHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "refreshedRemoteBranchHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "integrationBaseHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "predecessorImplementation": {
+    "workItem": "P2-15 / SER-03-B10",
+    "commit": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+    "verified": true,
+    "handoff": "The rolling Draft PR #542 branch is clean and synchronized before SER-04 host integration work."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "sourceLineCount": 32818,
+    "sourceLineEndingNormalization": "LF",
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "sections": [
+    "S01-07", "S02-03", "S02-05", "S06-13", "S07-03", "S07-05", "S07-16", "S08-01", "S08-03", "S08-08", "S11-03", "S11-04"
+  ],
+  "segments": [
+    {
+      "id": "G007", "sectionIds": ["S01-07"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 7,
+      "sourceSlice": "S01", "globalRange": { "startLine": 432, "endLine": 554 }, "sourceLocalRange": { "startLine": 430, "endLine": 552 },
+      "sourceStartByte": 8060, "sourceEndByteExclusive": 10740, "sourceSha256": "87e487eee048bce5abff96d31b3c5f480dd70c522b78c13d926474b059c150be",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s01-07--inspector-and-layer-host.css", "predecessor": "S01-06/G006", "successor": "S01-08/G008"
+    },
+    {
+      "id": "G020", "sectionIds": ["S02-03"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 22,
+      "sourceSlice": "S02", "globalRange": { "startLine": 2706, "endLine": 2897 }, "sourceLocalRange": { "startLine": 755, "endLine": 946 },
+      "sourceStartByte": 16381, "sourceEndByteExclusive": 20830, "sourceSha256": "7eda92470b42a5f7a0a21293956ee0524a56b3c7f40238e977d42811fb74184b",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s02-03--right-workspace.css", "predecessor": "S02-02/G019", "successor": "S02-04/G021"
+    },
+    {
+      "id": "G022", "sectionIds": ["S02-05"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 24,
+      "sourceSlice": "S02", "globalRange": { "startLine": 3904, "endLine": 3916 }, "sourceLocalRange": { "startLine": 1953, "endLine": 1965 },
+      "sourceStartByte": 47111, "sourceEndByteExclusive": 47496, "sourceSha256": "2466d64cffb000d48b1f87069bd67dabadf7a86f7f63b6999c01770038e864ae",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s02-05--right-workspace-width-1050.css", "predecessor": "S02-04/G021", "successor": "S03-01/G023"
+    },
+    {
+      "id": "G055", "sectionIds": ["S06-13"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 61,
+      "sourceSlice": "S06", "globalRange": { "startLine": 11441, "endLine": 11515 }, "sourceLocalRange": { "startLine": 1602, "endLine": 1676 },
+      "sourceStartByte": 30487, "sourceEndByteExclusive": 32709, "sourceSha256": "4df21587801b77dab6b7f195e9d26a3323259fff7d4f2573093a98ea4f4d21b7",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s06-13--legacy-landscape-inspector-handle.css", "predecessor": "S06-12/G054", "successor": "S06-14/G056"
+    },
+    {
+      "id": "G059", "sectionIds": ["S07-03"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 67,
+      "sourceSlice": "S07", "globalRange": { "startLine": 12349, "endLine": 12361 }, "sourceLocalRange": { "startLine": 466, "endLine": 478 },
+      "sourceStartByte": 14851, "sourceEndByteExclusive": 15226, "sourceSha256": "613b075a60b879e1eca11b0d376e170e17caa66b63eea8b90b49996cc94fc9b9",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s07-03--portrait-inspector-host.css", "predecessor": "S07-02/G058", "successor": "S07-04/G060"
+    },
+    {
+      "id": "G061", "sectionIds": ["S07-05"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 69,
+      "sourceSlice": "S07", "globalRange": { "startLine": 12377, "endLine": 12548 }, "sourceLocalRange": { "startLine": 494, "endLine": 665 },
+      "sourceStartByte": 15572, "sourceEndByteExclusive": 21081, "sourceSha256": "c0a8cfd91d323a6f48d112b963ba27c9fa554f7408fe60e98143be31556f09c6",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s07-05--portrait-inspector-drawer.css", "predecessor": "S07-04/G060", "successor": "S07-06/G062"
+    },
+    {
+      "id": "G072", "sectionIds": ["S07-16", "S08-01"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 80,
+      "sourceSlice": "S07+S08", "globalRange": { "startLine": 13632, "endLine": 13982 }, "sourceLocalRange": { "startLine": 1749, "endLine": 1918 },
+      "sourceSegments": [
+        { "sourceSlice": "S07", "globalRange": { "startLine": 13632, "endLine": 13801 }, "sourceLocalRange": { "startLine": 1749, "endLine": 1918 }, "sourceStartByte": 50165, "sourceEndByteExclusive": 54194, "sourceSha256": "b6f649bd99c3e1d7c4df3fffe72766e17e706947905d176884893a1f89d9aea8" },
+        { "sourceSlice": "S08", "globalRange": { "startLine": 13802, "endLine": 13982 }, "sourceLocalRange": { "startLine": 1, "endLine": 181 }, "sourceStartByte": 0, "sourceEndByteExclusive": 3964, "sourceSha256": "42d9792e6f7fb413c51dcaa85c56f9da4a2be746918d9872a9232a73d60d186c" }
+      ],
+      "sourceStartByte": 50165, "sourceEndByteExclusive": 58158, "sourceSha256": "1ecbc9d0c8ab7a2cd428f732261b8c0d5ecd51faf46bf2e0ccfa9e1e809ef69b",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s07-16--landscape-inspector-host.css", "predecessor": "S07-15/G071", "successor": "S08-02/G073"
+    },
+    {
+      "id": "G074", "sectionIds": ["S08-03"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 83,
+      "sourceSlice": "S08", "globalRange": { "startLine": 14158, "endLine": 14502 }, "sourceLocalRange": { "startLine": 357, "endLine": 701 },
+      "sourceStartByte": 7885, "sourceEndByteExclusive": 18427, "sourceSha256": "b5994f4969036d97f5faee33dcecc073f87d405244e18991bd1bea6318192fbf",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s08-03--portrait-properties-flatten.css", "predecessor": "S08-02/G073", "successor": "S08-04/G075"
+    },
+    {
+      "id": "G079", "sectionIds": ["S08-08"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 88,
+      "sourceSlice": "S08", "globalRange": { "startLine": 15589, "endLine": 15732 }, "sourceLocalRange": { "startLine": 1788, "endLine": 1931 },
+      "sourceStartByte": 54463, "sourceEndByteExclusive": 58701, "sourceSha256": "e93bea7dfe2e92902a1888591960c5bbf7ed6374c3503aff313901bbc9232642",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s08-08--portrait-empty-properties.css", "predecessor": "S08-07/G078", "successor": "S08-09/G080"
+    },
+    {
+      "id": "G099", "sectionIds": ["S11-03", "S11-04"], "owner": "shell-right", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 114,
+      "sourceSlice": "S11", "globalRange": { "startLine": 21879, "endLine": 22049 }, "sourceLocalRange": { "startLine": 77, "endLine": 160 },
+      "sourceSegments": [
+        { "sourceSlice": "S11", "globalRange": { "startLine": 21879, "endLine": 21962 }, "sourceLocalRange": { "startLine": 77, "endLine": 160 }, "sourceStartByte": 1610, "sourceEndByteExclusive": 4063, "sourceSha256": "fb64d65eb9309d85f6d3404381eb67d25ad657f8c42113e3c5b1f954e62fc5ed" },
+        { "sourceSlice": "S11", "globalRange": { "startLine": 21963, "endLine": 22049 }, "sourceLocalRange": { "startLine": 161, "endLine": 247 }, "sourceStartByte": 4063, "sourceEndByteExclusive": 6631, "sourceSha256": "1bdcad94f96ac51b1e581ae8da903201afd589ea0ab52fd15b051f4f3182c25e" }
+      ],
+      "sourceStartByte": 1610, "sourceEndByteExclusive": 6631, "sourceSha256": "172b744639a9d59be5bc20a51aeadfdf44cccb01e1610a723b102b09f4b60f98",
+      "targetPath": "src/renderer/styles/shell/right-workspace/s11-03--landscape-empty-properties.css", "predecessor": "S11-02/G098", "successor": "S11-05/G100"
+    }
+  ],
+  "boundaryEvidence": {
+    "candidateBoundariesSafe": true,
+    "delimiterStateBalanced": true,
+    "sourceOrderChecked": true,
+    "rangeBoundaryNotes": {
+      "G007": "ends at line 554 before the S01-08 resource host selector at 555",
+      "G020": "ends at line 2897 before the S02-04 queue authoring block at 2898",
+      "G055": "ends at line 11515 before the retained portrait foundation remainder at 11516",
+      "G072": "crosses the S07/S08 source-slice boundary while preserving both source segments",
+      "G099": "crosses two S11 local blocks while preserving the S11-03/S11-04 handoff",
+      "G112": "the S13-05 mixed 900px compatibility block remains untouched"
+    },
+    "allOwnedLocalBoundariesSafe": true,
+    "s13G112Media900BlockUntouched": true
+  },
+  "productionEntryAfterWrite": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "geometryContracts": {
+    "resourceRailMinHeightPx": 72,
+    "resourceRailGapPx": 8,
+    "inspectorRailMinHeightPx": 132,
+    "inspectorRailMaxHeightPx": 168,
+    "liveBoundSource": "BottomWorkspace reads inspector/resource rail geometry and calls timelineUiStore.setHeightMax",
+    "unchangedSourceOwners": ["src/renderer/shell/BottomWorkspace.tsx", "src/renderer/features/timeline/timelineUiStore.ts"]
+  },
+  "stopChecks": {
+    "domChanges": false,
+    "stateStoreChanges": false,
+    "ipcChanges": false,
+    "businessLogicChanges": false,
+    "copyChanges": false,
+    "breakpointOrCssValueChanges": false,
+    "newConsumerDiscovery": false,
+    "newTargetOutOfScope": false
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS",
+    "focusedContractSuite": "PASS",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  }
+}

@@ -135,11 +135,11 @@ const expectedP204 = [
     canonicalOrder: 105,
     predecessor: 'S10-01/G089',
     successor: 'S10-03/G091',
-    sourceRange: { startLine: 19784, endLine: 21030 },
-    sourceLocalRange: { startLine: 1, endLine: 1247 },
-    sourceStartByte: 0,
+    sourceRange: { startLine: 19795, endLine: 21030 },
+    sourceLocalRange: { startLine: 12, endLine: 1247 },
+    sourceStartByte: 504,
     sourceEndByteExclusive: 38342,
-    sourceSha256: '5274f89c5c4a11da4567623afb7e7fadd29a840802eab548192a5a19d51196c9',
+    sourceSha256: '3cf4f69f54e9cd9c8a46411590600225119750c9cc227e901d27e10c218cefbc',
     targetPath: 'src/renderer/styles/features/characters/workspace/s10-02--landscape-character-workbench.css',
   },
   {
@@ -356,11 +356,11 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
 
   it('preserves the P2-04 gaps and the B05-updated S15/S16 handoff', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'S05-R02', sourceRange: { startLine: 9303, endLine: 9331 } }),
+      expect.objectContaining({ id: 'S05-R02', sourceRange: { startLine: 9303, endLine: 9303 } }),
       expect.objectContaining({ id: 'S05-R03', sourceRange: { startLine: 9349, endLine: 9349 } }),
       expect.objectContaining({ id: 'S07-R04', sourceRange: { startLine: 13578, endLine: 13578 } }),
-      expect.objectContaining({ id: 'S07-R05', sourceRange: { startLine: 13632, endLine: 13801 } }),
-      expect.objectContaining({ id: 'S10-R01', sourceRange: { startLine: 21525, endLine: 21745 } }),
+      expect.objectContaining({ id: 'S10-R01', sourceRange: { startLine: 21525, endLine: 21608 } }),
+      expect.objectContaining({ id: 'S10-R03', sourceRange: { startLine: 21672, endLine: 21745 } }),
       expect.objectContaining({ id: 'S10-R02', sourceRange: { startLine: 21767, endLine: 21802 } }),
     ]));
 

@@ -258,14 +258,14 @@
       "placement": "source-order",
       "status": "relocated"
     },
-    {
-      "id": "G023",
-      "segment": "G023",
-      "sectionIds": ["S03-01"],
-      "sourceSlice": "S03",
-      "owner": "fla-status",
-      "migrationMode": "DIRECT",
-      "canonicalOrder": 24,
+      {
+        "id": "G023",
+        "segment": "G023",
+        "sectionIds": ["S03-01"],
+        "sourceSlice": "S03",
+        "owner": "fla-status",
+        "migrationMode": "DIRECT",
+        "canonicalOrder": 25,
       "predecessor": "S02-05/G022",
       "successor": "S03-02/G024",
       "sourceRange": { "startLine": 3917, "endLine": 4227 },
@@ -279,14 +279,14 @@
       "placement": "source-order",
       "status": "relocated"
     },
-    {
-      "id": "G024",
-      "segment": "G024",
-      "sectionIds": ["S03-02"],
-      "sourceSlice": "S03",
-      "owner": "fla-review",
-      "migrationMode": "DIRECT",
-      "canonicalOrder": 25,
+      {
+        "id": "G024",
+        "segment": "G024",
+        "sectionIds": ["S03-02"],
+        "sourceSlice": "S03",
+        "owner": "fla-review",
+        "migrationMode": "DIRECT",
+        "canonicalOrder": 26,
       "predecessor": "S03-01/G023",
       "successor": "S03-03/G025",
       "sourceRange": { "startLine": 4228, "endLine": 4446 },
@@ -300,14 +300,14 @@
       "placement": "source-order",
       "status": "relocated"
     },
-    {
-      "id": "G025",
-      "segment": "G025",
-      "sectionIds": ["S03-03"],
-      "sourceSlice": "S03",
-      "owner": "fla-raster",
-      "migrationMode": "DIRECT",
-      "canonicalOrder": 26,
+      {
+        "id": "G025",
+        "segment": "G025",
+        "sectionIds": ["S03-03"],
+        "sourceSlice": "S03",
+        "owner": "fla-raster",
+        "migrationMode": "DIRECT",
+        "canonicalOrder": 27,
       "predecessor": "S03-02/G024",
       "successor": "S03-04/G026",
       "sourceRange": { "startLine": 4447, "endLine": 4682 },
@@ -321,14 +321,14 @@
       "placement": "source-order",
       "status": "relocated"
     },
-    {
-      "id": "G026",
-      "segment": "G026",
-      "sectionIds": ["S03-04"],
-      "sourceSlice": "S03",
-      "owner": "fla-status",
-      "migrationMode": "DIRECT",
-      "canonicalOrder": 27,
+      {
+        "id": "G026",
+        "segment": "G026",
+        "sectionIds": ["S03-04"],
+        "sourceSlice": "S03",
+        "owner": "fla-status",
+        "migrationMode": "DIRECT",
+        "canonicalOrder": 28,
       "predecessor": "S03-03/G025",
       "successor": "S03-05/G027",
       "sourceRange": { "startLine": 4683, "endLine": 5070 },
@@ -342,14 +342,14 @@
       "placement": "source-order",
       "status": "relocated"
     },
-    {
-      "id": "G027",
-      "segment": "G027",
-      "sectionIds": ["S03-05"],
-      "sourceSlice": "S03",
-      "owner": "fla-render",
-      "migrationMode": "DIRECT",
-      "canonicalOrder": 28,
+      {
+        "id": "G027",
+        "segment": "G027",
+        "sectionIds": ["S03-05"],
+        "sourceSlice": "S03",
+        "owner": "fla-render",
+        "migrationMode": "DIRECT",
+        "canonicalOrder": 29,
       "predecessor": "S03-04/G026",
       "successor": "S03-06/G028",
       "sourceRange": { "startLine": 5071, "endLine": 5350 },
@@ -1066,9 +1066,9 @@
       "placement": "source-order",
       "status": "relocated"
     },
-    {
-      "id": "G088",
-      "segment": "G088",
+      {
+        "id": "G088",
+        "segment": "G088",
       "sectionIds": ["S09-08"],
       "sourceSlice": "S09",
       "owner": "assets",
@@ -1076,20 +1076,20 @@
       "canonicalOrder": 103,
       "predecessor": "S09-07/G087",
       "successor": "EOF",
-      "sourceRange": { "startLine": 19326, "endLine": 19783 },
-      "sourceLocalRange": { "startLine": 1507, "endLine": 1964 },
-      "sourceStartByte": 44982,
-      "sourceEndByteExclusive": 60652,
-      "sourceSha256": "7f4b0b230e9db16be96a1ffb5f269e37c127eb4a243ff47683cca1bbe1683180",
-      "targetPath": "src/renderer/styles/features/assets/s09-08--landscape-asset-visual.css",
-      "startAnchor": "Issue #363:",
-      "endAnchor": "EOF",
+        "sourceRange": { "startLine": 19388, "endLine": 19783 },
+        "sourceLocalRange": { "startLine": 1569, "endLine": 1964 },
+        "sourceStartByte": 47548,
+        "sourceEndByteExclusive": 60652,
+        "sourceSha256": "548f05af72b89236b93cdaa6a91950df2420510b6595a337db9456b1dd1d031e",
+        "targetPath": "src/renderer/styles/features/assets/s09-08--landscape-asset-visual.css",
+        "startAnchor": ".editor-layout[data-shell-mode='landscape'] .resource-activity-dock-landscape[data-active-activity='assets'] .asset-library[data-asset-library-presentation='landscape']",
+        "endAnchor": "EOF",
       "placement": "source-order",
       "status": "relocated"
     },
-    {
-      "id": "G090",
-      "segment": "G090",
+      {
+        "id": "G090",
+        "segment": "G090",
       "sectionIds": ["S10-02"],
       "sourceSlice": "S10",
       "owner": "characters-workspace",
@@ -1097,11 +1097,11 @@
       "canonicalOrder": 105,
       "predecessor": "S10-01/G089",
       "successor": "S10-03/G091",
-      "sourceRange": { "startLine": 19784, "endLine": 21030 },
-      "sourceLocalRange": { "startLine": 1, "endLine": 1247 },
-      "sourceStartByte": 0,
-      "sourceEndByteExclusive": 38342,
-      "sourceSha256": "5274f89c5c4a11da4567623afb7e7fadd29a840802eab548192a5a19d51196c9",
+        "sourceRange": { "startLine": 19795, "endLine": 21030 },
+        "sourceLocalRange": { "startLine": 12, "endLine": 1247 },
+        "sourceStartByte": 504,
+        "sourceEndByteExclusive": 38342,
+        "sourceSha256": "3cf4f69f54e9cd9c8a46411590600225119750c9cc227e901d27e10c218cefbc",
       "targetPath": "src/renderer/styles/features/characters/workspace/s10-02--landscape-character-workbench.css",
       "startAnchor": ".editor-layout[data-shell-mode='landscape'] .resource-activity-dock-landscape[data-active-activity='characters'] .character-manager[data-character-presentation='landscape']",
       "endAnchor": "Issue #366:",
@@ -2122,204 +2122,879 @@
       "sourceStartByte": 22408,
       "sourceEndByteExclusive": 23020,
       "sourceSha256": "933134b284d50bf17ad48a68126ac5257f36674c8ca48e75fa468eb2dfac860c",
-      "targetPath": "src/renderer/styles/features/timeline/s14-09--audio-trim-448b.css",
-      "startAnchor": ".timeline-audio-trim-handle",
-      "endAnchor": "Issue #454:",
-      "placement": "source-order",
-      "status": "relocated"
-    }
-  ],
+        "targetPath": "src/renderer/styles/features/timeline/s14-09--audio-trim-448b.css",
+        "startAnchor": ".timeline-audio-trim-handle",
+        "endAnchor": "Issue #454:",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G007",
+        "segment": "G007",
+        "sectionIds": [
+          "S01-07"
+        ],
+        "sourceSlice": "S01",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 7,
+        "predecessor": "S01-06/G006",
+        "successor": "S01-08/G008",
+        "sourceRange": {
+          "startLine": 432,
+          "endLine": 554
+        },
+        "sourceLocalRange": {
+          "startLine": 430,
+          "endLine": 552
+        },
+        "sourceStartByte": 8060,
+        "sourceEndByteExclusive": 10740,
+        "sourceSha256": "87e487eee048bce5abff96d31b3c5f480dd70c522b78c13d926474b059c150be",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s01-07--inspector-and-layer-host.css",
+        "startAnchor": ".right-inspector",
+        "endAnchor": ".left-workspace",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G008",
+        "segment": "G008",
+        "sectionIds": [
+          "S01-08"
+        ],
+        "sourceSlice": "S01",
+        "owner": "shell-resources",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 8,
+        "predecessor": "S01-07/G007",
+        "successor": "S01-09/G009",
+        "sourceRange": {
+          "startLine": 555,
+          "endLine": 851
+        },
+        "sourceLocalRange": {
+          "startLine": 553,
+          "endLine": 849
+        },
+        "sourceStartByte": 10740,
+        "sourceEndByteExclusive": 16288,
+        "sourceSha256": "9b2363f27301f9128a14c3c2ec0d737a990b03b663187aafa158a9f151589ee0",
+        "targetPath": "src/renderer/styles/shell/resources/s01-08--resource-host-base.css",
+        "startAnchor": ".left-workspace",
+        "endAnchor": ".legacy-compatibility-activity",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G020",
+        "segment": "G020",
+        "sectionIds": [
+          "S02-03"
+        ],
+        "sourceSlice": "S02",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 22,
+        "predecessor": "S02-02/G019",
+        "successor": "S02-04/G021",
+        "sourceRange": {
+          "startLine": 2706,
+          "endLine": 2897
+        },
+        "sourceLocalRange": {
+          "startLine": 755,
+          "endLine": 946
+        },
+        "sourceStartByte": 16381,
+        "sourceEndByteExclusive": 20830,
+        "sourceSha256": "7eda92470b42a5f7a0a21293956ee0524a56b3c7f40238e977d42811fb74184b",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s02-03--right-workspace.css",
+        "startAnchor": "Issue #426 R1:",
+        "endAnchor": "Issue #428 R2:",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G022",
+        "segment": "G022",
+        "sectionIds": [
+          "S02-05"
+        ],
+        "sourceSlice": "S02",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 24,
+        "predecessor": "S02-04/G021",
+        "successor": "S03-01/G023",
+        "sourceRange": {
+          "startLine": 3904,
+          "endLine": 3916
+        },
+        "sourceLocalRange": {
+          "startLine": 1953,
+          "endLine": 1965
+        },
+        "sourceStartByte": 47111,
+        "sourceEndByteExclusive": 47496,
+        "sourceSha256": "2466d64cffb000d48b1f87069bd67dabadf7a86f7f63b6999c01770038e864ae",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s02-05--right-workspace-width-1050.css",
+        "startAnchor": "@media (max-width: 1050px)",
+        "endAnchor": "EOF",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G036",
+        "segment": "G036",
+        "sectionIds": [
+          "S05-04"
+        ],
+        "sourceSlice": "S05",
+        "owner": "shell-resources",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 39,
+        "predecessor": "S05-03/G035",
+        "successor": "S05-05/G037",
+        "sourceRange": {
+          "startLine": 9304,
+          "endLine": 9331
+        },
+        "sourceLocalRange": {
+          "startLine": 1266,
+          "endLine": 1293
+        },
+        "sourceStartByte": 22381,
+        "sourceEndByteExclusive": 23048,
+        "sourceSha256": "fc8ca543b63c31cbb224d4c52f74c20d8e43b486f87b44323e36c4d59f03e947",
+        "targetPath": "src/renderer/styles/shell/resources/s05-04--shot-character-shared-host.css",
+        "startAnchor": ".resource-activity-panel .shot-workspace, .resource-activity-panel .character-workspace",
+        "endAnchor": ".shot-create-view",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G055",
+        "segment": "G055",
+        "sectionIds": [
+          "S06-13"
+        ],
+        "sourceSlice": "S06",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 61,
+        "predecessor": "S06-12/G054",
+        "successor": "S06-14/G056",
+        "sourceRange": {
+          "startLine": 11441,
+          "endLine": 11515
+        },
+        "sourceLocalRange": {
+          "startLine": 1602,
+          "endLine": 1676
+        },
+        "sourceStartByte": 30487,
+        "sourceEndByteExclusive": 32709,
+        "sourceSha256": "4df21587801b77dab6b7f195e9d26a3323259fff7d4f2573093a98ea4f4d21b7",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s06-13--legacy-landscape-inspector-handle.css",
+        "startAnchor": "Issue #371:",
+        "endAnchor": ".editor-layout[data-shell-mode='portrait']",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G057",
+        "segment": "G057",
+        "sectionIds": [
+          "S06-16",
+          "S07-01"
+        ],
+        "sourceSlice": "S06",
+        "owner": "shell-resources",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 64,
+        "predecessor": "S06-15/G056",
+        "successor": "S07-02/G058",
+        "sourceRange": {
+          "startLine": 11801,
+          "endLine": 12000
+        },
+        "sourceLocalRange": {
+          "startLine": 1962,
+          "endLine": 2044
+        },
+        "sourceSegments": [
+          {
+            "sourceSlice": "S06",
+            "sourceRange": {
+              "startLine": 11801,
+              "endLine": 11883
+            },
+            "sourceLocalRange": {
+              "startLine": 1962,
+              "endLine": 2044
+            },
+            "sourceStartByte": 40314,
+            "sourceEndByteExclusive": 42901,
+            "sourceSha256": "e4057c165ef3686b537a282e3a01220844954bb33ba188f5deb468c79020c8ae"
+          },
+          {
+            "sourceSlice": "S07",
+            "sourceRange": {
+              "startLine": 11884,
+              "endLine": 12000
+            },
+            "sourceLocalRange": {
+              "startLine": 1,
+              "endLine": 117
+            },
+            "sourceStartByte": 0,
+            "sourceEndByteExclusive": 3668,
+            "sourceSha256": "32ad95f171334f8f36f8a106788f049ab728e3d4f80cf0b9914153815c28f3ba"
+          }
+        ],
+        "sourceStartByte": 40314,
+        "sourceEndByteExclusive": 46569,
+        "sourceSha256": "d2750f283543215787107be4434cf5007846bb10c98f147785d9dce61f23a9e3",
+        "targetPath": "src/renderer/styles/shell/resources/s06-16--portrait-shot-header.css",
+        "startAnchor": "The dock already owns the concise",
+        "endAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .resource-activity-dock[data-active-activity='assets'] .asset-library",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G059",
+        "segment": "G059",
+        "sectionIds": [
+          "S07-03"
+        ],
+        "sourceSlice": "S07",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 67,
+        "predecessor": "S07-02/G058",
+        "successor": "S07-04/G060",
+        "sourceRange": {
+          "startLine": 12349,
+          "endLine": 12361
+        },
+        "sourceLocalRange": {
+          "startLine": 466,
+          "endLine": 478
+        },
+        "sourceStartByte": 14851,
+        "sourceEndByteExclusive": 15226,
+        "sourceSha256": "613b075a60b879e1eca11b0d376e170e17caa66b63eea8b90b49996cc94fc9b9",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s07-03--portrait-inspector-host.css",
+        "startAnchor": "Issue #329:",
+        "endAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .resource-activity-dock[data-active-activity='assets'] .resource-activity-heading h2",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G060",
+        "segment": "G060",
+        "sectionIds": [
+          "S07-04"
+        ],
+        "sourceSlice": "S07",
+        "owner": "shell-resources",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 68,
+        "predecessor": "S07-03/G059",
+        "successor": "S07-05/G061",
+        "sourceRange": {
+          "startLine": 12362,
+          "endLine": 12376
+        },
+        "sourceLocalRange": {
+          "startLine": 479,
+          "endLine": 493
+        },
+        "sourceStartByte": 15226,
+        "sourceEndByteExclusive": 15572,
+        "sourceSha256": "f6ce6220019fb0fb966f8c1ab2290433a0c7ed443e9d069137ad1f92c6f9d0df",
+        "targetPath": "src/renderer/styles/shell/resources/s07-04--portrait-assets-hidden-title.css",
+        "startAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .resource-activity-dock[data-active-activity='assets'] .resource-activity-heading h2",
+        "endAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .right-inspector-drawer",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G061",
+        "segment": "G061",
+        "sectionIds": [
+          "S07-05"
+        ],
+        "sourceSlice": "S07",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 69,
+        "predecessor": "S07-04/G060",
+        "successor": "S07-06/G062",
+        "sourceRange": {
+          "startLine": 12377,
+          "endLine": 12548
+        },
+        "sourceLocalRange": {
+          "startLine": 494,
+          "endLine": 665
+        },
+        "sourceStartByte": 15572,
+        "sourceEndByteExclusive": 21081,
+        "sourceSha256": "c0a8cfd91d323a6f48d112b963ba27c9fa554f7408fe60e98143be31556f09c6",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s07-05--portrait-inspector-drawer.css",
+        "startAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait'] .right-inspector-drawer",
+        "endAnchor": "Issue #330:",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G068",
+        "segment": "G068",
+        "sectionIds": [
+          "S07-12"
+        ],
+        "sourceSlice": "S07",
+        "owner": "shell-resources",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 76,
+        "predecessor": "S07-11/G067",
+        "successor": "S07-13/G069",
+        "sourceRange": {
+          "startLine": 12953,
+          "endLine": 13226
+        },
+        "sourceLocalRange": {
+          "startLine": 1070,
+          "endLine": 1343
+        },
+        "sourceStartByte": 33774,
+        "sourceEndByteExclusive": 41183,
+        "sourceSha256": "be986aa41e61255632994beb2458e8ee1c81dcecc7c9b68b401bc86afe3eddf8",
+        "targetPath": "src/renderer/styles/shell/resources/s07-12--landscape-resource-rail.css",
+        "startAnchor": "Issue #331:",
+        "endAnchor": "Shot drawer: keep the existing",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G072",
+        "segment": "G072",
+        "sectionIds": [
+          "S07-16",
+          "S08-01"
+        ],
+        "sourceSlice": "S07",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 80,
+        "predecessor": "S07-15/G071",
+        "successor": "S08-02/G073",
+        "sourceRange": {
+          "startLine": 13632,
+          "endLine": 13982
+        },
+        "sourceLocalRange": {
+          "startLine": 1749,
+          "endLine": 1918
+        },
+        "sourceSegments": [
+          {
+            "sourceSlice": "S07",
+            "sourceRange": {
+              "startLine": 13632,
+              "endLine": 13801
+            },
+            "sourceLocalRange": {
+              "startLine": 1749,
+              "endLine": 1918
+            },
+            "sourceStartByte": 50165,
+            "sourceEndByteExclusive": 54194,
+            "sourceSha256": "b6f649bd99c3e1d7c4df3fffe72766e17e706947905d176884893a1f89d9aea8"
+          },
+          {
+            "sourceSlice": "S08",
+            "sourceRange": {
+              "startLine": 13802,
+              "endLine": 13982
+            },
+            "sourceLocalRange": {
+              "startLine": 1,
+              "endLine": 181
+            },
+            "sourceStartByte": 0,
+            "sourceEndByteExclusive": 3964,
+            "sourceSha256": "42d9792e6f7fb413c51dcaa85c56f9da4a2be746918d9872a9232a73d60d186c"
+          }
+        ],
+        "sourceStartByte": 50165,
+        "sourceEndByteExclusive": 58158,
+        "sourceSha256": "1ecbc9d0c8ab7a2cd428f732261b8c0d5ecd51faf46bf2e0ccfa9e1e809ef69b",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s07-16--landscape-inspector-host.css",
+        "startAnchor": "Issue #332:",
+        "endAnchor": ".editor-layout[data-shell-mode='landscape'] .right-inspector-drawer .dialogue-inspector-context-summary",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G074",
+        "segment": "G074",
+        "sectionIds": [
+          "S08-03"
+        ],
+        "sourceSlice": "S08",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 83,
+        "predecessor": "S08-02/G073",
+        "successor": "S08-04/G075",
+        "sourceRange": {
+          "startLine": 14158,
+          "endLine": 14502
+        },
+        "sourceLocalRange": {
+          "startLine": 357,
+          "endLine": 701
+        },
+        "sourceStartByte": 7885,
+        "sourceEndByteExclusive": 18427,
+        "sourceSha256": "b5994f4969036d97f5faee33dcecc073f87d405244e18991bd1bea6318192fbf",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s08-03--portrait-properties-flatten.css",
+        "startAnchor": "Issue #338:",
+        "endAnchor": "Issue #339:",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G079",
+        "segment": "G079",
+        "sectionIds": [
+          "S08-08"
+        ],
+        "sourceSlice": "S08",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 88,
+        "predecessor": "S08-07/G078",
+        "successor": "S08-09/G080",
+        "sourceRange": {
+          "startLine": 15589,
+          "endLine": 15732
+        },
+        "sourceLocalRange": {
+          "startLine": 1788,
+          "endLine": 1931
+        },
+        "sourceStartByte": 54463,
+        "sourceEndByteExclusive": 58701,
+        "sourceSha256": "e93bea7dfe2e92902a1888591960c5bbf7ed6374c3503aff313901bbc9232642",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s08-08--portrait-empty-properties.css",
+        "startAnchor": "Issue #346:",
+        "endAnchor": "Issue #357:",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G087",
+        "segment": "G087",
+        "sectionIds": [
+          "S09-07"
+        ],
+        "sourceSlice": "S09",
+        "owner": "shell-resources",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 102,
+        "predecessor": "S09-06/G086",
+        "successor": "S09-08/G088",
+        "sourceRange": {
+          "startLine": 19326,
+          "endLine": 19387
+        },
+        "sourceLocalRange": {
+          "startLine": 1507,
+          "endLine": 1568
+        },
+        "sourceStartByte": 44982,
+        "sourceEndByteExclusive": 47548,
+        "sourceSha256": "3841bc1c8ad7407a41586803da08ef9dd7d97f1a211f1fef14d4511b28cec89a",
+        "targetPath": "src/renderer/styles/shell/resources/s09-07--landscape-asset-header.css",
+        "startAnchor": "Issue #363:",
+        "endAnchor": ".editor-layout[data-shell-mode='landscape'] .resource-activity-dock-landscape[data-active-activity='assets'] .asset-library[data-asset-library-presentation='landscape']",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G089",
+        "segment": "G089",
+        "sectionIds": [
+          "S10-01"
+        ],
+        "sourceSlice": "S10",
+        "owner": "shell-resources",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 104,
+        "predecessor": "S09-08/G088",
+        "successor": "S10-02/G090",
+        "sourceRange": {
+          "startLine": 19784,
+          "endLine": 19794
+        },
+        "sourceLocalRange": {
+          "startLine": 1,
+          "endLine": 11
+        },
+        "sourceStartByte": 0,
+        "sourceEndByteExclusive": 504,
+        "sourceSha256": "d500e41b0840c6490203e9c52162496809198848d018bf82601b9f5feec3dde8",
+        "targetPath": "src/renderer/styles/shell/resources/s10-01--character-detail-header.css",
+        "startAnchor": "BOF",
+        "endAnchor": ".editor-layout[data-shell-mode='landscape'] .resource-activity-dock-landscape[data-active-activity='characters'] .character-manager[data-character-presentation='landscape']",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G093",
+        "segment": "G093",
+        "sectionIds": [
+          "S10-05"
+        ],
+        "sourceSlice": "S10",
+        "owner": "shell-resources",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 108,
+        "predecessor": "S10-04/G092",
+        "successor": "S10-06/G094",
+        "sourceRange": {
+          "startLine": 21609,
+          "endLine": 21671
+        },
+        "sourceLocalRange": {
+          "startLine": 1826,
+          "endLine": 1888
+        },
+        "sourceStartByte": 51497,
+        "sourceEndByteExclusive": 53229,
+        "sourceSha256": "a20863c25f147ab3744ed99cc439377bfe04625b6b8674e44c8b5abb3642ed64",
+        "targetPath": "src/renderer/styles/shell/resources/s10-05--landscape-rail-polish.css",
+        "startAnchor": ".editor-shell[data-editor-shell-layout='landscape'] .editor-layout[data-shell-mode='landscape'] .resource-activity-dock-landscape .resource-activity-rail > button",
+        "endAnchor": ".project-tools-drawer",
+        "placement": "source-order",
+        "status": "relocated"
+      },
+      {
+        "id": "G099",
+        "segment": "G099",
+        "sectionIds": [
+          "S11-03",
+          "S11-04"
+        ],
+        "sourceSlice": "S11",
+        "owner": "shell-right",
+        "migrationMode": "HOST_INTEGRATION",
+        "canonicalOrder": 114,
+        "predecessor": "S11-02/G098",
+        "successor": "S11-05/G100",
+        "sourceRange": {
+          "startLine": 21879,
+          "endLine": 22049
+        },
+        "sourceLocalRange": {
+          "startLine": 77,
+          "endLine": 160
+        },
+        "sourceSegments": [
+          {
+            "sourceSlice": "S11",
+            "sourceRange": {
+              "startLine": 21879,
+              "endLine": 21962
+            },
+            "sourceLocalRange": {
+              "startLine": 77,
+              "endLine": 160
+            },
+            "sourceStartByte": 1610,
+            "sourceEndByteExclusive": 4063,
+            "sourceSha256": "fb64d65eb9309d85f6d3404381eb67d25ad657f8c42113e3c5b1f954e62fc5ed"
+          },
+          {
+            "sourceSlice": "S11",
+            "sourceRange": {
+              "startLine": 21963,
+              "endLine": 22049
+            },
+            "sourceLocalRange": {
+              "startLine": 161,
+              "endLine": 247
+            },
+            "sourceStartByte": 4063,
+            "sourceEndByteExclusive": 6631,
+            "sourceSha256": "1bdcad94f96ac51b1e581ae8da903201afd589ea0ab52fd15b051f4f3182c25e"
+          }
+        ],
+        "sourceStartByte": 1610,
+        "sourceEndByteExclusive": 6631,
+        "sourceSha256": "172b744639a9d59be5bc20a51aeadfdf44cccb01e1610a723b102b09f4b60f98",
+        "targetPath": "src/renderer/styles/shell/right-workspace/s11-03--landscape-empty-properties.css",
+        "startAnchor": "Issue #372:",
+        "endAnchor": ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape'] .right-inspector-drawer .right-inspector-section > .layer-transform-panel[data-compact='true']",
+        "placement": "source-order",
+        "status": "relocated"
+      }
+    ],
   "remainderParts": [
     {
       "id": "S01-R01",
       "sourceSlice": "S01",
-      "sourceRange": { "startLine": 60, "endLine": 77 },
+      "sourceRange": {
+        "startLine": 60,
+        "endLine": 77
+      },
       "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-base.css"
     },
     {
       "id": "S01-R02",
       "sourceSlice": "S01",
-      "sourceRange": { "startLine": 158, "endLine": 949 },
+      "sourceRange": {
+        "startLine": 158,
+        "endLine": 431
+      },
       "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-project-center.css"
+    },
+    {
+      "id": "S01-R04",
+      "sourceSlice": "S01",
+      "sourceRange": {
+        "startLine": 852,
+        "endLine": 949
+      },
+      "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-resources.css"
     },
     {
       "id": "S01-R03",
       "sourceSlice": "S01",
-      "sourceRange": { "startLine": 1325, "endLine": 1391 },
+      "sourceRange": {
+        "startLine": 1325,
+        "endLine": 1391
+      },
       "targetPath": "src/renderer/styles/legacy-slices/01-shell-import-review-after-timeline.css"
     },
     {
       "id": "S05-R02",
       "sourceSlice": "S05",
-      "sourceRange": { "startLine": 9303, "endLine": 9331 },
+      "sourceRange": {
+        "startLine": 9303,
+        "endLine": 9303
+      },
       "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--between-shots-create.css"
     },
     {
       "id": "S05-R03",
       "sourceSlice": "S05",
-      "sourceRange": { "startLine": 9349, "endLine": 9349 },
+      "sourceRange": {
+        "startLine": 9349,
+        "endLine": 9349
+      },
       "targetPath": "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-shot-create.css"
     },
     {
       "id": "S06-R01",
       "sourceSlice": "S06",
-      "sourceRange": { "startLine": 10190, "endLine": 10211 },
+      "sourceRange": {
+        "startLine": 10190,
+        "endLine": 10211
+      },
       "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation--between-properties.css"
     },
     {
       "id": "S06-R02",
       "sourceSlice": "S06",
-      "sourceRange": { "startLine": 10328, "endLine": 10699 },
+      "sourceRange": {
+        "startLine": 10328,
+        "endLine": 10699
+      },
       "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation--before-product-preview.css"
     },
     {
       "id": "S06-R04",
       "sourceSlice": "S06",
-      "sourceRange": { "startLine": 11264, "endLine": 11883 },
+      "sourceRange": {
+        "startLine": 11264,
+        "endLine": 11440
+      },
       "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation-after-dialogue.css"
     },
     {
-      "id": "S02-R01",
-      "sourceSlice": "S02",
-      "sourceRange": { "startLine": 2706, "endLine": 2897 },
-      "targetPath": "src/renderer/styles/legacy-slices/02-review-workbench-dialogue-after-raster.css"
-    },
-    {
-      "id": "S02-R02",
-      "sourceSlice": "S02",
-      "sourceRange": { "startLine": 3904, "endLine": 3916 },
-      "targetPath": "src/renderer/styles/legacy-slices/02-review-workbench-dialogue-after-queue.css"
-    },
-    {
-      "id": "S07-R01",
-      "sourceSlice": "S07",
-      "sourceRange": { "startLine": 11884, "endLine": 12000 },
-      "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start--before-layer-forms.css"
-    },
-    {
-      "id": "S07-R02",
-      "sourceSlice": "S07",
-      "sourceRange": { "startLine": 12953, "endLine": 13226 },
-      "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start.css"
+      "id": "S06-R05",
+      "sourceSlice": "S06",
+      "sourceRange": {
+        "startLine": 11516,
+        "endLine": 11800
+      },
+      "targetPath": "src/renderer/styles/legacy-slices/06-canvas-portrait-foundation-after-inspector-handle.css"
     },
     {
       "id": "S07-R03",
       "sourceSlice": "S07",
-      "sourceRange": { "startLine": 12349, "endLine": 12576 },
+      "sourceRange": {
+        "startLine": 12549,
+        "endLine": 12576
+      },
       "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start--after-assets.css"
     },
     {
       "id": "S07-R06",
       "sourceSlice": "S07",
-      "sourceRange": { "startLine": 12695, "endLine": 12853 },
+      "sourceRange": {
+        "startLine": 12695,
+        "endLine": 12853
+      },
       "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-timeline.css"
     },
     {
       "id": "S07-R04",
       "sourceSlice": "S07",
-      "sourceRange": { "startLine": 13578, "endLine": 13578 },
+      "sourceRange": {
+        "startLine": 13578,
+        "endLine": 13578
+      },
       "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-assets.css"
-    },
-    {
-      "id": "S07-R05",
-      "sourceSlice": "S07",
-      "sourceRange": { "startLine": 13632, "endLine": 13801 },
-      "targetPath": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-characters.css"
-    },
-    {
-      "id": "S08-R01",
-      "sourceSlice": "S08",
-      "sourceRange": { "startLine": 13802, "endLine": 13982 },
-      "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue--before-appearance.css"
-    },
-    {
-      "id": "S08-R04",
-      "sourceSlice": "S08",
-      "sourceRange": { "startLine": 14158, "endLine": 14502 },
-      "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-dialogue-properties.css"
     },
     {
       "id": "S08-R05",
       "sourceSlice": "S08",
-      "sourceRange": { "startLine": 14620, "endLine": 15158 },
+      "sourceRange": {
+        "startLine": 14620,
+        "endLine": 15158
+      },
       "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-timeline.css"
     },
     {
       "id": "S08-R03",
       "sourceSlice": "S08",
-      "sourceRange": { "startLine": 15589, "endLine": 16456 },
+      "sourceRange": {
+        "startLine": 15733,
+        "endLine": 16456
+      },
       "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-shot-detail.css"
     },
     {
       "id": "S08-R02",
       "sourceSlice": "S08",
-      "sourceRange": { "startLine": 17497, "endLine": 17819 },
+      "sourceRange": {
+        "startLine": 17497,
+        "endLine": 17819
+      },
       "targetPath": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue.css"
     },
     {
       "id": "S11-R01",
       "sourceSlice": "S11",
-      "sourceRange": { "startLine": 21857, "endLine": 22049 },
+      "sourceRange": {
+        "startLine": 21857,
+        "endLine": 21878
+      },
       "targetPath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start--before-landscape-layer-controls.css"
     },
     {
       "id": "S11-R02",
       "sourceSlice": "S11",
-      "sourceRange": { "startLine": 23763, "endLine": 23799 },
+      "sourceRange": {
+        "startLine": 23763,
+        "endLine": 23799
+      },
       "targetPath": "src/renderer/styles/legacy-slices/11-tools-inspector-timeline-start.css"
     },
     {
       "id": "S09-R01",
       "sourceSlice": "S09",
-      "sourceRange": { "startLine": 17820, "endLine": 18217 },
+      "sourceRange": {
+        "startLine": 17820,
+        "endLine": 18217
+      },
       "targetPath": "src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets.css"
     },
     {
       "id": "S09-R02",
       "sourceSlice": "S09",
-      "sourceRange": { "startLine": 18755, "endLine": 18827 },
+      "sourceRange": {
+        "startLine": 18755,
+        "endLine": 18827
+      },
       "targetPath": "src/renderer/styles/legacy-slices/09-portrait-timed-landscape-assets-after-dialogue-properties.css"
     },
     {
       "id": "S12-R01",
       "sourceSlice": "S12",
-      "sourceRange": { "startLine": 23800, "endLine": 24447 },
+      "sourceRange": {
+        "startLine": 23800,
+        "endLine": 24447
+      },
       "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray.css"
     },
     {
       "id": "S12-R03",
       "sourceSlice": "S12",
-      "sourceRange": { "startLine": 24599, "endLine": 24877 },
+      "sourceRange": {
+        "startLine": 24599,
+        "endLine": 24877
+      },
       "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray-after-pending-placement.css"
     },
     {
       "id": "S12-R02",
       "sourceSlice": "S12",
-      "sourceRange": { "startLine": 25735, "endLine": 25857 },
+      "sourceRange": {
+        "startLine": 25735,
+        "endLine": 25857
+      },
       "targetPath": "src/renderer/styles/legacy-slices/12-landscape-task-tray-after-dialogue-properties.css"
     },
     {
       "id": "S13-R01",
       "sourceSlice": "S13",
-      "sourceRange": { "startLine": 25877, "endLine": 27503 },
+      "sourceRange": {
+        "startLine": 25877,
+        "endLine": 27503
+      },
       "targetPath": "src/renderer/styles/legacy-slices/13-timed-render-media-tail-before-final-render.css"
     },
     {
       "id": "S13-R02",
       "sourceSlice": "S13",
-      "sourceRange": { "startLine": 27860, "endLine": 27997 },
+      "sourceRange": {
+        "startLine": 27860,
+        "endLine": 27997
+      },
       "targetPath": "src/renderer/styles/legacy-slices/13-timed-render-media-tail-after-final-render.css"
     },
     {
       "id": "S10-R01",
       "sourceSlice": "S10",
-      "sourceRange": { "startLine": 21525, "endLine": 21745 },
+      "sourceRange": {
+        "startLine": 21525,
+        "endLine": 21608
+      },
       "targetPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-after-expression-workbench.css"
+    },
+    {
+      "id": "S10-R03",
+      "sourceSlice": "S10",
+      "sourceRange": {
+        "startLine": 21672,
+        "endLine": 21745
+      },
+      "targetPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-after-resource-rail.css"
     },
     {
       "id": "S10-R02",
       "sourceSlice": "S10",
-      "sourceRange": { "startLine": 21767, "endLine": 21802 },
+      "sourceRange": {
+        "startLine": 21767,
+        "endLine": 21802
+      },
       "targetPath": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-after-maintenance.css"
     }
   ],

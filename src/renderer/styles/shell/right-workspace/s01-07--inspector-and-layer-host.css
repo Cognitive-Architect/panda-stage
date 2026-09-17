@@ -1,0 +1,123 @@
+.right-inspector {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 14px;
+  background: rgb(8 14 10 / 74%);
+  scrollbar-color: #3f6d4e #0a100c;
+  align-content: start;
+  gap: 10px;
+}
+
+.right-inspector-measurement-hook {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.right-inspector-heading,
+.right-inspector-selection {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.right-inspector-heading {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.right-inspector-heading h2,
+.right-inspector-heading p,
+.right-inspector-selection p,
+.right-inspector-selection strong,
+.right-inspector-selection span {
+  margin: 0;
+}
+
+.right-inspector-heading h2 {
+  font-size: 16px;
+}
+
+.right-inspector-heading > span,
+.right-inspector-selection span {
+  color: #91a299;
+  font-size: 11px;
+}
+
+.right-inspector-selection {
+  padding: 10px;
+  border: 1px solid rgb(154 216 172 / 18%);
+  border-radius: 10px;
+  background: rgb(7 12 9 / 58%);
+}
+
+.right-inspector-character-layer-reminder {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid rgb(154 216 172 / 18%);
+  border-radius: 8px;
+  color: #b8c7bc;
+  background: rgb(7 12 9 / 42%);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.right-inspector-character-layer-reminder strong {
+  color: #d5e0d8;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.right-inspector-character-layer-reminder span {
+  color: #91a299;
+  font-size: 11px;
+}
+
+.right-inspector-selection[data-selection-state='locked'],
+.right-inspector-selection[data-selection-state='background'],
+.right-inspector-selection[data-selection-state='invalid'] {
+  border-color: rgb(255 209 102 / 38%);
+}
+
+.right-inspector .layer-background-control,
+.right-inspector .layer-transform-panel,
+.right-inspector .layer-order-controls {
+  min-width: 0;
+  padding: 10px;
+}
+
+.right-inspector
+  .layer-transform-panel[data-background-protected='true'],
+.right-inspector
+  .layer-order-controls[data-background-protected='true'] {
+  border-color: rgb(255 209 102 / 38%);
+}
+
+.right-inspector .layer-background-actions,
+.right-inspector .layer-order-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.right-inspector .layer-background-actions .layer-background-primary,
+.right-inspector .layer-order-actions .layer-delete-button {
+  grid-column: 1 / -1;
+}
+
+.right-inspector .layer-transform-panel form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.right-inspector .layer-transform-panel .layer-lock-control {
+  white-space: normal;
+}
+

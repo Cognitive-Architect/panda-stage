@@ -1,0 +1,13 @@
+/* Issue #329: keep the portrait Properties surface product-facing and
+   compact while preserving the existing inspector/panel owners. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .right-inspector {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 0;
+}
+

@@ -1,14 +1,3 @@
-/* Issue #364: the Cloud Touch landscape Character drawer is a visual
-   workbench. All rules stay behind the explicit presentation seam so the
-   accepted portrait and legacy Character surfaces retain their layout. */
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .resource-activity-header-actions[data-resource-action-group='character-detail-landscape'] {
-  display: grid;
-  grid-template-columns: 44px;
-  justify-content: end;
-}
-
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape'] {

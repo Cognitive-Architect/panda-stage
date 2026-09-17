@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "issue": 551,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-04",
+  "workItem": "P2-16",
+  "owner": "shell-resources",
+  "mode": "HOST_INTEGRATION",
+  "status": "preflight-pass",
+  "startingLivePrHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "refreshedRemoteBranchHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "integrationBaseHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+  "predecessorImplementation": {
+    "workItem": "P2-15 / SER-03-B10",
+    "commit": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+    "verified": true,
+    "handoff": "The rolling Draft PR #542 branch is clean and synchronized before SER-04 host integration work."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "sourceLineCount": 32818,
+    "sourceLineEndingNormalization": "LF",
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "sections": [
+    "S01-08", "S05-04", "S06-16", "S07-01", "S07-04", "S07-12", "S09-07", "S10-01", "S10-05"
+  ],
+  "segments": [
+    {
+      "id": "G008", "sectionIds": ["S01-08"], "owner": "shell-resources", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 8,
+      "sourceSlice": "S01", "globalRange": { "startLine": 555, "endLine": 851 }, "sourceLocalRange": { "startLine": 553, "endLine": 849 },
+      "sourceStartByte": 10740, "sourceEndByteExclusive": 16288, "sourceSha256": "9b2363f27301f9128a14c3c2ec0d737a990b03b663187aafa158a9f151589ee0",
+      "targetPath": "src/renderer/styles/shell/resources/s01-08--resource-host-base.css", "predecessor": "S01-07/G007", "successor": "S01-09/G009"
+    },
+    {
+      "id": "G036", "sectionIds": ["S05-04"], "owner": "shell-resources", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 39,
+      "sourceSlice": "S05", "globalRange": { "startLine": 9304, "endLine": 9331 }, "sourceLocalRange": { "startLine": 1266, "endLine": 1293 },
+      "sourceStartByte": 22381, "sourceEndByteExclusive": 23048, "sourceSha256": "fc8ca543b63c31cbb224d4c52f74c20d8e43b486f87b44323e36c4d59f03e947",
+      "targetPath": "src/renderer/styles/shell/resources/s05-04--shot-character-shared-host.css", "predecessor": "S05-03/G035", "successor": "S05-05/G037"
+    },
+    {
+      "id": "G057", "sectionIds": ["S06-16", "S07-01"], "owner": "shell-resources", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 64,
+      "sourceSlice": "S06+S07", "globalRange": { "startLine": 11801, "endLine": 12000 }, "sourceLocalRange": { "startLine": 1962, "endLine": 2044 },
+      "sourceSegments": [
+        { "sourceSlice": "S06", "globalRange": { "startLine": 11801, "endLine": 11883 }, "sourceLocalRange": { "startLine": 1962, "endLine": 2044 }, "sourceStartByte": 40314, "sourceEndByteExclusive": 42901, "sourceSha256": "e4057c165ef3686b537a282e3a01220844954bb33ba188f5deb468c79020c8ae" },
+        { "sourceSlice": "S07", "globalRange": { "startLine": 11884, "endLine": 12000 }, "sourceLocalRange": { "startLine": 1, "endLine": 117 }, "sourceStartByte": 0, "sourceEndByteExclusive": 3668, "sourceSha256": "32ad95f171334f8f36f8a106788f049ab728e3d4f80cf0b9914153815c28f3ba" }
+      ],
+      "sourceStartByte": 40314, "sourceEndByteExclusive": 46569, "sourceSha256": "d2750f283543215787107be4434cf5007846bb10c98f147785d9dce61f23a9e3",
+      "targetPath": "src/renderer/styles/shell/resources/s06-16--portrait-shot-header.css", "predecessor": "S06-15/G056", "successor": "S07-02/G058"
+    },
+    {
+      "id": "G060", "sectionIds": ["S07-04"], "owner": "shell-resources", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 68,
+      "sourceSlice": "S07", "globalRange": { "startLine": 12362, "endLine": 12376 }, "sourceLocalRange": { "startLine": 479, "endLine": 493 },
+      "sourceStartByte": 15226, "sourceEndByteExclusive": 15572, "sourceSha256": "f6ce6220019fb0fb966f8c1ab2290433a0c7ed443e9d069137ad1f92c6f9d0df",
+      "targetPath": "src/renderer/styles/shell/resources/s07-04--portrait-assets-hidden-title.css", "predecessor": "S07-03/G059", "successor": "S07-05/G061"
+    },
+    {
+      "id": "G068", "sectionIds": ["S07-12"], "owner": "shell-resources", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 76,
+      "sourceSlice": "S07", "globalRange": { "startLine": 12953, "endLine": 13226 }, "sourceLocalRange": { "startLine": 1070, "endLine": 1343 },
+      "sourceStartByte": 33774, "sourceEndByteExclusive": 41183, "sourceSha256": "be986aa41e61255632994beb2458e8ee1c81dcecc7c9b68b401bc86afe3eddf8",
+      "targetPath": "src/renderer/styles/shell/resources/s07-12--landscape-resource-rail.css", "predecessor": "S07-11/G067", "successor": "S07-13/G069"
+    },
+    {
+      "id": "G087", "sectionIds": ["S09-07"], "owner": "shell-resources", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 102,
+      "sourceSlice": "S09", "globalRange": { "startLine": 19326, "endLine": 19387 }, "sourceLocalRange": { "startLine": 1507, "endLine": 1568 },
+      "sourceStartByte": 44982, "sourceEndByteExclusive": 47548, "sourceSha256": "3841bc1c8ad7407a41586803da08ef9dd7d97f1a211f1fef14d4511b28cec89a",
+      "targetPath": "src/renderer/styles/shell/resources/s09-07--landscape-asset-header.css", "predecessor": "S09-06/G086", "successor": "S09-08/G088"
+    },
+    {
+      "id": "G089", "sectionIds": ["S10-01"], "owner": "shell-resources", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 104,
+      "sourceSlice": "S10", "globalRange": { "startLine": 19784, "endLine": 19794 }, "sourceLocalRange": { "startLine": 1, "endLine": 11 },
+      "sourceStartByte": 0, "sourceEndByteExclusive": 504, "sourceSha256": "d500e41b0840c6490203e9c52162496809198848d018bf82601b9f5feec3dde8",
+      "targetPath": "src/renderer/styles/shell/resources/s10-01--character-detail-header.css", "predecessor": "S09-08/G088", "successor": "S10-02/G090"
+    },
+    {
+      "id": "G093", "sectionIds": ["S10-05"], "owner": "shell-resources", "migrationMode": "HOST_INTEGRATION", "canonicalOrder": 108,
+      "sourceSlice": "S10", "globalRange": { "startLine": 21609, "endLine": 21671 }, "sourceLocalRange": { "startLine": 1826, "endLine": 1888 },
+      "sourceStartByte": 51497, "sourceEndByteExclusive": 53229, "sourceSha256": "a20863c25f147ab3744ed99cc439377bfe04625b6b8674e44c8b5abb3642ed64",
+      "targetPath": "src/renderer/styles/shell/resources/s10-05--landscape-rail-polish.css", "predecessor": "S10-04/G092", "successor": "S10-06/G094"
+    }
+  ],
+  "boundaryEvidence": {
+    "candidateBoundariesSafe": true,
+    "delimiterStateBalanced": true,
+    "sourceOrderChecked": true,
+    "rangeBoundaryNotes": {
+      "G087": "ends at line 19387 before the S09-08 asset visual selector at 19388",
+      "G089": "ends at line 19794 before the S10-02 character workbench selector at 19795",
+      "G093": "starts at line 21609 and ends at line 21671 before the project-tools-drawer block at 21672",
+      "G112": "the S13-05 mixed 900px compatibility block remains untouched"
+    },
+    "allOwnedLocalBoundariesSafe": true,
+    "s13G112Media900BlockUntouched": true
+  },
+  "productionEntryAfterWrite": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "stopChecks": {
+    "domChanges": false,
+    "stateStoreChanges": false,
+    "ipcChanges": false,
+    "businessLogicChanges": false,
+    "copyChanges": false,
+    "breakpointOrCssValueChanges": false,
+    "newConsumerDiscovery": false,
+    "newTargetOutOfScope": false
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS",
+    "focusedContractSuite": "PASS",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false
+  }
+}

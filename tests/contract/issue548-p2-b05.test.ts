@@ -268,14 +268,6 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style relocation', 
   it('keeps each P2-10 seam and the S14 dialogue cascade contiguous', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: 'S08-R01',
-        sourceRange: { startLine: 13802, endLine: 13982 },
-      }),
-      expect.objectContaining({
-        id: 'S08-R04',
-        sourceRange: { startLine: 14158, endLine: 14502 },
-      }),
-      expect.objectContaining({
         id: 'S08-R05',
         sourceRange: { startLine: 14620, endLine: 15158 },
       }),

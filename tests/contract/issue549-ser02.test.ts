@@ -72,27 +72,27 @@ const expectedSer02: ExpectedSegment[] = [
     targetPath: 'src/renderer/styles/features/fla-import/raster/s02-02--raster-workbench-and-shared-header.css',
   },
   {
-    id: 'G023', sourceSlice: 'S03', canonicalOrder: 24,
+    id: 'G023', sourceSlice: 'S03', canonicalOrder: 25,
     sourceRange: { startLine: 3917, endLine: 4227 },
     targetPath: 'src/renderer/styles/features/fla-import/status/s03-01--terminal-g.css',
   },
   {
-    id: 'G024', sourceSlice: 'S03', canonicalOrder: 25,
+    id: 'G024', sourceSlice: 'S03', canonicalOrder: 26,
     sourceRange: { startLine: 4228, endLine: 4446 },
     targetPath: 'src/renderer/styles/features/fla-import/review/s03-02--inspection-a.css',
   },
   {
-    id: 'G025', sourceSlice: 'S03', canonicalOrder: 26,
+    id: 'G025', sourceSlice: 'S03', canonicalOrder: 27,
     sourceRange: { startLine: 4447, endLine: 4682 },
     targetPath: 'src/renderer/styles/features/fla-import/raster/s03-03--raster-browser-tail.css',
   },
   {
-    id: 'G026', sourceSlice: 'S03', canonicalOrder: 27,
+    id: 'G026', sourceSlice: 'S03', canonicalOrder: 28,
     sourceRange: { startLine: 4683, endLine: 5070 },
     targetPath: 'src/renderer/styles/features/fla-import/status/s03-04--severity-f.css',
   },
   {
-    id: 'G027', sourceSlice: 'S03', canonicalOrder: 28,
+    id: 'G027', sourceSlice: 'S03', canonicalOrder: 29,
     sourceRange: { startLine: 5071, endLine: 5350 },
     targetPath: 'src/renderer/styles/features/fla-import/render/s03-05--render-bounded-v11.css',
   },
