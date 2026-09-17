@@ -358,10 +358,10 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'S05-R02', sourceRange: { startLine: 9303, endLine: 9331 } }),
       expect.objectContaining({ id: 'S05-R03', sourceRange: { startLine: 9349, endLine: 9349 } }),
-      expect.objectContaining({ id: 'S05-R04', sourceRange: { startLine: 9431, endLine: 9839 } }),
       expect.objectContaining({ id: 'S07-R04', sourceRange: { startLine: 13578, endLine: 13578 } }),
       expect.objectContaining({ id: 'S07-R05', sourceRange: { startLine: 13632, endLine: 13801 } }),
-      expect.objectContaining({ id: 'S10-R01', sourceRange: { startLine: 21525, endLine: 21802 } }),
+      expect.objectContaining({ id: 'S10-R01', sourceRange: { startLine: 21525, endLine: 21745 } }),
+      expect.objectContaining({ id: 'S10-R02', sourceRange: { startLine: 21767, endLine: 21802 } }),
     ]));
 
     const s15 = manifest.slices.find(({ id }) => id === 'S15');
