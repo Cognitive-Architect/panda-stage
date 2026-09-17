@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "issue": 552,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-05",
+  "workItem": "P2-19",
+  "batch": "B13",
+  "owner": "shell-quick-actions, history",
+  "mode": "DIRECT+HOST_INTEGRATION",
+  "status": "validated-implementation-human-acceptance-deferred",
+  "preflight": "docs/evidence/issue-552-p2-19/preflight.json",
+  "liveAuthority": {
+    "preflightHead": "701362e109fe30bd53fb5712d730538638848dd4",
+    "implementationHead": "54e99ef25c469fc5bc26e36cea450d8760e43803",
+    "remoteBranchHeadAtReceipt": "54e99ef25c469fc5bc26e36cea450d8760e43803",
+    "prState": "OPEN_DRAFT",
+    "mergeable": "MERGEABLE",
+    "handoffRule": "B13 ranges were recomputed after the mandatory B12 handoff; no B12 byte ranges were reused."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "sections": ["S01-05", "S01-13", "S06-03", "S07-09", "S08-06", "S10-04", "S14-10"],
+  "segments": [
+    { "id": "G005", "section": "S01-05", "sourceSlice": "S01", "sourceRange": { "startLine": 177, "endLine": 408 }, "sourceLocalRange": { "startLine": 175, "endLine": 406 }, "sourceStartByte": 3043, "sourceEndByteExclusive": 7661, "sourceSha256": "08ddc045b068780bef84ab6daebb7baff3813e07cbeb764409ce45d6cb3de6df", "targetPath": "src/renderer/styles/shell/quick-actions/s01-05--legacy-compact-bar.css" },
+    { "id": "G013", "section": "S01-13", "sourceSlice": "S01", "sourceRange": { "startLine": 1325, "endLine": 1391 }, "sourceLocalRange": { "startLine": 1323, "endLine": 1389 }, "sourceStartByte": 25874, "sourceEndByteExclusive": 27234, "sourceSha256": "6270eb62acdf6e19d72ab8a203cb10221ca692cdad835d1026367fbd85ba9bea", "targetPath": "src/renderer/styles/features/editor/history/s01-13--bottom-history-host.css" },
+    { "id": "G046", "section": "S06-03", "sourceSlice": "S06", "sourceRange": { "startLine": 10190, "endLine": 10211 }, "sourceLocalRange": { "startLine": 351, "endLine": 372 }, "sourceStartByte": 7035, "sourceEndByteExclusive": 7394, "sourceSha256": "49a30347d9e9a19a144cc56e807b9506a367c4522cc4d680f13809cd7dd6c687", "targetPath": "src/renderer/styles/features/editor/history/s06-03--history-base.css" },
+    { "id": "G065", "section": "S07-09", "sourceSlice": "S07", "sourceRange": { "startLine": 12845, "endLine": 12853 }, "sourceLocalRange": { "startLine": 962, "endLine": 970 }, "sourceStartByte": 30565, "sourceEndByteExclusive": 30877, "sourceSha256": "d8800b546888f90674b0acfb0912ca69a34f955ee2bd851c98bd19dd2f28280e", "targetPath": "src/renderer/styles/features/editor/history/s07-09--portrait-bottom-history.css" },
+    { "id": "G077", "section": "S08-06", "sourceSlice": "S08", "sourceRange": { "startLine": 15064, "endLine": 15158 }, "sourceLocalRange": { "startLine": 1263, "endLine": 1357 }, "sourceStartByte": 36989, "sourceEndByteExclusive": 40003, "sourceSha256": "d84fe76fc03465763e1fa34b7be511e2623c827407676ba9a200f58115d1d21e", "targetPath": "src/renderer/styles/shell/quick-actions/s08-06--portrait-compact-history.css" },
+    { "id": "G092", "section": "S10-04", "sourceSlice": "S10", "sourceRange": { "startLine": 21525, "endLine": 21608 }, "sourceLocalRange": { "startLine": 1742, "endLine": 1825 }, "sourceStartByte": 49345, "sourceEndByteExclusive": 51497, "sourceSha256": "5a4725b76995181f0db54b040b6e74bcd13054ed7f93b978134a8fd462cbf5fd", "targetPath": "src/renderer/styles/shell/quick-actions/s10-04--landscape-compact-history.css" },
+    { "id": "G121", "section": "S14-10", "sourceSlice": "S14", "sourceRange": { "startLine": 28921, "endLine": 29223 }, "sourceLocalRange": { "startLine": 924, "endLine": 1226 }, "sourceStartByte": 23020, "sourceEndByteExclusive": 30324, "sourceSha256": "70c936ace689db10cc0628fe5f6e5475a079dbfbe5cc9e4a72d14cc567d53302", "targetPath": "src/renderer/styles/shell/quick-actions/s14-10--quick-drawer-454.css" }
+  ],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "targetImportOrder": ["G005", "G013", "G046", "G065", "G077", "G092", "G121"]
+  },
+  "producerHostRuntime": {
+    "quickActions": "QuickActionDrawer/CompactProjectBar remains the top-region producer and host; save callbacks and project snapshot are unchanged.",
+    "history": "HistoryControls remains consumed by CompactProjectBar and BottomWorkspace; historyStore, editorProjectStore, and keyboard shortcuts are unchanged.",
+    "consumers": ["editorProjectStore", "historyStore", "useHistoryShortcuts"],
+    "newConsumers": []
+  },
+  "geometryContract": {
+    "BottomWorkspace": "unchanged from B12; timeline live bounds remain the sole geometry consumer",
+    "EditorShell": "unchanged; one top/body/bottom shell remains",
+    "domStateStoreIpcBusinessBreakpointChanges": false
+  },
+  "behaviorContract": {
+    "quickDrawerExpandCollapse": "preserved",
+    "dirtySavingFailedSaveIcon": "preserved",
+    "undoRedoAndReducedMotion": "preserved",
+    "oldCompactBottomHistory": "not duplicated",
+    "p2_21Absorbed": false,
+    "p2_27Absorbed": false
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS (exact=true; pending=0; missing=0; duplicates=0; silentReorders=0)",
+    "focusedContractSuite": "PASS (9 files, 40 tests including Issue #552 B12/B13 and updated serial-boundary contracts)",
+    "relatedShellUnits": "PASS (7 files, 27 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "fullUnit": "PASS (287 files, 1834 tests)",
+    "fullIntegration": "PASS (32 files, 176 tests)",
+    "productionBuild": "PASS (renderer, Electron main, and all preload entries)",
+    "gitDiffCheck": "PASS; exact baseline slices retain their required blank-at-EOF bytes",
+    "automaticCi": "PENDING at receipt creation; PR run 35207441113 was still running focused core quality",
+    "manualFullCiTriggered": false,
+    "verifyProjectManuallyRun": false
+  },
+  "humanAcceptance": {
+    "status": "DEFERRED",
+    "result": "未测",
+    "windowsElectronRuntimeSmoke": "PASS: Panda Stage window visible and responding (PID 1308; issue-552-latest data directory)",
+    "visualInteractionAcceptance": "未测",
+    "reason": "A maintainer has not completed the required visual/interaction review; runtime visibility is not a substitute for human Windows Electron acceptance.",
+    "scopeToReview": ["Quick drawer states", "History controls and reduced-motion behavior", "portrait/landscape shell composition", "constrained and larger window sizes", "Chinese and long content"]
+  },
+  "scopeExceptions": [
+    "No new PR was created; work continues on rolling Draft PR #542.",
+    "No P2-21 segment was attributed to this P2-19 receipt; the paired P2-21 evidence is separate.",
+    "No DOM, state/store, IPC, business behavior, breakpoint, or CSS-value redesign was included.",
+    "No manual Full CI, pnpm verify:project, or repo-wide historical verifier sweep was run."
+  ]
+}
