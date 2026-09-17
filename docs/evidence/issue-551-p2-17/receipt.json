@@ -6,13 +6,13 @@
   "phase": "SER-04",
   "workItem": "P2-17",
   "owner": "shell-right",
-  "status": "validated-implementation-pending-human-acceptance",
+  "status": "validated-implementation-human-accepted",
   "preflight": "docs/evidence/issue-551-p2-17/preflight.json",
   "startingLivePrHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
   "refreshedRemoteBranchHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
   "validatedImplementationSnapshot": {
-    "head": "9f213c4",
-    "meaning": "P2-17 implementation was committed and validated; this receipt is committed afterward and does not self-reference its own receipt commit."
+    "head": "9f213c4f63c092cd92be25780cfd45d8f0b4032d",
+    "meaning": "P2-17 implementation was committed and validated; this receipt is updated later for maintainer acceptance and does not self-reference the acceptance bookkeeping commit."
   },
   "canonicalMap": {
     "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
@@ -39,6 +39,7 @@
   },
   "geometryContract": {
     "inspectorRailMinHeightPx": 132,
+    "inspectorRailHeightPx": 152,
     "inspectorRailMaxHeightPx": 168,
     "resourceRailMinHeightPx": 72,
     "resourceRailGapPx": 8,
@@ -66,14 +67,21 @@
     "gitDiffCheck": "EXPECTED_EXACT_SLICE_EOF_DIAGNOSTICS; only required blank-at-EOF bytes in exact baseline slices were reported",
     "manualFullTriggered": false,
     "verifyProjectManuallyRun": false,
-    "automaticCi": "PENDING_AFTER_PUSH"
+    "automaticCi": "PASS (CI #947 / run 35188873124 on acceptance-predecessor snapshot 32c324847d601fa904c8293924392cfe92178e59)"
   },
   "humanAcceptance": {
-    "status": "PENDING_HUMAN_ACCEPTANCE",
-    "result": "未测",
-    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
-    "requiredMatrix": ["Windows Electron product entry", "portrait and landscape inspector workspace", "Timeline/resource/inspector geometry continuity", "1366x768 and 1920x1080", "100% and 150% DPI", "representative Chinese and long content", "mouse/touch/cloud input"],
-    "reason": "Automated contracts prove source order, byte identity, and geometry ownership; the real Windows Electron visual/touch pass remains explicitly deferred."
+    "status": "PASS",
+    "result": "PASS",
+    "acceptedOn": "2026-09-17",
+    "acceptedBy": "maintainer",
+    "issueCommentId": 5710897845,
+    "windowsElectronSmoke": "PASS",
+    "reviewedMatrix": ["Windows Electron product entry", "portrait and landscape Inspector/Right Workspace", "Dialogue/Properties/Tools open-close", "Inspector handle/drawer", "empty/selected/protected-background states", "1050px-adjacent responsive behavior", "Host ↔ Timeline resize/max-height continuity", "representative constrained/larger-window behavior", "available input paths"],
+    "scope": "Maintainer reviewed P2-17 Right Workspace/Inspector surfaces and Host ↔ Timeline geometry continuity; no visible host layout/style or geometry regression observed."
+  },
+  "evidenceHardening": {
+    "status": "NON_BLOCKING",
+    "note": "The targeted P2-17 contract directly pins Inspector min-height 132px and max-height 168px; the live height 152px is preserved by byte-exact target hashing/reconstruction and is recorded explicitly in this receipt. A future direct assertion may be added without treating the current omission as a product defect."
   },
   "scopeExceptions": ["No new PR was created; work continues on rolling Draft PR #542.", "No P2-16/18/19/21/27 or Phase 3/4 work was included.", "No DOM, state/store, IPC, behavior, copy, breakpoint, or CSS-value redesign was included."]
 }

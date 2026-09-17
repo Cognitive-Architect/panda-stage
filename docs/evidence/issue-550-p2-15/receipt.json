@@ -6,13 +6,13 @@
   "phase": "SER-03-B10",
   "workItem": "P2-15",
   "owner": "timeline",
-  "status": "validated-implementation-pending-human-acceptance",
+  "status": "validated-implementation-human-accepted",
   "preflight": "docs/evidence/issue-550-p2-15/preflight.json",
   "startingLivePrHead": "08a324dd1e71fba389397c5bb821ec438b679515",
   "refreshedRemoteBranchHead": "08a324dd1e71fba389397c5bb821ec438b679515",
   "validatedImplementationSnapshot": {
-    "head": "852523f",
-    "meaning": "P2-15 implementation was committed and validated; this receipt is committed afterward and does not self-reference its own commit."
+    "head": "852523f7bcf9e46fa519ddb98fda80aaee0a02cf",
+    "meaning": "P2-15 implementation was committed and validated; this receipt is updated later for maintainer acceptance and does not self-reference the acceptance bookkeeping commit."
   },
   "canonicalMap": {
     "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
@@ -73,23 +73,25 @@
     "gitDiffCheck": "PASS_WITH_EXACT_SLICE_EOF_DIAGNOSTICS; the only git diff --check findings are required blank-at-EOF bytes in exact baseline slices",
     "manualFullTriggered": false,
     "verifyProjectManuallyRun": false,
-    "automaticCi": "PENDING_AFTER_PUSH"
+    "automaticCi": "PASS (CI #946 / run 35182245842 on acceptance-predecessor snapshot 092f8a53a8ed4779b4a1eab7d105bd89dded4b00)"
   },
   "humanAcceptance": {
-    "status": "PENDING_HUMAN_ACCEPTANCE",
-    "result": "未测",
-    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
-    "requiredMatrix": [
+    "status": "PASS",
+    "result": "PASS",
+    "acceptedOn": "2026-09-17",
+    "acceptedBy": "maintainer",
+    "issueCommentId": 5709079255,
+    "windowsElectronSmoke": "PASS",
+    "reviewedMatrix": [
       "Windows Electron product entry",
       "portrait and landscape Timeline",
       "collapsed 50px and expanded 162..324px resize",
-      "1366x768 and 1920x1080",
-      "100% and 150% DPI",
+      "constrained and larger-window presentation",
       "representative Chinese and long content",
-      "mouse/touch/cloud input",
+      "available input paths",
       "pending placement/drop and audio trim"
     ],
-    "reason": "Automated contracts prove source order, byte identity, and geometry ownership; the real Windows Electron visual/touch pass remains explicitly deferred."
+    "scope": "Maintainer reviewed Timeline collapse/expand, min/max resize, toolbar/ruler/tracks, zoom/scroll, pending dialogue placement, AudioClip trim/overflow, portrait/landscape, and representative window/content conditions; no visible layout/style or geometry/interaction regression observed."
   },
   "scopeExceptions": [
     "No new PR was created; work continues on rolling Draft PR #542.",

@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 3,
+  "kind": "phase2-rolling-ledger-extension",
+  "pullRequest": 542,
+  "scope": "Append-only closure bookkeeping for SER-03 and SER-04. No CSS, DOM, store, interaction, breakpoint, visual-value, or product-behavior change.",
+  "baseLedger": {
+    "path": "docs/evidence/issue-541-p2-01/phase2-rolling-ledger.json",
+    "blobSha": "d0fd46ce8fddb057d9e052ea1afcc4ca517aca8a",
+    "semantics": "The base ledger remains the historical rolling snapshot through the initial SER-03 record. This extension supersedes P2-B10 status/acceptance fields and adds P2-B11 closure without rewriting prior historical evidence."
+  },
+  "livePrHeadAuthority": "GitHub PR #542 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
+  "selfReferenceRule": "Repository evidence records historical validated snapshots; the live/final PR HEAD and latest CI remain authoritative in GitHub PR/Actions metadata.",
+  "batches": {
+    "P2-B10": {
+      "issue": 550,
+      "workItems": ["P2-15"],
+      "preflightBaseHead": "08a324dd1e71fba389397c5bb821ec438b679515",
+      "implementationHead": "852523f7bcf9e46fa519ddb98fda80aaee0a02cf",
+      "validationRecordHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+        "automaticCiRun": 35182245842,
+        "automaticCiNumber": 946,
+        "automaticCiResult": "PASS",
+        "meaning": "SER-03 P2-15 implementation plus validation evidence; Focused/selected CI route and Final CI result completed successfully before Human Visual + Geometry Acceptance was recorded."
+      },
+      "serialCheckpoints": {
+        "P2-15PreflightRelocationValidation": "PASS",
+        "B10ProductionEntryOrderAndEquivalence": "PASS",
+        "TimelineGeometryContract": "PASS",
+        "S13-05G112DeferredBoundary": "PASS; G112 / S13-05 remained intact and unmoved for P2-27"
+      },
+      "receipts": [
+        "docs/evidence/issue-550-p2-15/preflight.json",
+        "docs/evidence/issue-550-p2-15/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "issueCommentId": 5709079255,
+        "scope": "Timeline collapse/expand, min/max resize, toolbar/ruler/tracks, zoom/scroll, pending dialogue placement, AudioClip trim/overflow, portrait/landscape, and representative window/content conditions; no visible layout/style or geometry/interaction regression observed."
+      },
+      "executionConstraints": {
+        "manualFullTriggered": false,
+        "verifyProjectManuallyRun": false
+      }
+    },
+    "P2-B11": {
+      "issue": 551,
+      "workItems": ["P2-16", "P2-17"],
+      "preflightBaseHead": "092f8a53a8ed4779b4a1eab7d105bd89dded4b00",
+      "implementationHead": "9f213c4f63c092cd92be25780cfd45d8f0b4032d",
+      "validationRecordHead": "32c324847d601fa904c8293924392cfe92178e59",
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "32c324847d601fa904c8293924392cfe92178e59",
+        "automaticCiRun": 35188873124,
+        "automaticCiNumber": 947,
+        "automaticCiResult": "PASS",
+        "meaning": "SER-04 B11 host relocation plus validation evidence; Focused core quality and Final CI result completed successfully before Human Visual + Host Geometry Acceptance was recorded."
+      },
+      "serialCheckpoints": {
+        "P2-16PreflightRelocationValidation": "PASS",
+        "P2-17PreflightRelocationValidation": "PASS",
+        "B11ProductionEntryOrderAndEquivalence": "PASS",
+        "ResourceRailGeometry": "PASS; min-height 72px / gap 8px preserved",
+        "InspectorRailGeometry": "PASS; min-height 132px / live height 152px / max-height 168px preserved",
+        "HostTimelineCoupling": "PASS",
+        "S13-05G112DeferredBoundary": "PASS; G112 / S13-05 remained intact and unmoved for P2-27"
+      },
+      "receipts": [
+        "docs/evidence/issue-551-p2-16/preflight.json",
+        "docs/evidence/issue-551-p2-16/receipt.json",
+        "docs/evidence/issue-551-p2-17/preflight.json",
+        "docs/evidence/issue-551-p2-17/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PASS",
+        "acceptedOn": "2026-09-17",
+        "acceptedBy": "maintainer",
+        "issueCommentId": 5710897845,
+        "scope": "Left Resource Host Assets/Shots/Characters, Right Workspace/Inspector Dialogue/Properties/Tools, portrait/landscape, 1050px-adjacent behavior, host states, and Host ↔ Timeline resize/max-height continuity; no visible host layout/style or geometry-coupling regression observed."
+      },
+      "evidenceHardening": {
+        "status": "NON_BLOCKING",
+        "note": "The P2-17 targeted contract directly asserts Inspector min-height 132px and max-height 168px. The live height 152px read by BottomWorkspace is preserved by byte-exact target hashing/reconstruction and is explicitly pinned in the updated P2-17 receipt. A future direct assertion may be added without treating the current omission as a product defect."
+      },
+      "executionConstraints": {
+        "manualFullTriggered": false,
+        "verifyProjectManuallyRun": false
+      }
+    }
+  },
+  "nextSerialWrapper": {
+    "id": "SER-05",
+    "status": "READY_FOR_FRESH_PREFLIGHT_AFTER_THIS_CLOSURE_HEAD_IS_GREEN",
+    "rule": "Do not reuse SER-04 byte ranges or geometry snapshots as production authority; refresh live PR #542 HEAD and current Canonical/manifest/entry before SER-05 writes."
+  }
+}
