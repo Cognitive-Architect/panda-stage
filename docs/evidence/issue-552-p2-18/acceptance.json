@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "kind": "ser05-maintainer-acceptance",
+  "issue": 552,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-05",
+  "acceptedOn": "2026-09-17",
+  "acceptedBy": "maintainer",
+  "issueCommentId": 5712734237,
+  "acceptancePredecessorHead": "055c2a56ef81e5e51b01115685c29be82b7df000",
+  "automaticCi": {
+    "number": 952,
+    "run": 35207809952,
+    "result": "PASS"
+  },
+  "workItems": {
+    "P2-18": {
+      "receipt": "docs/evidence/issue-552-p2-18/receipt.json",
+      "status": "PASS",
+      "scope": "Editor Shell portrait/landscape composition, canvas-visible height, left/right workspace plus Timeline composition, Timeline resize continuity, constrained/larger window behavior, and overlay/recovery/Quick Drawer stacking."
+    },
+    "P2-19": {
+      "receipt": "docs/evidence/issue-552-p2-19/receipt.json",
+      "status": "PASS",
+      "scope": "Quick Drawer expand/collapse, reachable save-state presentation, History undo/redo presentation, and no revival of the old compact/bottom History entrance."
+    },
+    "P2-21": {
+      "receipt": "docs/evidence/issue-552-p2-21/receipt.json",
+      "status": "PASS",
+      "scope": "Tools home, Action Preset navigation/back path, representative empty/selected/locked/background-disabled states, RightWorkspace integration, and no duplication of the existing P2-01 view-mode surface."
+    }
+  },
+  "maintainerResult": "PASS — no visible Shell layout/style regression and no observed Shell / Timeline / Quick-History / Tools interaction regression in the reviewed SER-05 surfaces.",
+  "receiptSemantics": "The three implementation receipts remain historical validated snapshots and intentionally retain their original deferred-at-write-time humanAcceptance fields. This acceptance record plus Issue #552 comment 5712734237 is the later maintainer acceptance authority.",
+  "executionConstraints": {
+    "manualFullCiTriggered": false,
+    "verifyProjectManuallyRun": false
+  }
+}
