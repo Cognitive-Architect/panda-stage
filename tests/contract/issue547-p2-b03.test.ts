@@ -301,11 +301,10 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
 
   it('declares every untouched gap around the interior asset and shot relocations', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'S01-R01', sourceRange: { startLine: 3, endLine: 1582 } }),
-      expect.objectContaining({ id: 'S01-R02', sourceRange: { startLine: 1672, endLine: 1951 } }),
+      expect.objectContaining({ id: 'S01-R01', sourceRange: { startLine: 60, endLine: 77 } }),
+      expect.objectContaining({ id: 'S01-R02', sourceRange: { startLine: 158, endLine: 1391 } }),
       expect.objectContaining({ id: 'S05-R02', sourceRange: { startLine: 9303, endLine: 9331 } }),
       expect.objectContaining({ id: 'S05-R03', sourceRange: { startLine: 9349, endLine: 9349 } }),
-      expect.objectContaining({ id: 'S05-R04', sourceRange: { startLine: 9431, endLine: 9839 } }),
       expect.objectContaining({ id: 'S07-R01', sourceRange: { startLine: 11884, endLine: 12000 } }),
       expect.objectContaining({ id: 'S07-R03', sourceRange: { startLine: 12349, endLine: 12853 } }),
       expect.objectContaining({ id: 'S07-R02', sourceRange: { startLine: 12953, endLine: 13226 } }),

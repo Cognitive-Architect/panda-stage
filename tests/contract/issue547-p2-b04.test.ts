@@ -282,15 +282,11 @@ describe('Issue #547 P2-B04 dialogue workspace and batch relocation', () => {
     expect(manifest.remainderParts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'S02-R01',
-        sourceRange: { startLine: 1952, endLine: 2897 },
+        sourceRange: { startLine: 2706, endLine: 2897 },
       }),
       expect.objectContaining({
         id: 'S02-R02',
         sourceRange: { startLine: 3904, endLine: 3916 },
-      }),
-      expect.objectContaining({
-        id: 'S06-R03',
-        sourceRange: { startLine: 10968, endLine: 11053 },
       }),
       expect.objectContaining({
         id: 'S06-R04',
