@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "issue": 550,
+  "pullRequest": 542,
+  "branch": "agent/issue-541-p2-01",
+  "phase": "SER-03-B10",
+  "workItem": "P2-15",
+  "owner": "timeline",
+  "status": "validated-implementation-pending-human-acceptance",
+  "preflight": "docs/evidence/issue-550-p2-15/preflight.json",
+  "startingLivePrHead": "08a324dd1e71fba389397c5bb821ec438b679515",
+  "refreshedRemoteBranchHead": "08a324dd1e71fba389397c5bb821ec438b679515",
+  "validatedImplementationSnapshot": {
+    "head": "852523f",
+    "meaning": "P2-15 implementation was committed and validated; this receipt is committed afterward and does not self-reference its own commit."
+  },
+  "canonicalMap": {
+    "path": "docs/decisions/PandaStage_Phase2_Canonical_Section_Map_v1.1_2026-09-16.md",
+    "commit": "f5d25ef8adddbe88d42dcab2cc2212b4c0203590",
+    "sha256": "7a7ba422a451ece5cef1af87acbc8b3be4ff92d33deaf7783db9bd23948cbd3b",
+    "lineCount": 1462,
+    "approvedForAutomaticRelocation": false
+  },
+  "baseline": {
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "reconstructedSourceSha256": "2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7"
+  },
+  "segments": [
+    "G012/S01-12", "G063/S07-07", "G075/S08-04", "G084/S09-03",
+    "G101/S11-08", "G102/S11-09", "G104/S12-03+S12-04",
+    "G108/S12-09", "G110/S13-03", "G116/S14-04", "G120/S14-09"
+  ],
+  "productionEntry": {
+    "path": "src/renderer/styles.css",
+    "semanticImportsExactlyOnce": true,
+    "canonicalImportOrderPreserved": true,
+    "missingMovedSegments": 0,
+    "duplicateMovedSegments": 0,
+    "silentReorders": 0,
+    "targetImportOrder": ["G012", "G063", "G075", "G084", "G101", "G102", "G104", "G108", "G110", "G116", "G120"]
+  },
+  "geometryContract": {
+    "collapsedHeightPx": 50,
+    "expandedHeightRangePx": { "min": 162, "max": 324 },
+    "expandedMaxFormula": "2 * min",
+    "toolbarHeightPx": 48,
+    "rulerScrollHeightPx": 112,
+    "laneSplit": "50/50 equal flex lanes",
+    "liveBounds": "BottomWorkspace -> timelineUiStore.setHeightMax",
+    "pendingPlacementAndDrop": "preserved",
+    "audioSelectedOverflowAndTrim": "preserved",
+    "portraitAndLandscape": "preserved"
+  },
+  "behaviorContract": {
+    "domStateStoreIpcBusinessCopyBreakpointVisualValuesChanged": false,
+    "timelineUiStoreChanged": false,
+    "bottomWorkspaceChanged": false,
+    "g112S13_05Media900BlockUntouched": true,
+    "newConsumers": [],
+    "relativeResourceUrls": []
+  },
+  "validation": {
+    "localBoundaryPreflight": "PASS",
+    "node scripts/verify-css-split.cjs": "PASS",
+    "focusedContractSuite": "PASS (5 files, 20 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "unit": "PASS (283 files, 1817 tests)",
+    "integration": "PASS (32 files, 176 tests)",
+    "build": "PASS (renderer, Electron and preload bundles)",
+    "gitDiffCheck": "PASS_WITH_EXACT_SLICE_EOF_DIAGNOSTICS; the only git diff --check findings are required blank-at-EOF bytes in exact baseline slices",
+    "manualFullTriggered": false,
+    "verifyProjectManuallyRun": false,
+    "automaticCi": "PENDING_AFTER_PUSH"
+  },
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "result": "未测",
+    "windowsElectronSmoke": "PENDING_HUMAN_ACCEPTANCE",
+    "requiredMatrix": [
+      "Windows Electron product entry",
+      "portrait and landscape Timeline",
+      "collapsed 50px and expanded 162..324px resize",
+      "1366x768 and 1920x1080",
+      "100% and 150% DPI",
+      "representative Chinese and long content",
+      "mouse/touch/cloud input",
+      "pending placement/drop and audio trim"
+    ],
+    "reason": "Automated contracts prove source order, byte identity, and geometry ownership; the real Windows Electron visual/touch pass remains explicitly deferred."
+  },
+  "scopeExceptions": [
+    "No new PR was created; work continues on rolling Draft PR #542.",
+    "No P2-16/17/18/19/21/27/28 or Phase 3/4 work was included.",
+    "No DOM, state/store, IPC, behavior, copy, breakpoint, or CSS-value redesign was included."
+  ]
+}

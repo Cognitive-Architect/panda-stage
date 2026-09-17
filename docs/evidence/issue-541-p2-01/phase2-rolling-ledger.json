@@ -343,6 +343,39 @@
         "startingPrHead": "B08 preflight was refreshed after B07 before production writes.",
         "implementationHead": "Validated P2-25/P2-26 snapshots are historical; receipts intentionally do not self-reference their own commits."
       }
+    },
+    "P2-B10": {
+      "issue": 550,
+      "workItems": ["P2-15"],
+      "preflightBaseHead": "08a324dd1e71fba389397c5bb821ec438b679515",
+      "integrationParentHead": "08a324dd1e71fba389397c5bb821ec438b679515",
+      "implementationHead": "852523f",
+      "directImplementationCi": "PENDING_GITHUB_TARGETED_RUN",
+      "validatedRollingSnapshotBeforeAcceptanceRecord": {
+        "head": "852523f",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN",
+        "automaticCiResult": "PENDING",
+        "localTargetedValidation": "PASS",
+        "meaning": "Cumulative SER-03 rolling branch after the P2-15 Timeline Geometry relocation; local contracts and core validation passed before Human Visual Acceptance."
+      },
+      "serialCheckpoints": {
+        "P2-15PreflightRelocationValidation": "PASS",
+        "B10ProductionEntryOrderAndEquivalence": "PASS",
+        "S13-05G112DeferredBoundary": "PASS; G112 / S13-05 remained intact and unmoved for P2-27"
+      },
+      "receipts": [
+        "docs/evidence/issue-550-p2-15/preflight.json",
+        "docs/evidence/issue-550-p2-15/receipt.json"
+      ],
+      "humanAcceptance": {
+        "status": "PENDING_HUMAN_ACCEPTANCE",
+        "scope": "Windows Electron Timeline Geometry acceptance remains deferred: portrait/landscape, 50px collapsed, 162..324px expanded resize, constrained windows, DPI, Chinese/long content, pending placement/drop, and audio trim."
+      },
+      "legacyReceiptSemantics": {
+        "startingPrHead": "P2-15 was refreshed against the live rolling PR #542 head before production writes.",
+        "implementationHead": "The validated P2-15 implementation snapshot is historical; this ledger update intentionally records the prior implementation commit, not its own receipt commit.",
+        "automaticCi": "PENDING_GITHUB_TARGETED_RUN means the authoritative post-push result belongs to GitHub Actions and PR metadata."
+      }
     }
   }
 }
