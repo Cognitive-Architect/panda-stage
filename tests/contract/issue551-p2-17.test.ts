@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 type Range = { startLine: number; endLine: number };
 type SourceSegment = {
@@ -230,7 +229,7 @@ describe('Issue #551 P2-17 right Workspace/Inspector Host contract', () => {
     expect(imports).not.toContain('./styles/legacy-slices/08-inspector-portrait-dialogue--before-appearance.css');
   });
 
-  it('keeps host targets byte-exact and preserves the pinned stylesheet', () => {
+  it('keeps host targets byte-exact after Phase 3 begins', () => {
     for (const expected of expectedP217) {
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
       expect(sha256(target)).toBe(expected.sourceSha256);
@@ -239,9 +238,6 @@ describe('Issue #551 P2-17 right Workspace/Inspector Host contract', () => {
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
-    );
   });
 
   it('preserves the Inspector rail geometry owners and the Timeline boundary', () => {
