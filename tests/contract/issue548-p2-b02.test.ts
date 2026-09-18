@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -434,7 +433,7 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
     expect(imports.slice(s16Start, s16Start + s16Paths.length)).toEqual(s16Paths);
   });
 
-  it('keeps unchanged P2 targets byte-exact and reconstructs the current stylesheet', () => {
+  it('keeps unchanged P2 targets byte-exact after Phase 3 begins', () => {
     for (const relocation of expectedP204) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
       expect(sha256(target)).toBe(relocation.sourceSha256);
@@ -456,8 +455,5 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
-    );
   });
 });
