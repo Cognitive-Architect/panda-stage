@@ -321,6 +321,7 @@
           "docs/evidence/issue-548-p2-05/**",
           "docs/evidence/issue-548-p2-10/**",
           "docs/evidence/issue-548-p2-11/**",
+          "docs/evidence/issue-555-p3-01/**",
           "public/subtitle-empty-state.png"
         ],
         "testPatterns": [
@@ -351,6 +352,7 @@
           "tests/contract/issue552-p2-18.test.ts",
           "tests/contract/issue552-p2-19-p2-21.test.ts",
           "tests/contract/issue553-ser06.test.ts",
+          "tests/contract/issue555-p3-01-selected-asset-surface.test.ts",
           "tests/helpers/read-stylesheet-source.ts",
           "tests/unit/issue102-task4-responsive.test.ts",
           "tests/unit/issue109-resource-workspace.test.ts"

@@ -22,6 +22,10 @@ compound surface. `character-mouth-clear` remains a separate button. C09 keeps
 its 52px inline selected row, 44px thumbnail, candidate sizing, and existing
 single-card editing structure.
 
+The exact evidence and contract-test paths are registered in the existing
+`editor-shell` ownership route in `scripts/verification-manifest.json`; no
+broad catch-all route was added.
+
 ## Validation boundary
 
 Automated validation is complete. The receipt intentionally keeps Windows

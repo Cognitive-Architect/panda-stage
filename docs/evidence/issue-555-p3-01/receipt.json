@@ -17,6 +17,11 @@
       "src/renderer/styles/features/characters/settings/s16-04--character-settings-polish-526.css"
     ],
     "testFile": "tests/contract/issue555-p3-01-selected-asset-surface.test.ts",
+    "routingManifest": "scripts/verification-manifest.json",
+    "routingManifestRegisteredPaths": [
+      "docs/evidence/issue-555-p3-01/**",
+      "tests/contract/issue555-p3-01-selected-asset-surface.test.ts"
+    ],
     "inlineHostFileChanged": false,
     "businessFilesChanged": false
   },
