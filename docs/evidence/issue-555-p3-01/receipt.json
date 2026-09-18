@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "issue": 555,
+  "phase": "P3-01",
+  "workItem": "Selected Asset Surface Contract Pilot",
+  "status": "validated-implementation-pending-human-acceptance",
+  "baseline": {
+    "main": "fb3d57c511dc4cb524b2b7910e54618e205caade",
+    "p300CoverageIssue": 554,
+    "p300CoverageStatus": "zero-missing PASS / explicit-extra = 0",
+    "directConsumers": "C01-C09 / 9 direct ImageAssetPicker call sites"
+  },
+  "implementation": {
+    "commit": "9554c1b9a9370fc972739023e4212f3a3e1ee514",
+    "productionFiles": [
+      "src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css",
+      "src/renderer/styles/features/characters/settings/s16-04--character-settings-polish-526.css"
+    ],
+    "testFile": "tests/contract/issue555-p3-01-selected-asset-surface.test.ts",
+    "inlineHostFileChanged": false,
+    "businessFilesChanged": false
+  },
+  "contract": {
+    "authoritativeDefinition": {
+      "path": "src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css",
+      "selector": ".image-asset-picker",
+      "properties": [
+        "--image-asset-picker-selected-surface-border",
+        "--image-asset-picker-selected-surface-border-hover",
+        "--image-asset-picker-selected-surface-radius",
+        "--image-asset-picker-selected-surface-background",
+        "--image-asset-picker-selected-surface-background-hover"
+      ]
+    },
+    "baseConsumer": {
+      "selector": ".image-asset-picker-selected",
+      "surface": "shared contract variables",
+      "interaction": "shared hover/focus contract variables"
+    },
+    "C05": {
+      "path": "src/renderer/styles/features/characters/settings/s16-04--character-settings-polish-526.css",
+      "selector": ".image-asset-picker-selected-row",
+      "surface": "shared contract variables",
+      "preserved": [
+        "transparent inner Picker normal surface",
+        "independent .character-mouth-clear button",
+        "compound row geometry and seams",
+        "no nested interactive element"
+      ]
+    },
+    "C09": {
+      "path": "src/renderer/styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css",
+      "selector": ".image-asset-picker-inline .image-asset-picker-selected",
+      "surface": "inherited from S14-14 family base contract",
+      "preserved": [
+        "52px selected row",
+        "44px thumbnail",
+        "inline grid geometry",
+        "candidate scroll and thumbnail sizing",
+        "#528 single-card editing layout"
+      ]
+    }
+  },
+  "regressionSet": [
+    "C01 CharacterList normal image",
+    "C02 CharacterList angry image and conflict",
+    "C03 CharacterList optional mouth image",
+    "C04 CharacterEditor default/portrait mouth image",
+    "C05 CharacterEditor landscape configured mouth row and Clear",
+    "C06 LegacyExpressionEditor existing expression image",
+    "C07 LegacyExpressionEditor add-expression image",
+    "C08 LandscapeExpressionEditor add-expression image",
+    "C09 LandscapeExpressionEditor inline selected expression image"
+  ],
+  "negativeControls": {
+    "status": "source/diff unchanged; runtime visual inspection pending",
+    "areas": [
+      "Tools",
+      "Timeline",
+      "CharacterIdentityPicker",
+      "character delete action",
+      "expression delete action"
+    ]
+  },
+  "validation": {
+    "gitDiffCheck": "PASS",
+    "targetedContract": "PASS (3 files, 10 tests)",
+    "targetedCharacterRegression": "PASS (character-components and Issue #527 balance tests)",
+    "testUnit": "PASS (289 files, 1843 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "buildRenderer": "PASS",
+    "build": "PASS (typecheck, renderer, Electron/preload)",
+    "automaticCi": "PENDING_PUSH",
+    "manualFullCiTriggered": false,
+    "manualVerifyProjectRun": false,
+    "temporaryPerturbation": "not used"
+  },
+  "windowsElectronSmoke": {
+    "result": "PASS",
+    "worktree": "D:/panda-issue555-p3-01",
+    "userData": "D:/PandaStage-Acceptance/issue-555-p3-01-20260918",
+    "processId": 14228,
+    "windowTitle": "Panda Stage",
+    "responding": true,
+    "meaning": "launch/response smoke only"
+  },
+  "humanAcceptance": {
+    "status": "PENDING_HUMAN_ACCEPTANCE",
+    "requiredSurfaces": [
+      "C05 configured mouth row",
+      "C09 inline expression selected asset",
+      "representative C01-C08 Picker consumers",
+      "Tools/Timeline/CharacterIdentityPicker/delete negative controls",
+      "ordinary, hover, keyboard focus, disabled/conflict where applicable",
+      "no clipping, double border, or geometry jump",
+      "Windows 100%/150% DPI, normal and constrained windows",
+      "Chinese and long content"
+    ],
+    "note": "Automated tests and launch smoke do not replace maintainer visual acceptance."
+  },
+  "historicalGateMaintenance": {
+    "S14-14": "P2-B01 target byte/length assertion delegated to this P3-01 contract test because the target intentionally changed",
+    "G145": "P2-B02 target byte/length assertion delegated to this P3-01 contract test because the target intentionally changed",
+    "otherRelocationTargets": "byte/length assertions preserved",
+    "currentProductionEntrySha256": "d27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d"
+  },
+  "scopeExceptions": []
+}
