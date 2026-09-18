@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -318,7 +317,7 @@ describe('Issue #547 P2-B04 dialogue workspace and batch relocation', () => {
     expect(imports.slice(s15Start, s15Start + s15Paths.length)).toEqual(s15Paths);
   });
 
-  it('keeps each B04 target byte-exact and reconstructs the pinned stylesheet', () => {
+  it('keeps each B04 target byte-exact after Phase 3 begins', () => {
     for (const relocation of expectedB04) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
       expect(sha256(target)).toBe(relocation.sourceSha256);
@@ -327,8 +326,5 @@ describe('Issue #547 P2-B04 dialogue workspace and batch relocation', () => {
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
-    );
   });
 });

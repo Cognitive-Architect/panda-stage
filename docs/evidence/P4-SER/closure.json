@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "P4-SER-closure-v1",
+  "issue": 561,
+  "status": "complete",
+  "executionLine": {
+    "pr": 556,
+    "branch": "agent/issue-555-p3-01",
+    "noNewP4SerBranchOrPr": true,
+    "finalValidatedImplementationHead": "e58c25b10975b1381c2f4c099d54465e68b349b1"
+  },
+  "startGate": {
+    "p4_00Map": "reconciled",
+    "refreshedPredecessorHead": "aad90a609bb7947e1272885781065456ca881ddc",
+    "refreshedPredecessorAutomaticCi": {
+      "runId": 35345090586,
+      "result": "success"
+    },
+    "p4SerEvidenceRoute": "docs/evidence/P4-SER/**",
+    "routeOwner": "editor-shell"
+  },
+  "p4_00StartingInventory": {
+    "legacy": 38,
+    "compat": 15
+  },
+  "ser01": {
+    "receipt": "docs/evidence/P4-SER/ser-01.json",
+    "provenDeadDeleted": 8,
+    "deletedExactlyAuthorizedSet": true,
+    "unknownOrLiveDeleted": false,
+    "implementationCiRun": 35346849200,
+    "implementationCiResult": "success"
+  },
+  "ser02": {
+    "receipt": "docs/evidence/P4-SER/ser-02.json",
+    "unknownLegacyRetainedNoTouch": 27,
+    "liveRemainderMarkersRetained": 3,
+    "liveCompatRetained": 15,
+    "ownershipMigrationStarted": false,
+    "historicalContractsRewritten": false,
+    "productionCssChanged": false
+  },
+  "ser03": {
+    "agentsDesignCssGovernanceWired": true,
+    "readmeDesignLinkAdded": true,
+    "rootStylesImportOnlyGuard": "PASS",
+    "guardTest": "tests/contract/issue561-p4-ser.test.ts",
+    "designGuidance": {
+      "path": "DESIGN.md",
+      "activeOnTargetMain": true,
+      "presentInCurrentStackedBranch": false,
+      "note": "The stacked branch predates the current origin/main DESIGN.md upload; the README link targets the root file that is present on origin/main. DESIGN.md was not copied into the implementation branch."
+    }
+  },
+  "finalRetainedDisposition": {
+    "unknownLegacyRetainedNoTouch": 27,
+    "liveRemainderMarkersRetainedIntentionally": 3,
+    "liveCompatRetained": 15,
+    "productionLegacyStylingDeclarationsInRetainedMarkers": 0
+  },
+  "validation": {
+    "targetedContractTest": "pass",
+    "typecheck": "pass",
+    "lint": "pass",
+    "unitTests": {
+      "files": 290,
+      "tests": 1843,
+      "result": "pass"
+    },
+    "build": "pass",
+    "cssSplitPreflight": "pass",
+    "gitDiffCheck": "pass",
+    "manualFullCi": false,
+    "pnpmVerifyProject": false,
+    "broadHistoricalVerifierSweep": false,
+    "windowsHumanAcceptanceRequired": false
+  },
+  "automaticCi": {
+    "status": "success",
+    "runId": 35347870146,
+    "validatedHead": "e58c25b10975b1381c2f4c099d54465e68b349b1",
+    "note": "Normal automatic CI passed on the final implementation head; subsequent receipt-only updates do not change production behavior."
+  },
+  "phase4": "COMPLETE",
+  "noUnrelatedScopeExpansion": true
+}

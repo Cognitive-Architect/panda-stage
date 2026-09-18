@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -261,7 +260,7 @@ describe('Issue #549 SER-02 final stylesheet contract', () => {
     expect(indexes).toEqual([...indexes].sort((left, right) => left - right));
   });
 
-  it('keeps every SER-02 target byte-exact and reconstructs the pinned stylesheet', () => {
+  it('keeps every SER-02 target byte-exact after Phase 3 begins', () => {
     for (const expected of expectedSer02) {
       const relocation = manifest.semanticRelocations.find(({ id }) => id === expected.id);
       expect(relocation).toBeDefined();
@@ -275,9 +274,6 @@ describe('Issue #549 SER-02 final stylesheet contract', () => {
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
-    );
   });
 
   it('keeps all six rolling receipts and the deferred compatibility boundary explicit', () => {

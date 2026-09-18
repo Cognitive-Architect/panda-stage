@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -434,7 +433,7 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
     expect(imports.slice(s16Start, s16Start + s16Paths.length)).toEqual(s16Paths);
   });
 
-  it('keeps every P2-04 target byte-exact and reconstructs the pinned stylesheet', () => {
+  it('keeps unchanged P2 targets byte-exact after Phase 3 begins', () => {
     for (const relocation of expectedP204) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
       expect(sha256(target)).toBe(relocation.sourceSha256);
@@ -445,14 +444,16 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
 
     for (const relocation of expectedP205) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
+      if (relocation.id === 'G145') {
+        // Issue #555 intentionally evolves this target; its selected-surface
+        // contract is covered by issue555-p3-01-selected-asset-surface.test.ts.
+        continue;
+      }
       expect(sha256(target)).toBe(relocation.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         relocation.sourceEndByteExclusive - relocation.sourceStartByte,
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
-    );
   });
 });

@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 type Range = { startLine: number; endLine: number };
 type SourceSegment = {
@@ -197,7 +196,7 @@ describe('Issue #551 P2-16 left Resource Host contract', () => {
     expect(imports.filter((candidate) => expectedImports.includes(candidate))).toEqual(expectedImports);
   });
 
-  it('keeps host targets byte-exact and preserves the pinned stylesheet', () => {
+  it('keeps host targets byte-exact after Phase 3 begins', () => {
     for (const expected of expectedP216) {
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
       expect(sha256(target)).toBe(expected.sourceSha256);
@@ -206,9 +205,6 @@ describe('Issue #551 P2-16 left Resource Host contract', () => {
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
-    );
   });
 
   it('preserves the Resource rail geometry owners and the G112 boundary', () => {

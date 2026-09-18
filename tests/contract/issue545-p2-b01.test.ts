@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -146,17 +145,19 @@ describe('Issue #545 P2-B01 shared character foundations', () => {
     }
   });
 
-  it('keeps each moved target exact and reconstructs the pinned stylesheet', () => {
+  it('keeps unchanged moved targets exact after Phase 3 begins', () => {
     for (const id of b01Ids) {
       const relocation = manifest.semanticRelocations.find((item) => item.id === id)!;
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
+      if (id === 'S14-14') {
+        // Issue #555 intentionally evolves this target; its selected-surface
+        // contract is covered by issue555-p3-01-selected-asset-surface.test.ts.
+        continue;
+      }
       expect(sha256(target)).toBe(relocation.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         relocation.sourceEndByteExclusive - relocation.sourceStartByte,
       );
     }
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
-    );
   });
 });

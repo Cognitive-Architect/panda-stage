@@ -83,6 +83,10 @@ react-konva, Zod, Vitest, ESLint, and pnpm.
   every repository-relative link against the checkout, and every architecture
   claim against current code. Treat daily receipts and old handoffs as
   evidence, not automatic descriptions of the current implementation.
+- Before any renderer UI/UX, design-system, visual-system, or CSS change, read
+  the repository-root `DESIGN.md`. Treat it as design guidance and red-line
+  constraints, not automatic authorization for a broad UI rewrite; the active
+  Issue/PR still defines the allowed scope.
 
 ## Execution budget and validation proportionality
 

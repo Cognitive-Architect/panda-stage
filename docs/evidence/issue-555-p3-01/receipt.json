@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "issue": 555,
+  "phase": "P3-01",
+  "workItem": "Selected Asset Surface Contract Pilot",
+  "status": "validated-implementation-pending-human-acceptance",
+  "baseline": {
+    "main": "fb3d57c511dc4cb524b2b7910e54618e205caade",
+    "p300CoverageIssue": 554,
+    "p300CoverageStatus": "zero-missing PASS / explicit-extra = 0",
+    "directConsumers": "C01-C09 / 9 direct ImageAssetPicker call sites"
+  },
+  "implementation": {
+    "commit": "9554c1b9a9370fc972739023e4212f3a3e1ee514",
+    "productionFiles": [
+      "src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css",
+      "src/renderer/styles/features/characters/settings/s16-04--character-settings-polish-526.css"
+    ],
+    "testFile": "tests/contract/issue555-p3-01-selected-asset-surface.test.ts",
+    "routingManifest": "scripts/verification-manifest.json",
+    "routingManifestRegisteredPaths": [
+      "docs/evidence/issue-555-p3-01/**",
+      "tests/contract/issue555-p3-01-selected-asset-surface.test.ts"
+    ],
+    "inlineHostFileChanged": false,
+    "businessFilesChanged": false
+  },
+  "validatedImplementationSnapshot": {
+    "head": "12edb4c8d575236a10399d08c1564f195493b8aa",
+    "automaticCiRun": 35306003137,
+    "automaticCiResult": "PASS",
+    "meaning": "The implementation, evidence routing manifest, focused core quality checks, and manifest-selected editor/timeline regression suites passed in normal automatic CI at this snapshot; later evidence-only receipt changes are tracked by live PR metadata."
+  },
+  "livePrHeadAuthority": "GitHub PR #556 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
+  "contract": {
+    "authoritativeDefinition": {
+      "path": "src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css",
+      "selector": ".image-asset-picker",
+      "properties": [
+        "--image-asset-picker-selected-surface-border",
+        "--image-asset-picker-selected-surface-border-hover",
+        "--image-asset-picker-selected-surface-radius",
+        "--image-asset-picker-selected-surface-background",
+        "--image-asset-picker-selected-surface-background-hover"
+      ]
+    },
+    "baseConsumer": {
+      "selector": ".image-asset-picker-selected",
+      "surface": "shared contract variables",
+      "interaction": "shared hover/focus contract variables"
+    },
+    "C05": {
+      "path": "src/renderer/styles/features/characters/settings/s16-04--character-settings-polish-526.css",
+      "selector": ".image-asset-picker-selected-row",
+      "surface": "shared contract variables",
+      "preserved": [
+        "transparent inner Picker normal surface",
+        "independent .character-mouth-clear button",
+        "compound row geometry and seams",
+        "no nested interactive element"
+      ]
+    },
+    "C09": {
+      "path": "src/renderer/styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css",
+      "selector": ".image-asset-picker-inline .image-asset-picker-selected",
+      "surface": "inherited from S14-14 family base contract",
+      "preserved": [
+        "52px selected row",
+        "44px thumbnail",
+        "inline grid geometry",
+        "candidate scroll and thumbnail sizing",
+        "#528 single-card editing layout"
+      ]
+    }
+  },
+  "regressionSet": [
+    "C01 CharacterList normal image",
+    "C02 CharacterList angry image and conflict",
+    "C03 CharacterList optional mouth image",
+    "C04 CharacterEditor default/portrait mouth image",
+    "C05 CharacterEditor landscape configured mouth row and Clear",
+    "C06 LegacyExpressionEditor existing expression image",
+    "C07 LegacyExpressionEditor add-expression image",
+    "C08 LandscapeExpressionEditor add-expression image",
+    "C09 LandscapeExpressionEditor inline selected expression image"
+  ],
+  "negativeControls": {
+    "status": "source/diff unchanged; runtime visual inspection pending",
+    "areas": [
+      "Tools",
+      "Timeline",
+      "CharacterIdentityPicker",
+      "character delete action",
+      "expression delete action"
+    ]
+  },
+  "validation": {
+    "gitDiffCheck": "PASS",
+    "targetedContract": "PASS (3 files, 10 tests)",
+    "targetedCharacterRegression": "PASS (character-components and Issue #527 balance tests)",
+    "testUnit": "PASS (289 files, 1843 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "buildRenderer": "PASS",
+    "build": "PASS (typecheck, renderer, Electron/preload)",
+    "automaticCi": {
+      "run": 35306003137,
+      "result": "PASS",
+      "head": "12edb4c8d575236a10399d08c1564f195493b8aa",
+      "url": "https://github.com/Cognitive-Architect/panda-stage/actions/runs/35306003137",
+      "fullQualityAndRegression": "SKIPPED by normal Draft policy"
+    },
+    "manualFullCiTriggered": false,
+    "manualVerifyProjectRun": false,
+    "temporaryPerturbation": "not used"
+  },
+  "windowsElectronSmoke": {
+    "result": "PASS",
+    "worktree": "D:/panda-issue555-p3-01",
+    "userData": "D:/PandaStage-Acceptance/issue-555-p3-01-20260918",
+    "processId": 14228,
+    "windowTitle": "Panda Stage",
+    "responding": true,
+    "meaning": "launch/response smoke only"
+  },
+  "humanAcceptance": {
+    "status": "PARTIAL_MAINTAINER_ACCEPTANCE",
+    "observedAt": "2026-09-18",
+    "accepted": [
+      {
+        "consumer": "C05",
+        "surface": "landscape Character Settings configured mouth asset compound row",
+        "result": "PASS",
+        "evidence": "Maintainer Windows Electron visual inspection: normal configured state, no double border, no geometry jump, thumbnail/copy/change/clear layout intact."
+      },
+      {
+        "consumer": "C05",
+        "surface": "keyboard Tab focus reachability",
+        "result": "PASS_WITH_NONBLOCKING_UX_NOTE",
+        "evidence": "Tab reaches the main selected-asset control and interaction remains intact. Focus feedback is visually weak/local, recorded as pre-existing/non-blocking UX debt rather than a P3-01 regression."
+      },
+      {
+        "consumer": "C09",
+        "surface": "landscape Expression card inline selected asset and expanded candidates",
+        "result": "PASS",
+        "evidence": "Maintainer Windows Electron visual inspection: inline geometry, candidate expansion, Apply/Cancel card structure, and #528 single-card layout remain intact."
+      },
+      {
+        "consumer": "C02",
+        "surface": "Character create angry image conflict/disabled candidate state",
+        "result": "PASS",
+        "evidence": "Maintainer Windows Electron visual inspection: selected angry asset remains intact; conflicting asset remains visibly unavailable with conflict marker/copy; expanded candidate grid geometry remains normal."
+      },
+      {
+        "consumer": "C03",
+        "surface": "Character create optional mouth image / unconfigured empty state",
+        "result": "PASS",
+        "evidence": "Maintainer Windows Electron visual inspection: optional label, unconfigured empty state, Select action, and create-form geometry remain intact."
+      }
+    ],
+    "pending": [
+      "Tools/Timeline/CharacterIdentityPicker/delete-action negative-control visual spot checks",
+      "broader DPI/constrained-window/long-content matrix if maintainer chooses to exercise it"
+    ],
+    "note": "Primary proof consumers C05/C09 plus representative C02/C03 regression consumers have maintainer visual PASS. Only unrelated negative-control spot checks remain for the minimum human acceptance boundary."
+  },
+  "historicalGateMaintenance": {
+    "S14-14": "P2-B01 target byte/length assertion delegated to this P3-01 contract test because the target intentionally changed",
+    "G145": "P2-B02 target byte/length assertion delegated to this P3-01 contract test because the target intentionally changed",
+    "otherRelocationTargets": "byte/length assertions preserved",
+    "currentProductionEntrySha256": "d27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d",
+    "phase2ToPhase3Handoff": "Phase 2 historical tests no longer repin the mutable current production stylesheet hash. Unchanged relocation byte/length/order checks remain; Issue #553 now checks the accepted Phase 2 closure receipt hash (240412...) as historical evidence; P3-01 owns the current selected-surface contract."
+  },
+  "scopeExceptions": []
+}

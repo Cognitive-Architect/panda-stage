@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "P4-SER-ser-01-v1",
+  "issue": 561,
+  "checkpoint": "SER-01",
+  "status": "complete",
+  "baseline": {
+    "pr": 556,
+    "branch": "agent/issue-555-p3-01",
+    "head": "aad90a609bb7947e1272885781065456ca881ddc",
+    "headRefreshedFromRemote": true,
+    "latestAutomaticCi": {
+      "runId": 35345090586,
+      "result": "success"
+    }
+  },
+  "authorizedDeletedPaths": [
+    "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-characters.css",
+    "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-dialogue-properties.css",
+    "src/renderer/styles/legacy-slices/10-landscape-characters-tools-after-character-workbench.css",
+    "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-tail.css",
+    "src/renderer/styles/legacy-slices/15-character-identity-workspace-after-subtitle-style.css",
+    "src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-05.css",
+    "src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-16-to-22.css",
+    "src/renderer/styles/legacy-slices/16-character-settings-after-rename.css"
+  ],
+  "deletedFileSnapshots": [
+    { "path": "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-characters.css", "bytes": 4199, "sha1": "b7ef00d2ad20a39192f4ad1ed5d75e1dfb4b3b3d" },
+    { "path": "src/renderer/styles/legacy-slices/08-inspector-portrait-dialogue-after-dialogue-properties.css", "bytes": 10887, "sha1": "7ed9ee376e1896df38443a157df563408c3568f5" },
+    { "path": "src/renderer/styles/legacy-slices/10-landscape-characters-tools-after-character-workbench.css", "bytes": 17989, "sha1": "e919c69e7a729129c5937a255de3cd57643dd3af" },
+    { "path": "src/renderer/styles/legacy-slices/14-dialogue-polish-image-picker-tail.css", "bytes": 1039, "sha1": "ff81f5f9428efbbaf5f3875a562d04c4ec7a5721" },
+    { "path": "src/renderer/styles/legacy-slices/15-character-identity-workspace-after-subtitle-style.css", "bytes": 5847, "sha1": "e0862c585730ddcd21eb8d993ef4bfc817543466" },
+    { "path": "src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-05.css", "bytes": 580, "sha1": "5dda521c4892a3508138f984bce4126b3709a6f6" },
+    { "path": "src/renderer/styles/legacy-slices/15-character-identity-workspace-s15-16-to-22.css", "bytes": 15353, "sha1": "1666e634f625c6ba545eef6409645922d4ebd39a" },
+    { "path": "src/renderer/styles/legacy-slices/16-character-settings-after-rename.css", "bytes": 15502, "sha1": "831d9cb751c439a211efc1605a8c86c417aa5162" }
+  ],
+  "referenceCheck": {
+    "status": "pass",
+    "method": "exact repository path and basename search excluding .git and node_modules",
+    "allowedEvidenceReference": "docs/decisions/PandaStage_Phase4_Legacy_Compat_Closure_Map_v1.0_2026-09-18.md",
+    "unexpectedProductionOrExecutableReferences": [],
+    "unknownOrLiveFilesDeleted": false
+  },
+  "remainingInventory": {
+    "legacySlices": 30,
+    "compat": 15,
+    "p4_00MapRows": 53,
+    "p4_00MapIdsUnique": true
+  },
+  "validation": {
+    "p4SerEvidenceRouteRegistered": true,
+    "cssSplitPreflight": {
+      "command": "node scripts/verify-css-split.cjs --preflight",
+      "result": "pass",
+      "scanErrors": 0,
+      "warnings": 0,
+      "failures": 0
+    },
+    "build": {
+      "command": "pnpm build",
+      "result": "pass",
+      "warnings": [
+        "Vite reported the three intentionally retained empty remainder imports.",
+        "Vite reported a non-fatal chunk-size warning."
+      ]
+    },
+    "diffCheck": "pass",
+    "otherFilesDeleted": false,
+    "manualFullCi": false,
+    "pnpmVerifyProject": false
+  },
+  "automaticCi": {
+    "status": "success",
+    "runId": 35346849200,
+    "validatedCommit": "4b16042cc8060053248837b8306d09e7e51d9a09",
+    "note": "The validated implementation head passed the normal automatic CI route; this receipt update is documentation-only."
+  }
+}

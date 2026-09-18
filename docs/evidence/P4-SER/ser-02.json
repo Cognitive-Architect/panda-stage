@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "P4-SER-ser-02-v1",
+  "issue": 561,
+  "checkpoint": "SER-02",
+  "status": "complete",
+  "source": {
+    "canonicalMap": "docs/decisions/PandaStage_Phase4_Legacy_Compat_Closure_Map_v1.0_2026-09-18.md",
+    "p4_00Inventory": {
+      "legacy": 38,
+      "compat": 15,
+      "dead": 8,
+      "live": 18,
+      "unknown": 27
+    },
+    "headAtDisposition": "2707d564969fc614683ca45b32e1b9a4cbcf4f9d"
+  },
+  "finalDisposition": {
+    "unknownLegacyRetainedNoTouch": {
+      "count": 27,
+      "ids": [
+        "L01",
+        "L02",
+        "L03",
+        "L04",
+        "L05",
+        "L06",
+        "L07",
+        "L08",
+        "L09",
+        "L10",
+        "L13",
+        "L14",
+        "L15",
+        "L16",
+        "L17",
+        "L18",
+        "L21",
+        "L22",
+        "L25",
+        "L26",
+        "L27",
+        "L28",
+        "L29",
+        "L30",
+        "L31",
+        "L36",
+        "L38"
+      ],
+      "decision": "retain / no-touch",
+      "reason": "Unresolved historical, verifier, manifest, or ownership references remain; this Issue does not authorize further cleanup."
+    },
+    "liveRemainderMarkersRetainedIntentionally": {
+      "count": 3,
+      "ids": ["L11", "L12", "L19"],
+      "paths": [
+        "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--after-shot-create.css",
+        "src/renderer/styles/legacy-slices/05-asset-library-stage-sequence--between-shots-create.css",
+        "src/renderer/styles/legacy-slices/07-portrait-assets-inspector-start-after-assets.css"
+      ],
+      "decision": "retain intentionally",
+      "reason": "Empty CRLF remainder/import-order markers remain production-imported and are named by the manifest and issue553-ser06 contract."
+    },
+    "liveCompatRetained": {
+      "count": 15,
+      "ids": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "C11",
+        "C12",
+        "C13",
+        "C14",
+        "C15"
+      ],
+      "decision": "retain compat",
+      "reason": "Each file remains a production-imported condition-scoped compatibility owner; no migration is authorized by this checkpoint."
+    }
+  },
+  "scopeConfirmation": {
+    "ownershipMigrationStarted": false,
+    "historicalContractsRewritten": false,
+    "productionCssChanged": false,
+    "remainderMarkersRemoved": false,
+    "compatFilesRemovedOrMigrated": false,
+    "unknownFilesTouched": false,
+    "visualNormalizationStarted": false
+  },
+  "reconciliation": {
+    "unknownCount": 27,
+    "remainderCount": 3,
+    "compatCount": 15,
+    "allP4_00RemainingRowsHaveDisposition": true,
+    "ser01DeletedExactlyEight": true
+  },
+  "validation": {
+    "receiptJson": "valid",
+    "diffCheck": "pass",
+    "automaticCi": {
+      "runId": 35347870146,
+      "result": "success",
+      "validatedImplementationHead": "e58c25b10975b1381c2f4c099d54465e68b349b1"
+    },
+    "manualFullCi": false,
+    "pnpmVerifyProject": false
+  }
+}

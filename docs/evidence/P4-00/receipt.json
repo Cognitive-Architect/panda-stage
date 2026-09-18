@@ -1,0 +1,168 @@
+{
+  "schemaVersion": "P4-00-receipt-v1",
+  "issue": 559,
+  "title": "P4-00: Legacy / Compat Inventory & Closure Map",
+  "auditDate": "2026-09-18",
+  "status": "audit-complete-no-production-change",
+  "stack": {
+    "branch": "agent/issue-559-p4-00",
+    "auditedHead": "afc9b135d89f85d9f9fa12e70968ff51a5bf20fa",
+    "predecessor": "#556 P3-01",
+    "predecessorHead": "afc9b135d89f85d9f9fa12e70968ff51a5bf20fa",
+    "predecessorStatus": "open-draft-mergeable",
+    "mainObservation": "1e8ff3d467cda153f80c79a447d66e833ed444a7"
+  },
+  "canonicalMap": "docs/decisions/PandaStage_Phase4_Legacy_Compat_Closure_Map_v1.0_2026-09-18.md",
+  "scope": {
+    "legacyDirectory": "src/renderer/styles/legacy-slices",
+    "compatDirectory": "src/renderer/styles/compat",
+    "legacyCount": 38,
+    "compatCount": 15,
+    "overallCount": 53,
+    "rootStylesImportCount": 152,
+    "productionCssChanged": false,
+    "rootStylesChanged": false,
+    "filesDeleted": [],
+    "filesRelocated": []
+  },
+  "classificationTotals": {
+    "legacy": {
+      "DEAD": 8,
+      "LIVE": 3,
+      "UNKNOWN": 27
+    },
+    "compat": {
+      "DEAD": 0,
+      "LIVE": 15,
+      "UNKNOWN": 0
+    },
+    "overall": {
+      "DEAD": 8,
+      "LIVE": 18,
+      "UNKNOWN": 27
+    }
+  },
+  "serInput": {
+    "ser01CandidateIds": [
+      "L20",
+      "L23",
+      "L24",
+      "L32",
+      "L33",
+      "L34",
+      "L35",
+      "L37"
+    ],
+    "ser02RemainderIds": [
+      "L11",
+      "L12",
+      "L19"
+    ],
+    "retainedCompatIds": [
+      "C01",
+      "C02",
+      "C03",
+      "C04",
+      "C05",
+      "C06",
+      "C07",
+      "C08",
+      "C09",
+      "C10",
+      "C11",
+      "C12",
+      "C13",
+      "C14",
+      "C15"
+    ],
+    "unknownNoTouchIds": [
+      "L01",
+      "L02",
+      "L03",
+      "L04",
+      "L05",
+      "L06",
+      "L07",
+      "L08",
+      "L09",
+      "L10",
+      "L13",
+      "L14",
+      "L15",
+      "L16",
+      "L17",
+      "L18",
+      "L21",
+      "L22",
+      "L25",
+      "L26",
+      "L27",
+      "L28",
+      "L29",
+      "L30",
+      "L31",
+      "L36",
+      "L38"
+    ]
+  },
+  "baseline": {
+    "manifest": "scripts/css-split-manifest.json",
+    "commit": "35fe7963a50e7bd9be68f1e39d12833c99bb4436",
+    "sourcePath": "src/renderer/styles.css",
+    "sourceBlob": "94c141fcff1df3fd0c309456c9b72f4df8773df0",
+    "originalFileEndLine": 32818,
+    "remainderIds": ["S05-R02", "S05-R03", "S07-R04"]
+  },
+  "commands": [
+    "rg --files src/renderer/styles/legacy-slices src/renderer/styles/compat -g '*.css'",
+    "repository-wide exact path and basename scans excluding .git and node_modules",
+    "git log --follow on unreferenced candidates",
+    "node scripts/verify-css-split.cjs --preflight",
+    "matrix ID/category/total reconciliation",
+    "git diff --check"
+  ],
+  "validation": {
+    "inventoryComplete": true,
+    "everyInScopeFileClassifiedExactlyOnce": true,
+    "countsReconcile": true,
+    "importListChecked": true,
+    "deadEvidenceRecorded": true,
+    "liveOwnersRecorded": true,
+    "unknownExcludedFromDeletion": true,
+    "cssSplitPreflight": {
+      "status": "pass",
+      "issue": 530,
+      "mode": "preflight",
+      "candidateBoundaries": 16,
+      "actualBoundaries": 16,
+      "scanErrors": []
+    },
+    "diffCheck": "pass",
+    "fullFinalEquivalence": "not-used-for-this-audit",
+    "productionTestsRequired": false
+  },
+  "repositoryCi": {
+    "runId": 35341655196,
+    "classifier": "success",
+    "unknownRouteGuard": "failure",
+    "unknownPath": "docs/evidence/P4-00/receipt.json",
+    "reason": "The receipt path is not registered in scripts/verification-manifest.json.",
+    "manifestChanged": false,
+    "scopeDecision": "Do not expand the Issue #559 allowed file scope to modify the verification manifest."
+  },
+  "designGuidance": {
+    "path": "DESIGN.md",
+    "mainSnapshot": "1e8ff3d467cda153f80c79a447d66e833ed444a7",
+    "blob": "a74fb5443fb4cf13d8fb2ee5a81c3127be846c90",
+    "note": "Read from current origin/main snapshot; not copied into the stacked P4 worktree because it is outside the authorized P4-00 file scope."
+  },
+  "scopeGuard": {
+    "productionFilesChanged": false,
+    "cssDeletedOrMoved": false,
+    "p4SerStarted": false,
+    "historicalReceiptsRewritten": false,
+    "fullCiManuallyTriggered": false,
+    "verifyProjectManuallyTriggered": false
+  },
+  "unresolvedUnknownCount": 27
+}

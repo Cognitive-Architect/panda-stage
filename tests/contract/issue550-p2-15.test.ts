@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -190,7 +189,7 @@ describe('Issue #550 SER-03 / P2-15 Timeline Geometry stylesheet contract', () =
     expect(imports.filter((candidate) => expectedImports.includes(candidate))).toEqual(expectedImports);
   });
 
-  it('keeps all B10 targets byte-exact and reconstructs the pinned stylesheet', () => {
+  it('keeps all B10 targets byte-exact after Phase 3 begins', () => {
     for (const expected of expectedB10) {
       const actual = manifest.semanticRelocations.find(({ id }) => id === expected.id);
       expect(actual).toBeDefined();
@@ -203,9 +202,6 @@ describe('Issue #550 SER-03 / P2-15 Timeline Geometry stylesheet contract', () =
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
-    );
   });
 
   it('preserves the G112 compatibility boundary and the live geometry owners', () => {
