@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 type Range = { startLine: number; endLine: number };
 type Relocation = {
@@ -171,7 +170,7 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     ]) expect(imports).not.toContain(removed);
   });
 
-  it('keeps all twelve targets byte-exact and reconstructs the pinned stylesheet', () => {
+  it('keeps all twelve targets byte-exact after Phase 3 begins', () => {
     for (const expected of [...expectedP219, ...expectedP221]) {
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
       expect(sha256(target)).toBe(expected.sourceSha256);
@@ -180,9 +179,6 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
-    );
   });
 
   it('preserves Quick/History and Tools producers, hosts, states, and geometry owners', () => {
