@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -146,7 +145,7 @@ describe('Issue #545 P2-B01 shared character foundations', () => {
     }
   });
 
-  it('keeps unchanged moved targets exact and reconstructs the current stylesheet', () => {
+  it('keeps unchanged moved targets exact after Phase 3 begins', () => {
     for (const id of b01Ids) {
       const relocation = manifest.semanticRelocations.find((item) => item.id === id)!;
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
@@ -160,8 +159,5 @@ describe('Issue #545 P2-B01 shared character foundations', () => {
         relocation.sourceEndByteExclusive - relocation.sourceStartByte,
       );
     }
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
-    );
   });
 });
