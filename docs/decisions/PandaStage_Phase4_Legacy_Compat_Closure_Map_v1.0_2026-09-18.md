@@ -238,6 +238,11 @@ or SER-02 without a new explicit closure decision.
   equivalence was not used as P4-00 evidence because the current #556 stack
   intentionally changes pinned P2 targets (`S14-14`/`G145`); rewriting those
   historical targets is outside this audit.
+- Automatic CI run `35341655196` classified the change successfully, but its
+  Unknown route guard failed because `docs/evidence/P4-00/receipt.json` is not
+  registered in `scripts/verification-manifest.json`. Registering that route
+  would expand the Issue's allowed file scope, so the manifest remains
+  unchanged and this is reported as a repository integration blocker.
 - Root `DESIGN.md` is guidance read from the current main snapshot; it is not
   copied into this stacked branch and does not authorize a UI redesign or CSS
   migration.
@@ -255,6 +260,9 @@ or SER-02 without a new explicit closure decision.
 - Existing verifier: `node scripts/verify-css-split.cjs --preflight` passed
   with `issue: 530`, `mode: preflight`, `status: pass`, 16 candidate/actual
   boundaries, and no scan errors.
+- Automatic CI: change classifier passed; Unknown route guard failed only on
+  the unregistered P4-00 receipt path. The required manifest registration is
+  outside this Issue's authorized file scope and was not made.
 - Reconciliation: all 53 matrix IDs are unique and accounted for once; the
   category totals reconcile to the inventory.
 - Documentation hygiene: `git diff --check` passed after the map and receipt

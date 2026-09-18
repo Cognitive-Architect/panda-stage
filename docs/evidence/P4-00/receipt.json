@@ -141,6 +141,15 @@
     "fullFinalEquivalence": "not-used-for-this-audit",
     "productionTestsRequired": false
   },
+  "repositoryCi": {
+    "runId": 35341655196,
+    "classifier": "success",
+    "unknownRouteGuard": "failure",
+    "unknownPath": "docs/evidence/P4-00/receipt.json",
+    "reason": "The receipt path is not registered in scripts/verification-manifest.json.",
+    "manifestChanged": false,
+    "scopeDecision": "Do not expand the Issue #559 allowed file scope to modify the verification manifest."
+  },
   "designGuidance": {
     "path": "DESIGN.md",
     "mainSnapshot": "1e8ff3d467cda153f80c79a447d66e833ed444a7",
