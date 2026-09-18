@@ -25,6 +25,14 @@
     "inlineHostFileChanged": false,
     "businessFilesChanged": false
   },
+  "validatedImplementationSnapshot": {
+    "head": "12edb4c8d575236a10399d08c1564f195493b8aa",
+    "automaticCiRun": 35306003137,
+    "automaticCiResult": "PASS",
+    "meaning": "The implementation, evidence routing manifest, focused core quality checks, and manifest-selected editor/timeline regression suites passed in normal automatic CI at this snapshot; later evidence-only receipt changes are tracked by live PR metadata."
+  },
+  "livePrHeadAuthority": "GitHub PR #556 metadata",
+  "livePrCiAuthority": "Latest GitHub Actions run attached to the current PR head",
   "contract": {
     "authoritativeDefinition": {
       "path": "src/renderer/styles/features/characters/image-picker/s14-14--image-picker-base-492.css",
@@ -96,7 +104,13 @@
     "lint": "PASS",
     "buildRenderer": "PASS",
     "build": "PASS (typecheck, renderer, Electron/preload)",
-    "automaticCi": "PENDING_PUSH",
+    "automaticCi": {
+      "run": 35306003137,
+      "result": "PASS",
+      "head": "12edb4c8d575236a10399d08c1564f195493b8aa",
+      "url": "https://github.com/Cognitive-Architect/panda-stage/actions/runs/35306003137",
+      "fullQualityAndRegression": "SKIPPED by normal Draft policy"
+    },
     "manualFullCiTriggered": false,
     "manualVerifyProjectRun": false,
     "temporaryPerturbation": "not used"
