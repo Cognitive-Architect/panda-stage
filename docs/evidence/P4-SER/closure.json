@@ -1,12 +1,12 @@
 {
   "schemaVersion": "P4-SER-closure-v1",
   "issue": 561,
-  "status": "complete-pending-automatic-ci",
+  "status": "complete",
   "executionLine": {
     "pr": 556,
     "branch": "agent/issue-555-p3-01",
     "noNewP4SerBranchOrPr": true,
-    "implementationHeadBeforeClosureReceipt": "5c8f40d"
+    "finalValidatedImplementationHead": "e58c25b10975b1381c2f4c099d54465e68b349b1"
   },
   "startGate": {
     "p4_00Map": "reconciled",
@@ -75,9 +75,11 @@
     "windowsHumanAcceptanceRequired": false
   },
   "automaticCi": {
-    "status": "pending-on-final-closure-push",
-    "note": "Normal automatic CI will be recorded after the final closure receipt is pushed."
+    "status": "success",
+    "runId": 35347870146,
+    "validatedHead": "e58c25b10975b1381c2f4c099d54465e68b349b1",
+    "note": "Normal automatic CI passed on the final implementation head; subsequent receipt-only updates do not change production behavior."
   },
-  "phase4": "COMPLETE_PENDING_CI",
+  "phase4": "COMPLETE",
   "noUnrelatedScopeExpansion": true
 }
