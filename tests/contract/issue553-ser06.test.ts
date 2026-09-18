@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 type Range = { startLine: number; endLine: number };
 type SourceSegment = {
@@ -737,10 +736,24 @@ describe('Issue #553 SER-06 B14/B15 compatibility and closure contract', () => {
     expect(['PENDING', 'PASS']).toContain(closure.maintainerAcceptance.status);
   });
 
-  it('reconstructs the pinned production stylesheet exactly', () => {
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
-    );
+  it('keeps the accepted Phase 2 production snapshot historical after Phase 3 begins', () => {
+    const closure = JSON.parse(
+      readFileSync(resolve(root, 'docs/evidence/issue-553-p2-28/closure.json'), 'utf8'),
+    ) as {
+      productionEntryVerification: {
+        baselineSha256: string;
+        reconstructedSha256: string;
+        exact: boolean;
+      };
+      historicalReceiptRules: { historicalReceiptsWereNotRewritten: boolean };
+    };
+
+    expect(closure.productionEntryVerification).toMatchObject({
+      baselineSha256: '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
+      reconstructedSha256: '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
+      exact: true,
+    });
+    expect(closure.historicalReceiptRules.historicalReceiptsWereNotRewritten).toBe(true);
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
   });
 });
