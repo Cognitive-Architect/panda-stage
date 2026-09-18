@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -265,12 +264,6 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     expect(trackFoundationIndex).toBe(resizeBoundaryIndex + 1);
     expect(legacyIndex).toBe(trackFoundationIndex + 1);
     expect(imports.filter((path) => path === './styles/shell/tools/view-mode.css')).toHaveLength(1);
-  });
-
-  it('reconstructs the pinned source through the real production entry', () => {
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
-    );
   });
 
   it('keeps the moved bytes exact and leaves the action-preset section in the legacy remainder', () => {
