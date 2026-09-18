@@ -125,24 +125,41 @@
     "meaning": "launch/response smoke only"
   },
   "humanAcceptance": {
-    "status": "PENDING_HUMAN_ACCEPTANCE",
-    "requiredSurfaces": [
-      "C05 configured mouth row",
-      "C09 inline expression selected asset",
-      "representative C01-C08 Picker consumers",
-      "Tools/Timeline/CharacterIdentityPicker/delete negative controls",
-      "ordinary, hover, keyboard focus, disabled/conflict where applicable",
-      "no clipping, double border, or geometry jump",
-      "Windows 100%/150% DPI, normal and constrained windows",
-      "Chinese and long content"
+    "status": "PARTIAL_MAINTAINER_ACCEPTANCE",
+    "observedAt": "2026-09-18",
+    "accepted": [
+      {
+        "consumer": "C05",
+        "surface": "landscape Character Settings configured mouth asset compound row",
+        "result": "PASS",
+        "evidence": "Maintainer Windows Electron visual inspection: normal configured state, no double border, no geometry jump, thumbnail/copy/change/clear layout intact."
+      },
+      {
+        "consumer": "C05",
+        "surface": "keyboard Tab focus reachability",
+        "result": "PASS_WITH_NONBLOCKING_UX_NOTE",
+        "evidence": "Tab reaches the main selected-asset control and interaction remains intact. Focus feedback is visually weak/local, recorded as pre-existing/non-blocking UX debt rather than a P3-01 regression."
+      },
+      {
+        "consumer": "C09",
+        "surface": "landscape Expression card inline selected asset and expanded candidates",
+        "result": "PASS",
+        "evidence": "Maintainer Windows Electron visual inspection: inline geometry, candidate expansion, Apply/Cancel card structure, and #528 single-card layout remain intact."
+      }
     ],
-    "note": "Automated tests and launch smoke do not replace maintainer visual acceptance."
+    "pending": [
+      "representative C01-C08 Picker consumers beyond C05",
+      "Tools/Timeline/CharacterIdentityPicker/delete negative-control visual spot checks",
+      "broader DPI/constrained-window/long-content matrix if maintainer chooses to exercise it"
+    ],
+    "note": "Primary proof consumers C05 and C09 have maintainer visual PASS. This is not recorded as full-family human acceptance yet."
   },
   "historicalGateMaintenance": {
     "S14-14": "P2-B01 target byte/length assertion delegated to this P3-01 contract test because the target intentionally changed",
     "G145": "P2-B02 target byte/length assertion delegated to this P3-01 contract test because the target intentionally changed",
     "otherRelocationTargets": "byte/length assertions preserved",
-    "currentProductionEntrySha256": "d27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d"
+    "currentProductionEntrySha256": "d27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d",
+    "phase2ToPhase3Handoff": "Phase 2 historical tests no longer repin the mutable current production stylesheet hash. Unchanged relocation byte/length/order checks remain; Issue #553 now checks the accepted Phase 2 closure receipt hash (240412...) as historical evidence; P3-01 owns the current selected-surface contract."
   },
   "scopeExceptions": []
 }
