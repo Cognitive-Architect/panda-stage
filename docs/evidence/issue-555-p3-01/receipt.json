@@ -145,14 +145,25 @@
         "surface": "landscape Expression card inline selected asset and expanded candidates",
         "result": "PASS",
         "evidence": "Maintainer Windows Electron visual inspection: inline geometry, candidate expansion, Apply/Cancel card structure, and #528 single-card layout remain intact."
+      },
+      {
+        "consumer": "C02",
+        "surface": "Character create angry image conflict/disabled candidate state",
+        "result": "PASS",
+        "evidence": "Maintainer Windows Electron visual inspection: selected angry asset remains intact; conflicting asset remains visibly unavailable with conflict marker/copy; expanded candidate grid geometry remains normal."
+      },
+      {
+        "consumer": "C03",
+        "surface": "Character create optional mouth image / unconfigured empty state",
+        "result": "PASS",
+        "evidence": "Maintainer Windows Electron visual inspection: optional label, unconfigured empty state, Select action, and create-form geometry remain intact."
       }
     ],
     "pending": [
-      "representative C01-C08 Picker consumers beyond C05",
-      "Tools/Timeline/CharacterIdentityPicker/delete negative-control visual spot checks",
+      "Tools/Timeline/CharacterIdentityPicker/delete-action negative-control visual spot checks",
       "broader DPI/constrained-window/long-content matrix if maintainer chooses to exercise it"
     ],
-    "note": "Primary proof consumers C05 and C09 have maintainer visual PASS. This is not recorded as full-family human acceptance yet."
+    "note": "Primary proof consumers C05/C09 plus representative C02/C03 regression consumers have maintainer visual PASS. Only unrelated negative-control spot checks remain for the minimum human acceptance boundary."
   },
   "historicalGateMaintenance": {
     "S14-14": "P2-B01 target byte/length assertion delegated to this P3-01 contract test because the target intentionally changed",
