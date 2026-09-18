@@ -167,6 +167,7 @@ pnpm verify:issue125
 ## 文档导航
 
 - [AGENTS.md](./AGENTS.md)：coding agent 的稳定工作规则和验证矩阵。
+- [DESIGN.md](./DESIGN.md)：repository-level UI/UX design guidance and design red lines。
 - [docs/architecture.md](./docs/architecture.md)：进程边界、数据模型、渲染与生命周期的架构说明；遇到版本化历史章节时以当前代码为准。
 - [docs/development.md](./docs/development.md)：项目生命周期、autosave/recovery、素材和开发验证约束。
 - [docs/ipc.md](./docs/ipc.md)：IPC 通道、payload、可信 sender 和导出边界。

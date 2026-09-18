@@ -355,6 +355,7 @@
           "tests/contract/issue552-p2-19-p2-21.test.ts",
           "tests/contract/issue553-ser06.test.ts",
           "tests/contract/issue555-p3-01-selected-asset-surface.test.ts",
+          "tests/contract/issue561-p4-ser.test.ts",
           "tests/helpers/read-stylesheet-source.ts",
           "tests/unit/issue102-task4-responsive.test.ts",
           "tests/unit/issue109-resource-workspace.test.ts"
