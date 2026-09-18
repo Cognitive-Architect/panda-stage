@@ -294,15 +294,15 @@
   .character-manager[data-character-presentation='landscape']
   .character-mouth-state
   .image-asset-picker-selected-row {
+  /* Issue #555: C05 consumes the ImageAssetPicker family selected-surface
+     contract while retaining its own Picker + Clear compound geometry. */
   display: grid;
   min-width: 0;
   min-height: 64px;
   overflow: hidden;
-  border: 1px solid rgb(127 199 148 / 34%);
-  border-radius: 9px;
-  background:
-    linear-gradient(135deg, rgb(127 199 148 / 9%), transparent 65%),
-    #0b140e;
+  border: 1px solid var(--image-asset-picker-selected-surface-border);
+  border-radius: var(--image-asset-picker-selected-surface-radius);
+  background: var(--image-asset-picker-selected-surface-background);
   grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
   gap: 6px;
@@ -333,9 +333,7 @@
   .image-asset-picker-selected-row
   > .image-asset-picker-selected:focus-visible {
   border-color: transparent;
-  background:
-    linear-gradient(135deg, rgb(127 199 148 / 14%), transparent 65%),
-    #0d1810;
+  background: var(--image-asset-picker-selected-surface-background-hover);
 }
 
 .editor-layout[data-shell-mode='landscape']

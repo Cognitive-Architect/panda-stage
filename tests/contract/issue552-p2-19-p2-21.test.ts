@@ -181,7 +181,7 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     }
 
     expect(sha256(readOrderedStylesheetSource())).toBe(
-      '2404124609c88ee552288a51ffa3f5408cd2193adc754235af234cdd922ba3e7',
+      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
     );
   });
 
