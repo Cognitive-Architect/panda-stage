@@ -322,6 +322,7 @@
           "docs/evidence/issue-548-p2-10/**",
           "docs/evidence/issue-548-p2-11/**",
           "docs/evidence/issue-555-p3-01/**",
+          "docs/evidence/P4-00/**",
           "public/subtitle-empty-state.png"
         ],
         "testPatterns": [
