@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 type Range = { startLine: number; endLine: number };
 type Relocation = {
@@ -140,7 +139,7 @@ describe('Issue #552 B12 P2-18 editor shell layout contract', () => {
     expect(imports).not.toContain('./styles/legacy-slices/07-portrait-assets-inspector-start--after-assets.css');
   });
 
-  it('keeps every moved host block byte-exact and reconstructs the pinned stylesheet', () => {
+  it('keeps every moved host block byte-exact after Phase 3 begins', () => {
     for (const expected of expectedP218) {
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
       expect(sha256(target)).toBe(expected.sourceSha256);
@@ -149,9 +148,6 @@ describe('Issue #552 B12 P2-18 editor shell layout contract', () => {
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
-    );
   });
 
   it('preserves shell geometry owners after the serial utility batches', () => {
