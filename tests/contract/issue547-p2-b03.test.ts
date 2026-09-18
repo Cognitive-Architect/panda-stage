@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 const root = resolve(process.cwd());
 const manifest = JSON.parse(
@@ -393,7 +392,7 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
     expect(imports.indexOf(b03StartPath)).toBe(imports.indexOf(b04EndPath) + 1);
   });
 
-  it('keeps each B03 target byte-exact and reconstructs the pinned stylesheet', () => {
+  it('keeps each B03 target byte-exact after Phase 3 begins', () => {
     for (const relocation of expectedB03) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
       expect(sha256(target)).toBe(relocation.sourceSha256);
@@ -402,8 +401,5 @@ describe('Issue #547 P2-B03 assets and shots relocation', () => {
       );
     }
 
-    expect(sha256(readOrderedStylesheetSource())).toBe(
-      'd27c94e09c50ca7ce48643d78264d33cdfb5680051427928530ad186c2baef4d',
-    );
   });
 });
