@@ -2,7 +2,7 @@
   "schemaVersion": "P4-SER-ser-01-v1",
   "issue": 561,
   "checkpoint": "SER-01",
-  "status": "complete-pending-automatic-ci",
+  "status": "complete",
   "baseline": {
     "pr": 556,
     "branch": "agent/issue-555-p3-01",
@@ -69,7 +69,9 @@
     "pnpmVerifyProject": false
   },
   "automaticCi": {
-    "status": "pending-on-ser-01-push",
-    "note": "The final automatic CI run for this SER-01 head will be recorded after the checkpoint is pushed."
+    "status": "success",
+    "runId": 35346849200,
+    "validatedCommit": "4b16042cc8060053248837b8306d09e7e51d9a09",
+    "note": "The validated implementation head passed the normal automatic CI route; this receipt update is documentation-only."
   }
 }
