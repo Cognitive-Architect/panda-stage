@@ -390,6 +390,8 @@ BLOCK
 - start a second export task
 ```
 
+During an active export, Preview reflects the current live editor state rather than the frozen export snapshot, so later edits may intentionally appear in Preview while the in-flight export continues rendering the earlier captured Project revision.
+
 If the creator attempts a blocked operation, the product explains the direct
 next action, for example:
 
