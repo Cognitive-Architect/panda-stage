@@ -35,6 +35,11 @@ const NAME_HINT_EXPRESSION =
 
 const baseProject = {
   ...exampleProject,
+  assets: exampleProject.assets.map((asset) =>
+    asset.kind === 'image'
+      ? { ...asset, sha256: '0'.repeat(64) }
+      : asset,
+  ),
   name: 'Issue 76 project',
   shots: exampleProject.shots.map((shot) => ({
     ...shot,
