@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ProjectSchema,
   evaluateShotAtTime,
+  mapProjectTime,
   type Project,
 } from '../../src/domain';
 import { evaluateSubtitleAtTime } from '../../src/shared/preview/subtitle-engine';
@@ -11,6 +12,7 @@ import {
   listProductPreviewAssetIds,
   projectProductPreviewMouth,
 } from '../../src/renderer/shell/productPreviewModel';
+import { resolveProductPreviewAudio } from '../../src/renderer/shell/productPreviewAudio';
 import { buildProject, IDS } from './domain/testProject';
 
 const MOUTH_A_ID = '10000000-0000-4000-8000-000000000301';
@@ -373,5 +375,86 @@ describe('Product Preview mouth integration - Phase 3 C', () => {
     expect(overlay).toContain('evaluatedShot={renderedShot}');
     expect(overlay).not.toContain('mouthTime');
     expect(overlay).not.toContain('mouthStore');
+  });
+
+  it('hands subtitle, audio, and mouth ownership to Shot B at the exact boundary', () => {
+    const base = buildMouthProject();
+    const firstShot = {
+      ...base.shots[0]!,
+      durationMs: 1_000,
+      dialogues: base.shots[0]!.dialogues.map((dialogue) => ({
+        ...dialogue,
+        endMs: 900,
+      })),
+      audioClips: base.shots[0]!.audioClips.map((clip) => ({
+        ...clip,
+        endMs: 900,
+      })),
+    };
+    const secondShot = {
+      ...base.shots[0]!,
+      id: '50000000-0000-4000-8000-000000000402',
+      durationMs: 1_000,
+      dialogues: [
+        {
+          ...base.shots[0]!.dialogues[0]!,
+          id: DIALOGUE_B_ID,
+          audioClipId: CLIP_B_ID,
+          endMs: 900,
+          text: 'B speaks',
+        },
+      ],
+      audioClips: [
+        {
+          ...base.shots[0]!.audioClips[0]!,
+          id: CLIP_B_ID,
+          endMs: 900,
+        },
+      ],
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) =>
+        asset.id === AUDIO_ID
+          ? { ...asset, sha256: 'e'.repeat(64) }
+          : asset,
+      ),
+      shots: [firstShot, secondShot],
+    });
+
+    const position = mapProjectTime(project, 1_000);
+    expect(position).toMatchObject({
+      shot: project.shots[1],
+      shotIndex: 1,
+      shotLocalTimeMs: 0,
+      shotStartMs: 1_000,
+    });
+    const activeShot = position.shot!;
+    const evaluated = evaluateShotAtTime(
+      activeShot,
+      position.shotLocalTimeMs,
+      project,
+    );
+    const cue = evaluateSubtitleAtTime(
+      buildProductPreviewCues(activeShot),
+      evaluated.timeMs,
+    );
+    const projected = projectProductPreviewMouth(
+      project,
+      activeShot,
+      evaluated,
+      cue?.id ?? null,
+    );
+    const audio = resolveProductPreviewAudio(
+      project,
+      activeShot,
+      cue?.id ?? null,
+    );
+
+    expect(cue).toMatchObject({ id: DIALOGUE_B_ID, text: 'B speaks' });
+    expect(audio?.clip.id).toBe(CLIP_B_ID);
+    expect(
+      projected.layers.find((layer) => layer.id === IDS.layerChar)?.assetId,
+    ).toBe(MOUTH_A_ID);
   });
 });

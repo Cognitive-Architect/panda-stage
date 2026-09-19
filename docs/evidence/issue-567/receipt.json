@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "issue": 567,
+  "pullRequest": 564,
+  "workItem": "N2-PREVIEW-SER: Whole-project playback, cross-shot transport, and lifecycle cleanup",
+  "branch": "issue-563-n2-01-audit",
+  "status": "validated-implementation-pending-maintainer-acceptance",
+  "implementation": {
+    "deliveryBase": "7cac7b8dbec7574601bfadf8c55a98cee3b672b2",
+    "productionFiles": [
+      "src/domain/selectors/projectTime.ts",
+      "src/domain/selectors/index.ts",
+      "src/renderer/shell/ProductPreviewOverlay.tsx",
+      "src/renderer/shell/productPreviewAudio.ts",
+      "src/renderer/shell/productPreviewImages.ts",
+      "src/renderer/shell/productPreviewModel.ts",
+      "src/renderer/styles.css",
+      "src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css"
+    ],
+    "testFiles": [
+      "tests/unit/project-time-mapper.test.ts",
+      "tests/unit/product-preview-overlay.test.ts",
+      "tests/unit/product-preview-audio.test.ts",
+      "tests/unit/product-preview-mouth.test.ts",
+      "tests/unit/editor-issue454-quick-action.test.ts"
+    ],
+    "routingManifest": "scripts/verification-manifest.json",
+    "routingManifestRegisteredPaths": [
+      "docs/evidence/issue-567/**",
+      "tests/unit/project-time-mapper.test.ts",
+      "tests/unit/product-preview-*.test.ts"
+    ]
+  },
+  "validation": {
+    "gitDiffCheck": "PASS",
+    "targetedPreviewUnit": "PASS (5 files, 45 tests)",
+    "testUnit": "PASS (291 files, 1852 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS (typecheck, renderer, Electron/preload)",
+    "manualFullCiTriggered": false,
+    "manualVerifyProjectRun": false,
+    "historicalVerifierSweep": "not run",
+    "knownUnrelatedVerifierDebt": "verify-day05 reaches an old recent-projects:list mismatch before the preview assertions; not used as Issue #567 evidence"
+  },
+  "windowsElectronRuntime": {
+    "result": "PASS_AGENT_OBSERVED",
+    "worktree": "D:/panda-issue563-n2-01",
+    "userData": "D:/PandaStage-Acceptance/issue567-cdp-userdata-20260919",
+    "fixture": "D:/PandaStage-Acceptance/issue567-cdp-userdata-20260919/fixture/Issue 567 Two Shot Preview.pandastage/project.json",
+    "remoteDebugPort": 9238,
+    "observed": [
+      "Default Project range starts playing from Shot 1 and reports a credible 2-shot / 5-second total.",
+      "Automatic Shot 1 to Shot 2 transition selects Shot 2 at its local time; subtitle, image, mouth projection, and dialogue-bound audio path follow Shot 2.",
+      "Exact boundary 2500ms maps to Shot 2 local time 0; terminal time maps to Shot 2 local duration and stops.",
+      "A-to-B and B-to-A seeks pause at the destination; Play resumes from the destination without a second player.",
+      "Stop resets to Shot 1 time 0 and stays stopped; Replay resets to 0 and plays.",
+      "Whole Project and Current Shot ranges reset locally; close/reopen creates a fresh preview session and leaves editor revision, history, and selection unchanged.",
+      "The overlay uses the existing cinema surface with a centered Stage, compact range control, Chinese subtitle content, and no nested debug metadata."
+    ],
+    "screenshots": [
+      "D:/PandaStage-Acceptance/issue567-cdp-userdata-20260919/preview-start.png",
+      "D:/PandaStage-Acceptance/issue567-cdp-userdata-20260919/preview-terminal.png",
+      "D:/PandaStage-Acceptance/issue567-cdp-userdata-20260919/preview-transport.png"
+    ],
+    "limitations": [
+      "This is agent-observed Windows Electron runtime evidence using CDP and viewed screenshots.",
+      "Maintainer listening, physical mouse/touch/cloud-input feel, and final human acceptance remain unmeasured."
+    ]
+  },
+  "humanAcceptance": {
+    "status": "UNMEASURED_MAINTAINER_ACCEPTANCE",
+    "required": [
+      "Real Windows Electron start-to-finish two-shot playback with audible A/B audio check",
+      "A-to-B and B-to-A seek, Stop, Play, Replay, range switching, close/reopen",
+      "Representative Chinese/long content, constrained window and declared input checks",
+      "Confirmation that editor selection, project data, revision, and history remain unchanged"
+    ]
+  },
+  "scopeExceptions": []
+}

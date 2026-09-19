@@ -322,6 +322,7 @@
           "docs/evidence/issue-548-p2-10/**",
           "docs/evidence/issue-548-p2-11/**",
           "docs/evidence/issue-555-p3-01/**",
+          "docs/evidence/issue-567/**",
           "docs/evidence/P4-00/**",
           "docs/evidence/P4-SER/**",
           "public/subtitle-empty-state.png"
@@ -331,6 +332,7 @@
           "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",
+          "tests/unit/project-time-mapper.test.ts",
           "tests/unit/left-workspace.test.ts",
           "tests/unit/right-inspector*.test.ts",
           "tests/unit/ui-m1-*.test.ts",

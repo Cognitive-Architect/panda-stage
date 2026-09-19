@@ -1,0 +1,40 @@
+/* N2-PREVIEW-SER — compact range and project-position adaptation. */
+.product-preview-transport-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.product-preview-range-control {
+  max-width: 100%;
+}
+
+.product-preview-range-control .ui-segmented-tabs__item {
+  min-height: 40px;
+  padding-inline: 14px;
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .product-preview-transport {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .product-preview-timecode {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .product-preview-transport-meta {
+    justify-content: stretch;
+  }
+
+  .product-preview-range-control {
+    width: 100%;
+  }
+
+  .product-preview-range-control .ui-segmented-tabs__item {
+    flex: 1 1 0;
+  }
+}

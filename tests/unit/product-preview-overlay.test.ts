@@ -363,8 +363,10 @@ describe('product preview overlay contract', () => {
 
     expect(overlay).toContain('const [timeMs, setTimeMs] = useState(0)');
     expect(overlay).toContain(
-      'const [playing, setPlaying] = useState(autoPlay && durationMs > 0)',
+      'const [range, setRange] = useState<ProductPreviewRange>(\'project\')',
     );
+    expect(overlay).toContain('projectDurationMs(project) > 0');
+    expect(overlay).toContain('mapProjectTime(');
     // Project data arrives as a read-only prop; the overlay does not subscribe.
     expect(overlay).not.toContain('useSyncExternalStore');
     expect(overlay).toContain('project: Project;');
@@ -376,7 +378,7 @@ describe('product preview overlay contract', () => {
 
     expect(overlay).toContain('useProductPreviewAudio({');
     expect(overlay).toContain('activeDialogueId: activeCue?.id ?? null');
-    expect(overlay).toContain('timeMs: evaluatedShot?.timeMs ?? 0');
+    expect(overlay).toContain('timeMs: activeShotTimeMs');
     expect(overlay).toContain('playing,');
     expect(overlay).toContain('seekRevision,');
     expect(overlay).toContain('resolveProductPreviewTransportAction(');
@@ -384,6 +386,9 @@ describe('product preview overlay contract', () => {
     expect(overlay).not.toContain('new Audio(');
     expect(overlay).toContain('data-testid="product-preview-audio-warning"');
     expect(overlay).toContain('data-testid="product-preview-replay"');
+    expect(overlay).toContain('data-testid="product-preview-range"');
+    expect(overlay).toContain("{ value: 'project', label: '整个项目' }");
+    expect(overlay).toContain("{ value: 'shot', label: '当前镜头' }");
   });
 
   it('shows a Chinese empty state when the project has no shot', () => {

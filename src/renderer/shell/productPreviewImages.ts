@@ -131,10 +131,12 @@ export function useProductPreviewImages(
   projectRoot: string,
   project: Project,
   assetIds: readonly string[],
+  sessionKey = '',
 ): ProductPreviewAssetLoadState {
   const [state, setState] = useState<ProductPreviewAssetLoadState>(
     INITIAL_PRODUCT_PREVIEW_ASSET_STATE,
   );
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const assetKey = assetIds
     .map((assetId) => {
       const asset = project.assets.find((candidate) => candidate.id === assetId);
@@ -142,15 +144,26 @@ export function useProductPreviewImages(
     })
     .sort()
     .join('|');
+  const dependencyKey = `${projectRoot}\u0000${sessionKey}\u0000${assetKey}`;
 
   useEffect(() => {
     const session = new ProductPreviewImageSession();
+    setLoadedKey(null);
     setState(INITIAL_PRODUCT_PREVIEW_ASSET_STATE);
     void session.load(projectRoot, project, assetIds).then((nextState) => {
-      if (nextState) setState(nextState);
+      if (nextState) {
+        setState(nextState);
+        setLoadedKey(dependencyKey);
+      }
     });
     return () => session.dispose();
-  }, [assetIds, assetKey, project, projectRoot]);
+  }, [assetIds, assetKey, dependencyKey, project, projectRoot, sessionKey]);
 
-  return state;
+  // A shot/range change renders once before React runs the effect cleanup.
+  // Do not expose the previous shot's URLs during that transition: Stage would
+  // otherwise receive a new evaluated shot with an old asset map and briefly
+  // render a missing-asset error (or the wrong frame).
+  return loadedKey === dependencyKey
+    ? state
+    : INITIAL_PRODUCT_PREVIEW_ASSET_STATE;
 }

@@ -15,9 +15,15 @@
  *     while open and unmounted on close.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { evaluateShotAtTime, type Project } from '../../domain';
+import {
+  evaluateShotAtTime,
+  mapProjectTime,
+  projectDurationMs,
+  type Project,
+} from '../../domain';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 import { CanvasStage } from '../stage/CanvasStage';
+import { SegmentedTabs } from '../ui/SegmentedTabs';
 import {
   advanceProductPreviewTime,
   buildProductPreviewCues,
@@ -28,6 +34,7 @@ import {
   resolveProductPreviewShot,
   resolveProductPreviewSubtitleStyle,
   resolveProductPreviewTransportAction,
+  type ProductPreviewRange,
   type ProductPreviewTransportAction,
 } from './productPreviewModel';
 import { useProductPreviewAudio } from './productPreviewAudio';
@@ -53,21 +60,46 @@ export function ProductPreviewOverlay({
   autoPlay = false,
   onClose,
 }: ProductPreviewOverlayProps): React.JSX.Element {
-  const shot = useMemo(
+  const currentShot = useMemo(
     () => resolveProductPreviewShot(project, shotId),
     [project, shotId],
   );
-  const durationMs = shot?.durationMs ?? 0;
+  const [range, setRange] = useState<ProductPreviewRange>('project');
   // Playback position and transport flag: the ONLY temporal state in the app
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);
-  const [playing, setPlaying] = useState(autoPlay && durationMs > 0);
+  const [playing, setPlaying] = useState(() =>
+    autoPlay && projectDurationMs(project) > 0,
+  );
   const [seekRevision, setSeekRevision] = useState(0);
+  const projectPosition = useMemo(
+    () => mapProjectTime(project, range === 'project' ? timeMs : 0),
+    [project, range, timeMs],
+  );
+  const shot = range === 'project' ? projectPosition.shot : currentShot;
+  const durationMs =
+    range === 'project'
+      ? projectPosition.totalDurationMs
+      : currentShot?.durationMs ?? 0;
+  const displayedTimeMs = clampProductPreviewTime(timeMs, durationMs);
+  const activeShotTimeMs =
+    range === 'project' ? projectPosition.shotLocalTimeMs : displayedTimeMs;
+  const activeShotIndex =
+    range === 'project'
+      ? projectPosition.shotIndex
+      : shot
+        ? project.shots.findIndex((candidate) => candidate.id === shot.id)
+        : null;
   const assetIds = useMemo(
     () => (shot ? listProductPreviewAssetIds(project, shot) : []),
     [project, shot],
   );
-  const assets = useProductPreviewImages(projectRoot, project, assetIds);
+  const assets = useProductPreviewImages(
+    projectRoot,
+    project,
+    assetIds,
+    `${range}:${shot?.id ?? ''}`,
+  );
   const cues = useMemo(
     () => (shot ? buildProductPreviewCues(shot) : []),
     [shot],
@@ -76,7 +108,7 @@ export function ProductPreviewOverlay({
   const applyTransportAction = useCallback(
     (action: ProductPreviewTransportAction): void => {
       const next = resolveProductPreviewTransportAction(
-        timeMs,
+        displayedTimeMs,
         durationMs,
         action,
       );
@@ -86,15 +118,34 @@ export function ProductPreviewOverlay({
         setSeekRevision((current) => current + 1);
       }
     },
-    [durationMs, timeMs],
+    [displayedTimeMs, durationMs],
+  );
+
+  const switchPreviewRange = useCallback(
+    (nextRange: ProductPreviewRange): void => {
+      if (nextRange === range) return;
+      // Range changes pause and reset the new range. The existing media
+      // transports observe the reset and invalidate their old async work.
+      setPlaying(false);
+      setRange(nextRange);
+      setTimeMs(0);
+      setSeekRevision((current) => current + 1);
+    },
+    [range],
   );
 
   useEffect(() => {
-    // A shot switch resets the preview-local clock; nothing outside changes.
-    setPlaying(autoPlay && durationMs > 0);
+    if (range !== 'shot') return;
+    // Current Shot is a Preview-local range. A change in editor selection
+    // starts that range over without mutating the selection itself.
+    setPlaying(false);
     setTimeMs(0);
     setSeekRevision((current) => current + 1);
-  }, [autoPlay, durationMs, shot?.id]);
+  }, [currentShot?.id, range]);
+
+  useEffect(() => {
+    if (durationMs <= 0) setPlaying(false);
+  }, [durationMs]);
 
   useEffect(() => {
     if (!playing || durationMs <= 0) {
@@ -133,11 +184,11 @@ export function ProductPreviewOverlay({
       shot
         ? evaluateShotAtTime(
             shot,
-            clampProductPreviewTime(timeMs, shot.durationMs),
+            activeShotTimeMs,
             project,
           )
         : null,
-    [project, shot, timeMs],
+    [activeShotTimeMs, project, shot],
   );
   const activeCue = evaluatedShot
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
@@ -156,13 +207,13 @@ export function ProductPreviewOverlay({
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
-  const atEnd = durationMs > 0 && timeMs >= durationMs;
+  const atEnd = durationMs > 0 && displayedTimeMs >= durationMs;
   const audioWarning = useProductPreviewAudio({
     projectRoot,
     project,
     shot,
     activeDialogueId: activeCue?.id ?? null,
-    timeMs: evaluatedShot?.timeMs ?? 0,
+    timeMs: activeShotTimeMs,
     playing,
     seekRevision,
   });
@@ -173,8 +224,10 @@ export function ProductPreviewOverlay({
       aria-modal="true"
       className="product-preview-overlay"
       data-preview-playing={String(playing)}
+      data-preview-range={range}
       data-preview-shot-id={shot?.id ?? ''}
       data-preview-time={evaluatedShot?.timeMs ?? 0}
+      data-preview-project-time={displayedTimeMs}
       data-testid="product-preview-overlay"
       role="dialog"
     >
@@ -319,15 +372,35 @@ export function ProductPreviewOverlay({
                   }}
                   step={10}
                   type="range"
-                  value={timeMs}
+                  value={displayedTimeMs}
                 />
                 <span
                   className="product-preview-timecode"
                   data-testid="product-preview-timecode"
                 >
-                  {formatProductPreviewTimecode(timeMs)} /{' '}
+                  {activeShotIndex !== null && activeShotIndex >= 0
+                    ? `镜头 ${activeShotIndex + 1} / ${project.shots.length} · `
+                    : ''}
+                  {formatProductPreviewTimecode(displayedTimeMs)} /{' '}
                   {formatProductPreviewTimecode(durationMs)}
                 </span>
+              </div>
+              <div
+                className="product-preview-transport-meta"
+                data-testid="product-preview-range"
+              >
+                <SegmentedTabs
+                  aria-label="预览范围"
+                  className="product-preview-range-control"
+                  onChange={(value) =>
+                    switchPreviewRange(value as ProductPreviewRange)
+                  }
+                  options={[
+                    { value: 'project', label: '整个项目' },
+                    { value: 'shot', label: '当前镜头' },
+                  ]}
+                  value={range}
+                />
               </div>
             </div>
 

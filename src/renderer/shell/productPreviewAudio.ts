@@ -131,6 +131,7 @@ export class ProductPreviewAudioTransport {
   private failedKey: string | null = null;
   private lastSeekRevision: number | null = null;
   private latestInput: ProductPreviewAudioSyncInput | null = null;
+  private sourceAttached = false;
   private disposed = false;
 
   constructor(options: ProductPreviewAudioTransportOptions = {}) {
@@ -158,7 +159,6 @@ export class ProductPreviewAudioTransport {
     const seekChanged = this.lastSeekRevision !== input.seekRevision;
 
     if (
-      !input.playing ||
       !shot ||
       !selection ||
       !isProductPreviewAudioActiveAtTime(input.timeMs, selection)
@@ -172,6 +172,28 @@ export class ProductPreviewAudioTransport {
     }
 
     const key = this.selectionKey(input.projectRoot, shot, selection);
+
+    if (!input.playing) {
+      // Seek is intentionally a paused operation. When the destination still
+      // has an active clip, prepare the one audio element at the mapped local
+      // time without starting playback; Play can then resume from that exact
+      // position. A plain Pause does not cause a new read.
+      const shouldPrepare =
+        input.timeMs > 0 &&
+        (seekChanged || this.activeKey !== key);
+      this.stopTransport(input.timeMs <= 0);
+      this.lastSeekRevision = input.seekRevision;
+      if (seekChanged) this.emitWarning(null);
+      if (!shouldPrepare) return;
+
+      this.activeKey = key;
+      this.failedKey = null;
+      const token = this.generation;
+      this.pendingKey = key;
+      void this.startSelection(token, key, input.projectRoot, selection);
+      return;
+    }
+
     const selectionChanged = this.activeKey !== key;
     if (selectionChanged || seekChanged) {
       this.cancelActivePlayback();
@@ -225,6 +247,7 @@ export class ProductPreviewAudioTransport {
         return;
       }
       this.audio.src = url;
+      this.sourceAttached = true;
       this.audio.volume = Math.min(1, Math.max(0, selection.clip.volume));
       this.audio.currentTime =
         productPreviewSourceTimeMs(
@@ -232,6 +255,7 @@ export class ProductPreviewAudioTransport {
           selection.clip,
           selection.asset,
         ) / 1_000;
+      if (this.latestInput?.playing !== true) return;
       await this.audio.play();
       if (!this.isCurrent(token, key)) {
         this.audio.pause();
@@ -309,15 +333,23 @@ export class ProductPreviewAudioTransport {
   }
 
   private stopTransport(reset: boolean): void {
-    this.cancelActivePlayback();
+    const hasTransport =
+      this.sourceAttached ||
+      this.activeKey !== null ||
+      this.pendingKey !== null ||
+      this.startedKey !== null;
+    if (hasTransport) {
+      this.cancelActivePlayback();
+      this.audio.src = '';
+      this.audio.load?.();
+      this.sourceAttached = false;
+    }
     if (!reset) return;
     try {
       this.audio.currentTime = 0;
     } catch {
       // The element may not have loaded a source yet.
     }
-    this.audio.src = '';
-    this.audio.load?.();
   }
 
   private cancelActivePlayback(): void {
