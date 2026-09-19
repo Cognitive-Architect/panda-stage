@@ -8,9 +8,9 @@
  *   - Strictly read-only. The overlay never writes the project, the revision,
  *     the dirty flag, the selection or the history. It receives the already
  *     loaded project as a prop and only *reads* it.
- *   - The only state it owns is its own playback clock (`timeMs`, `playing`)
- *     plus the asset URLs it needs to draw. Closing the overlay throws that
- *     state away; the editor is untouched.
+ *   - The only state it owns is its own playback clock (`timeMs`, `playing`),
+ *     the first-frame readiness gate, and the asset URLs it needs to draw.
+ *     Closing the overlay throws that state away; the editor is untouched.
  *   - No second project tree and no hidden DOM: the overlay is mounted only
  *     while open and unmounted on close.
  */
@@ -60,6 +60,8 @@ export interface ProductPreviewOverlayProps {
   onClose(): void;
 }
 
+type ProductPreviewInitialReadiness = 'preparing' | 'ready' | 'error';
+
 export function ProductPreviewOverlay({
   projectRoot,
   project,
@@ -75,10 +77,11 @@ export function ProductPreviewOverlay({
   // Playback position and transport flag: the ONLY temporal state in the app
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);
-  const [playing, setPlaying] = useState(() =>
-    autoPlay && projectDurationMs(project) > 0,
-  );
+  const [playing, setPlaying] = useState(false);
+  const [initialReadiness, setInitialReadiness] =
+    useState<ProductPreviewInitialReadiness>('preparing');
   const [seekRevision, setSeekRevision] = useState(0);
+  const initialStageReadyRef = useRef(false);
   const projectPosition = useMemo(
     () => mapProjectTime(project, range === 'project' ? timeMs : 0),
     [project, range, timeMs],
@@ -122,6 +125,7 @@ export function ProductPreviewOverlay({
 
   const applyTransportAction = useCallback(
     (action: ProductPreviewTransportAction): void => {
+      if (initialReadiness !== 'ready') return;
       const next = resolveProductPreviewTransportAction(
         displayedTimeMs,
         durationMs,
@@ -133,7 +137,7 @@ export function ProductPreviewOverlay({
         setSeekRevision((current) => current + 1);
       }
     },
-    [displayedTimeMs, durationMs],
+    [displayedTimeMs, durationMs, initialReadiness],
   );
 
   const switchPreviewRange = useCallback(
@@ -222,6 +226,39 @@ export function ProductPreviewOverlay({
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
+  const handleInitialStageReady = useCallback((): void => {
+    if (initialStageReadyRef.current) return;
+    initialStageReadyRef.current = true;
+    setInitialReadiness('ready');
+    if (autoPlay && projectDurationMs(project) > 0) {
+      setPlaying(true);
+    }
+  }, [autoPlay, project]);
+  const handleInitialStageError = useCallback((): void => {
+    if (initialStageReadyRef.current) return;
+    setInitialReadiness('error');
+    setPlaying(false);
+  }, []);
+  useEffect(() => {
+    if (initialReadiness !== 'preparing') return;
+    if (assets.status === 'error') {
+      handleInitialStageError();
+      return;
+    }
+    // A shot with no image layers has no browser image boundary to await; its
+    // formal blank frame is already stable once the bounded asset read is
+    // complete.
+    if (assets.status === 'ready' && assetIds.length === 0 && renderedShot) {
+      handleInitialStageReady();
+    }
+  }, [
+    assetIds.length,
+    assets.status,
+    handleInitialStageError,
+    handleInitialStageReady,
+    initialReadiness,
+    renderedShot,
+  ]);
   const lastReadyVisual = useRef<{
     assetUrls: typeof assets.urls;
     caption: typeof caption;
@@ -239,6 +276,15 @@ export function ProductPreviewOverlay({
   }, [assets.status, assets.urls, caption, captionStyle, renderedShot]);
   const heldVisual =
     assets.status === 'loading' ? lastReadyVisual.current : null;
+  const initialReadinessError =
+    initialReadiness === 'error' || assets.status === 'error';
+  const previewVisualState = initialReadinessError
+    ? 'error'
+    : initialReadiness === 'preparing'
+      ? 'preparing'
+      : heldVisual
+        ? 'holding'
+        : assets.status;
   const atEnd = durationMs > 0 && displayedTimeMs >= durationMs;
   const audioWarning = useProductPreviewAudio({
     projectRoot,
@@ -257,6 +303,7 @@ export function ProductPreviewOverlay({
       className="product-preview-overlay"
       data-preview-playing={String(playing)}
       data-preview-range={range}
+      data-preview-readiness={initialReadiness}
       data-preview-shot-id={shot?.id ?? ''}
       data-preview-time={evaluatedShot?.timeMs ?? 0}
       data-preview-project-time={displayedTimeMs}
@@ -308,9 +355,51 @@ export function ProductPreviewOverlay({
                 className="product-preview-stage"
                 data-preview-image-source="bounded-original"
                 data-preview-stage-fit="contain"
-                data-preview-visual-state={heldVisual ? 'holding' : assets.status}
+                data-preview-visual-state={previewVisualState}
               >
-                {heldVisual ? (
+                {initialReadinessError ? (
+                  assets.status === 'error' ? (
+                    <div
+                      className="product-preview-message product-preview-warning"
+                      data-testid="product-preview-asset-warning"
+                    >
+                      <strong>部分素材无法预览</strong>
+                      <span>
+                        有 {assets.missingCount} 个图片素材无法读取，请在项目素材库中重新导入或刷新后再试。
+                      </span>
+                    </div>
+                  ) : (
+                    <div
+                      className="product-preview-message product-preview-warning"
+                      data-testid="product-preview-stage-warning"
+                    >
+                      <strong>预览首帧无法显示</strong>
+                      <span>请检查项目图片素材后重试。</span>
+                    </div>
+                  )
+                ) : initialReadiness === 'preparing' ? (
+                  <>
+                    {assets.status === 'ready' && renderedShot ? (
+                      <CanvasStage
+                        assetUrls={assets.urls}
+                        caption={caption}
+                        captionStyle={captionStyle}
+                        evaluatedShot={renderedShot}
+                        onError={handleInitialStageError}
+                        onReady={handleInitialStageReady}
+                        project={project}
+                      />
+                    ) : null}
+                    <div
+                      aria-live="polite"
+                      className="product-preview-preparing"
+                      data-testid="product-preview-preparing"
+                      role="status"
+                    >
+                      正在准备预览…
+                    </div>
+                  </>
+                ) : heldVisual ? (
                   <CanvasStage
                     assetUrls={heldVisual.assetUrls}
                     caption={heldVisual.caption}
@@ -325,16 +414,6 @@ export function ProductPreviewOverlay({
                   >
                     <strong>预览素材加载中</strong>
                     <span>正在读取当前镜头需要的图片素材。</span>
-                  </div>
-                ) : assets.status === 'error' ? (
-                  <div
-                    className="product-preview-message product-preview-warning"
-                    data-testid="product-preview-asset-warning"
-                  >
-                    <strong>部分素材无法预览</strong>
-                    <span>
-                      有 {assets.missingCount} 个图片素材无法读取，请在项目素材库中重新导入或刷新后再试。
-                    </span>
                   </div>
                 ) : renderedShot ? (
                   <CanvasStage
@@ -360,7 +439,11 @@ export function ProductPreviewOverlay({
                       playing ? 'preview-pause' : 'preview-play'
                     }
                     data-testid="product-preview-play-pause"
-                    disabled={durationMs <= 0 || (!playing && atEnd)}
+                    disabled={
+                      durationMs <= 0 ||
+                      initialReadiness !== 'ready' ||
+                      (!playing && atEnd)
+                    }
                     onClick={() =>
                       applyTransportAction({
                         type: playing ? 'pause' : 'play',
@@ -392,7 +475,7 @@ export function ProductPreviewOverlay({
                     className="product-preview-icon-button task4-hit-target"
                     data-task4-core="preview-stop"
                     data-testid="product-preview-stop"
-                    disabled={durationMs <= 0}
+                    disabled={durationMs <= 0 || initialReadiness !== 'ready'}
                     onClick={() => applyTransportAction({ type: 'stop' })}
                     title="停止"
                     type="button"
@@ -406,7 +489,7 @@ export function ProductPreviewOverlay({
                     className="product-preview-icon-button task4-hit-target"
                     data-task4-core="preview-replay"
                     data-testid="product-preview-replay"
-                    disabled={durationMs <= 0}
+                    disabled={durationMs <= 0 || initialReadiness !== 'ready'}
                     onClick={() => applyTransportAction({ type: 'replay' })}
                     title="重播"
                     type="button"

@@ -450,9 +450,24 @@ describe('product preview overlay contract', () => {
     const styles = readSource(
       'src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css',
     );
+    const baseStyles = readSource(
+      'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
+    );
 
     expect(overlay.indexOf('data-testid="product-preview-range"')).toBeLessThan(
       overlay.indexOf('className="product-preview-stage"'),
+    );
+    expect(styles).toMatch(
+      /\.product-preview-transport-meta\s*\{[\s\S]*?width:\s*100%;/u,
+    );
+    expect(styles).toMatch(
+      /\.product-preview-range-control\s*\{[\s\S]*?width:\s*max-content;[\s\S]*?margin-inline:\s*auto;/u,
+    );
+    expect(baseStyles).toMatch(
+      /\.product-preview-frame\s*\{[\s\S]*?padding:\s*12px 14px;/u,
+    );
+    expect(baseStyles).toMatch(
+      /\.product-preview-close\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*8px;[\s\S]*?right:\s*10px;/u,
     );
     expect(styles).toMatch(
       /\.product-preview-range-control\s*\{[\s\S]*?padding:\s*0;[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/u,
@@ -462,15 +477,44 @@ describe('product preview overlay contract', () => {
     );
   });
 
+  it('gates the first visible frame before autoplay starts at project time zero', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const styles = readSource(
+      'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
+    );
+
+    expect(overlay).toContain(
+      "useState<ProductPreviewInitialReadiness>('preparing')",
+    );
+    expect(overlay).toContain('const [playing, setPlaying] = useState(false)');
+    expect(overlay).toContain('data-preview-readiness={initialReadiness}');
+    expect(overlay).toContain('data-testid="product-preview-preparing"');
+    expect(overlay).toContain('onReady={handleInitialStageReady}');
+    expect(overlay).toContain('onError={handleInitialStageError}');
+    expect(overlay).toContain("if (initialReadiness !== 'ready') return;");
+    expect(overlay).toContain("initialReadiness !== 'ready'");
+    expect(overlay).toContain(
+      'if (autoPlay && projectDurationMs(project) > 0)',
+    );
+    expect(overlay).toMatch(
+      /initialReadiness === 'preparing'[\s\S]*?正在准备预览/u,
+    );
+    expect(styles).toContain(
+      ".product-preview-stage[data-preview-visual-state='preparing']",
+    );
+    expect(styles).toContain('visibility: hidden;');
+    expect(overlay).not.toContain('setInterval(');
+  });
+
   it('holds the last valid frame while the bounded next-shot images finish', () => {
     const overlay = readSource(OVERLAY_PATH);
     const images = readSource(IMAGES_PATH);
 
     expect(overlay).toContain('const lastReadyVisual = useRef');
     expect(overlay).toContain("assets.status === 'loading' ? lastReadyVisual.current : null");
-    expect(overlay).toContain("data-preview-visual-state={heldVisual ? 'holding' : assets.status}");
+    expect(overlay).toContain('data-preview-visual-state={previewVisualState}');
     expect(overlay).toMatch(
-      /\{heldVisual \? \([\s\S]*?<CanvasStage[\s\S]*?\) : assets\.status === 'loading'/u,
+      /heldVisual \? \([\s\S]*?<CanvasStage/u,
     );
     expect(images).toContain('nextAssetIds');
     expect(images).toContain('this.entries.get(descriptor.key) !== entry');

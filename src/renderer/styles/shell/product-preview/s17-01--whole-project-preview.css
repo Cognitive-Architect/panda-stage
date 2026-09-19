@@ -2,12 +2,14 @@
 .product-preview-transport-meta {
   display: flex;
   justify-content: center;
-  width: var(--product-preview-stage-width);
+  width: 100%;
   max-width: 100%;
   min-width: 0;
 }
 
 .product-preview-range-control {
+  width: max-content;
+  margin-inline: auto;
   max-width: 100%;
   padding: 0;
   border: 0;
@@ -45,10 +47,10 @@
   }
 
   .product-preview-range-control {
-    width: 100%;
+    max-width: calc(100% - 68px);
   }
 
   .product-preview-range-control button.ui-segmented-tabs__item {
-    flex: 1 1 0;
+    min-width: 0;
   }
 }
