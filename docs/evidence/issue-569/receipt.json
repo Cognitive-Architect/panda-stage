@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "issue": 569,
+  "pullRequest": 564,
+  "parentIssue": 563,
+  "workItem": "N2 Preview final polish: align header and eliminate first-open flashing",
+  "branch": "issue-563-n2-01-audit",
+  "status": "validated-implementation-pending-maintainer-acceptance",
+  "implementation": {
+    "deliveryBase": "3e495f2a899fd55ad6136b8bc157ef6a9ab6ca4d",
+    "productionFiles": [
+      "src/renderer/shell/ProductPreviewOverlay.tsx",
+      "src/renderer/styles/shell/product-preview/s06-09--product-preview.css",
+      "src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css"
+    ],
+    "testFiles": [
+      "tests/unit/product-preview-overlay.test.ts",
+      "tests/unit/product-preview-images.test.ts",
+      "tests/unit/editor-issue454-quick-action.test.ts"
+    ],
+    "verifierSupportFiles": [
+      "scripts/verify-issue76.cjs"
+    ],
+    "contractBookkeeping": [
+      "scripts/css-split-manifest.json",
+      "scripts/verification-manifest.json",
+      "docs/evidence/issue-569/receipt.json"
+    ],
+    "routingManifestRegisteredPaths": [
+      "docs/evidence/issue-569/**",
+      "tests/unit/product-preview-*.test.ts"
+    ]
+  },
+  "requirements": {
+    "headerAlignment": "PASS_AGENT_OBSERVED: range control is centered against the full Preview player surface; close is independently anchored top-right; top padding is compact; no title or nested card was added.",
+    "constrainedHeader": "PASS_AGENT_OBSERVED: at a 600x900 emulated constrained viewport, the 175px range control remains centered and the 44px close button does not overlap it.",
+    "firstFrameGate": "PASS_AGENT_OBSERVED: first sample is preparing with playing=false and projectTime=0; the Stage viewport is hidden until CanvasStage reports ready.",
+    "autoplayStart": "PASS_AGENT_OBSERVED: after readiness, the overlay changes to ready/playing=true and time advances from project time 0; no second clock or interval was introduced.",
+    "stablePreparation": "PASS: one stable preparation state is rendered while the initial visual is assembled; no partial Stage is exposed.",
+    "shotBoundary": "PASS_AGENT_OBSERVED: A-to-B changes at project time 2526ms to local time 26ms with readiness=ready, visualState=ready, one canvas, and no loading/warning/preparing element.",
+    "currentShot": "PASS_AGENT_OBSERVED: Current Shot remains available, selected state switches correctly, and the range starts stopped at time 0.",
+    "closeReopen": "PASS_AGENT_OBSERVED: close removes the overlay; reopening creates a fresh preparing gate and restarts from project time 0 without stale visual state.",
+    "fakeTransitions": "PASS: no crossfade, fade, wipe, slide, zoom, blur, or decorative transition was introduced."
+  },
+  "validation": {
+    "gitDiffCheck": "PASS",
+    "targetedPreviewUnit": "PASS (3 files, 33 tests)",
+    "testUnit": "PASS (291 files, 1860 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS (typecheck, renderer, Electron/preload)",
+    "manifestContract": "PASS (verification manifest and CSS split hash contract)",
+    "automaticCiBeforeVerifierFixture": "FAIL (run 35435455717: typecheck, lint, unit, integration, and build passed; historical verify:issue76 stopped because its fixture supplied no canvas bytes while waiting for autoplay)",
+    "automaticCiLatest": "FAIL (run 35437545833: typecheck, lint, unit, integration, and build passed; historical verify:issue102-task2 failed because the Quick Action Drawer labels did not match the Task 2 requirements; this is outside #569 Preview scope)",
+    "manualFullCiTriggered": false,
+    "manualFullCiRerunTriggered": false,
+    "manualVerifyProjectRun": false,
+    "historicalVerifierSweep": "not run"
+  },
+  "windowsElectronRuntime": {
+    "result": "PASS_AGENT_OBSERVED",
+    "worktree": "D:/panda-issue563-n2-01",
+    "userData": "D:/PandaStage-Acceptance/issue569-cdp-userdata-20260919",
+    "fixture": "D:/PandaStage-Acceptance/issue567-cdp-userdata-20260919/fixture/Issue 567 Two Shot Preview.pandastage/project.json",
+    "remoteDebugPort": 9241,
+    "observed": [
+      "The first-open sample reported preparing/playing=false/projectTime=0 with no visible Stage, then reported ready/playing=true with a visible Canvas after the initial image boundary completed.",
+      "The first revealed visual remained at project time 0 before the existing requestAnimationFrame clock began advancing.",
+      "A-to-B sampling reported a clean handoff at project time 2526ms/local time 26ms with readiness and visualState ready, one canvas, and no loading or warning state.",
+      "Current Shot switched to time 0 and stopped; Whole Project remained available and selected state was explicit.",
+      "Close/reopen removed the old overlay and produced a new preparing-to-ready sequence at project time 0.",
+      "The 600x900 constrained capture kept the centered range selector, independent close action, contained Stage, transport, scrubber, and time context visible."
+    ],
+    "screenshots": [
+      "D:/PandaStage-Acceptance/issue569-cdp-userdata-20260919/preview-wide.png",
+      "D:/PandaStage-Acceptance/issue569-cdp-userdata-20260919/preview-constrained.png"
+    ],
+    "limitations": [
+      "This is agent-observed Windows Electron runtime evidence using CDP and viewed screenshots.",
+      "It does not substitute for maintainer visual watching, physical mouse/touch/cloud-input feel, or listening acceptance."
+    ]
+  },
+  "audioAcceptanceWatch": {
+    "implementationChanged": false,
+    "status": "UNMEASURED_MAINTAINER_LISTENING",
+    "requiredQuestion": "At Shot A to Shot B, does Shot B's first spoken syllable begin cleanly without audible clipping?",
+    "scopeRule": "Do not add audio prefetch unless maintainer listening reproduces clipping and records concrete evidence."
+  },
+  "humanAcceptance": {
+    "status": "UNMEASURED_MAINTAINER_ACCEPTANCE",
+    "required": [
+      "Watch the first open repeatedly in the real Windows Electron app and confirm no partial Stage or first-open flash is visible.",
+      "Confirm the range selector is centered against the full Preview surface and the close action stays independently anchored at wide and constrained sizes.",
+      "Watch the A-to-B boundary repeatedly, confirm Current Shot/Whole Project behavior, and listen for clean Shot B audio entry.",
+      "Confirm focus, selected-state clarity, and the declared mouse/touch/cloud input behavior."
+    ]
+  },
+  "scopeExceptions": [
+    {
+      "path": "scripts/verify-issue76.cjs",
+      "reason": "Test-only fixture compatibility: provide one valid minimal PNG so the existing ready-frame playback assertion remains meaningful under the #569 readiness gate; no production behavior or assertion was weakened."
+    }
+  ]
+}

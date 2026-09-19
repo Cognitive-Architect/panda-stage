@@ -14,6 +14,7 @@ import {
 import { buildProject, IDS } from './domain/testProject';
 
 const AUDIO_ID = '10000000-0000-4000-8000-000000000401';
+const AUDIO_B_ID = '10000000-0000-4000-8000-000000000402';
 const CLIP_A_ID = '70000000-0000-4000-8000-000000000401';
 const CLIP_B_ID = '70000000-0000-4000-8000-000000000402';
 const DIALOGUE_A_ID = '80000000-0000-4000-8000-000000000401';
@@ -105,6 +106,18 @@ class FakeAudio implements ProductPreviewAudioElement {
 
   load(): void {
     this.loadCount += 1;
+  }
+}
+
+class DeferredPlayAudio extends FakeAudio {
+  readonly pendingPlays: Array<ReturnType<typeof deferred<void>>> = [];
+
+  override play(): Promise<void> {
+    this.paused = false;
+    this.playCount += 1;
+    const pending = deferred<void>();
+    this.pendingPlays.push(pending);
+    return pending.promise;
   }
 }
 
@@ -224,6 +237,52 @@ describe('Product Preview audio transport — Phase 2 gate A', () => {
     expect(revoked).toEqual(['blob:1']);
   });
 
+  it('repositions a paused seek before Play resumes', async () => {
+    const project = buildAudioProject();
+    const audio = new FakeAudio();
+    const transport = new ProductPreviewAudioTransport({
+      createAudio: () => audio,
+      readAudio: async (request) => readyResponse(request),
+      createObjectUrl: () => 'blob:paused-seek',
+    });
+
+    transport.sync(syncInput(project));
+    await flush();
+    expect(audio.currentTime).toBe(0.2);
+    expect(audio.playCount).toBe(1);
+
+    transport.sync(
+      syncInput(project, {
+        timeMs: 800,
+        playing: false,
+        seekRevision: 1,
+      }),
+    );
+    await flush();
+
+    expect(audio).toMatchObject({
+      currentTime: 0.4,
+      playCount: 1,
+      paused: true,
+    });
+
+    transport.sync(
+      syncInput(project, {
+        timeMs: 800,
+        playing: true,
+        seekRevision: 1,
+      }),
+    );
+    await flush();
+
+    expect(audio).toMatchObject({
+      currentTime: 0.4,
+      playCount: 2,
+      paused: false,
+    });
+    transport.dispose();
+  });
+
   it('starts a delayed read from the latest Preview master time', async () => {
     const project = buildAudioProject();
     const audio = new FakeAudio();
@@ -280,6 +339,197 @@ describe('Product Preview audio transport — Phase 2 gate A', () => {
     expect(audio.pauseCount).toBeGreaterThan(pausesBeforeTransition);
     expect(audio.currentTime).toBe(0.6);
     expect(audio.playCount).toBe(3);
+    transport.dispose();
+  });
+
+  it('hands one audio element from Shot A to Shot B without overlap', async () => {
+    const project = buildAudioProject();
+    const firstShot = project.shots[0]!;
+    const secondShot = {
+      ...firstShot,
+      id: '50000000-0000-4000-8000-000000000402',
+      audioClips: firstShot.audioClips.map((clip) => ({
+        ...clip,
+        assetId: AUDIO_B_ID,
+      })),
+    };
+    const audioB = {
+      ...project.assets.find((asset) => asset.id === AUDIO_ID)!,
+      id: AUDIO_B_ID,
+      relativePath: 'assets/preview-b.wav',
+      sha256: 'd'.repeat(64),
+    };
+    const twoShotProject = {
+      ...project,
+      assets: [...project.assets, audioB],
+      shots: [firstShot, secondShot],
+    };
+    expect(
+      resolveProductPreviewAudio(twoShotProject, secondShot, DIALOGUE_A_ID),
+    ).toMatchObject({ asset: { id: AUDIO_B_ID, sha256: 'd'.repeat(64) } });
+    const audio = new FakeAudio();
+    const transport = new ProductPreviewAudioTransport({
+      createAudio: () => audio,
+      readAudio: async (request) => readyResponse(request),
+      createObjectUrl: () => 'blob:cross-shot',
+    });
+
+    transport.sync(
+      syncInput(twoShotProject, { shot: firstShot, timeMs: 600 }),
+    );
+    await flush();
+    const pausesBeforeBoundary = audio.pauseCount;
+
+    transport.sync(
+      syncInput(twoShotProject, {
+        shot: secondShot,
+        timeMs: 600,
+        seekRevision: 1,
+      }),
+    );
+    await flush();
+
+    expect(audio.pauseCount).toBeGreaterThan(pausesBeforeBoundary);
+    expect(audio.currentTime).toBe(0.2);
+    expect(audio.playCount).toBe(2);
+    expect(audio.paused).toBe(false);
+    transport.dispose();
+  });
+
+  it('does not let a stale play completion pause newer-shot audio', async () => {
+    const project = buildAudioProject();
+    const firstShot = project.shots[0]!;
+    const secondShot = {
+      ...firstShot,
+      id: '50000000-0000-4000-8000-000000000402',
+      audioClips: firstShot.audioClips.map((clip) => ({
+        ...clip,
+        assetId: AUDIO_B_ID,
+      })),
+    };
+    const audioB = {
+      ...project.assets.find((asset) => asset.id === AUDIO_ID)!,
+      id: AUDIO_B_ID,
+      relativePath: 'assets/preview-b.wav',
+      sha256: 'd'.repeat(64),
+    };
+    const twoShotProject = {
+      ...project,
+      assets: [...project.assets, audioB],
+      shots: [firstShot, secondShot],
+    };
+    const audio = new DeferredPlayAudio();
+    const transport = new ProductPreviewAudioTransport({
+      createAudio: () => audio,
+      readAudio: async (request) => readyResponse(request),
+      createObjectUrl: (blob) =>
+        `blob:${blob.size}:${audio.pendingPlays.length + 1}`,
+    });
+
+    transport.sync(
+      syncInput(twoShotProject, { shot: firstShot, timeMs: 600 }),
+    );
+    await flush();
+    expect(audio.pendingPlays).toHaveLength(1);
+
+    transport.sync(
+      syncInput(twoShotProject, {
+        shot: secondShot,
+        timeMs: 600,
+        seekRevision: 1,
+      }),
+    );
+    await flush();
+    expect(audio.pendingPlays).toHaveLength(2);
+    const pauseCountAtBoundary = audio.pauseCount;
+    expect(audio.paused).toBe(false);
+
+    audio.pendingPlays[0]!.resolve();
+    await flush();
+
+    expect(audio.pauseCount).toBe(pauseCountAtBoundary);
+    expect(audio.paused).toBe(false);
+
+    audio.pendingPlays[1]!.resolve();
+    await flush();
+    transport.dispose();
+  });
+
+  it('drops a pending Shot A read when a seek enters Shot B', async () => {
+    const project = buildAudioProject();
+    const firstShot = project.shots[0]!;
+    const secondShot = {
+      ...firstShot,
+      id: '50000000-0000-4000-8000-000000000402',
+      audioClips: firstShot.audioClips.map((clip) => ({
+        ...clip,
+        assetId: AUDIO_B_ID,
+      })),
+    };
+    const audioB = {
+      ...project.assets.find((asset) => asset.id === AUDIO_ID)!,
+      id: AUDIO_B_ID,
+      relativePath: 'assets/preview-b.wav',
+      sha256: 'd'.repeat(64),
+    };
+    const twoShotProject = {
+      ...project,
+      assets: [...project.assets, audioB],
+      shots: [firstShot, secondShot],
+    };
+    const audio = new FakeAudio();
+    const reads = [
+      deferred<AssetPreviewAudioReadResponse>(),
+      deferred<AssetPreviewAudioReadResponse>(),
+    ];
+    let readIndex = 0;
+    const transport = new ProductPreviewAudioTransport({
+      createAudio: () => audio,
+      readAudio: () => reads[readIndex++]!.promise,
+      createObjectUrl: () => `blob:stale-${readIndex}`,
+    });
+
+    transport.sync(
+      syncInput(twoShotProject, { shot: firstShot, timeMs: 600 }),
+    );
+    expect(readIndex).toBe(1);
+    const secondSelection = resolveProductPreviewAudio(
+      twoShotProject,
+      secondShot,
+      DIALOGUE_A_ID,
+    )!;
+    expect(isProductPreviewAudioActiveAtTime(600, secondSelection)).toBe(true);
+    transport.sync(
+      syncInput(twoShotProject, {
+        shot: secondShot,
+        timeMs: 600,
+        seekRevision: 1,
+      }),
+    );
+    expect(readIndex).toBe(2);
+
+    reads[0]!.resolve(
+      readyResponse({
+        projectRoot: PROJECT_ROOT,
+        assetId: AUDIO_ID,
+        sha256: 'c'.repeat(64),
+      }),
+    );
+    await flush();
+    expect(audio.playCount).toBe(0);
+
+    reads[1]!.resolve(
+      readyResponse({
+        projectRoot: PROJECT_ROOT,
+        assetId: AUDIO_ID,
+        sha256: 'c'.repeat(64),
+      }),
+    );
+    await flush();
+
+    expect(audio.playCount).toBe(1);
+    expect(audio.currentTime).toBe(0.2);
+    expect(audio.paused).toBe(false);
     transport.dispose();
   });
 

@@ -791,7 +791,7 @@
       "sourceLocalRange": { "startLine": 954, "endLine": 1128 },
       "sourceStartByte": 18294,
       "sourceEndByteExclusive": 21495,
-      "sourceSha256": "61d0518f7c75107a63e1c12c91a892ffe18eafd0b3193b6f6edf9fea8a1923f1",
+      "sourceSha256": "4d439af8f13071688e2509db0e97345a47fc26098cebe67644c4f54b8c861404",
       "targetPath": "src/renderer/styles/shell/product-preview/s06-09--product-preview.css",
       "endAnchor": ".close-project-button",
       "placement": "source-order",

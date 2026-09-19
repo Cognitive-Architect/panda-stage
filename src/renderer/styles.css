@@ -53,6 +53,7 @@
 @import './styles/compat/mixed-conditions/s06-06--responsive-1100.css';
 @import './styles/shell/project-entry/s06-08--new-project-dialog.css';
 @import './styles/shell/product-preview/s06-09--product-preview.css';
+@import './styles/shell/product-preview/s17-01--whole-project-preview.css';
 @import './styles/shell/project-entry/s06-10--close-confirm.css';
 @import './styles/features/dialogue/workspace/s06-11--dialogue-base.css';
 @import './styles/shell/layout/s06-12--adaptive-shell.css';

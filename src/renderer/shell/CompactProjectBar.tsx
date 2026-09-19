@@ -215,7 +215,7 @@ export function QuickActionDrawer({
             variant="secondary"
           />
           <IconButton
-            aria-label="预览当前镜头"
+            aria-label="预览"
             aria-pressed={productPreviewOpen}
             className="quick-action-drawer-action quick-action-drawer-play"
             data-quick-action="play"
@@ -231,7 +231,7 @@ export function QuickActionDrawer({
               />
             }
             onClick={onOpenProductPreview}
-            title="预览当前镜头"
+            title="预览"
             variant="primary"
           />
           <div

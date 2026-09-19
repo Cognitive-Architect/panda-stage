@@ -36,6 +36,9 @@ export interface ProductPreviewTimeStep {
   ended: boolean;
 }
 
+/** The two playback ranges owned by one Product Preview surface. */
+export type ProductPreviewRange = 'project' | 'shot';
+
 export type ProductPreviewTransportAction =
   | { type: 'play' }
   | { type: 'pause' }
