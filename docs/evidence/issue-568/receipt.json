@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "issue": 568,
+  "pullRequest": 564,
+  "workItem": "N2 Preview follow-up: entry wording, range placement, and cross-shot image continuity",
+  "branch": "issue-563-n2-01-audit",
+  "status": "validated-implementation-pending-maintainer-acceptance",
+  "implementation": {
+    "deliveryBase": "1ac73d758ca73a3304ebceca64b28a09eb48c787",
+    "productionFiles": [
+      "src/renderer/shell/CompactProjectBar.tsx",
+      "src/renderer/shell/ProductPreviewOverlay.tsx",
+      "src/renderer/shell/productPreviewImages.ts",
+      "src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css"
+    ],
+    "testFiles": [
+      "tests/unit/editor-issue454-quick-action.test.ts",
+      "tests/unit/product-preview-images.test.ts",
+      "tests/unit/product-preview-overlay.test.ts"
+    ],
+    "routingManifest": "scripts/verification-manifest.json",
+    "routingManifestRegisteredPaths": [
+      "docs/evidence/issue-568/**",
+      "tests/unit/editor-*.test.ts",
+      "tests/unit/product-preview-*.test.ts"
+    ]
+  },
+  "requirements": {
+    "quickActionWording": "PASS: project-level tooltip and aria label are both 预览",
+    "rangePlacement": "PASS: the existing SegmentedTabs is before and above the Stage",
+    "rangePresentation": "PASS: transparent borderless outer shell; two adjacent options; persistent green selected state",
+    "boundedImageContinuity": "PASS: one Preview-owned SHA-keyed session retains current + next and only temporarily retains the prior valid frame",
+    "staleProtection": "PASS: removed identities cannot create a URL or overwrite the active shot after delayed completion",
+    "cleanup": "PASS: scope commit and Preview disposal revoke URLs; loading entries removed from scope cannot publish later",
+    "visualFallback": "PASS: a temporarily unready active shot renders the last committed valid frame while the project clock remains authoritative",
+    "fakeTransitions": "PASS: no crossfade, fade, wipe, slide, zoom, blur, or decorative transition was introduced",
+    "currentShot": "PASS: the existing range semantics remain unchanged and Current Shot remains available"
+  },
+  "validation": {
+    "gitDiffCheck": "PASS",
+    "targetedPreviewUnit": "PASS (4 files, 37 tests)",
+    "testUnit": "PASS (291 files, 1859 tests)",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS (typecheck, renderer, Electron/preload)",
+    "manualFullCiTriggered": false,
+    "manualFullCiRerunTriggered": false,
+    "manualVerifyProjectRun": false,
+    "historicalVerifierSweep": "not run"
+  },
+  "windowsElectronRuntime": {
+    "result": "PASS_AGENT_OBSERVED",
+    "worktree": "D:/panda-issue563-n2-01",
+    "userData": "D:/PandaStage-Acceptance/issue567-cdp-userdata-20260919",
+    "fixture": "D:/PandaStage-Acceptance/issue567-cdp-userdata-20260919/fixture/Issue 567 Two Shot Preview.pandastage/project.json",
+    "remoteDebugPort": 9240,
+    "observed": [
+      "The Quick Action DOM exposes aria-label and title 预览 and opens the existing single Product Preview.",
+      "Whole Project remains selected by default; Current Shot remains adjacent and available.",
+      "The range shell computes to zero padding, zero border, and transparent background; the selected option uses the persistent green selected surface and border.",
+      "The range control is above the Stage in the real Electron layout.",
+      "A 54-frame sample spanning Shot A 2488ms to Shot B 2504ms and onward reported ready throughout, with zero loading, warning, or blank frames.",
+      "Shot B first appeared at the current mapped local time (4ms in the sampled frame), not at a restarted preview clock.",
+      "Current Shot switched to time 0 and stopped with ready visuals; its persistent selected state matched Whole Project, then Whole Project reset and replayed.",
+      "At 600x900 constrained dimensions, the range options, close action, full contained Stage, transport, scrubber, and time context remained visible and usable."
+    ],
+    "screenshots": [
+      "D:/PandaStage-Acceptance/issue568-cdp-userdata-20260919/preview-shot-b.png",
+      "D:/PandaStage-Acceptance/issue568-cdp-userdata-20260919/preview-constrained.png"
+    ],
+    "limitations": [
+      "This is agent-observed Windows Electron runtime evidence using CDP and viewed screenshots.",
+      "It does not substitute for maintainer visual watching, physical mouse/touch/cloud-input feel, or listening acceptance."
+    ]
+  },
+  "audioAcceptanceWatch": {
+    "implementationChanged": false,
+    "status": "UNMEASURED_MAINTAINER_LISTENING",
+    "requiredQuestion": "At Shot A to Shot B, does Shot B's first spoken syllable begin cleanly without audible clipping?",
+    "scopeRule": "Do not add audio prefetch unless maintainer listening reproduces clipping and records concrete evidence."
+  },
+  "humanAcceptance": {
+    "status": "UNMEASURED_MAINTAINER_ACCEPTANCE",
+    "required": [
+      "Watch the A-to-B boundary repeatedly in the real Windows Electron app and confirm it looks like a normal video cut with no player flash.",
+      "Listen specifically to Shot B's first spoken syllable and record PASS or reproducible clipping evidence.",
+      "Confirm static selected-state clarity and range switching with the declared mouse/touch/cloud input."
+    ]
+  },
+  "scopeExceptions": []
+}

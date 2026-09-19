@@ -445,6 +445,41 @@ describe('product preview overlay contract', () => {
     );
   });
 
+  it('places a flat, persistently selected range control above the Stage', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const styles = readSource(
+      'src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css',
+    );
+
+    expect(overlay.indexOf('data-testid="product-preview-range"')).toBeLessThan(
+      overlay.indexOf('className="product-preview-stage"'),
+    );
+    expect(styles).toMatch(
+      /\.product-preview-range-control\s*\{[\s\S]*?padding:\s*0;[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/u,
+    );
+    expect(styles).toMatch(
+      /\.product-preview-range-control[\s\S]*?button\.ui-segmented-tabs__item--selected\[data-ui-variant='secondary'\]\s*\{[\s\S]*?--ui-color-selected-border[\s\S]*?--ui-color-selected-surface[\s\S]*?--ui-color-text-primary/u,
+    );
+  });
+
+  it('holds the last valid frame while the bounded next-shot images finish', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const images = readSource(IMAGES_PATH);
+
+    expect(overlay).toContain('const lastReadyVisual = useRef');
+    expect(overlay).toContain("assets.status === 'loading' ? lastReadyVisual.current : null");
+    expect(overlay).toContain("data-preview-visual-state={heldVisual ? 'holding' : assets.status}");
+    expect(overlay).toMatch(
+      /\{heldVisual \? \([\s\S]*?<CanvasStage[\s\S]*?\) : assets\.status === 'loading'/u,
+    );
+    expect(images).toContain('nextAssetIds');
+    expect(images).toContain('this.entries.get(descriptor.key) !== entry');
+    expect(images).toContain('session.commitScope(');
+    expect(`${overlay}\n${images}`).not.toMatch(
+      /crossfade|fade-to-black|wipe|slide transition|zoom transition/iu,
+    );
+  });
+
   it('is mounted only while open so no hidden DOM survives closing', () => {
     const shell = readSource(SHELL_PATH);
 

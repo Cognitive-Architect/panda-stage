@@ -14,7 +14,14 @@
  *   - No second project tree and no hidden DOM: the overlay is mounted only
  *     while open and unmounted on close.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   evaluateShotAtTime,
   mapProjectTime,
@@ -94,11 +101,19 @@ export function ProductPreviewOverlay({
     () => (shot ? listProductPreviewAssetIds(project, shot) : []),
     [project, shot],
   );
+  const nextShot =
+    range === 'project' && activeShotIndex !== null
+      ? project.shots[activeShotIndex + 1] ?? null
+      : null;
+  const nextAssetIds = useMemo(
+    () => (nextShot ? listProductPreviewAssetIds(project, nextShot) : []),
+    [nextShot, project],
+  );
   const assets = useProductPreviewImages(
     projectRoot,
     project,
     assetIds,
-    `${range}:${shot?.id ?? ''}`,
+    nextAssetIds,
   );
   const cues = useMemo(
     () => (shot ? buildProductPreviewCues(shot) : []),
@@ -207,6 +222,23 @@ export function ProductPreviewOverlay({
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
+  const lastReadyVisual = useRef<{
+    assetUrls: typeof assets.urls;
+    caption: typeof caption;
+    captionStyle: typeof captionStyle;
+    evaluatedShot: NonNullable<typeof renderedShot>;
+  } | null>(null);
+  useLayoutEffect(() => {
+    if (assets.status !== 'ready' || !renderedShot) return;
+    lastReadyVisual.current = {
+      assetUrls: assets.urls,
+      caption,
+      captionStyle,
+      evaluatedShot: renderedShot,
+    };
+  }, [assets.status, assets.urls, caption, captionStyle, renderedShot]);
+  const heldVisual =
+    assets.status === 'loading' ? lastReadyVisual.current : null;
   const atEnd = durationMs > 0 && displayedTimeMs >= durationMs;
   const audioWarning = useProductPreviewAudio({
     projectRoot,
@@ -256,11 +288,37 @@ export function ProductPreviewOverlay({
           <>
             <div className="product-preview-player">
               <div
+                className="product-preview-transport-meta"
+                data-testid="product-preview-range"
+              >
+                <SegmentedTabs
+                  aria-label="预览范围"
+                  className="product-preview-range-control"
+                  onChange={(value) =>
+                    switchPreviewRange(value as ProductPreviewRange)
+                  }
+                  options={[
+                    { value: 'project', label: '整个项目' },
+                    { value: 'shot', label: '当前镜头' },
+                  ]}
+                  value={range}
+                />
+              </div>
+              <div
                 className="product-preview-stage"
                 data-preview-image-source="bounded-original"
                 data-preview-stage-fit="contain"
+                data-preview-visual-state={heldVisual ? 'holding' : assets.status}
               >
-                {assets.status === 'loading' ? (
+                {heldVisual ? (
+                  <CanvasStage
+                    assetUrls={heldVisual.assetUrls}
+                    caption={heldVisual.caption}
+                    captionStyle={heldVisual.captionStyle}
+                    evaluatedShot={heldVisual.evaluatedShot}
+                    project={project}
+                  />
+                ) : assets.status === 'loading' ? (
                   <div
                     className="product-preview-message"
                     data-testid="product-preview-loading"
@@ -384,23 +442,6 @@ export function ProductPreviewOverlay({
                   {formatProductPreviewTimecode(displayedTimeMs)} /{' '}
                   {formatProductPreviewTimecode(durationMs)}
                 </span>
-              </div>
-              <div
-                className="product-preview-transport-meta"
-                data-testid="product-preview-range"
-              >
-                <SegmentedTabs
-                  aria-label="预览范围"
-                  className="product-preview-range-control"
-                  onChange={(value) =>
-                    switchPreviewRange(value as ProductPreviewRange)
-                  }
-                  options={[
-                    { value: 'project', label: '整个项目' },
-                    { value: 'shot', label: '当前镜头' },
-                  ]}
-                  value={range}
-                />
               </div>
             </div>
 

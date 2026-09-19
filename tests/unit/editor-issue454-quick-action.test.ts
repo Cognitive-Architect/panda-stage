@@ -86,7 +86,7 @@ describe('Issue #454 Quick Action Drawer', () => {
     for (const label of [
       '打开项目中心',
       '打开项目文件夹',
-      '预览当前镜头',
+      '预览',
       '关闭当前项目',
     ]) {
       expect(markup).toContain(`aria-label="${label}"`);
