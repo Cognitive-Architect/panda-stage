@@ -487,22 +487,30 @@ describe('product preview overlay contract', () => {
       "useState<ProductPreviewInitialReadiness>('preparing')",
     );
     expect(overlay).toContain('const [playing, setPlaying] = useState(false)');
+    expect(overlay).toContain(
+      'data-preview-data-ready={String(initialReadiness === \'ready\')}',
+    );
     expect(overlay).toContain('data-preview-readiness={initialReadiness}');
+    expect(overlay).toContain('data-preview-reveal={revealPhase}');
     expect(overlay).toContain('data-testid="product-preview-preparing"');
-    expect(overlay).toContain('onReady={handleInitialStageReady}');
+    expect(overlay).toContain('onReady={');
+    expect(overlay).toContain('handleInitialStageReady');
     expect(overlay).toContain('onError={handleInitialStageError}');
-    expect(overlay).toContain("if (initialReadiness !== 'ready') return;");
-    expect(overlay).toContain("initialReadiness !== 'ready'");
+    expect(overlay).toContain('scheduleProductPreviewPaintFence(');
+    expect(overlay).toContain('onTransitionEnd={handleRevealTransitionEnd}');
+    expect(overlay).toContain('canStartProductPreviewPlayback(');
+    expect(overlay).toContain("revealPhase !== 'revealed'");
+    expect(overlay).toContain('setRevealPhase(\'covered\')');
     expect(overlay).toContain(
       'if (autoPlay && projectDurationMs(project) > 0)',
     );
     expect(overlay).toMatch(
       /initialReadiness === 'preparing'[\s\S]*?正在准备预览/u,
     );
-    expect(styles).toContain(
-      ".product-preview-stage[data-preview-visual-state='preparing']",
-    );
-    expect(styles).toContain('visibility: hidden;');
+    expect(styles).toContain('.product-preview-curtain');
+    expect(styles).toContain('transition: opacity 160ms ease;');
+    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(styles).not.toContain('visibility: hidden;');
     expect(overlay).not.toContain('setInterval(');
   });
 

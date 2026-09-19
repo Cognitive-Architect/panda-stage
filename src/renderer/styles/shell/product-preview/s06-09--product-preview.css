@@ -174,18 +174,31 @@
   color: #8fa89a;
 }
 
-.product-preview-preparing {
+.product-preview-curtain {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: grid;
   place-items: center;
+  background: #0a1310;
+  opacity: 1;
+  transition: opacity 160ms ease;
+}
+
+.product-preview-curtain[data-preview-curtain-state='revealing'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.product-preview-preparing {
   color: #cfe4d7;
   font-size: 0.94rem;
   letter-spacing: 0.01em;
 }
 
-.product-preview-stage[data-preview-visual-state='preparing']
-  > .stage-viewport {
-  visibility: hidden;
+@media (prefers-reduced-motion: reduce) {
+  .product-preview-curtain {
+    transition-duration: 1ms;
+  }
 }
 
