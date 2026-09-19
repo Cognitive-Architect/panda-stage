@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,7 +14,6 @@ import {
   buildStageRenderModel,
   type StageAssetUrlMap,
   type StageRenderLayer,
-  type StageRenderModel,
 } from '../../shared/stage/render-model';
 import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
 import {
@@ -28,6 +28,11 @@ import {
   type StageImageLayerSource,
   type StageImageResourceState,
 } from './stageImageResourceSession';
+import {
+  commitStageVisualFrame,
+  selectStageVisualFrame,
+  type StageVisualFrame,
+} from './stageVisualFrame';
 
 interface StageRendererProps {
   project: Project;
@@ -40,20 +45,10 @@ interface StageRendererProps {
   renderToken?: string | number;
 }
 
-interface StageVisualFrame {
-  model: StageRenderModel;
-  caption: string | null;
-  captionStyle?: SubtitleStyle;
-}
-
 function useStageImages(
   layers: readonly StageRenderLayer[],
-  desiredFrame: StageVisualFrame | null,
   sourceKey: string,
-): {
-  state: StageImageResourceState;
-  committedFrame: StageVisualFrame | null;
-} {
+): StageImageResourceState {
   const sessionRef = useRef<StageImageResourceSession | null>(null);
   if (!sessionRef.current) {
     sessionRef.current = new StageImageResourceSession();
@@ -61,9 +56,6 @@ function useStageImages(
   const [state, setState] = useState<StageImageResourceState>(
     () => sessionRef.current?.getSnapshot() ?? EMPTY_STAGE_IMAGE_RESOURCE_STATE,
   );
-  const committedFrameRef = useRef<StageVisualFrame | null>(null);
-  const desiredFrameRef = useRef<StageVisualFrame | null>(desiredFrame);
-  desiredFrameRef.current = desiredFrame;
   const layerSourcesRef = useRef<{
     key: string;
     layers: readonly StageImageLayerSource[];
@@ -83,9 +75,6 @@ function useStageImages(
     }
     session.reconcile(layerSourcesRef.current.layers, (nextState) => {
       setState(nextState);
-      if (nextState.ready) {
-        committedFrameRef.current = desiredFrameRef.current;
-      }
     });
   }, [sourceKey]);
 
@@ -94,10 +83,7 @@ function useStageImages(
     return () => session?.dispose();
   }, []);
 
-  return {
-    state,
-    committedFrame: committedFrameRef.current,
-  };
+  return state;
 }
 
 export function StageRenderer({
@@ -137,20 +123,29 @@ export function StageRenderer({
         captionStyle,
       }
     : null;
-  const imageState = useStageImages(layers, desiredFrame, imageSourceKey);
-  const error = modelResult.error ?? imageState.state.error;
+  const imageState = useStageImages(layers, imageSourceKey);
+  const error = modelResult.error ?? imageState.error;
   const ready = isStageFrameReady({
     error,
     hasModel: modelResult.model !== null,
-    imageState: imageState.state,
+    imageState,
     layerCount: layers.length,
     sourceKey: imageSourceKey,
   });
-  const desiredFrameReady = ready;
-  const displayFrame =
-    desiredFrameReady
-      ? desiredFrame
-      : imageState.committedFrame ?? desiredFrame;
+  const committedFrameRef = useRef<StageVisualFrame | null>(null);
+  useLayoutEffect(() => {
+    committedFrameRef.current = commitStageVisualFrame(
+      committedFrameRef.current,
+      desiredFrame,
+      ready,
+    );
+  }, [desiredFrame, ready]);
+  const displayFrame = selectStageVisualFrame(
+    committedFrameRef.current,
+    desiredFrame,
+    ready,
+  );
+  const committedFrame = committedFrameRef.current;
   const displayModel = displayFrame?.model ?? modelResult.model;
   const displayCaption = displayFrame?.caption ?? caption;
   const displayCaptionStyle = displayFrame?.captionStyle ?? captionStyle;
@@ -160,8 +155,8 @@ export function StageRenderer({
       onError?.(modelResult.error);
       return;
     }
-    if (imageState.state.error) {
-      onError?.(imageState.state.error);
+    if (imageState.error) {
+      onError?.(imageState.error);
       return;
     }
     if (!ready) return;
@@ -169,7 +164,7 @@ export function StageRenderer({
     const frame = window.requestAnimationFrame(() => onReady?.());
     return () => window.cancelAnimationFrame(frame);
   }, [
-    imageState.state.error,
+    imageState.error,
     modelResult.error,
     modelResult.model?.timeMs,
     onError,
@@ -178,7 +173,7 @@ export function StageRenderer({
     renderToken,
   ]);
 
-  if (!modelResult.model || (error && !imageState.committedFrame)) {
+  if (!modelResult.model || (error && !committedFrame)) {
     return (
       <div className="stage-error" role="alert" data-testid="stage-error">
         <strong>舞台无法渲染</strong>
@@ -200,6 +195,7 @@ export function StageRenderer({
       data-render-contract="shared-stage-layer-v1"
       data-stage-error={String(Boolean(error))}
       data-stage-ready={String(ready)}
+      data-stage-render-token={renderToken == null ? '' : String(renderToken)}
       data-stage-time={displayModel!.timeMs}
       data-testid="stage-renderer"
     >
@@ -210,7 +206,7 @@ export function StageRenderer({
       >
         <Layer listening={false} ref={configurePreviewLayer}>
           {displayModel!.layers.map((layer) => {
-            const image = imageState.state.images.get(layer.id);
+            const image = imageState.images.get(layer.id);
             const render = layer.render;
             if (!image || !render.visible) {
               return null;

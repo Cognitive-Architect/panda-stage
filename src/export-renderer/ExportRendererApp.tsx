@@ -5,6 +5,7 @@ import type {
   ExportRenderFrameRequest,
 } from '../shared/export-types';
 import {
+  PROBE_CHARACTER_ASSET_ID,
   PROBE_CHARACTER_LAYER_ID,
   PROBE_PROJECT,
   PROBE_SHOT,
@@ -13,6 +14,10 @@ import {
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from '../renderer/stage/CanvasStage';
 import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
+import {
+  isExactExportFrameReady,
+  readExportStageReadiness,
+} from './export-frame-readiness';
 
 function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -35,6 +40,8 @@ export function ExportRendererApp(): React.JSX.Element {
     evidenceParameters.get('issue47FlipEvidence') === 'true';
   const issue47FlipX =
     evidenceParameters.get('issue47FlipX') === 'true';
+  const issue573ExactFrameProbe =
+    evidenceParameters.get('issue573ExactFrameProbe') === 'true';
   const project = useMemo(() => {
     if (!issue47FlipEvidence) return PROBE_PROJECT;
     const characterLayer = PROBE_SHOT.layers.find(
@@ -83,6 +90,16 @@ export function ExportRendererApp(): React.JSX.Element {
     [durationMs, projectShot],
   );
   const requestedTimeMs = frameRequest?.timeMs ?? 0;
+  const exportAssetUrls = useMemo(() => {
+    if (!issue573ExactFrameProbe) return PROBE_ASSET_URLS;
+    const characterUrl = PROBE_ASSET_URLS[PROBE_CHARACTER_ASSET_ID];
+    if (!characterUrl) return PROBE_ASSET_URLS;
+    const frame = requestedTimeMs >= 500 ? 'b' : 'a';
+    return {
+      ...PROBE_ASSET_URLS,
+      [PROBE_CHARACTER_ASSET_ID]: `${characterUrl}?issue573-frame=${frame}`,
+    };
+  }, [issue573ExactFrameProbe, requestedTimeMs]);
   const evaluatedShot = useMemo(
     () => evaluateShotAtTime(shot, requestedTimeMs, project),
     [requestedTimeMs, shot, project],
@@ -146,6 +163,7 @@ export function ExportRendererApp(): React.JSX.Element {
           return;
         }
         activeFrameRef.current = request;
+        stageReadyRef.current = false;
         setFrameRequest(request);
       },
     );
@@ -216,9 +234,18 @@ export function ExportRendererApp(): React.JSX.Element {
     }
     captureInFlightRef.current = true;
 
-    const canvas = document.querySelector<HTMLCanvasElement>(
-      '[data-testid="stage-renderer"] canvas',
+    const stage = document.querySelector<HTMLElement>(
+      '[data-testid="stage-renderer"]',
     );
+    if (!stage) {
+      failFrame(activeFrame, new Error('Hidden stage element not found.'));
+      return;
+    }
+    if (!isExactExportFrameReady(readExportStageReadiness(stage), activeFrame)) {
+      captureInFlightRef.current = false;
+      return;
+    }
+    const canvas = stage.querySelector<HTMLCanvasElement>('canvas');
     if (!canvas) {
       failFrame(activeFrame, new Error('隐藏舞台 Canvas 不存在。'));
       return;
@@ -256,7 +283,7 @@ export function ExportRendererApp(): React.JSX.Element {
   return (
     <main className="hidden-stage-shell">
       <CanvasStage
-        assetUrls={PROBE_ASSET_URLS}
+        assetUrls={exportAssetUrls}
         caption={subtitle?.text ?? null}
         evaluatedShot={evaluatedShot}
         onError={handleStageError}

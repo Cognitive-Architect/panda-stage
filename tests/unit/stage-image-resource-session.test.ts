@@ -71,8 +71,11 @@ describe('StageImageResourceSession', () => {
 
     expect(stageRenderer).toContain('StageImageResourceSession');
     expect(stageRenderer).toContain('isStageFrameReady');
+    expect(stageRenderer).toContain('commitStageVisualFrame');
     expect(stageRenderer).toContain('data-stage-ready={String(ready)}');
+    expect(stageRenderer).toContain('data-stage-render-token');
     expect(exportRenderer).toContain('onReady={handleStageReady}');
+    expect(exportRenderer).toContain('isExactExportFrameReady');
     expect(exportRenderer).toContain('onError={handleStageError}');
   });
 
