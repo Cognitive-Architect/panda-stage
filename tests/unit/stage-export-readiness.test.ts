@@ -70,4 +70,18 @@ describe('hidden Export exact frame readiness', () => {
       false,
     );
   });
+
+  it('rejects an exact-looking frame when Stage reports an explicit error', () => {
+    expect(
+      isExactExportFrameReady(
+        {
+          stageReady: true,
+          stageError: true,
+          stageTimeMs: requestB.timeMs,
+          renderToken: exportFrameRenderToken(requestB),
+        },
+        requestB,
+      ),
+    ).toBe(false);
+  });
 });
