@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type Konva from 'konva';
 import { Image as KonvaImage, Layer, Stage, Text } from 'react-konva';
 import type { EvaluatedShot, Project } from '../../domain';
@@ -7,12 +13,20 @@ import {
   buildStageRenderModel,
   type StageAssetUrlMap,
   type StageRenderLayer,
+  type StageRenderModel,
 } from '../../shared/stage/render-model';
 import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
 import {
   configureKonvaScenePixelRatio,
   PREVIEW_CANVAS_PIXEL_RATIO,
 } from './konva-pixel-ratio';
+import {
+  buildStageImageSourceKey,
+  EMPTY_STAGE_IMAGE_RESOURCE_STATE,
+  StageImageResourceSession,
+  type StageImageLayerSource,
+  type StageImageResourceState,
+} from './stageImageResourceSession';
 
 interface StageRendererProps {
   project: Project;
@@ -25,61 +39,64 @@ interface StageRendererProps {
   renderToken?: string | number;
 }
 
-interface ImageLoadState {
-  images: ReadonlyMap<string, HTMLImageElement>;
-  error: Error | null;
+interface StageVisualFrame {
+  model: StageRenderModel;
+  caption: string | null;
+  captionStyle?: SubtitleStyle;
 }
 
 function useStageImages(
   layers: readonly StageRenderLayer[],
+  desiredFrame: StageVisualFrame | null,
   sourceKey: string,
-  onError?: (error: Error) => void,
-): ImageLoadState {
-  const [state, setState] = useState<ImageLoadState>({
-    images: new Map(),
-    error: null,
-  });
+): {
+  state: StageImageResourceState;
+  committedFrame: StageVisualFrame | null;
+} {
+  const sessionRef = useRef<StageImageResourceSession | null>(null);
+  if (!sessionRef.current) {
+    sessionRef.current = new StageImageResourceSession();
+  }
+  const [state, setState] = useState<StageImageResourceState>(
+    () => sessionRef.current?.getSnapshot() ?? EMPTY_STAGE_IMAGE_RESOURCE_STATE,
+  );
+  const committedFrameRef = useRef<StageVisualFrame | null>(null);
+  const desiredFrameRef = useRef<StageVisualFrame | null>(desiredFrame);
+  desiredFrameRef.current = desiredFrame;
+  const layerSourcesRef = useRef<{
+    key: string;
+    layers: readonly StageImageLayerSource[];
+  }>({ key: '', layers: [] });
+  if (layerSourcesRef.current.key !== sourceKey) {
+    layerSourcesRef.current = {
+      key: sourceKey,
+      layers: layers.map(({ id, sourceUrl }) => ({ id, sourceUrl })),
+    };
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    setState({ images: new Map(), error: null });
+    let session = sessionRef.current;
+    if (!session || session.isDisposed()) {
+      session = new StageImageResourceSession();
+      sessionRef.current = session;
+    }
+    session.reconcile(layerSourcesRef.current.layers, (nextState) => {
+      setState(nextState);
+      if (nextState.ready) {
+        committedFrameRef.current = desiredFrameRef.current;
+      }
+    });
+  }, [sourceKey]);
 
-    void Promise.all(
-      layers.map(
-        (layer) =>
-          new Promise<[string, HTMLImageElement]>((resolve, reject) => {
-            const image = new window.Image();
-            image.onload = () => resolve([layer.id, image]);
-            image.onerror = () =>
-              reject(
-                new Error(
-                  `无法加载舞台素材“${layer.asset.name}”：${layer.sourceUrl}`,
-                ),
-              );
-            image.src = layer.sourceUrl;
-          }),
-      ),
-    )
-      .then((entries) => {
-        if (!cancelled) {
-          setState({ images: new Map(entries), error: null });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          const loadError =
-            error instanceof Error ? error : new Error('舞台素材加载失败。');
-          setState({ images: new Map(), error: loadError });
-          onError?.(loadError);
-        }
-      });
+  useEffect(() => {
+    const session = sessionRef.current;
+    return () => session?.dispose();
+  }, []);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [sourceKey, onError]);
-
-  return state;
+  return {
+    state,
+    committedFrame: committedFrameRef.current,
+  };
 }
 
 export function StageRenderer({
@@ -111,25 +128,45 @@ export function StageRenderer({
     }
   }, [assetUrls, evaluatedShot, project]);
   const layers = modelResult.model?.layers ?? [];
-  const imageSourceKey = layers
-    .map((layer) => `${layer.id}\u0000${layer.sourceUrl}`)
-    .join('\u0001');
-  const imageState = useStageImages(layers, imageSourceKey, onError);
-  const error = modelResult.error ?? imageState.error;
-  const ready =
-    !error && layers.length > 0 && imageState.images.size === layers.length;
+  const imageSourceKey = buildStageImageSourceKey(layers);
+  const desiredFrame = modelResult.model
+    ? {
+        model: modelResult.model,
+        caption,
+        captionStyle,
+      }
+    : null;
+  const imageState = useStageImages(layers, desiredFrame, imageSourceKey);
+  const error = modelResult.error ?? imageState.state.error;
+  const desiredFrameReady =
+    !error &&
+    modelResult.model !== null &&
+    imageState.state.ready &&
+    imageState.state.desiredSourceKey === imageSourceKey;
+  const ready = desiredFrameReady && layers.length > 0;
+  const displayFrame =
+    desiredFrameReady
+      ? desiredFrame
+      : imageState.committedFrame ?? desiredFrame;
+  const displayModel = displayFrame?.model ?? modelResult.model;
+  const displayCaption = displayFrame?.caption ?? caption;
+  const displayCaptionStyle = displayFrame?.captionStyle ?? captionStyle;
 
   useEffect(() => {
-    if (!ready) {
-      if (modelResult.error) {
-        onError?.(modelResult.error);
-      }
+    if (modelResult.error) {
+      onError?.(modelResult.error);
       return;
     }
+    if (imageState.state.error) {
+      onError?.(imageState.state.error);
+      return;
+    }
+    if (!ready) return;
 
     const frame = window.requestAnimationFrame(() => onReady?.());
     return () => window.cancelAnimationFrame(frame);
   }, [
+    imageState.state.error,
     modelResult.error,
     modelResult.model?.timeMs,
     onError,
@@ -138,7 +175,7 @@ export function StageRenderer({
     renderToken,
   ]);
 
-  if (!modelResult.model || error) {
+  if (!modelResult.model || (error && !imageState.committedFrame)) {
     return (
       <div className="stage-error" role="alert" data-testid="stage-error">
         <strong>舞台无法渲染</strong>
@@ -150,26 +187,27 @@ export function StageRenderer({
   return (
     <div
       className="stage-renderer"
-      data-logical-height={modelResult.model.height}
-      data-logical-width={modelResult.model.width}
-      data-caption-visible={String(Boolean(caption))}
-      data-caption-text={caption ?? ''}
+      data-logical-height={displayModel!.height}
+      data-logical-width={displayModel!.width}
+      data-caption-visible={String(Boolean(displayCaption))}
+      data-caption-text={displayCaption ?? ''}
       data-layer-render-json={JSON.stringify(
-        modelResult.model.layers.map((layer) => layer.render),
+        displayModel!.layers.map((layer) => layer.render),
       )}
       data-render-contract="shared-stage-layer-v1"
+      data-stage-error={String(Boolean(error))}
       data-stage-ready={String(ready)}
-      data-stage-time={modelResult.model.timeMs}
+      data-stage-time={displayModel!.timeMs}
       data-testid="stage-renderer"
     >
       <Stage
-        height={modelResult.model.height}
+        height={displayModel!.height}
         listening={false}
-        width={modelResult.model.width}
+        width={displayModel!.width}
       >
         <Layer listening={false} ref={configurePreviewLayer}>
-          {modelResult.model.layers.map((layer) => {
-            const image = imageState.images.get(layer.id);
+          {displayModel!.layers.map((layer) => {
+            const image = imageState.state.images.get(layer.id);
             const render = layer.render;
             if (!image || !render.visible) {
               return null;
@@ -192,7 +230,10 @@ export function StageRenderer({
               />
             );
           })}
-          <SubtitleRenderer text={caption} style={captionStyle} />
+          <SubtitleRenderer
+            text={displayCaption}
+            style={displayCaptionStyle}
+          />
           <Text
             fill="rgba(16, 45, 34, 0.7)"
             fontFamily="Segoe UI, sans-serif"
