@@ -23,6 +23,7 @@ import {
 import {
   buildStageImageSourceKey,
   EMPTY_STAGE_IMAGE_RESOURCE_STATE,
+  isStageFrameReady,
   StageImageResourceSession,
   type StageImageLayerSource,
   type StageImageResourceState,
@@ -138,12 +139,14 @@ export function StageRenderer({
     : null;
   const imageState = useStageImages(layers, desiredFrame, imageSourceKey);
   const error = modelResult.error ?? imageState.state.error;
-  const desiredFrameReady =
-    !error &&
-    modelResult.model !== null &&
-    imageState.state.ready &&
-    imageState.state.desiredSourceKey === imageSourceKey;
-  const ready = desiredFrameReady && layers.length > 0;
+  const ready = isStageFrameReady({
+    error,
+    hasModel: modelResult.model !== null,
+    imageState: imageState.state,
+    layerCount: layers.length,
+    sourceKey: imageSourceKey,
+  });
+  const desiredFrameReady = ready;
   const displayFrame =
     desiredFrameReady
       ? desiredFrame

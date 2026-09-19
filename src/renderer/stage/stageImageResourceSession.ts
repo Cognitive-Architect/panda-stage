@@ -12,6 +12,35 @@ export interface StageImageResourceState {
   error: Error | null;
 }
 
+export interface StageFrameReadinessInput {
+  hasModel: boolean;
+  layerCount: number;
+  error: Error | null;
+  imageState: StageImageResourceState;
+  sourceKey: string;
+}
+
+/**
+ * A drawable committed fallback is deliberately not enough to announce the
+ * current frame ready. Preview may keep drawing it, while Export must wait
+ * for the exact desired source set before its onReady callback can capture.
+ */
+export function isStageFrameReady({
+  hasModel,
+  layerCount,
+  error,
+  imageState,
+  sourceKey,
+}: StageFrameReadinessInput): boolean {
+  return (
+    !error &&
+    hasModel &&
+    layerCount > 0 &&
+    imageState.ready &&
+    imageState.desiredSourceKey === sourceKey
+  );
+}
+
 export const EMPTY_STAGE_IMAGE_RESOURCE_STATE: StageImageResourceState = {
   images: new Map(),
   sourceUrls: new Map(),

@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  buildStageImageSourceKey,
+  isStageFrameReady,
   StageImageResourceSession,
   type StageImageResourceState,
 } from '../../src/renderer/stage/stageImageResourceSession';
@@ -57,7 +59,7 @@ function reconcile(
 }
 
 describe('StageImageResourceSession', () => {
-  it('wires exact current-frame readiness through StageRenderer and hidden Export', () => {
+  it('wires the exact readiness gate through StageRenderer and hidden Export', () => {
     const stageRenderer = readFileSync(
       'src/renderer/stage/StageRenderer.tsx',
       'utf8',
@@ -68,12 +70,56 @@ describe('StageImageResourceSession', () => {
     );
 
     expect(stageRenderer).toContain('StageImageResourceSession');
-    expect(stageRenderer).toContain(
-      'imageState.state.desiredSourceKey === imageSourceKey',
-    );
+    expect(stageRenderer).toContain('isStageFrameReady');
     expect(stageRenderer).toContain('data-stage-ready={String(ready)}');
     expect(exportRenderer).toContain('onReady={handleStageReady}');
     expect(exportRenderer).toContain('onError={handleStageError}');
+  });
+
+  it('keeps Export-style readiness false while an old committed frame is drawable', () => {
+    const harness = createHarness();
+    const initialLayers = [{ id: LAYER_A, sourceUrl: 'asset-a' }];
+    const initialKey = buildStageImageSourceKey(initialLayers);
+
+    reconcile(harness, initialLayers);
+    harness.images[0]!.succeed();
+    expect(
+      isStageFrameReady({
+        error: null,
+        hasModel: true,
+        imageState: harness.session.getSnapshot(),
+        layerCount: 1,
+        sourceKey: initialKey,
+      }),
+    ).toBe(true);
+
+    const desiredLayers = [{ id: LAYER_A, sourceUrl: 'asset-b' }];
+    reconcile(harness, desiredLayers);
+    const pendingState = harness.session.getSnapshot();
+
+    expect(pendingState.images.get(LAYER_A)).toBe(harness.images[0]);
+    expect(pendingState.ready).toBe(false);
+    expect(
+      isStageFrameReady({
+        error: null,
+        hasModel: true,
+        imageState: pendingState,
+        layerCount: 1,
+        sourceKey: buildStageImageSourceKey(desiredLayers),
+      }),
+    ).toBe(false);
+
+    harness.images[1]!.succeed();
+    const committedState = harness.session.getSnapshot();
+    expect(
+      isStageFrameReady({
+        error: null,
+        hasModel: true,
+        imageState: committedState,
+        layerCount: 1,
+        sourceKey: buildStageImageSourceKey(desiredLayers),
+      }),
+    ).toBe(true);
   });
 
   it('does not announce the initial desired frame until every image is decoded', () => {
