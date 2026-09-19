@@ -33,8 +33,8 @@
   },
   "validation": {
     "gitDiffCheck": "PASS",
-    "targetedPreviewUnit": "PASS (5 files, 45 tests)",
-    "testUnit": "PASS (291 files, 1852 tests)",
+    "targetedPreviewUnit": "PASS (5 files, 46 tests)",
+    "testUnit": "PASS (291 files, 1853 tests)",
     "typecheck": "PASS",
     "lint": "PASS",
     "build": "PASS (typecheck, renderer, Electron/preload)",

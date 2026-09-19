@@ -109,6 +109,18 @@ class FakeAudio implements ProductPreviewAudioElement {
   }
 }
 
+class DeferredPlayAudio extends FakeAudio {
+  readonly pendingPlays: Array<ReturnType<typeof deferred<void>>> = [];
+
+  override play(): Promise<void> {
+    this.paused = false;
+    this.playCount += 1;
+    const pending = deferred<void>();
+    this.pendingPlays.push(pending);
+    return pending.promise;
+  }
+}
+
 function readyResponse(
   request: AssetPreviewAudioReadRequest,
 ): AssetPreviewAudioReadResponse {
@@ -381,6 +393,65 @@ describe('Product Preview audio transport — Phase 2 gate A', () => {
     expect(audio.currentTime).toBe(0.2);
     expect(audio.playCount).toBe(2);
     expect(audio.paused).toBe(false);
+    transport.dispose();
+  });
+
+  it('does not let a stale play completion pause newer-shot audio', async () => {
+    const project = buildAudioProject();
+    const firstShot = project.shots[0]!;
+    const secondShot = {
+      ...firstShot,
+      id: '50000000-0000-4000-8000-000000000402',
+      audioClips: firstShot.audioClips.map((clip) => ({
+        ...clip,
+        assetId: AUDIO_B_ID,
+      })),
+    };
+    const audioB = {
+      ...project.assets.find((asset) => asset.id === AUDIO_ID)!,
+      id: AUDIO_B_ID,
+      relativePath: 'assets/preview-b.wav',
+      sha256: 'd'.repeat(64),
+    };
+    const twoShotProject = {
+      ...project,
+      assets: [...project.assets, audioB],
+      shots: [firstShot, secondShot],
+    };
+    const audio = new DeferredPlayAudio();
+    const transport = new ProductPreviewAudioTransport({
+      createAudio: () => audio,
+      readAudio: async (request) => readyResponse(request),
+      createObjectUrl: (blob) =>
+        `blob:${blob.size}:${audio.pendingPlays.length + 1}`,
+    });
+
+    transport.sync(
+      syncInput(twoShotProject, { shot: firstShot, timeMs: 600 }),
+    );
+    await flush();
+    expect(audio.pendingPlays).toHaveLength(1);
+
+    transport.sync(
+      syncInput(twoShotProject, {
+        shot: secondShot,
+        timeMs: 600,
+        seekRevision: 1,
+      }),
+    );
+    await flush();
+    expect(audio.pendingPlays).toHaveLength(2);
+    const pauseCountAtBoundary = audio.pauseCount;
+    expect(audio.paused).toBe(false);
+
+    audio.pendingPlays[0]!.resolve();
+    await flush();
+
+    expect(audio.pauseCount).toBe(pauseCountAtBoundary);
+    expect(audio.paused).toBe(false);
+
+    audio.pendingPlays[1]!.resolve();
+    await flush();
     transport.dispose();
   });
 

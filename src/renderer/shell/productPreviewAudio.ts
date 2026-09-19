@@ -257,10 +257,10 @@ export class ProductPreviewAudioTransport {
         ) / 1_000;
       if (this.latestInput?.playing !== true) return;
       await this.audio.play();
-      if (!this.isCurrent(token, key)) {
-        this.audio.pause();
-        return;
-      }
+      // The shared element may already belong to a newer shot when the old
+      // play Promise settles. The newer transport owns pause/resume in that
+      // case; an obsolete callback must not pause its audio.
+      if (!this.isCurrent(token, key)) return;
       this.startedKey = key;
       this.failedKey = null;
       this.emitWarning(null);
