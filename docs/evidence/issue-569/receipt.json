@@ -51,7 +51,7 @@
     "build": "PASS (typecheck, renderer, Electron/preload)",
     "manifestContract": "PASS (verification manifest and CSS split hash contract)",
     "automaticCiBeforeVerifierFixture": "FAIL (run 35435455717: typecheck, lint, unit, integration, and build passed; historical verify:issue76 stopped because its fixture supplied no canvas bytes while waiting for autoplay)",
-    "automaticCiLatest": "FAIL (run 35436405618: typecheck, lint, unit, integration, and build passed; verify:issue76 completed, then historical verify:day24 failed because the invalid-scale property-form status was empty; the same verifier recorded the expected validation message in automatic run 35427381304)",
+    "automaticCiLatest": "FAIL (run 35437545833: typecheck, lint, unit, integration, and build passed; historical verify:issue102-task2 failed because the Quick Action Drawer labels did not match the Task 2 requirements; this is outside #569 Preview scope)",
     "manualFullCiTriggered": false,
     "manualFullCiRerunTriggered": false,
     "manualVerifyProjectRun": false,
