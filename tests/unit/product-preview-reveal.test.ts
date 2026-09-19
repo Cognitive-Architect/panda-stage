@@ -3,6 +3,7 @@ import {
   canStartProductPreviewPlayback,
   productPreviewRevealDurationMs,
   scheduleProductPreviewPaintFence,
+  shouldStartProductPreviewAutoplay,
   type ProductPreviewPaintFenceScheduler,
 } from '../../src/renderer/shell/productPreviewReveal';
 
@@ -47,6 +48,41 @@ describe('product preview first-paint reveal', () => {
     expect(canStartProductPreviewPlayback(true, 'revealing')).toBe(false);
     expect(canStartProductPreviewPlayback(false, 'revealed')).toBe(false);
     expect(canStartProductPreviewPlayback(true, 'revealed')).toBe(true);
+  });
+
+  it('starts autoplay only after reveal and keeps autoPlay=false paused', () => {
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: false,
+        dataReady: true,
+        durationMs: 4_000,
+        revealPhase: 'revealed',
+      }),
+    ).toBe(false);
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: true,
+        dataReady: true,
+        durationMs: 4_000,
+        revealPhase: 'revealing',
+      }),
+    ).toBe(false);
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: true,
+        dataReady: true,
+        durationMs: 4_000,
+        revealPhase: 'revealed',
+      }),
+    ).toBe(true);
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: true,
+        dataReady: true,
+        durationMs: 0,
+        revealPhase: 'revealed',
+      }),
+    ).toBe(false);
   });
 
   it('requires two animation frames before passing the paint fence', () => {

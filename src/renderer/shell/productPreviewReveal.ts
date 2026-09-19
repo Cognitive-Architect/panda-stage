@@ -56,3 +56,23 @@ export function canStartProductPreviewPlayback(
 ): boolean {
   return dataReady && revealPhase === 'revealed';
 }
+
+export interface ProductPreviewAutoplayGateInput {
+  autoPlay: boolean;
+  dataReady: boolean;
+  durationMs: number;
+  revealPhase: ProductPreviewRevealPhase;
+}
+
+export function shouldStartProductPreviewAutoplay({
+  autoPlay,
+  dataReady,
+  durationMs,
+  revealPhase,
+}: ProductPreviewAutoplayGateInput): boolean {
+  return (
+    autoPlay &&
+    durationMs > 0 &&
+    canStartProductPreviewPlayback(dataReady, revealPhase)
+  );
+}

@@ -181,6 +181,6 @@ describe('Issue #454 Quick Action Drawer', () => {
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(preview).toContain('autoPlay = false');
     expect(preview).toContain("useState<ProductPreviewRange>('project')");
-    expect(preview).toContain('projectDurationMs(project) > 0');
+    expect(preview).toContain('durationMs: projectDurationMs(project)');
   });
 });

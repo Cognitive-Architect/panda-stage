@@ -51,6 +51,7 @@ import {
   canStartProductPreviewPlayback,
   productPreviewRevealDurationMs,
   scheduleProductPreviewPaintFence,
+  shouldStartProductPreviewAutoplay,
   type ProductPreviewRevealPhase,
 } from './productPreviewReveal';
 
@@ -329,11 +330,13 @@ export function ProductPreviewOverlay({
   }, [revealPhase]);
   useEffect(() => {
     if (
-      !canStartProductPreviewPlayback(initialReadiness === 'ready', revealPhase)
+      shouldStartProductPreviewAutoplay({
+        autoPlay,
+        dataReady: initialReadiness === 'ready',
+        durationMs: projectDurationMs(project),
+        revealPhase,
+      })
     ) {
-      return;
-    }
-    if (autoPlay && projectDurationMs(project) > 0) {
       setPlaying(true);
     }
   }, [autoPlay, initialReadiness, project, revealPhase]);

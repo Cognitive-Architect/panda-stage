@@ -365,7 +365,7 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain(
       'const [range, setRange] = useState<ProductPreviewRange>(\'project\')',
     );
-    expect(overlay).toContain('projectDurationMs(project) > 0');
+    expect(overlay).toContain('durationMs: projectDurationMs(project)');
     expect(overlay).toContain('mapProjectTime(');
     // Project data arrives as a read-only prop; the overlay does not subscribe.
     expect(overlay).not.toContain('useSyncExternalStore');
@@ -501,9 +501,7 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('canStartProductPreviewPlayback(');
     expect(overlay).toContain("revealPhase !== 'revealed'");
     expect(overlay).toContain('setRevealPhase(\'covered\')');
-    expect(overlay).toContain(
-      'if (autoPlay && projectDurationMs(project) > 0)',
-    );
+    expect(overlay).toContain('shouldStartProductPreviewAutoplay({');
     expect(overlay).toMatch(
       /initialReadiness === 'preparing'[\s\S]*?正在准备预览/u,
     );
