@@ -18,6 +18,9 @@
       "tests/unit/product-preview-images.test.ts",
       "tests/unit/editor-issue454-quick-action.test.ts"
     ],
+    "verifierSupportFiles": [
+      "scripts/verify-issue76.cjs"
+    ],
     "contractBookkeeping": [
       "scripts/css-split-manifest.json",
       "scripts/verification-manifest.json",
@@ -47,6 +50,7 @@
     "lint": "PASS",
     "build": "PASS (typecheck, renderer, Electron/preload)",
     "manifestContract": "PASS (verification manifest and CSS split hash contract)",
+    "automaticCiBeforeVerifierFixture": "FAIL (run 35435455717: typecheck, lint, unit, integration, and build passed; historical verify:issue76 stopped because its fixture supplied no canvas bytes while waiting for autoplay)",
     "manualFullCiTriggered": false,
     "manualFullCiRerunTriggered": false,
     "manualVerifyProjectRun": false,
@@ -90,5 +94,10 @@
       "Confirm focus, selected-state clarity, and the declared mouse/touch/cloud input behavior."
     ]
   },
-  "scopeExceptions": []
+  "scopeExceptions": [
+    {
+      "path": "scripts/verify-issue76.cjs",
+      "reason": "Test-only fixture compatibility: provide one valid minimal PNG so the existing ready-frame playback assertion remains meaningful under the #569 readiness gate; no production behavior or assertion was weakened."
+    }
+  ]
 }

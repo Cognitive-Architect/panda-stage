@@ -43,6 +43,14 @@ const baseProject = {
   })),
 };
 
+// The Preview readiness gate must receive one valid initial image before it
+// can begin autoplay. Keep this verifier fixture self-contained while still
+// exercising the existing ready-frame playback path.
+const previewFixturePng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
+
 app.on('window-all-closed', () => {});
 
 function waitFor(expression, message) {
@@ -309,6 +317,16 @@ async function verifyIssue76() {
       code: 'ASSET_THUMBNAIL_UNAVAILABLE',
       message: 'Issue 76 gate does not stage binary assets.',
     },
+  }));
+  ipcMain.handle(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, (_event, request) => ({
+    ok: true,
+    status: 'ready',
+    assetId: request.assetId,
+    mimeType: 'image/png',
+    width: 1,
+    height: 1,
+    byteLength: previewFixturePng.byteLength,
+    bytes: previewFixturePng,
   }));
 
   const window = await createMainWindow({ show: false });
