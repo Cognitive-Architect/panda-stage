@@ -218,6 +218,7 @@
           "tests/unit/canvas-*.test.ts",
           "tests/unit/stage-*.test.ts",
           "tests/unit/viewport-*.test.ts",
+          "tests/unit/editor-issue578-live-scrub.test.ts",
           "tests/unit/temporal-visual-continuity.test.ts"
         ],
         "verifierPatterns": [

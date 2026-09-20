@@ -17,10 +17,7 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
-  buildEditorStageRenderModel,
-  evaluateShotAtTime,
   listShotRuntimeImageAssets,
-  projectShotMouth,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -57,7 +54,10 @@ import {
   EMPTY_CANVAS_IMAGE_STATE,
   type CanvasImageState,
 } from './canvasImageResources';
-import { resolveEditorTemporalAssetResolution } from './temporalVisualContinuity';
+import {
+  buildEditorTemporalCanvasModel,
+} from './editorTemporalCanvasModel';
+import type { EditorTemporalVisual } from './temporalVisualContinuity';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
@@ -200,20 +200,6 @@ export function CanvasStage({
     () => evaluateSubtitleAtTime(subtitleCues, timelineUi.currentTimeMs),
     [subtitleCues, timelineUi.currentTimeMs],
   );
-  const evaluatedShot = useMemo(() => {
-    if (!snapshot || !shot) return null;
-    const evaluated = evaluateShotAtTime(
-      shot,
-      timelineUi.currentTimeMs,
-      snapshot.project,
-    );
-    return projectShotMouth(
-      snapshot.project,
-      shot,
-      evaluated,
-      activeCue?.id ?? null,
-    );
-  }, [activeCue?.id, shot, snapshot, timelineUi.currentTimeMs]);
   const imageState = useCanvasImages(snapshot, shot);
   const temporalContextKey =
     snapshot && shot
@@ -221,60 +207,55 @@ export function CanvasStage({
       : null;
   const temporalContinuityRef = useRef<{
     contextKey: string | null;
-    assetIds: ReadonlyMap<string, string>;
+    visuals: ReadonlyMap<string, EditorTemporalVisual>;
   }>({
     contextKey: null,
-    assetIds: new Map(),
+    visuals: new Map(),
   });
-  const previousTemporalAssetIds =
+  const previousTemporalVisuals =
     temporalContinuityRef.current.contextKey === temporalContextKey
-      ? temporalContinuityRef.current.assetIds
-      : new Map<string, string>();
-  const temporalAssetResolution = useMemo(
+      ? temporalContinuityRef.current.visuals
+      : new Map<string, EditorTemporalVisual>();
+  const temporalCanvasModel = useMemo(
     () =>
-      snapshot && shot && evaluatedShot
-        ? resolveEditorTemporalAssetResolution(
-            snapshot.project,
+      snapshot && shot
+        ? buildEditorTemporalCanvasModel({
+            activeDialogueId: activeCue?.id ?? null,
+            currentTimeMs: timelineUi.currentTimeMs,
+            previousVisuals: previousTemporalVisuals,
+            project: snapshot.project,
+            readyAssetIds: new Set(imageState.images.keys()),
             shot,
-            evaluatedShot,
-            new Set(imageState.images.keys()),
-            previousTemporalAssetIds,
-          )
+          })
         : null,
     [
-      evaluatedShot,
+      activeCue?.id,
       imageState.images,
-      previousTemporalAssetIds,
+      previousTemporalVisuals,
       shot,
       snapshot,
+      timelineUi.currentTimeMs,
     ],
   );
   useEffect(() => {
-    if (!temporalAssetResolution) {
+    if (!temporalCanvasModel) {
       temporalContinuityRef.current = {
         contextKey: temporalContextKey,
-        assetIds: new Map(),
+        visuals: new Map(),
       };
       return;
     }
     temporalContinuityRef.current = {
       contextKey: temporalContextKey,
-      assetIds: temporalAssetResolution.lastValidAssetIds,
+      visuals: temporalCanvasModel.lastValidVisuals,
     };
-  }, [temporalAssetResolution, temporalContextKey]);
-  const stageModel = useMemo(
-    () =>
-      snapshot && shot && temporalAssetResolution
-        ? buildEditorStageRenderModel(
-            snapshot.project,
-            shot,
-            temporalAssetResolution.evaluatedShot,
-          )
-        : null,
-    [shot, snapshot, temporalAssetResolution],
-  );
-  const directEditingEnabled = timelineUi.currentTimeMs === 0;
-  const temporalInspection = !directEditingEnabled;
+  }, [temporalCanvasModel, temporalContextKey]);
+  const stageModel = temporalCanvasModel?.stageModel ?? null;
+  const directEditingEnabled =
+    temporalCanvasModel?.directEditingEnabled ??
+    timelineUi.currentTimeMs === 0;
+  const temporalInspection =
+    temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
   const rejectTemporalCanvasEdit = (): void => {
     setInteractionStatus('时间轴预览中 · 回到 0:00 可调整图层');
   };
@@ -406,7 +387,7 @@ export function CanvasStage({
               data-direct-canvas-editing={String(directEditingEnabled)}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
               data-evaluated-layer-json={JSON.stringify(
-                temporalAssetResolution?.evaluatedShot.layers ?? [],
+                temporalCanvasModel?.evaluatedShot.layers ?? [],
               )}
               data-project-revision={snapshot?.revision ?? -1}
               data-render-source="project-assets-original"

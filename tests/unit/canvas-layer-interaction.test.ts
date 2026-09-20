@@ -416,6 +416,10 @@ describe('SelectableLayer interaction adapter', () => {
       'src/renderer/features/canvas/canvasImageResources.ts',
       'utf8',
     );
+    const temporalModel = readFileSync(
+      'src/renderer/features/canvas/editorTemporalCanvasModel.ts',
+      'utf8',
+    );
 
     expect(stage).toContain('CanvasImageResourceSession');
     expect(stage).toContain('projectContextKey');
@@ -431,8 +435,9 @@ describe('SelectableLayer interaction adapter', () => {
     expect(resources).toContain('isCurrent');
     expect(resources).toContain('disposeResource');
     expect(stage).toContain('listShotRuntimeImageAssets');
-    expect(stage).toContain('evaluateShotAtTime(');
-    expect(stage).toContain('projectShotMouth(');
+    expect(stage).toContain('buildEditorTemporalCanvasModel');
+    expect(temporalModel).toContain('evaluateShotAtTime(');
+    expect(temporalModel).toContain('projectShotMouth(');
     expect(stage).toContain('data-temporal-inspection');
     expect(stage).toContain('dropDisabled={!snapshot || !shot}');
     expect(stage).toContain('dropInteractionDisabled={temporalInspection}');

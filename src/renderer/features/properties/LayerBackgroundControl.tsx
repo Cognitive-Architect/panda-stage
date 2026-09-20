@@ -70,7 +70,11 @@ export function LayerOpacityControl({
       <input
         aria-label="不透明度"
         data-testid="layer-opacity-range"
-        disabled={!controller.layer || controller.layer.locked}
+        disabled={
+          !controller.layer ||
+          controller.layer.locked ||
+          controller.temporalInspection
+        }
         id="layer-opacity-range"
         max="100"
         min="0"
