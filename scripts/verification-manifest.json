@@ -228,7 +228,8 @@
           "scripts/verify-issue47*",
           "scripts/verify-issue95*",
           "scripts/verify-issue99*",
-          "scripts/verify-issue457*"
+          "scripts/verify-issue457*",
+          "scripts/verify-issue579*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -385,7 +386,7 @@
       }
     ]
   },
-  "count": 61,
+  "count": 62,
   "gates": [
     {
       "id": "assets",
@@ -566,6 +567,18 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron gate proving the two-mode Canvas surface, Actual Size stability and native Space+left-drag viewport pan without project/history mutation, Fit no-pan behavior, and the simplified Tools IA at 1366x768 and 1920x1080."
+    },
+    {
+      "id": "issue579",
+      "script": "verify:issue579",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron Live Scrub proof for the 0:00 Base Edit View, non-zero read-only temporal inspection, real Timeline-to-Canvas wiring, blur-race write guard, return-to-zero transition, and one ordinary 0ms edit commit."
     },
     {
       "id": "fla-v1-5-c3",

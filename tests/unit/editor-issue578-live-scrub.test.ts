@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { LayerTransformController } from '../../src/renderer/features/properties/LayerTransformPanel';
 import { LayerTransformPanel } from '../../src/renderer/features/properties/LayerTransformPanel';
+import { evaluateShotAtTime } from '../../src/domain';
 import {
   isLayerTransformEditableAtTime,
   runLayerTransformMutation,
@@ -43,7 +44,7 @@ function temporalController(): LayerTransformController {
   };
 }
 
-describe('Issue #578 Live Scrub follow-up', () => {
+describe('Issue #578/#579 Live Scrub editor contract', () => {
   it('keeps Inspector presentation read-only during temporal inspection and editable at zero', () => {
     const temporal = renderToStaticMarkup(
       LayerTransformPanel({
@@ -125,8 +126,53 @@ describe('Issue #578 Live Scrub follow-up', () => {
                   startMs: 0,
                   endMs: 3000,
                   easing: 'linear' as const,
-                  from: { x: 500, y: 600 },
+                  from: { x: 1200, y: 600 },
                   to: { x: 1490, y: 600 },
+                },
+                {
+                  id: '40000000-0000-4000-8000-000000000022',
+                  type: 'scale' as const,
+                  layerId: IDS.layerChar,
+                  startMs: 0,
+                  endMs: 3000,
+                  easing: 'linear' as const,
+                  from: { x: 1.5, y: 1.5 },
+                  to: { x: 2, y: 2 },
+                },
+                {
+                  id: '40000000-0000-4000-8000-000000000023',
+                  type: 'expression' as const,
+                  layerId: IDS.layerChar,
+                  startMs: 0,
+                  endMs: 3000,
+                  expressionId: IDS.expressionAngry,
+                },
+                {
+                  id: '40000000-0000-4000-8000-000000000024',
+                  type: 'opacity' as const,
+                  layerId: IDS.layerBg,
+                  startMs: 0,
+                  endMs: 3000,
+                  easing: 'linear' as const,
+                  from: 0,
+                  to: 1,
+                },
+                {
+                  id: '40000000-0000-4000-8000-000000000025',
+                  type: 'visibility' as const,
+                  layerId: IDS.layerAsset,
+                  startMs: 0,
+                  endMs: 3000,
+                  visible: false,
+                },
+                {
+                  id: '40000000-0000-4000-8000-000000000026',
+                  type: 'flip' as const,
+                  layerId: IDS.layerAsset,
+                  startMs: 0,
+                  endMs: 3000,
+                  axis: 'horizontal' as const,
+                  flipped: true,
                 },
               ],
             }
@@ -151,6 +197,7 @@ describe('Issue #578 Live Scrub follow-up', () => {
       readyAssetIds,
       shot,
     });
+    const runtimeAtZero = evaluateShotAtTime(shot, 0, before.project);
     const atScrub = buildEditorTemporalCanvasModel({
       currentTimeMs: 1500,
       previousVisuals: atZero.lastValidVisuals,
@@ -165,12 +212,54 @@ describe('Issue #578 Live Scrub follow-up', () => {
       (candidate) => candidate.layer.id === IDS.layerChar,
     )!;
 
+    const zeroBackground = atZero.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerBg,
+    )!;
+    const scrubBackground = atScrub.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerBg,
+    )!;
+    const zeroAsset = atZero.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerAsset,
+    )!;
+    const scrubAsset = atScrub.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerAsset,
+    )!;
+
     expect(zeroLayer.render.x).toBe(500);
-    expect(scrubLayer.render.x).toBe(995);
+    expect(zeroLayer.render.scaleX).toBe(0.5);
+    expect(zeroLayer.render.assetId).toBe(IDS.assetChar);
+    expect(scrubLayer.render.x).toBe(1345);
+    expect(scrubLayer.render.scaleX).toBe(1.75);
+    expect(scrubLayer.render.assetId).toBe(IDS.assetChar2);
+    expect(zeroBackground.render.opacity).toBe(1);
+    expect(scrubBackground.render.opacity).toBe(0.5);
+    expect(zeroAsset.render.visible).toBe(true);
+    expect(zeroAsset.render.scaleX).toBe(1);
+    expect(scrubAsset.render.visible).toBe(false);
+    expect(scrubAsset.render.scaleX).toBe(-1);
+    // Runtime Preview/Export semantics stay formal-evaluator based; only the
+    // Editor seam intentionally chooses Base Edit View at 0ms.
+    expect(runtimeAtZero.layers.find((layer) => layer.id === IDS.layerChar)?.x).toBe(1200);
+    expect(runtimeAtZero.layers.find((layer) => layer.id === IDS.layerBg)?.opacity).toBe(0);
     expect(atZero.directEditingEnabled).toBe(true);
     expect(atZero.temporalInspection).toBe(false);
     expect(atScrub.directEditingEnabled).toBe(false);
     expect(atScrub.temporalInspection).toBe(true);
+
+    const atReturnToZero = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: atScrub.lastValidVisuals,
+      project: before.project,
+      readyAssetIds,
+      shot,
+    });
+    const returnedLayer = atReturnToZero.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+    expect(returnedLayer.render.x).toBe(500);
+    expect(returnedLayer.render.scaleX).toBe(0.5);
+    expect(returnedLayer.render.assetId).toBe(IDS.assetChar);
+    expect(atReturnToZero.lastValidVisuals.size).toBe(0);
     expect(editor.getSnapshot()).toMatchObject({
       dirty: false,
       revision: 0,
@@ -189,7 +278,7 @@ describe('Issue #578 Live Scrub follow-up', () => {
       ),
     };
     const first = buildEditorTemporalCanvasModel({
-      currentTimeMs: 0,
+      currentTimeMs: 333,
       previousVisuals: new Map(),
       project: baseProject,
       readyAssetIds: new Set([IDS.assetBg, IDS.assetChar]),
