@@ -28,9 +28,14 @@ export function resolveLayerImageAsset(
       (expression) => expression.id === source.expressionId,
     )?.assetId;
   }
-  const asset = project.assets.find(
-    (candidate) => candidate.id === assetId,
-  );
+  return resolveImageAsset(project, assetId);
+}
+
+export function resolveImageAsset(
+  project: Project,
+  assetId: string | undefined,
+): ImageAsset | null {
+  const asset = project.assets.find((candidate) => candidate.id === assetId);
   return asset?.kind === 'image' ? asset : null;
 }
 

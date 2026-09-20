@@ -13,7 +13,8 @@
  * project as a readonly input and return new values.
  */
 import {
-  listShotImageAssets,
+  listShotRuntimeImageAssets,
+  projectShotMouth,
   type EvaluatedShot,
   type Project,
   type Shot,
@@ -87,36 +88,7 @@ export function listProductPreviewAssetIds(
   project: Project,
   shot: Shot,
 ): string[] {
-  const assetIds = new Set<string>();
-  for (const asset of listShotImageAssets(project, shot.layers)) {
-    assetIds.add(asset.id);
-  }
-
-  const characterIds = new Set<string>();
-  for (const layer of shot.layers) {
-    if (layer.source.kind === 'character') {
-      characterIds.add(layer.source.characterId);
-    }
-  }
-  for (const character of project.characters) {
-    if (!characterIds.has(character.id)) continue;
-    const mouthAsset = project.assets.find(
-      (candidate) => candidate.id === character.mouthOpenAssetId,
-    );
-    if (mouthAsset?.kind === 'image') {
-      assetIds.add(mouthAsset.id);
-    }
-    for (const expression of character.expressions) {
-      const asset = project.assets.find(
-        (candidate) => candidate.id === expression.assetId,
-      );
-      if (asset?.kind === 'image') {
-        assetIds.add(asset.id);
-      }
-    }
-  }
-
-  return [...assetIds];
+  return listShotRuntimeImageAssets(project, shot).map((asset) => asset.id);
 }
 
 /**
@@ -132,56 +104,12 @@ export function projectProductPreviewMouth(
   evaluatedShot: EvaluatedShot,
   activeDialogueId: string | null,
 ): EvaluatedShot {
-  if (!activeDialogueId) return evaluatedShot;
-
-  const dialogue = shot.dialogues.find(
-    (candidate) => candidate.id === activeDialogueId,
+  return projectShotMouth(
+    project,
+    shot,
+    evaluatedShot,
+    activeDialogueId,
   );
-  if (!dialogue?.audioClipId) return evaluatedShot;
-
-  const audioClip = shot.audioClips.find(
-    (candidate) => candidate.id === dialogue.audioClipId,
-  );
-  if (
-    !audioClip ||
-    evaluatedShot.timeMs < audioClip.startMs ||
-    evaluatedShot.timeMs >= audioClip.endMs
-  ) {
-    return evaluatedShot;
-  }
-
-  const audioAsset = project.assets.find(
-    (candidate) => candidate.id === audioClip.assetId,
-  );
-  if (audioAsset?.kind !== 'audio') return evaluatedShot;
-
-  const speakingCharacter = project.characters.find(
-    (candidate) => candidate.id === dialogue.characterId,
-  );
-  if (!speakingCharacter?.mouthOpenAssetId) return evaluatedShot;
-
-  const mouthAsset = project.assets.find(
-    (candidate) => candidate.id === speakingCharacter.mouthOpenAssetId,
-  );
-  if (mouthAsset?.kind !== 'image') return evaluatedShot;
-
-  let changed = false;
-  const layers = evaluatedShot.layers.map((layer) => {
-    const source = shot.layers.find(
-      (candidate) => candidate.id === layer.id,
-    )?.source;
-    if (
-      source?.kind !== 'character' ||
-      source.characterId !== dialogue.characterId ||
-      layer.assetId === mouthAsset.id
-    ) {
-      return layer;
-    }
-    changed = true;
-    return { ...layer, assetId: mouthAsset.id };
-  });
-
-  return changed ? { ...evaluatedShot, layers } : evaluatedShot;
 }
 
 /**
