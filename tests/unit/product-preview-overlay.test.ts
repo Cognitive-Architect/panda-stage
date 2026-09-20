@@ -497,6 +497,8 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('handleInitialStageReady');
     expect(overlay).toContain('onError={handleInitialStageError}');
     expect(overlay).toContain('scheduleProductPreviewPaintFence(');
+    expect(overlay).toContain('scheduleProductPreviewRevealCompletion(');
+    expect(overlay).toContain('advanceProductPreviewRevealPhase');
     expect(overlay).toContain('onTransitionEnd={handleRevealTransitionEnd}');
     expect(overlay).toContain('canStartProductPreviewPlayback(');
     expect(overlay).toContain("revealPhase !== 'revealed'");
@@ -506,7 +508,11 @@ describe('product preview overlay contract', () => {
       /initialReadiness === 'preparing'[\s\S]*?正在准备预览/u,
     );
     expect(styles).toContain('.product-preview-curtain');
-    expect(styles).toContain('transition: opacity 160ms ease;');
+    expect(styles).toContain('--product-preview-reveal-duration: 160ms;');
+    expect(styles).toContain('--product-preview-reveal-duration: 100ms;');
+    expect(styles).toContain(
+      'transition: opacity var(--product-preview-reveal-duration) ease;',
+    );
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(styles).not.toContain('visibility: hidden;');
     expect(overlay).not.toContain('setInterval(');

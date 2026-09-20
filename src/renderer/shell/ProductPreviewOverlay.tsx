@@ -48,9 +48,11 @@ import {
 import { useProductPreviewAudio } from './productPreviewAudio';
 import { useProductPreviewImages } from './productPreviewImages';
 import {
+  advanceProductPreviewRevealPhase,
   canStartProductPreviewPlayback,
-  productPreviewRevealDurationMs,
+  productPreviewRevealDurationMsFromComputedStyle,
   scheduleProductPreviewPaintFence,
+  scheduleProductPreviewRevealCompletion,
   shouldStartProductPreviewAutoplay,
   type ProductPreviewRevealPhase,
 } from './productPreviewReveal';
@@ -296,37 +298,31 @@ export function ProductPreviewOverlay({
     if (initialReadiness !== 'ready' || revealPhase !== 'covered') return;
     return scheduleProductPreviewPaintFence(() => {
       setRevealPhase((current) =>
-        current === 'covered' ? 'revealing' : current,
+        advanceProductPreviewRevealPhase(current, 'paint-fence-passed'),
       );
     });
   }, [initialReadiness, revealPhase]);
   useEffect(() => {
     if (revealPhase !== 'revealing') return;
-    let disposed = false;
     const prefersReducedMotion =
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const revealDurationMs = productPreviewRevealDurationMs(
+    const curtain = document.querySelector<HTMLElement>(
+      '[data-testid="product-preview-preparing"]',
+    );
+    const revealDurationMs = productPreviewRevealDurationMsFromComputedStyle(
+      curtain ? window.getComputedStyle(curtain).transitionDuration : '',
       prefersReducedMotion,
     );
     const completeReveal = (): void => {
-      if (!disposed) setRevealPhase('revealed');
+      setRevealPhase((current) =>
+        advanceProductPreviewRevealPhase(current, 'transition-completed'),
+      );
     };
-    if (prefersReducedMotion) {
-      const frame = window.requestAnimationFrame(completeReveal);
-      return () => {
-        disposed = true;
-        window.cancelAnimationFrame(frame);
-      };
-    }
-    const fallback = window.setTimeout(
+    return scheduleProductPreviewRevealCompletion(
       completeReveal,
-      revealDurationMs + 50,
+      revealDurationMs,
     );
-    return () => {
-      disposed = true;
-      window.clearTimeout(fallback);
-    };
   }, [revealPhase]);
   useEffect(() => {
     if (
@@ -349,7 +345,7 @@ export function ProductPreviewOverlay({
         return;
       }
       setRevealPhase((current) =>
-        current === 'revealing' ? 'revealed' : current,
+        advanceProductPreviewRevealPhase(current, 'transition-completed'),
       );
     },
     [],

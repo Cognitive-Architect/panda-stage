@@ -175,6 +175,7 @@
 }
 
 .product-preview-curtain {
+  --product-preview-reveal-duration: 160ms;
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -182,7 +183,7 @@
   place-items: center;
   background: #0a1310;
   opacity: 1;
-  transition: opacity 160ms ease;
+  transition: opacity var(--product-preview-reveal-duration) ease;
 }
 
 .product-preview-curtain[data-preview-curtain-state='revealing'] {
@@ -198,7 +199,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .product-preview-curtain {
-    transition-duration: 1ms;
+    --product-preview-reveal-duration: 100ms;
   }
 }
 

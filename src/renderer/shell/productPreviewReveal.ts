@@ -4,12 +4,21 @@ export type ProductPreviewRevealPhase =
   | 'revealed';
 
 export const PRODUCT_PREVIEW_REVEAL_DURATION_MS = 160;
-export const PRODUCT_PREVIEW_REDUCED_REVEAL_DURATION_MS = 1;
+export const PRODUCT_PREVIEW_REDUCED_REVEAL_DURATION_MS = 100;
 
 export interface ProductPreviewPaintFenceScheduler {
   requestAnimationFrame(callback: () => void): number;
   cancelAnimationFrame(handle: number): void;
 }
+
+export interface ProductPreviewRevealCompletionScheduler {
+  setTimeout(callback: () => void, delayMs: number): number;
+  clearTimeout(handle: number): void;
+}
+
+export type ProductPreviewRevealEvent =
+  | 'paint-fence-passed'
+  | 'transition-completed';
 
 /**
  * Wait for two animation-frame callbacks so a data-ready Stage gets at least
@@ -42,12 +51,64 @@ export function scheduleProductPreviewPaintFence(
   };
 }
 
+/**
+ * Keep the fallback completion behind the opacity transition in both motion
+ * modes. The transitionend handler is the normal completion path; this timer
+ * only protects the state machine when a browser drops that event.
+ */
+export function scheduleProductPreviewRevealCompletion(
+  onComplete: () => void,
+  durationMs: number,
+  scheduler: ProductPreviewRevealCompletionScheduler = {
+    setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    clearTimeout: (handle) => window.clearTimeout(handle),
+  },
+): () => void {
+  let disposed = false;
+  const fallback = scheduler.setTimeout(() => {
+    if (!disposed) onComplete();
+  }, durationMs + 50);
+
+  return () => {
+    disposed = true;
+    scheduler.clearTimeout(fallback);
+  };
+}
+
+export function advanceProductPreviewRevealPhase(
+  phase: ProductPreviewRevealPhase,
+  event: ProductPreviewRevealEvent,
+): ProductPreviewRevealPhase {
+  if (phase === 'covered' && event === 'paint-fence-passed') {
+    return 'revealing';
+  }
+  if (phase === 'revealing' && event === 'transition-completed') {
+    return 'revealed';
+  }
+  return phase;
+}
+
 export function productPreviewRevealDurationMs(
   prefersReducedMotion: boolean,
 ): number {
   return prefersReducedMotion
     ? PRODUCT_PREVIEW_REDUCED_REVEAL_DURATION_MS
     : PRODUCT_PREVIEW_REVEAL_DURATION_MS;
+}
+
+/**
+ * Read the effective CSS duration so JS fallback timing cannot drift from the
+ * Preview curtain's media-query policy. The motion-specific constants remain
+ * a safe fallback for a missing or invalid computed style.
+ */
+export function productPreviewRevealDurationMsFromComputedStyle(
+  transitionDuration: string,
+  prefersReducedMotion: boolean,
+): number {
+  const seconds = Number.parseFloat(transitionDuration);
+  return Number.isFinite(seconds) && seconds > 0
+    ? seconds * 1_000
+    : productPreviewRevealDurationMs(prefersReducedMotion);
 }
 
 export function canStartProductPreviewPlayback(

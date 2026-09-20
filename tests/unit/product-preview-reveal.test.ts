@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  advanceProductPreviewRevealPhase,
   canStartProductPreviewPlayback,
   productPreviewRevealDurationMs,
+  productPreviewRevealDurationMsFromComputedStyle,
   scheduleProductPreviewPaintFence,
+  scheduleProductPreviewRevealCompletion,
   shouldStartProductPreviewAutoplay,
   type ProductPreviewPaintFenceScheduler,
+  type ProductPreviewRevealCompletionScheduler,
 } from '../../src/renderer/shell/productPreviewReveal';
 
 function createScheduler(): {
@@ -34,6 +38,51 @@ function createScheduler(): {
       if (!first) throw new Error('no animation frame is pending');
       callbacks.delete(first[0]);
       first[1]();
+    },
+    pendingCount() {
+      return callbacks.size;
+    },
+  };
+}
+
+function createCompletionScheduler(): {
+  scheduler: ProductPreviewRevealCompletionScheduler;
+  flushNext(): void;
+  nextDelay(): number;
+  pendingCount(): number;
+} {
+  let nextHandle = 0;
+  const callbacks = new Map<
+    number,
+    { callback: () => void; delayMs: number }
+  >();
+  const scheduler: ProductPreviewRevealCompletionScheduler = {
+    setTimeout(callback, delayMs) {
+      const handle = ++nextHandle;
+      callbacks.set(handle, { callback, delayMs });
+      return handle;
+    },
+    clearTimeout(handle) {
+      callbacks.delete(handle);
+    },
+  };
+
+  return {
+    scheduler,
+    flushNext() {
+      const first = callbacks.entries().next().value as
+        | [number, { callback: () => void; delayMs: number }]
+        | undefined;
+      if (!first) throw new Error('no timeout is pending');
+      callbacks.delete(first[0]);
+      first[1].callback();
+    },
+    nextDelay() {
+      const first = callbacks.values().next().value as
+        | { callback: () => void; delayMs: number }
+        | undefined;
+      if (!first) throw new Error('no timeout is pending');
+      return first.delayMs;
     },
     pendingCount() {
       return callbacks.size;
@@ -121,8 +170,83 @@ describe('product preview first-paint reveal', () => {
     expect(passed).toBe(false);
   });
 
-  it('keeps the reduced-motion transition short without removing the fence', () => {
+  it('keeps reduced motion within the short multi-frame dissolve contract', () => {
     expect(productPreviewRevealDurationMs(false)).toBe(160);
-    expect(productPreviewRevealDurationMs(true)).toBe(1);
+    expect(productPreviewRevealDurationMs(true)).toBe(100);
+    expect(productPreviewRevealDurationMs(true)).toBeGreaterThan(
+      (1_000 / 60) * 2,
+    );
+    expect(productPreviewRevealDurationMs(true)).toBeLessThanOrEqual(120);
+    expect(productPreviewRevealDurationMs(true)).toBeGreaterThanOrEqual(80);
+    expect(productPreviewRevealDurationMsFromComputedStyle('0.16s', false)).toBe(
+      160,
+    );
+    expect(productPreviewRevealDurationMsFromComputedStyle('0.1s', true)).toBe(
+      100,
+    );
+  });
+
+  it('preserves covered -> revealing -> revealed in both motion modes', () => {
+    for (const prefersReducedMotion of [false, true]) {
+      let phase = advanceProductPreviewRevealPhase(
+        'covered',
+        'transition-completed',
+      );
+      expect(phase).toBe('covered');
+      phase = advanceProductPreviewRevealPhase(phase, 'paint-fence-passed');
+      expect(phase).toBe('revealing');
+      phase = advanceProductPreviewRevealPhase(
+        phase,
+        'transition-completed',
+      );
+      expect(phase).toBe('revealed');
+      expect(productPreviewRevealDurationMs(prefersReducedMotion)).toBeGreaterThan(
+        0,
+      );
+    }
+  });
+
+  it('waits for a delayed completion in both modes instead of skipping a frame', () => {
+    for (const prefersReducedMotion of [false, true]) {
+      const fake = createCompletionScheduler();
+      let phase = advanceProductPreviewRevealPhase(
+        'covered',
+        'paint-fence-passed',
+      );
+      scheduleProductPreviewRevealCompletion(
+        () => {
+          phase = advanceProductPreviewRevealPhase(
+            phase,
+            'transition-completed',
+          );
+        },
+        productPreviewRevealDurationMs(prefersReducedMotion),
+        fake.scheduler,
+      );
+
+      expect(phase).toBe('revealing');
+      expect(fake.pendingCount()).toBe(1);
+      expect(fake.nextDelay()).toBe(
+        productPreviewRevealDurationMs(prefersReducedMotion) + 50,
+      );
+      fake.flushNext();
+      expect(phase).toBe('revealed');
+    }
+  });
+
+  it('cancels a pending reveal completion for a closed Preview', () => {
+    const fake = createCompletionScheduler();
+    let completed = false;
+    const dispose = scheduleProductPreviewRevealCompletion(
+      () => {
+        completed = true;
+      },
+      productPreviewRevealDurationMs(true),
+      fake.scheduler,
+    );
+
+    dispose();
+    expect(fake.pendingCount()).toBe(0);
+    expect(completed).toBe(false);
   });
 });
