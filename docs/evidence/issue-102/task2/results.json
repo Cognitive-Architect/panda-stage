@@ -6,13 +6,12 @@
   "passed": true,
   "checks": [
     "Source contract declares 已保存 / 有未保存更改 / 保存中 / 保存失败",
-    "Quick Action Drawer starts collapsed, saved truth stays on its root, and editor identity is native-only",
-    "Collapsed quick-action chrome reclaims 251.40px at the same 1280x720 window size",
-    "Editor body net gain is 151.40px after the separately owned BottomWorkspace allocation",
-    "Unified Properties surface has one inline close affordance and no outer duplicate",
-    "Dirty project keeps dirty root state, shows amber Save, and enables 保存 without duplicate label",
-    "Save action restores saved truth, keeps the saved-state pill hidden, and disables 保存",
-    "Expanded Quick Action Drawer exposes the exact centered action order without the old More menu",
+    "Compact bar is <=56px, name/save state stay visible, and old editor input is gone",
+    "Compact project chrome reclaims 195.40px at the same 1280x720 window size",
+    "Editor body net gain is 79.40px after the separately owned BottomWorkspace allocation",
+    "Dirty project shows 有未保存更改 and enables 保存",
+    "Save action returns the compact bar to 已保存 and disables 保存",
+    "更多 menu exposes Project Center / folder / close actions without covering bar controls",
     "打开项目中心 returns to editor with the same project identity"
   ],
   "baseline": {
@@ -41,44 +40,46 @@
         "height": 720
       },
       "page": "editor",
-      "editorDeviceMode": "cloud-touch",
-      "editorShellLayout": "landscape",
       "shellState": "editor",
-      "nativeTitle": "Panda Stage（Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof）",
-      "projectName": null,
-      "projectPath": null,
-      "saveState": null,
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectPath": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+      "saveState": "已保存",
       "saveStateCode": "saved",
       "saveDisabled": true,
       "pathInputs": 0,
-      "nameEllipsis": null,
-      "drawerExpanded": false,
+      "nameEllipsis": {
+        "clientWidth": 755,
+        "scrollWidth": 1424,
+        "overflow": "hidden",
+        "textOverflow": "ellipsis",
+        "whiteSpace": "nowrap"
+      },
       "compactBar": {
-        "x": 466,
-        "y": 12,
-        "width": 348,
-        "height": 44,
-        "top": 12,
-        "right": 814,
-        "bottom": 56
-      },
-      "topRegion": {
-        "x": 0,
-        "y": 0,
-        "width": 1280,
-        "height": 0,
-        "top": 0,
-        "right": 1280,
-        "bottom": 0
-      },
-      "editorBody": {
         "x": 12,
         "y": 12,
         "width": 1256,
-        "height": 524,
+        "height": 56,
         "top": 12,
         "right": 1268,
-        "bottom": 536
+        "bottom": 68
+      },
+      "topRegion": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "editorBody": {
+        "x": 12,
+        "y": 78,
+        "width": 1256,
+        "height": 452,
+        "top": 78,
+        "right": 1268,
+        "bottom": 530
       },
       "editorLayout": {
         "x": 0,
@@ -91,87 +92,35 @@
       },
       "bottomWorkspace": {
         "x": 12,
-        "y": 546,
+        "y": 540,
         "width": 1256,
-        "height": 162,
-        "top": 546,
+        "height": 168,
+        "top": 540,
         "right": 1268,
         "bottom": 708
       },
       "controls": {
-        "x": 474,
-        "y": 8,
-        "width": 332,
+        "x": 883.21875,
+        "y": 18,
+        "width": 374.1145935058594,
         "height": 44,
-        "top": 8,
-        "right": 806,
-        "bottom": 52
+        "top": 18,
+        "right": 1257.3333435058594,
+        "bottom": 62
       },
       "save": {
-        "x": 570,
-        "y": 8,
-        "width": 44,
+        "x": 1122.21875,
+        "y": 18,
+        "width": 53.333335876464844,
         "height": 44,
-        "top": 8,
-        "right": 614,
-        "bottom": 52
+        "top": 18,
+        "right": 1175.5520858764648,
+        "bottom": 62
       },
-      "menu": {
-        "x": 466,
-        "y": 8,
-        "width": 348,
-        "height": 0,
-        "top": 8,
-        "right": 814,
-        "bottom": 8
-      },
-      "deviceModeSelector": false,
-      "menuItems": [
-        {
-          "testId": "quick-action-home",
-          "action": "home",
-          "text": "打开项目中心",
-          "disabled": false
-        },
-        {
-          "testId": "quick-action-folder",
-          "action": "folder",
-          "text": "打开项目文件夹",
-          "disabled": false
-        },
-        {
-          "testId": "quick-action-save",
-          "action": "save",
-          "text": "保存项目",
-          "disabled": true
-        },
-        {
-          "testId": "quick-action-play",
-          "action": "play",
-          "text": "预览当前镜头",
-          "disabled": false
-        },
-        {
-          "testId": null,
-          "action": "undo",
-          "text": "撤销",
-          "disabled": true
-        },
-        {
-          "testId": null,
-          "action": "redo",
-          "text": "重做",
-          "disabled": true
-        },
-        {
-          "testId": "quick-action-close",
-          "action": "close",
-          "text": "关闭当前项目",
-          "disabled": false
-        }
-      ],
-      "verticalGainComparedWithOld": 251.39584350585938,
-      "editorBodyNetGainComparedWithOld": 151.39581298828125
+      "menu": null,
+      "menuItems": [],
+      "verticalGainComparedWithOld": 195.39584350585938,
+      "editorBodyNetGainComparedWithOld": 79.39581298828125
     },
     "dirty": {
       "viewport": {
@@ -179,44 +128,46 @@
         "height": 720
       },
       "page": "editor",
-      "editorDeviceMode": "cloud-touch",
-      "editorShellLayout": "landscape",
       "shellState": "editor",
-      "nativeTitle": "Panda Stage（Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof）",
-      "projectName": null,
-      "projectPath": null,
-      "saveState": null,
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectPath": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+      "saveState": "有未保存更改",
       "saveStateCode": "dirty",
       "saveDisabled": false,
       "pathInputs": 0,
-      "nameEllipsis": null,
-      "drawerExpanded": true,
+      "nameEllipsis": {
+        "clientWidth": 722,
+        "scrollWidth": 1424,
+        "overflow": "hidden",
+        "textOverflow": "ellipsis",
+        "whiteSpace": "nowrap"
+      },
       "compactBar": {
-        "x": 465.3333435058594,
-        "y": 12,
-        "width": 349.3333435058594,
-        "height": 101.33333587646484,
-        "top": 12,
-        "right": 814.6666870117188,
-        "bottom": 113.33333587646484
-      },
-      "topRegion": {
-        "x": 0,
-        "y": 0,
-        "width": 1280,
-        "height": 0,
-        "top": 0,
-        "right": 1280,
-        "bottom": 0
-      },
-      "editorBody": {
         "x": 12,
         "y": 12,
         "width": 1256,
-        "height": 524,
+        "height": 56,
         "top": 12,
         "right": 1268,
-        "bottom": 536
+        "bottom": 68
+      },
+      "topRegion": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "editorBody": {
+        "x": 12,
+        "y": 78,
+        "width": 1256,
+        "height": 452,
+        "top": 78,
+        "right": 1268,
+        "bottom": 530
       },
       "editorLayout": {
         "x": 0,
@@ -229,85 +180,33 @@
       },
       "bottomWorkspace": {
         "x": 12,
-        "y": 546,
+        "y": 540,
         "width": 1256,
-        "height": 162,
-        "top": 546,
+        "height": 168,
+        "top": 540,
         "right": 1268,
         "bottom": 708
       },
       "controls": {
-        "x": 474,
-        "y": 18.666667938232422,
-        "width": 332,
+        "x": 850.21875,
+        "y": 18,
+        "width": 407.1145935058594,
         "height": 44,
-        "top": 18.666667938232422,
-        "right": 806,
-        "bottom": 62.66666793823242
+        "top": 18,
+        "right": 1257.3333435058594,
+        "bottom": 62
       },
       "save": {
-        "x": 570,
-        "y": 18.666667938232422,
-        "width": 44,
+        "x": 1122.21875,
+        "y": 18,
+        "width": 53.333335876464844,
         "height": 44,
-        "top": 18.666667938232422,
-        "right": 614,
-        "bottom": 62.66666793823242
+        "top": 18,
+        "right": 1175.5520858764648,
+        "bottom": 62
       },
-      "menu": {
-        "x": 465.3333435058594,
-        "y": 12,
-        "width": 349.3333435058594,
-        "height": 57.333335876464844,
-        "top": 12,
-        "right": 814.6666870117188,
-        "bottom": 69.33333587646484
-      },
-      "deviceModeSelector": false,
-      "menuItems": [
-        {
-          "testId": "quick-action-home",
-          "action": "home",
-          "text": "打开项目中心",
-          "disabled": false
-        },
-        {
-          "testId": "quick-action-folder",
-          "action": "folder",
-          "text": "打开项目文件夹",
-          "disabled": false
-        },
-        {
-          "testId": "quick-action-save",
-          "action": "save",
-          "text": "保存项目",
-          "disabled": false
-        },
-        {
-          "testId": "quick-action-play",
-          "action": "play",
-          "text": "预览当前镜头",
-          "disabled": false
-        },
-        {
-          "testId": null,
-          "action": "undo",
-          "text": "撤销",
-          "disabled": false
-        },
-        {
-          "testId": null,
-          "action": "redo",
-          "text": "重做",
-          "disabled": true
-        },
-        {
-          "testId": "quick-action-close",
-          "action": "close",
-          "text": "关闭当前项目",
-          "disabled": false
-        }
-      ]
+      "menu": null,
+      "menuItems": []
     },
     "saved": {
       "viewport": {
@@ -315,44 +214,46 @@
         "height": 720
       },
       "page": "editor",
-      "editorDeviceMode": "cloud-touch",
-      "editorShellLayout": "landscape",
       "shellState": "editor",
-      "nativeTitle": "Panda Stage（Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof）",
-      "projectName": null,
-      "projectPath": null,
-      "saveState": null,
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectPath": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+      "saveState": "已保存",
       "saveStateCode": "saved",
       "saveDisabled": true,
       "pathInputs": 0,
-      "nameEllipsis": null,
-      "drawerExpanded": true,
+      "nameEllipsis": {
+        "clientWidth": 851,
+        "scrollWidth": 1424,
+        "overflow": "hidden",
+        "textOverflow": "ellipsis",
+        "whiteSpace": "nowrap"
+      },
       "compactBar": {
-        "x": 465.3333435058594,
-        "y": 12,
-        "width": 349.3333435058594,
-        "height": 101.33333587646484,
-        "top": 12,
-        "right": 814.6666870117188,
-        "bottom": 113.33333587646484
-      },
-      "topRegion": {
-        "x": 0,
-        "y": 0,
-        "width": 1280,
-        "height": 0,
-        "top": 0,
-        "right": 1280,
-        "bottom": 0
-      },
-      "editorBody": {
         "x": 12,
         "y": 12,
         "width": 1256,
-        "height": 524,
+        "height": 56,
         "top": 12,
         "right": 1268,
-        "bottom": 536
+        "bottom": 68
+      },
+      "topRegion": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "editorBody": {
+        "x": 12,
+        "y": 78,
+        "width": 1256,
+        "height": 452,
+        "top": 78,
+        "right": 1268,
+        "bottom": 530
       },
       "editorLayout": {
         "x": 0,
@@ -365,85 +266,33 @@
       },
       "bottomWorkspace": {
         "x": 12,
-        "y": 546,
+        "y": 540,
         "width": 1256,
-        "height": 162,
-        "top": 546,
+        "height": 168,
+        "top": 540,
         "right": 1268,
         "bottom": 708
       },
       "controls": {
-        "x": 474,
-        "y": 18.666667938232422,
-        "width": 332,
+        "x": 979.21875,
+        "y": 18,
+        "width": 278.1145935058594,
         "height": 44,
-        "top": 18.666667938232422,
-        "right": 806,
-        "bottom": 62.66666793823242
+        "top": 18,
+        "right": 1257.3333435058594,
+        "bottom": 62
       },
       "save": {
-        "x": 570,
-        "y": 18.666667938232422,
-        "width": 44,
+        "x": 1122.21875,
+        "y": 18,
+        "width": 53.333335876464844,
         "height": 44,
-        "top": 18.666667938232422,
-        "right": 614,
-        "bottom": 62.66666793823242
+        "top": 18,
+        "right": 1175.5520858764648,
+        "bottom": 62
       },
-      "menu": {
-        "x": 465.3333435058594,
-        "y": 12,
-        "width": 349.3333435058594,
-        "height": 57.333335876464844,
-        "top": 12,
-        "right": 814.6666870117188,
-        "bottom": 69.33333587646484
-      },
-      "deviceModeSelector": false,
-      "menuItems": [
-        {
-          "testId": "quick-action-home",
-          "action": "home",
-          "text": "打开项目中心",
-          "disabled": false
-        },
-        {
-          "testId": "quick-action-folder",
-          "action": "folder",
-          "text": "打开项目文件夹",
-          "disabled": false
-        },
-        {
-          "testId": "quick-action-save",
-          "action": "save",
-          "text": "保存项目",
-          "disabled": true
-        },
-        {
-          "testId": "quick-action-play",
-          "action": "play",
-          "text": "预览当前镜头",
-          "disabled": false
-        },
-        {
-          "testId": null,
-          "action": "undo",
-          "text": "撤销",
-          "disabled": false
-        },
-        {
-          "testId": null,
-          "action": "redo",
-          "text": "重做",
-          "disabled": true
-        },
-        {
-          "testId": "quick-action-close",
-          "action": "close",
-          "text": "关闭当前项目",
-          "disabled": false
-        }
-      ]
+      "menu": null,
+      "menuItems": []
     },
     "menu": {
       "viewport": {
@@ -451,44 +300,46 @@
         "height": 720
       },
       "page": "editor",
-      "editorDeviceMode": "cloud-touch",
-      "editorShellLayout": "landscape",
       "shellState": "editor",
-      "nativeTitle": "Panda Stage（Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof）",
-      "projectName": null,
-      "projectPath": null,
-      "saveState": null,
+      "projectName": "Issue 102 Compact Project — a deliberately long project name for ellipsis verification — Issue 102 Compact Project — a deliberately long project name for ellipsis verification — ellipsis proof",
+      "projectPath": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
+      "saveState": "已保存",
       "saveStateCode": "saved",
       "saveDisabled": true,
       "pathInputs": 0,
-      "nameEllipsis": null,
-      "drawerExpanded": true,
+      "nameEllipsis": {
+        "clientWidth": 851,
+        "scrollWidth": 1424,
+        "overflow": "hidden",
+        "textOverflow": "ellipsis",
+        "whiteSpace": "nowrap"
+      },
       "compactBar": {
-        "x": 465.3333435058594,
-        "y": 12,
-        "width": 349.3333435058594,
-        "height": 101.33333587646484,
-        "top": 12,
-        "right": 814.6666870117188,
-        "bottom": 113.33333587646484
-      },
-      "topRegion": {
-        "x": 0,
-        "y": 0,
-        "width": 1280,
-        "height": 0,
-        "top": 0,
-        "right": 1280,
-        "bottom": 0
-      },
-      "editorBody": {
         "x": 12,
         "y": 12,
         "width": 1256,
-        "height": 524,
+        "height": 56,
         "top": 12,
         "right": 1268,
-        "bottom": 536
+        "bottom": 68
+      },
+      "topRegion": {
+        "x": 12,
+        "y": 12,
+        "width": 1256,
+        "height": 56,
+        "top": 12,
+        "right": 1268,
+        "bottom": 68
+      },
+      "editorBody": {
+        "x": 12,
+        "y": 78,
+        "width": 1256,
+        "height": 452,
+        "top": 78,
+        "right": 1268,
+        "bottom": 530
       },
       "editorLayout": {
         "x": 0,
@@ -501,81 +352,58 @@
       },
       "bottomWorkspace": {
         "x": 12,
-        "y": 546,
+        "y": 540,
         "width": 1256,
-        "height": 162,
-        "top": 546,
+        "height": 168,
+        "top": 540,
         "right": 1268,
         "bottom": 708
       },
       "controls": {
-        "x": 474,
-        "y": 18.666667938232422,
-        "width": 332,
+        "x": 979.21875,
+        "y": 18,
+        "width": 278.1145935058594,
         "height": 44,
-        "top": 18.666667938232422,
-        "right": 806,
-        "bottom": 62.66666793823242
+        "top": 18,
+        "right": 1257.3333435058594,
+        "bottom": 62
       },
       "save": {
-        "x": 570,
-        "y": 18.666667938232422,
-        "width": 44,
+        "x": 1122.21875,
+        "y": 18,
+        "width": 53.333335876464844,
         "height": 44,
-        "top": 18.666667938232422,
-        "right": 614,
-        "bottom": 62.66666793823242
+        "top": 18,
+        "right": 1175.5520858764648,
+        "bottom": 62
       },
       "menu": {
-        "x": 465.3333435058594,
-        "y": 12,
-        "width": 349.3333435058594,
-        "height": 57.333335876464844,
-        "top": 12,
-        "right": 814.6666870117188,
-        "bottom": 69.33333587646484
+        "x": 1067.3333740234375,
+        "y": 68,
+        "width": 190,
+        "height": 201.33334350585938,
+        "top": 68,
+        "right": 1257.3333740234375,
+        "bottom": 269.3333435058594
       },
-      "deviceModeSelector": false,
       "menuItems": [
         {
-          "testId": "quick-action-home",
-          "action": "home",
+          "testId": "menu-open-project-center",
           "text": "打开项目中心",
           "disabled": false
         },
         {
-          "testId": "quick-action-folder",
-          "action": "folder",
+          "testId": "menu-open-project-folder",
           "text": "打开项目文件夹",
           "disabled": false
         },
         {
-          "testId": "quick-action-save",
-          "action": "save",
-          "text": "保存项目",
-          "disabled": true
-        },
-        {
-          "testId": "quick-action-play",
-          "action": "play",
-          "text": "预览当前镜头",
+          "testId": "menu-open-product-preview",
+          "text": "产品预览",
           "disabled": false
         },
         {
-          "testId": null,
-          "action": "undo",
-          "text": "撤销",
-          "disabled": false
-        },
-        {
-          "testId": null,
-          "action": "redo",
-          "text": "重做",
-          "disabled": true
-        },
-        {
-          "testId": "quick-action-close",
-          "action": "close",
+          "testId": "menu-close-project",
           "text": "关闭当前项目",
           "disabled": false
         }
@@ -597,7 +425,7 @@
     "acceptanceRoot": "D:\\PandaStage-Acceptance\\project-center-v1",
     "projectRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\projects-task2\\issue102-compact-project.pandastage",
     "evidenceRoot": "D:\\PandaStage-Acceptance\\project-center-v1\\evidence\\task2",
-    "repositoryEvidenceRoot": "D:\\panda-issue563-n2-01\\docs\\evidence\\issue-102\\task2"
+    "repositoryEvidenceRoot": "D:\\panda-issue228-verifier\\docs\\evidence\\issue-102\\task2"
   },
   "error": null,
   "window": {
