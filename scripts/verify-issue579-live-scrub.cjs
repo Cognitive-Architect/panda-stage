@@ -587,7 +587,7 @@ function configureElectronPaths() {
   }
 }
 
-async function openProject(window) {
+async function openProject(window, targetAssetId) {
   await waitForDom(
     window,
     `document.querySelector('[data-testid="project-center-screen"] .recovery-open-row input')`,
@@ -612,6 +612,19 @@ async function openProject(window) {
     `document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.backgroundReady === 'true'`,
     'Issue #579 fixture background did not become ready.',
   );
+  await waitForDom(
+    window,
+    `(() => {
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      if (!stage) return false;
+      try {
+        return JSON.parse(stage.dataset.renderedAssetIds ?? '[]').includes(${JSON.stringify(targetAssetId)});
+      } catch {
+        return false;
+      }
+    })()`,
+    'Issue #579 target Canvas layer image did not become ready.',
+  );
 }
 
 async function run() {
@@ -635,7 +648,7 @@ async function run() {
   });
 
   try {
-    await openProject(window);
+    await openProject(window, baseCharacterAssetId);
     await waitForDom(
       window,
       `document.querySelector('[data-testid="timeline-tick"]') || document.querySelector('[data-testid="timeline-ruler-track"]')`,
