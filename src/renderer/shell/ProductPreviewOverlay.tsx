@@ -53,6 +53,7 @@ import {
   productPreviewRevealPhaseFromHandoff,
   scheduleProductPreviewPaintFence,
   scheduleProductPreviewWarmupStatus,
+  shouldBlockProductPreviewWarmupKeyboard,
   shouldStartProductPreviewAutoplay,
   type ProductPreviewHandoffPhase,
 } from './productPreviewReveal';
@@ -104,6 +105,7 @@ export function ProductPreviewOverlay({
   const initialReadinessRef = useRef<ProductPreviewInitialReadiness>(
     'preparing',
   );
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const handoffPhaseRef = useRef<ProductPreviewHandoffPhase>('warming');
   handoffPhaseRef.current = handoffPhase;
   const handoffReadyNotifiedRef = useRef(false);
@@ -231,13 +233,37 @@ export function ProductPreviewOverlay({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (handoffPhase !== 'active') {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+          return;
+        }
+        const targetInsidePreview =
+          typeof Node !== 'undefined' &&
+          event.target instanceof Node &&
+          Boolean(overlayRef.current?.contains(event.target));
+        if (
+          shouldBlockProductPreviewWarmupKeyboard(
+            event.key,
+            targetInsidePreview,
+          )
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
       if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
         onClose();
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [handoffPhase, onClose]);
 
   const evaluatedShot = useMemo(
     () =>
@@ -405,6 +431,7 @@ export function ProductPreviewOverlay({
       data-preview-project-time={displayedTimeMs}
       data-preview-surface={previewSurfaceActive ? 'active' : 'warming'}
       data-testid="product-preview-overlay"
+      ref={overlayRef}
       role="dialog"
     >
       {!previewSurfaceActive && (showWarmupStatus || initialReadinessError) ? (

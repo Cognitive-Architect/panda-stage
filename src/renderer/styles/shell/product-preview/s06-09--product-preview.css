@@ -16,7 +16,7 @@
 
 .product-preview-overlay[data-preview-surface='warming'] {
   background: transparent;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .product-preview-frame {

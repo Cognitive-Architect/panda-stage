@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
   useSyncExternalStore,
@@ -428,6 +429,9 @@ export function EditorShell({
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
     useState(false);
+  const commitProductPreviewSurface = useCallback((): void => {
+    setProductPreviewSurfaceActive(true);
+  }, []);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closeConfirmStatus, setCloseConfirmStatus] = useState('');
   const [saveActivity, setSaveActivity] = useState<{
@@ -1145,7 +1149,7 @@ export function EditorShell({
             <ProductPreviewOverlay
               autoPlay
               onClose={closeProductPreview}
-              onHandoffReady={() => setProductPreviewSurfaceActive(true)}
+              onHandoffReady={commitProductPreviewSurface}
               project={projectSnapshot.project}
               projectRoot={projectSnapshot.projectRoot}
               shotId={currentShotId}

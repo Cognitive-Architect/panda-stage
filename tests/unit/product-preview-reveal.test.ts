@@ -8,6 +8,7 @@ import {
   scheduleProductPreviewPaintFence,
   scheduleProductPreviewRevealCompletion,
   scheduleProductPreviewWarmupStatus,
+  shouldBlockProductPreviewWarmupKeyboard,
   shouldStartProductPreviewAutoplay,
   type ProductPreviewHandoffPhase,
   type ProductPreviewPaintFenceScheduler,
@@ -132,6 +133,17 @@ describe('product preview first-paint reveal', () => {
         revealPhase: 'active',
       }),
     ).toBe(true);
+  });
+
+  it('blocks editor keyboard mutations during warmup but preserves Preview controls', () => {
+    expect(shouldBlockProductPreviewWarmupKeyboard('Delete', false)).toBe(true);
+    expect(shouldBlockProductPreviewWarmupKeyboard('z', false)).toBe(true);
+    expect(shouldBlockProductPreviewWarmupKeyboard(' ', false)).toBe(true);
+    expect(shouldBlockProductPreviewWarmupKeyboard('Escape', false)).toBe(
+      false,
+    );
+    expect(shouldBlockProductPreviewWarmupKeyboard('Enter', true)).toBe(false);
+    expect(shouldBlockProductPreviewWarmupKeyboard(' ', true)).toBe(false);
   });
 
   it('keeps data readiness separate from playback readiness', () => {

@@ -512,6 +512,9 @@ describe('product preview overlay contract', () => {
       ".product-preview-overlay[data-preview-surface='warming']",
     );
     expect(styles).toContain('background: transparent;');
+    expect(styles).toMatch(
+      /\.product-preview-overlay\[data-preview-surface='warming'\][\s\S]*?pointer-events:\s*auto;/u,
+    );
     expect(styles).toContain(
       ".product-preview-overlay[data-preview-surface='warming'] .product-preview-frame",
     );
@@ -519,6 +522,11 @@ describe('product preview overlay contract', () => {
     expect(styles).not.toContain('.product-preview-curtain');
     expect(styles).not.toContain('transition: opacity');
     expect(overlay).not.toContain('setInterval(');
+    expect(overlay).toContain('shouldBlockProductPreviewWarmupKeyboard(');
+    expect(overlay).toContain(
+      "window.addEventListener('keydown', onKeyDown, true)",
+    );
+    expect(overlay).toContain('event.stopPropagation();');
   });
 
   it('holds the last valid frame while the bounded next-shot images finish', () => {
@@ -552,7 +560,11 @@ describe('product preview overlay contract', () => {
     expect(shell).toContain(
       'const [productPreviewSurfaceActive, setProductPreviewSurfaceActive]',
     );
-    expect(shell).toContain('onHandoffReady={() => setProductPreviewSurfaceActive(true)}');
+    expect(shell).toContain('const commitProductPreviewSurface = useCallback');
+    expect(shell).toContain('onHandoffReady={commitProductPreviewSurface}');
+    expect(shell).not.toContain(
+      'onHandoffReady={() => setProductPreviewSurfaceActive(true)}',
+    );
     expect(shell).toContain('surfaceActive={productPreviewSurfaceActive}');
     expect(shell).not.toContain('hidden={!productPreviewOpen}');
     expect(shell).not.toContain("display: 'none'");

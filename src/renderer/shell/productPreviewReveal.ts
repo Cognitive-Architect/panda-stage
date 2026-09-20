@@ -169,6 +169,18 @@ export function canStartProductPreviewPlayback(
   return dataReady && (revealPhase === 'revealed' || revealPhase === 'active');
 }
 
+/**
+ * While the Preview is warming, the real Editor stays visible but must not
+ * receive keyboard mutations. Preview-owned controls remain usable, and
+ * Escape is handled by the overlay as its cancellation path.
+ */
+export function shouldBlockProductPreviewWarmupKeyboard(
+  key: string,
+  targetInsidePreview: boolean,
+): boolean {
+  return key !== 'Escape' && !targetInsidePreview;
+}
+
 export interface ProductPreviewAutoplayGateInput {
   autoPlay: boolean;
   dataReady: boolean;
