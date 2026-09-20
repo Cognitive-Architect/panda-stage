@@ -14,6 +14,11 @@
   background: rgb(6 14 11 / 82%);
 }
 
+.product-preview-overlay[data-preview-surface='warming'] {
+  background: transparent;
+  pointer-events: none;
+}
+
 .product-preview-frame {
   --product-preview-stage-width: min(100%, calc((100vh - 150px) * 16 / 9));
   position: relative;
@@ -30,6 +35,43 @@
   border: 1px solid #2a4438;
   border-radius: 10px;
   box-shadow: 0 26px 60px rgb(0 0 0 / 48%);
+  opacity: 1;
+  visibility: visible;
+}
+
+.product-preview-overlay[data-preview-surface='warming'] .product-preview-frame {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.product-preview-warmup-status {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  max-width: min(420px, calc(100vw - 32px));
+  gap: 10px;
+  padding: 9px 10px 9px 12px;
+  color: #dcebe0;
+  background: rgb(16 28 23 / 94%);
+  border: 1px solid #2a4438;
+  border-radius: 9px;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 24%);
+  pointer-events: auto;
+  font-size: 0.82rem;
+}
+
+.product-preview-warmup-cancel {
+  min-height: 30px;
+  padding: 4px 9px;
+  color: #cfe4d7;
+  background: transparent;
+  border: 1px solid #496958;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
 .product-preview-close {
@@ -172,34 +214,5 @@
   margin: 0;
   font-size: 0.78rem;
   color: #8fa89a;
-}
-
-.product-preview-curtain {
-  --product-preview-reveal-duration: 160ms;
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  background: #0a1310;
-  opacity: 1;
-  transition: opacity var(--product-preview-reveal-duration) ease;
-}
-
-.product-preview-curtain[data-preview-curtain-state='revealing'] {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.product-preview-preparing {
-  color: #cfe4d7;
-  font-size: 0.94rem;
-  letter-spacing: 0.01em;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .product-preview-curtain {
-    --product-preview-reveal-duration: 100ms;
-  }
 }
 

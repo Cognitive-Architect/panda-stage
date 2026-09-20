@@ -422,7 +422,7 @@ describe('product preview overlay contract', () => {
     }
     expect(overlay).toContain("type: playing ? 'pause' : 'play'");
     expect(overlay).toContain('role="dialog"');
-    expect(overlay).toContain('aria-modal="true"');
+    expect(overlay).toContain('aria-modal={previewSurfaceActive}');
   });
 
   it('uses bounded originals in a compact contain-style player shell', () => {
@@ -477,7 +477,7 @@ describe('product preview overlay contract', () => {
     );
   });
 
-  it('gates the first visible frame before autoplay starts at project time zero', () => {
+  it('keeps the Editor visible until the real Preview handoff is committed', () => {
     const overlay = readSource(OVERLAY_PATH);
     const styles = readSource(
       'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
@@ -491,30 +491,33 @@ describe('product preview overlay contract', () => {
       'data-preview-data-ready={String(initialReadiness === \'ready\')}',
     );
     expect(overlay).toContain('data-preview-readiness={initialReadiness}');
+    expect(overlay).toContain('data-preview-handoff={handoffPhase}');
     expect(overlay).toContain('data-preview-reveal={revealPhase}');
-    expect(overlay).toContain('data-testid="product-preview-preparing"');
+    expect(overlay).toContain('data-preview-surface={previewSurfaceActive');
+    expect(overlay).toContain('data-testid="product-preview-warmup-status"');
+    expect(overlay).toContain('data-testid="product-preview-cancel"');
     expect(overlay).toContain('onReady={');
     expect(overlay).toContain('handleInitialStageReady');
     expect(overlay).toContain('onError={handleInitialStageError}');
     expect(overlay).toContain('scheduleProductPreviewPaintFence(');
-    expect(overlay).toContain('scheduleProductPreviewRevealCompletion(');
-    expect(overlay).toContain('advanceProductPreviewRevealPhase');
-    expect(overlay).toContain('onTransitionEnd={handleRevealTransitionEnd}');
+    expect(overlay).toContain('scheduleProductPreviewWarmupStatus(');
+    expect(overlay).toContain('advanceProductPreviewHandoffPhase');
+    expect(overlay).toContain('onHandoffReady();');
     expect(overlay).toContain('canStartProductPreviewPlayback(');
-    expect(overlay).toContain("revealPhase !== 'revealed'");
-    expect(overlay).toContain('setRevealPhase(\'covered\')');
     expect(overlay).toContain('shouldStartProductPreviewAutoplay({');
     expect(overlay).toMatch(
-      /initialReadiness === 'preparing'[\s\S]*?正在准备预览/u,
+      /initialReadinessError[\s\S]*?编辑器保持不变/u,
     );
-    expect(styles).toContain('.product-preview-curtain');
-    expect(styles).toContain('--product-preview-reveal-duration: 160ms;');
-    expect(styles).toContain('--product-preview-reveal-duration: 100ms;');
     expect(styles).toContain(
-      'transition: opacity var(--product-preview-reveal-duration) ease;',
+      ".product-preview-overlay[data-preview-surface='warming']",
     );
-    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
-    expect(styles).not.toContain('visibility: hidden;');
+    expect(styles).toContain('background: transparent;');
+    expect(styles).toContain(
+      ".product-preview-overlay[data-preview-surface='warming'] .product-preview-frame",
+    );
+    expect(styles).toContain('visibility: hidden;');
+    expect(styles).not.toContain('.product-preview-curtain');
+    expect(styles).not.toContain('transition: opacity');
     expect(overlay).not.toContain('setInterval(');
   });
 
@@ -546,6 +549,11 @@ describe('product preview overlay contract', () => {
     expect(shell).toContain(
       'const [productPreviewOpen, setProductPreviewOpen] = useState(false)',
     );
+    expect(shell).toContain(
+      'const [productPreviewSurfaceActive, setProductPreviewSurfaceActive]',
+    );
+    expect(shell).toContain('onHandoffReady={() => setProductPreviewSurfaceActive(true)}');
+    expect(shell).toContain('surfaceActive={productPreviewSurfaceActive}');
     expect(shell).not.toContain('hidden={!productPreviewOpen}');
     expect(shell).not.toContain("display: 'none'");
   });

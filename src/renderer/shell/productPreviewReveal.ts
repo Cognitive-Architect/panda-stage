@@ -3,8 +3,15 @@ export type ProductPreviewRevealPhase =
   | 'revealing'
   | 'revealed';
 
+export type ProductPreviewHandoffPhase = 'warming' | 'ready' | 'active';
+
+export type ProductPreviewHandoffEvent =
+  | 'paint-fence-passed'
+  | 'surface-activated';
+
 export const PRODUCT_PREVIEW_REVEAL_DURATION_MS = 160;
 export const PRODUCT_PREVIEW_REDUCED_REVEAL_DURATION_MS = 100;
+export const PRODUCT_PREVIEW_WARMUP_STATUS_DELAY_MS = 240;
 
 export interface ProductPreviewPaintFenceScheduler {
   requestAnimationFrame(callback: () => void): number;
@@ -21,8 +28,35 @@ export type ProductPreviewRevealEvent =
   | 'transition-completed';
 
 /**
+ * The Preview is not allowed to own the viewport while it is warming up.
+ * `ready` means that the real first frame passed the paint fence and the
+ * EditorShell may commit the surface handoff. `active` is only entered after
+ * that parent-owned commit.
+ */
+export function advanceProductPreviewHandoffPhase(
+  phase: ProductPreviewHandoffPhase,
+  event: ProductPreviewHandoffEvent,
+): ProductPreviewHandoffPhase {
+  if (phase === 'warming' && event === 'paint-fence-passed') {
+    return 'ready';
+  }
+  if (phase === 'ready' && event === 'surface-activated') {
+    return 'active';
+  }
+  return phase;
+}
+
+export function productPreviewRevealPhaseFromHandoff(
+  phase: ProductPreviewHandoffPhase,
+): ProductPreviewRevealPhase {
+  if (phase === 'warming') return 'covered';
+  if (phase === 'ready') return 'revealing';
+  return 'revealed';
+}
+
+/**
  * Wait for two animation-frame callbacks so a data-ready Stage gets at least
- * one browser paint opportunity while the Preview curtain is still opaque.
+ * one browser paint opportunity before the Preview can request ownership.
  * The returned disposer also makes a close/reopen cycle unable to resurrect
  * the previous Preview's reveal callback.
  */
@@ -52,9 +86,8 @@ export function scheduleProductPreviewPaintFence(
 }
 
 /**
- * Keep the fallback completion behind the opacity transition in both motion
- * modes. The transitionend handler is the normal completion path; this timer
- * only protects the state machine when a browser drops that event.
+ * Legacy curtain timing helper retained for the earlier reveal contract.
+ * Issue #576 no longer uses a curtain as the surface handoff mechanism.
  */
 export function scheduleProductPreviewRevealCompletion(
   onComplete: () => void,
@@ -72,6 +105,24 @@ export function scheduleProductPreviewRevealCompletion(
   return () => {
     disposed = true;
     scheduler.clearTimeout(fallback);
+  };
+}
+
+export function scheduleProductPreviewWarmupStatus(
+  onShow: () => void,
+  scheduler: ProductPreviewRevealCompletionScheduler = {
+    setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    clearTimeout: (handle) => window.clearTimeout(handle),
+  },
+): () => void {
+  let disposed = false;
+  const handle = scheduler.setTimeout(() => {
+    if (!disposed) onShow();
+  }, PRODUCT_PREVIEW_WARMUP_STATUS_DELAY_MS);
+
+  return () => {
+    disposed = true;
+    scheduler.clearTimeout(handle);
   };
 }
 
@@ -113,16 +164,16 @@ export function productPreviewRevealDurationMsFromComputedStyle(
 
 export function canStartProductPreviewPlayback(
   dataReady: boolean,
-  revealPhase: ProductPreviewRevealPhase,
+  revealPhase: ProductPreviewRevealPhase | ProductPreviewHandoffPhase,
 ): boolean {
-  return dataReady && revealPhase === 'revealed';
+  return dataReady && (revealPhase === 'revealed' || revealPhase === 'active');
 }
 
 export interface ProductPreviewAutoplayGateInput {
   autoPlay: boolean;
   dataReady: boolean;
   durationMs: number;
-  revealPhase: ProductPreviewRevealPhase;
+  revealPhase: ProductPreviewRevealPhase | ProductPreviewHandoffPhase;
 }
 
 export function shouldStartProductPreviewAutoplay({

@@ -213,7 +213,7 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     expect(bottom).toContain('timelineUiStore.setHeightMax(bounds.maxHeight)');
     expect(editorShell).toContain('data-testid="editor-body"');
     expect(sha256(bottom)).toBe('d890a631c9344b7b33468ba784badd47a761434e9606971f1e831587976d41eb');
-    expect(sha256(editorShell)).toBe('888e03e7f96965ae48a44f3593a3864e8fea9fa3eb7592f20bac4ff0ff88a4f0');
+    expect(sha256(editorShell)).toBe('9ddeab2d16548249965ad51881cf41da2af95838be159b10aa21734a28323f24');
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
     expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(true);
   });

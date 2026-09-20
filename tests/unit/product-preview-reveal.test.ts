@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  advanceProductPreviewHandoffPhase,
   advanceProductPreviewRevealPhase,
   canStartProductPreviewPlayback,
   productPreviewRevealDurationMs,
   productPreviewRevealDurationMsFromComputedStyle,
   scheduleProductPreviewPaintFence,
   scheduleProductPreviewRevealCompletion,
+  scheduleProductPreviewWarmupStatus,
   shouldStartProductPreviewAutoplay,
+  type ProductPreviewHandoffPhase,
   type ProductPreviewPaintFenceScheduler,
   type ProductPreviewRevealCompletionScheduler,
 } from '../../src/renderer/shell/productPreviewReveal';
@@ -91,6 +94,46 @@ function createCompletionScheduler(): {
 }
 
 describe('product preview first-paint reveal', () => {
+  it('requires the Editor-owned handoff after the first frame paint fence', () => {
+    let phase: ProductPreviewHandoffPhase = 'warming';
+
+    expect(advanceProductPreviewHandoffPhase(phase, 'surface-activated')).toBe(
+      'warming',
+    );
+    phase = advanceProductPreviewHandoffPhase(phase, 'paint-fence-passed');
+    expect(phase).toBe('ready');
+    expect(advanceProductPreviewHandoffPhase(phase, 'paint-fence-passed')).toBe(
+      'ready',
+    );
+    phase = advanceProductPreviewHandoffPhase(phase, 'surface-activated');
+    expect(phase).toBe('active');
+    expect(advanceProductPreviewHandoffPhase(phase, 'paint-fence-passed')).toBe(
+      'active',
+    );
+  });
+
+  it('does not allow playback before the Editor-owned surface is active', () => {
+    expect(canStartProductPreviewPlayback(true, 'warming')).toBe(false);
+    expect(canStartProductPreviewPlayback(true, 'ready')).toBe(false);
+    expect(canStartProductPreviewPlayback(true, 'active')).toBe(true);
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: true,
+        dataReady: true,
+        durationMs: 4_000,
+        revealPhase: 'ready',
+      }),
+    ).toBe(false);
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: true,
+        dataReady: true,
+        durationMs: 4_000,
+        revealPhase: 'active',
+      }),
+    ).toBe(true);
+  });
+
   it('keeps data readiness separate from playback readiness', () => {
     expect(canStartProductPreviewPlayback(false, 'covered')).toBe(false);
     expect(canStartProductPreviewPlayback(true, 'covered')).toBe(false);
@@ -248,5 +291,31 @@ describe('product preview first-paint reveal', () => {
     dispose();
     expect(fake.pendingCount()).toBe(0);
     expect(completed).toBe(false);
+  });
+
+  it('delays the non-blocking warmup status and cancels it on close', () => {
+    const fake = createCompletionScheduler();
+    let shown = false;
+    const dispose = scheduleProductPreviewWarmupStatus(
+      () => {
+        shown = true;
+      },
+      fake.scheduler,
+    );
+
+    expect(fake.nextDelay()).toBe(240);
+    expect(shown).toBe(false);
+    dispose();
+    expect(fake.pendingCount()).toBe(0);
+    expect(shown).toBe(false);
+
+    scheduleProductPreviewWarmupStatus(
+      () => {
+        shown = true;
+      },
+      fake.scheduler,
+    );
+    fake.flushNext();
+    expect(shown).toBe(true);
   });
 });

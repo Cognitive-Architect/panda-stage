@@ -9,7 +9,7 @@
  *     the dirty flag, the selection or the history. It receives the already
  *     loaded project as a prop and only *reads* it.
  *   - The only state it owns is its own playback clock (`timeMs`, `playing`),
- *     the first-frame data/reveal readiness gates, and the asset URLs it needs
+ *     the first-frame data/handoff readiness gates, and the asset URLs it needs
  *     to draw.
  *     Closing the overlay throws that state away; the editor is untouched.
  *   - No second project tree and no hidden DOM: the overlay is mounted only
@@ -48,13 +48,13 @@ import {
 import { useProductPreviewAudio } from './productPreviewAudio';
 import { useProductPreviewImages } from './productPreviewImages';
 import {
-  advanceProductPreviewRevealPhase,
+  advanceProductPreviewHandoffPhase,
   canStartProductPreviewPlayback,
-  productPreviewRevealDurationMsFromComputedStyle,
+  productPreviewRevealPhaseFromHandoff,
   scheduleProductPreviewPaintFence,
-  scheduleProductPreviewRevealCompletion,
+  scheduleProductPreviewWarmupStatus,
   shouldStartProductPreviewAutoplay,
-  type ProductPreviewRevealPhase,
+  type ProductPreviewHandoffPhase,
 } from './productPreviewReveal';
 
 export interface ProductPreviewOverlayProps {
@@ -66,6 +66,10 @@ export interface ProductPreviewOverlayProps {
   shotId: string | null;
   /** Starts the existing preview transport immediately when the overlay mounts. */
   autoPlay?: boolean;
+  /** Whether EditorShell has committed the Preview surface handoff. */
+  surfaceActive: boolean;
+  /** Requests that EditorShell commit visual ownership after warmup. */
+  onHandoffReady(): void;
   /** Closes the overlay and discards all preview-local playback state. */
   onClose(): void;
 }
@@ -77,6 +81,8 @@ export function ProductPreviewOverlay({
   project,
   shotId,
   autoPlay = false,
+  surfaceActive,
+  onHandoffReady,
   onClose,
 }: ProductPreviewOverlayProps): React.JSX.Element {
   const currentShot = useMemo(
@@ -90,15 +96,19 @@ export function ProductPreviewOverlay({
   const [playing, setPlaying] = useState(false);
   const [initialReadiness, setInitialReadiness] =
     useState<ProductPreviewInitialReadiness>('preparing');
-  const [revealPhase, setRevealPhase] =
-    useState<ProductPreviewRevealPhase>('covered');
+  const [handoffPhase, setHandoffPhase] =
+    useState<ProductPreviewHandoffPhase>('warming');
+  const [showWarmupStatus, setShowWarmupStatus] = useState(false);
   const [seekRevision, setSeekRevision] = useState(0);
   const initialStageReadyRef = useRef(false);
   const initialReadinessRef = useRef<ProductPreviewInitialReadiness>(
     'preparing',
   );
-  const revealPhaseRef = useRef<ProductPreviewRevealPhase>('covered');
-  revealPhaseRef.current = revealPhase;
+  const handoffPhaseRef = useRef<ProductPreviewHandoffPhase>('warming');
+  handoffPhaseRef.current = handoffPhase;
+  const handoffReadyNotifiedRef = useRef(false);
+  const revealPhase = productPreviewRevealPhaseFromHandoff(handoffPhase);
+  const previewSurfaceActive = surfaceActive && handoffPhase === 'active';
   const projectPosition = useMemo(
     () => mapProjectTime(project, range === 'project' ? timeMs : 0),
     [project, range, timeMs],
@@ -143,9 +153,10 @@ export function ProductPreviewOverlay({
   const applyTransportAction = useCallback(
     (action: ProductPreviewTransportAction): void => {
       if (
+        !previewSurfaceActive ||
         !canStartProductPreviewPlayback(
           initialReadiness === 'ready',
-          revealPhase,
+          handoffPhase,
         )
       ) {
         return;
@@ -161,7 +172,13 @@ export function ProductPreviewOverlay({
         setSeekRevision((current) => current + 1);
       }
     },
-    [displayedTimeMs, durationMs, initialReadiness, revealPhase],
+    [
+      displayedTimeMs,
+      durationMs,
+      handoffPhase,
+      initialReadiness,
+      previewSurfaceActive,
+    ],
   );
 
   const switchPreviewRange = useCallback(
@@ -263,22 +280,26 @@ export function ProductPreviewOverlay({
   }, []);
   const handleInitialStageError = useCallback((): void => {
     if (
-      revealPhaseRef.current === 'revealed' ||
+      handoffPhaseRef.current === 'active' ||
       initialReadinessRef.current === 'error'
     ) {
       return;
     }
     initialReadinessRef.current = 'error';
     setInitialReadiness('error');
-    setRevealPhase('covered');
+    setHandoffPhase('warming');
     setPlaying(false);
   }, []);
   useEffect(() => {
     if (assets.status === 'error') {
-      if (revealPhase !== 'revealed') handleInitialStageError();
+      if (handoffPhase !== 'active') handleInitialStageError();
       return;
     }
     if (initialReadiness !== 'preparing') return;
+    if (shot === null) {
+      if (assets.status === 'ready') handleInitialStageReady();
+      return;
+    }
     // A shot with no image layers has no browser image boundary to await; its
     // formal blank frame is already stable once the bounded asset read is
     // complete.
@@ -290,66 +311,47 @@ export function ProductPreviewOverlay({
     assets.status,
     handleInitialStageError,
     handleInitialStageReady,
+    handoffPhase,
     initialReadiness,
     renderedShot,
-    revealPhase,
+    shot,
   ]);
   useEffect(() => {
-    if (initialReadiness !== 'ready' || revealPhase !== 'covered') return;
+    if (initialReadiness !== 'ready' || handoffPhase !== 'warming') return;
     return scheduleProductPreviewPaintFence(() => {
-      setRevealPhase((current) =>
-        advanceProductPreviewRevealPhase(current, 'paint-fence-passed'),
+      if (handoffReadyNotifiedRef.current) return;
+      handoffReadyNotifiedRef.current = true;
+      setHandoffPhase((current) =>
+        advanceProductPreviewHandoffPhase(current, 'paint-fence-passed'),
       );
+      onHandoffReady();
     });
-  }, [initialReadiness, revealPhase]);
+  }, [handoffPhase, initialReadiness, onHandoffReady]);
   useEffect(() => {
-    if (revealPhase !== 'revealing') return;
-    const prefersReducedMotion =
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const curtain = document.querySelector<HTMLElement>(
-      '[data-testid="product-preview-preparing"]',
+    if (handoffPhase !== 'ready' || !surfaceActive) return;
+    setHandoffPhase((current) =>
+      advanceProductPreviewHandoffPhase(current, 'surface-activated'),
     );
-    const revealDurationMs = productPreviewRevealDurationMsFromComputedStyle(
-      curtain ? window.getComputedStyle(curtain).transitionDuration : '',
-      prefersReducedMotion,
-    );
-    const completeReveal = (): void => {
-      setRevealPhase((current) =>
-        advanceProductPreviewRevealPhase(current, 'transition-completed'),
-      );
-    };
-    return scheduleProductPreviewRevealCompletion(
-      completeReveal,
-      revealDurationMs,
-    );
-  }, [revealPhase]);
+  }, [handoffPhase, surfaceActive]);
+  useEffect(() => {
+    if (handoffPhase !== 'warming') return;
+    return scheduleProductPreviewWarmupStatus(() => {
+      setShowWarmupStatus(true);
+    });
+  }, [handoffPhase]);
   useEffect(() => {
     if (
+      previewSurfaceActive &&
       shouldStartProductPreviewAutoplay({
         autoPlay,
         dataReady: initialReadiness === 'ready',
         durationMs: projectDurationMs(project),
-        revealPhase,
+        revealPhase: handoffPhase,
       })
     ) {
       setPlaying(true);
     }
-  }, [autoPlay, initialReadiness, project, revealPhase]);
-  const handleRevealTransitionEnd = useCallback(
-    (event: React.TransitionEvent<HTMLDivElement>): void => {
-      if (
-        event.target !== event.currentTarget ||
-        event.propertyName !== 'opacity'
-      ) {
-        return;
-      }
-      setRevealPhase((current) =>
-        advanceProductPreviewRevealPhase(current, 'transition-completed'),
-      );
-    },
-    [],
-  );
+  }, [autoPlay, handoffPhase, initialReadiness, previewSurfaceActive, project]);
   const lastReadyVisual = useRef<{
     assetUrls: typeof assets.urls;
     caption: typeof caption;
@@ -390,19 +392,43 @@ export function ProductPreviewOverlay({
   return (
     <div
       aria-label="产品预览"
-      aria-modal="true"
+      aria-modal={previewSurfaceActive}
       className="product-preview-overlay"
       data-preview-playing={String(playing)}
       data-preview-range={range}
       data-preview-data-ready={String(initialReadiness === 'ready')}
       data-preview-readiness={initialReadiness}
+      data-preview-handoff={handoffPhase}
       data-preview-reveal={revealPhase}
       data-preview-shot-id={shot?.id ?? ''}
       data-preview-time={evaluatedShot?.timeMs ?? 0}
       data-preview-project-time={displayedTimeMs}
+      data-preview-surface={previewSurfaceActive ? 'active' : 'warming'}
       data-testid="product-preview-overlay"
       role="dialog"
     >
+      {!previewSurfaceActive && (showWarmupStatus || initialReadinessError) ? (
+        <div
+          aria-live="polite"
+          className="product-preview-warmup-status"
+          data-testid="product-preview-warmup-status"
+          role="status"
+        >
+          <span>
+            {initialReadinessError
+              ? '预览首帧无法显示，编辑器保持不变。'
+              : '正在准备预览…'}
+          </span>
+          <button
+            className="product-preview-warmup-cancel"
+            data-testid="product-preview-cancel"
+            onClick={onClose}
+            type="button"
+          >
+            取消
+          </button>
+        </div>
+      ) : null}
       <div className="product-preview-frame">
         <button
           aria-label="关闭预览"
@@ -509,20 +535,6 @@ export function ProductPreviewOverlay({
                     project={project}
                   />
                 ) : null}
-                {!initialReadinessError && revealPhase !== 'revealed' ? (
-                  <div
-                    aria-live="polite"
-                    className="product-preview-curtain"
-                    data-preview-curtain-state={revealPhase}
-                    data-testid="product-preview-preparing"
-                    onTransitionEnd={handleRevealTransitionEnd}
-                    role="status"
-                  >
-                    <span className="product-preview-preparing">
-                      正在准备预览…
-                    </span>
-                  </div>
-                ) : null}
               </div>
 
               <div className="product-preview-transport">
@@ -540,9 +552,10 @@ export function ProductPreviewOverlay({
                     data-testid="product-preview-play-pause"
                     disabled={
                       durationMs <= 0 ||
+                      !previewSurfaceActive ||
                       !canStartProductPreviewPlayback(
                         initialReadiness === 'ready',
-                        revealPhase,
+                        handoffPhase,
                       ) ||
                       (!playing && atEnd)
                     }
@@ -579,9 +592,10 @@ export function ProductPreviewOverlay({
                     data-testid="product-preview-stop"
                     disabled={
                       durationMs <= 0 ||
+                      !previewSurfaceActive ||
                       !canStartProductPreviewPlayback(
                         initialReadiness === 'ready',
-                        revealPhase,
+                        handoffPhase,
                       )
                     }
                     onClick={() => applyTransportAction({ type: 'stop' })}
@@ -599,9 +613,10 @@ export function ProductPreviewOverlay({
                     data-testid="product-preview-replay"
                     disabled={
                       durationMs <= 0 ||
+                      !previewSurfaceActive ||
                       !canStartProductPreviewPlayback(
                         initialReadiness === 'ready',
-                        revealPhase,
+                        handoffPhase,
                       )
                     }
                     onClick={() => applyTransportAction({ type: 'replay' })}
