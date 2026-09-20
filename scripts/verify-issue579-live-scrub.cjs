@@ -488,30 +488,42 @@ async function selectCanvasLayer(window, logicalX, logicalY, layerId) {
       y: Math.round(rect.top + offsetY + ${logicalY} * scale),
     };
   })()`);
-  window.webContents.sendInputEvent({
-    type: 'mouseMove',
-    x: point.x,
-    y: point.y,
-  });
-  window.webContents.sendInputEvent({
-    type: 'mouseDown',
-    x: point.x,
-    y: point.y,
-    button: 'left',
-    clickCount: 1,
-  });
-  window.webContents.sendInputEvent({
-    type: 'mouseUp',
-    x: point.x,
-    y: point.y,
-    button: 'left',
-    clickCount: 1,
-  });
-  await waitForDom(
-    window,
-    `document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.selectedLayerId === ${JSON.stringify(layerId)}`,
-    'Real Canvas pointer did not select the target layer.',
-  );
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    window.show();
+    window.focus();
+    window.webContents.focus();
+    await delay(80);
+    window.webContents.sendInputEvent({
+      type: 'mouseMove',
+      x: point.x,
+      y: point.y,
+    });
+    window.webContents.sendInputEvent({
+      type: 'mouseDown',
+      x: point.x,
+      y: point.y,
+      button: 'left',
+      clickCount: 1,
+    });
+    window.webContents.sendInputEvent({
+      type: 'mouseUp',
+      x: point.x,
+      y: point.y,
+      button: 'left',
+      clickCount: 1,
+    });
+    try {
+      await waitForDom(
+        window,
+        `document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.selectedLayerId === ${JSON.stringify(layerId)}`,
+        'Real Canvas pointer did not select the target layer.',
+        1500,
+      );
+      return;
+    } catch (error) {
+      if (attempt === 2) throw error;
+    }
+  }
 }
 
 async function readState(window) {
@@ -624,6 +636,9 @@ async function openProject(window, targetAssetId) {
       }
     })()`,
     'Issue #579 target Canvas layer image did not become ready.',
+  );
+  await window.webContents.executeJavaScript(
+    `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
   );
 }
 
