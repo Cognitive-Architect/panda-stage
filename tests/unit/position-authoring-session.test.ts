@@ -581,6 +581,60 @@ describe('PK-04 Position authoring session', () => {
     reopened.dispose();
   });
 
+  it('keeps a same-path Project replacement race from reaching the PK-03 write', () => {
+    const input = harness(buildProject(), 1_000);
+    input.authoring.dispose();
+    const before = input.editor.getSnapshot()!;
+    const racingPositionStore: Pick<PositionStore, 'applyOperation'> = {
+      applyOperation: (
+        shotId,
+        layerId,
+        operation,
+        label = 'Edit Position',
+        expectedSnapshot,
+      ) => {
+        input.editor.open(
+          before.projectRoot,
+          structuredClone(before.project),
+        );
+        return input.positionStore.applyOperation(
+          shotId,
+          layerId,
+          operation,
+          label,
+          expectedSnapshot,
+        );
+      },
+    };
+    const authoring = new PositionAuthoringSessionStore({
+      editorStore: input.editor,
+      shotSelection: input.shots,
+      layerSelection: input.selection,
+      timeline: input.timeline,
+      positionStore: racingPositionStore,
+      createEventId: () => NEW_MOVE,
+    });
+    const begin = authoring.begin();
+    expect(begin.ok).toBe(true);
+    if (begin.ok) {
+      const result = begin.session.commit(FIRST_KEY);
+      expect(result.status).toBe('stale');
+      const after = input.editor.getSnapshot()!;
+      expect(after.projectRoot).toBe(before.projectRoot);
+      expect(after.project.id).toBe(before.project.id);
+      expect(after.revision).toBe(0);
+      expect(after.dirty).toBe(false);
+      expect(after.project.shots[0]!.timelineEvents).toEqual([]);
+      expect(input.editor.history.getSnapshot()).toMatchObject({
+        undoCount: 0,
+        redoCount: 0,
+      });
+    }
+    authoring.dispose();
+    input.selection.dispose();
+    input.shots.dispose();
+  });
+
   it('replaces session A with session B without allowing A callbacks to affect B', () => {
     const input = harness(buildProject(), 1_000);
     const first = input.authoring.begin();

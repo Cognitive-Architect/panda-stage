@@ -416,6 +416,7 @@ export class PositionAuthoringSessionStore {
         active.layerId,
         operation,
         'Author Position',
+        baseline,
       );
     } catch (error) {
       this.commitContext = null;

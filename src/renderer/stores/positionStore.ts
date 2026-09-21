@@ -7,6 +7,7 @@ import {
   EditorProjectStore,
   editorProjectStore,
 } from './EditorProjectStore';
+import type { EditorProjectSnapshot } from './EditorProjectStore';
 
 /**
  * Stateless renderer adapter for Position Project commands. It owns no
@@ -29,8 +30,15 @@ export class PositionStore {
     layerId: string,
     operation: PositionProjectOperation,
     label = 'Edit Position',
+    expectedSnapshot?: EditorProjectSnapshot,
   ): Project {
-    return this.execute(shotId, layerId, operation, label);
+    return this.execute(
+      shotId,
+      layerId,
+      operation,
+      label,
+      expectedSnapshot,
+    );
   }
 
   createFirstKey(
@@ -126,9 +134,15 @@ export class PositionStore {
     layerId: string,
     operation: PositionProjectOperation,
     label: string,
+    expectedSnapshot?: EditorProjectSnapshot,
   ): Project {
     const before = this.editorStore.getSnapshot();
     if (!before) throw new Error('No project is open.');
+    if (expectedSnapshot && before !== expectedSnapshot) {
+      throw new Error(
+        'Position command target became stale before it could be committed.',
+      );
+    }
 
     const result = this.service.applyOperation(
       before.project,
@@ -139,6 +153,8 @@ export class PositionStore {
     const current = this.editorStore.getSnapshot();
     if (
       !current ||
+      current !== before ||
+      current.project !== before.project ||
       current.projectRoot !== before.projectRoot ||
       current.project.id !== before.project.id ||
       current.revision !== before.revision ||
