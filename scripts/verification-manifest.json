@@ -92,9 +92,11 @@
         ],
         "testPatterns": [
           "tests/unit/domain/**",
+          "tests/unit/position-project-service.test.ts",
           "tests/unit/migrations/**",
           "tests/integration/schema-*.test.ts",
           "tests/integration/project-create-at-lifecycle.test.ts",
+          "tests/integration/position-project-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
           "tests/unit/production-resources.test.ts",
