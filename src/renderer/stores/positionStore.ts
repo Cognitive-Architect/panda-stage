@@ -19,12 +19,26 @@ export class PositionStore {
     private readonly service: PositionProjectService,
   ) {}
 
+  /**
+   * Apply one already-classified Position operation through the single
+   * renderer Project-write boundary. Callers must not edit timeline events
+   * directly; EditorProjectStore remains the only Project/History owner.
+   */
+  applyOperation(
+    shotId: string,
+    layerId: string,
+    operation: PositionProjectOperation,
+    label = 'Edit Position',
+  ): Project {
+    return this.execute(shotId, layerId, operation, label);
+  }
+
   createFirstKey(
     shotId: string,
     layerId: string,
     input: Extract<PositionProjectOperation, { type: 'create-first' }>['input'],
   ): Project {
-    return this.execute(
+    return this.applyOperation(
       shotId,
       layerId,
       { type: 'create-first', input },
@@ -37,7 +51,7 @@ export class PositionStore {
     layerId: string,
     input: Extract<PositionProjectOperation, { type: 'append' }>['input'],
   ): Project {
-    return this.execute(
+    return this.applyOperation(
       shotId,
       layerId,
       { type: 'append', input },
@@ -50,7 +64,7 @@ export class PositionStore {
     layerId: string,
     input: Extract<PositionProjectOperation, { type: 'insert' }>['input'],
   ): Project {
-    return this.execute(
+    return this.applyOperation(
       shotId,
       layerId,
       { type: 'insert', input },
@@ -63,7 +77,7 @@ export class PositionStore {
     layerId: string,
     input: Extract<PositionProjectOperation, { type: 'update' }>['input'],
   ): Project {
-    return this.execute(
+    return this.applyOperation(
       shotId,
       layerId,
       { type: 'update', input },
@@ -72,7 +86,7 @@ export class PositionStore {
   }
 
   deleteKey(shotId: string, layerId: string, timeMs: number): Project {
-    return this.execute(
+    return this.applyOperation(
       shotId,
       layerId,
       { type: 'delete', timeMs },
@@ -86,7 +100,7 @@ export class PositionStore {
     fromTimeMs: number,
     toTimeMs: number,
   ): Project {
-    return this.execute(
+    return this.applyOperation(
       shotId,
       layerId,
       { type: 'retime', fromTimeMs, toTimeMs },
@@ -99,7 +113,7 @@ export class PositionStore {
     layerId: string,
     input: Extract<PositionProjectOperation, { type: 'hold' }>['input'],
   ): Project {
-    return this.execute(
+    return this.applyOperation(
       shotId,
       layerId,
       { type: 'hold', input },
