@@ -1,0 +1,56 @@
+/* N2-PREVIEW-SER — compact range and project-position adaptation. */
+.product-preview-transport-meta {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.product-preview-range-control {
+  width: max-content;
+  margin-inline: auto;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.product-preview-range-control button.ui-segmented-tabs__item {
+  min-height: 40px;
+  padding-inline: 14px;
+  color: var(--ui-color-text-secondary);
+  white-space: nowrap;
+}
+
+.product-preview-range-control
+  button.ui-segmented-tabs__item--selected[data-ui-variant='secondary'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+  color: var(--ui-color-text-primary);
+  box-shadow: inset 0 0 0 1px rgb(127 199 148 / 22%);
+}
+
+@media (max-width: 680px) {
+  .product-preview-transport {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .product-preview-timecode {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .product-preview-transport-meta {
+    justify-content: center;
+  }
+
+  .product-preview-range-control {
+    max-width: calc(100% - 68px);
+  }
+
+  .product-preview-range-control button.ui-segmented-tabs__item {
+    min-width: 0;
+  }
+}

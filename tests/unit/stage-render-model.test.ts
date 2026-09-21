@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateShotAtTime } from '../../src/domain';
+import {
+  buildEditorStageRenderModel,
+  evaluateShotAtTime,
+  ProjectSchema,
+} from '../../src/domain';
 import {
   PROBE_BACKGROUND_ASSET_ID,
   PROBE_CHARACTER_ASSET_ID,
@@ -19,6 +23,104 @@ const assetUrls = {
 };
 
 describe('shared stage render model', () => {
+  it('feeds evaluated temporal pose into the editor model while retaining the base layer', () => {
+    const evaluated = evaluateShotAtTime(PROBE_SHOT, 1_500, PROBE_PROJECT);
+    const model = buildEditorStageRenderModel(
+      PROBE_PROJECT,
+      PROBE_SHOT,
+      evaluated,
+    );
+    const character = model.layers.find(
+      (layer) => layer.layer.id === PROBE_CHARACTER_LAYER_ID,
+    )!;
+
+    expect(character.layer.x).toBe(430);
+    expect(character.evaluated.x).toBe(960);
+    expect(character.render.x).toBe(960);
+    expect(character.render.y).toBe(690);
+    expect(character.evaluated).toEqual(
+      evaluated.layers.find((layer) => layer.id === PROBE_CHARACTER_LAYER_ID),
+    );
+  });
+
+  it('maps every evaluated display field without changing the editable base layer', () => {
+    const project = ProjectSchema.parse({
+      ...PROBE_PROJECT,
+      shots: PROBE_PROJECT.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: [
+          ...shot.timelineEvents,
+          {
+            id: '40000000-0000-4000-8000-000000000011',
+            type: 'scale' as const,
+            layerId: PROBE_CHARACTER_LAYER_ID,
+            startMs: 0,
+            endMs: 3_000,
+            from: { x: 0.72, y: 0.72 },
+            to: { x: 1.2, y: 0.9 },
+            easing: 'linear' as const,
+          },
+          {
+            id: '40000000-0000-4000-8000-000000000012',
+            type: 'opacity' as const,
+            layerId: PROBE_CHARACTER_LAYER_ID,
+            startMs: 0,
+            endMs: 3_000,
+            from: 1,
+            to: 0.25,
+            easing: 'linear' as const,
+          },
+          {
+            id: '40000000-0000-4000-8000-000000000013',
+            type: 'flip' as const,
+            layerId: PROBE_CHARACTER_LAYER_ID,
+            startMs: 1_000,
+            endMs: 1_000,
+            axis: 'horizontal' as const,
+            flipped: true,
+          },
+          {
+            id: '40000000-0000-4000-8000-000000000014',
+            type: 'visibility' as const,
+            layerId: PROBE_CHARACTER_LAYER_ID,
+            startMs: 1_000,
+            endMs: 1_000,
+            visible: false,
+          },
+          {
+            id: '40000000-0000-4000-8000-000000000015',
+            type: 'shake' as const,
+            layerId: PROBE_CHARACTER_LAYER_ID,
+            startMs: 0,
+            endMs: 3_000,
+            amplitudeX: 8,
+            amplitudeY: 4,
+            frequencyHz: 1,
+          },
+        ],
+      })),
+    });
+    const shot = project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 1_500, project);
+    const editor = buildEditorStageRenderModel(project, shot, evaluated);
+    const character = editor.layers.find(
+      (layer) => layer.layer.id === PROBE_CHARACTER_LAYER_ID,
+    )!;
+    const evaluatedLayer = evaluated.layers.find(
+      (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
+    )!;
+
+    expect(character.layer.x).toBe(430);
+    expect(character.render).toMatchObject({
+      x: evaluatedLayer.x,
+      y: evaluatedLayer.y,
+      scaleX: -evaluatedLayer.scaleX,
+      scaleY: evaluatedLayer.scaleY,
+      opacity: evaluatedLayer.opacity,
+      visible: false,
+    });
+  });
+
   it('keeps a fixed 1920x1080 logical coordinate system', () => {
     const model = buildStageRenderModel(
       PROBE_PROJECT,

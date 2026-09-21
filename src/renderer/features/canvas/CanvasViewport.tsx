@@ -27,6 +27,7 @@ export interface CanvasViewportProps {
   viewportOverlay?: ReactNode;
   viewportChrome?: ReactNode;
   dropDisabled?: boolean;
+  dropInteractionDisabled?: boolean;
   onAssetDrop?: (payload: AssetDropPayload, point: Point) => void;
   onDropError?: (message: string) => void;
   onDropPreview?: (preview: CanvasDropPreview | null) => void;
@@ -66,6 +67,7 @@ export function CanvasViewport({
   viewportOverlay = null,
   viewportChrome = null,
   dropDisabled = false,
+  dropInteractionDisabled = false,
   onAssetDrop = () => undefined,
   onDropError = () => undefined,
   onDropPreview = () => undefined,
@@ -90,7 +92,7 @@ export function CanvasViewport({
   const dropHandlers = useCanvasDrop({
     viewportRef,
     transform,
-    disabled: dropDisabled,
+    disabled: dropDisabled || dropInteractionDisabled,
     onPreview: onDropPreview,
     onDropAsset: onAssetDrop,
     onError: onDropError,
@@ -259,6 +261,7 @@ export function CanvasViewport({
         dropHandlers.dragOver ? 'canvas-viewport-drag-over' : '',
       ].join(' ')}
       data-display-scale={transform.scale.toFixed(6)}
+      data-drop-disabled={String(dropDisabled || dropInteractionDisabled)}
       data-logical-height={transform.logical.height}
       data-logical-width={transform.logical.width}
       data-offset-x={transform.offsetX.toFixed(3)}

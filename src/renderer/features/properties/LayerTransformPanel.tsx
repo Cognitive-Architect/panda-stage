@@ -20,6 +20,12 @@ import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { DecorativeIcon } from '../../ui';
+import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
+import {
+  isLayerTransformEditableAtTime,
+  runLayerTransformMutation,
+  TEMPORAL_TRANSFORM_STATUS,
+} from './layerTransformTemporalGuard';
 
 export interface LayerTransformDraft {
   x: string;
@@ -33,7 +39,8 @@ export type CommitTransformDraftResult =
   | 'committed'
   | 'noop'
   | 'invalid'
-  | 'locked';
+  | 'locked'
+  | 'temporal-preview';
 
 export interface LayerTransformPanelProps {
   /** The RightInspector owns this identity when the panel is mounted there. */
@@ -58,6 +65,7 @@ export interface LayerTransformController {
   scalePercentDraft: string;
   formRef: RefObject<HTMLFormElement | null>;
   status: string;
+  temporalInspection: boolean;
   setStatus: (status: string) => void;
   updateDraft: (key: keyof LayerTransformDraft, value: string) => void;
   updateScalePercentDraft: (value: string) => void;
@@ -193,6 +201,10 @@ export function useLayerTransformController({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const timelineUi = useTimelineUi();
+  const temporalInspection = !isLayerTransformEditableAtTime(
+    timelineUi.currentTimeMs,
+  );
   const shot =
     snapshot?.project.shots.find((candidate) => candidate.id === shotId) ??
     null;
@@ -229,6 +241,10 @@ export function useLayerTransformController({
     );
     setScalePercentDraft(layer ? formatScalePercent(layer.scaleX) : '');
     scalePercentEditedRef.current = false;
+    if (temporalInspection) {
+      setStatus(TEMPORAL_TRANSFORM_STATUS);
+      return;
+    }
     if (layer) {
       preserveCommitErrorRef.current = false;
       setStatus(
@@ -250,7 +266,7 @@ export function useLayerTransformController({
     } else if (!preserveCommitErrorRef.current) {
       setStatus(compact ? '' : '选择普通图层后可编辑中心位置与静态变换。');
     }
-  }, [compact, isBackgroundLayer, layer]);
+  }, [compact, isBackgroundLayer, layer, temporalInspection]);
 
   const updateDraft = (
     key: keyof LayerTransformDraft,
@@ -289,12 +305,20 @@ export function useLayerTransformController({
         }
       : draftValue;
 
+  const rejectTemporalTransformWrite = (): void => {
+    setStatus(TEMPORAL_TRANSFORM_STATUS);
+  };
+
   const commitPendingDraft = (
     reason: 'action' | 'blur' | 'submit',
     draftOverride = draft,
     scaleValue = scalePercentDraft,
   ): CommitTransformDraftResult => {
     if (!layer) return 'invalid';
+    if (temporalInspection) {
+      rejectTemporalTransformWrite();
+      return 'temporal-preview';
+    }
     if (layer.locked) {
       setStatus('图层已锁定；属性草稿未提交。');
       return 'locked';
@@ -311,12 +335,21 @@ export function useLayerTransformController({
       return 'noop';
     }
     try {
-      const transform = parseLayerTransformDraft(nextDraft, layer.flipX);
-      const revisionBefore =
-        editorProjectStore.getSnapshot()?.revision ?? null;
-      layerStore.updateTransform(layer.id, transform);
-      const revisionAfter =
-        editorProjectStore.getSnapshot()?.revision ?? null;
+      let revisionBefore: number | null = null;
+      let revisionAfter: number | null = null;
+      const didMutate = runLayerTransformMutation(
+        () => timelineUiStore.getSnapshot().currentTimeMs,
+        rejectTemporalTransformWrite,
+        () => {
+          const transform = parseLayerTransformDraft(nextDraft, layer.flipX);
+          revisionBefore =
+            editorProjectStore.getSnapshot()?.revision ?? null;
+          layerStore.updateTransform(layer.id, transform);
+          revisionAfter =
+            editorProjectStore.getSnapshot()?.revision ?? null;
+        },
+      );
+      if (!didMutate) return 'temporal-preview';
       lastCommittedRef.current = commitIdentity;
       preserveCommitErrorRef.current = false;
       const result =
@@ -343,14 +376,21 @@ export function useLayerTransformController({
   const resetTransform = (): void => {
     if (!layer || layer.locked || isBackgroundLayer) return;
     try {
-      layerStore.updateTransform(layer.id, {
-        x: PROJECT_WIDTH / 2,
-        y: PROJECT_HEIGHT / 2,
-        scale: 1,
-        rotationDeg: 0,
-        opacity: 1,
-        flipX: false,
-      });
+      const didMutate = runLayerTransformMutation(
+        () => timelineUiStore.getSnapshot().currentTimeMs,
+        rejectTemporalTransformWrite,
+        () => {
+          layerStore.updateTransform(layer.id, {
+            x: PROJECT_WIDTH / 2,
+            y: PROJECT_HEIGHT / 2,
+            scale: 1,
+            rotationDeg: 0,
+            opacity: 1,
+            flipX: false,
+          });
+        },
+      );
+      if (!didMutate) return;
       setStatus('变换已重置到画布中心与中性状态。');
     } catch (error) {
       setStatus(
@@ -360,6 +400,10 @@ export function useLayerTransformController({
   };
 
   const adjustScale = (direction: -1 | 1): void => {
+    if (!isLayerTransformEditableAtTime(timelineUiStore.getSnapshot().currentTimeMs)) {
+      rejectTemporalTransformWrite();
+      return;
+    }
     const nextPercent = stepScalePercentDraft(scalePercentDraft, direction);
     if (nextPercent === null) {
       setStatus('缩放数值必须是有限数字。');
@@ -377,6 +421,10 @@ export function useLayerTransformController({
   };
 
   const adjustRotation = (direction: -1 | 1): void => {
+    if (!isLayerTransformEditableAtTime(timelineUiStore.getSnapshot().currentTimeMs)) {
+      rejectTemporalTransformWrite();
+      return;
+    }
     const currentRotation = Number(draft.rotationDeg);
     if (!Number.isFinite(currentRotation)) {
       setStatus('旋转数值必须是有限数字。');
@@ -395,7 +443,14 @@ export function useLayerTransformController({
     if (!layer || layer.locked) return;
     if (!canRunTransformAction(commitPendingDraft('action'))) return;
     try {
-      layerStore.toggleFlipX(layer.id);
+      const didMutate = runLayerTransformMutation(
+        () => timelineUiStore.getSnapshot().currentTimeMs,
+        rejectTemporalTransformWrite,
+        () => {
+          layerStore.toggleFlipX(layer.id);
+        },
+      );
+      if (!didMutate) return;
       setStatus('水平翻转已切换，中心坐标保持不变。');
     } catch (error) {
       setStatus(
@@ -462,6 +517,7 @@ export function useLayerTransformController({
     scalePercentDraft,
     formRef,
     status,
+    temporalInspection,
     setStatus,
     updateDraft,
     updateScalePercentDraft,
@@ -495,6 +551,7 @@ function LayerTransformPanelView({
     selectedLayerId,
     scalePercentDraft,
     status,
+    temporalInspection,
     adjustRotation,
     adjustScale,
     commitPendingDraft,
@@ -504,12 +561,13 @@ function LayerTransformPanelView({
     updateDraft,
     updateScalePercentDraft,
   } = controller;
+  const transformControlsDisabled = Boolean(layer?.locked || temporalInspection);
 
   const resetButton = layer && showResetTransform ? (
     <button
       className="layer-transform-action layer-transform-secondary-action layer-transform-reset-action"
       data-testid="layer-transform-reset"
-      disabled={layer.locked || isBackgroundLayer}
+      disabled={transformControlsDisabled || isBackgroundLayer}
       onClick={resetTransform}
       type="button"
     >
@@ -528,7 +586,7 @@ function LayerTransformPanelView({
     <button
       aria-pressed={compact ? layer.flipX : undefined}
       className="layer-transform-action layer-transform-secondary-action layer-transform-toggle-action"
-      disabled={layer.locked}
+      disabled={transformControlsDisabled}
       onClick={toggleFlip}
       type="button"
     >
@@ -549,6 +607,10 @@ function LayerTransformPanelView({
         checked={layer.locked}
         onChange={(event) => {
           const shouldLock = event.target.checked;
+          if (temporalInspection) {
+            setStatus(TEMPORAL_TRANSFORM_STATUS);
+            return;
+          }
           if (
             shouldLock &&
             !canRunTransformAction(commitPendingDraft('action'))
@@ -556,7 +618,13 @@ function LayerTransformPanelView({
             return;
           }
           try {
-            layerStore.setLocked(layer.id, shouldLock);
+            runLayerTransformMutation(
+              () => timelineUiStore.getSnapshot().currentTimeMs,
+              () => setStatus(TEMPORAL_TRANSFORM_STATUS),
+              () => {
+                layerStore.setLocked(layer.id, shouldLock);
+              },
+            );
           } catch (error) {
             setStatus(
               error instanceof Error
@@ -565,6 +633,7 @@ function LayerTransformPanelView({
             );
           }
         }}
+        disabled={temporalInspection}
         type="checkbox"
       />
       锁定图层
@@ -574,7 +643,7 @@ function LayerTransformPanelView({
   const applyButton = layer ? (
     <button
       className="layer-transform-action layer-transform-primary-action layer-transform-submit-action"
-      disabled={layer.locked}
+      disabled={transformControlsDisabled}
       type="submit"
     >
       {compact ? (
@@ -598,6 +667,7 @@ function LayerTransformPanelView({
       className="layer-transform-panel"
       data-background-protected={String(isBackgroundLayer)}
       data-compact={String(compact)}
+      data-temporal-inspection={String(temporalInspection)}
       data-selected-layer-id={selectedLayerId ?? ''}
       data-testid="layer-transform-panel"
     >
@@ -620,7 +690,7 @@ function LayerTransformPanelView({
                   <input
                     aria-label="X（中心）"
                     data-testid="layer-transform-x"
-                    disabled={layer.locked}
+                    disabled={transformControlsDisabled}
                     inputMode="decimal"
                     onChange={(event) =>
                       updateDraft('x', event.target.value)
@@ -633,7 +703,7 @@ function LayerTransformPanelView({
                   <input
                     aria-label="Y（中心）"
                     data-testid="layer-transform-y"
-                    disabled={layer.locked}
+                    disabled={transformControlsDisabled}
                     inputMode="decimal"
                     onChange={(event) =>
                       updateDraft('y', event.target.value)
@@ -650,7 +720,7 @@ function LayerTransformPanelView({
                 <div className="layer-transform-stepper">
                   <button
                     aria-label="缩小缩放"
-                    disabled={layer.locked}
+                    disabled={transformControlsDisabled}
                     onClick={() => adjustScale(-1)}
                     type="button"
                   >
@@ -659,7 +729,7 @@ function LayerTransformPanelView({
                   <label className="layer-transform-stepper-value">
                     <input
                       aria-label="缩放百分比"
-                      disabled={layer.locked}
+                      disabled={transformControlsDisabled}
                       inputMode="decimal"
                       onChange={(event) =>
                         updateScalePercentDraft(event.target.value)
@@ -670,7 +740,7 @@ function LayerTransformPanelView({
                   </label>
                   <button
                     aria-label="放大缩放"
-                    disabled={layer.locked}
+                    disabled={transformControlsDisabled}
                     onClick={() => adjustScale(1)}
                     type="button"
                   >
@@ -686,7 +756,7 @@ function LayerTransformPanelView({
                 <div className="layer-transform-stepper">
                   <button
                     aria-label="减少旋转角度"
-                    disabled={layer.locked}
+                    disabled={transformControlsDisabled}
                     onClick={() => adjustRotation(-1)}
                     type="button"
                   >
@@ -695,7 +765,7 @@ function LayerTransformPanelView({
                   <label className="layer-transform-stepper-value">
                     <input
                       aria-label="旋转角度"
-                      disabled={layer.locked}
+                      disabled={transformControlsDisabled}
                       inputMode="decimal"
                       onChange={(event) =>
                         updateDraft('rotationDeg', event.target.value)
@@ -706,7 +776,7 @@ function LayerTransformPanelView({
                   </label>
                   <button
                     aria-label="增加旋转角度"
-                    disabled={layer.locked}
+                    disabled={transformControlsDisabled}
                     onClick={() => adjustRotation(1)}
                     type="button"
                   >
@@ -734,7 +804,7 @@ function LayerTransformPanelView({
                 <label key={key}>
                   {label}
                   <input
-                    disabled={layer.locked}
+                    disabled={transformControlsDisabled}
                     inputMode="decimal"
                     onChange={(event) =>
                       updateDraft(key, event.target.value)
@@ -756,28 +826,32 @@ function LayerTransformPanelView({
         </p>
       )}
       {layer || !compact ? (
-        <p data-testid="layer-transform-guidance">
-          {isBackgroundLayer
-            ? layer?.locked
-              ? '正式背景已锁定，请先解锁后再编辑。'
-              : '正式背景可编辑，完成后请重新锁定。'
-            : layer?.locked
-              ? '请先解锁图层，再修改变换。'
-              : layer
-                ? compact
-                  ? (
-                      <span className="layer-transform-guidance-inline">
-                        <DecorativeIcon icon={Info} size={14} />
-                        <span>
-                          X / Y 为对象视觉中心；离开输入框或点击“应用变换”即可保存。
+        temporalInspection ? null : (
+          <p data-testid="layer-transform-guidance">
+            {isBackgroundLayer
+              ? layer?.locked
+                ? '正式背景已锁定，请先解锁后再编辑。'
+                : '正式背景可编辑，完成后请重新锁定。'
+              : layer?.locked
+                ? '请先解锁图层，再修改变换。'
+                : layer
+                  ? compact
+                    ? (
+                        <span className="layer-transform-guidance-inline">
+                          <DecorativeIcon icon={Info} size={14} />
+                          <span>
+                            X / Y 为对象视觉中心；离开输入框或点击“应用变换”即可保存。
+                          </span>
                         </span>
-                      </span>
-                    )
-                  : 'X/Y 表示视觉中心，缩放保持等比。'
-                : '请在画布中选择图层以编辑变换。'}
-        </p>
+                      )
+                    : 'X/Y 表示视觉中心，缩放保持等比。'
+                  : '请在画布中选择图层以编辑变换。'}
+          </p>
+        )
       ) : null}
-      <output data-testid="layer-transform-status">{status}</output>
+      <output aria-live="polite" data-testid="layer-transform-status">
+        {status}
+      </output>
     </section>
   );
 }

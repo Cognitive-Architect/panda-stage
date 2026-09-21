@@ -17,11 +17,11 @@ function imageProject(): Project {
   });
 }
 
-function readyImage(): AssetCanvasImageReadResponse {
+function readyImage(assetId: string = IDS.assetBg): AssetCanvasImageReadResponse {
   return {
     ok: true,
     status: 'ready',
-    assetId: IDS.assetBg,
+    assetId,
     mimeType: 'image/png',
     width: 1_920,
     height: 1_080,
@@ -133,6 +133,149 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     await expect(
       session.load(PROJECT_ROOT, project, [IDS.assetBg]),
     ).resolves.toEqual({ status: 'error', urls: {}, missingCount: 1 });
+    session.dispose();
+  });
+
+  it('reuses a SHA-compatible URL without resetting the active shot to loading', async () => {
+    const project = imageProject();
+    const requests: unknown[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async (request) => {
+        requests.push(request);
+        return readyImage(request.assetId);
+      },
+      createObjectUrl: () => 'blob:shared-image',
+    });
+
+    await session.prepare(PROJECT_ROOT, project, [IDS.assetBg]);
+    const transition = session.prepare(PROJECT_ROOT, project, [IDS.assetBg]);
+
+    expect(session.snapshot(PROJECT_ROOT, project, [IDS.assetBg])).toEqual({
+      status: 'ready',
+      urls: { [IDS.assetBg]: 'blob:shared-image' },
+      missingCount: 0,
+    });
+    await transition;
+    expect(requests).toHaveLength(1);
+    session.dispose();
+  });
+
+  it('prepares only the next shot and makes its handoff immediately ready', async () => {
+    const project = ProjectSchema.parse({
+      ...imageProject(),
+      assets: imageProject().assets.map((asset) => ({
+        ...asset,
+        sha256: asset.id === IDS.assetBg ? HASH : 'b'.repeat(64),
+      })),
+    });
+    const requests: string[] = [];
+    const revoked: string[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async (request) => {
+        requests.push(request.assetId);
+        return readyImage(request.assetId);
+      },
+      createObjectUrl: (() => {
+        let index = 0;
+        return () => (index++ === 0 ? 'blob:shot-a' : 'blob:shot-b');
+      })(),
+      revokeObjectUrl: (url) => revoked.push(url),
+    });
+
+    await session.prepare(
+      PROJECT_ROOT,
+      project,
+      [IDS.assetBg],
+      [IDS.assetChar],
+    );
+    await Promise.resolve();
+
+    expect(session.snapshot(PROJECT_ROOT, project, [IDS.assetChar])).toEqual({
+      status: 'ready',
+      urls: { [IDS.assetChar]: 'blob:shot-b' },
+      missingCount: 0,
+    });
+    await session.prepare(PROJECT_ROOT, project, [IDS.assetChar]);
+    session.commitScope(PROJECT_ROOT, project, [IDS.assetChar]);
+    expect(requests).toEqual([IDS.assetBg, IDS.assetChar]);
+    expect(revoked).toEqual(['blob:shot-a']);
+    session.dispose();
+    expect(revoked).toEqual(['blob:shot-a', 'blob:shot-b']);
+  });
+
+  it('keeps the prior URL until a delayed next shot is ready, then revokes it', async () => {
+    const project = ProjectSchema.parse({
+      ...imageProject(),
+      assets: imageProject().assets.map((asset) => ({
+        ...asset,
+        sha256: asset.id === IDS.assetBg ? HASH : 'b'.repeat(64),
+      })),
+    });
+    const nextRead = deferred<AssetCanvasImageReadResponse>();
+    const revoked: string[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: (request) =>
+        request.assetId === IDS.assetBg
+          ? Promise.resolve(readyImage(request.assetId))
+          : nextRead.promise,
+      createObjectUrl: (() => {
+        let index = 0;
+        return () => (index++ === 0 ? 'blob:shot-a' : 'blob:shot-b');
+      })(),
+      revokeObjectUrl: (url) => revoked.push(url),
+    });
+
+    await session.prepare(PROJECT_ROOT, project, [IDS.assetBg]);
+    const handoff = session.prepare(PROJECT_ROOT, project, [IDS.assetChar]);
+
+    expect(session.snapshot(PROJECT_ROOT, project, [IDS.assetChar]).status).toBe(
+      'loading',
+    );
+    expect(revoked).toEqual([]);
+    nextRead.resolve(readyImage(IDS.assetChar));
+    await handoff;
+    session.commitScope(PROJECT_ROOT, project, [IDS.assetChar]);
+    expect(session.snapshot(PROJECT_ROOT, project, [IDS.assetChar]).status).toBe(
+      'ready',
+    );
+    expect(revoked).toEqual(['blob:shot-a']);
+    session.dispose();
+  });
+
+  it('cannot let a delayed old-shot read create or overwrite the active URL', async () => {
+    const project = ProjectSchema.parse({
+      ...imageProject(),
+      assets: imageProject().assets.map((asset) => ({
+        ...asset,
+        sha256: asset.id === IDS.assetBg ? HASH : 'b'.repeat(64),
+      })),
+    });
+    const oldRead = deferred<AssetCanvasImageReadResponse>();
+    const created: string[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: (request) =>
+        request.assetId === IDS.assetBg
+          ? oldRead.promise
+          : Promise.resolve(readyImage(request.assetId)),
+      createObjectUrl: () => {
+        const url = `blob:created-${created.length + 1}`;
+        created.push(url);
+        return url;
+      },
+    });
+
+    const oldLoad = session.prepare(PROJECT_ROOT, project, [IDS.assetBg]);
+    await session.prepare(PROJECT_ROOT, project, [IDS.assetChar]);
+    session.commitScope(PROJECT_ROOT, project, [IDS.assetChar]);
+    oldRead.resolve(readyImage(IDS.assetBg));
+    await oldLoad;
+
+    expect(created).toEqual(['blob:created-1']);
+    expect(session.snapshot(PROJECT_ROOT, project, [IDS.assetChar])).toEqual({
+      status: 'ready',
+      urls: { [IDS.assetChar]: 'blob:created-1' },
+      missingCount: 0,
+    });
     session.dispose();
   });
 });
