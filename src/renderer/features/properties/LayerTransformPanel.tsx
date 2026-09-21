@@ -24,13 +24,21 @@ import {
   positionAuthoringSessionStore,
   usePositionAuthoringSession,
 } from '../../stores/positionAuthoringSessionStore';
-import { DecorativeIcon } from '../../ui';
+import { Button, DecorativeIcon } from '../../ui';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import {
   isLayerTransformEditableAtTime,
   runLayerTransformMutation,
   TEMPORAL_TRANSFORM_STATUS,
 } from './layerTransformTemporalGuard';
+import {
+  formatPositionDisplay,
+  getPositionAuthoringPresentation,
+  POSITION_AUTHORING_GUIDANCE,
+  resolvePositionDraftForCommit,
+} from './positionAuthoringPresentation';
+
+export { formatPositionDisplay } from './positionAuthoringPresentation';
 
 export interface LayerTransformDraft {
   x: string;
@@ -118,13 +126,6 @@ export function formatScalePercent(scale: number): string {
   return Number.isInteger(percent)
     ? String(percent)
     : String(Number(percent.toPrecision(12)));
-}
-
-/** Format only the portrait presentation; the underlying coordinate is untouched. */
-export function formatPositionDisplay(value: number): string {
-  if (!Number.isFinite(value)) return '';
-  const rounded = Number(value.toFixed(1));
-  return String(Object.is(rounded, -0) ? 0 : rounded);
 }
 
 /** Convert a percentage draft back to the existing domain scale semantics. */
@@ -263,6 +264,8 @@ export function useLayerTransformController({
   const [status, setStatus] = useState(
     compact ? '' : '选择普通图层后可编辑中心位置与静态变换。',
   );
+  const statusRef = useRef(status);
+  statusRef.current = status;
   const formRef = useRef<HTMLFormElement | null>(null);
   const preserveCommitErrorRef = useRef(false);
   const scalePercentEditedRef = useRef(false);
@@ -293,19 +296,15 @@ export function useLayerTransformController({
         ? {
             x:
               positionAuthoringActive && positionX !== undefined
-                ? String(positionX)
+                ? formatPositionDisplay(positionX)
                 : temporalInspection && positionX !== undefined
-                  ? compact
-                    ? formatPositionDisplay(positionX)
-                    : String(positionX)
+                  ? formatPositionDisplay(positionX)
                   : basePositionX ?? '',
             y:
               positionAuthoringActive && positionY !== undefined
-                ? String(positionY)
+                ? formatPositionDisplay(positionY)
                 : temporalInspection && positionY !== undefined
-                  ? compact
-                    ? formatPositionDisplay(positionY)
-                    : String(positionY)
+                  ? formatPositionDisplay(positionY)
                   : basePositionY ?? '',
             scale: String(layer.scaleX),
             rotationDeg: String(layer.rotationDeg),
@@ -316,11 +315,20 @@ export function useLayerTransformController({
     setScalePercentDraft(layer ? formatScalePercent(layer.scaleX) : '');
     scalePercentEditedRef.current = false;
     if (temporalInspection) {
-      setStatus(
-        positionAuthoringActive
-          ? '把人物拖到想要的位置'
-          : TEMPORAL_TRANSFORM_STATUS,
-      );
+      const fallbackStatus = positionAuthoringActive
+        ? POSITION_AUTHORING_GUIDANCE
+        : positionAuthoringAvailable || positionHoldAvailable
+          ? ''
+          : TEMPORAL_TRANSFORM_STATUS;
+      const currentStatus = statusRef.current || fallbackStatus;
+      const nextStatus = getPositionAuthoringPresentation({
+        temporalInspection,
+        active: positionAuthoringActive,
+        available: positionAuthoringAvailable,
+        holdAvailable: positionHoldAvailable,
+        status: currentStatus,
+      }).status;
+      if (nextStatus !== statusRef.current) setStatus(nextStatus);
       return;
     }
     if (layer) {
@@ -353,6 +361,8 @@ export function useLayerTransformController({
     basePositionY,
     positionX,
     positionY,
+    positionAuthoringAvailable,
+    positionHoldAvailable,
     temporalInspection,
   ]);
 
@@ -399,10 +409,10 @@ export function useLayerTransformController({
       : draftValue;
 
   const positionDraftPoint = (draftValue: LayerTransformDraft): Point | null => {
-    const point = { x: Number(draftValue.x), y: Number(draftValue.y) };
-    return Number.isFinite(point.x) && Number.isFinite(point.y)
-      ? point
-      : null;
+    return resolvePositionDraftForCommit(
+      draftValue,
+      positionAuthoringActive ? positionMain : null,
+    );
   };
 
   const rejectTemporalTransformWrite = (): void => {
@@ -424,7 +434,7 @@ export function useLayerTransformController({
       return;
     }
     positionSessionRef.current = result.session;
-    setStatus('把人物拖到想要的位置');
+    setStatus('');
   };
 
   const createPositionHold = (): void => {
@@ -755,6 +765,13 @@ function LayerTransformPanelView({
     updateDraft,
     updateScalePercentDraft,
   } = controller;
+  const positionPresentation = getPositionAuthoringPresentation({
+    temporalInspection,
+    active: positionAuthoringActive,
+    available: positionAuthoringAvailable,
+    holdAvailable: positionHoldAvailable,
+    status,
+  });
   const transformControlsDisabled = Boolean(layer?.locked || temporalInspection);
   const positionControlsDisabled = Boolean(
     layer?.locked || (temporalInspection && !positionAuthoringActive),
@@ -914,32 +931,32 @@ function LayerTransformPanelView({
                 data-authoring-active={String(positionAuthoringActive)}
                 data-testid="position-authoring-entry"
               >
-                {positionAuthoringActive ? (
+                {positionPresentation.guidanceVisible ? (
                   <p
                     className="position-authoring-guidance"
                     data-testid="position-authoring-guidance"
                   >
-                    把人物拖到想要的位置
+                    {POSITION_AUTHORING_GUIDANCE}
                   </p>
-                ) : positionAuthoringAvailable ? (
-                  <button
+                ) : positionPresentation.primaryVisible ? (
+                  <Button
                     className="position-authoring-primary"
                     data-testid="position-authoring-start"
                     onClick={startPositionAuthoring}
-                    type="button"
+                    variant="primary"
                   >
                     我要调整位置
-                  </button>
+                  </Button>
                 ) : null}
-                {positionHoldAvailable ? (
-                  <button
+                {positionPresentation.holdVisible ? (
+                  <Button
                     className="position-authoring-hold"
                     data-testid="position-authoring-hold"
                     onClick={createPositionHold}
-                    type="button"
+                    variant="secondary"
                   >
                     保持不动到这里
-                  </button>
+                  </Button>
                 ) : null}
               </div>
               <div
@@ -1045,32 +1062,32 @@ function LayerTransformPanelView({
                 data-authoring-active={String(positionAuthoringActive)}
                 data-testid="position-authoring-entry"
               >
-                {positionAuthoringActive ? (
+                {positionPresentation.guidanceVisible ? (
                   <p
                     className="position-authoring-guidance"
                     data-testid="position-authoring-guidance"
                   >
-                    把人物拖到想要的位置
+                    {POSITION_AUTHORING_GUIDANCE}
                   </p>
-                ) : positionAuthoringAvailable ? (
-                  <button
+                ) : positionPresentation.primaryVisible ? (
+                  <Button
                     className="position-authoring-primary"
                     data-testid="position-authoring-start"
                     onClick={startPositionAuthoring}
-                    type="button"
+                    variant="primary"
                   >
                     我要调整位置
-                  </button>
+                  </Button>
                 ) : null}
-                {positionHoldAvailable ? (
-                  <button
+                {positionPresentation.holdVisible ? (
+                  <Button
                     className="position-authoring-hold"
                     data-testid="position-authoring-hold"
                     onClick={createPositionHold}
-                    type="button"
+                    variant="secondary"
                   >
                     保持不动到这里
-                  </button>
+                  </Button>
                 ) : null}
               </div>
               {(
@@ -1129,7 +1146,7 @@ function LayerTransformPanelView({
         )
       ) : null}
       <output aria-live="polite" data-testid="layer-transform-status">
-        {status}
+        {positionPresentation.status}
       </output>
     </section>
   );
