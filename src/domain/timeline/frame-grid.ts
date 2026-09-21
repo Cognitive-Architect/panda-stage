@@ -54,14 +54,24 @@ export function lastValidFrameTime(
   }
 
   const safeDuration = Math.max(0, durationMs);
+  const resolvedFps = safeFps(fps);
+  // `frameTimeMs` rounds a theoretical frame time to the persisted integer.
+  // The largest legal index is therefore the largest integer strictly below
+  // `(durationMs + 0.5) * fps / 1000`, not merely the floor of duration's
+  // theoretical frame index. The correction loops only compensate for
+  // floating-point boundaries; they do not step through time by a fixed ms
+  // increment.
   let frameIndex = Math.max(
     0,
-    Math.floor((safeDuration * safeFps(fps)) / 1_000 + 1e-9),
+    Math.ceil(((safeDuration + 0.5) * resolvedFps) / 1_000) - 1,
   );
+  while (frameTimeMs(frameIndex + 1, resolvedFps) <= safeDuration) {
+    frameIndex += 1;
+  }
   while (frameIndex > 0 && frameTimeMs(frameIndex, fps) > safeDuration) {
     frameIndex -= 1;
   }
-  return frameTimeMs(frameIndex, fps);
+  return frameTimeMs(frameIndex, resolvedFps);
 }
 
 /** Resolve an authoring time to the nearest legal in-range Timeline frame. */

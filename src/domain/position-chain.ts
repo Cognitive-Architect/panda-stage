@@ -329,6 +329,12 @@ function resolveOperationTime(
   if (!Number.isFinite(rawTimeMs)) {
     return operationFailure('invalid-time', 'Position time must be finite.');
   }
+  if (rawTimeMs < 0 || rawTimeMs > chain.shotDurationMs) {
+    return operationFailure(
+      'invalid-time',
+      'Position authoring time must remain within the Shot range.',
+    );
+  }
   return resolveTimelineFrameTime(rawTimeMs, chain.shotDurationMs);
 }
 

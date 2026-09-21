@@ -6,6 +6,7 @@ import {
   createFirstPositionKey,
   createHoldPositionKey,
   deletePositionKey,
+  frameTimeMs,
   insertPositionKey,
   lastValidFrameTime,
   recognizePositionChain,
@@ -13,6 +14,7 @@ import {
   updatePositionKey,
   type MoveEvent,
   type PositionChain,
+  type PositionChainOperationResult,
 } from '../../../src/domain';
 
 const LAYER_ID = '10000000-0000-4000-8000-000000000001';
@@ -80,6 +82,23 @@ function recognize(events: readonly MoveEvent[], durationMs = 8_000) {
     layer: { id: LAYER_ID, x: BASE.x, y: BASE.y },
   });
 }
+
+describe('24 FPS frame-grid boundaries', () => {
+  it('keeps an already-legal rounded persisted frame as the last frame', () => {
+    expect(frameTimeMs(14)).toBe(583);
+    expect(lastValidFrameTime(582)).toBe(542);
+    expect(lastValidFrameTime(583)).toBe(583);
+    expect(lastValidFrameTime(584)).toBe(583);
+  });
+
+  it.each([0, 1, 2, 13, 14, 24, 71, 103])(
+    'returns the same legal persisted frame for frame index %s',
+    (frameIndex) => {
+      const persistedTime = frameTimeMs(frameIndex);
+      expect(lastValidFrameTime(persistedTime)).toBe(persistedTime);
+    },
+  );
+});
 
 describe('Position-chain recognition', () => {
   it('recognizes no managed animation without mutating the input', () => {
@@ -235,6 +254,31 @@ describe('pure Position-chain operations', () => {
     ]);
   });
 
+  it('deletes terminal C while preserving the complete A -> B segment', () => {
+    const result = deletePositionKey(chainWithThreeKeys(), 7_000);
+    expect(result).toMatchObject({
+      ok: true,
+      removedEventIds: [EVENT_B],
+    });
+    if (!result.ok) return;
+    expect(result.chain.points).toEqual([
+      { timeMs: 0, position: BASE, kind: 'base' },
+      { timeMs: 4_000, position: B, kind: 'key' },
+    ]);
+    expect(result.chain.segments).toEqual([
+      expect.objectContaining({
+        id: EVENT_A,
+        startMs: 0,
+        endMs: 4_000,
+        from: BASE,
+        to: B,
+        easing: 'linear',
+      }),
+    ]);
+    expect(result.chain.segments).toHaveLength(1);
+    expect(result.chain.segments.some((event) => event.id === EVENT_B)).toBe(false);
+  });
+
   it('deletes the last non-zero key and removes the managed animation when it was the only key', () => {
     const chain = chainWithTwoKeys();
     const removed = deletePositionKey(chain, 4_000);
@@ -289,6 +333,98 @@ describe('pure Position-chain operations', () => {
     if (lastKeyAtShotEnd.ok) {
       expect(lastKeyAtShotEnd.chain.points.at(-1)?.timeMs).toBe(8_000);
     }
+  });
+
+  it('rejects finite authoring times outside the Shot for every PK-01 operation', () => {
+    const operations: readonly [string, (timeMs: number) => PositionChainOperationResult][] = [
+      [
+        'create first',
+        (timeMs) =>
+          createFirstPositionKey(empty(), {
+            timeMs,
+            position: B,
+            eventId: EVENT_C,
+          }),
+      ],
+      [
+        'append',
+        (timeMs) =>
+          appendPositionKey(chainWithTwoKeys(), {
+            timeMs,
+            position: C,
+            eventId: EVENT_C,
+          }),
+      ],
+      [
+        'insert',
+        (timeMs) =>
+          insertPositionKey(chainWithTwoKeys(), {
+            timeMs,
+            position: C,
+            eventId: EVENT_C,
+          }),
+      ],
+      [
+        'update',
+        (timeMs) =>
+          updatePositionKey(chainWithTwoKeys(), {
+            timeMs,
+            position: C,
+          }),
+      ],
+      ['delete', (timeMs) => deletePositionKey(chainWithTwoKeys(), timeMs)],
+      [
+        'retime source',
+        (timeMs) => retimePositionKey(chainWithTwoKeys(), timeMs, 2_000),
+      ],
+      [
+        'retime target',
+        (timeMs) => retimePositionKey(chainWithTwoKeys(), 4_000, timeMs),
+      ],
+      [
+        'hold',
+        (timeMs) =>
+          createHoldPositionKey(chainWithTwoKeys(), {
+            timeMs,
+            eventId: EVENT_C,
+          }),
+      ],
+    ];
+
+    for (const timeMs of [-1, 8_001]) {
+      for (const [name, operation] of operations) {
+        expect(operation(timeMs), `${name} at ${timeMs}ms`).toMatchObject({
+          ok: false,
+          error: { code: 'invalid-time' },
+        });
+      }
+    }
+  });
+
+  it('does not create or retime a point at the Shot edge after an out-of-range rejection', () => {
+    const emptyChain = empty();
+    const emptySnapshot = structuredClone(emptyChain);
+    const createResult = createFirstPositionKey(emptyChain, {
+      timeMs: 8_001,
+      position: D,
+      eventId: EVENT_C,
+    });
+    expect(createResult).toMatchObject({
+      ok: false,
+      error: { code: 'invalid-time' },
+    });
+    expect(emptyChain).toEqual(emptySnapshot);
+    expect(emptyChain.points).toHaveLength(1);
+
+    const chain = chainWithThreeKeys();
+    const chainSnapshot = structuredClone(chain);
+    const retimeResult = retimePositionKey(chain, 4_000, -1);
+    expect(retimeResult).toMatchObject({
+      ok: false,
+      error: { code: 'invalid-time' },
+    });
+    expect(chain).toEqual(chainSnapshot);
+    expect(chain.points.map((point) => point.timeMs)).toEqual([0, 4_000, 7_000]);
   });
 
   it('creates a repeated-value hold from the previous authored point, not interpolation', () => {
