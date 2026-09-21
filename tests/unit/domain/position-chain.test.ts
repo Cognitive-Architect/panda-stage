@@ -13,7 +13,7 @@ import {
   updatePositionKey,
   type MoveEvent,
   type PositionChain,
-} from '../../src/domain';
+} from '../../../src/domain';
 
 const LAYER_ID = '10000000-0000-4000-8000-000000000001';
 const EVENT_A = '10000000-0000-4000-8000-000000000011';
