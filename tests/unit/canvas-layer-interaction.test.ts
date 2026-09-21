@@ -328,6 +328,66 @@ describe('SelectableLayer interaction adapter', () => {
     expect(onSelect).toHaveBeenCalledWith(background.layer.id);
   });
 
+  it('keeps temporal inspection selectable but blocks drag and transform commits', () => {
+    const commitPosition = vi.fn();
+    const commitTransform = vi.fn();
+    const position = { x: 700, y: 350 };
+    let scaleX = 1.4;
+    let scaleY = 1.4;
+    const target = {
+      x: () => position.x,
+      y: () => position.y,
+      position: (next?: { x: number; y: number }) => {
+        if (next) Object.assign(position, next);
+        return position;
+      },
+      scaleX: (value?: number) => {
+        if (value !== undefined) scaleX = value;
+        return scaleX;
+      },
+      scaleY: (value?: number) => {
+        if (value !== undefined) scaleY = value;
+        return scaleY;
+      },
+      scale: (next?: { x: number; y: number }) => {
+        if (next) {
+          scaleX = next.x;
+          scaleY = next.y;
+        }
+      },
+      rotation: () => 22,
+    };
+    const element = SelectableLayer({
+      directEditingEnabled: false,
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      nodeRef,
+      render: ordinary.render,
+      selected: true,
+      onSelect: vi.fn(),
+      onCommitPosition: commitPosition,
+      onCommitTransform: commitTransform,
+      onError: vi.fn(),
+    });
+    const props = element.props as {
+      draggable: boolean;
+      listening: boolean;
+      onDragEnd: (event: { target: typeof target }) => void;
+      onTransformEnd: (event: { target: typeof target }) => void;
+    };
+
+    expect(props.draggable).toBe(false);
+    expect(props.listening).toBe(true);
+    props.onDragEnd({ target });
+    props.onTransformEnd({ target });
+
+    expect(commitPosition).not.toHaveBeenCalled();
+    expect(commitTransform).not.toHaveBeenCalled();
+    expect(position).toEqual({ x: ordinary.render.x, y: ordinary.render.y });
+    expect(scaleX).toBe(ordinary.render.scaleX);
+    expect(scaleY).toBe(ordinary.render.scaleY);
+  });
+
   it('renders content without an interleaved Transformer sibling', () => {
     const element = SelectableLayer({
       image: {} as HTMLImageElement,
@@ -356,6 +416,10 @@ describe('SelectableLayer interaction adapter', () => {
       'src/renderer/features/canvas/canvasImageResources.ts',
       'utf8',
     );
+    const temporalModel = readFileSync(
+      'src/renderer/features/canvas/editorTemporalCanvasModel.ts',
+      'utf8',
+    );
 
     expect(stage).toContain('CanvasImageResourceSession');
     expect(stage).toContain('projectContextKey');
@@ -370,5 +434,15 @@ describe('SelectableLayer interaction adapter', () => {
     expect(resources).toContain('sha256: sourceKey');
     expect(resources).toContain('isCurrent');
     expect(resources).toContain('disposeResource');
+    expect(stage).toContain('listShotRuntimeImageAssets');
+    expect(stage).toContain('buildEditorTemporalCanvasModel');
+    expect(temporalModel).toContain('evaluateShotAtTime(');
+    expect(temporalModel).toContain('projectShotMouth(');
+    expect(stage).toContain('data-temporal-inspection');
+    expect(stage).toContain('dropDisabled={!snapshot || !shot}');
+    expect(stage).toContain('dropInteractionDisabled={temporalInspection}');
+    expect(
+      readFileSync('src/renderer/features/canvas/CanvasViewport.tsx', 'utf8'),
+    ).toContain('disabled: dropDisabled || dropInteractionDisabled');
   });
 });

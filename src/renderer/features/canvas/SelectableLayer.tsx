@@ -17,6 +17,7 @@ export interface SelectableLayerProps {
   nodeRef: React.RefObject<Konva.Group | null>;
   render: StageLayerRenderInstruction;
   selected: boolean;
+  directEditingEnabled?: boolean;
   onSelect: (layerId: string) => void;
   onCommitPosition: (
     layerId: string,
@@ -44,13 +45,14 @@ export function SelectableLayer({
   nodeRef,
   render,
   selected,
+  directEditingEnabled = true,
   onSelect,
   onCommitPosition,
   onCommitTransform,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
   const canSelect = true;
-  const canTransform = !layer.locked;
+  const canTransform = directEditingEnabled && !layer.locked;
 
   const clampNode = (node: Konva.Node): void => {
     const position = clampLayerPosition({
@@ -60,7 +62,7 @@ export function SelectableLayer({
     node.position(position);
   };
 
-  const resetNode = (node: Konva.Group): void => {
+  const resetNode = (node: Konva.Node): void => {
     node.position({ x: render.x, y: render.y });
     node.scale({ x: render.scaleX, y: render.scaleY });
     node.rotation(render.rotationDeg);
@@ -76,6 +78,10 @@ export function SelectableLayer({
         stopAndSelect(event, layer.id, onSelect)
       }
       onDragEnd={(event) => {
+        if (!directEditingEnabled) {
+          resetNode(event.target);
+          return;
+        }
         clampNode(event.target);
         try {
           onCommitPosition(layer.id, {
@@ -98,6 +104,10 @@ export function SelectableLayer({
       opacity={render.opacity}
       onTransformEnd={(event) => {
         const node = event.target as Konva.Group;
+        if (!directEditingEnabled) {
+          resetNode(node);
+          return;
+        }
         const scale = Math.abs(node.scaleX());
         node.scaleX(layer.flipX ? -scale : scale);
         node.scaleY(scale);

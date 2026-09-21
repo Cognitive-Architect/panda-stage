@@ -363,8 +363,10 @@ describe('product preview overlay contract', () => {
 
     expect(overlay).toContain('const [timeMs, setTimeMs] = useState(0)');
     expect(overlay).toContain(
-      'const [playing, setPlaying] = useState(autoPlay && durationMs > 0)',
+      'const [range, setRange] = useState<ProductPreviewRange>(\'project\')',
     );
+    expect(overlay).toContain('durationMs: projectDurationMs(project)');
+    expect(overlay).toContain('mapProjectTime(');
     // Project data arrives as a read-only prop; the overlay does not subscribe.
     expect(overlay).not.toContain('useSyncExternalStore');
     expect(overlay).toContain('project: Project;');
@@ -376,7 +378,7 @@ describe('product preview overlay contract', () => {
 
     expect(overlay).toContain('useProductPreviewAudio({');
     expect(overlay).toContain('activeDialogueId: activeCue?.id ?? null');
-    expect(overlay).toContain('timeMs: evaluatedShot?.timeMs ?? 0');
+    expect(overlay).toContain('timeMs: activeShotTimeMs');
     expect(overlay).toContain('playing,');
     expect(overlay).toContain('seekRevision,');
     expect(overlay).toContain('resolveProductPreviewTransportAction(');
@@ -384,6 +386,9 @@ describe('product preview overlay contract', () => {
     expect(overlay).not.toContain('new Audio(');
     expect(overlay).toContain('data-testid="product-preview-audio-warning"');
     expect(overlay).toContain('data-testid="product-preview-replay"');
+    expect(overlay).toContain('data-testid="product-preview-range"');
+    expect(overlay).toContain("{ value: 'project', label: '整个项目' }");
+    expect(overlay).toContain("{ value: 'shot', label: '当前镜头' }");
   });
 
   it('shows a Chinese empty state when the project has no shot', () => {
@@ -417,7 +422,7 @@ describe('product preview overlay contract', () => {
     }
     expect(overlay).toContain("type: playing ? 'pause' : 'play'");
     expect(overlay).toContain('role="dialog"');
-    expect(overlay).toContain('aria-modal="true"');
+    expect(overlay).toContain('aria-modal={previewSurfaceActive}');
   });
 
   it('uses bounded originals in a compact contain-style player shell', () => {
@@ -440,6 +445,108 @@ describe('product preview overlay contract', () => {
     );
   });
 
+  it('places a flat, persistently selected range control above the Stage', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const styles = readSource(
+      'src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css',
+    );
+    const baseStyles = readSource(
+      'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
+    );
+
+    expect(overlay.indexOf('data-testid="product-preview-range"')).toBeLessThan(
+      overlay.indexOf('className="product-preview-stage"'),
+    );
+    expect(styles).toMatch(
+      /\.product-preview-transport-meta\s*\{[\s\S]*?width:\s*100%;/u,
+    );
+    expect(styles).toMatch(
+      /\.product-preview-range-control\s*\{[\s\S]*?width:\s*max-content;[\s\S]*?margin-inline:\s*auto;/u,
+    );
+    expect(baseStyles).toMatch(
+      /\.product-preview-frame\s*\{[\s\S]*?padding:\s*12px 14px;/u,
+    );
+    expect(baseStyles).toMatch(
+      /\.product-preview-close\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*8px;[\s\S]*?right:\s*10px;/u,
+    );
+    expect(styles).toMatch(
+      /\.product-preview-range-control\s*\{[\s\S]*?padding:\s*0;[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/u,
+    );
+    expect(styles).toMatch(
+      /\.product-preview-range-control[\s\S]*?button\.ui-segmented-tabs__item--selected\[data-ui-variant='secondary'\]\s*\{[\s\S]*?--ui-color-selected-border[\s\S]*?--ui-color-selected-surface[\s\S]*?--ui-color-text-primary/u,
+    );
+  });
+
+  it('keeps the Editor visible until the real Preview handoff is committed', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const styles = readSource(
+      'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
+    );
+
+    expect(overlay).toContain(
+      "useState<ProductPreviewInitialReadiness>('preparing')",
+    );
+    expect(overlay).toContain('const [playing, setPlaying] = useState(false)');
+    expect(overlay).toContain(
+      'data-preview-data-ready={String(initialReadiness === \'ready\')}',
+    );
+    expect(overlay).toContain('data-preview-readiness={initialReadiness}');
+    expect(overlay).toContain('data-preview-handoff={handoffPhase}');
+    expect(overlay).toContain('data-preview-reveal={revealPhase}');
+    expect(overlay).toContain('data-preview-surface={previewSurfaceActive');
+    expect(overlay).toContain('data-testid="product-preview-warmup-status"');
+    expect(overlay).toContain('data-testid="product-preview-cancel"');
+    expect(overlay).toContain('onReady={');
+    expect(overlay).toContain('handleInitialStageReady');
+    expect(overlay).toContain('onError={handleInitialStageError}');
+    expect(overlay).toContain('scheduleProductPreviewPaintFence(');
+    expect(overlay).toContain('scheduleProductPreviewWarmupStatus(');
+    expect(overlay).toContain('advanceProductPreviewHandoffPhase');
+    expect(overlay).toContain('onHandoffReady();');
+    expect(overlay).toContain('canStartProductPreviewPlayback(');
+    expect(overlay).toContain('shouldStartProductPreviewAutoplay({');
+    expect(overlay).toMatch(
+      /initialReadinessError[\s\S]*?编辑器保持不变/u,
+    );
+    expect(styles).toContain(
+      ".product-preview-overlay[data-preview-surface='warming']",
+    );
+    expect(styles).toContain('background: transparent;');
+    expect(styles).toMatch(
+      /\.product-preview-overlay\[data-preview-surface='warming'\][\s\S]*?pointer-events:\s*auto;/u,
+    );
+    expect(styles).toContain(
+      ".product-preview-overlay[data-preview-surface='warming'] .product-preview-frame",
+    );
+    expect(styles).toContain('visibility: hidden;');
+    expect(styles).not.toContain('.product-preview-curtain');
+    expect(styles).not.toContain('transition: opacity');
+    expect(overlay).not.toContain('setInterval(');
+    expect(overlay).toContain('shouldBlockProductPreviewWarmupKeyboard(');
+    expect(overlay).toContain(
+      "window.addEventListener('keydown', onKeyDown, true)",
+    );
+    expect(overlay).toContain('event.stopPropagation();');
+  });
+
+  it('holds the last valid frame while the bounded next-shot images finish', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const images = readSource(IMAGES_PATH);
+
+    expect(overlay).toContain('const lastReadyVisual = useRef');
+    expect(overlay).toContain("assets.status === 'loading' ? lastReadyVisual.current : null");
+    expect(overlay).toContain('data-preview-visual-state={previewVisualState}');
+    expect(overlay).toMatch(
+      /heldVisual \? \([\s\S]*?<CanvasStage/u,
+    );
+    expect(images).toContain('nextAssetIds');
+    expect(images).toContain('this.entries.get(descriptor.key) !== entry');
+    expect(images).toContain('session.commitScope(');
+    expect(`${overlay}\n${images}`).not.toMatch(
+      /crossfade|fade-to-black|wipe|slide transition|zoom transition/iu,
+    );
+  });
+
   it('is mounted only while open so no hidden DOM survives closing', () => {
     const shell = readSource(SHELL_PATH);
 
@@ -450,6 +557,15 @@ describe('product preview overlay contract', () => {
     expect(shell).toContain(
       'const [productPreviewOpen, setProductPreviewOpen] = useState(false)',
     );
+    expect(shell).toContain(
+      'const [productPreviewSurfaceActive, setProductPreviewSurfaceActive]',
+    );
+    expect(shell).toContain('const commitProductPreviewSurface = useCallback');
+    expect(shell).toContain('onHandoffReady={commitProductPreviewSurface}');
+    expect(shell).not.toContain(
+      'onHandoffReady={() => setProductPreviewSurfaceActive(true)}',
+    );
+    expect(shell).toContain('surfaceActive={productPreviewSurfaceActive}');
     expect(shell).not.toContain('hidden={!productPreviewOpen}');
     expect(shell).not.toContain("display: 'none'");
   });

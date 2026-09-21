@@ -8,10 +8,12 @@ import type {
   Project,
   Shot,
 } from '../models';
-import { resolveLayerImageAsset } from './canvasLayers';
+import type { EvaluatedLayer, EvaluatedShot } from '../evaluate-shot-at-time';
+import { resolveImageAsset, resolveLayerImageAsset } from './canvasLayers';
 
 export interface EditorStageRenderLayer {
   layer: Layer;
+  evaluated: EvaluatedLayer;
   asset: ImageAsset;
   render: StageLayerRenderInstruction;
 }
@@ -27,11 +29,30 @@ export interface EditorStageRenderModel {
 export function buildEditorStageRenderModel(
   project: Project,
   shot: Shot,
+  evaluatedShot?: EvaluatedShot,
 ): EditorStageRenderModel {
+  const evaluatedById = new Map(
+    evaluatedShot?.layers.map((layer) => [layer.id, layer]) ?? [],
+  );
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EditorStageRenderLayer => {
-      const asset = resolveLayerImageAsset(project, layer);
+      const baseAsset = resolveLayerImageAsset(project, layer);
+      const evaluated = evaluatedById.get(layer.id) ?? {
+        id: layer.id,
+        assetId: baseAsset?.id ?? '',
+        anchor: layer.anchor,
+        x: layer.x,
+        y: layer.y,
+        scaleX: layer.scaleX,
+        scaleY: layer.scaleY,
+        flipX: layer.flipX,
+        rotationDeg: layer.rotationDeg,
+        opacity: layer.opacity,
+        visible: layer.visible,
+        zIndex: layer.zIndex,
+      };
+      const asset = resolveImageAsset(project, evaluated.assetId);
       if (!asset) {
         throw new Error(
           `Cannot resolve image asset for editor layer ${layer.id}.`,
@@ -39,6 +60,7 @@ export function buildEditorStageRenderModel(
       }
       return {
         layer,
+        evaluated,
         asset,
         render: buildStageLayerRenderInstruction(
           {
@@ -46,15 +68,15 @@ export function buildEditorStageRenderModel(
             assetId: asset.id,
             assetWidth: asset.width,
             assetHeight: asset.height,
-            x: layer.x,
-            y: layer.y,
-            scaleX: layer.scaleX,
-            scaleY: layer.scaleY,
-            flipX: layer.flipX,
-            rotationDeg: layer.rotationDeg,
-            opacity: layer.opacity,
-            visible: layer.visible,
-            zIndex: layer.zIndex,
+            x: evaluated.x,
+            y: evaluated.y,
+            scaleX: evaluated.scaleX,
+            scaleY: evaluated.scaleY,
+            flipX: evaluated.flipX,
+            rotationDeg: evaluated.rotationDeg,
+            opacity: evaluated.opacity,
+            visible: evaluated.visible,
+            zIndex: evaluated.zIndex,
           },
           { width: project.width, height: project.height },
           shot.backgroundLayerId === layer.id,

@@ -119,7 +119,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       expect(overlay).toContain(selector);
     }
     expect(overlay).toContain('role="dialog"');
-    expect(overlay).toContain('aria-modal="true"');
+    expect(overlay).toContain('aria-modal={previewSurfaceActive}');
     expect(shell.match(/<ProductPreviewOverlay/gu)).toHaveLength(1);
     // The overlay owns the surface; the compact bar only owns the entry.
     expect(

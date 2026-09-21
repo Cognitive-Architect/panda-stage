@@ -17,8 +17,7 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
-  buildEditorStageRenderModel,
-  listShotImageAssets,
+  listShotRuntimeImageAssets,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -39,7 +38,10 @@ import {
 } from './LayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
-import { useTimelineUi } from '../timeline/timelineUiStore';
+import {
+  timelineUiStore,
+  useTimelineUi,
+} from '../timeline/timelineUiStore';
 import { buildDialogueSubtitleCues } from '../../../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../../../shared/preview/subtitle-engine';
 import type { CanvasDropPreview } from './useCanvasDrop';
@@ -52,6 +54,10 @@ import {
   EMPTY_CANVAS_IMAGE_STATE,
   type CanvasImageState,
 } from './canvasImageResources';
+import {
+  buildEditorTemporalCanvasModel,
+} from './editorTemporalCanvasModel';
+import type { EditorTemporalVisual } from './temporalVisualContinuity';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
@@ -89,7 +95,7 @@ function useCanvasImages(
   const assets = useMemo(
     () =>
       snapshot && shot
-        ? listShotImageAssets(snapshot.project, shot.layers)
+        ? listShotRuntimeImageAssets(snapshot.project, shot)
         : [],
     [shot, snapshot],
   );
@@ -186,14 +192,6 @@ export function CanvasStage({
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
-  const stageModel = useMemo(
-    () =>
-      snapshot && shot
-        ? buildEditorStageRenderModel(snapshot.project, shot)
-        : null,
-    [shot, snapshot],
-  );
-  const imageState = useCanvasImages(snapshot, shot);
   const subtitleCues = useMemo(
     () => (shot ? buildDialogueSubtitleCues(shot.dialogues) : []),
     [shot],
@@ -202,6 +200,67 @@ export function CanvasStage({
     () => evaluateSubtitleAtTime(subtitleCues, timelineUi.currentTimeMs),
     [subtitleCues, timelineUi.currentTimeMs],
   );
+  const imageState = useCanvasImages(snapshot, shot);
+  const temporalContextKey =
+    snapshot && shot
+      ? `${snapshot.project.id}:${snapshot.projectRoot}:${shot.id}`
+      : null;
+  const temporalContinuityRef = useRef<{
+    contextKey: string | null;
+    visuals: ReadonlyMap<string, EditorTemporalVisual>;
+  }>({
+    contextKey: null,
+    visuals: new Map(),
+  });
+  const previousTemporalVisuals =
+    temporalContinuityRef.current.contextKey === temporalContextKey
+      ? temporalContinuityRef.current.visuals
+      : new Map<string, EditorTemporalVisual>();
+  const temporalCanvasModel = useMemo(
+    () =>
+      snapshot && shot
+        ? buildEditorTemporalCanvasModel({
+            activeDialogueId: activeCue?.id ?? null,
+            currentTimeMs: timelineUi.currentTimeMs,
+            previousVisuals: previousTemporalVisuals,
+            project: snapshot.project,
+            readyAssetIds: new Set(imageState.images.keys()),
+            shot,
+          })
+        : null,
+    [
+      activeCue?.id,
+      imageState.images,
+      previousTemporalVisuals,
+      shot,
+      snapshot,
+      timelineUi.currentTimeMs,
+    ],
+  );
+  useEffect(() => {
+    if (!temporalCanvasModel) {
+      temporalContinuityRef.current = {
+        contextKey: temporalContextKey,
+        visuals: new Map(),
+      };
+      return;
+    }
+    temporalContinuityRef.current = {
+      contextKey: temporalContextKey,
+      visuals: temporalCanvasModel.lastValidVisuals,
+    };
+  }, [temporalCanvasModel, temporalContextKey]);
+  const stageModel = temporalCanvasModel?.stageModel ?? null;
+  const directEditingEnabled =
+    temporalCanvasModel?.directEditingEnabled ??
+    timelineUi.currentTimeMs === 0;
+  const temporalInspection =
+    temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
+  const rejectTemporalCanvasEdit = (): void => {
+    setInteractionStatus('时间轴预览中 · 回到 0:00 可调整图层');
+  };
+  const canCommitCanvasEdit = (): boolean =>
+    timelineUiStore.getSnapshot().currentTimeMs === 0;
   const activeSubtitleStyle = activeCue
     ? snapshot?.project.subtitleStyles.find(
         (style) => style.id === activeCue.styleId,
@@ -229,7 +288,7 @@ export function CanvasStage({
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
   const transformerVisible = isTransformerOverlayVisible({
-    selected: Boolean(selectedStageLayer),
+    selected: directEditingEnabled && Boolean(selectedStageLayer),
     isBackground: selectedStageLayer?.render.isBackground ?? false,
     locked: selectedStageLayer?.layer.locked ?? false,
     imageReady: selectedStageLayer
@@ -259,8 +318,13 @@ export function CanvasStage({
       ) : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
+        dropInteractionDisabled={temporalInspection}
         mode={viewport.mode}
         onAssetDrop={(payload, point) => {
+          if (!canCommitCanvasEdit()) {
+            rejectTemporalCanvasEdit();
+            return;
+          }
           try {
             const layer = layerStore.createFromAsset({
               ...payload,
@@ -317,7 +381,14 @@ export function CanvasStage({
                 backgroundLayer?.render.coverScale ?? ''
               }
               data-interaction-status={interactionStatus}
+              data-current-time-ms={timelineUi.currentTimeMs}
+              data-active-subtitle-id={activeCue?.id ?? ''}
+              data-temporal-inspection={String(temporalInspection)}
+              data-direct-canvas-editing={String(directEditingEnabled)}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
+              data-evaluated-layer-json={JSON.stringify(
+                temporalCanvasModel?.evaluatedShot.layers ?? [],
+              )}
               data-project-revision={snapshot?.revision ?? -1}
               data-render-source="project-assets-original"
               data-rendered-asset-intrinsic-sizes={JSON.stringify(
@@ -363,17 +434,26 @@ export function CanvasStage({
                         if (!image) return null;
                         return (
                           <SelectableLayer
+                            directEditingEnabled={directEditingEnabled}
                             image={image}
                             key={render.id}
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
                             onCommitPosition={(layerId, position) => {
+                              if (!canCommitCanvasEdit()) {
+                                rejectTemporalCanvasEdit();
+                                return;
+                              }
                               layerStore.updatePosition(layerId, position);
                               setInteractionStatus(
                                 `图层位置已提交为 (${position.x.toFixed(1)}, ${position.y.toFixed(1)})。`,
                               );
                             }}
                             onCommitTransform={(layerId, transform) => {
+                              if (!canCommitCanvasEdit()) {
+                                rejectTemporalCanvasEdit();
+                                return;
+                              }
                               layerStore.updateTransform(layerId, transform);
                               setInteractionStatus(
                                 `图层变换已提交：缩放 ${transform.scale.toFixed(3)}，旋转 ${transform.rotationDeg.toFixed(1)}°。`,
@@ -410,7 +490,7 @@ export function CanvasStage({
                       nodeRef={getLayerNodeRef(
                         selectedStageLayer.layer.id,
                       )}
-                      scale={selectedStageLayer.layer.scaleX}
+                      scale={selectedStageLayer.render.scaleX}
                       selected
                     />
                   ) : null}

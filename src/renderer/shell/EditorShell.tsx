@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
   useSyncExternalStore,
@@ -426,6 +427,11 @@ export function EditorShell({
   const [newProjectNameTouched, setNewProjectNameTouched] = useState(false);
   const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
+  const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
+    useState(false);
+  const commitProductPreviewSurface = useCallback((): void => {
+    setProductPreviewSurfaceActive(true);
+  }, []);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closeConfirmStatus, setCloseConfirmStatus] = useState('');
   const [saveActivity, setSaveActivity] = useState<{
@@ -550,6 +556,7 @@ export function EditorShell({
     const nextSession = await session.switchProject(projectRoot);
     // The preview belongs to the project that was open when it was requested.
     setProductPreviewOpen(false);
+    setProductPreviewSurfaceActive(false);
     setSaveActivity({ phase: 'idle', revision: null });
     updateSession(nextSession, cleanStatus);
     setRequestedPage('editor');
@@ -577,6 +584,7 @@ export function EditorShell({
 
   const openProjectCenter = (): void => {
     setProductPreviewOpen(false);
+    setProductPreviewSurfaceActive(false);
     setRequestedPage('project-center');
     setStatus('');
   };
@@ -729,6 +737,7 @@ export function EditorShell({
   };
 
   const openProductPreview = (): void => {
+    setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(true);
   };
 
@@ -756,6 +765,7 @@ export function EditorShell({
   };
 
   const closeProductPreview = (): void => {
+    setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(false);
   };
 
@@ -792,6 +802,7 @@ export function EditorShell({
     const nextSession = await session.closeProject();
     setSessionSnapshot(nextSession);
     setProductPreviewOpen(false);
+    setProductPreviewSurfaceActive(false);
     setCloseConfirmOpen(false);
     setCloseConfirmStatus('');
     setOpenCandidatePath('');
@@ -1138,9 +1149,11 @@ export function EditorShell({
             <ProductPreviewOverlay
               autoPlay
               onClose={closeProductPreview}
+              onHandoffReady={commitProductPreviewSurface}
               project={projectSnapshot.project}
               projectRoot={projectSnapshot.projectRoot}
               shotId={currentShotId}
+              surfaceActive={productPreviewSurfaceActive}
             />
           ) : null}
           {closeConfirmOpen ? (
