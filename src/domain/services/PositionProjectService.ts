@@ -1,6 +1,7 @@
 import { PROJECT_HEIGHT, PROJECT_WIDTH } from '../constants';
 import {
   appendPositionKey,
+  bindPositionBase,
   createFirstPositionKey,
   createHoldPositionKey,
   deletePositionKey,
@@ -230,9 +231,9 @@ export class PositionProjectService {
     const layerChanged = JSON.stringify(nextLayer) !== JSON.stringify(layer);
     let timelineEvents = shot.timelineEvents;
     if (positionChanged && recognition.status === 'editable') {
-      const baseUpdate = updatePositionKey(recognition.chain, {
-        timeMs: 0,
-        position: { x: patch.x, y: patch.y },
+      const baseUpdate = bindPositionBase(recognition.chain, {
+        x: patch.x,
+        y: patch.y,
       });
       if (!baseUpdate.ok) {
         throw new PositionProjectServiceError(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendPositionKey,
+  bindPositionBase,
   compilePositionChain,
   createEmptyPositionChain,
   createFirstPositionKey,
@@ -291,7 +292,7 @@ describe('pure Position-chain operations', () => {
     expect(compilePositionChain(removed.chain)).toEqual([]);
   });
 
-  it('protects Base from ordinary deletion and retiming while allowing pure Base update', () => {
+  it('protects Base from ordinary deletion, retiming, and update', () => {
     const chain = chainWithTwoKeys();
     expect(deletePositionKey(chain, 0)).toMatchObject({
       ok: false,
@@ -302,12 +303,30 @@ describe('pure Position-chain operations', () => {
       error: { code: 'base-protected' },
     });
 
-    const updated = updatePositionKey(chain, { timeMs: 0, position: D });
-    expect(updated).toMatchObject({ ok: true, changedEventIds: [EVENT_A] });
-    if (!updated.ok) return;
-    expect(updated.chain.points[0]).toMatchObject({ position: D });
-    expect(updated.chain.points[1]).toMatchObject({ position: B });
-    expect(updated.chain.segments[0]).toMatchObject({ from: D, to: B });
+    expect(updatePositionKey(chain, { timeMs: 0, position: D })).toMatchObject({
+      ok: false,
+      error: { code: 'base-protected' },
+    });
+    expect(updatePositionKey(chain, { timeMs: 20, position: D })).toMatchObject({
+      ok: false,
+      error: { code: 'base-protected' },
+    });
+  });
+
+  it('binds the protected Base only through the explicit Base operation', () => {
+    const chain = chainWithThreeKeys();
+    const result = bindPositionBase(chain, D);
+
+    expect(result).toMatchObject({
+      ok: true,
+      changedEventIds: [EVENT_A],
+    });
+    if (!result.ok) return;
+    expect(result.chain.points[0]).toMatchObject({ timeMs: 0, position: D });
+    expect(result.chain.points[1]).toMatchObject({ timeMs: 4_000, position: B });
+    expect(result.chain.points[2]).toMatchObject({ timeMs: 7_000, position: C });
+    expect(result.chain.segments[0]).toMatchObject({ from: D, to: B });
+    expect(result.chain.segments[1]).toMatchObject({ from: B, to: C });
   });
 
   it('retimes without changing spatial values and prevents crossing/collisions', () => {

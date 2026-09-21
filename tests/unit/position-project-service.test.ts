@@ -25,6 +25,9 @@ const MOVE_C = '70000000-0000-4000-8000-000000000003';
 const SHAKE = '70000000-0000-4000-8000-000000000004';
 const SCALE = '70000000-0000-4000-8000-000000000005';
 const VISIBILITY = '70000000-0000-4000-8000-000000000006';
+const OPACITY = '70000000-0000-4000-8000-000000000007';
+const EXPRESSION = '70000000-0000-4000-8000-000000000008';
+const FLIP = '70000000-0000-4000-8000-000000000009';
 
 function move(
   id: string,
@@ -84,6 +87,33 @@ function managedProject(): Project {
             startMs: 0,
             endMs: 2_000,
             visible: true,
+          },
+          {
+            id: OPACITY,
+            type: 'opacity' as const,
+            layerId: IDS.layerAsset,
+            startMs: 0,
+            endMs: 1_000,
+            from: 0.4,
+            to: 0.9,
+            easing: 'linear' as const,
+          },
+          {
+            id: EXPRESSION,
+            type: 'expression' as const,
+            layerId: IDS.layerChar,
+            startMs: 500,
+            endMs: 1_500,
+            expressionId: IDS.expressionAngry,
+          },
+          {
+            id: FLIP,
+            type: 'flip' as const,
+            layerId: IDS.layerAsset,
+            startMs: 1_000,
+            endMs: 2_000,
+            axis: 'horizontal' as const,
+            flipped: true,
           },
         ],
       },
@@ -194,6 +224,44 @@ describe('PK-03 Position Project command boundary', () => {
     expect(
       positionEvents(input.editor.getSnapshot()!.project)[0],
     ).toMatchObject({ from: D });
+  });
+
+  it.each([
+    ['literal 0:00', 0],
+    ['near-zero input resolved to 0:00', 20],
+  ] as const)('rejects %s ordinary updates as Base-protected zero-write', (_label, timeMs) => {
+    const initial = managedProject();
+    const input = editorHarness(initial);
+    const before = input.editor.getSnapshot()!;
+    const beforeLayer = before.project.shots[0]!.layers.find(
+      (candidate) => candidate.id === input.layerId,
+    )!;
+    const beforeFirstMove = positionEvents(before.project)[0]!;
+
+    expect(() =>
+      input.positionStore.updateKey(input.shotId, input.layerId, {
+        timeMs,
+        position: D,
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'POSITION_OPERATION_REJECTED',
+        cause: expect.objectContaining({ code: 'base-protected' }),
+      }),
+    );
+
+    const after = input.editor.getSnapshot()!;
+    expect(after).toBe(before);
+    expect(after.project).toBe(before.project);
+    expect(after.project.shots[0]!.layers.find(
+      (candidate) => candidate.id === input.layerId,
+    )).toEqual(beforeLayer);
+    expect(positionEvents(after.project)[0]).toEqual(beforeFirstMove);
+    expect(after).toMatchObject({ dirty: false, revision: 0 });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
   });
 
   it('uses the same Base binding for full Transform updates and keeps non-Position fields', () => {
@@ -372,6 +440,29 @@ describe('PK-03 Position Project command boundary', () => {
     expect(input.editor.history.getSnapshot().undoCount).toBe(1);
   });
 
+  it('treats same-time retime as an exact zero-write no-op', () => {
+    const initial = managedProject();
+    const input = editorHarness(initial);
+    const before = input.editor.getSnapshot()!;
+    const beforeUpdatedAt = before.project.updatedAt;
+
+    input.positionStore.retimeKey(
+      input.shotId,
+      input.layerId,
+      2_000,
+      2_000,
+    );
+
+    const after = input.editor.getSnapshot()!;
+    expect(after).toBe(before);
+    expect(after.project.updatedAt).toBe(beforeUpdatedAt);
+    expect(after).toMatchObject({ dirty: false, revision: 0 });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+  });
+
   it('preserves unrelated layers and timeline data while merging managed MoveEvents', () => {
     const initial = managedProject();
     const service = new PositionProjectService({
@@ -401,6 +492,21 @@ describe('PK-03 Position Project command boundary', () => {
         (event) => event.id === VISIBILITY,
       ),
     ).toEqual(shot.timelineEvents.find((event) => event.id === VISIBILITY));
+    expect(
+      result.project.shots[0]!.timelineEvents.find(
+        (event) => event.id === OPACITY,
+      ),
+    ).toEqual(shot.timelineEvents.find((event) => event.id === OPACITY));
+    expect(
+      result.project.shots[0]!.timelineEvents.find(
+        (event) => event.id === EXPRESSION,
+      ),
+    ).toEqual(shot.timelineEvents.find((event) => event.id === EXPRESSION));
+    expect(
+      result.project.shots[0]!.timelineEvents.find(
+        (event) => event.id === FLIP,
+      ),
+    ).toEqual(shot.timelineEvents.find((event) => event.id === FLIP));
     expect(
       positionEvents(result.project).sort(
         (left, right) => left.startMs - right.startMs,

@@ -695,6 +695,12 @@ export function updatePositionKey(
   if (positionError) return positionError;
   const time = resolveOperationTime(chain, input.timeMs);
   if (typeof time !== 'number') return time;
+  if (time === 0) {
+    return operationFailure(
+      'base-protected',
+      'The 0:00 Base cannot be updated as an ordinary Position key.',
+    );
+  }
   const index = chain.points.findIndex((point) => point.timeMs === time);
   if (index < 0) {
     return operationFailure(
@@ -729,6 +735,33 @@ export function updatePositionKey(
     [],
     changedEventIds,
   );
+}
+
+/** Update the protected 0:00 Base and the first managed segment together. */
+export function bindPositionBase(
+  chain: PositionChain,
+  position: Point,
+): PositionChainOperationResult {
+  const guarded = guardChain(chain);
+  if (guarded) return guarded;
+  const positionError = validPosition(position);
+  if (positionError) return positionError;
+  if (chain.status !== 'editable') {
+    return operationFailure(
+      'no-managed-chain',
+      'A Base binding requires a managed Position chain.',
+    );
+  }
+  if (pointsEqual(basePoint(chain), position)) {
+    return operationSuccess(chain);
+  }
+
+  const points = [...chain.points];
+  points[0] = { ...points[0]!, position: copyPoint(position) };
+  const segments = [...chain.segments];
+  const first = segments[0]!;
+  segments[0] = patchMoveEvent(first, { from: position });
+  return operationSuccess(chainFrom(chain, points, segments), [], [first.id]);
 }
 
 /** Delete one non-zero key and reconnect its neighboring checkpoints. */
