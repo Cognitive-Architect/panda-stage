@@ -1,4 +1,5 @@
 import type { Layer, Project, Shot, TimelineEvent } from './models';
+import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 
 /**
  * A single evaluated layer at one exact moment. Shape is intentionally
@@ -46,11 +47,7 @@ function clamp01(value: number): number {
 }
 
 function eventEasing(event: TimelineEvent): 'linear' | 'ease-in-out' {
-  if (
-    event.type === 'move' ||
-    event.type === 'scale' ||
-    event.type === 'opacity'
-  ) {
+  if (event.type === 'scale' || event.type === 'opacity') {
     return event.easing;
   }
   return 'linear';
@@ -121,8 +118,6 @@ export function evaluateShotAtTime(
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EvaluatedLayer => {
-      let x = layer.x;
-      let y = layer.y;
       let scaleX = layer.scaleX;
       let scaleY = layer.scaleY;
       const rotationDeg = layer.rotationDeg;
@@ -138,7 +133,15 @@ export function evaluateShotAtTime(
           left.startMs - right.startMs || left.id.localeCompare(right.id),
       );
 
+      const motion = evaluateLayerMotionAtTime(layer, events, timeMs);
+
       for (const event of events) {
+        if (event.type === 'move' || event.type === 'shake') {
+          // Position + Shake are resolved by the single formal motion seam
+          // above. Keeping them out of this state loop prevents a later Move
+          // from overwriting a temporary Shake offset.
+          continue;
+        }
         // Future events (timeMs before the event starts) must not participate
         // in evaluation: skipping them leaves the layer at its base state
         // (or the state produced by earlier events) instead of overwriting it
@@ -157,11 +160,6 @@ export function evaluateShotAtTime(
         const progress = ease(rawProgress, eventEasing(event));
 
         switch (event.type) {
-          case 'move': {
-            x = interpolate(event.from.x, event.to.x, progress);
-            y = interpolate(event.from.y, event.to.y, progress);
-            break;
-          }
           case 'scale': {
             scaleX = interpolate(event.from.x, event.to.x, progress);
             scaleY = interpolate(event.from.y, event.to.y, progress);
@@ -169,16 +167,6 @@ export function evaluateShotAtTime(
           }
           case 'opacity': {
             opacity = clamp01(interpolate(event.from, event.to, progress));
-            break;
-          }
-          case 'shake': {
-            if (timeMs >= event.startMs && timeMs <= event.endMs) {
-              const seconds = (timeMs - event.startMs) / 1000;
-              const wave =
-                Math.sin(2 * Math.PI * event.frequencyHz * seconds);
-              x += event.amplitudeX * wave;
-              y += event.amplitudeY * wave;
-            }
             break;
           }
           case 'expression': {
@@ -210,8 +198,8 @@ export function evaluateShotAtTime(
         id: layer.id,
         assetId: assetId ?? '',
         anchor: layer.anchor,
-        x,
-        y,
+        x: motion.displayPosition.x,
+        y: motion.displayPosition.y,
         scaleX,
         scaleY,
         flipX,

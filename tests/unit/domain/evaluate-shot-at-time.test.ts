@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateShotAtTime } from '../../../src/domain';
+import {
+  evaluateLayerMotionAtTime,
+  evaluateShotAtTime,
+} from '../../../src/domain';
 import type { EvaluatedLayer, Project, Shot, TimelineEvent } from '../../../src/domain';
 import { buildProject, IDS } from './testProject';
 
@@ -8,6 +11,8 @@ function shotWithEvents(events: readonly TimelineEvent[]): Shot {
   const shot = project.shots[0]!;
   return { ...shot, timelineEvents: [...events] };
 }
+
+const MOTION_LAYER = { id: IDS.layerChar, x: 500, y: 600 };
 
 describe('T02 evaluateShotAtTime', () => {
   const project: Project = buildProject();
@@ -99,6 +104,151 @@ describe('T02 evaluateShotAtTime', () => {
     expect(layerAt(0).x).toBe(500);
     // At 125ms the sine reaches -1, so x = 500 - 24 = 476.
     expect(layerAt(125).x).toBe(476);
+  });
+
+  it('separates main Position from display Position regardless of Move/Shake id order', () => {
+    const move = {
+      id: 'z-move',
+      type: 'move' as const,
+      layerId: IDS.layerChar,
+      startMs: 0,
+      endMs: 1_000,
+      easing: 'linear' as const,
+      from: { x: 500, y: 600 },
+      to: { x: 700, y: 600 },
+    };
+    const shake = {
+      id: 'a-shake',
+      type: 'shake' as const,
+      layerId: IDS.layerChar,
+      startMs: 0,
+      endMs: 1_000,
+      amplitudeX: 20,
+      amplitudeY: 0,
+      frequencyHz: 1,
+    };
+    const motion = evaluateLayerMotionAtTime(
+      MOTION_LAYER,
+      [move, shake],
+      250,
+    );
+
+    expect(motion.mainPosition).toEqual({ x: 550, y: 600 });
+    expect(motion.shakeOffset.x).toBeCloseTo(20, 10);
+    expect(motion.shakeOffset.y).toBe(0);
+    expect(motion.displayPosition.x).toBeCloseTo(570, 10);
+
+    const moveFirst = evaluateShotAtTime(
+      shotWithEvents([
+        { ...move, id: 'a-move' },
+        { ...shake, id: 'z-shake' },
+      ]),
+      250,
+      project,
+    );
+    const shakeFirst = evaluateShotAtTime(
+      shotWithEvents([
+        { ...move, id: 'z-move' },
+        { ...shake, id: 'a-shake' },
+      ]),
+      250,
+      project,
+    );
+    const moveFirstLayer = moveFirst.layers.find(
+      (layer) => layer.id === IDS.layerChar,
+    )!;
+    const shakeFirstLayer = shakeFirst.layers.find(
+      (layer) => layer.id === IDS.layerChar,
+    )!;
+
+    expect(moveFirstLayer.x).toBeCloseTo(570, 10);
+    expect(shakeFirstLayer.x).toBeCloseTo(570, 10);
+    expect(moveFirstLayer.y).toBe(600);
+    expect(shakeFirstLayer.y).toBe(600);
+  });
+
+  it('adds simultaneous Shakes deterministically and removes only ended contributions', () => {
+    const move: TimelineEvent = {
+      id: 'move-route',
+      type: 'move',
+      layerId: IDS.layerChar,
+      startMs: 0,
+      endMs: 2_000,
+      easing: 'linear',
+      from: { x: 500, y: 600 },
+      to: { x: 1_000, y: 600 },
+    };
+    const shakeA: TimelineEvent = {
+      id: 'shake-z',
+      type: 'shake',
+      layerId: IDS.layerChar,
+      startMs: 0,
+      endMs: 1_000,
+      amplitudeX: 20,
+      amplitudeY: 4,
+      frequencyHz: 1,
+    };
+    const shakeB: TimelineEvent = {
+      id: 'shake-a',
+      type: 'shake',
+      layerId: IDS.layerChar,
+      startMs: 0,
+      endMs: 500,
+      amplitudeX: 10,
+      amplitudeY: 2,
+      frequencyHz: 1,
+    };
+    const events = [move, shakeA, shakeB];
+    const reversed = [shakeB, move, shakeA];
+
+    const atPeak = evaluateLayerMotionAtTime(
+      MOTION_LAYER,
+      events,
+      250,
+    );
+    const atPeakReordered = evaluateLayerMotionAtTime(
+      MOTION_LAYER,
+      reversed,
+      250,
+    );
+    expect(atPeak.mainPosition).toEqual({ x: 562.5, y: 600 });
+    expect(atPeak.shakeOffset.x).toBeCloseTo(30, 10);
+    expect(atPeak.shakeOffset.y).toBeCloseTo(6, 10);
+    expect(atPeak.displayPosition.x).toBeCloseTo(592.5, 10);
+    expect(atPeak.displayPosition.y).toBeCloseTo(606, 10);
+    expect(atPeakReordered).toEqual(atPeak);
+
+    const afterBEnds = evaluateLayerMotionAtTime(
+      MOTION_LAYER,
+      events,
+      750,
+    );
+    expect(afterBEnds.mainPosition).toEqual({ x: 687.5, y: 600 });
+    expect(afterBEnds.shakeOffset.x).toBeCloseTo(-20, 10);
+    expect(afterBEnds.shakeOffset.y).toBeCloseTo(-4, 10);
+    expect(afterBEnds.displayPosition.x).toBeCloseTo(667.5, 10);
+
+    const afterAllEnd = evaluateLayerMotionAtTime(
+      MOTION_LAYER,
+      events,
+      1_250,
+    );
+    expect(afterAllEnd.mainPosition).toEqual({ x: 812.5, y: 600 });
+    expect(afterAllEnd.shakeOffset).toEqual({ x: 0, y: 0 });
+    expect(afterAllEnd.displayPosition).toEqual(afterAllEnd.mainPosition);
+    expect(
+      evaluateLayerMotionAtTime(MOTION_LAYER, events, 1_250),
+    ).toEqual(afterAllEnd);
+    expect(
+      evaluateLayerMotionAtTime(MOTION_LAYER, events, 250),
+    ).toEqual(atPeak);
+
+    const scrubSequence = [250, 1_250, 750, 250].map((timeMs) =>
+      evaluateLayerMotionAtTime(MOTION_LAYER, events, timeMs),
+    );
+    expect(scrubSequence[0]).toEqual(scrubSequence[3]);
+    expect(scrubSequence[1]).toEqual(afterAllEnd);
+    expect(scrubSequence[2]).toEqual(afterBEnds);
   });
 
   it('applies flip and visibility flags', () => {

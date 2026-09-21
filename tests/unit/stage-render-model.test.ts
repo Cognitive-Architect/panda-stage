@@ -149,6 +149,55 @@ describe('shared stage render model', () => {
     );
   });
 
+  it('passes the additive display Position from the formal evaluator to the stage consumer', () => {
+    const project = ProjectSchema.parse({
+      ...PROBE_PROJECT,
+      shots: PROBE_PROJECT.shots.map((shot) =>
+        shot.id === PROBE_SHOT.id
+          ? {
+              ...shot,
+              timelineEvents: [
+                {
+                  id: '40000000-0000-4000-8000-000000000021',
+                  type: 'move' as const,
+                  layerId: PROBE_CHARACTER_LAYER_ID,
+                  startMs: 0,
+                  endMs: 3_000,
+                  from: { x: 430, y: 690 },
+                  to: { x: 1_490, y: 690 },
+                  easing: 'linear' as const,
+                },
+                {
+                  id: '40000000-0000-4000-8000-000000000022',
+                  type: 'shake' as const,
+                  layerId: PROBE_CHARACTER_LAYER_ID,
+                  startMs: 0,
+                  endMs: 1_000,
+                  amplitudeX: 20,
+                  amplitudeY: 0,
+                  frequencyHz: 1,
+                },
+              ],
+            }
+          : shot,
+      ),
+    });
+    const shot = project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 250, project);
+    const evaluatedLayer = evaluated.layers.find(
+      (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
+    )!;
+    const model = buildStageRenderModel(project, evaluated, assetUrls);
+    const renderedLayer = model.layers.find(
+      (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
+    )!;
+
+    expect(evaluatedLayer.x).toBeCloseTo(538.3333333333, 10);
+    expect(renderedLayer.x).toBe(evaluatedLayer.x);
+    expect(renderedLayer.render.x).toBe(evaluatedLayer.x);
+    expect(shot.layers.find((layer) => layer.id === PROBE_CHARACTER_LAYER_ID)?.x).toBe(430);
+  });
+
   it('moves the probe character from left to right over three seconds', () => {
     const start = evaluateShotAtTime(PROBE_SHOT, 0, PROBE_PROJECT).layers.find(
       (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
