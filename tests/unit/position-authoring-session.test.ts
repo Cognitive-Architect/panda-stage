@@ -667,6 +667,63 @@ describe('PK-04 Position authoring session', () => {
     input.dispose();
   });
 
+  it('exposes contextual entry state and creates one hold without opening a session', () => {
+    const input = harness(buildProject(), 1_000);
+    const entry = input.authoring.getEntryState();
+    expect(entry).toMatchObject({
+      canBegin: true,
+      canHold: true,
+      requiresTimeSync: false,
+      hasExistingKey: false,
+      mainPosition: BASE,
+    });
+    expect(input.authoring.getSnapshot()).toBeNull();
+
+    const result = input.authoring.createHold();
+    expect(result).toEqual({ status: 'committed' });
+    expect(input.authoring.getSnapshot()).toBeNull();
+    expect(input.editor.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 1,
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    expect(positionEvents(input.editor.getSnapshot()!.project)).toEqual([
+      expect.objectContaining({
+        startMs: 0,
+        endMs: 1_000,
+        from: BASE,
+        to: BASE,
+      }),
+    ]);
+    expect(input.authoring.getEntryState().canHold).toBe(false);
+    input.dispose();
+  });
+
+  it('allows the UI to offer an off-grid Shot-end action before visible synchronization', () => {
+    const offGridProject = ProjectSchema.parse({
+      ...buildProject(),
+      shots: [{ ...buildProject().shots[0]!, durationMs: 4_321 }],
+    });
+    const input = harness(offGridProject, 4_321);
+    expect(input.authoring.getEntryState()).toMatchObject({
+      canBegin: true,
+      canHold: true,
+      requiresTimeSync: true,
+      shotDurationMs: 4_321,
+    });
+    input.timeline.setTime(4_292);
+    const begin = input.authoring.begin();
+    expect(begin.ok).toBe(true);
+    if (begin.ok) {
+      expect(begin.snapshot.timeMs).toBe(4_292);
+      begin.session.cancel();
+    }
+    input.dispose();
+  });
+
   it('uses the existing Position write seam and preserves one undo unit per successful commit', () => {
     const input = harness(projectWithPositionChain(), 1_500);
     const before = input.editor.getSnapshot()!;

@@ -1,0 +1,67 @@
+/* PK-05: Position authoring lives under Transform → Position. The hold is a
+   contextual secondary action and must not compete with the primary entry. */
+.position-authoring-entry {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.position-authoring-entry > button {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.position-authoring-primary {
+  border-color: #83d39a;
+  color: #07110a;
+  background: #83d39a;
+}
+
+.position-authoring-primary:hover:not(:disabled) {
+  border-color: #b4f0c5;
+  background: #b4f0c5;
+}
+
+.position-authoring-hold {
+  border-color: rgb(154 216 172 / 28%);
+  color: #a9b8ae;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.position-authoring-hold:hover:not(:disabled) {
+  color: #eef6f0;
+  background: rgb(154 216 172 / 9%);
+}
+
+.position-authoring-guidance {
+  margin: 0;
+  padding: 9px 10px;
+  border-left: 3px solid #83d39a;
+  color: #dce8df;
+  background: rgb(131 211 154 / 10%);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .position-authoring-entry
+  > button {
+  min-height: 44px;
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .position-authoring-hold {
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .position-authoring-entry
+  > button {
+  min-height: 44px;
+}

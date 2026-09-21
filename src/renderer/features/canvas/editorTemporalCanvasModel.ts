@@ -1,4 +1,5 @@
 import {
+  evaluateLayerMotionAtTime,
   buildEditorStageRenderModel,
   evaluateShotAtTime,
   projectShotMouth,
@@ -6,6 +7,7 @@ import {
   type EditorStageRenderModel,
   type EvaluatedLayer,
   type EvaluatedShot,
+  type Point,
   type Project,
   type Shot,
 } from '../../../domain';
@@ -21,6 +23,11 @@ export interface EditorTemporalCanvasModelInput {
   activeDialogueId?: string | null;
   readyAssetIds: ReadonlySet<string>;
   previousVisuals: ReadonlyMap<string, EditorTemporalVisual>;
+  /** Ephemeral main Position draft; never part of the formal Project. */
+  positionDraft?: {
+    readonly layerId: string;
+    readonly position: Point;
+  };
 }
 
 export interface EditorTemporalCanvasModel {
@@ -28,6 +35,8 @@ export interface EditorTemporalCanvasModel {
   stageModel: EditorStageRenderModel;
   directEditingEnabled: boolean;
   temporalInspection: boolean;
+  /** Visual-only Shake offset applied around a Position authoring draft. */
+  positionAuthoringShakeOffset: Point | null;
   lastValidVisuals: ReadonlyMap<string, EditorTemporalVisual>;
 }
 
@@ -78,6 +87,7 @@ export function buildEditorTemporalCanvasModel({
   activeDialogueId = null,
   readyAssetIds,
   previousVisuals,
+  positionDraft,
 }: EditorTemporalCanvasModelInput): EditorTemporalCanvasModel {
   const temporalInspection = currentTimeMs !== 0;
   const baseEditorShot = buildBaseEditorShot(project, shot);
@@ -104,15 +114,59 @@ export function buildEditorTemporalCanvasModel({
         lastValidVisuals: new Map<string, EditorTemporalVisual>(),
       };
 
+  const positionAuthoringShakeOffset = positionDraft
+    ? (() => {
+        const layer = shot.layers.find(
+          (candidate) => candidate.id === positionDraft.layerId,
+        );
+        if (
+          !layer ||
+          !Number.isFinite(positionDraft.position.x) ||
+          !Number.isFinite(positionDraft.position.y)
+        ) {
+          return null;
+        }
+        return evaluateLayerMotionAtTime(
+          layer,
+          shot.timelineEvents,
+          currentTimeMs,
+        ).shakeOffset;
+      })()
+    : null;
+
+  const renderedEvaluatedShot = positionDraft
+    ? {
+        ...resolved.evaluatedShot,
+        layers: resolved.evaluatedShot.layers.map((evaluatedLayer) => {
+          if (
+            evaluatedLayer.id !== positionDraft.layerId ||
+            !Number.isFinite(positionDraft.position.x) ||
+            !Number.isFinite(positionDraft.position.y)
+          ) {
+            return evaluatedLayer;
+          }
+          if (!positionAuthoringShakeOffset) return evaluatedLayer;
+          return {
+            ...evaluatedLayer,
+            // The draft is main Position. Keep runtime Shake in the preview
+            // without baking it into the draft or the eventual Position key.
+            x: positionDraft.position.x + positionAuthoringShakeOffset.x,
+            y: positionDraft.position.y + positionAuthoringShakeOffset.y,
+          };
+        }),
+      }
+    : resolved.evaluatedShot;
+
   return {
-    evaluatedShot: resolved.evaluatedShot,
+    evaluatedShot: renderedEvaluatedShot,
     stageModel: buildEditorStageRenderModel(
       project,
       shot,
-      resolved.evaluatedShot,
+      renderedEvaluatedShot,
     ),
     directEditingEnabled: !temporalInspection,
     temporalInspection,
+    positionAuthoringShakeOffset,
     lastValidVisuals: resolved.lastValidVisuals,
   };
 }

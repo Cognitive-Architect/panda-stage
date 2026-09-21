@@ -1,4 +1,9 @@
 import { useSyncExternalStore } from 'react';
+import {
+  isValidFrameTime,
+  lastValidFrameTime,
+  resolveTimelineFrameTime,
+} from '../../../domain';
 import { shotStore } from '../../stores/shotStore';
 import { clampTime, clampZoom, snapToFrame } from './timeGeometry';
 
@@ -188,6 +193,25 @@ export class TimelineUiStore {
     const snapped = Math.min(snapToFrame(clamped), durationMs);
     if (snapped === this.state.currentTimeMs) return;
     this.patch({ currentTimeMs: snapped });
+  }
+
+  /**
+   * Synchronize a visible playhead to the legal frame used by authoring.
+   *
+   * The Timeline may legitimately display a real, off-grid Shot end (for
+   * example 4.321s). Position authoring must never silently retain that value;
+   * this method moves the visible playhead to the last legal frame first.
+   */
+  syncToLegalFrame(durationMs: number): number {
+    const currentTimeMs = this.state.currentTimeMs;
+    const legalTimeMs =
+      currentTimeMs === durationMs && !isValidFrameTime(currentTimeMs)
+        ? lastValidFrameTime(durationMs)
+        : resolveTimelineFrameTime(currentTimeMs, durationMs);
+    if (legalTimeMs !== currentTimeMs) {
+      this.patch({ currentTimeMs: legalTimeMs });
+    }
+    return legalTimeMs;
   }
 
   setZoom(zoom: number): void {

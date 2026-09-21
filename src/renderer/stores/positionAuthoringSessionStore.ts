@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import {
   evaluateLayerMotionAtTime,
   isValidFrameTime,
+  lastValidFrameTime,
   PositionProjectServiceError,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
@@ -80,6 +81,17 @@ export interface PositionAuthoringSnapshot {
   readonly hasExistingKey: boolean;
 }
 
+export interface PositionAuthoringEntryState {
+  readonly canBegin: boolean;
+  readonly canHold: boolean;
+  /** True when the visible Timeline must move before the action can run. */
+  readonly requiresTimeSync: boolean;
+  readonly shotDurationMs: number | null;
+  readonly mainPosition: Point | null;
+  readonly hasExistingKey: boolean;
+  readonly reason: PositionAuthoringError | null;
+}
+
 export interface PositionAuthoringDraftResult {
   readonly ok: true;
   readonly snapshot: PositionAuthoringSnapshot;
@@ -143,6 +155,13 @@ export type PositionAuthoringCommitResult =
   | PositionAuthoringCommitSuccess
   | PositionAuthoringNoOp
   | PositionAuthoringCommitFailure;
+
+export type PositionAuthoringHoldResult =
+  | { readonly status: 'committed' }
+  | {
+      readonly status: 'rejected' | 'stale';
+      readonly error: PositionAuthoringError;
+    };
 
 export interface PositionAuthoringSessionDependencies {
   readonly editorStore: Pick<
@@ -290,6 +309,155 @@ export class PositionAuthoringSessionStore {
       session: handle,
       snapshot: this.snapshot!,
     };
+  }
+
+  /** Return a capability for the currently active session, if one exists. */
+  getActiveSessionHandle(): PositionAuthoringSessionHandle | null {
+    if (!this.active) return null;
+    return this.createHandle(this.active.sessionId, this.active.generation);
+  }
+
+  /**
+   * Project-free entry projection used by the Inspector. Off-grid Shot ends
+   * remain eligible because the caller can visibly synchronize the Timeline
+   * before invoking begin() or createHold().
+   */
+  getEntryState(): PositionAuthoringEntryState {
+    const currentTimeMs = this.dependencies.timeline.getSnapshot().currentTimeMs;
+    const context = this.readContext();
+    if (context.ok) return this.entryStateForContext(context, false);
+
+    const snapshot = this.dependencies.editorStore.getSnapshot();
+    const shotId = this.dependencies.shotSelection.getCurrentShotId();
+    const shot = snapshot?.project.shots.find(
+      (candidate) => candidate.id === shotId,
+    );
+    if (
+      context.error.code === 'invalid-time' &&
+      shot &&
+      currentTimeMs > 0 &&
+      currentTimeMs === shot.durationMs &&
+      !isValidFrameTime(currentTimeMs)
+    ) {
+      const legalTimeMs = lastValidFrameTime(shot.durationMs);
+      const legalContext = this.readContext(undefined, legalTimeMs);
+      if (legalContext.ok) return this.entryStateForContext(legalContext, true);
+    }
+
+    return {
+      canBegin: false,
+      canHold: false,
+      requiresTimeSync: false,
+      shotDurationMs: shot?.durationMs ?? null,
+      mainPosition: null,
+      hasExistingKey: false,
+      reason: context.error,
+    };
+  }
+
+  /** Read the formal main Position for the visible time without opening a session. */
+  getCurrentMainPosition(): Point | null {
+    const snapshot = this.dependencies.editorStore.getSnapshot();
+    const shotId = this.dependencies.shotSelection.getCurrentShotId();
+    const layerId = this.dependencies.layerSelection.getSelectedLayerId();
+    const shot = snapshot?.project.shots.find(
+      (candidate) => candidate.id === shotId,
+    );
+    const layer = shot?.layers.find((candidate) => candidate.id === layerId);
+    if (!shot || !layer) return null;
+    return copyPoint(
+      evaluateLayerMotionAtTime(
+        layer,
+        shot.timelineEvents,
+        this.dependencies.timeline.getSnapshot().currentTimeMs,
+      ).mainPosition,
+    );
+  }
+
+  /** Update the current session through its current capability token. */
+  updateActiveDraft(position: Point): PositionAuthoringDraftUpdateResult {
+    if (!this.active) {
+      return { ok: false, error: this.staleSessionError() };
+    }
+    return this.setDraft(
+      this.active.sessionId,
+      this.active.generation,
+      position,
+    );
+  }
+
+  /** Commit through the current capability token; stale callbacks cannot adopt it. */
+  commitActiveDraft(finalPosition?: Point): PositionAuthoringCommitResult {
+    if (!this.active) return this.staleCommitResult();
+    return this.commit(
+      this.active.sessionId,
+      this.active.generation,
+      finalPosition,
+    );
+  }
+
+  /** Create a contextual hold without entering the drag session. */
+  createHold(): PositionAuthoringHoldResult {
+    const context = this.readContext();
+    if (!context.ok) {
+      return { status: 'rejected', error: context.error };
+    }
+    const hasExistingKey = context.chain.points.some(
+      (point) => point.kind === 'key' && point.timeMs === context.timeMs,
+    );
+    if (hasExistingKey) {
+      return {
+        status: 'rejected',
+        error: new PositionAuthoringError(
+          'operation-rejected',
+          '保持不动到这里只适用于尚未设置位置的时间。',
+        ),
+      };
+    }
+
+    const baseline = context.snapshot;
+    const operation: PositionProjectOperation = {
+      type: 'hold',
+      input: {
+        timeMs: context.timeMs,
+        eventId: this.createEventId(),
+      },
+    };
+    let resultProject: unknown;
+    try {
+      resultProject = this.dependencies.positionStore.applyOperation(
+        context.shotId,
+        context.layerId,
+        operation,
+        'Hold Position',
+        baseline,
+      );
+    } catch (error) {
+      const mapped = this.mapCommitError(error);
+      return {
+        status: mapped.code === 'project-changed' ? 'stale' : 'rejected',
+        error: mapped,
+      };
+    }
+
+    const current = this.dependencies.editorStore.getSnapshot();
+    if (
+      !current ||
+      current === baseline ||
+      current.projectRoot !== baseline.projectRoot ||
+      current.project.id !== baseline.project.id ||
+      current.revision !== baseline.revision + 1 ||
+      JSON.stringify(current.project) !== JSON.stringify(resultProject)
+    ) {
+      return {
+        status: 'stale',
+        error: new PositionAuthoringError(
+          'project-changed',
+          'The Project changed while the hold was committing.',
+        ),
+      };
+    }
+    return { status: 'committed' };
   }
 
   dispose(): void {
@@ -529,8 +697,27 @@ export class PositionAuthoringSessionStore {
     };
   }
 
+  private entryStateForContext(
+    context: PositionAuthoringContext,
+    requiresTimeSync: boolean,
+  ): PositionAuthoringEntryState {
+    const hasExistingKey = context.chain.points.some(
+      (point) => point.kind === 'key' && point.timeMs === context.timeMs,
+    );
+    return {
+      canBegin: true,
+      canHold: !hasExistingKey,
+      requiresTimeSync,
+      shotDurationMs: context.shot.durationMs,
+      mainPosition: copyPoint(context.mainPosition),
+      hasExistingKey,
+      reason: null,
+    };
+  }
+
   private readContext(
     active?: ActiveSession,
+    timeOverrideMs?: number,
   ):
     | ({ readonly ok: true } & PositionAuthoringContext)
     | { readonly ok: false; readonly error: PositionAuthoringError } {
@@ -616,7 +803,8 @@ export class PositionAuthoringSessionStore {
       );
     }
 
-    const timeMs = this.dependencies.timeline.getSnapshot().currentTimeMs;
+    const timeMs =
+      timeOverrideMs ?? this.dependencies.timeline.getSnapshot().currentTimeMs;
     if (active && timeMs !== active.timeMs) {
       return this.contextFailure(
         'time-changed',

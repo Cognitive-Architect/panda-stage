@@ -10,6 +10,15 @@ import {
   type LayerTransformInput,
 } from '../../../domain';
 import type { StageLayerRenderInstruction } from '../../../shared/stage/layer-render-contract';
+import type {
+  PositionAuthoringCommitResult,
+  PositionAuthoringSessionHandle,
+} from '../../stores/positionAuthoringSessionStore';
+
+interface Point {
+  readonly x: number;
+  readonly y: number;
+}
 
 export interface SelectableLayerProps {
   image: HTMLImageElement;
@@ -27,6 +36,11 @@ export interface SelectableLayerProps {
     layerId: string,
     transform: LayerTransformInput,
   ) => void;
+  /** A scoped Position-only capability; never writes Project data directly. */
+  positionAuthoringSession?: PositionAuthoringSessionHandle | null;
+  /** The visual-only Shake offset that must not be baked into Position. */
+  positionAuthoringShakeOffset?: Point | null;
+  onPositionAuthoringCommit?: (result: PositionAuthoringCommitResult) => void;
   onError: (message: string) => void;
 }
 
@@ -49,10 +63,16 @@ export function SelectableLayer({
   onSelect,
   onCommitPosition,
   onCommitTransform,
+  positionAuthoringSession = null,
+  positionAuthoringShakeOffset = null,
+  onPositionAuthoringCommit = () => undefined,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
   const canSelect = true;
-  const canTransform = directEditingEnabled && !layer.locked;
+  const positionAuthoringEnabled = positionAuthoringSession !== null;
+  const canMove =
+    (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
+  const canTransform = canMove;
 
   const clampNode = (node: Konva.Node): void => {
     const position = clampLayerPosition({
@@ -60,6 +80,19 @@ export function SelectableLayer({
       y: node.y(),
     });
     node.position(position);
+  };
+
+  const mainPositionFromVisual = (node: Konva.Node): Point => ({
+    x: node.x() - (positionAuthoringShakeOffset?.x ?? 0),
+    y: node.y() - (positionAuthoringShakeOffset?.y ?? 0),
+  });
+
+  const clampPositionAuthoringNode = (node: Konva.Node): void => {
+    const mainPosition = clampLayerPosition(mainPositionFromVisual(node));
+    node.position({
+      x: mainPosition.x + (positionAuthoringShakeOffset?.x ?? 0),
+      y: mainPosition.y + (positionAuthoringShakeOffset?.y ?? 0),
+    });
   };
 
   const resetNode = (node: Konva.Node): void => {
@@ -78,6 +111,19 @@ export function SelectableLayer({
         stopAndSelect(event, layer.id, onSelect)
       }
       onDragEnd={(event) => {
+        if (positionAuthoringSession) {
+          clampPositionAuthoringNode(event.target);
+          const result = positionAuthoringSession.commit(
+            mainPositionFromVisual(event.target),
+          );
+          if (result.status === 'rejected' || result.status === 'stale') {
+            resetNode(event.target);
+            onError(result.error.message);
+          } else {
+            onPositionAuthoringCommit(result);
+          }
+          return;
+        }
         if (!directEditingEnabled) {
           resetNode(event.target);
           return;
@@ -97,14 +143,28 @@ export function SelectableLayer({
           );
         }
       }}
-      onDragMove={(event) => clampNode(event.target)}
+      onDragMove={(event) => {
+        if (positionAuthoringSession) {
+          clampPositionAuthoringNode(event.target);
+        } else {
+          clampNode(event.target);
+        }
+        if (!positionAuthoringSession) return;
+        const result = positionAuthoringSession.setDraft({
+          ...mainPositionFromVisual(event.target),
+        });
+        if (!result.ok) {
+          resetNode(event.target);
+          onError(result.error.message);
+        }
+      }}
       onTap={(event) =>
         stopAndSelect(event, layer.id, onSelect)
       }
       opacity={render.opacity}
       onTransformEnd={(event) => {
         const node = event.target as Konva.Group;
-        if (!directEditingEnabled) {
+        if (positionAuthoringSession || !directEditingEnabled) {
           resetNode(node);
           return;
         }

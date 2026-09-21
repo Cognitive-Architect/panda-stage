@@ -66,6 +66,16 @@ describe('timelineUiStore seek boundaries', () => {
     expect(mid).toBeGreaterThan(0);
     expect(mid).toBeLessThanOrEqual(4321);
   });
+
+  it('synchronizes an off-grid Shot end to the visible final legal frame', () => {
+    timelineUiStore.seek(4321, 4321);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(4321);
+    const before = editorProjectStore.getSnapshot();
+
+    expect(timelineUiStore.syncToLegalFrame(4321)).toBe(4292);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(4292);
+    expect(editorProjectStore.getSnapshot()).toBe(before);
+  });
 });
 
 describe('timelineUiStore shot-switch reset (real project wiring)', () => {

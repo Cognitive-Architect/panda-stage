@@ -100,6 +100,7 @@
 @import './styles/shell/tools/s10-06--tools-drawer.css';
 @import './styles/shell/project-entry/s10-07--recent-maintenance.css';
 @import './styles/shell/tools/s10-08--tools-action-launcher.css';
+@import './styles/features/properties/position-authoring.css';
 @import './styles/shell/tools/view-mode.css';
 @import './styles/shell/tools/s11-02--action-preset-host.css';
 @import './styles/shell/right-workspace/s11-03--landscape-empty-properties.css';

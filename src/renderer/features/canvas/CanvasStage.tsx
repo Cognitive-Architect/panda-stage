@@ -27,6 +27,10 @@ import {
   canvasViewportStore,
 } from '../../stores/canvasViewportStore';
 import { layerStore } from '../../stores/layerStore';
+import {
+  usePositionAuthoringSession,
+  positionAuthoringSessionStore,
+} from '../../stores/positionAuthoringSessionStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { CanvasToolbar } from './CanvasToolbar';
@@ -163,6 +167,9 @@ export function CanvasStage({
     canvasViewportStore.getSnapshot,
   );
   const timelineUi = useTimelineUi();
+  const positionAuthoringSnapshot = usePositionAuthoringSession();
+  const positionAuthoringSession =
+    positionAuthoringSessionStore.getActiveSessionHandle();
   const [toolbarTransform, setToolbarTransform] =
     useState<ViewportTransform>(() =>
       calculateViewportTransform({ width: 0, height: 0 }, 'fit'),
@@ -226,12 +233,19 @@ export function CanvasStage({
             project: snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
             shot,
+            positionDraft: positionAuthoringSnapshot
+              ? {
+                  layerId: positionAuthoringSnapshot.layerId,
+                  position: positionAuthoringSnapshot.draft,
+                }
+              : undefined,
           })
         : null,
     [
       activeCue?.id,
       imageState.images,
       previousTemporalVisuals,
+      positionAuthoringSnapshot,
       shot,
       snapshot,
       timelineUi.currentTimeMs,
@@ -439,7 +453,7 @@ export function CanvasStage({
                             key={render.id}
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
-                            onCommitPosition={(layerId, position) => {
+                             onCommitPosition={(layerId, position) => {
                               if (!canCommitCanvasEdit()) {
                                 rejectTemporalCanvasEdit();
                                 return;
@@ -447,9 +461,18 @@ export function CanvasStage({
                               layerStore.updatePosition(layerId, position);
                               setInteractionStatus(
                                 `图层位置已提交为 (${position.x.toFixed(1)}, ${position.y.toFixed(1)})。`,
-                              );
-                            }}
-                            onCommitTransform={(layerId, transform) => {
+                               );
+                             }}
+                             onPositionAuthoringCommit={(result) => {
+                               setInteractionStatus(
+                                 result.status === 'committed'
+                                   ? '位置已更新。'
+                                   : result.status === 'no-op'
+                                     ? '位置未变化。'
+                                     : result.error.message,
+                               );
+                             }}
+                             onCommitTransform={(layerId, transform) => {
                               if (!canCommitCanvasEdit()) {
                                 rejectTemporalCanvasEdit();
                                 return;
@@ -459,8 +482,8 @@ export function CanvasStage({
                                 `图层变换已提交：缩放 ${transform.scale.toFixed(3)}，旋转 ${transform.rotationDeg.toFixed(1)}°。`,
                               );
                             }}
-                            onError={setInteractionStatus}
-                            onSelect={(layerId) => {
+                             onError={setInteractionStatus}
+                             onSelect={(layerId) => {
                               if (render.isBackground) {
                                 selectionStore.selectExplicit(layerId);
                               } else {
@@ -468,8 +491,20 @@ export function CanvasStage({
                               }
                               setInteractionStatus('已选择图层。');
                             }}
-                            render={render}
-                            selected={selectedLayerId === layer.id}
+                             render={render}
+                             positionAuthoringSession={
+                               positionAuthoringSnapshot?.layerId === layer.id &&
+                               selectedLayerId === layer.id
+                                 ? positionAuthoringSession
+                                 : null
+                             }
+                             positionAuthoringShakeOffset={
+                               positionAuthoringSnapshot?.layerId === layer.id &&
+                               selectedLayerId === layer.id
+                                 ? temporalCanvasModel?.positionAuthoringShakeOffset
+                                 : null
+                             }
+                             selected={selectedLayerId === layer.id}
                           />
                         );
                       })
