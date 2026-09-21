@@ -126,11 +126,13 @@ describe('Position-chain recognition', () => {
     ['off-grid', [move(EVENT_A, 0, 4_001, BASE, B)], 'off-frame'],
     ['outside Shot', [move(EVENT_A, 0, 9_000, BASE, B)], 'outside-shot'],
   ] as const)('leaves %s legacy data playback-only with a reason', (_label, events, code) => {
+    const snapshot = structuredClone(events);
     const result = recognize(events);
     expect(result.status).toBe('playback-only');
     if (result.status !== 'playback-only') return;
     expect(result.reason.code).toBe(code);
     expect(result.events).toEqual(events);
+    expect(events).toEqual(snapshot);
   });
 
   it('does not treat another layer’s MoveEvents as this layer’s Position chain', () => {
