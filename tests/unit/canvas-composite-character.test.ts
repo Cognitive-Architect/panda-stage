@@ -11,6 +11,12 @@ import {
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import {
+  commitEditorTemporalContinuityBucket,
+  createEditorTemporalContinuityState,
+  editorTemporalContinuityMode,
+  readEditorTemporalContinuityBucket,
+} from '../../src/renderer/features/canvas/editorTemporalCanvasContinuity';
 import { resolveEditorTemporalAssetResolution } from '../../src/renderer/features/canvas/temporalVisualContinuity';
 import { buildProject, IDS } from './domain/testProject';
 
@@ -1055,5 +1061,373 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
       'pending',
     );
     expect(resolved.targetReadyLayerIds.has(IDS.layerChar)).toBe(false);
+  });
+
+  it('keeps a temporal snapshot out of Base fallback while the Base target is pending', () => {
+    const oldBodyHash = 'a'.repeat(64);
+    const oldFaceHash = 'b'.repeat(64);
+    const newBodyHash = 'c'.repeat(64);
+    const base = compositeProject({ mouth: false });
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) =>
+        asset.id === BODY_ID
+          ? { ...asset, sha256: oldBodyHash }
+          : asset.id === FACE_NORMAL_ID
+            ? { ...asset, sha256: oldFaceHash }
+            : asset,
+      ),
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: [
+          ...shot.timelineEvents,
+          {
+            id: '90000000-0000-4000-8000-000000000031',
+            type: 'move' as const,
+            layerId: IDS.layerChar,
+            startMs: 0,
+            endMs: 1_000,
+            easing: 'linear' as const,
+            from: { x: 500, y: 600 },
+            to: { x: 900, y: 600 },
+          },
+        ],
+      })),
+    });
+    const baseShot = project.shots[0]!;
+    const contextKey = 'project:open-instance:shot';
+    let continuity = createEditorTemporalContinuityState();
+    const readyBase = new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID]);
+
+    const baseModel = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: readEditorTemporalContinuityBucket(
+        continuity,
+        contextKey,
+        editorTemporalContinuityMode(0),
+      ),
+      project,
+      readyAssetIds: readyBase,
+      readyAssetSourceKeys: new Map([
+        [BODY_ID, oldBodyHash],
+        [FACE_NORMAL_ID, oldFaceHash],
+      ]),
+      readyResourceKeys: new Set([
+        canvasImageResourceKey(BODY_ID, oldBodyHash),
+        canvasImageResourceKey(FACE_NORMAL_ID, oldFaceHash),
+      ]),
+      shot: baseShot,
+    });
+    continuity = commitEditorTemporalContinuityBucket(
+      continuity,
+      contextKey,
+      editorTemporalContinuityMode(0),
+      baseModel.lastValidVisuals,
+    );
+
+    const temporalModel = buildEditorTemporalCanvasModel({
+      currentTimeMs: 500,
+      previousVisuals: readEditorTemporalContinuityBucket(
+        continuity,
+        contextKey,
+        editorTemporalContinuityMode(500),
+      ),
+      project,
+      readyAssetIds: new Set([
+        IDS.assetBg,
+        BODY_ID,
+        FACE_NORMAL_ID,
+        FACE_ANGRY_ID,
+      ]),
+      readyAssetSourceKeys: new Map([
+        [BODY_ID, oldBodyHash],
+        [FACE_NORMAL_ID, oldFaceHash],
+        [FACE_ANGRY_ID, 'd'.repeat(64)],
+      ]),
+      readyResourceKeys: new Set([
+        canvasImageResourceKey(BODY_ID, oldBodyHash),
+        canvasImageResourceKey(FACE_NORMAL_ID, oldFaceHash),
+        canvasImageResourceKey(FACE_ANGRY_ID, 'd'.repeat(64)),
+      ]),
+      shot: baseShot,
+    });
+    continuity = commitEditorTemporalContinuityBucket(
+      continuity,
+      contextKey,
+      editorTemporalContinuityMode(500),
+      temporalModel.lastValidVisuals,
+    );
+
+    const temporalCharacter = temporalModel.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+    expect(temporalCharacter.render.x).toBe(700);
+    expect(temporalModel.visualsByLayer.get(IDS.layerChar)?.activeFace?.source).toBe(
+      'expression',
+    );
+    expect(
+      temporalModel.visualsByLayer.get(IDS.layerChar)?.activeFace?.assetId,
+    ).toBe(FACE_ANGRY_ID);
+
+    const replacement = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets,
+        imageAsset(BODY_REPLACEMENT_ID, 'body-replacement', 1_200, 900, newBodyHash),
+      ],
+      characters: project.characters.map((character) =>
+        character.id === IDS.character
+          ? { ...character, bodyAssetId: BODY_REPLACEMENT_ID }
+          : character,
+      ),
+    });
+    const replacementShot = replacement.shots[0]!;
+    const pendingBase = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: readEditorTemporalContinuityBucket(
+        continuity,
+        contextKey,
+        editorTemporalContinuityMode(0),
+      ),
+      project: replacement,
+      readyAssetIds: readyBase,
+      readyAssetSourceKeys: new Map([
+        [BODY_ID, oldBodyHash],
+        [FACE_NORMAL_ID, oldFaceHash],
+      ]),
+      readyResourceKeys: new Set([
+        canvasImageResourceKey(BODY_ID, oldBodyHash),
+        canvasImageResourceKey(FACE_NORMAL_ID, oldFaceHash),
+      ]),
+      shot: replacementShot,
+    });
+    const pendingCharacter = pendingBase.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+
+    expect(pendingBase.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'previous-complete',
+    );
+    expect(pendingCharacter.render.x).toBe(500);
+    expect(
+      pendingBase.visualsByLayer.get(IDS.layerChar)?.activeFace?.assetId,
+    ).toBe(FACE_NORMAL_ID);
+    expect(pendingBase.visualsByLayer.get(IDS.layerChar)?.parts.map((part) => part.assetId)).toEqual([
+      BODY_ID,
+      FACE_NORMAL_ID,
+    ]);
+    expect(
+      pendingBase.visualsByLayer.get(IDS.layerChar)?.parts.map((part) => part.assetId),
+    ).not.toContain(FACE_ANGRY_ID);
+
+    const readyReplacement = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: pendingBase.lastValidVisuals,
+      project: replacement,
+      readyAssetIds: new Set([IDS.assetBg, BODY_REPLACEMENT_ID, FACE_NORMAL_ID]),
+      readyAssetSourceKeys: new Map([
+        [BODY_REPLACEMENT_ID, newBodyHash],
+        [FACE_NORMAL_ID, oldFaceHash],
+      ]),
+      readyResourceKeys: new Set([
+        canvasImageResourceKey(BODY_REPLACEMENT_ID, newBodyHash),
+        canvasImageResourceKey(FACE_NORMAL_ID, oldFaceHash),
+      ]),
+      shot: replacementShot,
+    });
+    expect(readyReplacement.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'current-complete',
+    );
+    expect(
+      readyReplacement.visualsByLayer.get(IDS.layerChar)?.parts.map((part) => part.assetId),
+    ).toEqual([BODY_REPLACEMENT_ID, FACE_NORMAL_ID]);
+  });
+
+  it('does not use Base-only continuity for pending Temporal inspection, but keeps same-mode Temporal continuity', () => {
+    const base = compositeProject({ mouth: false });
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: [
+          ...shot.timelineEvents,
+          {
+            id: '90000000-0000-4000-8000-000000000032',
+            type: 'move' as const,
+            layerId: IDS.layerChar,
+            startMs: 0,
+            endMs: 1_000,
+            easing: 'linear' as const,
+            from: { x: 500, y: 600 },
+            to: { x: 900, y: 600 },
+          },
+        ],
+      })),
+    });
+    const shot = project.shots[0]!;
+    const contextKey = 'project:open-instance:shot';
+    let continuity = createEditorTemporalContinuityState();
+    const baseModel = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: readEditorTemporalContinuityBucket(
+        continuity,
+        contextKey,
+        editorTemporalContinuityMode(0),
+      ),
+      project,
+      readyAssetIds: new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID]),
+      shot,
+    });
+    continuity = commitEditorTemporalContinuityBucket(
+      continuity,
+      contextKey,
+      editorTemporalContinuityMode(0),
+      baseModel.lastValidVisuals,
+    );
+
+    const temporalPending = buildEditorTemporalCanvasModel({
+      currentTimeMs: 500,
+      previousVisuals: readEditorTemporalContinuityBucket(
+        continuity,
+        contextKey,
+        editorTemporalContinuityMode(500),
+      ),
+      project,
+      readyAssetIds: new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID]),
+      shot,
+    });
+    expect(temporalPending.temporalInspection).toBe(true);
+    expect(temporalPending.directEditingEnabled).toBe(false);
+    expect(temporalPending.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'pending',
+    );
+    expect(temporalPending.visualsByLayer.get(IDS.layerChar)).toBeNull();
+    expect(temporalPending.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!.visual.parts).toHaveLength(0);
+
+    continuity = commitEditorTemporalContinuityBucket(
+      continuity,
+      contextKey,
+      editorTemporalContinuityMode(500),
+      temporalPending.lastValidVisuals,
+    );
+    const temporalReady = buildEditorTemporalCanvasModel({
+      currentTimeMs: 500,
+      previousVisuals: readEditorTemporalContinuityBucket(
+        continuity,
+        contextKey,
+        editorTemporalContinuityMode(500),
+      ),
+      project,
+      readyAssetIds: new Set([
+        IDS.assetBg,
+        BODY_ID,
+        FACE_NORMAL_ID,
+        FACE_ANGRY_ID,
+      ]),
+      shot,
+    });
+    expect(temporalReady.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'current-complete',
+    );
+    continuity = commitEditorTemporalContinuityBucket(
+      continuity,
+      contextKey,
+      editorTemporalContinuityMode(500),
+      temporalReady.lastValidVisuals,
+    );
+
+    const temporalReplacement = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets,
+        imageAsset(BODY_REPLACEMENT_ID, 'temporal-body-replacement', 1_100, 900),
+      ],
+      characters: project.characters.map((character) =>
+        character.id === IDS.character
+          ? { ...character, bodyAssetId: BODY_REPLACEMENT_ID }
+          : character,
+      ),
+    });
+    const temporalReplacementShot = temporalReplacement.shots[0]!;
+    const temporalPendingReplacement = buildEditorTemporalCanvasModel({
+      currentTimeMs: 500,
+      missingAssetIds: new Set([BODY_REPLACEMENT_ID]),
+      previousVisuals: readEditorTemporalContinuityBucket(
+        continuity,
+        contextKey,
+        editorTemporalContinuityMode(500),
+      ),
+      project: temporalReplacement,
+      readyAssetIds: new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID, FACE_ANGRY_ID]),
+      shot: temporalReplacementShot,
+    });
+    const retainedTemporalCharacter = temporalPendingReplacement.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+    expect(temporalPendingReplacement.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'required-failed',
+    );
+    expect(retainedTemporalCharacter.render.x).toBe(700);
+    expect(
+      temporalPendingReplacement.visualsByLayer.get(IDS.layerChar)?.activeFace?.assetId,
+    ).toBe(FACE_ANGRY_ID);
+  });
+
+  it('bounds continuity to Base and Temporal buckets and invalidates both on context change', () => {
+    const state = createEditorTemporalContinuityState('project-a:instance-a:shot-a');
+    const baseVisuals = new Map<string, never>();
+    const temporalVisuals = new Map<string, never>();
+    const withBase = commitEditorTemporalContinuityBucket(
+      state,
+      'project-a:instance-a:shot-a',
+      'base',
+      baseVisuals,
+    );
+    const withBoth = commitEditorTemporalContinuityBucket(
+      withBase,
+      'project-a:instance-a:shot-a',
+      'temporal',
+      temporalVisuals,
+    );
+
+    expect(withBoth.buckets.base).toBe(baseVisuals);
+    expect(withBoth.buckets.temporal).toBe(temporalVisuals);
+    expect(
+      readEditorTemporalContinuityBucket(
+        withBoth,
+        'project-a:instance-a:shot-a',
+        'base',
+      ),
+    ).toBe(baseVisuals);
+    expect(
+      readEditorTemporalContinuityBucket(
+        withBoth,
+        'project-a:instance-a:shot-a',
+        'temporal',
+      ),
+    ).toBe(temporalVisuals);
+
+    const switched = commitEditorTemporalContinuityBucket(
+      withBoth,
+      'project-b:instance-b:shot-b',
+      'base',
+      baseVisuals,
+    );
+    expect(
+      readEditorTemporalContinuityBucket(
+        switched,
+        'project-a:instance-a:shot-a',
+        'base',
+      ),
+    ).not.toBe(baseVisuals);
+    expect(
+      readEditorTemporalContinuityBucket(
+        switched,
+        'project-b:instance-b:shot-b',
+        'temporal',
+      ).size,
+    ).toBe(0);
   });
 });

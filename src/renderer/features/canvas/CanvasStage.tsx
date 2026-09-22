@@ -64,7 +64,13 @@ import {
 import {
   buildEditorTemporalCanvasModel,
 } from './editorTemporalCanvasModel';
-import type { EditorTemporalVisual } from './temporalVisualContinuity';
+import {
+  commitEditorTemporalContinuityBucket,
+  createEditorTemporalContinuityState,
+  editorTemporalContinuityMode,
+  readEditorTemporalContinuityBucket,
+  type EditorTemporalContinuityMode,
+} from './editorTemporalCanvasContinuity';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
@@ -244,17 +250,16 @@ export function CanvasStage({
     snapshot && shot && editorProjectStore.getProjectInstanceId() !== null
       ? `${snapshot.project.id}:${snapshot.projectRoot}:${editorProjectStore.getProjectInstanceId()}:${shot.id}`
       : null;
-  const temporalContinuityRef = useRef<{
-    contextKey: string | null;
-    visuals: ReadonlyMap<string, EditorTemporalVisual>;
-  }>({
-    contextKey: null,
-    visuals: new Map(),
-  });
-  const previousTemporalVisuals =
-    temporalContinuityRef.current.contextKey === temporalContextKey
-      ? temporalContinuityRef.current.visuals
-      : new Map<string, EditorTemporalVisual>();
+  const continuityMode: EditorTemporalContinuityMode =
+    editorTemporalContinuityMode(timelineUi.currentTimeMs);
+  const temporalContinuityRef = useRef(
+    createEditorTemporalContinuityState(),
+  );
+  const previousTemporalVisuals = readEditorTemporalContinuityBucket(
+    temporalContinuityRef.current,
+    temporalContextKey,
+    continuityMode,
+  );
   const retainedAssets = useMemo<CanvasImageAssetSource[]>(() => {
     const assets = new Map<string, CanvasImageAssetSource>();
     for (const visual of previousTemporalVisuals.values()) {
@@ -294,22 +299,24 @@ export function CanvasStage({
       positionAuthoringSnapshot,
       shot,
       snapshot,
+      temporalContextKey,
       timelineUi.currentTimeMs,
     ],
   );
   useEffect(() => {
     if (!temporalCanvasModel) {
-      temporalContinuityRef.current = {
-        contextKey: temporalContextKey,
-        visuals: new Map(),
-      };
+      temporalContinuityRef.current = createEditorTemporalContinuityState(
+        temporalContextKey,
+      );
       return;
     }
-    temporalContinuityRef.current = {
-      contextKey: temporalContextKey,
-      visuals: temporalCanvasModel.lastValidVisuals,
-    };
-  }, [temporalCanvasModel, temporalContextKey]);
+    temporalContinuityRef.current = commitEditorTemporalContinuityBucket(
+      temporalContinuityRef.current,
+      temporalContextKey,
+      continuityMode,
+      temporalCanvasModel.lastValidVisuals,
+    );
+  }, [continuityMode, temporalCanvasModel, temporalContextKey]);
   const stageModel = temporalCanvasModel?.stageModel ?? null;
   const currentReadyImages = useMemo(() => {
     if (!snapshot) return new Map<string, HTMLImageElement>();
