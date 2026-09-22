@@ -122,27 +122,21 @@ export function buildEditorTemporalCanvasModel({
         activeDialogueId,
       )
     : baseEditorShot;
-  const resolved = temporalInspection
-    ? resolveEditorTemporalAssetResolution(
-        project,
-        shot,
-        evaluatedShot,
-        readyAssetIds,
-         previousVisuals,
-         readyAssetSourceKeys,
-         missingAssetIds,
-         readyResourceKeys,
-       )
-      : {
-        // A temporal visual must not survive the transition back into Base
-        // Edit View, even when the same layer remains selected.
-        evaluatedShot: baseEditorShot,
-         lastValidVisuals: new Map<string, EditorTemporalVisual>(),
-         visualsByLayer: new Map(),
-         visualSourceKeysByLayer: new Map(),
-         visualStatusByLayer: new Map<string, EditorTemporalVisualStatus>(),
-        targetReadyLayerIds: new Set<string>(),
-      };
+  // Base Edit View owns the logical 0:00 state, while the continuity resolver
+  // owns how that state transitions as its image resources are replaced. Keep
+  // these responsibilities separate: at 0:00 we still pass the Base shot and
+  // never project runtime Mouth/dialogue state, but we do retain a complete
+  // previous visual until the new Base visual is ready.
+  const resolved = resolveEditorTemporalAssetResolution(
+    project,
+    shot,
+    evaluatedShot,
+    readyAssetIds,
+    previousVisuals,
+    readyAssetSourceKeys,
+    missingAssetIds,
+    readyResourceKeys,
+  );
 
   const positionAuthoringShakeOffset = positionDraft
     ? (() => {

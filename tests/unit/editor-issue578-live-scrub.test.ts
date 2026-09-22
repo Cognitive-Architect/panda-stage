@@ -372,7 +372,12 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     expect(returnedLayer.render.x).toBe(500);
     expect(returnedLayer.render.scaleX).toBe(0.5);
     expect(returnedLayer.render.assetId).toBe(IDS.assetChar);
-    expect(atReturnToZero.lastValidVisuals.size).toBe(0);
+    expect(atReturnToZero.temporalInspection).toBe(false);
+    expect(atReturnToZero.directEditingEnabled).toBe(true);
+    expect(atReturnToZero.lastValidVisuals.size).toBe(3);
+    expect(
+      atReturnToZero.visualStatusByLayer.get(IDS.layerChar),
+    ).toBe('current-complete');
     expect(editor.getSnapshot()).toMatchObject({
       dirty: false,
       revision: 0,

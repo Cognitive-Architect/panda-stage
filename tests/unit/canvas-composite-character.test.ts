@@ -19,6 +19,7 @@ const FACE_NORMAL_ID = '10000000-0000-4000-8000-000000000005';
 const FACE_ANGRY_ID = '10000000-0000-4000-8000-000000000006';
 const MOUTH_ID = '10000000-0000-4000-8000-000000000007';
 const AUDIO_ID = '10000000-0000-4000-8000-000000000008';
+const BODY_REPLACEMENT_ID = '10000000-0000-4000-8000-000000000012';
 const DIALOGUE_ID = '80000000-0000-4000-8000-000000000004';
 const AUDIO_CLIP_ID = '70000000-0000-4000-8000-000000000004';
 const EXPRESSION_EVENT_ID = '90000000-0000-4000-8000-000000000004';
@@ -741,6 +742,243 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
       'mouth-fallback-pending',
     );
     expect(resolved.visualsByLayer.get(IDS.layerChar)).toBeNull();
+  });
+
+  it('keeps and atomically replaces the complete Body/Face visual at 0:00', () => {
+    const base = compositeProject({ mouth: false });
+    const baseShot = base.shots[0]!;
+    const baseReady = new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID]);
+    const baseModel = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: new Map(),
+      project: base,
+      readyAssetIds: baseReady,
+      shot: baseShot,
+    });
+    const baseCharacter = baseModel.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+
+    const replacement = ProjectSchema.parse({
+      ...base,
+      assets: [
+        ...base.assets,
+        imageAsset(BODY_REPLACEMENT_ID, 'body-replacement', 1_200, 900),
+      ],
+      characters: base.characters.map((character) =>
+        character.id === IDS.character
+          ? { ...character, bodyAssetId: BODY_REPLACEMENT_ID }
+          : character,
+      ),
+    });
+    const replacementShot = replacement.shots[0]!;
+    const pending = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: baseModel.lastValidVisuals,
+      project: replacement,
+      readyAssetIds: baseReady,
+      shot: replacementShot,
+    });
+    const pendingCharacter = pending.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+
+    expect(baseModel.temporalInspection).toBe(false);
+    expect(baseModel.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'current-complete',
+    );
+    expect(baseCharacter.visual.parts.map((part) => part.assetId)).toEqual([
+      BODY_ID,
+      FACE_NORMAL_ID,
+    ]);
+    expect(pending.temporalInspection).toBe(false);
+    expect(pending.directEditingEnabled).toBe(true);
+    expect(pending.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'previous-complete',
+    );
+    expect(pending.targetReadyLayerIds.has(IDS.layerChar)).toBe(false);
+    expect(pendingCharacter.visual.parts.map((part) => part.assetId)).toEqual([
+      BODY_ID,
+      FACE_NORMAL_ID,
+    ]);
+    expect(pendingCharacter.render).toMatchObject({
+      x: baseCharacter.render.x,
+      y: baseCharacter.render.y,
+      scaleX: baseCharacter.render.scaleX,
+      scaleY: baseCharacter.render.scaleY,
+    });
+    expect(pendingCharacter.visual.combinedLocalBounds).toEqual(
+      baseCharacter.visual.combinedLocalBounds,
+    );
+
+    const committed = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: pending.lastValidVisuals,
+      project: replacement,
+      readyAssetIds: new Set([
+        IDS.assetBg,
+        BODY_REPLACEMENT_ID,
+        FACE_NORMAL_ID,
+      ]),
+      shot: replacementShot,
+    });
+    const committedCharacter = committed.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+
+    expect(committed.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'current-complete',
+    );
+    expect(committed.targetReadyLayerIds.has(IDS.layerChar)).toBe(true);
+    expect(committedCharacter.visual.parts.map((part) => part.assetId)).toEqual([
+      BODY_REPLACEMENT_ID,
+      FACE_NORMAL_ID,
+    ]);
+  });
+
+  it('keeps and atomically replaces the Base Face/Expression visual at 0:00', () => {
+    const project = compositeProject({ mouth: false });
+    const baseShot = project.shots[0]!;
+    const readyBase = new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID]);
+    const baseModel = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: new Map(),
+      project,
+      readyAssetIds: readyBase,
+      shot: baseShot,
+    });
+    const replacement = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) =>
+          layer.id === IDS.layerChar && layer.source.kind === 'character'
+            ? {
+                ...layer,
+                source: {
+                  ...layer.source,
+                  expressionId: IDS.expressionAngry,
+                },
+              }
+            : layer,
+        ),
+      })),
+    });
+    const replacementShot = replacement.shots[0]!;
+    const pending = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: baseModel.lastValidVisuals,
+      project: replacement,
+      readyAssetIds: readyBase,
+      shot: replacementShot,
+    });
+    const committed = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      previousVisuals: pending.lastValidVisuals,
+      project: replacement,
+      readyAssetIds: new Set([IDS.assetBg, BODY_ID, FACE_ANGRY_ID]),
+      shot: replacementShot,
+    });
+
+    expect(pending.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'previous-complete',
+    );
+    expect(
+      pending.visualsByLayer
+        .get(IDS.layerChar)
+        ?.parts.map((part) => part.assetId),
+    ).toEqual([BODY_ID, FACE_NORMAL_ID]);
+    expect(committed.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'current-complete',
+    );
+    expect(committed.targetReadyLayerIds.has(IDS.layerChar)).toBe(true);
+    expect(
+      committed.visualsByLayer
+        .get(IDS.layerChar)
+        ?.parts.map((part) => part.assetId),
+    ).toEqual([BODY_ID, FACE_ANGRY_ID]);
+  });
+
+  it('keeps 0:00 Base semantics, rejects Mouth projection, and exposes hard failure', () => {
+    const project = compositeProject();
+    const shot = project.shots[0]!;
+    const base = buildEditorTemporalCanvasModel({
+      activeDialogueId: DIALOGUE_ID,
+      currentTimeMs: 0,
+      previousVisuals: new Map(),
+      project,
+      readyAssetIds: new Set([
+        IDS.assetBg,
+        BODY_ID,
+        FACE_NORMAL_ID,
+        FACE_ANGRY_ID,
+        MOUTH_ID,
+      ]),
+      shot,
+    });
+    const characterLayer = base.evaluatedShot.layers.find(
+      (layer) => layer.id === IDS.layerChar,
+    )!;
+    const characterVisual = base.visualsByLayer.get(IDS.layerChar)!;
+
+    expect(base.temporalInspection).toBe(false);
+    expect(base.directEditingEnabled).toBe(true);
+    expect(base.evaluatedShot.timeMs).toBe(0);
+    expect(characterLayer.mouthOverrideAssetId).toBeNull();
+    expect(characterVisual.activeFace?.source).toBe('expression');
+    expect(characterVisual.parts.map((part) => part.assetId)).toEqual([
+      BODY_ID,
+      FACE_NORMAL_ID,
+    ]);
+
+    const replacement = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets,
+        imageAsset(BODY_REPLACEMENT_ID, 'body-replacement', 1_200, 900),
+      ],
+      characters: project.characters.map((character) =>
+        character.id === IDS.character
+          ? { ...character, bodyAssetId: BODY_REPLACEMENT_ID }
+          : character,
+      ),
+    });
+    const replacementShot = replacement.shots[0]!;
+
+    const failedWithRetention = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      missingAssetIds: new Set([BODY_REPLACEMENT_ID]),
+      previousVisuals: base.lastValidVisuals,
+      project: replacement,
+      readyAssetIds: new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID]),
+      shot: replacementShot,
+    });
+    expect(
+      failedWithRetention.visualStatusByLayer.get(IDS.layerChar),
+    ).toBe('required-failed');
+    expect(failedWithRetention.targetReadyLayerIds.has(IDS.layerChar)).toBe(
+      false,
+    );
+    expect(failedWithRetention.visualsByLayer.get(IDS.layerChar)).toEqual(
+      base.visualsByLayer.get(IDS.layerChar),
+    );
+
+    const failedBeforeFirstPaint = buildEditorTemporalCanvasModel({
+      currentTimeMs: 0,
+      missingAssetIds: new Set([BODY_REPLACEMENT_ID]),
+      previousVisuals: new Map(),
+      project: replacement,
+      readyAssetIds: new Set([IDS.assetBg, FACE_NORMAL_ID]),
+      shot: replacementShot,
+    });
+    const failedCharacter = failedBeforeFirstPaint.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+    expect(
+      failedBeforeFirstPaint.visualStatusByLayer.get(IDS.layerChar),
+    ).toBe('required-failed');
+    expect(failedBeforeFirstPaint.visualsByLayer.get(IDS.layerChar)).toBeNull();
+    expect(failedCharacter.visual.parts).toHaveLength(0);
   });
 
   it('rejects a stale source hash even when the Asset id is present', () => {

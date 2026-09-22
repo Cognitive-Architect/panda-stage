@@ -747,17 +747,17 @@ export function CanvasStage({
               >
                 <strong>
                   {hasRequiredVisualFailure
-                    ? 'Body / Face read failed'
+                    ? '角色素材读取失败'
                     : hasMouthExpressionFallback
-                      ? 'Mouth unavailable; current Expression is shown'
-                      : 'Mouth unavailable; current Expression is still preparing'}
+                      ? '张嘴表情不可用，已暂时显示当前表情'
+                      : '张嘴表情不可用，正在准备当前表情'}
                 </strong>
                 <span>
                   {hasRequiredVisualFailure
-                    ? 'The complete Character visual is unavailable. A retained visual is not treated as ready.'
+                    ? '当前角色画面不可用，请检查素材后重试。'
                     : hasMouthExpressionFallback
-                      ? 'The Character keeps its Body and current Expression while the Mouth resource is unavailable.'
-                      : 'The Mouth resource is unavailable and the current Expression is not ready yet.'}
+                      ? '素材恢复后会自动更新。'
+                      : '当前表情准备完成后会自动更新。'}
                 </span>
               </div>
             ) : null}
@@ -778,7 +778,7 @@ export function CanvasStage({
               >
                 <strong>画面仍在准备</strong>
                 <span>
-                  正在读取完整角色画面；准备完成前不会显示不完整的 Body 或 Face。
+                  正在读取角色素材；准备完成前不会显示不完整的角色画面。
                 </span>
               </div>
             ) : null}
