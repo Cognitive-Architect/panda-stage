@@ -632,6 +632,35 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
     expect(bodyStageLayer.visual.parts).toHaveLength(0);
   });
 
+  it('keeps a retained visual visible but still surfaces a required Face failure', () => {
+    const project = compositeProject({ mouth: false });
+    const shot = project.shots[0]!;
+    const previous = resolveEditorTemporalAssetResolution(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 0, project),
+      new Set([BODY_ID, FACE_NORMAL_ID]),
+      new Map(),
+    );
+    const failed = resolveEditorTemporalAssetResolution(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 500, project),
+      new Set([BODY_ID, FACE_NORMAL_ID]),
+      previous.lastValidVisuals,
+      new Map(),
+      new Set([FACE_ANGRY_ID]),
+    );
+
+    expect(failed.visualStatusByLayer.get(IDS.layerChar)).toBe(
+      'required-failed',
+    );
+    expect(failed.targetReadyLayerIds.has(IDS.layerChar)).toBe(false);
+    expect(failed.visualsByLayer.get(IDS.layerChar)).toEqual(
+      previous.visualsByLayer.get(IDS.layerChar),
+    );
+  });
+
   it('falls back from a missing Mouth to the current Expression only', () => {
     const project = compositeProject();
     const shot = project.shots[0]!;
