@@ -17,6 +17,8 @@ interface FakeImage {
 
 const LAYER_A = 'layer-a';
 const LAYER_B = 'layer-b';
+const CHARACTER_BODY = 'character-layer:body';
+const CHARACTER_FACE = 'character-layer:face';
 
 function createFakeImage(): FakeImage {
   return {
@@ -144,6 +146,41 @@ describe('StageImageResourceSession', () => {
     });
     expect(harness.session.getSnapshot().images.get(LAYER_A)).toBe(
       harness.images[0],
+    );
+  });
+
+  it('keeps a Body and Face runtime pair atomic across an expression replacement', () => {
+    const harness = createHarness();
+    const initial = [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-expression' },
+    ];
+
+    reconcile(harness, initial);
+    harness.images[0]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    expect(harness.session.getSnapshot().images.size).toBe(0);
+    harness.images[1]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    reconcile(harness, [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-mouth' },
+    ]);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    expect(harness.session.getSnapshot().images.get(CHARACTER_BODY)).toBe(
+      harness.images[0],
+    );
+    expect(harness.session.getSnapshot().images.get(CHARACTER_FACE)).toBe(
+      harness.images[1],
+    );
+    harness.images[2]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get(CHARACTER_BODY)).toBe(
+      harness.images[0],
+    );
+    expect(harness.session.getSnapshot().images.get(CHARACTER_FACE)).toBe(
+      harness.images[2],
     );
   });
 

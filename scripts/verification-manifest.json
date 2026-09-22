@@ -243,7 +243,8 @@
           "scripts/verify-issue99*",
           "scripts/verify-issue457*",
           "scripts/verify-issue579*",
-          "scripts/verify-issue602*"
+          "scripts/verify-issue602*",
+          "scripts/verify-issue606*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -400,7 +401,7 @@
       }
     ]
   },
-  "count": 63,
+  "count": 64,
   "gates": [
     {
       "id": "assets",
@@ -605,6 +606,18 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron composite Character proof for Body+Face pixels, shared selection/drag, combined bounds, partial opacity, pending complete-visual retention, and Mouth fallback."
+    },
+    {
+      "id": "issue606",
+      "script": "verify:issue606",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
     },
     {
       "id": "fla-v1-5-c3",

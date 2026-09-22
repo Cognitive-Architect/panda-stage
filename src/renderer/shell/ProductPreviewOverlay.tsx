@@ -34,6 +34,8 @@ import { CanvasStage } from '../stage/CanvasStage';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import {
   advanceProductPreviewTime,
+  applyProductPreviewMouthFallback,
+  buildProductPreviewImagePlan,
   buildProductPreviewCues,
   clampProductPreviewTime,
   formatProductPreviewTimecode,
@@ -140,12 +142,6 @@ export function ProductPreviewOverlay({
   const nextAssetIds = useMemo(
     () => (nextShot ? listProductPreviewAssetIds(project, nextShot) : []),
     [nextShot, project],
-  );
-  const assets = useProductPreviewImages(
-    projectRoot,
-    project,
-    assetIds,
-    nextAssetIds,
   );
   const cues = useMemo(
     () => (shot ? buildProductPreviewCues(shot) : []),
@@ -293,6 +289,39 @@ export function ProductPreviewOverlay({
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
+  const imagePlan = useMemo(
+    () =>
+      shot && renderedShot
+        ? buildProductPreviewImagePlan(project, shot, renderedShot)
+        : {
+            requiredAssetIds: [],
+            fallbackAssetIds: [],
+            candidateAssetIds: assetIds,
+            mouthFallbacks: [],
+          },
+    [assetIds, project, renderedShot, shot],
+  );
+  const assets = useProductPreviewImages(
+    projectRoot,
+    project,
+    imagePlan,
+    nextAssetIds,
+  );
+  const displayedShot = useMemo(
+    () =>
+      shot && renderedShot && (assets.degradedAssetIds?.length ?? 0) > 0
+        ? applyProductPreviewMouthFallback(
+            project,
+            shot,
+            renderedShot,
+            new Set(assets.degradedAssetIds),
+          )
+        : renderedShot,
+    [assets.degradedAssetIds, project, renderedShot, shot],
+  );
+  const previewDegraded =
+    assets.status === 'degraded' &&
+    (assets.degradedAssetIds?.length ?? 0) > 0;
   const handleInitialStageReady = useCallback((): void => {
     if (
       initialStageReadyRef.current ||
@@ -382,17 +411,31 @@ export function ProductPreviewOverlay({
     assetUrls: typeof assets.urls;
     caption: typeof caption;
     captionStyle: typeof captionStyle;
-    evaluatedShot: NonNullable<typeof renderedShot>;
+    evaluatedShot: NonNullable<typeof displayedShot>;
+    degraded: boolean;
   } | null>(null);
   useLayoutEffect(() => {
-    if (assets.status !== 'ready' || !renderedShot) return;
+    if (
+      (assets.status !== 'ready' && assets.status !== 'degraded') ||
+      !displayedShot
+    ) {
+      return;
+    }
     lastReadyVisual.current = {
       assetUrls: assets.urls,
       caption,
       captionStyle,
-      evaluatedShot: renderedShot,
+      evaluatedShot: displayedShot,
+      degraded: previewDegraded,
     };
-  }, [assets.status, assets.urls, caption, captionStyle, renderedShot]);
+  }, [
+    assets.status,
+    assets.urls,
+    caption,
+    captionStyle,
+    displayedShot,
+    previewDegraded,
+  ]);
   const heldVisual =
     assets.status === 'loading' ? lastReadyVisual.current : null;
   const initialReadinessError =
@@ -423,6 +466,10 @@ export function ProductPreviewOverlay({
       data-preview-playing={String(playing)}
       data-preview-range={range}
       data-preview-data-ready={String(initialReadiness === 'ready')}
+      data-preview-degraded={String(previewDegraded)}
+      data-preview-failed-asset-ids={JSON.stringify(
+        assets.fatalAssetIds ?? [],
+      )}
       data-preview-readiness={initialReadiness}
       data-preview-handoff={handoffPhase}
       data-preview-reveal={revealPhase}
@@ -524,24 +571,74 @@ export function ProductPreviewOverlay({
                     </div>
                   )
                 ) : assets.status === 'ready' && renderedShot ? (
-                  <CanvasStage
-                    assetUrls={assets.urls}
-                    caption={caption}
-                    captionStyle={captionStyle}
-                    evaluatedShot={renderedShot}
-                    onError={handleInitialStageError}
-                    onReady={
-                      initialReadiness === 'preparing'
-                        ? handleInitialStageReady
-                        : undefined
-                    }
-                    project={project}
-                  />
+                  <>
+                    <CanvasStage
+                      assetUrls={assets.urls}
+                      caption={caption}
+                      captionStyle={captionStyle}
+                      evaluatedShot={renderedShot}
+                      onDisplayReady={
+                        initialReadiness === 'preparing'
+                          ? handleInitialStageReady
+                          : undefined
+                      }
+                      onError={handleInitialStageError}
+                      onReady={
+                        initialReadiness === 'preparing'
+                          ? handleInitialStageReady
+                          : undefined
+                      }
+                      project={project}
+                    />
+                    {(assets.optionalFailedAssetIds?.length ?? 0) > 0 ? (
+                      <div
+                        className="product-preview-message product-preview-warning"
+                        data-testid="product-preview-optional-warning"
+                      >
+                        <strong>部分候选素材未能预加载</strong>
+                        <span>切换到对应画面时仍会按需检查这些素材。</span>
+                      </div>
+                    ) : null}
+                  </>
+                ) : assets.status === 'degraded' && displayedShot ? (
+                  <>
+                    <CanvasStage
+                      assetUrls={assets.urls}
+                      caption={caption}
+                      captionStyle={captionStyle}
+                      degraded
+                      evaluatedShot={displayedShot}
+                      onDisplayReady={
+                        initialReadiness === 'preparing'
+                          ? handleInitialStageReady
+                          : undefined
+                      }
+                      onError={handleInitialStageError}
+                      project={project}
+                    />
+                    <div
+                      className="product-preview-message product-preview-warning"
+                      data-testid="product-preview-mouth-degraded-warning"
+                    >
+                      <strong>嘴型素材不可用，已显示当前表情</strong>
+                      <span>修复嘴型素材后，预览会恢复到目标嘴型。</span>
+                    </div>
+                    {(assets.optionalFailedAssetIds?.length ?? 0) > 0 ? (
+                      <div
+                        className="product-preview-message product-preview-warning"
+                        data-testid="product-preview-optional-warning"
+                      >
+                        <strong>部分候选素材未能预加载</strong>
+                        <span>切换到对应画面时仍会按需检查这些素材。</span>
+                      </div>
+                    ) : null}
+                  </>
                 ) : heldVisual ? (
                   <CanvasStage
                     assetUrls={heldVisual.assetUrls}
                     caption={heldVisual.caption}
                     captionStyle={heldVisual.captionStyle}
+                    degraded={heldVisual.degraded}
                     evaluatedShot={heldVisual.evaluatedShot}
                     project={project}
                   />
@@ -553,12 +650,13 @@ export function ProductPreviewOverlay({
                     <strong>预览素材加载中</strong>
                     <span>正在读取当前镜头需要的图片素材。</span>
                   </div>
-                ) : renderedShot ? (
+                ) : displayedShot ? (
                   <CanvasStage
                     assetUrls={assets.urls}
                     caption={caption}
                     captionStyle={captionStyle}
-                    evaluatedShot={renderedShot}
+                    degraded={previewDegraded}
+                    evaluatedShot={displayedShot}
                     project={project}
                   />
                 ) : null}

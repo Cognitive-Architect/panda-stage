@@ -15,6 +15,8 @@
 import {
   listShotRuntimeImageAssets,
   projectShotMouth,
+  resolveLayerVisualParts,
+  resolveShotVisualParts,
   type EvaluatedShot,
   type Project,
   type Shot,
@@ -89,6 +91,106 @@ export function listProductPreviewAssetIds(
   shot: Shot,
 ): string[] {
   return listShotRuntimeImageAssets(project, shot).map((asset) => asset.id);
+}
+
+export interface ProductPreviewMouthFallback {
+  sourceAssetId: string;
+  fallbackAssetId: string;
+}
+
+/**
+ * Separates the exact current visual from bounded warmup candidates. The
+ * resolver remains the only owner of Body/Face/Mouth meaning; this plan only
+ * classifies the resources that the Preview image session already owns.
+ */
+export interface ProductPreviewImagePlan {
+  requiredAssetIds: string[];
+  fallbackAssetIds: string[];
+  candidateAssetIds: string[];
+  mouthFallbacks: ProductPreviewMouthFallback[];
+}
+
+function appendUnique(target: string[], ids: readonly string[]): void {
+  for (const id of ids) {
+    if (!target.includes(id)) target.push(id);
+  }
+}
+
+export function buildProductPreviewImagePlan(
+  project: Project,
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+): ProductPreviewImagePlan {
+  const requiredAssetIds: string[] = [];
+  const fallbackAssetIds: string[] = [];
+  const candidateAssetIds: string[] = [];
+  const mouthFallbacks: ProductPreviewMouthFallback[] = [];
+
+  for (const visual of resolveShotVisualParts(project, shot, evaluatedShot)) {
+    appendUnique(
+      requiredAssetIds,
+      visual.resources.required.map((resource) => resource.assetId),
+    );
+    appendUnique(
+      fallbackAssetIds,
+      visual.resources.fallback.map((resource) => resource.assetId),
+    );
+    appendUnique(
+      candidateAssetIds,
+      visual.resources.candidates.map((resource) => resource.assetId),
+    );
+    if (visual.activeFace?.source === 'mouth' && visual.activeFace.fallbackAssetId) {
+      mouthFallbacks.push({
+        sourceAssetId: visual.activeFace.assetId,
+        fallbackAssetId: visual.activeFace.fallbackAssetId,
+      });
+    }
+  }
+
+  const currentShotAssetIds = listProductPreviewAssetIds(project, shot);
+  const reserved = new Set([...requiredAssetIds, ...fallbackAssetIds]);
+  appendUnique(
+    candidateAssetIds,
+    currentShotAssetIds.filter((assetId) => !reserved.has(assetId)),
+  );
+  return {
+    requiredAssetIds,
+    fallbackAssetIds,
+    candidateAssetIds,
+    mouthFallbacks,
+  };
+}
+
+/**
+ * Removes only failed active Mouth projections. Clearing the projection lets
+ * the S03 resolver select the Expression that is current at this exact time;
+ * it never invents a default or a previous-frame expression.
+ */
+export function applyProductPreviewMouthFallback(
+  project: Project,
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+  failedMouthAssetIds: ReadonlySet<string>,
+): EvaluatedShot {
+  let changed = false;
+  const layers = evaluatedShot.layers.map((layer) => {
+    const visual = resolveLayerVisualParts(project, shot, layer);
+    const activeFace = visual.activeFace;
+    if (
+      activeFace?.source !== 'mouth' ||
+      !failedMouthAssetIds.has(activeFace.assetId) ||
+      !activeFace.fallbackAssetId
+    ) {
+      return layer;
+    }
+    changed = true;
+    return {
+      ...layer,
+      assetId: activeFace.fallbackAssetId,
+      mouthOverrideAssetId: null,
+    };
+  });
+  return changed ? { ...evaluatedShot, layers } : evaluatedShot;
 }
 
 /**

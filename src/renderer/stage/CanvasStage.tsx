@@ -11,8 +11,10 @@ interface CanvasStageProps {
   caption: string | null;
   captionStyle?: SubtitleStyle;
   onReady?: () => void;
+  onDisplayReady?: () => void;
   onError?: (error: Error) => void;
   renderToken?: string | number;
+  degraded?: boolean;
 }
 
 export function CanvasStage(props: CanvasStageProps): React.JSX.Element {
