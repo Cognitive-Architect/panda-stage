@@ -8,6 +8,7 @@ import {
   CharacterSchema,
   DialogueSchema,
   LayerSchema,
+  PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   Project,
   ShotSchema,
@@ -16,7 +17,7 @@ import {
   migrateProject,
 } from '../../../src/domain';
 
-// Returns a migrated v5 project so the rejection tests below validate the
+// Returns a migrated current project so the rejection tests below validate the
 // CURRENT-project validator (ProjectSchema) rather than legacy migration.
 function cloneExample(): Project {
   return structuredClone(migrateProject(exampleProject));
@@ -59,13 +60,13 @@ function wavDurationMs(bytes: Buffer): number {
   return Math.round((dataLength / byteRate) * 1_000);
 }
 
-describe('ProjectSchema v5', () => {
+describe('ProjectSchema v7', () => {
   it('migrates the human-readable v1 example with every MVP entity', () => {
     const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
 
     expect(project).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
       width: 1920,
       height: 1080,
       fps: 24,

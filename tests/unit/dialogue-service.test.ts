@@ -3,6 +3,7 @@ import {
   CharacterService,
   DialogueService,
   DialogueServiceError,
+  PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   type Project,
 } from '../../src/domain';
@@ -420,7 +421,7 @@ describe('DialogueService shared mutation behavior', () => {
     const service = dialogueService();
     let project = createAt(service, buildProject(), 700, '持久化台词');
     const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(project)));
-    expect(reopened.schemaVersion).toBe(6);
+    expect(reopened.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(reopened.shots[0]!.dialogues[0]).toMatchObject({
       startMs: 700,
       endMs: 700,

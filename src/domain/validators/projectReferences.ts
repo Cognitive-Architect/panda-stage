@@ -125,6 +125,16 @@ export function validateProjectReferences(
         );
       }
     }
+    if (character.mode === 'composite') {
+      const bodyAsset = assets.get(character.bodyAssetId);
+      if (!bodyAsset || bodyAsset.kind !== 'image') {
+        addIssue(
+          context,
+          ['characters', characterIndex, 'bodyAssetId'],
+          `Composite character references unknown or non-image body asset: ${character.bodyAssetId}`,
+        );
+      }
+    }
     const defaultVoice = voiceProfiles.get(character.defaultVoiceProfileId);
     if (!defaultVoice || defaultVoice.characterId !== character.id) {
       addIssue(

@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   LayerService,
+  PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   migrateProject,
 } from '../../src/domain';
@@ -103,8 +104,8 @@ describe('Day 23 layer transform lifecycle', () => {
 
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 6,
-      project: { schemaVersion: 6 },
+      sourceVersion: PROJECT_SCHEMA_VERSION,
+      project: { schemaVersion: PROJECT_SCHEMA_VERSION },
     });
     expect(reopenedLayer).toMatchObject({
       anchor: 'center',

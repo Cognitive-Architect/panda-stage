@@ -2,6 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  PROJECT_SCHEMA_VERSION,
+} from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { buildProject, IDS } from '../unit/domain/testProject';
 
@@ -31,6 +34,13 @@ describe('schema v5 dialogue persisted migration', () => {
     const base = JSON.parse(
       JSON.stringify(buildProject()),
     ) as Record<string, unknown>;
+    base.characters = (base.characters as Record<string, unknown>[]).map(
+      (character) => {
+        const { mode, ...historicalCharacter } = character;
+        void mode;
+        return historicalCharacter;
+      },
+    );
     const audioAssetId = '70000000-0000-4000-8000-000000000001';
     const audioClipId = '80000000-0000-4000-8000-000000000001';
     const dialogueId = '90000000-0000-4000-8000-000000000001';
@@ -86,7 +96,7 @@ describe('schema v5 dialogue persisted migration', () => {
     expect(opened).toMatchObject({
       sourceVersion: 5,
       migrated: true,
-      project: { schemaVersion: 6 },
+      project: { schemaVersion: PROJECT_SCHEMA_VERSION },
     });
 
     const dialogue = opened.project.shots[0]!.dialogues[0]!;
@@ -97,17 +107,17 @@ describe('schema v5 dialogue persisted migration', () => {
     expect(dialogue.voiceProfileId).toBe(IDS.voiceProfile);
     expect(dialogue.subtitleStyleId).toBe(IDS.subtitle);
 
-    // save then reopen must keep schemaVersion 6 and not re-migrate; the
+    // save then reopen must keep schemaVersion 7 and not re-migrate; the
     // audio-backed dialogue data is preserved exactly.
     await service.save(projectRoot, opened.project, 1);
     const serialized = JSON.parse(await readFile(projectFile, 'utf8'));
-    expect(serialized.schemaVersion).toBe(6);
+    expect(serialized.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
 
     const reopened = await service.open(projectRoot);
     expect(reopened).toMatchObject({
-      sourceVersion: 6,
+      sourceVersion: PROJECT_SCHEMA_VERSION,
       migrated: false,
-      project: { schemaVersion: 6 },
+      project: { schemaVersion: PROJECT_SCHEMA_VERSION },
     });
     const reopenedDialogue = reopened.project.shots[0]!.dialogues[0]!;
     expect(reopenedDialogue.id).toBe(dialogueId);

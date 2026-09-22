@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   LayerService,
+  PROJECT_SCHEMA_VERSION,
   migrateProject,
 } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
@@ -80,7 +81,7 @@ describe('layer placement persistence lifecycle', () => {
 
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 6,
+      sourceVersion: PROJECT_SCHEMA_VERSION,
     });
     expect(reopenedLayer).toMatchObject({
       source: { kind: 'asset', assetId: asset.id },

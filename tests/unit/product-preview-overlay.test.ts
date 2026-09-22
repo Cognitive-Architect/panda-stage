@@ -123,7 +123,7 @@ function buildShot(overrides: Partial<Shot> = {}): Shot {
 
 function buildProject(shot: Shot = buildShot()): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     id: randomUUID(),
     name: '熊猫剧场',
     width: 1_920,
@@ -138,6 +138,7 @@ function buildProject(shot: Shot = buildShot()): Project {
     characters: [
       {
         id: CHARACTER_ID,
+        mode: 'single-image',
         name: '小熊猫',
         expressions: [
           {

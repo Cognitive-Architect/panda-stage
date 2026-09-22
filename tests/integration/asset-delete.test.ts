@@ -75,6 +75,7 @@ async function recoveryHashes(projectRoot: string): Promise<string[]> {
 async function createHarness(
   options: {
     referenced?: boolean;
+    bodyReferenced?: boolean;
     deleteFaults?: AssetDeleteFileSystemFaultInjector;
     beforeCommitValidation?: () => void | Promise<void>;
     beforeAtomicReplace?: () => void | Promise<void>;
@@ -128,9 +129,47 @@ async function createHarness(
     sha256: hash,
   };
   const referencedLayerId = randomUUID();
+  const bodyCharacterId = randomUUID();
+  const bodyExpressionId = randomUUID();
+  const bodyVoiceProfileId = randomUUID();
   const project = ProjectSchema.parse({
     ...created.project,
     assets: [asset],
+    characters: options.bodyReferenced
+      ? [
+          {
+            id: bodyCharacterId,
+            name: 'Body reference character',
+            mode: 'composite',
+            baseAssetId: asset.id,
+            defaultVoiceProfileId: bodyVoiceProfileId,
+            expressions: [
+              {
+                id: bodyExpressionId,
+                name: 'default',
+                assetId: asset.id,
+              },
+            ],
+            defaultExpressionId: bodyExpressionId,
+            defaultScale: 1,
+            defaultFlipX: false,
+            bodyAssetId: asset.id,
+            facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+          },
+        ]
+      : [],
+    voiceProfiles: options.bodyReferenced
+      ? [
+          {
+            id: bodyVoiceProfileId,
+            name: 'Body reference voice',
+            characterId: bodyCharacterId,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          },
+        ]
+      : [],
     shots: options.referenced
       ? [
           {
@@ -331,6 +370,24 @@ describe('asset delete integration', () => {
     expect(
       input.autosaveService.getProjectSnapshot(input.projectRoot),
     ).toMatchObject({ revision: 3, dirty: true });
+  });
+
+  it('blocks a referenced composite Body through the shared asset reference path', async () => {
+    const input = await createHarness({ bodyReferenced: true });
+    const before = await state(input);
+
+    await expect(
+      input.deleteService.deleteAsset(request(input)),
+    ).rejects.toMatchObject({
+      code: 'ASSET_DELETE_REFERENCED',
+      references: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'character-body',
+          path: 'characters[0].bodyAssetId',
+        }),
+      ]),
+    });
+    expect(await state(input)).toEqual(before);
   });
 
   it('rolls the asset file back when cache staging fails', async () => {

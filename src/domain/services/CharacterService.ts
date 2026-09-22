@@ -130,6 +130,7 @@ export class CharacterService {
     const character: Character = {
       id: characterId,
       name,
+      mode: 'single-image',
       baseAssetId: defaultExpression.assetId,
       defaultVoiceProfileId: voiceProfileId,
       expressions,

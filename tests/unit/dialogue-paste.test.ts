@@ -10,6 +10,7 @@ function character(id: string, name: string): Character {
   return {
     id,
     name,
+    mode: 'single-image',
     baseAssetId: '10000000-0000-4000-8000-000000000002',
     defaultVoiceProfileId: '30000000-0000-4000-8000-000000000001',
     expressions: [

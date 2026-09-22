@@ -65,6 +65,7 @@ function buildMouthProject(twoCharacters = false): Project {
         ? [
             {
               id: CHARACTER_B_ID,
+              mode: 'single-image',
               name: 'character-b',
               baseAssetId: IDS.assetChar2,
               defaultVoiceProfileId: VOICE_B_ID,

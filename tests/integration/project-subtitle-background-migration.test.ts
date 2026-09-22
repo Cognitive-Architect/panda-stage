@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProjectService } from '../../src/main/services/ProjectService';
+import { PROJECT_SCHEMA_VERSION } from '../../src/domain';
 import { buildProject } from '../unit/domain/testProject';
 
 const temporaryParents: string[] = [];
@@ -47,7 +48,7 @@ describe('Issue #470 historical subtitle background compatibility', () => {
     const service = new ProjectService();
     const opened = await service.open(projectRoot);
 
-    expect(opened.sourceVersion).toBe(6);
+    expect(opened.sourceVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(opened.migrated).toBe(false);
     expect(opened.project.subtitleStyles[0]!.backgroundColor).toBe(
       '#0a141100',

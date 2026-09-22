@@ -1,7 +1,7 @@
 import { ProjectSchema, type Project } from '../../../src/domain';
 
 /**
- * Stable UUID identifiers for the test fixture. The formal v5 schema enforces
+ * Stable UUID identifiers for the test fixture. The formal current schema enforces
  * UUID format on every id field, so the fixture and the tests that assert
  * against specific layers/characters share these constants.
  */
@@ -23,11 +23,11 @@ export const IDS = {
   unknownExpression: '20000000-0000-4000-8000-000000000099',
 } as const;
 
-/** Builds a fully valid v6 project with a background, an asset, and a
+/** Builds a fully valid v7 project with a background, an asset, and a
  * character layer so preset/evaluator tests have realistic fixtures. */
 export function buildProject(): Project {
   return ProjectSchema.parse({
-    schemaVersion: 6,
+    schemaVersion: 7,
     id: IDS.project,
     name: '测试项目',
     width: 1920,
@@ -65,6 +65,7 @@ export function buildProject(): Project {
     characters: [
       {
         id: IDS.character,
+        mode: 'single-image',
         name: '熊猫',
         baseAssetId: IDS.assetChar,
         defaultVoiceProfileId: IDS.voiceProfile,
