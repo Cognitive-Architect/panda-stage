@@ -38,6 +38,11 @@ export function resolveEditorTemporalAssetResolution(
       ? {
           id: baseLayer.id,
           assetId: baseAsset.id,
+          currentExpressionId:
+            baseLayer.source.kind === 'character'
+              ? baseLayer.source.expressionId
+              : null,
+          mouthOverrideAssetId: null,
           anchor: baseLayer.anchor,
           x: baseLayer.x,
           y: baseLayer.y,

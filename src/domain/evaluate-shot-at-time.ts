@@ -10,6 +10,10 @@ import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 export interface EvaluatedLayer {
   id: string;
   assetId: string;
+  /** The formal Expression state before any transient Mouth projection. */
+  currentExpressionId?: string | null;
+  /** The transient Mouth asset projected after formal evaluation, if any. */
+  mouthOverrideAssetId?: string | null;
   anchor: 'center';
   x: number;
   y: number;
@@ -53,9 +57,17 @@ function eventEasing(event: TimelineEvent): 'linear' | 'ease-in-out' {
   return 'linear';
 }
 
-function resolveLayerAssetId(project: Project, layer: Layer): string | null {
+interface ResolvedLayerVisualState {
+  assetId: string | null;
+  currentExpressionId: string | null;
+}
+
+function resolveLayerVisualState(
+  project: Project,
+  layer: Layer,
+): ResolvedLayerVisualState {
   if (layer.source.kind === 'asset') {
-    return layer.source.assetId;
+    return { assetId: layer.source.assetId, currentExpressionId: null };
   }
   const characterId = layer.source.characterId;
   const expressionId = layer.source.expressionId;
@@ -65,20 +77,23 @@ function resolveLayerAssetId(project: Project, layer: Layer): string | null {
   const expression = character?.expressions.find(
     (candidate) => candidate.id === expressionId,
   );
-  return expression?.assetId ?? null;
+  return {
+    assetId: expression?.assetId ?? null,
+    currentExpressionId: expression?.id ?? null,
+  };
 }
 
-function resolveExpressionAssetId(
+function resolveExpressionState(
   project: Project,
   characterId: string,
   expressionId: string,
   fallbackExpressionId: string,
-): string | null {
+): ResolvedLayerVisualState {
   const character = project.characters.find(
     (candidate) => candidate.id === characterId,
   );
   if (!character) {
-    return null;
+    return { assetId: null, currentExpressionId: null };
   }
   const target =
     character.expressions.find(
@@ -87,7 +102,10 @@ function resolveExpressionAssetId(
     character.expressions.find(
       (candidate) => candidate.id === fallbackExpressionId,
     );
-  return target?.assetId ?? null;
+  return {
+    assetId: target?.assetId ?? null,
+    currentExpressionId: target?.id ?? null,
+  };
 }
 
 /**
@@ -124,7 +142,9 @@ export function evaluateShotAtTime(
       let opacity = layer.opacity;
       let flipX = layer.flipX;
       let visible = layer.visible;
-      let assetId = resolveLayerAssetId(project, layer);
+      const initialVisual = resolveLayerVisualState(project, layer);
+      let assetId = initialVisual.assetId;
+      let currentExpressionId = initialVisual.currentExpressionId;
 
       const events = [
         ...(eventsByLayer.get(layer.id) ?? []),
@@ -171,14 +191,15 @@ export function evaluateShotAtTime(
           }
           case 'expression': {
             if (layer.source.kind === 'character') {
-              const resolved = resolveExpressionAssetId(
+              const resolved = resolveExpressionState(
                 project,
                 layer.source.characterId,
                 event.expressionId,
                 layer.source.expressionId,
               );
-              if (resolved) {
-                assetId = resolved;
+              if (resolved.assetId) {
+                assetId = resolved.assetId;
+                currentExpressionId = resolved.currentExpressionId;
               }
             }
             break;
@@ -197,6 +218,8 @@ export function evaluateShotAtTime(
       return {
         id: layer.id,
         assetId: assetId ?? '',
+        currentExpressionId,
+        mouthOverrideAssetId: null,
         anchor: layer.anchor,
         x: motion.displayPosition.x,
         y: motion.displayPosition.y,

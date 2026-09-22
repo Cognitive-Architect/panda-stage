@@ -54,6 +54,11 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
       return {
         id: layer.id,
         assetId: asset?.id ?? '',
+        currentExpressionId:
+          layer.source.kind === 'character'
+            ? layer.source.expressionId
+            : null,
+        mouthOverrideAssetId: null,
         anchor: layer.anchor,
         x: layer.x,
         y: layer.y,
