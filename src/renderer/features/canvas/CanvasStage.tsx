@@ -408,9 +408,23 @@ export function CanvasStage({
       temporalCanvasModel?.visualStatusByLayer.get(layer.id),
     )
     .filter((status): status is NonNullable<typeof status> => Boolean(status));
+  const compositeCharacterStatuses = stageModel?.layers
+    .filter(
+      ({ render, visual }) =>
+        !render.isBackground && visual.kind === 'composite-character',
+    )
+    .map(({ layer }) =>
+      temporalCanvasModel?.visualStatusByLayer.get(layer.id),
+    )
+    .filter((status): status is NonNullable<typeof status> => Boolean(status));
   const baseRequiredVisualFailure =
     stageModel?.layers.some((stageLayer) => {
-      if (stageLayer.render.isBackground) return false;
+      if (
+        stageLayer.render.isBackground ||
+        stageLayer.visual.kind !== 'composite-character'
+      ) {
+        return false;
+      }
       const activeMouthId =
         stageLayer.visual.activeFace?.source === 'mouth'
           ? stageLayer.visual.activeFace.assetId
@@ -422,13 +436,13 @@ export function CanvasStage({
     }) ?? false;
   const hasRequiredVisualFailure =
     baseRequiredVisualFailure ||
-    (nonBackgroundStatuses?.includes('required-failed') ?? false);
-  const hasMouthVisualDegradation = nonBackgroundStatuses?.some(
+    (compositeCharacterStatuses?.includes('required-failed') ?? false);
+  const hasMouthVisualDegradation = compositeCharacterStatuses?.some(
     (status) =>
       status === 'mouth-expression-fallback' ||
       status === 'mouth-fallback-pending',
   ) ?? false;
-  const hasMouthExpressionFallback = nonBackgroundStatuses?.some(
+  const hasMouthExpressionFallback = compositeCharacterStatuses?.some(
     (status) => status === 'mouth-expression-fallback',
   ) ?? false;
   const hasPendingVisual = nonBackgroundStatuses?.some(
