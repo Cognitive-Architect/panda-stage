@@ -3,6 +3,7 @@ import {
   CharacterService,
   ProjectSchema,
   type CompositeCharacterDefinition,
+  type CreateCompositeCharacterInput,
   type Project,
 } from '../../src/domain';
 import { CharacterStore } from '../../src/renderer/stores/characterStore';
@@ -59,6 +60,48 @@ function definition(project: Project): CompositeCharacterDefinition {
 }
 
 function harness(project = compositeProject()) {
+  const editor = new EditorProjectStore();
+  editor.open(PROJECT_ROOT, project);
+  const characters = new CharacterStore(
+    editor,
+    new CharacterService({ now: () => new Date('2026-08-01T00:00:00.000Z') }),
+  );
+  const assembly = new CharacterAssemblySessionStore({
+    editorStore: editor,
+    characterStore: characters,
+  });
+  return { editor, characters, assembly, project };
+}
+
+function emptyCharacterProject(): Project {
+  const project = buildProject();
+  return ProjectSchema.parse({
+    ...project,
+    characters: [],
+    voiceProfiles: [],
+    shots: [],
+  });
+}
+
+function creationDraft(
+  name = 'New Composite Panda',
+): CreateCompositeCharacterInput {
+  return {
+    name,
+    bodyAssetId: IDS.assetBg,
+    facePlacement: { offsetX: 5, offsetY: -3, scale: 0.9 },
+    expressions: [
+      { name: 'Normal', assetId: IDS.assetChar },
+      { name: 'Angry', assetId: IDS.assetChar2 },
+    ],
+    defaultExpressionIndex: 0,
+    mouthOpenAssetId: IDS.assetChar,
+    defaultScale: 1,
+    defaultFlipX: false,
+  };
+}
+
+function creationHarness(project = emptyCharacterProject()) {
   const editor = new EditorProjectStore();
   editor.open(PROJECT_ROOT, project);
   const characters = new CharacterStore(
@@ -155,6 +198,225 @@ describe('BFM-S02 Character commands', () => {
       undoCount: 1,
       redoCount: 0,
     });
+  });
+
+  it('creates through a one-shot local capability with one Character, one Voice Profile, and one History unit', () => {
+    const input = creationHarness();
+    const before = input.editor.getSnapshot()!;
+    const begin = input.assembly.beginCreate(creationDraft());
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+    expect(
+      begin.session.updateDraft({
+        name: 'Created Composite Panda',
+        facePlacement: { offsetX: 18, offsetY: 7, scale: 1.1 },
+      }).ok,
+    ).toBe(true);
+    expect(input.editor.getSnapshot()).toBe(before);
+
+    const committed = begin.session.commit();
+    expect(committed.status).toBe('committed');
+    if (committed.status !== 'committed') return;
+
+    const after = input.editor.getSnapshot()!;
+    expect(after.revision).toBe(before.revision + 1);
+    expect(after.dirty).toBe(true);
+    expect(after.project.characters).toHaveLength(1);
+    expect(after.project.voiceProfiles).toHaveLength(1);
+    expect(after.project.characters[0]).toMatchObject({
+      id: committed.characterId,
+      defaultVoiceProfileId: committed.voiceProfileId,
+      name: 'Created Composite Panda',
+      mode: 'composite',
+      bodyAssetId: IDS.assetBg,
+      facePlacement: { offsetX: 18, offsetY: 7, scale: 1.1 },
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    expect(input.assembly.getSnapshot()).toBeNull();
+    expect(begin.session.commit().status).toBe('stale');
+    input.assembly.dispose();
+  });
+
+  it('keeps cancel and unchanged new-composite draft work at zero writes', () => {
+    const input = creationHarness();
+    const before = input.editor.getSnapshot()!;
+    const draft = creationDraft();
+    const begin = input.assembly.beginCreate(draft);
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    expect(begin.session.setDraft(structuredClone(draft)).ok).toBe(true);
+    expect(begin.session.updateDraft({}).ok).toBe(true);
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+
+    begin.session.cancel();
+    expect(input.assembly.getSnapshot()).toBeNull();
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+    input.assembly.dispose();
+  });
+
+  it('rejects a new-composite callback after same-path reopen before any write', () => {
+    const input = creationHarness(buildProject());
+    const before = input.editor.getSnapshot()!;
+    const begin = input.assembly.beginCreate(creationDraft());
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    input.editor.open(PROJECT_ROOT, structuredClone(before.project));
+    const reopened = input.editor.getSnapshot()!;
+    expect(begin.session.commit().status).toBe('stale');
+    expect(input.editor.getSnapshot()).toBe(reopened);
+    expect(reopened.revision).toBe(0);
+    expect(reopened.dirty).toBe(false);
+    expect(reopened.project).toEqual(before.project);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+    input.assembly.dispose();
+  });
+
+  it('rejects a new-composite callback after Project replacement before any write', () => {
+    const input = creationHarness();
+    const before = input.editor.getSnapshot()!;
+    const begin = input.assembly.beginCreate(creationDraft());
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    const replacement = ProjectSchema.parse({
+      ...before.project,
+      id: '00000000-0000-4000-8000-000000000099',
+    });
+    input.editor.open('D:\\bfm-s02-replacement.pandastage', replacement);
+    const replaced = input.editor.getSnapshot()!;
+    expect(begin.session.commit().status).toBe('stale');
+    expect(input.editor.getSnapshot()).toBe(replaced);
+    expect(replaced.project).toEqual(replacement);
+    expect(replaced.revision).toBe(0);
+    expect(replaced.dirty).toBe(false);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+    input.assembly.dispose();
+  });
+
+  it('invalidates a new-composite callback after external mutation and Undo', () => {
+    const input = creationHarness();
+    const begin = input.assembly.beginCreate(creationDraft());
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    const project = input.editor.getSnapshot()!.project;
+    input.editor.updateProject(
+      ProjectSchema.parse({ ...project, name: 'External edit' }),
+      'External edit',
+    );
+    expect(input.editor.undo()).toBe(true);
+    const afterUndo = input.editor.getSnapshot()!;
+    expect(begin.session.commit().status).toBe('stale');
+    expect(input.editor.getSnapshot()).toBe(afterUndo);
+    expect(afterUndo.project).toEqual(project);
+    expect(afterUndo.dirty).toBe(false);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 1,
+    });
+    input.assembly.dispose();
+  });
+
+  it('invalidates a new-composite callback after external mutation, Undo, and Redo', () => {
+    const input = creationHarness();
+    const begin = input.assembly.beginCreate(creationDraft());
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    const project = input.editor.getSnapshot()!.project;
+    input.editor.updateProject(
+      ProjectSchema.parse({ ...project, name: 'External edit' }),
+      'External edit',
+    );
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.redo()).toBe(true);
+    const afterRedo = input.editor.getSnapshot()!;
+    expect(begin.session.commit().status).toBe('stale');
+    expect(input.editor.getSnapshot()).toBe(afterRedo);
+    expect(afterRedo.project.name).toBe('External edit');
+    expect(afterRedo.revision).toBe(3);
+    expect(afterRedo.dirty).toBe(true);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    input.assembly.dispose();
+  });
+
+  it('prevents creation draft A from committing after draft B replaces it', () => {
+    const input = creationHarness();
+    const before = input.editor.getSnapshot()!;
+    const first = input.assembly.beginCreate(creationDraft('Draft A'));
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    const second = input.assembly.beginCreate(creationDraft('Draft B'));
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+
+    expect(first.session.commit().status).toBe('stale');
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+    expect(second.session.commit().status).toBe('committed');
+    expect(input.editor.getSnapshot()!.project.characters[0]?.name).toBe(
+      'Draft B',
+    );
+    input.assembly.dispose();
+  });
+
+  it('rejects a same-path reopen race before composite creation can write', () => {
+    const project = emptyCharacterProject();
+    const editor = new EditorProjectStore();
+    editor.open(PROJECT_ROOT, project);
+    const service = new CharacterService({
+      now: () => {
+        editor.open(PROJECT_ROOT, structuredClone(project));
+        return new Date('2026-08-01T00:00:00.000Z');
+      },
+    });
+    const characters = new CharacterStore(editor, service);
+    const assembly = new CharacterAssemblySessionStore({
+      editorStore: editor,
+      characterStore: characters,
+    });
+    const begin = assembly.beginCreate(creationDraft());
+    expect(begin.ok).toBe(true);
+    if (begin.ok) {
+      const result = begin.session.commit();
+      expect(result.status).toBe('stale');
+      expect(editor.getSnapshot()!.revision).toBe(0);
+      expect(editor.getSnapshot()!.dirty).toBe(false);
+      expect(editor.getSnapshot()!.project).toEqual(project);
+      expect(editor.getSnapshot()!.project.characters).toHaveLength(0);
+      expect(editor.getSnapshot()!.project.voiceProfiles).toHaveLength(0);
+      expect(editor.history.getSnapshot()).toMatchObject({
+        undoCount: 0,
+        redoCount: 0,
+      });
+    }
+    assembly.dispose();
   });
 
   it('applies one complete definition as one History unit and preserves authored identities', () => {
@@ -374,12 +636,16 @@ describe('BFM-S02 Character commands', () => {
         'External edit',
       );
       expect(undo.editor.undo()).toBe(true);
-      const afterUndo = undo.editor.getSnapshot()!;
+      expect(undo.editor.redo()).toBe(true);
+      const afterRedo = undo.editor.getSnapshot()!;
       expect(undoBegin.session.commit(changedDefinition(undo.project)).status).toBe(
         'stale',
       );
-      expect(undo.editor.getSnapshot()).toBe(afterUndo);
-      expect(undo.editor.history.getSnapshot().redoCount).toBe(1);
+      expect(undo.editor.getSnapshot()).toBe(afterRedo);
+      expect(undo.editor.history.getSnapshot()).toMatchObject({
+        undoCount: 1,
+        redoCount: 0,
+      });
     }
     undo.assembly.dispose();
 

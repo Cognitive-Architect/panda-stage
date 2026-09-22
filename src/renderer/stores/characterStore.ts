@@ -35,10 +35,14 @@ export class CharacterStore {
     );
   }
 
-  createComposite(input: CreateCompositeCharacterInput): Project {
+  createComposite(
+    input: CreateCompositeCharacterInput,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
     return this.apply(
       (project) => this.service.createComposite(project, input),
       'Create composite character',
+      expectedSnapshot,
     );
   }
 
