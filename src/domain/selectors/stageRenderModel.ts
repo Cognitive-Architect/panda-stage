@@ -10,11 +10,17 @@ import type {
 } from '../models';
 import type { EvaluatedLayer, EvaluatedShot } from '../evaluate-shot-at-time';
 import { resolveImageAsset, resolveLayerImageAsset } from './canvasLayers';
+import {
+  resolveLayerVisualParts,
+  type LayerVisualParts,
+} from './visualParts';
 
 export interface EditorStageRenderLayer {
   layer: Layer;
   evaluated: EvaluatedLayer;
   asset: ImageAsset;
+  /** The complete runtime visual owned by this one logical Layer. */
+  visual: LayerVisualParts;
   render: StageLayerRenderInstruction;
 }
 
@@ -52,7 +58,14 @@ export function buildEditorStageRenderModel(
         visible: layer.visible,
         zIndex: layer.zIndex,
       };
-      const asset = resolveImageAsset(project, evaluated.assetId);
+      const visual = resolveLayerVisualParts(project, shot, evaluated);
+      // `asset` remains as a compatibility/diagnostic primary asset for the
+      // existing stage contract. Canvas rendering uses `visual.parts`, so a
+      // composite Character is never reduced to this one asset.
+      const primaryPart = visual.parts[0];
+      const asset = primaryPart
+        ? resolveImageAsset(project, primaryPart.assetId)
+        : null;
       if (!asset) {
         throw new Error(
           `Cannot resolve image asset for editor layer ${layer.id}.`,
@@ -62,6 +75,7 @@ export function buildEditorStageRenderModel(
         layer,
         evaluated,
         asset,
+        visual,
         render: buildStageLayerRenderInstruction(
           {
             id: layer.id,

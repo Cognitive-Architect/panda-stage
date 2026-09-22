@@ -18,6 +18,7 @@ import {
   PROJECT_WIDTH,
   calculateViewportTransform,
   listShotRuntimeImageAssets,
+  resolveImageAsset,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -140,6 +141,19 @@ function useCanvasImages(
   return state;
 }
 
+function isCurrentCanvasAssetReady(
+  project: EditorProjectSnapshot['project'],
+  assetId: string,
+  imageState: CanvasImageState,
+): boolean {
+  if (!imageState.images.has(assetId)) return false;
+  const asset = resolveImageAsset(project, assetId);
+  if (!asset) return false;
+  return (
+    !asset.sha256 || imageState.sourceKeys.get(assetId) === asset.sha256
+  );
+}
+
 export interface CanvasStageProps {
   showHeading?: boolean;
   showToolbar?: boolean;
@@ -232,6 +246,8 @@ export function CanvasStage({
             previousVisuals: previousTemporalVisuals,
             project: snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
+            readyAssetSourceKeys: imageState.sourceKeys,
+            missingAssetIds: imageState.missing,
             shot,
             positionDraft: positionAuthoringSnapshot
               ? {
@@ -265,6 +281,25 @@ export function CanvasStage({
     };
   }, [temporalCanvasModel, temporalContextKey]);
   const stageModel = temporalCanvasModel?.stageModel ?? null;
+  const currentReadyImages = useMemo(() => {
+    if (!snapshot) return new Map<string, HTMLImageElement>();
+    return new Map(
+      [...imageState.images.entries()].filter(([assetId]) =>
+        isCurrentCanvasAssetReady(snapshot.project, assetId, imageState),
+      ),
+    );
+  }, [imageState, snapshot]);
+  const isStageLayerVisualReady = useCallback(
+    (stageLayer: NonNullable<typeof stageModel>['layers'][number]): boolean =>
+      Boolean(
+        snapshot &&
+          stageLayer.visual.parts.length > 0 &&
+          stageLayer.visual.parts.every((part) =>
+            isCurrentCanvasAssetReady(snapshot.project, part.assetId, imageState),
+          ),
+      ),
+    [imageState, snapshot],
+  );
   const directEditingEnabled =
     temporalCanvasModel?.directEditingEnabled ??
     timelineUi.currentTimeMs === 0;
@@ -283,20 +318,24 @@ export function CanvasStage({
   const imageForAsset = (asset: {
     id: string;
   }): HTMLImageElement | undefined =>
-    imageState.images.get(asset.id);
+    currentReadyImages.get(asset.id);
   const backgroundLayer =
     stageModel?.layers.find((layer) => layer.render.isBackground) ?? null;
   const backgroundAsset = backgroundLayer?.asset ?? null;
-  const backgroundImage = backgroundAsset
+  const backgroundImage = backgroundLayer && isStageLayerVisualReady(backgroundLayer) && backgroundAsset
     ? imageForAsset(backgroundAsset)
     : undefined;
   const empty = Boolean(stageModel && stageModel.layers.length === 0);
+  const incompleteVisualLayers = stageModel?.layers.filter(
+    (stageLayer) => !isStageLayerVisualReady(stageLayer),
+  ) ?? [];
   const missingBackground =
     Boolean(shot) &&
     !empty &&
-    (!backgroundLayer ||
-      !backgroundAsset ||
-      imageState.missing.has(backgroundAsset.id));
+    (!backgroundLayer || !backgroundAsset || !backgroundImage);
+  const missingNonBackgroundVisual = incompleteVisualLayers.some(
+    (stageLayer) => !stageLayer.render.isBackground,
+  );
   const selectedStageLayer =
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
@@ -306,7 +345,7 @@ export function CanvasStage({
     isBackground: selectedStageLayer?.render.isBackground ?? false,
     locked: selectedStageLayer?.layer.locked ?? false,
     imageReady: selectedStageLayer
-      ? Boolean(imageForAsset(selectedStageLayer.asset))
+      ? isStageLayerVisualReady(selectedStageLayer)
       : false,
   });
   const backgroundSelected =
@@ -406,14 +445,28 @@ export function CanvasStage({
               data-project-revision={snapshot?.revision ?? -1}
               data-render-source="project-assets-original"
               data-rendered-asset-intrinsic-sizes={JSON.stringify(
-                [...imageState.images.entries()].map(([assetId, image]) => ({
+                [...currentReadyImages.entries()].map(([assetId, image]) => ({
                   assetId,
                   width: image.naturalWidth,
                   height: image.naturalHeight,
                 })),
               )}
               data-rendered-asset-ids={JSON.stringify([
-                ...imageState.images.keys(),
+                ...currentReadyImages.keys(),
+              ])}
+              data-composite-layer-ids={JSON.stringify(
+                stageModel?.layers
+                  .filter(({ visual }) => visual.kind === 'composite-character')
+                  .map(({ layer }) => layer.id) ?? [],
+              )}
+              data-incomplete-visual-layer-ids={JSON.stringify(
+                incompleteVisualLayers.map(({ layer }) => layer.id),
+              )}
+              data-visual-status-json={JSON.stringify(
+                [...(temporalCanvasModel?.visualStatusByLayer.entries() ?? [])],
+              )}
+              data-target-ready-layer-ids={JSON.stringify([
+                ...(temporalCanvasModel?.targetReadyLayerIds ?? []),
               ])}
               data-render-contract="shared-stage-layer-v1"
               data-selected-layer-id={selectedLayerId ?? ''}
@@ -443,13 +496,13 @@ export function CanvasStage({
                     width={PROJECT_WIDTH}
                   />
                   {stageModel
-                    ? stageModel.layers.map(({ layer, asset, render }) => {
+                    ? stageModel.layers.map(({ layer, asset, render, visual }) => {
                         const image = imageForAsset(asset);
-                        if (!image) return null;
                         return (
                           <SelectableLayer
                             directEditingEnabled={directEditingEnabled}
                             image={image}
+                            images={currentReadyImages}
                             key={render.id}
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
@@ -505,6 +558,7 @@ export function CanvasStage({
                                  : null
                              }
                              selected={selectedLayerId === layer.id}
+                             visual={visual}
                           />
                         );
                       })
@@ -556,6 +610,17 @@ export function CanvasStage({
                 <strong>背景预览不可用</strong>
                 <span>
                   请添加背景图层，或在项目素材库中重新生成缩略图。
+                </span>
+              </div>
+            ) : null}
+            {!missingBackground && missingNonBackgroundVisual ? (
+              <div
+                className="canvas-stage-message canvas-stage-warning"
+                data-testid="canvas-visual-warning"
+              >
+                <strong>画面仍在准备</strong>
+                <span>
+                  正在读取完整角色画面；准备完成前不会显示不完整的 Body 或 Face。
                 </span>
               </div>
             ) : null}

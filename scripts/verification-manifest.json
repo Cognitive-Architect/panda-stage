@@ -242,7 +242,8 @@
           "scripts/verify-issue95*",
           "scripts/verify-issue99*",
           "scripts/verify-issue457*",
-          "scripts/verify-issue579*"
+          "scripts/verify-issue579*",
+          "scripts/verify-issue602*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -399,7 +400,7 @@
       }
     ]
   },
-  "count": 62,
+  "count": 63,
   "gates": [
     {
       "id": "assets",
@@ -592,6 +593,18 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron Live Scrub proof for the 0:00 Base Edit View, non-zero read-only temporal inspection, real Timeline-to-Canvas wiring, blur-race write guard, return-to-zero transition, and one ordinary 0ms edit commit."
+    },
+    {
+      "id": "issue602",
+      "script": "verify:issue602",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron composite Character proof for Body+Face pixels, shared selection/drag, combined bounds, partial opacity, pending complete-visual retention, and Mouth fallback."
     },
     {
       "id": "fla-v1-5-c3",

@@ -14,6 +14,7 @@ import {
 import {
   resolveEditorTemporalAssetResolution,
   type EditorTemporalVisual,
+  type EditorTemporalVisualStatus,
 } from './temporalVisualContinuity';
 
 export interface EditorTemporalCanvasModelInput {
@@ -22,6 +23,10 @@ export interface EditorTemporalCanvasModelInput {
   currentTimeMs: number;
   activeDialogueId?: string | null;
   readyAssetIds: ReadonlySet<string>;
+  /** Decoded source hashes keyed by Asset id; distinguishes replacement bytes. */
+  readyAssetSourceKeys?: ReadonlyMap<string, string>;
+  /** Assets whose read/decode has definitively failed; pending assets are absent. */
+  missingAssetIds?: ReadonlySet<string>;
   previousVisuals: ReadonlyMap<string, EditorTemporalVisual>;
   /** Ephemeral main Position draft; never part of the formal Project. */
   positionDraft?: {
@@ -38,6 +43,8 @@ export interface EditorTemporalCanvasModel {
   /** Visual-only Shake offset applied around a Position authoring draft. */
   positionAuthoringShakeOffset: Point | null;
   lastValidVisuals: ReadonlyMap<string, EditorTemporalVisual>;
+  visualStatusByLayer: ReadonlyMap<string, EditorTemporalVisualStatus>;
+  targetReadyLayerIds: ReadonlySet<string>;
 }
 
 /**
@@ -91,6 +98,8 @@ export function buildEditorTemporalCanvasModel({
   currentTimeMs,
   activeDialogueId = null,
   readyAssetIds,
+  readyAssetSourceKeys,
+  missingAssetIds,
   previousVisuals,
   positionDraft,
 }: EditorTemporalCanvasModelInput): EditorTemporalCanvasModel {
@@ -111,12 +120,16 @@ export function buildEditorTemporalCanvasModel({
         evaluatedShot,
         readyAssetIds,
         previousVisuals,
+        readyAssetSourceKeys,
+        missingAssetIds,
       )
     : {
         // A temporal visual must not survive the transition back into Base
         // Edit View, even when the same layer remains selected.
         evaluatedShot: baseEditorShot,
         lastValidVisuals: new Map<string, EditorTemporalVisual>(),
+        visualStatusByLayer: new Map<string, EditorTemporalVisualStatus>(),
+        targetReadyLayerIds: new Set<string>(),
       };
 
   const positionAuthoringShakeOffset = positionDraft
@@ -173,5 +186,7 @@ export function buildEditorTemporalCanvasModel({
     temporalInspection,
     positionAuthoringShakeOffset,
     lastValidVisuals: resolved.lastValidVisuals,
+    visualStatusByLayer: resolved.visualStatusByLayer,
+    targetReadyLayerIds: resolved.targetReadyLayerIds,
   };
 }

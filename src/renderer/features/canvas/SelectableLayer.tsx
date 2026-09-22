@@ -8,6 +8,7 @@ import {
   clampLayerPosition,
   type Layer,
   type LayerTransformInput,
+  type LayerVisualParts,
 } from '../../../domain';
 import type { StageLayerRenderInstruction } from '../../../shared/stage/layer-render-contract';
 import type {
@@ -21,7 +22,12 @@ interface Point {
 }
 
 export interface SelectableLayerProps {
-  image: HTMLImageElement;
+  /** Compatibility primary image for ordinary/legacy callers. */
+  image?: HTMLImageElement;
+  /** The complete visual resolved by the domain visual-parts contract. */
+  visual?: LayerVisualParts;
+  /** Decoded images keyed by the runtime visual-part asset id. */
+  images?: ReadonlyMap<string, HTMLImageElement>;
   layer: Layer;
   nodeRef: React.RefObject<Konva.Group | null>;
   render: StageLayerRenderInstruction;
@@ -55,10 +61,12 @@ function stopAndSelect(
 
 export function SelectableLayer({
   image,
+  images,
   layer,
   nodeRef,
   render,
   selected,
+  visual,
   directEditingEnabled = true,
   onSelect,
   onCommitPosition,
@@ -73,6 +81,85 @@ export function SelectableLayer({
   const canMove =
     (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
   const canTransform = canMove;
+
+  const legacyBounds = {
+    x: -render.offsetX,
+    y: -render.offsetY,
+    width: render.width,
+    height: render.height,
+  };
+  const visualParts = visual?.parts ?? [
+    {
+      partId: `${layer.id}:single`,
+      ownerLayerId: layer.id,
+      slot: 'single' as const,
+      source: { kind: 'asset' as const, assetId: render.assetId },
+      assetId: render.assetId,
+      localRect: legacyBounds,
+      drawOrder: 0,
+      ownerZIndex: render.zIndex,
+    },
+  ];
+  const visualBounds = visual?.combinedLocalBounds ?? legacyBounds;
+  const firstPart = visualParts[0];
+  const imageForPart = (
+    part: (typeof visualParts)[number],
+  ): HTMLImageElement | undefined =>
+    images?.get(part.assetId) ??
+    (part === firstPart && part.assetId === render.assetId ? image : undefined);
+  const resolvedPartImages = visualParts.map((part) => ({
+    part,
+    image: imageForPart(part),
+  }));
+  const completeVisualReady = resolvedPartImages.every(
+    ({ image: partImage }) => Boolean(partImage),
+  );
+  const compositeVisual = visual?.kind === 'composite-character';
+  const cacheCompositeVisual = (visualNode: Konva.Group | null): void => {
+    if (!visualNode) return;
+    visualNode.clearCache();
+    if (
+      !compositeVisual ||
+      !completeVisualReady ||
+      visualBounds.width <= 0 ||
+      visualBounds.height <= 0
+    ) return;
+    // Konva applies a Group opacity while drawing each child. Cache the
+    // complete Body+Face group first so the logical Character opacity is
+    // applied once to the flattened overlap, while the outer root remains
+    // the only transform/interaction owner.
+    visualNode.cache({
+      height: visualBounds.height,
+      width: visualBounds.width,
+      x: visualBounds.x,
+      y: visualBounds.y,
+    });
+    visualNode.getLayer()?.batchDraw();
+  };
+  const renderPart = ({
+    part,
+    image: partImage,
+  }: (typeof resolvedPartImages)[number]): React.JSX.Element => (
+    <KonvaImage
+      height={part.localRect.height}
+      image={partImage}
+      key={part.partId}
+      listening={canSelect}
+      onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
+      onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+      width={part.localRect.width}
+      x={part.localRect.x}
+      y={part.localRect.y}
+    />
+  );
+  const orderedPartImages = resolvedPartImages.sort(
+    (left, right) => left.part.drawOrder - right.part.drawOrder,
+  );
+  const renderedParts = completeVisualReady
+    ? orderedPartImages.length === 1
+      ? renderPart(orderedPartImages[0]!)
+      : orderedPartImages.map(renderPart)
+    : null;
 
   const clampNode = (node: Konva.Node): void => {
     const position = clampLayerPosition({
@@ -197,24 +284,48 @@ export function SelectableLayer({
       x={render.x}
       y={render.y}
       >
-        <KonvaImage
-        height={render.height}
-        image={image}
-        listening={canSelect}
-        offsetX={render.offsetX}
-        offsetY={render.offsetY}
-        width={render.width}
-        />
-        {selected ? (
+        {compositeVisual ? (
+          <Group
+            listening={canSelect}
+            name="selectable-canvas-visual"
+            ref={cacheCompositeVisual}
+          >
+            {renderedParts}
+          </Group>
+        ) : (
+          renderedParts
+        )}
+        {compositeVisual && completeVisualReady
+          ? orderedPartImages.map(({ part }) => (
+              <Rect
+                fill="#000000"
+                height={part.localRect.height}
+                key={`${part.partId}:hit`}
+                listening={canSelect}
+                name="composite-visual-hit-area"
+                opacity={0}
+                onClick={(event) =>
+                  stopAndSelect(event, layer.id, onSelect)
+                }
+                onTap={(event) =>
+                  stopAndSelect(event, layer.id, onSelect)
+                }
+                width={part.localRect.width}
+                x={part.localRect.x}
+                y={part.localRect.y}
+              />
+            ))
+          : null}
+        {selected && completeVisualReady ? (
           <Rect
           dash={layer.locked ? [18, 12] : undefined}
-          height={render.height}
+          height={visualBounds.height}
           listening={false}
-          offsetX={render.offsetX}
-          offsetY={render.offsetY}
           stroke={layer.locked ? '#ffd166' : '#83d39a'}
           strokeWidth={4}
-          width={render.width}
+          width={visualBounds.width}
+          x={visualBounds.x}
+          y={visualBounds.y}
           />
         ) : null}
     </Group>
