@@ -8,6 +8,9 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const {
+  PROJECT_SCHEMA_VERSION,
+} = require('../dist-electron/domain/index.js');
 const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
@@ -1136,8 +1139,10 @@ async function verifyDay22() {
       !evidence.invalidAsset.layerCountUnchanged ||
       !evidence.invalidAsset.revisionUnchanged ||
       !saveRequest ||
-      // schema version is 6 after Day 27 v5->v6 migration (PROJECT_SCHEMA_VERSION in src/domain/constants.ts)
-      evidence.persistence.schemaVersion !== 6 ||
+      // Persistence must emit the current formal Project schema version. Keep
+      // this as a live contract so a future schema migration cannot leave the
+      // verifier accepting an obsolete version.
+      evidence.persistence.schemaVersion !== PROJECT_SCHEMA_VERSION ||
       reopenedLayer?.x !== 900 ||
       reopenedLayer?.y !== 500 ||
       reopenedLayer?.locked !== true ||
