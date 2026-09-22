@@ -9,6 +9,7 @@ import {
   type Project,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
+import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { resolveEditorTemporalAssetResolution } from '../../src/renderer/features/canvas/temporalVisualContinuity';
 import { buildProject, IDS } from './domain/testProject';
 
@@ -285,6 +286,92 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
     );
     expect(atBase.render.x).toBe(atExpression.render.x);
     expect(atBase.render.y).toBe(atExpression.render.y);
+
+    const placementProject = ProjectSchema.parse({
+      ...project,
+      characters: project.characters.map((character) =>
+        character.mode === 'composite' && character.id === IDS.character
+          ? {
+              ...character,
+              facePlacement: {
+                ...character.facePlacement,
+                offsetX: 620,
+                scale: 1,
+              },
+            }
+          : character,
+      ),
+    });
+    const placementShot = placementProject.shots[0]!;
+    const atPlacement = buildEditorStageRenderModel(
+      placementProject,
+      placementShot,
+      evaluateShotAtTime(placementShot, 0, placementProject),
+    ).layers.find((layer) => layer.layer.id === IDS.layerChar)!;
+
+    expect(atPlacement.visual.combinedLocalBounds).not.toEqual(
+      atBase.visual.combinedLocalBounds,
+    );
+    expect(atPlacement.render.x).toBe(atBase.render.x);
+    expect(atPlacement.render.y).toBe(atBase.render.y);
+  });
+
+  it('keeps composite Position and Shake on the root without baking Face Placement', () => {
+    const baseProject = compositeProject({ mouth: false });
+    const project = ProjectSchema.parse({
+      ...baseProject,
+      shots: baseProject.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: [
+          {
+            id: '40000000-0000-4000-8000-000000000031',
+            type: 'move' as const,
+            layerId: IDS.layerChar,
+            startMs: 0,
+            endMs: 2_000,
+            easing: 'linear' as const,
+            from: { x: 500, y: 600 },
+            to: { x: 700, y: 600 },
+          },
+          {
+            id: '40000000-0000-4000-8000-000000000032',
+            type: 'shake' as const,
+            layerId: IDS.layerChar,
+            startMs: 1_000,
+            endMs: 1_500,
+            amplitudeX: 20,
+            amplitudeY: 10,
+            frequencyHz: 1,
+          },
+        ],
+      })),
+    });
+    const shot = project.shots[0]!;
+    const model = buildEditorTemporalCanvasModel({
+      currentTimeMs: 1_250,
+      previousVisuals: new Map(),
+      positionDraft: {
+        layerId: IDS.layerChar,
+        position: { x: 900, y: 700 },
+      },
+      project,
+      readyAssetIds: new Set([BODY_ID, FACE_NORMAL_ID]),
+      shot,
+    });
+    const stageLayer = model.stageModel.layers.find(
+      (layer) => layer.layer.id === IDS.layerChar,
+    )!;
+    const face = stageLayer.visual.parts.find((part) => part.slot === 'face')!;
+
+    expect(stageLayer.render.x).toBe(920);
+    expect(stageLayer.render.y).toBe(710);
+    expect(model.positionAuthoringShakeOffset).toEqual({ x: 20, y: 10 });
+    expect(face.localRect).toMatchObject({ x: 370, y: -33 });
+    expect(project.shots[0]!.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
+      x: 500,
+      y: 600,
+    });
+    expect(model.directEditingEnabled).toBe(false);
   });
 
   it('applies partial opacity once at the Character Group boundary', () => {
