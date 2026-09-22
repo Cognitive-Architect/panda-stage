@@ -224,6 +224,49 @@ describe('Canvas image resource lifecycle — Issue #450', () => {
     expect(harness.revoked).toEqual(['blob:canvas-1']);
   });
 
+  it('keeps a definitive source failure across continuity-only reconciles', async () => {
+    const harness = createHarness(async (request) =>
+      request.sha256 === HASH_B ? failedImage() : readyImage(),
+    );
+
+    reconcile(harness, [{ id: ASSET_ID, sha256: HASH_A }]);
+    await flushMicrotasks();
+    harness.images[0]?.succeed();
+
+    const retained = [{ id: ASSET_ID, sha256: HASH_A }];
+    reconcile(
+      harness,
+      [{ id: ASSET_ID, sha256: HASH_B }],
+      CONTEXT,
+      PROJECT_ROOT,
+      retained,
+    );
+    await flushMicrotasks();
+
+    expect(harness.session.getSnapshot().missing.has(ASSET_ID)).toBe(true);
+    expect(harness.session.getSnapshot().images.get(ASSET_ID)).toBe(
+      harness.images[0],
+    );
+    expect(harness.readCanvasImage).toHaveBeenCalledTimes(2);
+
+    // A ref-only reconcile must not erase the hard failure or launch an
+    // automatic retry that hides the user-facing degraded state.
+    reconcile(
+      harness,
+      [{ id: ASSET_ID, sha256: HASH_B }],
+      CONTEXT,
+      PROJECT_ROOT,
+      retained,
+    );
+    await flushMicrotasks();
+
+    expect(harness.session.getSnapshot().missing.has(ASSET_ID)).toBe(true);
+    expect(harness.session.getSnapshot().images.get(ASSET_ID)).toBe(
+      harness.images[0],
+    );
+    expect(harness.readCanvasImage).toHaveBeenCalledTimes(2);
+  });
+
   it('invalidates decoded resources when the project instance context changes', async () => {
     const harness = createHarness();
 

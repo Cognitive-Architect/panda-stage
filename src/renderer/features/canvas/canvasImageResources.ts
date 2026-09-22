@@ -122,6 +122,7 @@ export class CanvasImageResourceSession {
       stateChanged = true;
     }
 
+    const previousSources = this.currentSources;
     const currentSources = new Map<string, string | null>();
     for (const asset of input.assets) {
       currentSources.set(asset.id, asset.sha256 ?? null);
@@ -138,10 +139,10 @@ export class CanvasImageResourceSession {
       );
     }
     const currentSourceChanged =
-      this.currentSources.size !== currentSources.size ||
+      previousSources.size !== currentSources.size ||
       [...currentSources].some(
         ([assetId, sourceKey]) =>
-          this.currentSources.get(assetId) !== sourceKey,
+          previousSources.get(assetId) !== sourceKey,
       );
     this.currentSources = currentSources;
     this.desiredSources = desiredSources;
@@ -199,10 +200,17 @@ export class CanvasImageResourceSession {
         continue;
       }
 
+      // A definitive failure belongs to this exact source version. A new
+      // hash/context is a fresh pending read; the same failed source must not
+      // be silently downgraded to pending by a continuity-only reconcile.
+      if (previousSources.get(asset.id) !== sourceKey) {
+        stateChanged = this.missing.delete(asset.id) || stateChanged;
+      }
+      if (this.missing.has(asset.id)) continue;
+
       stateChanged =
         this.ensureResource(input.projectRoot, asset.id, sourceKey) ||
         stateChanged;
-      stateChanged = this.missing.delete(asset.id) || stateChanged;
     }
 
     if (input.contextKey && input.projectRoot) {
