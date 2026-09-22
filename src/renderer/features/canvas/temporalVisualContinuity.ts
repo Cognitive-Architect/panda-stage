@@ -2,27 +2,47 @@ import type {
   EvaluatedLayer,
   EvaluatedShot,
 } from '../../../domain';
+import type { LayerVisualParts } from '../../../domain';
 import type { Project, Shot } from '../../../domain/models';
 import {
   resolveImageAsset,
-  resolveLayerImageAsset,
   resolveLayerVisualParts,
-  type LayerVisualParts,
 } from '../../../domain';
+import { canvasImageResourceKey } from './canvasImageResources';
 
-/** One complete drawable visual snapshot for one editor layer. */
-export type EditorTemporalVisual = EvaluatedLayer;
+/**
+ * One complete runtime visual snapshot for one logical editor Layer.
+ *
+ * The EvaluatedLayer fields keep the existing transform/visibility contract
+ * readable to the Canvas. `visual` and `assetSourceKeys` are the important
+ * continuity payload: a previous Character is reproduced from its own Body /
+ * Face parts and decoded resource versions, not re-resolved from a replacement
+ * Character definition.
+ */
+export type EditorTemporalVisual = EvaluatedLayer & {
+  visual?: LayerVisualParts;
+  assetSourceKeys?: ReadonlyMap<string, string>;
+};
 
 export type EditorTemporalVisualStatus =
   | 'current-complete'
   | 'mouth-expression-fallback'
+  | 'mouth-fallback-pending'
   | 'previous-complete'
-  | 'base-complete'
+  | 'required-failed'
+  | 'pending'
   | 'unavailable';
 
 export interface EditorTemporalAssetResolution {
   evaluatedShot: EvaluatedShot;
   lastValidVisuals: ReadonlyMap<string, EditorTemporalVisual>;
+  /** The exact complete visual selected for each logical Layer. */
+  visualsByLayer: ReadonlyMap<string, LayerVisualParts | null>;
+  /** Resource versions used by the selected visual for each logical Layer. */
+  visualSourceKeysByLayer: ReadonlyMap<
+    string,
+    ReadonlyMap<string, string>
+  >;
   /** The status of the complete visual selected for each logical Layer. */
   visualStatusByLayer: ReadonlyMap<string, EditorTemporalVisualStatus>;
   /** Exact current evaluated visuals only; retained/fallback visuals are excluded. */
@@ -50,15 +70,11 @@ function visualAssetIds(
   visual: LayerVisualParts,
   evaluated: EvaluatedLayer,
 ): string[] {
-  return visual.parts.map((part) => {
-    // `assetId` is the formal evaluated face/ordinary image identity. Using
-    // it for the face slot also keeps this seam compatible with older
-    // evaluator snapshots while S03 remains the sole geometry resolver.
-    if (part.slot === 'face' || part.slot === 'single') {
-      return evaluated.assetId || part.assetId;
-    }
-    return part.assetId;
-  });
+  return visual.parts.map((part) =>
+    part.slot === 'face' || part.slot === 'single'
+      ? evaluated.assetId || part.assetId
+      : part.assetId,
+  );
 }
 
 function isCompleteVisualReady(
@@ -74,6 +90,23 @@ function isCompleteVisualReady(
   );
 }
 
+function isRetainedVisualReady(
+  project: Project,
+  snapshot: EditorTemporalVisual,
+  readyAssetIds: ReadonlySet<string>,
+  readyAssetSourceKeys: ReadonlyMap<string, string> | undefined,
+  readyResourceKeys: ReadonlySet<string> | undefined,
+): boolean {
+  if (!snapshot.visual || snapshot.visual.parts.length === 0) return false;
+  return visualAssetIds(snapshot.visual, snapshot).every((assetId) => {
+    const sourceKey = snapshot.assetSourceKeys?.get(assetId);
+    if (sourceKey && readyResourceKeys) {
+      return readyResourceKeys.has(canvasImageResourceKey(assetId, sourceKey));
+    }
+    return isAssetReady(project, assetId, readyAssetIds, readyAssetSourceKeys);
+  });
+}
+
 function resolveVisual(
   project: Project,
   shot: Shot,
@@ -83,46 +116,94 @@ function resolveVisual(
     return resolveLayerVisualParts(project, shot, evaluated);
   } catch {
     // Invalid/missing Project references are represented by the existing
-    // Canvas loading/missing state. They must not produce a half visual.
+    // Canvas missing state. They must not produce a half visual.
     return null;
   }
 }
 
-function buildBaseVisual(
+function sourceKeysForVisual(
   project: Project,
-  shot: Shot,
-  layerId: string,
-): EditorTemporalVisual | null {
-  const baseLayer = shot.layers.find((candidate) => candidate.id === layerId);
-  if (!baseLayer) return null;
-  const baseAsset = resolveLayerImageAsset(project, baseLayer);
-  if (!baseAsset) return null;
+  visual: LayerVisualParts,
+  evaluated: EvaluatedLayer,
+  readyAssetSourceKeys?: ReadonlyMap<string, string>,
+): ReadonlyMap<string, string> {
+  const sourceKeys = new Map<string, string>();
+  for (const assetId of visualAssetIds(visual, evaluated)) {
+    const sourceKey =
+      readyAssetSourceKeys?.get(assetId) ??
+      resolveImageAsset(project, assetId)?.sha256;
+    if (sourceKey) sourceKeys.set(assetId, sourceKey);
+  }
+  return sourceKeys;
+}
+
+function snapshotVisual(
+  project: Project,
+  evaluated: EvaluatedLayer,
+  visual: LayerVisualParts,
+  readyAssetSourceKeys?: ReadonlyMap<string, string>,
+): EditorTemporalVisual {
   return {
-    id: baseLayer.id,
-    assetId: baseAsset.id,
-    currentExpressionId:
-      baseLayer.source.kind === 'character'
-        ? baseLayer.source.expressionId
-        : null,
-    mouthOverrideAssetId: null,
-    anchor: baseLayer.anchor,
-    x: baseLayer.x,
-    y: baseLayer.y,
-    scaleX: baseLayer.scaleX,
-    scaleY: baseLayer.scaleY,
-    flipX: baseLayer.flipX,
-    rotationDeg: baseLayer.rotationDeg,
-    opacity: baseLayer.opacity,
-    visible: baseLayer.visible,
-    zIndex: baseLayer.zIndex,
+    ...evaluated,
+    visual,
+    assetSourceKeys: sourceKeysForVisual(
+      project,
+      visual,
+      evaluated,
+      readyAssetSourceKeys,
+    ),
   };
 }
 
+function normalizePreviousVisual(
+  project: Project,
+  shot: Shot,
+  previous: EditorTemporalVisual,
+): EditorTemporalVisual | null {
+  const visual = previous.visual ?? resolveVisual(project, shot, previous);
+  if (!visual) return null;
+  return previous.visual && previous.assetSourceKeys
+    ? previous
+    : snapshotVisual(project, previous, visual, previous.assetSourceKeys);
+}
+
+function evaluatedLayerOf(snapshot: EditorTemporalVisual): EvaluatedLayer {
+  const evaluated = { ...snapshot };
+  delete evaluated.visual;
+  delete evaluated.assetSourceKeys;
+  return evaluated;
+}
+
+function hasRequiredHardFailure(
+  visual: LayerVisualParts | null,
+  missingAssetIds: ReadonlySet<string>,
+): boolean {
+  if (!visual) return true;
+  const activeMouthId =
+    visual.activeFace?.source === 'mouth'
+      ? visual.activeFace.assetId
+      : null;
+  return visual.resources.required.some(
+    ({ assetId }) =>
+      missingAssetIds.has(assetId) && assetId !== activeMouthId,
+  );
+}
+
+function hasMouthHardFailure(
+  visual: LayerVisualParts | null,
+  missingAssetIds: ReadonlySet<string>,
+): boolean {
+  return Boolean(
+    visual?.activeFace?.source === 'mouth' &&
+      missingAssetIds.has(visual.activeFace.assetId),
+  );
+}
+
 function mouthExpressionFallback(
-  evaluated: EditorTemporalVisual,
+  evaluated: EvaluatedLayer,
   visual: LayerVisualParts | null,
   missingAssetIds?: ReadonlySet<string>,
-): EditorTemporalVisual | null {
+): EvaluatedLayer | null {
   const fallbackAssetId = visual?.activeFace?.fallbackAssetId;
   if (
     !fallbackAssetId ||
@@ -150,9 +231,15 @@ export function resolveEditorTemporalAssetResolution(
   readyAssetIds: ReadonlySet<string>,
   previousVisuals: ReadonlyMap<string, EditorTemporalVisual>,
   readyAssetSourceKeys?: ReadonlyMap<string, string>,
-  missingAssetIds?: ReadonlySet<string>,
+  missingAssetIds: ReadonlySet<string> = new Set(),
+  readyResourceKeys?: ReadonlySet<string>,
 ): EditorTemporalAssetResolution {
   const lastValidVisuals = new Map<string, EditorTemporalVisual>();
+  const visualsByLayer = new Map<string, LayerVisualParts | null>();
+  const visualSourceKeysByLayer = new Map<
+    string,
+    ReadonlyMap<string, string>
+  >();
   const visualStatusByLayer = new Map<
     string,
     EditorTemporalVisualStatus
@@ -168,75 +255,112 @@ export function resolveEditorTemporalAssetResolution(
       readyAssetIds,
       readyAssetSourceKeys,
     );
-    if (currentReady) {
+    if (currentReady && currentVisual) {
+      const currentSnapshot = snapshotVisual(
+        project,
+        layer,
+        currentVisual,
+        readyAssetSourceKeys,
+      );
       targetReadyLayerIds.add(layer.id);
       visualStatusByLayer.set(layer.id, 'current-complete');
-      lastValidVisuals.set(layer.id, layer);
+      lastValidVisuals.set(layer.id, currentSnapshot);
+      visualsByLayer.set(layer.id, currentSnapshot.visual!);
+      visualSourceKeysByLayer.set(layer.id, currentSnapshot.assetSourceKeys!);
       return layer;
     }
 
-    const fallback = mouthExpressionFallback(
+    const fallbackLayer = mouthExpressionFallback(
       layer,
       currentVisual,
       missingAssetIds,
     );
-    if (
-      fallback &&
-      isCompleteVisualReady(
-        project,
-        resolveVisual(project, shot, fallback),
-        fallback,
-        readyAssetIds,
-        readyAssetSourceKeys,
-      )
-    ) {
-      visualStatusByLayer.set(layer.id, 'mouth-expression-fallback');
-      lastValidVisuals.set(layer.id, fallback);
-      return fallback;
+    if (fallbackLayer) {
+      const fallbackVisual = resolveVisual(project, shot, fallbackLayer);
+      if (
+        fallbackVisual &&
+        isCompleteVisualReady(
+          project,
+          fallbackVisual,
+          fallbackLayer,
+          readyAssetIds,
+          readyAssetSourceKeys,
+        )
+      ) {
+        const fallbackSnapshot = snapshotVisual(
+          project,
+          fallbackLayer,
+          fallbackVisual,
+          readyAssetSourceKeys,
+        );
+        visualStatusByLayer.set(layer.id, 'mouth-expression-fallback');
+        lastValidVisuals.set(layer.id, fallbackSnapshot);
+        visualsByLayer.set(layer.id, fallbackSnapshot.visual!);
+        visualSourceKeysByLayer.set(
+          layer.id,
+          fallbackSnapshot.assetSourceKeys!,
+        );
+        return fallbackLayer;
+      }
     }
 
-    const previousVisual = previousVisuals.get(layer.id);
+    const requiredFailed = hasRequiredHardFailure(
+      currentVisual,
+      missingAssetIds,
+    );
+    const mouthFailed = hasMouthHardFailure(currentVisual, missingAssetIds);
+    const previousInput = previousVisuals.get(layer.id);
+    const previousVisual = previousInput
+      ? normalizePreviousVisual(project, shot, previousInput)
+      : null;
     if (
+      !mouthFailed &&
       previousVisual &&
-      isCompleteVisualReady(
+      isRetainedVisualReady(
         project,
-        resolveVisual(project, shot, previousVisual),
         previousVisual,
         readyAssetIds,
         readyAssetSourceKeys,
+        readyResourceKeys,
       )
     ) {
-      visualStatusByLayer.set(layer.id, 'previous-complete');
+      visualStatusByLayer.set(
+        layer.id,
+        requiredFailed
+          ? 'required-failed'
+          : mouthFailed
+            ? 'mouth-fallback-pending'
+            : 'previous-complete',
+      );
       lastValidVisuals.set(layer.id, previousVisual);
-      return previousVisual;
+      visualsByLayer.set(layer.id, previousVisual.visual!);
+      visualSourceKeysByLayer.set(
+        layer.id,
+        previousVisual.assetSourceKeys ?? new Map(),
+      );
+      return evaluatedLayerOf(previousVisual);
     }
 
-    const baseVisual = buildBaseVisual(project, shot, layer.id);
-    if (
-      baseVisual &&
-      isCompleteVisualReady(
-        project,
-        resolveVisual(project, shot, baseVisual),
-        baseVisual,
-        readyAssetIds,
-        readyAssetSourceKeys,
-      )
-    ) {
-      visualStatusByLayer.set(layer.id, 'base-complete');
-      lastValidVisuals.set(layer.id, baseVisual);
-      return baseVisual;
-    }
-
-    visualStatusByLayer.set(layer.id, 'unavailable');
-    // The render model may still expose the current logical transform, but
-    // Canvas receives no decoded complete visual and therefore shows no half
-    // Character. This preserves the existing explicit missing/loading seam.
+    visualStatusByLayer.set(
+      layer.id,
+      requiredFailed
+        ? 'required-failed'
+        : mouthFailed
+          ? 'mouth-fallback-pending'
+          : 'pending',
+    );
+    // A null override tells the stage model to keep the logical layer but draw
+    // no Body/Face part. This is the explicit loading/missing seam; it cannot
+    // accidentally render a newly-ready half Character.
+    visualsByLayer.set(layer.id, null);
     return layer;
   });
 
   return {
     evaluatedShot: { ...evaluatedShot, layers },
     lastValidVisuals,
+    visualsByLayer,
+    visualSourceKeysByLayer,
     visualStatusByLayer,
     targetReadyLayerIds,
   };

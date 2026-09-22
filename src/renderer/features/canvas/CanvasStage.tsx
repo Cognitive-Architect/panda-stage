@@ -56,7 +56,9 @@ import {
 } from '../../stage/konva-pixel-ratio';
 import {
   CanvasImageResourceSession,
+  canvasImageResourceKey,
   EMPTY_CANVAS_IMAGE_STATE,
+  type CanvasImageAssetSource,
   type CanvasImageState,
 } from './canvasImageResources';
 import {
@@ -96,6 +98,7 @@ function CanvasEmptyState(): React.JSX.Element {
 function useCanvasImages(
   snapshot: EditorProjectSnapshot | null,
   shot: Shot | null,
+  retainedAssets: readonly CanvasImageAssetSource[],
 ): CanvasImageState {
   const assets = useMemo(
     () =>
@@ -108,11 +111,18 @@ function useCanvasImages(
     .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
     .sort()
     .join('|');
+  const retainedSourceKey = retainedAssets
+    .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
+    .sort()
+    .join('|');
   const projectId = snapshot?.project.id ?? null;
+  const projectInstanceId = editorProjectStore.getProjectInstanceId();
   const projectRoot = snapshot?.projectRoot ?? null;
   const shotId = shot?.id ?? null;
   const projectContextKey =
-    projectId && projectRoot ? `${projectId}:${projectRoot}` : null;
+    projectId && projectRoot && projectInstanceId !== null
+      ? `${projectId}:${projectRoot}:${projectInstanceId}`
+      : null;
   const [state, setState] = useState<CanvasImageState>(
     EMPTY_CANVAS_IMAGE_STATE,
   );
@@ -133,10 +143,19 @@ function useCanvasImages(
         contextKey: projectContextKey,
         projectRoot,
         assets: shotId ? assets : [],
+        retainedAssets: shotId ? retainedAssets : [],
       },
       setState,
     );
-  }, [assets, projectContextKey, projectRoot, shotId, sourceKey]);
+  }, [
+    assets,
+    projectContextKey,
+    projectRoot,
+    retainedAssets,
+    retainedSourceKey,
+    shotId,
+    sourceKey,
+  ]);
 
   return state;
 }
@@ -221,10 +240,9 @@ export function CanvasStage({
     () => evaluateSubtitleAtTime(subtitleCues, timelineUi.currentTimeMs),
     [subtitleCues, timelineUi.currentTimeMs],
   );
-  const imageState = useCanvasImages(snapshot, shot);
   const temporalContextKey =
-    snapshot && shot
-      ? `${snapshot.project.id}:${snapshot.projectRoot}:${shot.id}`
+    snapshot && shot && editorProjectStore.getProjectInstanceId() !== null
+      ? `${snapshot.project.id}:${snapshot.projectRoot}:${editorProjectStore.getProjectInstanceId()}:${shot.id}`
       : null;
   const temporalContinuityRef = useRef<{
     contextKey: string | null;
@@ -237,6 +255,16 @@ export function CanvasStage({
     temporalContinuityRef.current.contextKey === temporalContextKey
       ? temporalContinuityRef.current.visuals
       : new Map<string, EditorTemporalVisual>();
+  const retainedAssets = useMemo<CanvasImageAssetSource[]>(() => {
+    const assets = new Map<string, CanvasImageAssetSource>();
+    for (const visual of previousTemporalVisuals.values()) {
+      for (const [assetId, sha256] of visual.assetSourceKeys ?? []) {
+        assets.set(`${assetId}:${sha256}`, { id: assetId, sha256 });
+      }
+    }
+    return [...assets.values()];
+  }, [previousTemporalVisuals]);
+  const imageState = useCanvasImages(snapshot, shot, retainedAssets);
   const temporalCanvasModel = useMemo(
     () =>
       snapshot && shot
@@ -247,6 +275,7 @@ export function CanvasStage({
             project: snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
             readyAssetSourceKeys: imageState.sourceKeys,
+            readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
             shot,
             positionDraft: positionAuthoringSnapshot
@@ -260,6 +289,7 @@ export function CanvasStage({
     [
       activeCue?.id,
       imageState.images,
+      imageState.readyResourceKeys,
       previousTemporalVisuals,
       positionAuthoringSnapshot,
       shot,
@@ -290,15 +320,36 @@ export function CanvasStage({
     );
   }, [imageState, snapshot]);
   const isStageLayerVisualReady = useCallback(
-    (stageLayer: NonNullable<typeof stageModel>['layers'][number]): boolean =>
-      Boolean(
+    (stageLayer: NonNullable<typeof stageModel>['layers'][number]): boolean => {
+      if (!stageLayer.visual.parts.length) return false;
+      const sourceKeys = temporalCanvasModel?.visualSourceKeysByLayer.get(
+        stageLayer.layer.id,
+      );
+      if (sourceKeys && sourceKeys.size > 0) {
+        return stageLayer.visual.parts.every((part) => {
+          const sourceKey = sourceKeys.get(part.assetId);
+          return sourceKey
+            ? imageState.readyResourceKeys.has(
+                canvasImageResourceKey(part.assetId, sourceKey),
+              )
+            : Boolean(
+                snapshot &&
+                  isCurrentCanvasAssetReady(
+                    snapshot.project,
+                    part.assetId,
+                    imageState,
+                  ),
+              );
+        });
+      }
+      return Boolean(
         snapshot &&
-          stageLayer.visual.parts.length > 0 &&
           stageLayer.visual.parts.every((part) =>
             isCurrentCanvasAssetReady(snapshot.project, part.assetId, imageState),
           ),
-      ),
-    [imageState, snapshot],
+      );
+    },
+    [imageState, snapshot, temporalCanvasModel],
   );
   const directEditingEnabled =
     temporalCanvasModel?.directEditingEnabled ??
@@ -319,11 +370,26 @@ export function CanvasStage({
     id: string;
   }): HTMLImageElement | undefined =>
     currentReadyImages.get(asset.id);
+  const imageForStageLayer = (
+    stageLayer: NonNullable<typeof stageModel>['layers'][number],
+  ): HTMLImageElement | undefined => {
+    const sourceKeys = temporalCanvasModel?.visualSourceKeysByLayer.get(
+      stageLayer.layer.id,
+    );
+    const firstPart = stageLayer.visual.parts[0];
+    const sourceKey = firstPart
+      ? sourceKeys?.get(firstPart.assetId)
+      : undefined;
+    if (!firstPart || !sourceKey) return imageForAsset(stageLayer.asset);
+    return imageState.imagesByResourceKey.get(
+      canvasImageResourceKey(firstPart.assetId, sourceKey),
+    );
+  };
   const backgroundLayer =
     stageModel?.layers.find((layer) => layer.render.isBackground) ?? null;
   const backgroundAsset = backgroundLayer?.asset ?? null;
   const backgroundImage = backgroundLayer && isStageLayerVisualReady(backgroundLayer) && backgroundAsset
-    ? imageForAsset(backgroundAsset)
+    ? imageForStageLayer(backgroundLayer)
     : undefined;
   const empty = Boolean(stageModel && stageModel.layers.length === 0);
   const incompleteVisualLayers = stageModel?.layers.filter(
@@ -336,6 +402,43 @@ export function CanvasStage({
   const missingNonBackgroundVisual = incompleteVisualLayers.some(
     (stageLayer) => !stageLayer.render.isBackground,
   );
+  const nonBackgroundStatuses = stageModel?.layers
+    .filter(({ render }) => !render.isBackground)
+    .map(({ layer }) =>
+      temporalCanvasModel?.visualStatusByLayer.get(layer.id),
+    )
+    .filter((status): status is NonNullable<typeof status> => Boolean(status));
+  const baseRequiredVisualFailure =
+    stageModel?.layers.some((stageLayer) => {
+      if (stageLayer.render.isBackground) return false;
+      const activeMouthId =
+        stageLayer.visual.activeFace?.source === 'mouth'
+          ? stageLayer.visual.activeFace.assetId
+          : null;
+      return stageLayer.visual.resources.required.some(
+        ({ assetId }) =>
+          imageState.missing.has(assetId) && assetId !== activeMouthId,
+      );
+    }) ?? false;
+  const hasRequiredVisualFailure =
+    baseRequiredVisualFailure ||
+    (nonBackgroundStatuses?.includes('required-failed') ?? false);
+  const hasMouthVisualDegradation = nonBackgroundStatuses?.some(
+    (status) =>
+      status === 'mouth-expression-fallback' ||
+      status === 'mouth-fallback-pending',
+  ) ?? false;
+  const hasMouthExpressionFallback = nonBackgroundStatuses?.some(
+    (status) => status === 'mouth-expression-fallback',
+  ) ?? false;
+  const hasPendingVisual = nonBackgroundStatuses?.some(
+    (status) => status === 'pending' || status === 'previous-complete',
+  ) ?? false;
+  const hasNonBackgroundVisualIssue =
+    missingNonBackgroundVisual ||
+    hasRequiredVisualFailure ||
+    hasMouthVisualDegradation ||
+    hasPendingVisual;
   const selectedStageLayer =
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
@@ -496,13 +599,15 @@ export function CanvasStage({
                     width={PROJECT_WIDTH}
                   />
                   {stageModel
-                    ? stageModel.layers.map(({ layer, asset, render, visual }) => {
-                        const image = imageForAsset(asset);
+                    ? stageModel.layers.map((stageLayer) => {
+                        const { layer, render, visual } = stageLayer;
+                        const image = imageForStageLayer(stageLayer);
                         return (
                           <SelectableLayer
                             directEditingEnabled={directEditingEnabled}
                             image={image}
                             images={currentReadyImages}
+                            imagesByResourceKey={imageState.imagesByResourceKey}
                             key={render.id}
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
@@ -557,8 +662,13 @@ export function CanvasStage({
                                  ? temporalCanvasModel?.positionAuthoringShakeOffset
                                  : null
                              }
-                             selected={selectedLayerId === layer.id}
-                             visual={visual}
+                            selected={selectedLayerId === layer.id}
+                            visualSourceKeys={
+                              temporalCanvasModel?.visualSourceKeysByLayer.get(
+                                layer.id,
+                              )
+                            }
+                            visual={visual}
                           />
                         );
                       })
@@ -613,10 +723,44 @@ export function CanvasStage({
                 </span>
               </div>
             ) : null}
-            {!missingBackground && missingNonBackgroundVisual ? (
+            {(hasRequiredVisualFailure || hasMouthVisualDegradation) ? (
+              <div
+                className="canvas-stage-message canvas-stage-warning"
+                data-testid="canvas-visual-failure-warning"
+                data-visual-warning-kind={
+                  hasRequiredVisualFailure ? 'failed' : 'degraded'
+                }
+              >
+                <strong>
+                  {hasRequiredVisualFailure
+                    ? 'Body / Face read failed'
+                    : hasMouthExpressionFallback
+                      ? 'Mouth unavailable; current Expression is shown'
+                      : 'Mouth unavailable; current Expression is still preparing'}
+                </strong>
+                <span>
+                  {hasRequiredVisualFailure
+                    ? 'The complete Character visual is unavailable. A retained visual is not treated as ready.'
+                    : hasMouthExpressionFallback
+                      ? 'The Character keeps its Body and current Expression while the Mouth resource is unavailable.'
+                      : 'The Mouth resource is unavailable and the current Expression is not ready yet.'}
+                </span>
+              </div>
+            ) : null}
+            {!missingBackground &&
+            hasNonBackgroundVisualIssue &&
+            !hasRequiredVisualFailure &&
+            !hasMouthVisualDegradation ? (
               <div
                 className="canvas-stage-message canvas-stage-warning"
                 data-testid="canvas-visual-warning"
+                data-visual-warning-kind={
+                  hasRequiredVisualFailure
+                    ? 'failed'
+                    : hasMouthVisualDegradation
+                      ? 'degraded'
+                      : 'pending'
+                }
               >
                 <strong>画面仍在准备</strong>
                 <span>

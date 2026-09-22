@@ -44,6 +44,22 @@ describe('EditorProjectStore', () => {
     expect(listener).toHaveBeenCalledTimes(4);
   });
 
+  it('increments a runtime project-instance identity only across open lifecycles', () => {
+    const store = new EditorProjectStore();
+    const project = migrateProject(exampleProject);
+
+    expect(store.getProjectInstanceId()).toBeNull();
+    store.open('D:\\same-path.pandastage', project);
+    const firstInstance = store.getProjectInstanceId();
+    store.updateProject({ ...project, name: 'ordinary edit' });
+    expect(store.getProjectInstanceId()).toBe(firstInstance);
+
+    store.clear();
+    expect(store.getProjectInstanceId()).toBeNull();
+    store.open('D:\\same-path.pandastage', project);
+    expect(store.getProjectInstanceId()).not.toBe(firstInstance);
+  });
+
   it('marks the matching revision clean without moving revision backwards', () => {
     const store = new EditorProjectStore();
     const project = migrateProject(exampleProject);

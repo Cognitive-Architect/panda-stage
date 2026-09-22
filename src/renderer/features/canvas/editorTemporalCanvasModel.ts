@@ -7,6 +7,7 @@ import {
   type EditorStageRenderModel,
   type EvaluatedLayer,
   type EvaluatedShot,
+  type LayerVisualParts,
   type Point,
   type Project,
   type Shot,
@@ -25,6 +26,8 @@ export interface EditorTemporalCanvasModelInput {
   readyAssetIds: ReadonlySet<string>;
   /** Decoded source hashes keyed by Asset id; distinguishes replacement bytes. */
   readyAssetSourceKeys?: ReadonlyMap<string, string>;
+  /** All decoded current and retained source versions. */
+  readyResourceKeys?: ReadonlySet<string>;
   /** Assets whose read/decode has definitively failed; pending assets are absent. */
   missingAssetIds?: ReadonlySet<string>;
   previousVisuals: ReadonlyMap<string, EditorTemporalVisual>;
@@ -43,12 +46,17 @@ export interface EditorTemporalCanvasModel {
   /** Visual-only Shake offset applied around a Position authoring draft. */
   positionAuthoringShakeOffset: Point | null;
   lastValidVisuals: ReadonlyMap<string, EditorTemporalVisual>;
+  visualsByLayer: ReadonlyMap<string, LayerVisualParts | null>;
+  visualSourceKeysByLayer: ReadonlyMap<
+    string,
+    ReadonlyMap<string, string>
+  >;
   visualStatusByLayer: ReadonlyMap<string, EditorTemporalVisualStatus>;
   targetReadyLayerIds: ReadonlySet<string>;
 }
 
 /**
- * The editor's 0:00 view is deliberately a base-state view. This conversion
+   * The editor's 0:00 view is deliberately a base-state view. This conversion
  * stays local to the editor seam so the value shown in Canvas is the same
  * Layer value that the Inspector and direct Canvas editing mutate. Preview
  * and Export continue to call the formal runtime evaluator independently.
@@ -99,6 +107,7 @@ export function buildEditorTemporalCanvasModel({
   activeDialogueId = null,
   readyAssetIds,
   readyAssetSourceKeys,
+  readyResourceKeys,
   missingAssetIds,
   previousVisuals,
   positionDraft,
@@ -119,16 +128,19 @@ export function buildEditorTemporalCanvasModel({
         shot,
         evaluatedShot,
         readyAssetIds,
-        previousVisuals,
-        readyAssetSourceKeys,
-        missingAssetIds,
-      )
-    : {
+         previousVisuals,
+         readyAssetSourceKeys,
+         missingAssetIds,
+         readyResourceKeys,
+       )
+      : {
         // A temporal visual must not survive the transition back into Base
         // Edit View, even when the same layer remains selected.
         evaluatedShot: baseEditorShot,
-        lastValidVisuals: new Map<string, EditorTemporalVisual>(),
-        visualStatusByLayer: new Map<string, EditorTemporalVisualStatus>(),
+         lastValidVisuals: new Map<string, EditorTemporalVisual>(),
+         visualsByLayer: new Map(),
+         visualSourceKeysByLayer: new Map(),
+         visualStatusByLayer: new Map<string, EditorTemporalVisualStatus>(),
         targetReadyLayerIds: new Set<string>(),
       };
 
@@ -181,11 +193,14 @@ export function buildEditorTemporalCanvasModel({
       project,
       shot,
       renderedEvaluatedShot,
+      resolved.visualsByLayer,
     ),
     directEditingEnabled: !temporalInspection,
     temporalInspection,
     positionAuthoringShakeOffset,
     lastValidVisuals: resolved.lastValidVisuals,
+    visualsByLayer: resolved.visualsByLayer,
+    visualSourceKeysByLayer: resolved.visualSourceKeysByLayer,
     visualStatusByLayer: resolved.visualStatusByLayer,
     targetReadyLayerIds: resolved.targetReadyLayerIds,
   };

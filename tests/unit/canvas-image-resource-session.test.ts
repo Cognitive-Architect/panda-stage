@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AssetCanvasImageReadResponse } from '../../src/shared/asset-canvas-image-api';
 import {
   CanvasImageResourceSession,
+  canvasImageResourceKey,
   type CanvasImageState,
 } from '../../src/renderer/features/canvas/canvasImageResources';
 
@@ -110,9 +111,10 @@ function reconcile(
   assets: Array<{ id: string; sha256?: string }>,
   contextKey: string | null = CONTEXT,
   projectRoot: string | null = PROJECT_ROOT,
+  retainedAssets: Array<{ id: string; sha256?: string }> = [],
 ): void {
   harness.session.reconcile(
-    { contextKey, projectRoot, assets },
+    { contextKey, projectRoot, assets, retainedAssets },
     (state) => harness.states.push(state),
   );
 }
@@ -162,6 +164,107 @@ describe('Canvas image resource lifecycle — Issue #450', () => {
     );
     expect(harness.session.getSnapshot().sourceKeys.get(ASSET_ID)).toBe(HASH_B);
     expect(harness.revoked).toEqual(['blob:canvas-1']);
+  });
+
+  it('retains every previous source version until the replacement visual commits', async () => {
+    const harness = createHarness();
+
+    reconcile(harness, [{ id: ASSET_ID, sha256: HASH_A }]);
+    await flushMicrotasks();
+    harness.images[0]?.succeed();
+
+    reconcile(
+      harness,
+      [{ id: ASSET_ID, sha256: HASH_B }],
+      CONTEXT,
+      PROJECT_ROOT,
+      [{ id: ASSET_ID, sha256: HASH_A }],
+    );
+    await flushMicrotasks();
+
+    const whileReplacementPending = harness.session.getSnapshot();
+    expect(
+      whileReplacementPending.imagesByResourceKey.get(
+        canvasImageResourceKey(ASSET_ID, HASH_A),
+      ),
+    ).toBe(harness.images[0]);
+    expect(
+      whileReplacementPending.readyResourceKeys.has(
+        canvasImageResourceKey(ASSET_ID, HASH_A),
+      ),
+    ).toBe(true);
+    expect(whileReplacementPending.images.get(ASSET_ID)).toBe(harness.images[0]);
+    expect(harness.revoked).toEqual([]);
+
+    harness.images[1]?.succeed();
+    const afterReplacementCommit = harness.session.getSnapshot();
+    expect(
+      afterReplacementCommit.imagesByResourceKey.get(
+        canvasImageResourceKey(ASSET_ID, HASH_B),
+      ),
+    ).toBe(harness.images[1]);
+    expect(
+      afterReplacementCommit.imagesByResourceKey.get(
+        canvasImageResourceKey(ASSET_ID, HASH_A),
+      ),
+    ).toBe(harness.images[0]);
+    expect(harness.revoked).toEqual([]);
+
+    // The continuity owner drops the old version only after it has observed
+    // the complete replacement visual.
+    reconcile(harness, [{ id: ASSET_ID, sha256: HASH_B }]);
+    expect(
+      harness.session
+        .getSnapshot()
+        .imagesByResourceKey.has(canvasImageResourceKey(ASSET_ID, HASH_A)),
+    ).toBe(false);
+    expect(harness.session.getSnapshot().images.get(ASSET_ID)).toBe(
+      harness.images[1],
+    );
+    expect(harness.revoked).toEqual(['blob:canvas-1']);
+  });
+
+  it('invalidates decoded resources when the project instance context changes', async () => {
+    const harness = createHarness();
+
+    reconcile(harness, [{ id: ASSET_ID, sha256: HASH_A }], CONTEXT);
+    await flushMicrotasks();
+    harness.images[0]?.succeed();
+
+    reconcile(
+      harness,
+      [{ id: ASSET_ID, sha256: HASH_A }],
+      'project-1:D:\\Projects\\canvas-lifecycle.pandastage:next-instance',
+    );
+    await flushMicrotasks();
+
+    expect(harness.session.getSnapshot().images.has(ASSET_ID)).toBe(false);
+    expect(harness.revoked).toEqual(['blob:canvas-1']);
+    expect(harness.readCanvasImage).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates decoded resources when the active Shot or Project changes', async () => {
+    const harness = createHarness();
+
+    reconcile(harness, [{ id: ASSET_ID, sha256: HASH_A }], `${CONTEXT}:shot-a`);
+    await flushMicrotasks();
+    harness.images[0]?.succeed();
+
+    reconcile(harness, [{ id: ASSET_ID, sha256: HASH_A }], `${CONTEXT}:shot-b`);
+    await flushMicrotasks();
+    expect(harness.session.getSnapshot().images.has(ASSET_ID)).toBe(false);
+    expect(harness.revoked).toEqual(['blob:canvas-1']);
+    harness.images[1]?.succeed();
+
+    reconcile(
+      harness,
+      [{ id: ASSET_ID, sha256: HASH_A }],
+      `project-2:${PROJECT_ROOT}:instance:shot-b`,
+    );
+    await flushMicrotasks();
+    expect(harness.session.getSnapshot().images.has(ASSET_ID)).toBe(false);
+    expect(harness.revoked).toEqual(['blob:canvas-1', 'blob:canvas-2']);
+    expect(harness.readCanvasImage).toHaveBeenCalledTimes(3);
   });
 
   it('marks missing/error sources and releases obsolete or removed resources', async () => {

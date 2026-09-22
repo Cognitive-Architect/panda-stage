@@ -36,6 +36,7 @@ export function buildEditorStageRenderModel(
   project: Project,
   shot: Shot,
   evaluatedShot?: EvaluatedShot,
+  visualOverrides?: ReadonlyMap<string, LayerVisualParts | null>,
 ): EditorStageRenderModel {
   const evaluatedById = new Map(
     evaluatedShot?.layers.map((layer) => [layer.id, layer]) ?? [],
@@ -58,30 +59,34 @@ export function buildEditorStageRenderModel(
         visible: layer.visible,
         zIndex: layer.zIndex,
       };
-      const visual = resolveLayerVisualParts(project, shot, evaluated);
+      const visual = visualOverrides?.has(layer.id)
+        ? visualOverrides.get(layer.id) ?? emptyVisual(project, layer, evaluated)
+        : resolveLayerVisualParts(project, shot, evaluated);
       // `asset` remains as a compatibility/diagnostic primary asset for the
       // existing stage contract. Canvas rendering uses `visual.parts`, so a
       // composite Character is never reduced to this one asset.
       const primaryPart = visual.parts[0];
       const asset = primaryPart
         ? resolveImageAsset(project, primaryPart.assetId)
-        : null;
-      if (!asset) {
-        throw new Error(
-          `Cannot resolve image asset for editor layer ${layer.id}.`,
+        : baseAsset;
+      const compatibilityAsset =
+        asset ??
+        compatibilityImageAsset(
+          primaryPart?.assetId ?? evaluated.assetId ?? `${layer.id}:missing`,
+          primaryPart?.localRect.width ?? baseAsset?.width ?? 1,
+          primaryPart?.localRect.height ?? baseAsset?.height ?? 1,
         );
-      }
       return {
         layer,
         evaluated,
-        asset,
+        asset: compatibilityAsset,
         visual,
         render: buildStageLayerRenderInstruction(
           {
             id: layer.id,
-            assetId: asset.id,
-            assetWidth: asset.width,
-            assetHeight: asset.height,
+            assetId: compatibilityAsset.id,
+            assetWidth: compatibilityAsset.width,
+            assetHeight: compatibilityAsset.height,
             x: evaluated.x,
             y: evaluated.y,
             scaleX: evaluated.scaleX,
@@ -104,5 +109,60 @@ export function buildEditorStageRenderModel(
     shotId: shot.id,
     backgroundLayerId: shot.backgroundLayerId,
     layers,
+  };
+}
+
+function compatibilityImageAsset(
+  id: string,
+  width: number,
+  height: number,
+): ImageAsset {
+  return {
+    id,
+    kind: 'image',
+    name: 'Canvas continuity visual',
+    relativePath: 'assets/canvas-continuity-placeholder.png',
+    mimeType: 'image/png',
+    width: Math.max(1, Math.round(width)),
+    height: Math.max(1, Math.round(height)),
+  };
+}
+
+function emptyVisual(
+  project: Project,
+  layer: Layer,
+  evaluated: EvaluatedLayer,
+): LayerVisualParts {
+  const characterId =
+    layer.source.kind === 'character' ? layer.source.characterId : null;
+  const character =
+    characterId
+      ? project.characters.find((candidate) => candidate.id === characterId)
+      : null;
+  return {
+    ownerLayerId: layer.id,
+    kind:
+      character?.mode === 'composite'
+        ? 'composite-character'
+        : character
+          ? 'single-image-character'
+          : 'ordinary-image',
+    ownerTransform: {
+      anchor: evaluated.anchor,
+      x: evaluated.x,
+      y: evaluated.y,
+      scaleX: evaluated.scaleX,
+      scaleY: evaluated.scaleY,
+      flipX: evaluated.flipX,
+      rotationDeg: evaluated.rotationDeg,
+      opacity: evaluated.opacity,
+      visible: evaluated.visible,
+      zIndex: evaluated.zIndex,
+    },
+    facePlacement: null,
+    parts: [],
+    combinedLocalBounds: { x: 0, y: 0, width: 0, height: 0 },
+    activeFace: null,
+    resources: { required: [], candidates: [], fallback: [] },
   };
 }

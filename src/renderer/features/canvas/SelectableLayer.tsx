@@ -15,6 +15,7 @@ import type {
   PositionAuthoringCommitResult,
   PositionAuthoringSessionHandle,
 } from '../../stores/positionAuthoringSessionStore';
+import { canvasImageResourceKey } from './canvasImageResources';
 
 interface Point {
   readonly x: number;
@@ -28,6 +29,10 @@ export interface SelectableLayerProps {
   visual?: LayerVisualParts;
   /** Decoded images keyed by the runtime visual-part asset id. */
   images?: ReadonlyMap<string, HTMLImageElement>;
+  /** Decoded images keyed by asset id plus source version. */
+  imagesByResourceKey?: ReadonlyMap<string, HTMLImageElement>;
+  /** Source versions captured by a retained complete visual. */
+  visualSourceKeys?: ReadonlyMap<string, string>;
   layer: Layer;
   nodeRef: React.RefObject<Konva.Group | null>;
   render: StageLayerRenderInstruction;
@@ -62,11 +67,13 @@ function stopAndSelect(
 export function SelectableLayer({
   image,
   images,
+  imagesByResourceKey,
   layer,
   nodeRef,
   render,
   selected,
   visual,
+  visualSourceKeys,
   directEditingEnabled = true,
   onSelect,
   onCommitPosition,
@@ -105,6 +112,16 @@ export function SelectableLayer({
   const imageForPart = (
     part: (typeof visualParts)[number],
   ): HTMLImageElement | undefined =>
+    (visualSourceKeys
+      ? imagesByResourceKey?.get(
+          visualSourceKeys.get(part.assetId)
+            ? canvasImageResourceKey(
+                part.assetId,
+                visualSourceKeys.get(part.assetId)!,
+              )
+            : '',
+        )
+      : undefined) ??
     images?.get(part.assetId) ??
     (part === firstPart && part.assetId === render.assetId ? image : undefined);
   const resolvedPartImages = visualParts.map((part) => ({
