@@ -446,6 +446,22 @@ describe('product preview overlay contract', () => {
     );
   });
 
+  it('routes structured Stage image failures through Preview-owned S03 fallback rules', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const previewModel = readSource('src/renderer/shell/productPreviewModel.ts');
+    const stage = readSource('src/renderer/stage/stageImageResourceSession.ts');
+
+    expect(overlay).toContain(
+      'onImageResourceFailure={handleImageResourceFailure}',
+    );
+    expect(overlay).toContain('failure.partId === rule.partId');
+    expect(overlay).toContain('failure.assetId === rule.sourceAssetId');
+    expect(overlay).toContain('data-preview-stage-failures=');
+    expect(previewModel).toContain('isProductPreviewMouthFallbackFailure');
+    expect(stage).toContain("image.onerror = () => {");
+    expect(stage).toContain("'decode'");
+  });
+
   it('places a flat, persistently selected range control above the Stage', () => {
     const overlay = readSource(OVERLAY_PATH);
     const styles = readSource(

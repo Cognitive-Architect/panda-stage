@@ -27,6 +27,7 @@ import {
   isStageFrameReady,
   StageImageResourceSession,
   type StageImageLayerSource,
+  type StageImageResourceFailure,
   type StageImageResourceState,
 } from './stageImageResourceSession';
 import {
@@ -45,6 +46,7 @@ interface StageRendererProps {
   /** Fires when a complete drawable frame exists, including an intentional Preview fallback. */
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
+  onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
   renderToken?: string | number;
   /** Degraded Preview is drawable, but never exact-frame ready for Export. */
   degraded?: boolean;
@@ -95,7 +97,11 @@ function buildStagePartSources(
   layers: readonly StageRenderLayer[],
 ): StageImageLayerSource[] {
   return layers.flatMap((layer) =>
-    layer.parts.map(({ id, sourceUrl }) => ({ id, sourceUrl })),
+    layer.parts.map(({ id, asset, sourceUrl }) => ({
+      id,
+      assetId: asset.id,
+      sourceUrl,
+    })),
   );
 }
 
@@ -179,6 +185,7 @@ export function StageRenderer({
   onReady,
   onDisplayReady,
   onError,
+  onImageResourceFailure,
   renderToken,
   degraded = false,
 }: StageRendererProps): React.JSX.Element {
@@ -248,6 +255,14 @@ export function StageRenderer({
       onError?.(modelResult.error);
       return;
     }
+    if (imageState.failures.length > 0) {
+      if (onImageResourceFailure) {
+        imageState.failures.forEach(onImageResourceFailure);
+      } else {
+        imageState.failures.forEach((failure) => onError?.(failure.error));
+      }
+      return;
+    }
     if (imageState.error) {
       onError?.(imageState.error);
       return;
@@ -258,9 +273,11 @@ export function StageRenderer({
     return () => window.cancelAnimationFrame(frame);
   }, [
     imageState.error,
+    imageState.failures,
     modelResult.error,
     modelResult.model?.timeMs,
     onError,
+    onImageResourceFailure,
     onReady,
     ready,
     renderToken,

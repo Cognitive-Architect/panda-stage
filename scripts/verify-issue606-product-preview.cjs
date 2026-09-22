@@ -15,13 +15,13 @@ const exampleProject = require('../demo-project/project-v1.example.json');
 // for one complete Body + Face Character, does not expose a half-decoded pair,
 // degrades only failed Mouth resources to the current Expression, and keeps a
 // Body failure fatal. This is rendered-pixel evidence, not human acceptance.
-const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue606-product-preview';
+const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue607-s05-review';
 const evidenceRoot = path.join(acceptanceRoot, 'evidence');
 const userDataRoot = path.join(acceptanceRoot, 'electron-user-data');
 const projectRoot = path.join(
   acceptanceRoot,
   'projects',
-  'issue606-product-preview.pandastage',
+  'issue607-s05-review.pandastage',
 );
 const resultPath = path.join(acceptanceRoot, 'results.json');
 
@@ -57,8 +57,10 @@ const channels = [];
 let savedProject = null;
 let previewMode = false;
 let readMode = 'pending';
-let releasePendingMouth = () => undefined;
-let pendingMouthPromise = null;
+let releasePendingAssetRead = () => undefined;
+let pendingAssetReadPromise = null;
+const pendingAssetReadIds = new Set();
+const assetReadEvidence = [];
 
 app.on('window-all-closed', () => {});
 
@@ -163,7 +165,7 @@ function createFixture() {
   const base = migrateProject({
     ...exampleProject,
     id: IDS.project,
-    name: 'Issue 606 Product Preview proof',
+    name: 'Issue 607 Product Preview review proof',
   });
   const baseShot = base.shots[0];
   const baseSubtitle = base.subtitleStyles[0];
@@ -277,7 +279,7 @@ function createFixture() {
     ...base,
     schemaVersion: 7,
     id: IDS.project,
-    name: 'Issue 606 Product Preview proof',
+    name: 'Issue 607 Product Preview review proof',
     assets: [
       imageAsset(IDS.backgroundAsset, 'background', 1_920, 1_080),
       imageAsset(IDS.bodyAsset, 'body', 800, 1_000),
@@ -319,14 +321,26 @@ function documentFor(root, project) {
 
 function configureReadMode(mode) {
   readMode = mode;
-  if (mode !== 'pending') {
-    pendingMouthPromise = null;
-    releasePendingMouth = () => undefined;
+  pendingAssetReadIds.clear();
+  if (
+    !['pending', 'mouth-decode-failed', 'face-decode-failed'].includes(mode)
+  ) {
+    pendingAssetReadPromise = null;
+    releasePendingAssetRead = () => undefined;
     return;
   }
-  pendingMouthPromise = new Promise((resolve) => {
-    releasePendingMouth = resolve;
+  pendingAssetReadPromise = new Promise((resolve) => {
+    releasePendingAssetRead = resolve;
   });
+}
+
+async function waitForPendingAssetRead(assetId) {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (pendingAssetReadIds.has(assetId)) return;
+    await delay(20);
+  }
+  throw new Error(`Asset image read did not pause for ${assetId}.`);
 }
 
 function register(channel, handler) {
@@ -347,7 +361,7 @@ function registerAcceptanceHandlers(project) {
           ok: false,
           error: {
             code: 'PROJECT_NOT_FOUND',
-            message: 'Issue #606 fixture project was not found.',
+            message: 'Issue #607 fixture project was not found.',
             projectRoot: request.projectRoot,
           },
         },
@@ -365,7 +379,7 @@ function registerAcceptanceHandlers(project) {
           ok: false,
           error: {
             code: 'RECENT_PROJECT_NOT_FOUND',
-            message: 'Issue #606 fixture project was not found.',
+            message: 'Issue #607 fixture project was not found.',
             projectRoot: request.projectRoot,
           },
         },
@@ -396,12 +410,14 @@ function registerAcceptanceHandlers(project) {
         ok: false,
         error: {
           code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
-          message: 'Issue #606 fixture image asset was not found.',
+          message: 'Issue #607 fixture image asset was not found.',
           assetId: request.assetId,
         },
       };
     }
-    if (previewMode && asset.id === IDS.bodyAsset && readMode === 'body-failed') {
+    const requestMode = readMode;
+    if (previewMode && asset.id === IDS.bodyAsset && requestMode === 'body-failed') {
+      assetReadEvidence.push({ mode: requestMode, assetId: asset.id, ok: false });
       return {
         ok: false,
         error: {
@@ -411,10 +427,21 @@ function registerAcceptanceHandlers(project) {
         },
       };
     }
-    if (previewMode && asset.id === IDS.mouthAsset && readMode === 'pending') {
-      await pendingMouthPromise;
+    const holdMouthRead =
+      previewMode &&
+      asset.id === IDS.mouthAsset &&
+      ['pending', 'mouth-decode-failed'].includes(requestMode);
+    const holdFaceRead =
+      previewMode &&
+      asset.id === IDS.faceAngryAsset &&
+      requestMode === 'face-decode-failed';
+    if (holdMouthRead || holdFaceRead) {
+      pendingAssetReadIds.add(asset.id);
+      await pendingAssetReadPromise;
+      pendingAssetReadIds.delete(asset.id);
     }
-    if (previewMode && asset.id === IDS.mouthAsset && readMode === 'mouth-failed') {
+    if (previewMode && asset.id === IDS.mouthAsset && requestMode === 'mouth-failed') {
+      assetReadEvidence.push({ mode: requestMode, assetId: asset.id, ok: false });
       return {
         ok: false,
         error: {
@@ -424,12 +451,29 @@ function registerAcceptanceHandlers(project) {
         },
       };
     }
-    const bytes = assetBytes.get(asset.id) ?? solidPng(
-      asset.width,
-      asset.height,
-      COLORS_BY_ASSET.get(asset.id) ?? [128, 128, 128],
-    );
-    assetBytes.set(asset.id, bytes);
+    const decodeTarget =
+      previewMode &&
+      ((requestMode === 'mouth-decode-failed' && asset.id === IDS.mouthAsset) ||
+        (requestMode === 'body-decode-failed' && asset.id === IDS.bodyAsset) ||
+        (requestMode === 'face-decode-failed' &&
+          asset.id === IDS.faceAngryAsset));
+    const bytes = decodeTarget
+      ? Buffer.from('intentionally invalid image/png bytes')
+      : (assetBytes.get(asset.id) ??
+        solidPng(
+          asset.width,
+          asset.height,
+          COLORS_BY_ASSET.get(asset.id) ?? [128, 128, 128],
+        ));
+    if (!decodeTarget) assetBytes.set(asset.id, bytes);
+    assetReadEvidence.push({
+      mode: requestMode,
+      assetId: asset.id,
+      ok: true,
+      mimeType: 'image/png',
+      byteLength: bytes.byteLength,
+      payload: decodeTarget ? 'intentionally-invalid-image/png' : 'valid-png',
+    });
     return {
       ok: true,
       status: 'ready',
@@ -476,13 +520,22 @@ async function openProject(window) {
   await waitForDom(
     window,
     `document.querySelector('.editor-shell')?.dataset.editorPage === 'editor' && document.querySelector('[data-testid="project-canvas-stage"]')`,
-    'Issue #606 fixture did not open the real editor.',
+    'Issue #607 fixture did not open the real editor.',
   );
 }
 
 async function openPreview(window, mode) {
   configureReadMode(mode);
   previewMode = true;
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue607ObjectUrls = [];
+    const createObjectURL = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => {
+      const url = createObjectURL(blob);
+      window.__issue607ObjectUrls.push({ url, type: blob.type, size: blob.size });
+      return url;
+    };
+  })()`);
   await window.webContents.executeJavaScript(`(() => {
     const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
     if (drawer?.dataset.expanded !== 'true') {
@@ -538,8 +591,11 @@ async function seekPreview(window, timeMs) {
 async function readPreview(window, points) {
   return window.webContents.executeJavaScript(`(() => {
     const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
-    const stage = document.querySelector('[data-testid="stage-renderer"]');
+    const stage = document.querySelector('.product-preview-stage [data-testid="stage-renderer"]');
     const canvas = stage?.querySelector('canvas');
+    const mouthWarning = document.querySelector('[data-testid="product-preview-mouth-degraded-warning"]');
+    const mouthWarningStyle = mouthWarning ? getComputedStyle(mouthWarning) : null;
+    const mouthWarningRect = mouthWarning?.getBoundingClientRect();
     const result = {
       preview: overlay ? {
         readiness: overlay.dataset.previewReadiness ?? '',
@@ -548,6 +604,7 @@ async function readPreview(window, points) {
         visualState: document.querySelector('.product-preview-stage')?.dataset.previewVisualState ?? '',
         handoff: overlay.dataset.previewHandoff ?? '',
         surface: overlay.dataset.previewSurface ?? '',
+        stageFailures: JSON.parse(overlay.dataset.previewStageFailures ?? '[]'),
       } : null,
       stage: stage ? {
         ready: stage.dataset.stageReady === 'true',
@@ -556,6 +613,19 @@ async function readPreview(window, points) {
         error: stage.dataset.stageError ?? '',
         time: stage.dataset.stageTime ?? '',
       } : null,
+      canvasPresent: canvas instanceof HTMLCanvasElement,
+      mouthWarning: mouthWarning?.textContent ?? '',
+      mouthWarningVisible: Boolean(
+        mouthWarning &&
+        mouthWarningStyle?.display !== 'none' &&
+        mouthWarningStyle?.visibility === 'visible' &&
+        Number(mouthWarningStyle?.opacity) > 0 &&
+        mouthWarningRect &&
+        mouthWarningRect.width > 0 &&
+        mouthWarningRect.height > 0,
+      ),
+      stageWarning: document.querySelector('[data-testid="product-preview-stage-warning"]')?.textContent ?? '',
+      objectUrls: Array.isArray(window.__issue607ObjectUrls) ? window.__issue607ObjectUrls : [],
       stageErrorText: document.querySelector('[data-testid="stage-error"]')?.textContent ?? '',
       pixels: {},
     };
@@ -597,11 +667,25 @@ function near(actual, expected, tolerance = 18) {
   return actual?.every((value, index) => Math.abs(value - expected[index]) <= tolerance);
 }
 
+async function waitForPreviewPixels(window, points, expectedPixels, message) {
+  const deadline = Date.now() + 8_000;
+  let state = null;
+  while (Date.now() < deadline) {
+    state = await readPreview(window, points);
+    const pixelsReady = Object.entries(expectedPixels).every(([name, color]) =>
+      near(state.pixels[name], color),
+    );
+    if (pixelsReady) return state;
+    await delay(40);
+  }
+  throw new Error(`${message} state=${JSON.stringify(state)}`);
+}
+
 async function waitExactPreview(window) {
   try {
     await waitForDom(
       window,
-      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewReadiness === 'ready' && document.querySelector('[data-testid="stage-renderer"]')?.dataset.stageReady === 'true'`,
+      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewReadiness === 'ready' && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageReady === 'true'`,
       'Product Preview did not reach exact current-frame readiness.',
     );
   } catch (error) {
@@ -612,6 +696,31 @@ async function waitExactPreview(window) {
     );
   }
   await pausePreview(window);
+}
+
+function assertRealDecodeEvidence(preview, mode, assetId, partId) {
+  const read = assetReadEvidence.find(
+    (item) => item.mode === mode && item.assetId === assetId && item.ok,
+  );
+  assert(
+    read?.payload === 'intentionally-invalid-image/png',
+    `Decode scenario did not return successful invalid PNG bytes: ${JSON.stringify(read)}`,
+  );
+  const failure = preview.preview?.stageFailures.find(
+    (item) => item.partId === partId && item.assetId === assetId,
+  );
+  assert(
+    failure?.reason === 'decode',
+    `Shared Stage did not report the real image.onerror decode failure: ${JSON.stringify(preview)}`,
+  );
+  const objectUrl = preview.objectUrls.find(
+    (item) => item.url === failure.sourceUrl,
+  );
+  assert(
+    objectUrl?.type === read.mimeType && objectUrl.size === read.byteLength,
+    `The failed Stage source was not created as an object URL from the successful bytes: ${JSON.stringify({ read, failure, objectUrl })}`,
+  );
+  return { read, failure, objectUrl };
 }
 
 async function run() {
@@ -630,6 +739,7 @@ async function run() {
     window = await newWindow();
     await openProject(window);
     await openPreview(window, 'pending');
+    await waitForPendingAssetRead(IDS.mouthAsset);
     await delay(300);
     const pending = await readPreview(window, []);
     assert(
@@ -638,7 +748,7 @@ async function run() {
     );
     await capture(window, 'preview-mouth-pending.png');
     screenshots.push('preview-mouth-pending.png');
-    releasePendingMouth();
+    releasePendingAssetRead();
     await waitExactPreview(window);
     const normal = await readPreview(window, [
       { name: 'bodyOnly', x: 1_000, y: 540 },
@@ -654,9 +764,12 @@ async function run() {
     screenshots.push('preview-mouth-ready.png');
 
     await seekPreview(window, 1_500);
-    const expression = await readPreview(window, [
-      { name: 'expressionOnly', x: 1_180, y: 536 },
-    ]);
+    const expression = await waitForPreviewPixels(
+      window,
+      [{ name: 'expressionOnly', x: 1_180, y: 536 }],
+      { expressionOnly: [40, 129, 82, 255] },
+      'Expression replacement pixels did not become drawable after seek.',
+    );
     assert(near(expression.pixels.expressionOnly, [40, 129, 82, 255]), `Expression replacement pixel mismatch: ${JSON.stringify(expression)}`);
     await capture(window, 'preview-expression-replaced.png');
     screenshots.push('preview-expression-replaced.png');
@@ -672,18 +785,69 @@ async function run() {
     await openPreview(window, 'mouth-failed');
     await waitForDom(
       window,
-      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewDegraded === 'true' && document.querySelector('[data-testid="product-preview-mouth-degraded-warning"]') && document.querySelector('[data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true'`,
+      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewReadiness === 'ready' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewDegraded === 'true' && document.querySelector('[data-testid="product-preview-mouth-degraded-warning"]') && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true'`,
       'Failed Mouth did not produce the visible Expression fallback.',
     );
     await pausePreview(window);
-    const fallback = await readPreview(window, [
-      { name: 'fallbackFace', x: 1_180, y: 536 },
-    ]);
+    const fallback = await waitForPreviewPixels(
+      window,
+      [{ name: 'fallbackFace', x: 1_180, y: 536 }],
+      { fallbackFace: [40, 84, 142, 255] },
+      'Mouth read-failure fallback pixels did not become drawable.',
+    );
     assert(fallback.preview?.degraded === true, `Mouth fallback was not degraded: ${JSON.stringify(fallback)}`);
     assert(fallback.stage?.ready === false, `Degraded fallback claimed exact readiness: ${JSON.stringify(fallback)}`);
     assert(near(fallback.pixels.fallbackFace, [40, 84, 142, 255]), `Mouth fallback pixel mismatch: ${JSON.stringify(fallback)}`);
     await capture(window, 'preview-mouth-fallback.png');
     screenshots.push('preview-mouth-fallback.png');
+    closeWindow(window);
+    window = null;
+
+    // True browser decode failure: the read succeeds, Stage receives a Blob
+    // object URL, then the browser fires HTMLImageElement.onerror. The initial
+    // 0ms frame is inside the active dialogue and must fall back to its current
+    // S03 Expression before Preview can complete its first-frame handoff.
+    savedProject = null;
+    previewMode = false;
+    window = await newWindow();
+    await openProject(window);
+    await openPreview(window, 'mouth-decode-failed');
+    await waitForPendingAssetRead(IDS.mouthAsset);
+    releasePendingAssetRead();
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewReadiness === 'ready' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewDegraded === 'true' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewSurface === 'active' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewHandoff === 'active' && document.querySelector('[data-testid="product-preview-mouth-degraded-warning"]') && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true' && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageReady === 'false'`,
+      'True Mouth decode failure did not reach a drawable, non-exact Expression fallback.',
+    );
+    await pausePreview(window);
+    const mouthDecode = await waitForPreviewPixels(
+      window,
+      [
+        { name: 'body', x: 1_000, y: 540 },
+        { name: 'currentExpression', x: 1_180, y: 536 },
+      ],
+      {
+        body: [130, 54, 52, 255],
+        currentExpression: [40, 84, 142, 255],
+      },
+      'True Mouth decode fallback pixels did not become drawable.',
+    );
+    assert(mouthDecode.preview?.degraded === true, `Mouth decode did not remain degraded: ${JSON.stringify(mouthDecode)}`);
+    assert(mouthDecode.stage?.time === '0', `Mouth fallback did not preserve the requested initial time: ${JSON.stringify(mouthDecode)}`);
+    assert(mouthDecode.preview?.surface === 'active' && mouthDecode.preview?.handoff === 'active', `Mouth fallback did not complete the visible Preview handoff: ${JSON.stringify(mouthDecode)}`);
+    assert(mouthDecode.mouthWarningVisible, `Existing Mouth fallback warning was not visibly rendered: ${JSON.stringify(mouthDecode)}`);
+    assert(mouthDecode.stage?.displayReady === true, `Mouth fallback was not display-ready: ${JSON.stringify(mouthDecode)}`);
+    assert(mouthDecode.stage?.ready === false, `Mouth decode fallback claimed exact readiness: ${JSON.stringify(mouthDecode)}`);
+    assert(near(mouthDecode.pixels.body, [130, 54, 52, 255]), `Mouth decode fallback lost Body: ${JSON.stringify(mouthDecode)}`);
+    assert(near(mouthDecode.pixels.currentExpression, [40, 84, 142, 255]), `Mouth decode did not use the current Expression at 0ms: ${JSON.stringify(mouthDecode)}`);
+    const mouthDecodeEvidence = assertRealDecodeEvidence(
+      mouthDecode,
+      'mouth-decode-failed',
+      IDS.mouthAsset,
+      `${IDS.characterLayer}:face`,
+    );
+    await capture(window, 'preview-mouth-decode-fallback.png');
+    screenshots.push('preview-mouth-decode-fallback.png');
     closeWindow(window);
     window = null;
 
@@ -704,15 +868,78 @@ async function run() {
     assert(!fatal.stage || !fatal.stage.ready, `Body failure exposed a ready Stage: ${JSON.stringify(fatal)}`);
     await capture(window, 'preview-body-failure.png');
     screenshots.push('preview-body-failure.png');
+    closeWindow(window);
+    window = null;
+
+    // A successful read containing invalid PNG bytes for required Body must
+    // reach Stage image.onerror and remain a fatal Product Preview error.
+    savedProject = null;
+    previewMode = false;
+    window = await newWindow();
+    await openProject(window);
+    await openPreview(window, 'body-decode-failed');
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewReadiness === 'error' && document.querySelector('[data-testid="product-preview-stage-warning"]')`,
+      'True Body decode failure did not produce a fatal Preview error.',
+    );
+    const bodyDecode = await readPreview(window, []);
+    assert(bodyDecode.preview?.failedAssetIds.includes(IDS.bodyAsset), `Body decode was not classified fatal: ${JSON.stringify(bodyDecode)}`);
+    assert(!bodyDecode.canvasPresent, `Body decode failure exposed a half Character canvas: ${JSON.stringify(bodyDecode)}`);
+    assert(!bodyDecode.stage || !bodyDecode.stage.ready, `Body decode failure exposed an exact-ready Stage: ${JSON.stringify(bodyDecode)}`);
+    const bodyDecodeEvidence = assertRealDecodeEvidence(
+      bodyDecode,
+      'body-decode-failed',
+      IDS.bodyAsset,
+      `${IDS.characterLayer}:body`,
+    );
+    await capture(window, 'preview-body-decode-failure.png');
+    screenshots.push('preview-body-decode-failure.png');
+    closeWindow(window);
+    window = null;
+
+    // A required current Expression/Face with no S03 Mouth fallback is also
+    // fatal; do not retain the previous Mouth frame as successful output.
+    savedProject = null;
+    previewMode = false;
+    window = await newWindow();
+    await openProject(window);
+    await openPreview(window, 'face-decode-failed');
+    await seekPreview(window, 1_500);
+    await waitForPendingAssetRead(IDS.faceAngryAsset);
+    releasePendingAssetRead();
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewReadiness === 'error' && document.querySelector('[data-testid="product-preview-stage-warning"]')`,
+      'True current Face decode failure did not produce a fatal Preview error.',
+    );
+    const faceDecode = await readPreview(window, []);
+    assert(faceDecode.preview?.failedAssetIds.includes(IDS.faceAngryAsset), `Current Face decode was not classified fatal: ${JSON.stringify(faceDecode)}`);
+    assert(!faceDecode.canvasPresent, `Current Face decode failure exposed a previous-frame canvas: ${JSON.stringify(faceDecode)}`);
+    assert(!faceDecode.stage || !faceDecode.stage.ready, `Current Face decode failure exposed exact readiness: ${JSON.stringify(faceDecode)}`);
+    const faceDecodeEvidence = assertRealDecodeEvidence(
+      faceDecode,
+      'face-decode-failed',
+      IDS.faceAngryAsset,
+      `${IDS.characterLayer}:face`,
+    );
+    await capture(window, 'preview-face-decode-failure.png');
+    screenshots.push('preview-face-decode-failure.png');
 
     return {
-      issue: 606,
+      issue: 607,
       passed: true,
       commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       projectRoot,
       syntheticInput: true,
-      renderedPixelEvidence: { normal, expression, fallback },
-      states: { pending, fatal },
+      renderedPixelEvidence: { normal, expression, readFailureFallback: fallback, decodeFallback: mouthDecode },
+      browserDecodeEvidence: {
+        mouth: mouthDecodeEvidence,
+        body: bodyDecodeEvidence,
+        face: faceDecodeEvidence,
+      },
+      assetReadEvidence,
+      states: { pending, fatalReadFailure: fatal, mouthDecode, bodyDecode, faceDecode },
       screenshots,
     };
   } finally {
@@ -727,7 +954,7 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: 606,
+      issue: 607,
       passed: false,
       commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       error: error instanceof Error ? error.stack ?? error.message : String(error),
@@ -742,6 +969,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue606] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue607] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });

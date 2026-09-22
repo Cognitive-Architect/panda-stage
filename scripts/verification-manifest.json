@@ -225,6 +225,7 @@
           "src/renderer/features/properties/**",
           "src/renderer/stage/**",
           "src/export-renderer/**",
+          "docs/evidence/issue-606/receipt.json",
           "docs/design/huabu.png"
         ],
         "testPatterns": [

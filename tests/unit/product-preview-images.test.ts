@@ -9,6 +9,7 @@ import { ProductPreviewImageSession } from '../../src/renderer/shell/productPrev
 import {
   applyProductPreviewMouthFallback,
   buildProductPreviewImagePlan,
+  isProductPreviewMouthFallbackFailure,
   projectProductPreviewMouth,
   type ProductPreviewImagePlan,
 } from '../../src/renderer/shell/productPreviewModel';
@@ -449,6 +450,48 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
       mouthOverrideAssetId: null,
     });
     session.dispose();
+  });
+
+  it('allows fallback only for the active Mouth Face part and keeps required Face failures fatal', () => {
+    const fixture = compositePlan(compositePreviewProject());
+    const mouthRule = fixture.plan.mouthFallbacks[0]!;
+
+    expect(mouthRule).toEqual({
+      partId: `${IDS.layerChar}:face`,
+      sourceAssetId: MOUTH_ID,
+      fallbackAssetId: IDS.assetChar2,
+    });
+    expect(
+      isProductPreviewMouthFallbackFailure(fixture.plan, {
+        partId: mouthRule.partId,
+        assetId: MOUTH_ID,
+      }),
+    ).toBe(true);
+    expect(
+      isProductPreviewMouthFallbackFailure(fixture.plan, {
+        partId: `${IDS.layerChar}:body`,
+        assetId: IDS.assetChar,
+      }),
+    ).toBe(false);
+
+    const expressionShot = evaluateShotAtTime(fixture.shot, 1_500, fixture.project);
+    const expressionPlan = buildProductPreviewImagePlan(
+      fixture.project,
+      fixture.shot,
+      expressionShot,
+    );
+    expect(expressionPlan.mouthFallbacks).toEqual([]);
+    const currentFaceAssetId = expressionPlan.requiredAssetIds.find(
+      (assetId) =>
+        assetId !== IDS.assetBg && assetId !== IDS.assetChar,
+    );
+    expect(currentFaceAssetId).toBe(IDS.assetChar2);
+    expect(
+      isProductPreviewMouthFallbackFailure(expressionPlan, {
+        partId: `${IDS.layerChar}:face`,
+        assetId: currentFaceAssetId!,
+      }),
+    ).toBe(false);
   });
 
   it('keeps a fallback-loading Mouth in loading and makes Body failure fatal', async () => {

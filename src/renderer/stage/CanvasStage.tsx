@@ -3,6 +3,7 @@ import { calculateViewportTransform } from '../../domain';
 import type { EvaluatedShot, Project, SubtitleStyle } from '../../domain';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
 import { StageRenderer } from './StageRenderer';
+import type { StageImageResourceFailure } from './stageImageResourceSession';
 
 interface CanvasStageProps {
   project: Project;
@@ -13,6 +14,7 @@ interface CanvasStageProps {
   onReady?: () => void;
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
+  onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
   renderToken?: string | number;
   degraded?: boolean;
 }

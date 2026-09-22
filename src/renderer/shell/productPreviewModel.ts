@@ -94,6 +94,7 @@ export function listProductPreviewAssetIds(
 }
 
 export interface ProductPreviewMouthFallback {
+  partId: string;
   sourceAssetId: string;
   fallbackAssetId: string;
 }
@@ -139,8 +140,18 @@ export function buildProductPreviewImagePlan(
       candidateAssetIds,
       visual.resources.candidates.map((resource) => resource.assetId),
     );
-    if (visual.activeFace?.source === 'mouth' && visual.activeFace.fallbackAssetId) {
+    const activeMouthPart = visual.parts.find(
+      (part) =>
+        part.slot === 'face' &&
+        part.assetId === visual.activeFace?.assetId,
+    );
+    if (
+      visual.activeFace?.source === 'mouth' &&
+      visual.activeFace.fallbackAssetId &&
+      activeMouthPart
+    ) {
       mouthFallbacks.push({
+        partId: activeMouthPart.partId,
         sourceAssetId: visual.activeFace.assetId,
         fallbackAssetId: visual.activeFace.fallbackAssetId,
       });
@@ -159,6 +170,24 @@ export function buildProductPreviewImagePlan(
     candidateAssetIds,
     mouthFallbacks,
   };
+}
+
+/**
+ * Only the current Mouth Face part has an S03-authorized fallback. Stage
+ * reports the failed part and asset; Product Preview owns this decision.
+ */
+export function isProductPreviewMouthFallbackFailure(
+  plan: ProductPreviewImagePlan,
+  failure: { partId: string; assetId: string },
+): boolean {
+  return (
+    plan.requiredAssetIds.includes(failure.assetId) &&
+    plan.mouthFallbacks.some(
+      (rule) =>
+        rule.partId === failure.partId &&
+        rule.sourceAssetId === failure.assetId,
+    )
+  );
 }
 
 /**

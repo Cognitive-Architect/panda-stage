@@ -53,11 +53,14 @@ function createHarness(): {
 
 function reconcile(
   harness: ReturnType<typeof createHarness>,
-  layers: Array<{ id: string; sourceUrl: string }>,
+  layers: Array<{ id: string; sourceUrl: string; assetId?: string }>,
 ): void {
-  harness.session.reconcile(layers, (state) => {
+  harness.session.reconcile(
+    layers.map((layer) => ({ ...layer, assetId: layer.assetId ?? layer.id })),
+    (state) => {
     harness.states.push(state);
-  });
+    },
+  );
 }
 
 describe('StageImageResourceSession', () => {
@@ -326,11 +329,19 @@ describe('StageImageResourceSession', () => {
 
     reconcile(harness, [{ id: LAYER_A, sourceUrl: 'asset-a' }]);
     harness.images[0]!.succeed();
-    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'asset-b' }]);
+    reconcile(harness, [{ id: LAYER_A, assetId: 'mouth-asset', sourceUrl: 'asset-b' }]);
     harness.images[1]!.fail();
 
     expect(harness.session.getSnapshot().ready).toBe(false);
     expect(harness.session.getSnapshot().error).toBeInstanceOf(Error);
+    expect(harness.session.getSnapshot().failures).toMatchObject([
+      {
+        partId: LAYER_A,
+        assetId: 'mouth-asset',
+        sourceUrl: 'asset-b',
+        reason: 'decode',
+      },
+    ]);
     expect(harness.session.getSnapshot().images.get(LAYER_A)).toBe(
       harness.images[0],
     );

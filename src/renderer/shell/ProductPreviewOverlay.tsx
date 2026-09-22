@@ -31,6 +31,7 @@ import {
 } from '../../domain';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 import { CanvasStage } from '../stage/CanvasStage';
+import type { StageImageResourceFailure } from '../stage/stageImageResourceSession';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import {
   advanceProductPreviewTime,
@@ -39,6 +40,7 @@ import {
   buildProductPreviewCues,
   clampProductPreviewTime,
   formatProductPreviewTimecode,
+  isProductPreviewMouthFallbackFailure,
   listProductPreviewAssetIds,
   projectProductPreviewMouth,
   resolveProductPreviewShot,
@@ -103,6 +105,9 @@ export function ProductPreviewOverlay({
     useState<ProductPreviewHandoffPhase>('warming');
   const [showWarmupStatus, setShowWarmupStatus] = useState(false);
   const [seekRevision, setSeekRevision] = useState(0);
+  const [stageImageFailures, setStageImageFailures] = useState<
+    StageImageResourceFailure[]
+  >([]);
   const initialStageReadyRef = useRef(false);
   const initialReadinessRef = useRef<ProductPreviewInitialReadiness>(
     'preparing',
@@ -301,27 +306,69 @@ export function ProductPreviewOverlay({
           },
     [assetIds, project, renderedShot, shot],
   );
+  const decodeFallbackAssetIds = imagePlan.mouthFallbacks
+    .filter((rule) =>
+      stageImageFailures.some(
+        (failure) =>
+          failure.partId === rule.partId &&
+          failure.assetId === rule.sourceAssetId,
+      ),
+    )
+    .map((rule) => rule.fallbackAssetId);
+  const imageScope = {
+    ...imagePlan,
+    requiredAssetIds: [
+      ...new Set([...imagePlan.requiredAssetIds, ...decodeFallbackAssetIds]),
+    ],
+  };
   const assets = useProductPreviewImages(
     projectRoot,
     project,
-    imagePlan,
+    imageScope,
     nextAssetIds,
   );
+  const currentStageImageFailures = stageImageFailures.filter(
+    (failure) =>
+      imagePlan.requiredAssetIds.includes(failure.assetId) &&
+      assets.urls[failure.assetId] === failure.sourceUrl,
+  );
+  const stageMouthFailureAssetIds = currentStageImageFailures
+    .filter((failure) =>
+      isProductPreviewMouthFallbackFailure(imagePlan, failure),
+    )
+    .map((failure) => failure.assetId);
+  const degradedAssetIds = [
+    ...new Set([
+      ...(assets.degradedAssetIds ?? []),
+      ...stageMouthFailureAssetIds,
+    ]),
+  ];
+  const fatalAssetIds = [
+    ...new Set([
+      ...(assets.fatalAssetIds ?? []),
+      ...currentStageImageFailures
+        .filter(
+          (failure) =>
+            !isProductPreviewMouthFallbackFailure(imagePlan, failure),
+        )
+        .map((failure) => failure.assetId),
+    ]),
+  ];
   const displayedShot = useMemo(
     () =>
-      shot && renderedShot && (assets.degradedAssetIds?.length ?? 0) > 0
+      shot && renderedShot && degradedAssetIds.length > 0
         ? applyProductPreviewMouthFallback(
             project,
             shot,
             renderedShot,
-            new Set(assets.degradedAssetIds),
+            new Set(degradedAssetIds),
           )
         : renderedShot,
-    [assets.degradedAssetIds, project, renderedShot, shot],
+    [degradedAssetIds.join('|'), project, renderedShot, shot],
   );
   const previewDegraded =
-    assets.status === 'degraded' &&
-    (assets.degradedAssetIds?.length ?? 0) > 0;
+    degradedAssetIds.length > 0 &&
+    (assets.status === 'ready' || assets.status === 'degraded');
   const handleInitialStageReady = useCallback((): void => {
     if (
       initialStageReadyRef.current ||
@@ -345,6 +392,30 @@ export function ProductPreviewOverlay({
     setHandoffPhase('warming');
     setPlaying(false);
   }, []);
+  const handleImageResourceFailure = useCallback(
+    (failure: StageImageResourceFailure): void => {
+      if (assets.urls[failure.assetId] !== failure.sourceUrl) return;
+      setStageImageFailures((current) =>
+        current.some(
+          (item) =>
+            item.partId === failure.partId &&
+            item.assetId === failure.assetId &&
+            item.sourceUrl === failure.sourceUrl,
+        )
+          ? current
+          : [...current, failure],
+      );
+      if (isProductPreviewMouthFallbackFailure(imagePlan, failure)) return;
+
+      initialReadinessRef.current = 'error';
+      setInitialReadiness('error');
+      setPlaying(false);
+      if (handoffPhaseRef.current !== 'active') {
+        setHandoffPhase('warming');
+      }
+    },
+    [assets.urls, imagePlan],
+  );
   useEffect(() => {
     if (assets.status === 'error') {
       if (handoffPhase !== 'active') handleInitialStageError();
@@ -439,14 +510,18 @@ export function ProductPreviewOverlay({
   const heldVisual =
     assets.status === 'loading' ? lastReadyVisual.current : null;
   const initialReadinessError =
-    initialReadiness === 'error' || assets.status === 'error';
+    initialReadiness === 'error' ||
+    assets.status === 'error' ||
+    fatalAssetIds.length > 0;
   const previewVisualState = initialReadinessError
     ? 'error'
     : initialReadiness === 'preparing'
       ? 'preparing'
       : heldVisual
         ? 'holding'
-        : assets.status;
+        : previewDegraded
+          ? 'degraded'
+          : assets.status;
   const atEnd = durationMs > 0 && displayedTimeMs >= durationMs;
   const audioWarning = useProductPreviewAudio({
     projectRoot,
@@ -467,8 +542,14 @@ export function ProductPreviewOverlay({
       data-preview-range={range}
       data-preview-data-ready={String(initialReadiness === 'ready')}
       data-preview-degraded={String(previewDegraded)}
-      data-preview-failed-asset-ids={JSON.stringify(
-        assets.fatalAssetIds ?? [],
+      data-preview-failed-asset-ids={JSON.stringify(fatalAssetIds)}
+      data-preview-stage-failures={JSON.stringify(
+        currentStageImageFailures.map(({ partId, assetId, sourceUrl, reason }) => ({
+          partId,
+          assetId,
+          sourceUrl,
+          reason,
+        })),
       )}
       data-preview-readiness={initialReadiness}
       data-preview-handoff={handoffPhase}
@@ -570,7 +651,7 @@ export function ProductPreviewOverlay({
                       <span>请检查项目图片素材后重试。</span>
                     </div>
                   )
-                ) : assets.status === 'ready' && renderedShot ? (
+                ) : assets.status === 'ready' && renderedShot && !previewDegraded ? (
                   <>
                     <CanvasStage
                       assetUrls={assets.urls}
@@ -583,6 +664,7 @@ export function ProductPreviewOverlay({
                           : undefined
                       }
                       onError={handleInitialStageError}
+                      onImageResourceFailure={handleImageResourceFailure}
                       onReady={
                         initialReadiness === 'preparing'
                           ? handleInitialStageReady
@@ -600,7 +682,7 @@ export function ProductPreviewOverlay({
                       </div>
                     ) : null}
                   </>
-                ) : assets.status === 'degraded' && displayedShot ? (
+                ) : previewDegraded && displayedShot ? (
                   <>
                     <CanvasStage
                       assetUrls={assets.urls}
@@ -614,6 +696,7 @@ export function ProductPreviewOverlay({
                           : undefined
                       }
                       onError={handleInitialStageError}
+                      onImageResourceFailure={handleImageResourceFailure}
                       project={project}
                     />
                     <div
