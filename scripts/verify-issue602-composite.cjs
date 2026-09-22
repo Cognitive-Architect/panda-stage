@@ -689,6 +689,7 @@ async function run() {
         { cause: error },
       );
     }
+    await waitForDom(window, `document.querySelector('[data-testid="canvas-visual-warning"]')?.dataset.visualWarningKind === 'pending'`, 'Pending Mouth did not expose the explicit pending Canvas warning.');
     const pending = await readState(window);
     assert(!pending.targetReadyLayerIds.includes(IDS.characterLayer), `Pending retained visual was incorrectly marked target-ready: ${JSON.stringify(pending)}`);
     const pendingScreenshot = 'composite-mouth-pending.png';
@@ -708,6 +709,9 @@ async function run() {
     await openProject(window);
     await seekFraction(window, 0.375);
     await waitForDom(window, `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.visualStatusJson ?? '[]').some((entry) => entry[0] === ${JSON.stringify(IDS.characterLayer)} && entry[1] === 'mouth-expression-fallback')`, 'Failed Mouth did not fall back to the current Expression.');
+    await waitForDom(window, `document.querySelector('[data-testid="canvas-visual-failure-warning"]')?.dataset.visualWarningKind === 'degraded'`, 'Failed Mouth did not expose the explicit degraded Canvas warning.');
+    const fallbackWarning = await window.webContents.executeJavaScript(`document.querySelector('[data-testid="canvas-visual-failure-warning"]')?.textContent ?? ''`);
+    assert(fallbackWarning.includes('Mouth unavailable') && fallbackWarning.includes('current Expression'), `Mouth degraded warning did not explain the fallback: ${fallbackWarning}`);
     const fallback = await readState(window);
     assert(fallback.evaluatedLayer?.assetId === IDS.faceAngryAsset, `Mouth fallback did not use the current Expression: ${JSON.stringify(fallback)}`);
     assert(fallback.evaluatedLayer?.mouthOverrideAssetId === null, `Mouth fallback retained the failed Mouth override: ${JSON.stringify(fallback)}`);
