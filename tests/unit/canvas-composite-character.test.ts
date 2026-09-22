@@ -745,14 +745,32 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
   });
 
   it('keeps and atomically replaces the complete Body/Face visual at 0:00', () => {
-    const base = compositeProject({ mouth: false });
+    const oldBodyHash = 'a'.repeat(64);
+    const oldFaceHash = 'b'.repeat(64);
+    const newBodyHash = 'c'.repeat(64);
+    const unversionedBase = compositeProject({ mouth: false });
+    const base = ProjectSchema.parse({
+      ...unversionedBase,
+      assets: unversionedBase.assets.map((asset) =>
+        asset.id === BODY_ID
+          ? { ...asset, sha256: oldBodyHash }
+          : asset.id === FACE_NORMAL_ID
+            ? { ...asset, sha256: oldFaceHash }
+            : asset,
+      ),
+    });
     const baseShot = base.shots[0]!;
     const baseReady = new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID]);
+    const baseReadySourceKeys = new Map([
+      [BODY_ID, oldBodyHash],
+      [FACE_NORMAL_ID, oldFaceHash],
+    ]);
     const baseModel = buildEditorTemporalCanvasModel({
       currentTimeMs: 0,
       previousVisuals: new Map(),
       project: base,
       readyAssetIds: baseReady,
+      readyAssetSourceKeys: baseReadySourceKeys,
       shot: baseShot,
     });
     const baseCharacter = baseModel.stageModel.layers.find(
@@ -763,7 +781,13 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
       ...base,
       assets: [
         ...base.assets,
-        imageAsset(BODY_REPLACEMENT_ID, 'body-replacement', 1_200, 900),
+        imageAsset(
+          BODY_REPLACEMENT_ID,
+          'body-replacement',
+          1_200,
+          900,
+          newBodyHash,
+        ),
       ],
       characters: base.characters.map((character) =>
         character.id === IDS.character
@@ -777,6 +801,11 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
       previousVisuals: baseModel.lastValidVisuals,
       project: replacement,
       readyAssetIds: baseReady,
+      readyAssetSourceKeys: new Map([[FACE_NORMAL_ID, oldFaceHash]]),
+      readyResourceKeys: new Set([
+        canvasImageResourceKey(BODY_ID, oldBodyHash),
+        canvasImageResourceKey(FACE_NORMAL_ID, oldFaceHash),
+      ]),
       shot: replacementShot,
     });
     const pendingCharacter = pending.stageModel.layers.find(
@@ -810,6 +839,9 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
     expect(pendingCharacter.visual.combinedLocalBounds).toEqual(
       baseCharacter.visual.combinedLocalBounds,
     );
+    expect(pending.visualSourceKeysByLayer.get(IDS.layerChar)).toEqual(
+      baseModel.visualSourceKeysByLayer.get(IDS.layerChar),
+    );
 
     const committed = buildEditorTemporalCanvasModel({
       currentTimeMs: 0,
@@ -819,6 +851,14 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
         IDS.assetBg,
         BODY_REPLACEMENT_ID,
         FACE_NORMAL_ID,
+      ]),
+      readyAssetSourceKeys: new Map([
+        [BODY_REPLACEMENT_ID, newBodyHash],
+        [FACE_NORMAL_ID, oldFaceHash],
+      ]),
+      readyResourceKeys: new Set([
+        canvasImageResourceKey(BODY_REPLACEMENT_ID, newBodyHash),
+        canvasImageResourceKey(FACE_NORMAL_ID, oldFaceHash),
       ]),
       shot: replacementShot,
     });
@@ -834,6 +874,11 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
       BODY_REPLACEMENT_ID,
       FACE_NORMAL_ID,
     ]);
+    expect(
+      committed.visualSourceKeysByLayer.get(IDS.layerChar)?.get(
+        BODY_REPLACEMENT_ID,
+      ),
+    ).toBe(newBodyHash);
   });
 
   it('keeps and atomically replaces the Base Face/Expression visual at 0:00', () => {
