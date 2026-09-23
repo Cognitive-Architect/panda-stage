@@ -473,6 +473,16 @@ async function dragFaceWithNativeInput(window) {
   );
   return window.webContents.executeJavaScript(`(() => {
     const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const backgroundWarnings = [...document.querySelectorAll('[data-testid="canvas-background-warning"]')].map((warning) => {
+      const bounds = warning.getBoundingClientRect();
+      return {
+        inShotCanvasOwner: Boolean(warning.closest('.character-assembly-canvas-owner')),
+        visibility: getComputedStyle(warning).visibility,
+        display: getComputedStyle(warning).display,
+        opacity: getComputedStyle(warning).opacity,
+        bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+      };
+    });
     return {
       bodyAssetId: workbench.dataset.bodyAssetId,
       faceAssetId: workbench.dataset.previewFaceAssetId,
@@ -484,6 +494,8 @@ async function dragFaceWithNativeInput(window) {
       rightInactive: document.querySelector('[data-workspace-owner="properties"]')?.dataset.characterAssemblyInactive ?? '',
       timelineInactive: document.querySelector('[data-testid="bottom-workspace"]')?.dataset.characterAssemblyInactive ?? '',
       canvasOwners: document.querySelectorAll('[data-workspace-owner="canvas"]').length,
+      canvasBackgroundWarnings: backgroundWarnings,
+      canvasOwnerVisibility: getComputedStyle(document.querySelector('.character-assembly-canvas-owner')).visibility,
     };
   })()`);
 }
