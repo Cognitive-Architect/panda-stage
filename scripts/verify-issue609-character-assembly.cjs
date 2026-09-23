@@ -1034,6 +1034,25 @@ async function run() {
       expressionsPressed: 'true',
       assemblyWorkbenchOpen: false,
     };
+    await click(windowRef, '[data-testid="character-workspace-assembly-tab"]', 'Open a clean Assembly draft before leaving Characters');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && !document.querySelector('[data-testid="character-assembly-pending"]')`, 'A clean Assembly edit draft did not open.');
+    await click(windowRef, '[data-testid="resource-activity-rail-assets"]', 'Leave Characters with a clean Assembly draft');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity === 'assets' && document.querySelector('[data-testid="asset-library"]')`, 'Leaving Characters with a clean Assembly draft was blocked.');
+    const cleanActivityExit = await windowRef.webContents.executeJavaScript(`({
+      confirmCalls: window.__issue610ConfirmCalls.length,
+      revision: document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      workbenchVisible: Boolean(document.querySelector('[data-testid="character-assembly-workbench"]')),
+    })`);
+    assert(cleanActivityExit.confirmCalls === 4, 'Leaving Characters with a clean Assembly draft unexpectedly required confirmation.');
+    assert(cleanActivityExit.revision === '2' && cleanActivityExit.undoCount === '2' && !cleanActivityExit.workbenchVisible, 'Leaving Characters with a clean Assembly draft changed Project/History or retained the edit session.');
+    evidence.cleanActivityExit = cleanActivityExit;
+    await click(windowRef, '[data-testid="resource-activity-rail-characters"]', 'Return to Characters after a clean Assembly exit');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-detail-view"]')`, 'Character detail did not return after a clean Assembly exit.');
+    await click(windowRef, '[data-testid="character-detail-back"]', 'Return to Character list after the clean Assembly exit');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-list-view"] [data-character-id="${created.characterId}"]')`, 'The composite Character was not available after the clean Assembly exit.');
+    await click(windowRef, `[data-testid="character-list-view"] [data-character-id="${created.characterId}"]`, 'Reopen the composite Character after the clean Assembly exit');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(created.characterId)}`, 'The composite Character detail did not reopen after the clean Assembly exit.');
     await click(windowRef, '[data-testid="character-workspace-expressions-tab"]', 'Expressions workspace tab');
     await click(windowRef, '[data-testid="character-detail-back"]', 'Return to Character list');
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-list-view"] [data-character-id="${created.characterId}"]')`, 'Created Character did not remain in the authoritative Character list.');
