@@ -634,7 +634,7 @@ async function verifyDay19() {
 
     await setInput(
       window,
-      '.character-create-form input',
+      '.character-create-form input:not([type="radio"])',
       'Panda',
     );
     await chooseImageAsset(
