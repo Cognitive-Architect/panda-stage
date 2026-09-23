@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Project, Shot } from '../../../domain';
 import {
+  isShotThumbnailRequestCurrent,
   requestShotThumbnail,
   shotThumbnailFingerprint,
+  type ShotThumbnailRequestIdentity,
   type ShotThumbnailRequest,
   type ShotThumbnailResult,
 } from './shotThumbnail';
@@ -62,29 +64,41 @@ export function useShotThumbnail(
   shot: Shot,
 ): ShotThumbnailState {
   const fingerprint = project ? shotThumbnailFingerprint(project, shot) : null;
-  const requestRef = useRef<ShotThumbnailRequest | null>(null);
+  const requestRef = useRef<
+    (ShotThumbnailRequestIdentity & { request: ShotThumbnailRequest }) | null
+  >(null);
   requestRef.current =
-    project && projectRoot && shot.layers.length > 0
-      ? { projectRoot, project, shot }
+    project && projectRoot && shot.layers.length > 0 && fingerprint
+      ? {
+          projectRoot,
+          fingerprint,
+          request: { projectRoot, project, shot },
+        }
       : null;
   const [state, setState] = useState<ShotThumbnailState>(() =>
     initialState(projectRoot, project, shot),
   );
 
   useEffect(() => {
-    const request = requestRef.current;
-    if (!request) {
+    const currentRequest = requestRef.current;
+    if (!currentRequest) {
       setState(initialState(projectRoot, project, shot));
       return undefined;
     }
     let active = true;
-    const requestFingerprint = shotThumbnailFingerprint(
-      request.project,
-      request.shot,
-    );
+    const { request, fingerprint: requestFingerprint, projectRoot: requestRoot } =
+      currentRequest;
     setState({ status: 'loading', fingerprint: requestFingerprint });
     void requestShotThumbnail(request).then((result) => {
-      if (active) setState(result);
+      if (
+        active &&
+        isShotThumbnailRequestCurrent(requestRef.current, {
+          projectRoot: requestRoot,
+          fingerprint: result.fingerprint,
+        })
+      ) {
+        setState(result);
+      }
     });
     return () => {
       active = false;

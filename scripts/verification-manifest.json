@@ -211,7 +211,10 @@
         "id": "shots",
         "sourcePatterns": ["src/renderer/features/shots/**"],
         "testPatterns": ["tests/unit/shot-*.test.ts", "tests/integration/shot-*.test.ts"],
-        "verifierPatterns": ["scripts/verify-day20*"],
+        "verifierPatterns": [
+          "scripts/verify-day20*",
+          "scripts/verify-issue608-shot-thumbnail.cjs"
+        ],
         "suites": ["shot"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -402,7 +405,7 @@
       }
     ]
   },
-  "count": 64,
+  "count": 65,
   "gates": [
     {
       "id": "assets",
@@ -1159,6 +1162,18 @@
       "owner": "shot",
       "supersedes": null,
       "notes": "Wrapper over verify:day20 (also runs build). Preserved per RH-04."
+    },
+    {
+      "id": "issue608-shot-thumbnail",
+      "script": "verify:issue608-shot-thumbnail",
+      "suite": "shot",
+      "subsystem": "shot",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "shot",
+      "supersedes": null,
+      "notes": "Bounded Issue #608 Electron proof for actual base Body + Face Shot thumbnails, rendered pixels, fingerprint refresh, and missing-part retry."
     },
     {
       "id": "timeline",

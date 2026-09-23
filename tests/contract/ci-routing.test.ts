@@ -116,6 +116,17 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the bounded Issue #608 Shot thumbnail verifier through the Shot owner', () => {
+    const result = draft([
+      change('scripts/verify-issue608-shot-thumbnail.cjs', 'A'),
+    ]);
+
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toEqual(['shots']);
+    expect(result.suites).toEqual(['shot']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it('routes the exact Issue #606 S05 receipt through the existing canvas owner', () => {
     const result = draft([
       change('docs/evidence/issue-606/receipt.json', 'A'),

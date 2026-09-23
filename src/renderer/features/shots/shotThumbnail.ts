@@ -1,6 +1,6 @@
 import {
   buildEditorStageRenderModel,
-  resolveLayerImageAsset,
+  resolveImageAsset,
   type Project,
   type Shot,
 } from '../../../domain';
@@ -30,39 +30,80 @@ export interface ShotThumbnailRequest {
   shot: Shot;
 }
 
-/**
- * The thumbnail key intentionally excludes shot name, duration, dialogue,
- * subtitle, and audio fields. Only inputs that change the base composition
- * participate, so unrelated editor revisions do not rebuild every thumbnail.
- */
-export function shotThumbnailFingerprint(
-  project: Project,
-  shot: Shot,
-): string {
+export interface ShotThumbnailRequestIdentity {
+  projectRoot: string;
+  fingerprint: string;
+}
+
+export function isShotThumbnailRequestCurrent(
+  current: ShotThumbnailRequestIdentity | null,
+  completed: ShotThumbnailRequestIdentity,
+): boolean {
+  return (
+    current?.projectRoot === completed.projectRoot &&
+    current.fingerprint === completed.fingerprint
+  );
+}
+
+function assetContentFingerprint(project: Project, assetId: string) {
+  const asset = resolveImageAsset(project, assetId);
+  if (!asset) return { id: assetId, missing: true };
+  return {
+    id: asset.id,
+    sha256: asset.sha256 ?? null,
+    // Assets without a content hash cannot safely reuse a path-independent key.
+    ...(asset.sha256 ? {} : { relativePath: asset.relativePath }),
+  };
+}
+
+function unresolvedFingerprint(project: Project, shot: Shot): string {
   return JSON.stringify({
-    version: 1,
-    project: {
-      id: project.id,
-      width: project.width,
-      height: project.height,
-    },
-    shot: {
-      id: shot.id,
-      backgroundLayerId: shot.backgroundLayerId,
-      layers: shot.layers.map((layer) => {
-        const asset = resolveLayerImageAsset(project, layer);
-        return {
-          id: layer.id,
-          source: layer.source,
-          asset: asset
-            ? {
-                id: asset.id,
-                sha256: asset.sha256 ?? null,
-                relativePath: asset.relativePath,
-                width: asset.width,
-                height: asset.height,
-              }
-            : null,
+    version: 2,
+    state: 'unresolved-visual',
+    stage: { width: project.width, height: project.height },
+    backgroundLayerId: shot.backgroundLayerId,
+    layers: shot.layers.map((layer) => {
+      const characterSource =
+        layer.source.kind === 'character' ? layer.source : null;
+      const character = characterSource
+        ? project.characters.find(
+            (candidate) => candidate.id === characterSource.characterId,
+          )
+        : undefined;
+      const expression = characterSource
+        ? character?.expressions.find(
+            (candidate) => candidate.id === characterSource.expressionId,
+          ) ??
+          character?.expressions.find(
+            (candidate) => candidate.id === character.defaultExpressionId,
+          )
+        : undefined;
+      const assetIds =
+        layer.source.kind === 'asset'
+          ? [layer.source.assetId]
+          : character?.mode === 'composite'
+            ? [character.bodyAssetId, expression?.assetId].filter(
+                (assetId): assetId is string => Boolean(assetId),
+              )
+            : expression?.assetId
+              ? [expression.assetId]
+              : [];
+      return {
+        kind:
+          character?.mode === 'composite'
+            ? 'composite-character'
+            : character
+              ? 'single-image-character'
+              : layer.source.kind === 'asset'
+                ? 'ordinary-image'
+                : 'unresolved-character',
+        assets: assetIds.map((assetId) =>
+          assetContentFingerprint(project, assetId),
+        ),
+        facePlacement:
+          character?.mode === 'composite' ? character.facePlacement : null,
+        owner: {
+          anchor: layer.anchor,
           x: layer.x,
           y: layer.y,
           scaleX: layer.scaleX,
@@ -72,10 +113,45 @@ export function shotThumbnailFingerprint(
           opacity: layer.opacity,
           visible: layer.visible,
           zIndex: layer.zIndex,
-        };
-      }),
-    },
+        },
+      };
+    }),
   });
+}
+
+/**
+ * The thumbnail key intentionally excludes shot name, duration, dialogue,
+ * subtitle, and audio fields. Only inputs that change the base composition
+ * participate, so unrelated editor revisions do not rebuild every thumbnail.
+ */
+export function shotThumbnailFingerprint(
+  project: Project,
+  shot: Shot,
+): string {
+  try {
+    const model = buildEditorStageRenderModel(project, shot);
+    return JSON.stringify({
+      version: 2,
+      stage: { width: model.width, height: model.height },
+      backgroundLayerId: model.backgroundLayerId,
+      layers: model.layers.map(({ render, visual }) => ({
+        kind: visual.kind,
+        background: render.isBackground,
+        owner: visual.ownerTransform,
+        facePlacement: visual.facePlacement,
+        parts: visual.parts.map((part) => ({
+          slot: part.slot,
+          asset: assetContentFingerprint(project, part.assetId),
+          localRect: part.localRect,
+          drawOrder: part.drawOrder,
+        })),
+      })),
+    });
+  } catch {
+    // Keep malformed or temporarily unresolvable project snapshots on the
+    // existing placeholder path instead of letting fingerprinting crash React.
+    return unresolvedFingerprint(project, shot);
+  }
 }
 
 class ShotThumbnailSourceError extends Error {
@@ -218,9 +294,30 @@ export async function createShotThumbnailDataUrl(
     throw new ShotThumbnailSourceError('Shot has no visual layers.');
   }
 
-  const assets = [
-    ...new Map(model.layers.map(({ asset }) => [asset.id, asset])).values(),
-  ];
+  const assetsById = new Map(
+    model.layers.flatMap(({ visual }) =>
+      visual.parts.map((part) => {
+        const asset = resolveImageAsset(input.project, part.assetId);
+        if (!asset) {
+          throw new ShotThumbnailSourceError(
+            `Unable to resolve the thumbnail asset for visual part “${part.partId}”.`,
+          );
+        }
+        return [asset.id, asset] as const;
+      }),
+    ),
+  );
+  for (const { visual } of model.layers) {
+    if (
+      visual.parts.length === 0 ||
+      (visual.kind === 'composite-character' && visual.parts.length !== 2)
+    ) {
+      throw new ShotThumbnailSourceError(
+        'Shot visual is incomplete; refusing to render a partial Character.',
+      );
+    }
+  }
+  const assets = [...assetsById.values()];
   const imageEntries = await Promise.all(
     assets.map(async (asset) => {
       try {
@@ -251,29 +348,61 @@ export async function createShotThumbnailDataUrl(
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Shot thumbnail canvas context is unavailable.');
 
+  const compositeCanvas = model.layers.some(
+    ({ visual }) => visual.kind === 'composite-character',
+  )
+    ? document.createElement('canvas')
+    : null;
+  if (compositeCanvas) {
+    compositeCanvas.width = canvas.width;
+    compositeCanvas.height = canvas.height;
+  }
+  const compositeContext = compositeCanvas?.getContext('2d') ?? null;
+  if (compositeCanvas && !compositeContext) {
+    throw new Error('Shot thumbnail composite canvas context is unavailable.');
+  }
+
   context.fillStyle = '#111914';
   context.fillRect(0, 0, canvas.width, canvas.height);
   const images = new Map(imageEntries);
-  for (const { render, asset } of model.layers) {
+  for (const { render, visual } of model.layers) {
     if (!render.visible) continue;
-    const image = images.get(asset.id);
-    if (!image) {
-      throw new ShotThumbnailSourceError(
-        `Unable to resolve the thumbnail for “${asset.name}”.`,
-      );
+    const drawOwnerParts = (
+      target: CanvasRenderingContext2D,
+      opacity: number,
+    ) => {
+      target.save();
+      target.translate(render.x * scale, render.y * scale);
+      target.rotate((render.rotationDeg * Math.PI) / 180);
+      target.globalAlpha = opacity;
+      target.scale(render.scaleX * scale, render.scaleY * scale);
+      for (const part of [...visual.parts].sort(
+        (left, right) => left.drawOrder - right.drawOrder,
+      )) {
+        const image = images.get(part.assetId);
+        if (!image) {
+          throw new ShotThumbnailSourceError(
+            `Unable to resolve the thumbnail for visual part “${part.partId}”.`,
+          );
+        }
+        const { x, y, width, height } = part.localRect;
+        target.drawImage(image, x, y, width, height);
+      }
+      target.restore();
+    };
+
+    if (visual.kind !== 'composite-character') {
+      drawOwnerParts(context, render.opacity);
+      continue;
     }
+
+    const target = compositeContext!;
+    target.setTransform(1, 0, 0, 1, 0, 0);
+    target.clearRect(0, 0, canvas.width, canvas.height);
+    drawOwnerParts(target, 1);
     context.save();
-    context.translate(render.x * scale, render.y * scale);
-    context.rotate((render.rotationDeg * Math.PI) / 180);
     context.globalAlpha = render.opacity;
-    context.scale(render.scaleX * scale, render.scaleY * scale);
-    context.drawImage(
-      image,
-      -render.offsetX,
-      -render.offsetY,
-      render.width,
-      render.height,
-    );
+    context.drawImage(compositeCanvas!, 0, 0);
     context.restore();
   }
   return canvas.toDataURL('image/png');
