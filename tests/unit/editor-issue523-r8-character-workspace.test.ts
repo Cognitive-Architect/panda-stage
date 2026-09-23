@@ -228,7 +228,76 @@ describe('Issue #523 R8 unified Character workspace', () => {
     );
     expect(markup).toContain('data-testid="character-assembly-body-picker"');
     expect(markup).toContain('data-testid="character-assembly-mouth-picker"');
+    expect(markup).toContain('data-testid="character-assembly-go-expressions"');
+    expect(markup).toContain('>去表情</button>');
     expect(markup).not.toContain('character-detail-mouth-visual-picker');
     expect(markup).toContain('aria-pressed="true"');
+  });
+
+  it('resumes Assembly as the active workspace when an edit draft survives resource navigation', () => {
+    const project = migrateProject(exampleProject);
+    const base = project.characters[0]!;
+    const body = project.assets.find(
+      (asset) => asset.kind === 'image',
+    )!;
+    const character = ProjectSchema.parse({
+      ...project,
+      characters: [
+        {
+          ...base,
+          mode: 'composite' as const,
+          bodyAssetId: body.id,
+          facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+        },
+      ],
+    }).characters[0]!;
+    const assemblyDraft = {
+      bodyAssetId: body.id,
+      facePlacement: { offsetX: 8, offsetY: -4, scale: 0.9 },
+      expressionAssets: character.expressions.map((expression) => ({
+        expressionId: expression.id,
+        assetId: expression.assetId,
+      })),
+      mouthOpenAssetId: null,
+    };
+    const imageAssets = project.assets.filter(
+      (asset): asset is ImageAsset => asset.kind === 'image',
+    );
+    const markup = renderToStaticMarkup(
+      createElement(CharacterEditor, {
+        character,
+        imageAssets,
+        thumbnails: {},
+        warnings: [],
+        assemblyDraft,
+        onRenameCharacter: () => undefined,
+        onDeleteCharacter: () => undefined,
+        onAddExpression: () => undefined,
+        onRenameExpression: () => undefined,
+        onSetExpressionAsset: () => undefined,
+        onRemoveExpression: () => undefined,
+        onSetDefaultExpression: () => undefined,
+        onSetMouthOpenAsset: () => undefined,
+        onSetDefaultTransform: () => undefined,
+        onThumbnailError: () => undefined,
+        onOpenAssembly: () => true,
+        onLeaveAssembly: () => true,
+        onSetAssemblyBodyAsset: () => undefined,
+        onSetAssemblyMouthAsset: () => undefined,
+        presentation: 'landscape',
+        view: 'detail',
+      }),
+    );
+    const assemblyPanel = markup.match(
+      /<section[^>]*data-workspace="assembly"[^>]*>/u,
+    )?.[0];
+    const assemblyTab = markup.match(
+      /<button[^>]*data-testid="character-workspace-assembly-tab"[^>]*>/u,
+    )?.[0];
+
+    expect(markup).toContain('data-testid="character-workspace-assembly-tab"');
+    expect(assemblyPanel).toBeDefined();
+    expect(assemblyPanel).not.toContain('hidden=""');
+    expect(assemblyTab).toContain('aria-pressed="true"');
   });
 });

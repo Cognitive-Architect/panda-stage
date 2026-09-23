@@ -95,6 +95,18 @@ async function click(window, selector, label = selector) {
   );
 }
 
+async function setConfirmResponse(window, response) {
+  await window.webContents.executeJavaScript(
+    `window.__issue610ConfirmResponse = ${JSON.stringify(response)}`,
+  );
+}
+
+async function readConfirmCalls(window) {
+  return window.webContents.executeJavaScript(
+    'window.__issue610ConfirmCalls ?? []',
+  );
+}
+
 async function capture(window, fileName) {
   const image = await window.webContents.capturePage();
   const target = path.join(evidenceRoot, fileName);
@@ -436,22 +448,52 @@ async function openProject(window) {
   if (!characterDrawerIsOpen) {
     await click(window, '[data-testid="resource-activity-rail-characters"]', 'Characters activity');
   }
-  await waitForDom(
-    window,
-    `(() => {
+  try {
+    await waitForDom(
+      window,
+      `(() => {
+        const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+        const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
+        const bounds = drawer?.getBoundingClientRect();
+        const style = drawer ? getComputedStyle(drawer) : undefined;
+        return dock?.dataset.activeActivity === 'characters'
+          && dock.dataset.resourceDrawerOpen === 'true'
+          && document.querySelector('[data-testid="character-list-view"]')
+          && bounds?.right > 240
+          && style?.visibility === 'visible'
+          && Number(style.opacity) >= 0.99;
+      })()`,
+      'Character list did not become visible in the production resource drawer.',
+    );
+  } catch (error) {
+    inProgressEvidence.initialCharacterDrawerFailure = await window.webContents.executeJavaScript(`(() => {
       const dock = document.querySelector('[data-testid="resource-activity-dock"]');
       const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
       const bounds = drawer?.getBoundingClientRect();
       const style = drawer ? getComputedStyle(drawer) : undefined;
-      return dock?.dataset.activeActivity === 'characters'
-        && dock.dataset.resourceDrawerOpen === 'true'
-        && document.querySelector('[data-testid="character-list-view"]')
-        && bounds?.right > 240
-        && style?.visibility === 'visible'
-        && Number(style.opacity) >= 0.99;
-    })()`,
-    'Character list did not become visible in the production resource drawer.',
-  );
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        shellMode: document.querySelector('[data-testid="editor-layout"]')?.dataset.shellMode,
+        activeActivity: dock?.dataset.activeActivity,
+        drawerOpen: dock?.dataset.resourceDrawerOpen,
+        resourceMode: dock?.dataset.resourceMode,
+        drawerBounds: bounds && { left: bounds.left, right: bounds.right, width: bounds.width, height: bounds.height },
+        drawerStyle: style && { visibility: style.visibility, opacity: style.opacity, transform: style.transform },
+        characterListMounted: Boolean(document.querySelector('[data-testid="character-list-view"]')),
+        characterCreateMounted: Boolean(document.querySelector('[data-testid="character-create-view"]')),
+        panelActivity: document.querySelector('.resource-activity-panel')?.getAttribute('data-active-activity'),
+        rail: [...document.querySelectorAll('[data-testid^="resource-activity-rail-"]')].map((button) => ({
+          testId: button.getAttribute('data-testid'),
+          pressed: button.getAttribute('aria-pressed'),
+        })),
+      };
+    })()`);
+    inProgressEvidence.initialCharacterDrawerFailureScreenshot = await capture(
+      window,
+      'initial-character-drawer-failure.png',
+    );
+    throw error;
+  }
   await wait(200);
 }
 
@@ -726,6 +768,14 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    await windowRef.webContents.executeJavaScript(`(() => {
+      window.__issue610ConfirmCalls = [];
+      window.__issue610ConfirmResponse = false;
+      window.confirm = (message) => {
+        window.__issue610ConfirmCalls.push(String(message));
+        return Boolean(window.__issue610ConfirmResponse);
+      };
+    })()`);
 
     await click(
       windowRef,
@@ -784,6 +834,40 @@ async function run() {
     await openCreate(windowRef);
     await click(windowRef, '[data-testid="character-create-mode-switch"] input[value="composite"]', 'Composite Character choice');
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="create"]')`, 'Composite creation workbench did not reopen.');
+    const creationSurface = await windowRef.webContents.executeJavaScript(`(() => {
+      const form = document.querySelector('[data-testid="character-create-view"]');
+      const name = form?.querySelector('[data-testid="character-create-name"]');
+      const mode = form?.querySelector('[data-testid="character-create-mode-switch"]');
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      const createActions = [...document.querySelectorAll('button')]
+        .filter((button) => button.textContent.trim() === '创建角色' && button.getClientRects().length > 0);
+      const controls = document.querySelector('[data-testid="character-assembly-placement-controls"]');
+      return {
+        nameBeforeMode: Boolean(name && mode && (name.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING)),
+        createActionCount: createActions.length,
+        createActionOwnedByDrawer: Boolean(createActions[0]?.closest('[data-testid="character-create-view"]')),
+        centralCreateActionCount: [...(workbench?.querySelectorAll('button') ?? [])]
+          .filter((button) => button.textContent.trim() === '创建角色').length,
+        visibleAssemblyHeadingCount: workbench?.querySelectorAll('h1, h2, h3').length ?? -1,
+        helperHintCount: workbench?.querySelectorAll('p').length ?? -1,
+        precisionLabels: [...(controls?.querySelectorAll('.character-assembly-control-label') ?? [])].map((label) => label.textContent.trim()),
+        resetLabel: controls?.querySelector('[data-testid="character-assembly-reset"]')?.textContent.trim() ?? '',
+        values: {
+          x: controls?.querySelector('[data-testid="character-assembly-offset-x"]')?.textContent.trim() ?? '',
+          y: controls?.querySelector('[data-testid="character-assembly-offset-y"]')?.textContent.trim() ?? '',
+          scale: controls?.querySelector('[data-testid="character-assembly-scale"]')?.textContent.trim() ?? '',
+        },
+      };
+    })()`);
+    assert(creationSurface.nameBeforeMode, 'Character name is not placed before the creation type/material flow.');
+    assert(creationSurface.createActionCount === 1 && creationSurface.createActionOwnedByDrawer, 'Composite Create is not owned by exactly one left-drawer primary action.');
+    assert(creationSurface.centralCreateActionCount === 0, 'The central Assembly workbench still owns a competing Create action.');
+    assert(creationSurface.visibleAssemblyHeadingCount === 0, 'The central Assembly workbench still shows a permanent title block.');
+    assert(creationSurface.helperHintCount === 1, 'The central Assembly workbench does not have exactly one lightweight helper hint.');
+    assert(creationSurface.precisionLabels.join(',') === '左右,上下,大小', 'Face Placement precision controls are missing a labeled axis/size group.');
+    assert(creationSurface.resetLabel === '重置', 'Face Placement precision controls do not expose Reset.');
+    assert(creationSurface.values.x !== '' && creationSurface.values.y !== '' && creationSurface.values.scale !== '', 'Face Placement X/Y/scale values are not visible.');
+    evidence.creationOwnershipAndControls = creationSurface;
     await setCharacterName(windowRef, 'S07 Composite Panda');
     await chooseImage(windowRef, 'character-create-body-picker', IDS.body);
     await chooseImage(windowRef, 'character-create-face-picker', IDS.face);
@@ -796,12 +880,44 @@ async function run() {
     assert(dragEvidence.timelineInactive === 'true', 'The Timeline remained active during Assembly.');
     assert(dragEvidence.canvasOwners === 1, 'Assembly introduced a second Canvas owner.');
     evidence.createAssembly = dragEvidence;
+    await click(windowRef, '[data-testid="character-assembly-reset"]', 'Reset Face Placement');
+    await waitForDom(windowRef, `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return Number(workbench?.dataset.faceOffsetX) === 0
+        && Number(workbench?.dataset.faceOffsetY) === 0
+        && Number(workbench?.dataset.faceScale) === 1;
+    })()`, 'Reset did not restore the shared Face Placement draft.');
+    await click(windowRef, '[data-testid="character-assembly-right-step"]', 'Nudge Face right');
+    await click(windowRef, '[data-testid="character-assembly-down-step"]', 'Nudge Face down');
+    await click(windowRef, '[data-testid="character-assembly-scale-up"]', 'Increase Face size');
+    await waitForDom(windowRef, `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return Number(workbench?.dataset.faceOffsetX) === 1
+        && Number(workbench?.dataset.faceOffsetY) === 1
+        && Math.abs(Number(workbench?.dataset.faceScale) - 1.05) < 0.001;
+    })()`, 'Precision controls did not update the same Face Placement draft used by direct dragging.');
+    const precisionDraft = await windowRef.webContents.executeJavaScript(`(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      const controls = document.querySelector('[data-testid="character-assembly-placement-controls"]');
+      return {
+        offsetX: Number(workbench.dataset.faceOffsetX),
+        offsetY: Number(workbench.dataset.faceOffsetY),
+        scale: Number(workbench.dataset.faceScale),
+        visibleValues: [
+          controls.querySelector('[data-testid="character-assembly-offset-x"]').textContent.trim(),
+          controls.querySelector('[data-testid="character-assembly-offset-y"]').textContent.trim(),
+          controls.querySelector('[data-testid="character-assembly-scale"]').textContent.trim(),
+        ],
+      };
+    })()`);
+    assert(precisionDraft.visibleValues.join(',') === '1.0,1.0,1.05×', 'Precision values did not track Face Placement changes.');
+    evidence.createPrecisionDraft = precisionDraft;
     await windowRef.webContents.executeJavaScript(
       'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
     );
     await wait(250);
     screenshots.push(await capture(windowRef, 'create-composite-assembly.png'));
-    await click(windowRef, '[data-testid="character-assembly-create"]', 'Create composite Character');
+    await click(windowRef, '[data-testid="character-create-composite-submit"]', 'Create composite Character');
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-detail-view"]') && document.querySelector('[data-testid="character-assembly-workbench"]') === null`, 'Create did not commit once and open Character detail.');
     const created = await windowRef.webContents.executeJavaScript(`(() => {
       const detail = document.querySelector('[data-testid="character-detail-view"]');
@@ -830,6 +946,45 @@ async function run() {
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]')`, 'Existing composite did not enter its Assembly workspace.');
     await chooseImage(windowRef, 'character-assembly-body-picker', IDS.bodyAlt);
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-pending"]')`, 'Body replacement did not become a pending Assembly draft.');
+    await click(windowRef, '[data-testid="character-workspace-settings-tab"]', 'Attempt to leave pending Assembly for Settings');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true' && document.querySelector('[data-testid="character-assembly-pending"]')`, 'Switching to Settings bypassed the pending Assembly guard.');
+    const workspacePendingGuard = await windowRef.webContents.executeJavaScript(`({
+      assemblyPressed: document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') ?? '',
+      settingsPressed: document.querySelector('[data-testid="character-workspace-settings-tab"]')?.getAttribute('aria-pressed') ?? '',
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+    })`);
+    assert(workspacePendingGuard.assemblyPressed === 'true' && workspacePendingGuard.settingsPressed === 'false' && workspacePendingGuard.pending, 'The existing pending guard did not keep the user in Assembly.');
+    await setConfirmResponse(windowRef, false);
+    await click(windowRef, '[data-testid="resource-activity-rail-assets"]', 'Attempt to leave Characters without discarding');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity === 'characters' && document.querySelector('[data-testid="character-assembly-pending"]')`, 'Declining Assembly discard did not keep the Character activity and draft open.');
+    const declinedActivityExitCalls = await readConfirmCalls(windowRef);
+    assert(declinedActivityExitCalls.length === 1 && declinedActivityExitCalls[0].includes('离开将放弃'), 'Leaving Characters did not require one explicit discard confirmation.');
+    await setConfirmResponse(windowRef, true);
+    await click(windowRef, '[data-testid="resource-activity-rail-assets"]', 'Confirm discard and leave Characters');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity === 'assets' && document.querySelector('[data-testid="asset-library"]') && document.querySelector('main.editor-shell')?.dataset.characterAssemblyActive === 'false'`, 'Confirming discard did not leave Characters and cancel the Assembly session.');
+    const acceptedActivityExit = await windowRef.webContents.executeJavaScript(`({
+      confirmCalls: window.__issue610ConfirmCalls.length,
+      revision: document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      workbenchVisible: Boolean(document.querySelector('[data-testid="character-assembly-workbench"]')),
+    })`);
+    assert(acceptedActivityExit.confirmCalls === 2, 'Activity exit did not use one explicit confirmation for each decision.');
+    assert(acceptedActivityExit.undoCount === '1' && !acceptedActivityExit.workbenchVisible, 'Leaving Characters wrote History or kept the edit session alive.');
+    evidence.pendingActivityExit = {
+      workspaceGuard: workspacePendingGuard,
+      declinedConfirm: declinedActivityExitCalls[0],
+      accepted: acceptedActivityExit,
+    };
+    await click(windowRef, '[data-testid="resource-activity-rail-characters"]', 'Return to Characters after discard');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-detail-view"]')`, 'Character detail did not return after leaving the activity.');
+    await click(windowRef, '[data-testid="character-detail-back"]', 'Return to Character list after remount');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-list-view"]')`, 'Character list did not return after the Character activity remounted.');
+    await click(windowRef, `[data-testid="character-list-view"] [data-character-id="${created.characterId}"]`, 'Select the composite Character after remount');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(created.characterId)}`, 'The composite Character did not reopen after the activity switch.');
+    await click(windowRef, '[data-testid="character-workspace-assembly-tab"]', 'Reopen composite Assembly after discard');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]')?.dataset.bodyAssetId === ${JSON.stringify(IDS.body)}`, 'Discarded Assembly did not reopen from the persisted Character state.');
+    await chooseImage(windowRef, 'character-assembly-body-picker', IDS.bodyAlt);
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-pending"]')`, 'Body replacement did not become pending after reopening Assembly.');
     await click(windowRef, '[data-testid="character-assembly-pending"] button:first-of-type', 'Revert Assembly draft');
     await waitForDom(windowRef, `!document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyAssetId === ${JSON.stringify(IDS.body)}`, 'Revert did not restore the persisted Body without writing.');
     const reverted = await windowRef.webContents.executeJavaScript(`({
@@ -849,6 +1004,36 @@ async function run() {
     })`);
     assert(applied.revision === '2' && applied.undoCount === '2', 'Assembly Apply did not produce exactly one Project/History operation.');
     evidence.editApply = applied;
+    await chooseImage(windowRef, 'character-assembly-body-picker', IDS.body);
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-pending"]')`, 'A discardable Assembly draft was not created for the drawer-close guard.');
+    await setConfirmResponse(windowRef, false);
+    await click(windowRef, '[data-testid="character-detail-view"] [data-testid="resource-activity-close"]', 'Decline closing Character drawer with a pending Assembly edit');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true'`, 'Declining drawer close did not keep Assembly and its pending draft open.');
+    await setConfirmResponse(windowRef, true);
+    await click(windowRef, '[data-testid="character-detail-view"] [data-testid="resource-activity-close"]', 'Confirm closing Character drawer and discard Assembly edit');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false' && document.querySelector('main.editor-shell')?.dataset.characterAssemblyActive === 'false'`, 'Confirmed drawer close did not leave Assembly.');
+    const closedDrawer = await windowRef.webContents.executeJavaScript(`({
+      confirmCalls: window.__issue610ConfirmCalls.length,
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      activeWorkspace: document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') ?? '',
+    })`);
+    assert(closedDrawer.confirmCalls === 4, 'Closing the Character drawer did not ask for an explicit discard decision.');
+    assert(closedDrawer.revision === '2' && closedDrawer.undoCount === '2', 'Discarding on drawer close wrote Project or History.');
+    evidence.pendingDrawerClose = closedDrawer;
+    await click(windowRef, '[data-testid="resource-activity-rail-characters"]', 'Reopen Characters after confirmed drawer close');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true' && document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') === 'true'`, 'Reopening Characters did not restore the default Expressions workspace.');
+    await click(windowRef, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after drawer close');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]')?.dataset.bodyAssetId === ${JSON.stringify(IDS.bodyAlt)}`, 'Reopened Assembly did not start from the last applied Body.');
+    await click(windowRef, '[data-testid="character-assembly-go-expressions"]', 'Use the Assembly-to-Expressions bridge');
+    await waitForDom(windowRef, `document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') === 'true' && document.querySelector('[data-testid="character-assembly-workbench"]') === null`, 'The default Face summary did not return to the authoritative Expressions workspace.');
+    const bridgeConfirmCalls = await readConfirmCalls(windowRef);
+    assert(bridgeConfirmCalls.length === 4, 'Leaving a clean Assembly draft unexpectedly required a discard confirmation.');
+    evidence.defaultFaceExpressionBridge = {
+      confirmCalls: bridgeConfirmCalls.length,
+      expressionsPressed: 'true',
+      assemblyWorkbenchOpen: false,
+    };
     await click(windowRef, '[data-testid="character-workspace-expressions-tab"]', 'Expressions workspace tab');
     await click(windowRef, '[data-testid="character-detail-back"]', 'Return to Character list');
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-list-view"] [data-character-id="${created.characterId}"]')`, 'Created Character did not remain in the authoritative Character list.');
@@ -1005,6 +1190,7 @@ async function run() {
     assert(savedProject.characters.length === 3, 'Saved Project did not preserve both single-image Characters and the new composite Character.');
     assert(savedComposite?.mode === 'composite', 'Saved Character was not composite.');
     assert(savedComposite.bodyAssetId === IDS.bodyAlt, 'Applied Body replacement was not persisted.');
+    assert(savedComposite.facePlacement.offsetX === precisionDraft.offsetX && savedComposite.facePlacement.offsetY === precisionDraft.offsetY && savedComposite.facePlacement.scale === precisionDraft.scale, 'The Face Placement adjusted by preview drag and precision controls did not persist unchanged after Create.');
     assert(savedComposite.mouthOpenAssetId === IDS.mouth, 'Optional Mouth was not persisted.');
     assert(savedExistingSingleImage?.mode === 'single-image', 'The pre-existing single-image Character was migrated or changed.');
     assert(savedExistingSingleImage.expressions.map((expression) => expression.id).join(',') === `${IDS.legacyNormalExpression},${IDS.legacyAngryExpression}`, 'The pre-existing single-image Character Expression identities changed.');
@@ -1035,6 +1221,7 @@ async function run() {
         characterId: savedComposite.id,
         characterMode: savedComposite.mode,
         expressionCount: savedComposite.expressions.length,
+        facePlacement: savedComposite.facePlacement,
         mouthAssetId: savedComposite.mouthOpenAssetId,
         existingSingleImageCharacterId: savedExistingSingleImage.id,
         createdSingleImageCharacterId: savedCreatedSingleImage.id,

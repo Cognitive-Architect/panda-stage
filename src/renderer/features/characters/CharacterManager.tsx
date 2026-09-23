@@ -70,8 +70,22 @@ export function CharacterManager({
   onCloseDrawer = () => undefined,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
-  const [selectedCharacterId, setSelectedCharacterId] =
-    useState<string | null>(snapshot?.project.characters[0]?.id ?? null);
+  const [selectedCharacterId, setSelectedCharacterId] = useState<
+    string | null
+  >(() => {
+    const activeSession = characterAssemblySessionStore.getSnapshot();
+    const resumableCharacterId =
+      activeSession &&
+      !isCharacterCreationSnapshot(activeSession) &&
+      activeSession.projectId === snapshot?.project.id &&
+      activeSession.projectRoot === snapshot?.projectRoot &&
+      snapshot.project.characters.some(
+        (character) => character.id === activeSession.characterId,
+      )
+        ? activeSession.characterId
+        : null;
+    return resumableCharacterId ?? snapshot?.project.characters[0]?.id ?? null;
+  });
   const [status, setStatus] = useState(CHARACTER_IDLE_STATUS);
   const [bindingReminderCount, setBindingReminderCount] = useState<
     number | null
@@ -278,6 +292,19 @@ export function CharacterManager({
     if (!result.ok) setStatus(result.error.message);
   };
 
+  const commitCompositeCreation = (): void => {
+    const result = creationHandleRef.current?.commit();
+    if (!result) {
+      setStatus('角色创建草稿已失效，请重新开始。');
+      return;
+    }
+    if (result.status === 'rejected' || result.status === 'stale') {
+      setStatus(result.error.message);
+      return;
+    }
+    setStatus('');
+  };
+
   const cancelOwnedSession = (): void => {
     if (creationHandleRef.current) {
       creationHandleRef.current.cancel();
@@ -447,6 +474,7 @@ export function CharacterManager({
             mode="legacy"
             compositeDraft={createAssemblySnapshot?.draft ?? null}
             onBeginCompositeCreate={beginCompositeCreation}
+            onCommitCompositeCreate={commitCompositeCreation}
             onCancelCompositeCreate={cancelOwnedSession}
             onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
@@ -486,6 +514,7 @@ export function CharacterManager({
               onViewChange('list');
             }}
             onBeginCompositeCreate={beginCompositeCreation}
+            onCommitCompositeCreate={commitCompositeCreation}
             onCancelCompositeCreate={cancelOwnedSession}
             onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}

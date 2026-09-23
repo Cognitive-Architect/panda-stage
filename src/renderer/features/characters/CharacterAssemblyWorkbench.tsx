@@ -215,29 +215,8 @@ export function CharacterAssemblyWorkbench({
   };
 
   const pending = !isCreating && isCharacterAssemblyPending(project, session);
-  const canCreate = isCreating && Boolean(
-    session.draft.name.trim() &&
-      session.draft.bodyAssetId &&
-      session.draft.expressions[
-        session.draft.defaultExpressionIndex ?? 0
-      ]?.assetId &&
-      project.assets.some(
-        (asset) =>
-          asset.id === session.draft.bodyAssetId && asset.kind === 'image',
-      ) &&
-      project.assets.some(
-        (asset) =>
-          asset.id ===
-            session.draft.expressions[
-              session.draft.defaultExpressionIndex ?? 0
-            ]?.assetId && asset.kind === 'image',
-      ),
-  );
-
   const commit = (): void => {
-    const result = isCreating
-      ? activeCreationHandle(session)?.commit()
-      : activeAssemblyHandle(session)?.commit();
+    const result = activeAssemblyHandle(session)?.commit();
     if (!result) {
       setMessage('装配草稿已失效，请重新打开角色装配。');
       return;
@@ -279,7 +258,6 @@ export function CharacterAssemblyWorkbench({
       data-testid="character-assembly-workbench"
     >
       <header className="character-assembly-workbench-header">
-        <h2>{isCreating ? '复合角色装配' : '角色装配'}</h2>
         {!isCreating ? (
           <nav aria-label="预览表情" className="character-assembly-face-choices">
             {expressions.map((expression) => (
@@ -302,24 +280,26 @@ export function CharacterAssemblyWorkbench({
               </button>
             ) : null}
           </nav>
-        ) : hasMouth ? (
+        ) : (
           <nav aria-label="预览表情" className="character-assembly-face-choices">
             <button
               aria-pressed={selectedFace !== '$mouth'}
               onClick={() => setSelectedFace(defaultExpressionId)}
               type="button"
             >
-              默认表情
+              默认
             </button>
-            <button
-              aria-pressed={selectedFace === '$mouth'}
-              onClick={() => setSelectedFace('$mouth')}
-              type="button"
-            >
-              张嘴
-            </button>
+            {hasMouth ? (
+              <button
+                aria-pressed={selectedFace === '$mouth'}
+                onClick={() => setSelectedFace('$mouth')}
+                type="button"
+              >
+                张嘴
+              </button>
+            ) : null}
           </nav>
-        ) : null}
+        )}
       </header>
 
       <div
@@ -431,30 +411,95 @@ export function CharacterAssemblyWorkbench({
         <div
           aria-label="脸部位置与大小"
           className="character-assembly-placement-controls"
+          data-testid="character-assembly-placement-controls"
           role="group"
         >
-          <button aria-label="向左移动脸部" onClick={() => moveFace(-10, 0)} type="button">←</button>
-          <button aria-label="向右移动脸部" onClick={() => moveFace(10, 0)} type="button">→</button>
-          <button aria-label="向上移动脸部" onClick={() => moveFace(0, -10)} type="button">↑</button>
-          <button aria-label="向下移动脸部" onClick={() => moveFace(0, 10)} type="button">↓</button>
-          <span aria-hidden="true" className="character-assembly-control-divider" />
-          <button aria-label="缩小脸部" onClick={() => adjustScale(-0.05)} type="button">−</button>
-          <output aria-live="polite">{session.draft.facePlacement.scale.toFixed(2)}×</output>
-          <button aria-label="放大脸部" onClick={() => adjustScale(0.05)} type="button">+</button>
-          <button className="character-assembly-reset" onClick={resetPlacement} type="button">重置</button>
-        </div>
-        <p>拖动脸部可调整位置，底部可微调大小</p>
-        {isCreating ? (
+          <div aria-label="左右" className="character-assembly-control-set" role="group">
+            <span className="character-assembly-control-label">左右</span>
+            <button
+              aria-label="向左移动脸部"
+              data-testid="character-assembly-left-step"
+              onClick={() => moveFace(-1, 0)}
+              type="button"
+            >
+              −
+            </button>
+            <output
+              aria-label="左右偏移"
+              data-testid="character-assembly-offset-x"
+            >
+              {session.draft.facePlacement.offsetX.toFixed(1)}
+            </output>
+            <button
+              aria-label="向右移动脸部"
+              data-testid="character-assembly-right-step"
+              onClick={() => moveFace(1, 0)}
+              type="button"
+            >
+              +
+            </button>
+          </div>
+          <div aria-label="上下" className="character-assembly-control-set" role="group">
+            <span className="character-assembly-control-label">上下</span>
+            <button
+              aria-label="向上移动脸部"
+              data-testid="character-assembly-up-step"
+              onClick={() => moveFace(0, -1)}
+              type="button"
+            >
+              −
+            </button>
+            <output
+              aria-label="上下偏移"
+              data-testid="character-assembly-offset-y"
+            >
+              {session.draft.facePlacement.offsetY.toFixed(1)}
+            </output>
+            <button
+              aria-label="向下移动脸部"
+              data-testid="character-assembly-down-step"
+              onClick={() => moveFace(0, 1)}
+              type="button"
+            >
+              +
+            </button>
+          </div>
+          <div aria-label="大小" className="character-assembly-control-set" role="group">
+            <span className="character-assembly-control-label">大小</span>
+            <button
+              aria-label="缩小脸部"
+              data-testid="character-assembly-scale-down"
+              onClick={() => adjustScale(-0.05)}
+              type="button"
+            >
+              −
+            </button>
+            <output
+              aria-label="脸部大小"
+              data-testid="character-assembly-scale"
+            >
+              {session.draft.facePlacement.scale.toFixed(2)}×
+            </output>
+            <button
+              aria-label="放大脸部"
+              data-testid="character-assembly-scale-up"
+              onClick={() => adjustScale(0.05)}
+              type="button"
+            >
+              +
+            </button>
+          </div>
           <button
-            className="character-assembly-primary-action"
-            data-testid="character-assembly-create"
-            disabled={!canCreate}
-            onClick={commit}
+            className="character-assembly-reset"
+            data-testid="character-assembly-reset"
+            onClick={resetPlacement}
             type="button"
           >
-            创建角色
+            重置
           </button>
-        ) : pending ? (
+        </div>
+        <p>拖动脸部可调整位置，底部可微调大小</p>
+        {!isCreating && pending ? (
           <div
             aria-live="polite"
             className="character-assembly-pending-actions"

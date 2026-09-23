@@ -52,6 +52,18 @@ export function isCharacterAssemblyPending(
   return JSON.stringify(current) !== JSON.stringify(session.draft);
 }
 
+export function hasPendingCharacterAssemblyEdit(
+  project: Project,
+  session: CharacterAssemblySnapshotUnion | null,
+): boolean {
+  return Boolean(
+    session &&
+      !isCharacterCreationSnapshot(session) &&
+      session.projectId === project.id &&
+      isCharacterAssemblyPending(project, session),
+  );
+}
+
 const PREVIEW_CHARACTER_ID = '00000000-0000-4000-8000-000000000609';
 const PREVIEW_LAYER_ID = '00000000-0000-4000-8000-000000000610';
 const PREVIEW_VOICE_ID = '00000000-0000-4000-8000-000000000611';

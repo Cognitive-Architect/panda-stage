@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   Character,
   CharacterDimensionWarning,
@@ -147,13 +147,15 @@ export function CharacterEditor({
   const [flipX, setFlipX] = useState(character?.defaultFlipX ?? false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [activeWorkspace, setActiveWorkspace] =
-    useState<CharacterDetailWorkspace>('expressions');
+    useState<CharacterDetailWorkspace>(
+      assemblyDraft ? 'assembly' : 'expressions',
+    );
+  const assemblyDraftWasOpen = useRef(Boolean(assemblyDraft));
 
   useEffect(() => {
     if (!character) return;
     setName(character.name);
     setRenameOpen(false);
-    setActiveWorkspace('expressions');
   }, [character?.id]);
 
   useEffect(() => {
@@ -161,6 +163,18 @@ export function CharacterEditor({
     setScale(character.defaultScale);
     setFlipX(character.defaultFlipX);
   }, [character?.defaultFlipX, character?.defaultScale, character?.id]);
+
+  useEffect(() => {
+    const hasAssemblyDraft = Boolean(assemblyDraft);
+    if (
+      activeWorkspace === 'assembly' &&
+      assemblyDraftWasOpen.current &&
+      !hasAssemblyDraft
+    ) {
+      setActiveWorkspace('expressions');
+    }
+    assemblyDraftWasOpen.current = hasAssemblyDraft;
+  }, [activeWorkspace, assemblyDraft]);
 
   const landscapeDetail =
     presentation === 'landscape' && view === 'detail';
@@ -655,6 +669,16 @@ export function CharacterEditor({
                         )?.name ?? defaultExpression.assetId}
                       </small>
                     </span>
+                    <button
+                      className="character-assembly-expression-bridge"
+                      data-testid="character-assembly-go-expressions"
+                      onClick={() =>
+                        switchDetailWorkspace('expressions')
+                      }
+                      type="button"
+                    >
+                      去表情
+                    </button>
                   </div>
                 ) : null}
               </div>

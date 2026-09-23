@@ -3,9 +3,13 @@ import { ProjectSchema, migrateProject } from '../../src/domain';
 import {
   buildCharacterAssemblyPreviewVisual,
   getAssemblyPreviewExpressions,
+  hasPendingCharacterAssemblyEdit,
   isCharacterAssemblyPending,
 } from '../../src/renderer/features/characters/characterAssemblyPreview';
-import type { CharacterAssemblySnapshot } from '../../src/renderer/stores/characterAssemblySessionStore';
+import type {
+  CharacterAssemblySnapshot,
+  CharacterCreationSnapshot,
+} from '../../src/renderer/stores/characterAssemblySessionStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 function fixture(): {
@@ -116,14 +120,43 @@ describe('S07 composite assembly preview', () => {
   it('reports pending only when the edit draft differs from the persisted definition', () => {
     const { project, session } = fixture();
     expect(isCharacterAssemblyPending(project, session)).toBe(false);
+    const pendingSession = {
+      ...session,
+      draft: {
+        ...session.draft,
+        facePlacement: { ...session.draft.facePlacement, offsetX: 80 },
+      },
+    };
+    expect(isCharacterAssemblyPending(project, pendingSession)).toBe(true);
+    expect(hasPendingCharacterAssemblyEdit(project, session)).toBe(false);
+    expect(hasPendingCharacterAssemblyEdit(project, pendingSession)).toBe(
+      true,
+    );
+    expect(hasPendingCharacterAssemblyEdit(project, null)).toBe(false);
+
+    const character = project.characters[0]!;
+    const creationSession: CharacterCreationSnapshot = {
+      status: 'active',
+      kind: 'create',
+      sessionId: 610,
+      generation: 0,
+      projectId: project.id,
+      projectRoot: session.projectRoot,
+      draft: {
+        name: 'New composite character',
+        bodyAssetId: session.draft.bodyAssetId,
+        facePlacement: { ...session.draft.facePlacement },
+        expressions: character.expressions.map(({ name, assetId }) => ({
+          name,
+          assetId,
+        })),
+        defaultExpressionIndex: 0,
+        defaultScale: character.defaultScale,
+        defaultFlipX: character.defaultFlipX,
+      },
+    };
     expect(
-      isCharacterAssemblyPending(project, {
-        ...session,
-        draft: {
-          ...session.draft,
-          facePlacement: { ...session.draft.facePlacement, offsetX: 80 },
-        },
-      }),
-    ).toBe(true);
+      hasPendingCharacterAssemblyEdit(project, creationSession),
+    ).toBe(false);
   });
 });

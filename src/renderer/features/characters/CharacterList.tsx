@@ -13,6 +13,7 @@ import {
   getCharacterDefaultExpression,
 } from './CharacterIdentity';
 import { ImageAssetPicker } from './ImageAssetPicker';
+import { Button } from '../../ui';
 
 export interface CharacterListProps {
   characters: readonly Character[];
@@ -24,6 +25,7 @@ export interface CharacterListProps {
   onBeginCompositeCreate?: (
     initialDraft: CreateCompositeCharacterInput,
   ) => boolean;
+  onCommitCompositeCreate?: () => void;
   onCompositeDraftChange?: (
     draft: CreateCompositeCharacterInput,
   ) => void;
@@ -48,6 +50,7 @@ export function CharacterList({
   onCreate,
   compositeDraft = null,
   onBeginCompositeCreate = () => false,
+  onCommitCompositeCreate = () => undefined,
   onCompositeDraftChange = () => undefined,
   onCancelCompositeCreate = () => undefined,
   onSelect,
@@ -69,6 +72,10 @@ export function CharacterList({
   const [creationMode, setCreationMode] = useState<
     'single-image' | 'composite'
   >('single-image');
+  const defaultFaceAssetId =
+    compositeDraft?.expressions[
+      compositeDraft.defaultExpressionIndex ?? 0
+    ]?.assetId;
   const canCreate = useMemo(
     () =>
       !disabled &&
@@ -76,9 +83,16 @@ export function CharacterList({
         ? Boolean(compositeDraft?.name.trim()) &&
           Boolean(compositeDraft?.bodyAssetId) &&
           Boolean(
-            compositeDraft?.expressions[
-              compositeDraft.defaultExpressionIndex ?? 0
-            ]?.assetId,
+            defaultFaceAssetId &&
+              imageAssets.some(
+                (asset) =>
+                  asset.id === compositeDraft?.bodyAssetId &&
+                  asset.kind === 'image',
+              ) &&
+              imageAssets.some(
+                (asset) =>
+                  asset.id === defaultFaceAssetId && asset.kind === 'image',
+              ),
           )
         : name.trim().length > 0 &&
           Boolean(normalAssetId) &&
@@ -88,7 +102,9 @@ export function CharacterList({
       angryAssetId,
       compositeDraft,
       creationMode,
+      defaultFaceAssetId,
       disabled,
+      imageAssets,
       name,
       normalAssetId,
     ],
@@ -231,7 +247,10 @@ export function CharacterList({
           onSubmit={(event) => {
             event.preventDefault();
             if (!canCreate) return;
-            if (creationMode === 'composite') return;
+            if (creationMode === 'composite') {
+              onCommitCompositeCreate();
+              return;
+            }
             onCreate({
               name,
               expressions: [
@@ -246,9 +265,32 @@ export function CharacterList({
             });
           }}
         >
-          {mode === 'legacy' ? (
+          {mode === 'legacy' && creationMode === 'single-image' ? (
             <strong>创建含普通 / 生气表情的角色</strong>
           ) : null}
+          <label>
+            角色名称
+            <input
+              disabled={disabled}
+              data-testid="character-create-name"
+              maxLength={200}
+              onChange={(event) => {
+                const nextName = event.target.value;
+                setName(nextName);
+                if (creationMode === 'composite' && compositeDraft) {
+                  onCompositeDraftChange({
+                    ...compositeDraft,
+                    name: nextName,
+                  });
+                }
+              }}
+              value={
+                creationMode === 'composite'
+                  ? compositeDraft?.name ?? name
+                  : name
+              }
+            />
+          </label>
           <fieldset
             aria-label="角色类型"
             className="character-create-mode-switch"
@@ -298,28 +340,6 @@ export function CharacterList({
               <span>身体 + 脸</span>
             </label>
           </fieldset>
-          <label>
-            角色名称
-            <input
-              disabled={disabled}
-              maxLength={200}
-              onChange={(event) => {
-                const nextName = event.target.value;
-                setName(nextName);
-                if (creationMode === 'composite' && compositeDraft) {
-                  onCompositeDraftChange({
-                    ...compositeDraft,
-                    name: nextName,
-                  });
-                }
-              }}
-              value={
-                creationMode === 'composite'
-                  ? compositeDraft?.name ?? name
-                  : name
-              }
-            />
-          </label>
           {creationMode === 'composite' ? (
             <>
               <ImageAssetPicker
@@ -403,6 +423,14 @@ export function CharacterList({
                 thumbnails={thumbnails}
                 disabled={disabled}
               />
+              <Button
+                variant="primary"
+                data-testid="character-create-composite-submit"
+                disabled={!canCreate}
+                type="submit"
+              >
+                创建角色
+              </Button>
             </>
           ) : (
             <>

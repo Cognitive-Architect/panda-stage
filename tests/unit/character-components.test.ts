@@ -46,6 +46,9 @@ describe('character management components', () => {
     expect(markup).toContain('角色与表情');
     expect(markup).toContain('创建含普通 / 生气表情的角色');
     expect(markup).toContain('张嘴图（可选）');
+    expect(markup.indexOf('character-create-name')).toBeLessThan(
+      markup.indexOf('character-create-mode-switch'),
+    );
     expect(markup).not.toMatch(/<button[^>]*>保存整个项目/u);
     expect(markup).toContain('默认表情');
     expect(markup).toContain('语音配置仅保留最小项目数据');
