@@ -110,7 +110,7 @@ async function waitForCharacterDetailScreenshot(window, label) {
       const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
       const detail = document.querySelector('[data-testid="character-detail-view"]');
       const workspace = detail?.querySelector('[data-testid="character-expression-workspace"]');
-      const thumbnails = [...(workspace?.querySelectorAll('.character-expression-thumbnail') ?? [])];
+      const expressionCards = [...(workspace?.querySelectorAll('[data-expression-id]') ?? [])];
       const drawerBounds = drawer?.getBoundingClientRect();
       const drawerStyle = drawer ? getComputedStyle(drawer) : undefined;
       return dock?.dataset.activeActivity === 'characters'
@@ -119,10 +119,11 @@ async function waitForCharacterDetailScreenshot(window, label) {
         && drawerStyle?.visibility === 'visible'
         && Number(drawerStyle.opacity) >= 0.99
         && detail?.getBoundingClientRect().width > 0
-        && thumbnails.length === 2
-        && thumbnails.every((thumbnail) => {
-          const image = thumbnail.querySelector('img');
-          return thumbnail.dataset.thumbnailStatus === 'ready'
+        && expressionCards.length === 2
+        && expressionCards.every((card) => {
+          const thumbnail = card.querySelector('.expression-card-preview');
+          const image = thumbnail?.querySelector('img');
+          return thumbnail?.dataset.thumbnailStatus === 'ready'
             && image?.complete
             && image.naturalWidth > 0;
         });
