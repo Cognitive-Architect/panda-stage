@@ -30,6 +30,7 @@ import type { EditorShellLayoutMode } from './adaptiveEditorShell';
  */
 export interface BottomWorkspaceProps {
   hidden?: boolean;
+  assemblyInactive?: boolean;
   presentation?: EditorShellLayoutMode;
   resizable?: boolean;
   showHistoryControls?: boolean;
@@ -138,6 +139,7 @@ function readLiveTimelineHeightBounds(
 
 export function BottomWorkspace({
   hidden = false,
+  assemblyInactive = false,
   presentation = 'landscape',
   resizable = false,
   showHistoryControls = presentation !== 'landscape',
@@ -279,13 +281,16 @@ export function BottomWorkspace({
   return (
     <section
       aria-label="Bottom workspace"
-      className="bottom-workspace"
+      aria-hidden={assemblyInactive || undefined}
+      className={`bottom-workspace${assemblyInactive ? ' is-character-assembly-inactive' : ''}`}
+      data-character-assembly-inactive={assemblyInactive ? 'true' : 'false'}
       data-presentation={presentation}
       data-resizable={resizable ? 'true' : 'false'}
       data-timeline-resizing={ui.resizing ? 'true' : 'false'}
       data-testid="bottom-workspace"
       data-timeline-expanded={expanded ? 'true' : 'false'}
       hidden={hidden}
+      inert={assemblyInactive || undefined}
       ref={workspaceRef}
       style={
         {

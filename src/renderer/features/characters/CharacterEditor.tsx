@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type {
   Character,
   CharacterDimensionWarning,
+  CompositeCharacterDefinition,
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
@@ -15,7 +16,10 @@ import {
 
 export type CharacterEditorView = 'full' | 'detail' | 'expression';
 export type CharacterEditorPresentation = 'default' | 'landscape';
-export type CharacterDetailWorkspace = 'expressions' | 'settings';
+export type CharacterDetailWorkspace =
+  | 'assembly'
+  | 'expressions'
+  | 'settings';
 
 export function isDefaultTransformPending(
   character: Pick<Character, 'defaultScale' | 'defaultFlipX'>,
@@ -95,6 +99,11 @@ export interface CharacterEditorProps {
   onRemoveExpression: (expressionId: string) => void;
   onSetDefaultExpression: (expressionId: string) => void;
   onSetMouthOpenAsset: (assetId: string | null) => void;
+  assemblyDraft?: CompositeCharacterDefinition | null;
+  onOpenAssembly?: () => boolean;
+  onLeaveAssembly?: () => boolean;
+  onSetAssemblyBodyAsset?: (assetId: string) => void;
+  onSetAssemblyMouthAsset?: (assetId: string | null) => void;
   onSetDefaultTransform: (scale: number, flipX: boolean) => void;
   onThumbnailError: (assetId: string) => void;
   view?: CharacterEditorView;
@@ -119,6 +128,11 @@ export function CharacterEditor({
   onRemoveExpression,
   onSetDefaultExpression,
   onSetMouthOpenAsset,
+  assemblyDraft = null,
+  onOpenAssembly = () => false,
+  onLeaveAssembly = () => true,
+  onSetAssemblyBodyAsset = () => undefined,
+  onSetAssemblyMouthAsset = () => undefined,
   onSetDefaultTransform,
   onThumbnailError,
   view = 'full',
@@ -189,6 +203,22 @@ export function CharacterEditor({
     flipX,
   );
   const nextRenameValue = characterRenameValue(name, character.name);
+  const compositeCharacter = character.mode === 'composite';
+
+  const switchDetailWorkspace = (
+    nextWorkspace: CharacterDetailWorkspace,
+  ): void => {
+    if (nextWorkspace === activeWorkspace) return;
+    if (
+      activeWorkspace === 'assembly' &&
+      nextWorkspace !== 'assembly' &&
+      !onLeaveAssembly()
+    ) {
+      return;
+    }
+    if (nextWorkspace === 'assembly' && !onOpenAssembly()) return;
+    setActiveWorkspace(nextWorkspace);
+  };
 
   return (
     <article
@@ -523,6 +553,22 @@ export function CharacterEditor({
             className="character-workspace-switcher"
             data-testid="character-workspace-switcher"
           >
+            {compositeCharacter ? (
+              <button
+                aria-controls="character-workspace-assembly"
+                aria-pressed={activeWorkspace === 'assembly'}
+                className={
+                  activeWorkspace === 'assembly'
+                    ? 'character-workspace-tab is-active'
+                    : 'character-workspace-tab'
+                }
+                data-testid="character-workspace-assembly-tab"
+                onClick={() => switchDetailWorkspace('assembly')}
+                type="button"
+              >
+                装配
+              </button>
+            ) : null}
             <button
               aria-controls="character-workspace-expressions"
               aria-pressed={activeWorkspace === 'expressions'}
@@ -532,7 +578,7 @@ export function CharacterEditor({
                   : 'character-workspace-tab'
               }
               data-testid="character-workspace-expressions-tab"
-              onClick={() => setActiveWorkspace('expressions')}
+              onClick={() => switchDetailWorkspace('expressions')}
               type="button"
             >
               <span>表情</span>
@@ -552,12 +598,100 @@ export function CharacterEditor({
                   : 'character-workspace-tab'
               }
               data-testid="character-workspace-settings-tab"
-              onClick={() => setActiveWorkspace('settings')}
+              onClick={() => switchDetailWorkspace('settings')}
               type="button"
             >
-              角色设置
+              设置
             </button>
           </nav>
+          {compositeCharacter ? (
+            <section
+              aria-label="角色装配素材"
+              className="character-workspace-panel character-assembly-drawer-panel"
+              data-testid="character-assembly-drawer-panel"
+              data-workspace="assembly"
+              hidden={activeWorkspace !== 'assembly'}
+              id="character-workspace-assembly"
+            >
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyState={{
+                  description: '从项目图片中选择身体。',
+                  label: '请选择图片',
+                }}
+                label="身体图片"
+                onChange={(assetId) => {
+                  if (assetId) onSetAssemblyBodyAsset(assetId);
+                }}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={
+                  assemblyDraft?.bodyAssetId ??
+                  (character.mode === 'composite'
+                    ? character.bodyAssetId
+                    : '')
+                }
+                testId="character-assembly-body-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <div
+                className="character-assembly-default-face-summary"
+                data-testid="character-assembly-default-face-summary"
+              >
+                <span className="character-assembly-field-label">默认表情</span>
+                {defaultExpression ? (
+                  <div className="character-assembly-default-face-content">
+                    <CharacterExpressionThumbnail
+                      className="character-assembly-default-face-thumbnail"
+                      expression={defaultExpression}
+                      onThumbnailError={onThumbnailError}
+                      thumbnail={defaultThumbnail}
+                    />
+                    <span>
+                      <strong>{defaultExpression.name}</strong>
+                      <small>
+                        {imageAssets.find(
+                          (asset) => asset.id === defaultExpression.assetId,
+                        )?.name ?? defaultExpression.assetId}
+                      </small>
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyOption={{
+                  description: '可以稍后再配置。',
+                  label: '暂不配置',
+                  optional: true,
+                }}
+                label="张嘴图"
+                onChange={onSetAssemblyMouthAsset}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={
+                  assemblyDraft?.mouthOpenAssetId ??
+                  character.mouthOpenAssetId ??
+                  null
+                }
+                testId="character-assembly-mouth-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+                selectedAction={
+                  (assemblyDraft?.mouthOpenAssetId ??
+                    character.mouthOpenAssetId) ? (
+                    <button
+                      className="character-mouth-clear"
+                      disabled={disabled}
+                      onClick={() => onSetAssemblyMouthAsset(null)}
+                      type="button"
+                    >
+                      清除
+                    </button>
+                  ) : undefined
+                }
+              />
+            </section>
+          ) : null}
           <section
             aria-labelledby="character-expression-workspace-heading"
             className="character-workspace-panel character-expression-workspace"
@@ -683,6 +817,7 @@ export function CharacterEditor({
                 </div>
               ) : null}
             </section>
+            {!compositeCharacter ? (
             <section className="character-settings-section character-mouth-setting-visual">
               <div
                 className={`character-mouth-state${character.mouthOpenAssetId ? ' is-configured' : ''}`}
@@ -717,6 +852,7 @@ export function CharacterEditor({
                 />
               </div>
             </section>
+            ) : null}
           </section>
         </>
       ) : null}

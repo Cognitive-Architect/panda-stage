@@ -1,24 +1,40 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {
   CharacterService,
   CharacterServiceError,
   countLegacyCharacterImageLayers,
   type CreateCharacterInput,
+  type CreateCompositeCharacterInput,
+  type CompositeCharacterDefinition,
   type ImageAsset,
   type Project,
 } from '../../../domain';
-import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import {
+  editorProjectStore,
+  type EditorProjectSnapshot,
+} from '../../stores/EditorProjectStore';
 import { characterStore } from '../../stores/characterStore';
+import {
+  characterAssemblySessionStore,
+  type CharacterAssemblySessionHandle,
+  type CharacterCreationSessionHandle,
+} from '../../stores/characterAssemblySessionStore';
 import {
   thumbnailStateFromResponse,
   type ThumbnailState,
 } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
 import { CharacterList } from './CharacterList';
+import {
+  isCharacterAssemblyPending,
+  isCharacterCreationSnapshot,
+} from './characterAssemblyPreview';
 
 export type CharacterWorkspaceView =
   | 'legacy'
@@ -63,6 +79,15 @@ export function CharacterManager({
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
+  const assemblySnapshot = useSyncExternalStore(
+    characterAssemblySessionStore.subscribe,
+    characterAssemblySessionStore.getSnapshot,
+    characterAssemblySessionStore.getSnapshot,
+  );
+  const creationHandleRef = useRef<CharacterCreationSessionHandle | null>(null);
+  const ownedSessionIdRef = useRef<number | null>(null);
+  const creationBaselineIdsRef = useRef<Set<string> | null>(null);
+  const creationStartViewRef = useRef<CharacterWorkspaceView | null>(null);
   const project = snapshot?.project ?? null;
   const imageAssets = useMemo(
     () =>
@@ -74,7 +99,26 @@ export function CharacterManager({
   const selectedCharacter =
     project?.characters.find(
       (character) => character.id === selectedCharacterId,
-    ) ?? null;
+      ) ?? null;
+  const editAssemblySnapshot =
+    assemblySnapshot &&
+    !isCharacterCreationSnapshot(assemblySnapshot) &&
+    assemblySnapshot.characterId === selectedCharacter?.id
+      ? assemblySnapshot
+      : null;
+  const assemblyDraft: CompositeCharacterDefinition | null =
+    editAssemblySnapshot?.draft ?? null;
+  const assemblyPending = Boolean(
+    editAssemblySnapshot &&
+      project &&
+      isCharacterAssemblyPending(project, editAssemblySnapshot),
+  );
+  const createAssemblySnapshot =
+    assemblySnapshot &&
+    isCharacterCreationSnapshot(assemblySnapshot) &&
+    assemblySnapshot.sessionId === ownedSessionIdRef.current
+      ? assemblySnapshot
+      : null;
   const warnings =
     project && selectedCharacter
       ? service.dimensionWarnings(project, selectedCharacter.id)
@@ -205,6 +249,169 @@ export function CharacterManager({
     }
   };
 
+  const beginCompositeCreation = (
+    initialDraft: CreateCompositeCharacterInput,
+  ): boolean => {
+    const result = characterAssemblySessionStore.beginCreate(initialDraft);
+    if (!result.ok) {
+      setStatus(result.error.message);
+      return false;
+    }
+    creationHandleRef.current = result.session;
+    ownedSessionIdRef.current = result.session.sessionId;
+    creationBaselineIdsRef.current = new Set(
+      project?.characters.map((character) => character.id) ?? [],
+    );
+    creationStartViewRef.current = view;
+    setStatus('');
+    return true;
+  };
+
+  const updateCompositeCreation = (
+    draft: CreateCompositeCharacterInput,
+  ): void => {
+    const result = creationHandleRef.current?.setDraft(draft);
+    if (!result) {
+      setStatus('角色创建草稿已失效，请重新开始。');
+      return;
+    }
+    if (!result.ok) setStatus(result.error.message);
+  };
+
+  const cancelOwnedSession = (): void => {
+    if (creationHandleRef.current) {
+      creationHandleRef.current.cancel();
+      creationHandleRef.current = null;
+    } else {
+      const current = characterAssemblySessionStore.getSnapshot();
+      if (
+        current &&
+        current.sessionId === ownedSessionIdRef.current
+      ) {
+        characterAssemblySessionStore
+          .getActiveSessionHandle()
+          ?.cancel();
+      }
+    }
+    ownedSessionIdRef.current = null;
+    creationBaselineIdsRef.current = null;
+    creationStartViewRef.current = null;
+  };
+
+  const openAssembly = (): boolean => {
+    if (!selectedCharacter || selectedCharacter.mode !== 'composite') {
+      return false;
+    }
+    const result = characterAssemblySessionStore.begin(selectedCharacter.id);
+    if (!result.ok) {
+      setStatus(result.error.message);
+      return false;
+    }
+    ownedSessionIdRef.current = result.session.sessionId;
+    setStatus('');
+    return true;
+  };
+
+  const leaveAssembly = (): boolean => {
+    if (!editAssemblySnapshot) return true;
+    if (assemblyPending) {
+      setStatus('请先应用或还原装配更改。');
+      return false;
+    }
+    const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
+    if (active?.sessionId === editAssemblySnapshot.sessionId) active.cancel();
+    ownedSessionIdRef.current = null;
+    setStatus('');
+    return true;
+  };
+
+  const updateAssembly = (
+    update: Parameters<CharacterAssemblySessionHandle['updateDraft']>[0],
+  ): void => {
+    const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
+    if (
+      !active ||
+      !editAssemblySnapshot ||
+      active.sessionId !== editAssemblySnapshot?.sessionId ||
+      active.generation !== editAssemblySnapshot.generation
+    ) {
+      setStatus('角色装配草稿已失效，请重新打开装配。');
+      return;
+    }
+    const result = active.updateDraft(update);
+    if (!result.ok) setStatus(result.error.message);
+    else setStatus('');
+  };
+
+  const requestCloseDrawer = (): void => {
+    if (
+      assemblyPending &&
+      !window.confirm('装配更改尚未应用，关闭将放弃这些更改。继续吗？')
+    ) {
+      return;
+    }
+    cancelOwnedSession();
+    onCloseDrawer();
+  };
+
+  useEffect(() => {
+    if (
+      !assemblySnapshot ||
+      !isCharacterCreationSnapshot(assemblySnapshot)
+    ) {
+      return;
+    }
+    if (
+      assemblySnapshot.sessionId === ownedSessionIdRef.current &&
+      creationStartViewRef.current !== null &&
+      creationStartViewRef.current !== view
+    ) {
+      cancelOwnedSession();
+    }
+  }, [assemblySnapshot, view]);
+
+  useEffect(() => {
+    if (
+      !assemblySnapshot ||
+      isCharacterCreationSnapshot(assemblySnapshot)
+    ) {
+      return;
+    }
+    if (assemblySnapshot.characterId === selectedCharacterId) {
+      ownedSessionIdRef.current = assemblySnapshot.sessionId;
+    }
+    const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
+    if (active && active.sessionId === ownedSessionIdRef.current) {
+      // Keep the latest generation for safe cleanup after an Apply.
+      ownedSessionIdRef.current = active.sessionId;
+    }
+  }, [assemblySnapshot, selectedCharacterId]);
+
+  useEffect(() => {
+    const baselineIds = creationBaselineIdsRef.current;
+    if (!baselineIds) return;
+    if (assemblySnapshot && isCharacterCreationSnapshot(assemblySnapshot)) return;
+    if (assemblySnapshot?.sessionId === ownedSessionIdRef.current) return;
+    const currentSnapshot = editorProjectStore.getSnapshot();
+    const currentProject =
+      currentSnapshot &&
+      snapshot &&
+      currentSnapshot.projectRoot === snapshot.projectRoot
+        ? currentSnapshot.project
+        : null;
+    const created = currentProject?.characters.find(
+      (character) => !baselineIds.has(character.id),
+    );
+    creationBaselineIdsRef.current = null;
+    creationHandleRef.current = null;
+    ownedSessionIdRef.current = null;
+    creationStartViewRef.current = null;
+    if (created) {
+      setSelectedCharacterId(created.id);
+      onViewChange('detail');
+    }
+  }, [assemblySnapshot, onViewChange, snapshot?.projectRoot]);
+
   return (
     <section
       className="character-manager"
@@ -238,6 +445,10 @@ export function CharacterManager({
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="legacy"
+            compositeDraft={createAssemblySnapshot?.draft ?? null}
+            onBeginCompositeCreate={beginCompositeCreation}
+            onCancelCompositeCreate={cancelOwnedSession}
+            onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
             onSelect={setSelectedCharacterId}
             onThumbnailError={markThumbnailError}
@@ -269,7 +480,14 @@ export function CharacterManager({
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="create"
-            onBack={() => onViewChange('list')}
+            compositeDraft={createAssemblySnapshot?.draft ?? null}
+            onBack={() => {
+              cancelOwnedSession();
+              onViewChange('list');
+            }}
+            onBeginCompositeCreate={beginCompositeCreation}
+            onCancelCompositeCreate={cancelOwnedSession}
+            onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
             onSelect={setSelectedCharacterId}
             onThumbnailError={markThumbnailError}
@@ -396,6 +614,15 @@ export function CharacterManager({
               assetId ? '张嘴图已更新。' : '张嘴图已清除。',
             );
           }}
+          assemblyDraft={assemblyDraft}
+          onOpenAssembly={openAssembly}
+          onLeaveAssembly={leaveAssembly}
+          onSetAssemblyBodyAsset={(assetId) =>
+            updateAssembly({ bodyAssetId: assetId })
+          }
+          onSetAssemblyMouthAsset={(assetId) =>
+            updateAssembly({ mouthOpenAssetId: assetId })
+          }
           onThumbnailError={markThumbnailError}
           presentation={presentation}
           thumbnails={thumbnails}
@@ -408,8 +635,10 @@ export function CharacterManager({
           }
           warnings={warnings}
           onBackToDetail={() => onViewChange('detail')}
-          onBackToList={() => onViewChange('list')}
-          onCloseDrawer={onCloseDrawer}
+          onBackToList={() => {
+            if (leaveAssembly()) onViewChange('list');
+          }}
+          onCloseDrawer={requestCloseDrawer}
           onOpenExpressions={() => onViewChange('expression')}
           />
         ) : null}

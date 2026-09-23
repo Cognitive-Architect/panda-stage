@@ -200,7 +200,10 @@
           "public/character-empty-angry.png"
         ],
         "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
-        "verifierPatterns": ["scripts/verify-day19*"],
+        "verifierPatterns": [
+          "scripts/verify-day19*",
+          "scripts/verify-issue609-character-assembly.cjs"
+        ],
         "suites": ["character"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -405,7 +408,7 @@
       }
     ]
   },
-  "count": 65,
+  "count": 66,
   "gates": [
     {
       "id": "assets",
@@ -1174,6 +1177,18 @@
       "owner": "shot",
       "supersedes": null,
       "notes": "Bounded Issue #608 Electron proof for actual base Body + Face Shot thumbnails, rendered pixels, fingerprint refresh, and missing-part retry."
+    },
+    {
+      "id": "issue609-character-assembly",
+      "script": "verify:issue609-character-assembly",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #609 real Electron production-UI proof for composite Character creation/edit, Body-only raw placement, and one-layer Shot placement; synthetic fixture input and screenshot evidence are not human acceptance."
     },
     {
       "id": "timeline",

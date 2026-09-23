@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
+import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { AssetLibrary } from '../features/assets/AssetLibrary';
 import type { AssetWorkspaceView } from '../features/assets/AssetLibrary';
 import { CharacterManager } from '../features/characters/CharacterManager';
@@ -143,6 +144,11 @@ export function ResourceActivityDock({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [narrow]);
+
+  useEffect(() => {
+    if (activeActivity === 'characters' && drawerOpen) return;
+    characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
+  }, [activeActivity, drawerOpen]);
 
   const activeLabel =
     landscapePresentation && activeActivity === 'assets'

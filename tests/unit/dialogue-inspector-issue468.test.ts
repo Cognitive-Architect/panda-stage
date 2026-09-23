@@ -44,9 +44,13 @@ describe('Issue #468 Subtitle Properties alignment repair', () => {
   });
 
   it('uses the section rhythm and shared heading hierarchy without alignment hacks', () => {
-    const styles = readOrderedStylesheetSource();
-    const issue468 = styles.slice(styles.lastIndexOf('/* Issue #468:'));
-    const issue388 = styles.slice(styles.lastIndexOf('/* Issue #388:'));
+    const styles = readFileSync(
+      'src/renderer/styles/features/dialogue/properties/s14-12--timing-seconds-463.css',
+      'utf8',
+    ).replaceAll('\r\n', '\n');
+    const issue468 = styles.slice(styles.indexOf('/* Issue #468:'));
+    const orderedStyles = readOrderedStylesheetSource();
+    const issue388 = orderedStyles.slice(orderedStyles.lastIndexOf('/* Issue #388:'));
 
     expect(issue468).toContain('grid-template-columns: minmax(0, 1fr);');
     expect(issue468).toContain('grid-column: 1;');

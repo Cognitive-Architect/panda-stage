@@ -152,3 +152,5 @@
 @import './styles/features/characters/settings/s16-04--character-settings-polish-526.css';
 @import './styles/features/characters/expression/s16-06--expression-inline-final-528.css';
 @import './styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css';
+@import './styles/features/characters/assembly/s17-01--character-assembly-workbench.css';
+@import './styles/shell/layout/s17-02--character-assembly-surface.css';

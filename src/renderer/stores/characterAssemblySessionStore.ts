@@ -565,6 +565,14 @@ export class CharacterAssemblySessionStore {
     );
   }
 
+  getActiveAssemblySessionHandle(): CharacterAssemblySessionHandle | null {
+    if (!this.active || this.active.kind !== 'edit') return null;
+    return this.createAssemblyHandle(
+      this.active.sessionId,
+      this.active.generation,
+    );
+  }
+
   dispose(): void {
     this.unsubscribeEditor();
     this.clearActive();

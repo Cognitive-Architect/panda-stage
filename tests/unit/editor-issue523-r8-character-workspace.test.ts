@@ -169,4 +169,66 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(manager).toContain('characterStore.setMouthOpenAsset');
     expect(manager).toContain('characterStore.deleteCharacter');
   });
+
+  it('adds Assembly for composite Characters while keeping Expressions as the default workspace', () => {
+    const project = migrateProject(exampleProject);
+    const base = project.characters[0]!;
+    const body = project.assets.find(
+      (asset) => asset.kind === 'image',
+    )!;
+    const character = ProjectSchema.parse({
+      ...project,
+      characters: [
+        {
+          ...base,
+          mode: 'composite' as const,
+          bodyAssetId: body.id,
+          facePlacement: { offsetX: 12, offsetY: -6, scale: 1 },
+          mouthOpenAssetId: project.assets.find(
+            (asset) => asset.kind === 'image' && asset.id !== body.id,
+          )!.id,
+        },
+      ],
+    }).characters[0]!;
+    const imageAssets = project.assets.filter(
+      (asset): asset is ImageAsset => asset.kind === 'image',
+    );
+    const thumbnails = Object.fromEntries(
+      imageAssets.map((asset) => [asset.id, { status: 'loading' as const }]),
+    );
+    const markup = renderToStaticMarkup(
+      createElement(CharacterEditor, {
+        character,
+        imageAssets,
+        thumbnails,
+        warnings: [],
+        onRenameCharacter: noop,
+        onDeleteCharacter: noop,
+        onAddExpression: noop,
+        onRenameExpression: noop,
+        onSetExpressionAsset: noop,
+        onRemoveExpression: noop,
+        onSetDefaultExpression: noop,
+        onSetMouthOpenAsset: noop,
+        onSetDefaultTransform: noop,
+        onThumbnailError: noop,
+        onOpenAssembly: () => true,
+        onLeaveAssembly: () => true,
+        onSetAssemblyBodyAsset: noop,
+        onSetAssemblyMouthAsset: noop,
+        presentation: 'landscape',
+        view: 'detail',
+      }),
+    );
+
+    expect(markup).toContain('data-testid="character-workspace-assembly-tab"');
+    expect(markup.match(/data-workspace="(?:assembly|expressions|settings)"/gu)).toHaveLength(3);
+    expect(markup).toMatch(
+      /data-workspace="expressions"[^>]*id="character-workspace-expressions"/u,
+    );
+    expect(markup).toContain('data-testid="character-assembly-body-picker"');
+    expect(markup).toContain('data-testid="character-assembly-mouth-picker"');
+    expect(markup).not.toContain('character-detail-mouth-visual-picker');
+    expect(markup).toContain('aria-pressed="true"');
+  });
 });

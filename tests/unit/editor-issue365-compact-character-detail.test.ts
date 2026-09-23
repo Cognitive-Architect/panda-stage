@@ -135,7 +135,7 @@ describe('Issue #365 compact landscape Character Detail', () => {
     expect(editor).toContain('character-default-action-row');
     expect(editor).toContain('character-default-revert');
     expect(editor).toContain('onSetDefaultTransform(scale, flipX)');
-    expect(manager).toContain('onCloseDrawer={onCloseDrawer}');
+    expect(manager).toContain('onCloseDrawer={requestCloseDrawer}');
     expect(dock).toContain('collapseLandscapeCharacterDetailHeader');
     expect(dock).toContain('onCloseDrawer={() => setDrawerOpen(false)}');
     expect(styles).toContain('/* Issue #365:');

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   Character,
   CreateCharacterInput,
+  CreateCompositeCharacterInput,
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
@@ -19,6 +20,14 @@ export interface CharacterListProps {
   selectedCharacterId: string | null;
   disabled?: boolean;
   onCreate: (input: CreateCharacterInput) => void;
+  compositeDraft?: CreateCompositeCharacterInput | null;
+  onBeginCompositeCreate?: (
+    initialDraft: CreateCompositeCharacterInput,
+  ) => boolean;
+  onCompositeDraftChange?: (
+    draft: CreateCompositeCharacterInput,
+  ) => void;
+  onCancelCompositeCreate?: () => void;
   onSelect: (characterId: string) => void;
   mode?: CharacterListMode;
   onBack?: () => void;
@@ -37,6 +46,10 @@ export function CharacterList({
   selectedCharacterId,
   disabled = false,
   onCreate,
+  compositeDraft = null,
+  onBeginCompositeCreate = () => false,
+  onCompositeDraftChange = () => undefined,
+  onCancelCompositeCreate = () => undefined,
   onSelect,
   mode = 'legacy',
   onBack = () => undefined,
@@ -53,15 +66,38 @@ export function CharacterList({
     imageAssets[1]?.id ?? imageAssets[0]?.id ?? '',
   );
   const [mouthAssetId, setMouthAssetId] = useState('');
+  const [creationMode, setCreationMode] = useState<
+    'single-image' | 'composite'
+  >('single-image');
   const canCreate = useMemo(
     () =>
       !disabled &&
-      name.trim().length > 0 &&
-      Boolean(normalAssetId) &&
-      Boolean(angryAssetId) &&
-      normalAssetId !== angryAssetId,
-    [angryAssetId, disabled, name, normalAssetId],
+      (creationMode === 'composite'
+        ? Boolean(compositeDraft?.name.trim()) &&
+          Boolean(compositeDraft?.bodyAssetId) &&
+          Boolean(
+            compositeDraft?.expressions[
+              compositeDraft.defaultExpressionIndex ?? 0
+            ]?.assetId,
+          )
+        : name.trim().length > 0 &&
+          Boolean(normalAssetId) &&
+          Boolean(angryAssetId) &&
+          normalAssetId !== angryAssetId),
+    [
+      angryAssetId,
+      compositeDraft,
+      creationMode,
+      disabled,
+      name,
+      normalAssetId,
+    ],
   );
+  useEffect(() => {
+    if (mode === 'list' && creationMode === 'composite') {
+      setCreationMode('single-image');
+    }
+  }, [creationMode, mode]);
 
   return (
     <aside
@@ -190,10 +226,12 @@ export function CharacterList({
       {mode !== 'list' ? (
         <form
           className="character-create-form"
+          data-creation-mode={creationMode}
           data-testid="character-create-view"
           onSubmit={(event) => {
             event.preventDefault();
             if (!canCreate) return;
+            if (creationMode === 'composite') return;
             onCreate({
               name,
               expressions: [
@@ -211,72 +249,222 @@ export function CharacterList({
           {mode === 'legacy' ? (
             <strong>创建含普通 / 生气表情的角色</strong>
           ) : null}
+          <fieldset
+            aria-label="角色类型"
+            className="character-create-mode-switch"
+            disabled={disabled}
+            data-testid="character-create-mode-switch"
+          >
+            <label>
+              <input
+                checked={creationMode === 'single-image'}
+                name="character-create-mode"
+                onChange={() => {
+                  if (creationMode === 'composite') {
+                    onCancelCompositeCreate();
+                  }
+                  setCreationMode('single-image');
+                }}
+                type="radio"
+                value="single-image"
+              />
+              <span>整图角色</span>
+            </label>
+            <label>
+              <input
+                checked={creationMode === 'composite'}
+                name="character-create-mode"
+                onChange={() => {
+                  if (creationMode === 'composite') return;
+                  const initialFaceAssetId =
+                    imageAssets[1]?.id ?? imageAssets[0]?.id ?? '';
+                  const began = onBeginCompositeCreate({
+                    name,
+                    bodyAssetId: imageAssets[0]?.id ?? '',
+                    facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+                    expressions: initialFaceAssetId
+                      ? [{ name: '默认表情', assetId: initialFaceAssetId }]
+                      : [],
+                    defaultExpressionIndex: 0,
+                    ...(mouthAssetId ? { mouthOpenAssetId: mouthAssetId } : {}),
+                    defaultScale: 1,
+                    defaultFlipX: false,
+                  });
+                  if (began) setCreationMode('composite');
+                }}
+                type="radio"
+                value="composite"
+              />
+              <span>身体 + 脸</span>
+            </label>
+          </fieldset>
           <label>
             角色名称
             <input
               disabled={disabled}
               maxLength={200}
-              onChange={(event) => setName(event.target.value)}
-              value={name}
+              onChange={(event) => {
+                const nextName = event.target.value;
+                setName(nextName);
+                if (creationMode === 'composite' && compositeDraft) {
+                  onCompositeDraftChange({
+                    ...compositeDraft,
+                    name: nextName,
+                  });
+                }
+              }}
+              value={
+                creationMode === 'composite'
+                  ? compositeDraft?.name ?? name
+                  : name
+              }
             />
           </label>
-          <ImageAssetPicker
-            assets={imageAssets}
-            emptyState={{
-              description: '从项目图片中选择一张。',
-              label: '请选择图片',
-            }}
-            label="普通表情图片"
-            onChange={(assetId) => setNormalAssetId(assetId ?? '')}
-            onThumbnailError={onThumbnailError}
-            selectedAssetId={normalAssetId || null}
-            testId="character-create-normal-picker"
-            thumbnails={thumbnails}
-            disabled={disabled}
-          />
-          <ImageAssetPicker
-            assets={imageAssets}
-            emptyState={{
-              description: '不能与普通表情使用同一素材。',
-              label: '请选择不同图片',
-            }}
-            getDisabledReason={(asset) =>
-              asset.id === normalAssetId ? '已用于普通表情' : undefined
-            }
-            label="生气表情图片"
-            onChange={(assetId) => setAngryAssetId(assetId ?? '')}
-            onThumbnailError={onThumbnailError}
-            selectedAssetId={angryAssetId || null}
-            selectionConflict={
-              normalAssetId && angryAssetId === normalAssetId
-                ? '已用于普通表情，请选择另一张图片。'
-                : undefined
-            }
-            testId="character-create-angry-picker"
-            thumbnails={thumbnails}
-            disabled={disabled}
-          />
-          <ImageAssetPicker
-            assets={imageAssets}
-            emptyOption={{
-              description: '创建后也可以在角色详情中配置。',
-              label: '暂不配置',
-              optional: true,
-            }}
-            label="张嘴图（可选）"
-            onChange={(assetId) => setMouthAssetId(assetId ?? '')}
-            onThumbnailError={onThumbnailError}
-            selectedAssetId={mouthAssetId || null}
-            testId="character-create-mouth-picker"
-            thumbnails={thumbnails}
-            disabled={disabled}
-          />
-          <button disabled={!canCreate} type="submit">
-            创建角色
-          </button>
-          {mode === 'legacy' && imageAssets.length < 2 ? (
-            <small>至少需要两张不同的项目图片素材。</small>
-          ) : null}
+          {creationMode === 'composite' ? (
+            <>
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyState={{
+                  description: '从项目图片中选择身体。',
+                  label: '请选择图片',
+                }}
+                label="身体图片"
+                onChange={(assetId) => {
+                  if (!compositeDraft) return;
+                  onCompositeDraftChange({
+                    ...compositeDraft,
+                    bodyAssetId: assetId ?? '',
+                  });
+                }}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={compositeDraft?.bodyAssetId || null}
+                testId="character-create-body-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyState={{
+                  description: '从项目图片中选择默认脸部。',
+                  label: '请选择图片',
+                }}
+                label="默认表情图片"
+                onChange={(assetId) => {
+                  if (!compositeDraft) return;
+                  const expressionIndex =
+                    compositeDraft.defaultExpressionIndex ?? 0;
+                  const expressions = [...compositeDraft.expressions];
+                  const expression = expressions[expressionIndex];
+                  if (expression) {
+                    expressions[expressionIndex] = {
+                      ...expression,
+                      assetId: assetId ?? '',
+                    };
+                  } else if (assetId) {
+                    expressions.push({
+                      name: '默认表情',
+                      assetId,
+                    });
+                  }
+                  onCompositeDraftChange({
+                    ...compositeDraft,
+                    expressions,
+                    defaultExpressionIndex: 0,
+                  });
+                }}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={
+                  compositeDraft?.expressions[
+                    compositeDraft.defaultExpressionIndex ?? 0
+                  ]?.assetId ?? null
+                }
+                testId="character-create-face-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyOption={{
+                  description: '可以稍后再配置。',
+                  label: '暂不配置',
+                  optional: true,
+                }}
+                label="张嘴图（可选）"
+                onChange={(assetId) => {
+                  if (!compositeDraft) return;
+                  const next = { ...compositeDraft };
+                  if (assetId) next.mouthOpenAssetId = assetId;
+                  else delete next.mouthOpenAssetId;
+                  onCompositeDraftChange(next);
+                }}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={compositeDraft?.mouthOpenAssetId ?? null}
+                testId="character-create-mouth-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+            </>
+          ) : (
+            <>
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyState={{
+                  description: '从项目图片中选择一张。',
+                  label: '请选择图片',
+                }}
+                label="普通表情图片"
+                onChange={(assetId) => setNormalAssetId(assetId ?? '')}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={normalAssetId || null}
+                testId="character-create-normal-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyState={{
+                  description: '不能与普通表情使用同一素材。',
+                  label: '请选择不同图片',
+                }}
+                getDisabledReason={(asset) =>
+                  asset.id === normalAssetId ? '已用于普通表情' : undefined
+                }
+                label="生气表情图片"
+                onChange={(assetId) => setAngryAssetId(assetId ?? '')}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={angryAssetId || null}
+                selectionConflict={
+                  normalAssetId && angryAssetId === normalAssetId
+                    ? '已用于普通表情，请选择另一张图片。'
+                    : undefined
+                }
+                testId="character-create-angry-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyOption={{
+                  description: '创建后也可以在角色详情中配置。',
+                  label: '暂不配置',
+                  optional: true,
+                }}
+                label="张嘴图（可选）"
+                onChange={(assetId) => setMouthAssetId(assetId ?? '')}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={mouthAssetId || null}
+                testId="character-create-mouth-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <button disabled={!canCreate} type="submit">
+                创建角色
+              </button>
+              {mode === 'legacy' && imageAssets.length < 2 ? (
+                <small>至少需要两张不同的项目图片素材。</small>
+              ) : null}
+            </>
+          )}
         </form>
       ) : null}
     </aside>

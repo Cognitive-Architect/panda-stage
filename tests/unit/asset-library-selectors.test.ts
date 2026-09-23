@@ -75,6 +75,44 @@ describe('asset library selectors', () => {
     });
   });
 
+  it('classifies a composite Body as Character-related without guessing Character identity', () => {
+    const project = migrateProject(exampleProject);
+    const character = project.characters[0]!;
+    const bodyAsset = project.assets.find(
+      (asset) =>
+        asset.kind === 'image' &&
+        !character.expressions.some(
+          (expression) => expression.assetId === asset.id,
+        ),
+    )!;
+    const withBody = ProjectSchema.parse({
+      ...project,
+      characters: [
+        {
+          ...character,
+          mode: 'composite' as const,
+          bodyAssetId: bodyAsset.id,
+          facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+        },
+      ],
+    });
+
+    expect(assetCategoryCounts(withBody).character).toBeGreaterThan(2);
+    const bodyEntry = selectAssetLibraryEntries(withBody, 'character').find(
+      (entry) => entry.asset.id === bodyAsset.id,
+    );
+    expect(bodyEntry).toMatchObject({
+      contextLabel: '身体素材 · 作为普通图片放置',
+      dropPayload: {
+        version: 2,
+        type: 'asset-image',
+        assetId: bodyAsset.id,
+      },
+    });
+    expect(bodyEntry?.dropPayload).not.toHaveProperty('characterId');
+    expect(bodyEntry?.dropPayload).not.toHaveProperty('expressionId');
+  });
+
   it('emits one explicit identity entry per character expression even when assets are shared', () => {
     const project = migrateProject(exampleProject);
     const characterA = project.characters[0]!;

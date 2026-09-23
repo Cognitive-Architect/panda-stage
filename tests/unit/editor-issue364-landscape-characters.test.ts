@@ -98,7 +98,7 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     expect(markup).toContain('character-workspace-switcher');
     expect(markup.match(/data-workspace="(?:expressions|settings)"/gu)).toHaveLength(2);
     expect(markup).toContain('表情');
-    expect(markup).toContain('角色设置');
+    expect(markup).toContain('设置');
     expect(markup).toContain('expression-card-preview');
     expect(markup).toContain('默认 ✓');
     expect(markup).toContain('默认大小与方向');
@@ -136,7 +136,7 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     expect(markup).not.toContain(
       '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
     );
-    expect(manager).toContain("onBackToList={() => onViewChange('list')}");
+    expect(manager).toContain("if (leaveAssembly()) onViewChange('list');");
     expect(manager).toContain('presentation={presentation}');
     expect(manager).toContain('thumbnails={thumbnails}');
     expect(manager).toContain('characterStore.setDefaultTransform');
