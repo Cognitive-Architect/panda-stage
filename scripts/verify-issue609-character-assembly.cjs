@@ -34,6 +34,10 @@ const IDS = Object.freeze({
   face: 'a0609000-0000-4000-8000-000000000004',
   mouth: 'a0609000-0000-4000-8000-000000000005',
   shot: 'a0609000-0000-4000-8000-000000000006',
+  legacyCharacter: 'a0609000-0000-4000-8000-000000000007',
+  legacyNormalExpression: 'a0609000-0000-4000-8000-000000000008',
+  legacyAngryExpression: 'a0609000-0000-4000-8000-000000000009',
+  legacyVoiceProfile: 'a0609000-0000-4000-8000-00000000000a',
 });
 
 const COLORS = new Map([
@@ -163,6 +167,28 @@ function imageAsset(id, name, width, height) {
 function createFixture() {
   const base = migrateProject(exampleProject);
   const shot = base.shots[0];
+  const legacyCharacter = {
+    id: IDS.legacyCharacter,
+    mode: 'single-image',
+    name: 'Existing Single-image Panda',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.legacyVoiceProfile,
+    expressions: [
+      {
+        id: IDS.legacyNormalExpression,
+        name: 'normal',
+        assetId: IDS.face,
+      },
+      {
+        id: IDS.legacyAngryExpression,
+        name: 'angry',
+        assetId: IDS.mouth,
+      },
+    ],
+    defaultExpressionId: IDS.legacyNormalExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+  };
   return ProjectSchema.parse({
     ...base,
     schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -174,8 +200,17 @@ function createFixture() {
       imageAsset(IDS.face, 'Assembly Default Face', 320, 280),
       imageAsset(IDS.mouth, 'Assembly Mouth', 320, 280),
     ],
-    characters: [],
-    voiceProfiles: [],
+    characters: [legacyCharacter],
+    voiceProfiles: [
+      {
+        id: IDS.legacyVoiceProfile,
+        name: 'Existing Single-image Panda voice',
+        characterId: IDS.legacyCharacter,
+        locale: 'zh-CN',
+        rate: 1,
+        pitch: 0,
+      },
+    ],
     shots: [
       {
         ...shot,
@@ -597,6 +632,42 @@ async function run() {
     windowRef.webContents.focus();
     await openProject(windowRef);
 
+    await click(
+      windowRef,
+      `[data-testid="character-list-view"] [data-character-id="${IDS.legacyCharacter}"]`,
+      'Existing single-image Character',
+    );
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.legacyCharacter)}`,
+      'The existing single-image Character did not open in Character detail.',
+    );
+    const existingSingleImage = await windowRef.webContents.executeJavaScript(`(() => {
+      const detail = document.querySelector('[data-testid="character-detail-view"]');
+      const tabs = [...document.querySelectorAll('[data-testid="character-workspace-switcher"] button')].map((button) => ({
+        label: button.textContent.trim(),
+        pressed: button.getAttribute('aria-pressed'),
+      }));
+      return {
+        characterId: detail?.dataset.characterEditorId ?? '',
+        assemblyTab: Boolean(document.querySelector('[data-testid="character-workspace-assembly-tab"]')),
+        expressionCount: document.querySelectorAll('[data-testid="character-expression-workspace"] [data-expression-id]').length,
+        tabs,
+      };
+    })()`);
+    assert(existingSingleImage.characterId === IDS.legacyCharacter, 'The existing single-image Character identity changed.');
+    assert(!existingSingleImage.assemblyTab, 'An existing single-image Character was incorrectly promoted to composite assembly.');
+    assert(existingSingleImage.expressionCount === 2, 'The existing single-image Character lost its Expressions.');
+    assert(existingSingleImage.tabs.length === 2 && existingSingleImage.tabs[0].pressed === 'true', 'The existing single-image Character no longer opens in its legacy Expressions workspace.');
+    evidence.existingSingleImageCharacter = existingSingleImage;
+    screenshots.push(await capture(windowRef, 'existing-single-image-character.png'));
+    await click(windowRef, '[data-testid="character-detail-back"]', 'Return from existing single-image Character');
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="character-list-view"]')`,
+      'The existing single-image Character did not return to the Character list.',
+    );
+
     evidence.preflightProjectRevision = await windowRef.webContents.executeJavaScript(
       `document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? ''`,
     );
@@ -737,13 +808,90 @@ async function run() {
     evidence.formalShotPlacement = { drag: formalDrop, canvas: canvasState };
     screenshots.push(await capture(windowRef, 'shot-single-character-layer.png'));
 
+    await click(windowRef, '[data-testid="resource-activity-rail-characters"]', 'Characters activity for legacy creation');
+    await windowRef.webContents.executeJavaScript(`(() => {
+      document.querySelector('[data-testid="character-detail-back"]')?.click();
+    })()`);
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="character-list-view"]')`,
+      'Character list did not reopen for the legacy single-image creation check.',
+    );
+    await openCreate(windowRef);
+    await waitForDom(
+      windowRef,
+      `document.querySelector('form.character-create-form')?.dataset.creationMode === 'single-image'`,
+      'The existing Create Character entry did not default to its single-image workflow.',
+    );
+    await setCharacterName(windowRef, 'S07 Legacy Panda');
+    await chooseImage(windowRef, 'character-create-normal-picker', IDS.face);
+    await chooseImage(windowRef, 'character-create-angry-picker', IDS.mouth);
+    const legacyDraft = await windowRef.webContents.executeJavaScript(`(() => {
+      const form = document.querySelector('form.character-create-form');
+      return {
+        mode: form?.dataset.creationMode ?? '',
+        normalAssetId: document.querySelector('[data-testid="character-create-normal-picker"]')?.dataset.selectedAssetId ?? '',
+        angryAssetId: document.querySelector('[data-testid="character-create-angry-picker"]')?.dataset.selectedAssetId ?? '',
+        mouthAssetId: document.querySelector('[data-testid="character-create-mouth-picker"]')?.dataset.selectedAssetId ?? '',
+        createEnabled: !form?.querySelector('button[type="submit"]')?.disabled,
+        revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+        undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      };
+    })()`);
+    assert(legacyDraft.mode === 'single-image', 'The legacy creator changed to composite mode without an explicit choice.');
+    assert(legacyDraft.normalAssetId === IDS.face && legacyDraft.angryAssetId === IDS.mouth, 'The legacy creator did not retain its two explicitly selected images.');
+    assert(legacyDraft.normalAssetId !== legacyDraft.angryAssetId, 'The legacy creator no longer enforces distinct Normal and Angry images.');
+    assert(!legacyDraft.mouthAssetId, 'The legacy creator unexpectedly required or selected an optional Mouth image.');
+    assert(legacyDraft.createEnabled, 'The valid legacy single-image creation path could not be submitted.');
+    assert(legacyDraft.revision === '5' && legacyDraft.undoCount === '5', 'Preparing a legacy Character wrote to Project or History before Create.');
+    await click(windowRef, '[data-testid="character-create-view"] button[type="submit"]', 'Create legacy single-image Character');
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="character-detail-view"]') && document.querySelector('[data-testid="character-detail-view"]').dataset.characterEditorId !== ${JSON.stringify(IDS.legacyCharacter)}`,
+      'The legacy single-image Character did not open in its existing Character detail workflow.',
+    );
+    const legacyCreated = await windowRef.webContents.executeJavaScript(`(() => {
+      const detail = document.querySelector('[data-testid="character-detail-view"]');
+      const tabs = [...document.querySelectorAll('[data-testid="character-workspace-switcher"] button')].map((button) => ({
+        label: button.textContent.trim(),
+        pressed: button.getAttribute('aria-pressed'),
+      }));
+      return {
+        characterId: detail?.dataset.characterEditorId ?? '',
+        assemblyTab: Boolean(document.querySelector('[data-testid="character-workspace-assembly-tab"]')),
+        expressionCount: document.querySelectorAll('[data-testid="character-expression-workspace"] [data-expression-id]').length,
+        tabs,
+        revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+        undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      };
+    })()`);
+    assert(legacyCreated.characterId && legacyCreated.characterId !== IDS.legacyCharacter, 'The legacy creator did not create a new Character.');
+    assert(!legacyCreated.assemblyTab && legacyCreated.expressionCount === 2, 'The newly created single-image Character did not use the legacy Expression detail.');
+    assert(legacyCreated.tabs.length === 2 && legacyCreated.tabs[0].pressed === 'true', 'The single-image Character opened in the wrong Character workspace.');
+    assert(legacyCreated.revision === '6' && legacyCreated.undoCount === '6', 'Legacy Character Create did not produce exactly one Project/History operation.');
+    evidence.legacySingleImageCreate = { draft: legacyDraft, created: legacyCreated };
+    screenshots.push(await capture(windowRef, 'legacy-single-image-created.png'));
+
     await click(windowRef, '[data-testid="quick-action-save"]', 'Save Project');
     await waitForDom(windowRef, `document.querySelector('[data-testid="quick-action-save"]')?.dataset.saveState === 'saved'`, 'Project Save did not complete through the production save action.');
     assert(savedProject, 'Project Save boundary did not receive a Project snapshot.');
-    assert(savedProject.characters.length === 1, 'Saved Project did not contain exactly one formal Character.');
-    assert(savedProject.characters[0].mode === 'composite', 'Saved Character was not composite.');
-    assert(savedProject.characters[0].bodyAssetId === IDS.bodyAlt, 'Applied Body replacement was not persisted.');
-    assert(savedProject.characters[0].mouthOpenAssetId === IDS.mouth, 'Optional Mouth was not persisted.');
+    const savedComposite = savedProject.characters.find(
+      (character) => character.id === created.characterId,
+    );
+    const savedExistingSingleImage = savedProject.characters.find(
+      (character) => character.id === IDS.legacyCharacter,
+    );
+    const savedCreatedSingleImage = savedProject.characters.find(
+      (character) => character.id === legacyCreated.characterId,
+    );
+    assert(savedProject.characters.length === 3, 'Saved Project did not preserve both single-image Characters and the new composite Character.');
+    assert(savedComposite?.mode === 'composite', 'Saved Character was not composite.');
+    assert(savedComposite.bodyAssetId === IDS.bodyAlt, 'Applied Body replacement was not persisted.');
+    assert(savedComposite.mouthOpenAssetId === IDS.mouth, 'Optional Mouth was not persisted.');
+    assert(savedExistingSingleImage?.mode === 'single-image', 'The pre-existing single-image Character was migrated or changed.');
+    assert(savedExistingSingleImage.expressions.map((expression) => expression.id).join(',') === `${IDS.legacyNormalExpression},${IDS.legacyAngryExpression}`, 'The pre-existing single-image Character Expression identities changed.');
+    assert(savedCreatedSingleImage?.mode === 'single-image', 'The legacy creation path did not persist a single-image Character.');
+    assert(savedCreatedSingleImage.expressions.map((expression) => expression.assetId).join(',') === `${IDS.face},${IDS.mouth}`, 'The legacy creator did not persist its Normal and Angry images.');
     assert(savedProject.shots[0].layers.length === 1, 'Saved Shot did not contain exactly one logical Layer.');
     assert(savedProject.shots[0].layers[0].source.kind === 'character', 'Saved Shot Layer was not a formal Character Layer.');
     assert(savedProject.shots[0].layers[0].source.characterId === created.characterId, 'Saved Shot Layer points at the wrong Character.');
@@ -765,11 +913,13 @@ async function run() {
       },
       evidence,
       savedProject: {
-        revision: canvasState.revision,
-        characterId: savedProject.characters[0].id,
-        characterMode: savedProject.characters[0].mode,
-        expressionCount: savedProject.characters[0].expressions.length,
-        mouthAssetId: savedProject.characters[0].mouthOpenAssetId,
+        shotPlacementRevision: canvasState.revision,
+        characterId: savedComposite.id,
+        characterMode: savedComposite.mode,
+        expressionCount: savedComposite.expressions.length,
+        mouthAssetId: savedComposite.mouthOpenAssetId,
+        existingSingleImageCharacterId: savedExistingSingleImage.id,
+        createdSingleImageCharacterId: savedCreatedSingleImage.id,
         shotLayerCount: savedProject.shots[0].layers.length,
         shotLayerSource: savedProject.shots[0].layers[0].source,
       },

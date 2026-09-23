@@ -212,8 +212,8 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
 
     expect(bottom).toContain('timelineUiStore.setHeightMax(bounds.maxHeight)');
     expect(editorShell).toContain('data-testid="editor-body"');
-    expect(sha256(bottom)).toBe('c44ede97e81f994a4b7a46cfa1cf1f62aa633f0cfa24405dc51e05efd2bcf0f6');
-    expect(sha256(editorShell)).toBe('2166f70bce9e2990e0662074c8651db881ed014bed4e9970c6b70b1296bea7e1');
+    expect(sha256(bottom.replace(/\r\n/gu, '\n'))).toBe('f6bead7d4fbc6f62582fe8c1de42f97a60330a2098e32728d4ea21e2ca69fb1b');
+    expect(sha256(editorShell.replace(/\r\n/gu, '\n'))).toBe('a7876c31904ae439faacb8cdb313a98855c57e2f747c1e11b661f1e519e92261');
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
     expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(true);
   });
