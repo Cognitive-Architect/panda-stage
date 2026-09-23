@@ -102,6 +102,36 @@ async function capture(window, fileName) {
   return path.relative(runRoot, target).replaceAll('\\', '/');
 }
 
+async function waitForCharacterDetailScreenshot(window, label) {
+  await waitForDom(
+    window,
+    `(() => {
+      const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+      const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
+      const detail = document.querySelector('[data-testid="character-detail-view"]');
+      const workspace = detail?.querySelector('[data-testid="character-expression-workspace"]');
+      const thumbnails = [...(workspace?.querySelectorAll('.character-expression-thumbnail') ?? [])];
+      const drawerBounds = drawer?.getBoundingClientRect();
+      const drawerStyle = drawer ? getComputedStyle(drawer) : undefined;
+      return dock?.dataset.activeActivity === 'characters'
+        && dock.dataset.resourceDrawerOpen === 'true'
+        && drawerBounds?.right > 240
+        && drawerStyle?.visibility === 'visible'
+        && Number(drawerStyle.opacity) >= 0.99
+        && detail?.getBoundingClientRect().width > 0
+        && thumbnails.length === 2
+        && thumbnails.every((thumbnail) => {
+          const image = thumbnail.querySelector('img');
+          return thumbnail.dataset.thumbnailStatus === 'ready'
+            && image?.complete
+            && image.naturalWidth > 0;
+        });
+    })()`,
+    `${label} screenshot state did not become fully visible with loaded Expression thumbnails.`,
+  );
+  await wait(200);
+}
+
 function hashFor(id) {
   return `${id.replace(/-/gu, '')}00000000000000000000000000000000`.slice(0, 64);
 }
@@ -397,12 +427,31 @@ async function openProject(window) {
     `Number(document.querySelector('[data-testid="project-canvas-viewport"]')?.dataset.displayScale) > 0`,
     'Initial Canvas viewport did not receive its measured display scale.',
   );
-  await click(window, '[data-testid="resource-activity-rail-characters"]', 'Characters activity');
+  const characterDrawerIsOpen = await window.webContents.executeJavaScript(`(() => {
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    return dock?.dataset.activeActivity === 'characters'
+      && dock.dataset.resourceDrawerOpen === 'true';
+  })()`);
+  if (!characterDrawerIsOpen) {
+    await click(window, '[data-testid="resource-activity-rail-characters"]', 'Characters activity');
+  }
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity === 'characters' && document.querySelector('[data-testid="character-list-view"]')`,
-    'Character list did not open in the production resource drawer.',
+    `(() => {
+      const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+      const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
+      const bounds = drawer?.getBoundingClientRect();
+      const style = drawer ? getComputedStyle(drawer) : undefined;
+      return dock?.dataset.activeActivity === 'characters'
+        && dock.dataset.resourceDrawerOpen === 'true'
+        && document.querySelector('[data-testid="character-list-view"]')
+        && bounds?.right > 240
+        && style?.visibility === 'visible'
+        && Number(style.opacity) >= 0.99;
+    })()`,
+    'Character list did not become visible in the production resource drawer.',
   );
+  await wait(200);
 }
 
 async function openCreate(window) {
@@ -674,6 +723,7 @@ async function run() {
     assert(!existingSingleImage.assemblyTab, 'An existing single-image Character was incorrectly promoted to composite assembly.');
     assert(existingSingleImage.expressionCount === 2, 'The existing single-image Character lost its Expressions.');
     assert(existingSingleImage.tabs.length === 2 && existingSingleImage.tabs[0].pressed === 'true', 'The existing single-image Character no longer opens in its legacy Expressions workspace.');
+    await waitForCharacterDetailScreenshot(windowRef, 'Existing single-image Character');
     evidence.existingSingleImageCharacter = existingSingleImage;
     screenshots.push(await capture(windowRef, 'existing-single-image-character.png'));
     await click(windowRef, '[data-testid="character-detail-back"]', 'Return from existing single-image Character');
@@ -902,6 +952,7 @@ async function run() {
       draft: legacyDraft,
       created: legacyCreated,
     };
+    await waitForCharacterDetailScreenshot(windowRef, 'New legacy single-image Character');
     screenshots.push(await capture(windowRef, 'legacy-single-image-created.png'));
 
     await click(windowRef, '[data-testid="quick-action-save"]', 'Save Project');
