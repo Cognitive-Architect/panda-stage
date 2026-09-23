@@ -827,6 +827,10 @@ async function run() {
       `document.querySelector('[data-testid="character-list-view"]')`,
       'Character list did not reopen for the legacy single-image creation check.',
     );
+    const legacyCreationBase = await windowRef.webContents.executeJavaScript(`({
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+    })`);
     await openCreate(windowRef);
     await waitForDom(
       windowRef,
@@ -853,7 +857,8 @@ async function run() {
     assert(legacyDraft.normalAssetId !== legacyDraft.angryAssetId, 'The legacy creator no longer enforces distinct Normal and Angry images.');
     assert(!legacyDraft.mouthAssetId, 'The legacy creator unexpectedly required or selected an optional Mouth image.');
     assert(legacyDraft.createEnabled, 'The valid legacy single-image creation path could not be submitted.');
-    assert(legacyDraft.revision === '5' && legacyDraft.undoCount === '5', 'Preparing a legacy Character wrote to Project or History before Create.');
+    assert(legacyDraft.revision === legacyCreationBase.revision, 'Preparing a legacy Character wrote to the Project before Create.');
+    assert(legacyDraft.undoCount === legacyCreationBase.undoCount, 'Preparing a legacy Character created a History entry before Create.');
     await click(windowRef, '[data-testid="character-create-view"] button[type="submit"]', 'Create legacy single-image Character');
     await waitForDom(
       windowRef,
@@ -878,8 +883,13 @@ async function run() {
     assert(legacyCreated.characterId && legacyCreated.characterId !== IDS.legacyCharacter, 'The legacy creator did not create a new Character.');
     assert(!legacyCreated.assemblyTab && legacyCreated.expressionCount === 2, 'The newly created single-image Character did not use the legacy Expression detail.');
     assert(legacyCreated.tabs.length === 2 && legacyCreated.tabs[0].pressed === 'true', 'The single-image Character opened in the wrong Character workspace.');
-    assert(legacyCreated.revision === '6' && legacyCreated.undoCount === '6', 'Legacy Character Create did not produce exactly one Project/History operation.');
-    evidence.legacySingleImageCreate = { draft: legacyDraft, created: legacyCreated };
+    assert(Number(legacyCreated.revision) === Number(legacyCreationBase.revision) + 1, 'Legacy Character Create did not produce exactly one Project operation.');
+    assert(Number(legacyCreated.undoCount) === Number(legacyCreationBase.undoCount) + 1, 'Legacy Character Create did not produce exactly one History operation.');
+    evidence.legacySingleImageCreate = {
+      beforeCreate: legacyCreationBase,
+      draft: legacyDraft,
+      created: legacyCreated,
+    };
     screenshots.push(await capture(windowRef, 'legacy-single-image-created.png'));
 
     await click(windowRef, '[data-testid="quick-action-save"]', 'Save Project');
