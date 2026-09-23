@@ -488,14 +488,17 @@ async function dragFaceWithNativeInput(window) {
   })()`);
 }
 
-async function dispatchAssetDrop(window, sourceSelector) {
+async function dispatchAssetDrop(window, sourceSelector, sourceContext) {
   await waitForDom(
     window,
     `Number(document.querySelector('[data-testid="project-canvas-viewport"]')?.dataset.displayScale) > 0`,
     'Canvas viewport did not recover a valid scale after leaving Assembly.',
   );
   const setup = await window.webContents.executeJavaScript(`(() => {
-    const source = document.querySelector(${JSON.stringify(sourceSelector)});
+    const candidates = [...document.querySelectorAll(${JSON.stringify(sourceSelector)})];
+    const source = ${JSON.stringify(sourceContext)}
+      ? candidates.find((candidate) => candidate.querySelector('.asset-card-context')?.textContent.includes(${JSON.stringify(sourceContext)}))
+      : candidates[0];
     const target = document.querySelector('[data-testid="project-canvas-viewport"]');
     const stage = target?.querySelector('[data-testid="canvas-logical-stage"]');
     if (!source || !target || !stage) throw new Error('Asset card or Canvas drop target is missing.');
@@ -791,7 +794,11 @@ async function run() {
     await click(windowRef, '[data-testid="quick-action-history"] button[aria-label="撤销"]', 'Undo raw Body image placement');
     await waitForDom(windowRef, `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 0`, 'Undo did not remove the raw Body Image Layer.');
     const expressionCardSelector = `.asset-card[data-asset-id="${IDS.face}"]`;
-    const formalDrop = await dispatchAssetDrop(windowRef, expressionCardSelector);
+    const formalDrop = await dispatchAssetDrop(
+      windowRef,
+      expressionCardSelector,
+      'S07 Composite Panda',
+    );
     await waitForDom(windowRef, `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 1 && JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]').dataset.layerJson)[0].source.kind === 'character'`, 'Formal Expression drop did not place a Character Layer.');
     await waitForDom(windowRef, `(() => {
       const stage = document.querySelector('[data-testid="project-canvas-stage"]');
@@ -803,6 +810,9 @@ async function run() {
     assert(canvasState.layers.length === 1, 'Formal Character placement produced more than one logical Shot Layer.');
     assert(canvasState.layers[0].source.characterId === created.characterId, 'Formal Shot Layer lost its explicit Character identity.');
     assert(canvasState.layers[0].source.expressionId, 'Formal Shot Layer lost its explicit Expression identity.');
+    const formalPayload = JSON.parse(formalDrop.afterDrop.payload);
+    assert(formalPayload.type === 'character-expression' && formalPayload.characterId === created.characterId, 'The shared Face asset drop did not carry the explicitly selected composite Character identity.');
+    assert(canvasState.layers[0].source.expressionId === formalPayload.expressionId, 'Formal Shot Layer did not retain the explicitly selected Expression identity.');
     assert(canvasState.renderedAssetIds.includes(IDS.bodyAlt) && canvasState.renderedAssetIds.includes(IDS.face), 'Canvas did not render both composite visual parts.');
     assert(canvasState.incompleteVisualLayerIds.length === 0 && !canvasState.failureWarning, 'Canvas displayed an incomplete composite Character.');
     evidence.formalShotPlacement = { drag: formalDrop, canvas: canvasState };
