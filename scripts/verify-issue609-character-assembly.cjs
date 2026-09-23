@@ -810,7 +810,7 @@ async function run() {
     assert(canvasState.layers.length === 1, 'Formal Character placement produced more than one logical Shot Layer.');
     assert(canvasState.layers[0].source.characterId === created.characterId, 'Formal Shot Layer lost its explicit Character identity.');
     assert(canvasState.layers[0].source.expressionId, 'Formal Shot Layer lost its explicit Expression identity.');
-    const formalPayload = JSON.parse(formalDrop.afterDrop.payload);
+    const formalPayload = JSON.parse(formalDrop.afterDrop.dragPayload);
     assert(formalPayload.type === 'character-expression' && formalPayload.characterId === created.characterId, 'The shared Face asset drop did not carry the explicitly selected composite Character identity.');
     assert(canvasState.layers[0].source.expressionId === formalPayload.expressionId, 'Formal Shot Layer did not retain the explicitly selected Expression identity.');
     assert(canvasState.renderedAssetIds.includes(IDS.bodyAlt) && canvasState.renderedAssetIds.includes(IDS.face), 'Canvas did not render both composite visual parts.');
