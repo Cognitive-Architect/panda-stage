@@ -533,6 +533,29 @@ async function dragFaceWithNativeInput(window) {
         bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
       };
     });
+    const preview = document.querySelector('[data-testid="character-assembly-preview"]');
+    const stage = preview?.querySelector('.character-assembly-preview-stage');
+    const previewBounds = preview?.getBoundingClientRect();
+    const stageBounds = stage?.getBoundingClientRect();
+    const previewParts = [...document.querySelectorAll('.character-assembly-part')].map((part) => {
+      const bounds = part.getBoundingClientRect();
+      const style = getComputedStyle(part);
+      return {
+        assetId: part.dataset.assetId ?? '',
+        className: part.className,
+        complete: part.complete,
+        naturalWidth: part.naturalWidth,
+        naturalHeight: part.naturalHeight,
+        bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        style: {
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          zIndex: style.zIndex,
+          objectFit: style.objectFit,
+        },
+      };
+    });
     return {
       bodyAssetId: workbench.dataset.bodyAssetId,
       faceAssetId: workbench.dataset.previewFaceAssetId,
@@ -546,6 +569,13 @@ async function dragFaceWithNativeInput(window) {
       canvasOwners: document.querySelectorAll('[data-workspace-owner="canvas"]').length,
       canvasBackgroundWarnings: backgroundWarnings,
       canvasOwnerVisibility: getComputedStyle(document.querySelector('.character-assembly-canvas-owner')).visibility,
+      previewViewportBounds: previewBounds
+        ? { x: previewBounds.x, y: previewBounds.y, width: previewBounds.width, height: previewBounds.height }
+        : null,
+      previewStageBounds: stageBounds
+        ? { x: stageBounds.x, y: stageBounds.y, width: stageBounds.width, height: stageBounds.height }
+        : null,
+      previewParts,
     };
   })()`);
 }
@@ -766,6 +796,10 @@ async function run() {
     assert(dragEvidence.timelineInactive === 'true', 'The Timeline remained active during Assembly.');
     assert(dragEvidence.canvasOwners === 1, 'Assembly introduced a second Canvas owner.');
     evidence.createAssembly = dragEvidence;
+    await windowRef.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    await wait(250);
     screenshots.push(await capture(windowRef, 'create-composite-assembly.png'));
     await click(windowRef, '[data-testid="character-assembly-create"]', 'Create composite Character');
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-detail-view"]') && document.querySelector('[data-testid="character-assembly-workbench"]') === null`, 'Create did not commit once and open Character detail.');
