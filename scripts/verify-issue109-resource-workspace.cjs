@@ -71,6 +71,15 @@ async function click(window, selector) {
   await delay(160);
 }
 
+async function backFromCharacterCreate(window) {
+  const selector = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="resource-primary-action"][aria-label="返回角色列表"]')
+      ? '[data-testid="resource-primary-action"]'
+      : '[data-testid="character-create-back"]'`,
+  );
+  await click(window, selector);
+}
+
 async function capture(window, fileName) {
   await delay(220);
   const image = (await window.webContents.capturePage()).toPNG();
@@ -617,7 +626,7 @@ async function run() {
     result.screenshots.characterCreate1024 = path.join(evidenceRoot, 'issue109-character-create-1024.png');
     await capture(window, 'issue109-character-create-1024.png');
 
-    await click(window, '[data-testid="character-create-back"]');
+    await backFromCharacterCreate(window);
     await click(window, '.character-list-items button');
     await waitForDom(window, `document.querySelector('[data-testid="character-detail-view"]')`, 'The character detail subview did not open.');
     sample = await measure(window);
