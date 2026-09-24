@@ -60,10 +60,12 @@ function fixture({
 function detailMarkup({
   composite = false,
   withMouth = false,
+  withAssemblyDraft = false,
   view = 'detail',
 }: {
   composite?: boolean;
   withMouth?: boolean;
+  withAssemblyDraft?: boolean;
   view?: 'detail' | 'expression';
 } = {}): string {
   const { character, imageAssets, thumbnails } = fixture({ composite, withMouth });
@@ -81,6 +83,18 @@ function detailMarkup({
       onRemoveExpression: noop,
       onSetDefaultExpression: noop,
       onSetMouthOpenAsset: noop,
+      assemblyDraft:
+        withAssemblyDraft && character.mode === 'composite'
+          ? {
+              bodyAssetId: character.bodyAssetId,
+              facePlacement: character.facePlacement,
+              expressionAssets: character.expressions.map((expression) => ({
+                expressionId: expression.id,
+                assetId: expression.assetId,
+              })),
+              mouthOpenAssetId: character.mouthOpenAssetId ?? null,
+            }
+          : null,
       onSetAssemblyBodyAsset: noop,
       onSetAssemblyMouthAsset: noop,
       onOpenAssembly: () => true,
@@ -181,5 +195,59 @@ describe('Issue #614 Character Detail polish', () => {
       'grid-template-columns: 40px minmax(52px, 1fr) 40px;',
     );
     expect(styles).toContain('column-gap: 10px;');
+  });
+});
+
+describe('Issue #616 Character Detail assembly visual hierarchy', () => {
+  it('keeps navigation and identity light while preserving their actions and touch targets', () => {
+    const markup = detailMarkup({ composite: true, withAssemblyDraft: true });
+    const styles = readOrderedStylesheetSource();
+
+    expect(markup).toContain('← 角色列表');
+    expect(markup).toContain('aria-label="关闭角色抽屉"');
+    expect(markup).toContain('aria-label="编辑角色名称"');
+    expect(markup).toContain('data-testid="character-identity-overflow"');
+    expect(markup).toContain('data-testid="character-workspace-switcher"');
+    expect(markup).toContain(
+      'aria-controls="character-workspace-assembly" aria-pressed="true"',
+    );
+    expect(styles).toContain('grid-template-columns: 56px minmax(0, 1fr);');
+    expect(styles).toContain('width: 44px;\n  min-width: 44px;\n  min-height: 44px;');
+    expect(styles).toContain(".character-workspace-switcher[data-workspace-count='3']");
+    expect(styles).toContain('min-height: 40px;');
+  });
+
+  it('leaves one asset surface per group and removes redundant Mouth empty-state copy', () => {
+    const markup = detailMarkup({ composite: true });
+    const mouthStart = markup.indexOf('<section aria-label="张嘴脸"');
+    const mouthEnd = markup.indexOf('</section>', mouthStart);
+    const mouthPicker = markup.slice(mouthStart, mouthEnd + '</section>'.length);
+    const styles = readOrderedStylesheetSource();
+    const rowRule = styles.match(
+      /\.character-assembly-drawer-panel \.image-asset-picker-selected-row\s*\{([^}]*)\}/u,
+    )?.[1] ?? '';
+
+    expect(mouthPicker).toContain('暂不配置');
+    expect(mouthPicker).toContain('>选择</span>');
+    expect(mouthPicker).not.toContain('可选');
+    expect(mouthPicker).not.toContain('可以稍后再配置。');
+    expect(rowRule).toContain('grid-template-columns: minmax(0, 1fr) max-content;');
+    expect(rowRule).not.toMatch(/\b(?:border|background)\s*:/u);
+    expect(styles).toContain('grid-template-columns: 68px minmax(0, 1fr) auto;');
+    expect(styles).toContain('gap: 18px;');
+  });
+
+  it('keeps the configured Mouth overflow clear action and assembly navigation guard', () => {
+    const markup = detailMarkup({ composite: true, withMouth: true });
+    const editor = source('src/renderer/features/characters/CharacterEditor.tsx');
+
+    expect(markup).toContain('<details class="character-assembly-mouth-overflow">');
+    expect(markup).toContain('aria-label="张嘴脸更多操作"');
+    expect(markup).toContain('data-testid="character-assembly-mouth-clear"');
+    expect(markup).toContain('>清除</button>');
+    expect(editor).toMatch(
+      /nextWorkspace !== 'assembly'[\s\S]*?!onLeaveAssembly\(\)/u,
+    );
+    expect(editor).toContain("switchDetailWorkspace('assembly')");
   });
 });

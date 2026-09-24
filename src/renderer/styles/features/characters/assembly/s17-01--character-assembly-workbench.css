@@ -407,36 +407,42 @@
 }
 
 .character-assembly-drawer-panel .image-asset-picker-selected-row {
-  position: relative;
   display: grid;
   min-width: 0;
-  min-height: 70px;
-  overflow: visible;
-  border: 1px solid var(--image-asset-picker-selected-surface-border);
-  border-radius: var(--image-asset-picker-selected-surface-radius);
-  background: var(--image-asset-picker-selected-surface-background);
+  min-height: 82px;
   grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .character-assembly-drawer-panel
-  .image-asset-picker-selected-row
-  > .image-asset-picker-selected {
-  min-height: 68px;
-  border-color: transparent;
-  border-radius: 0;
-  background: transparent;
+  .image-asset-picker-selected {
+  min-height: 82px;
+  padding: 6px 8px;
+  grid-template-columns: 68px minmax(0, 1fr) auto;
+  gap: 9px;
 }
 
 .character-assembly-drawer-panel
-  .image-asset-picker-selected-row
-  > .image-asset-picker-selected:hover:not(:disabled),
+  .image-asset-picker-selected-thumbnail {
+  width: 68px;
+  height: 68px;
+}
+
 .character-assembly-drawer-panel
-  .image-asset-picker-selected-row
-  > .image-asset-picker-selected:focus-visible {
-  border-color: transparent;
-  background: var(--image-asset-picker-selected-surface-background-hover);
+  .image-asset-picker-selected-copy strong {
+  font-size: 12px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-copy small {
+  font-size: 10px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-action {
+  min-width: 46px;
+  font-size: 10px;
 }
 
 .character-assembly-mouth-overflow {
@@ -755,8 +761,212 @@
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
-  .character-workspace-switcher[data-workspace-count='3'] {
+.character-workspace-switcher[data-workspace-count='3'] {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Issue #616: keep the Character Detail chrome quiet so the three actual
+   asset objects own the visual weight. Only the selectable asset surfaces
+   retain a border; section wrappers stay unboxed. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail {
+  min-height: 44px;
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
+  gap: 4px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-back-button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 5px 8px;
+  border-color: transparent;
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-back-button:hover,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-back-button:focus-visible {
+  border-color: transparent;
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(255 255 255 / 4%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-close {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-color: transparent;
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-close::before {
+  font-size: 20px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-close:hover,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-close:focus-visible {
+  border-color: transparent;
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(255 255 255 / 4%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity {
+  grid-template-columns: 56px minmax(0, 1fr);
+  padding: 6px 0 9px;
+  border: 0;
+  border-bottom: 1px solid rgb(127 199 148 / 13%);
+  border-radius: 0;
+  background: transparent;
+  gap: 12px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-rename-trigger {
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: transparent;
+  font-size: 17px;
+  place-items: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-rename-trigger:hover,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-rename-trigger:focus-visible {
+  border-color: transparent;
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(255 255 255 / 4%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-identity-overflow > summary {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-color: transparent;
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #b9d3bf);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-workspace-switcher[data-workspace-count='3'] {
+  border-color: rgb(127 199 148 / 20%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 1.5%);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-workspace-switcher[data-workspace-count='3']
+  .character-workspace-tab {
+  min-height: 40px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-workspace-switcher[data-workspace-count='3']
+  .character-workspace-tab.is-active {
+  color: #dcefe1;
+  background: rgb(45 104 62 / 26%);
+  box-shadow: inset 0 -2px 0 var(--ui-color-selected-border, #83d39a);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-assembly-drawer-panel {
+  gap: 18px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-assembly-drawer-panel
+  .image-asset-picker-heading {
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-assembly-default-face-summary
+  .image-asset-picker-heading {
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 @media (max-width: 740px) {

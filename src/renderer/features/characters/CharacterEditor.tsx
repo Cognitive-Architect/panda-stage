@@ -264,7 +264,7 @@ export function CharacterEditor({
             }
             type="button"
           >
-            {landscapeExpression ? '← 返回角色详情' : '返回角色列表'}
+            {landscapeExpression ? '← 返回角色详情' : '← 角色列表'}
           </button>
           {landscapeDetail ? (
             <h1
@@ -401,6 +401,7 @@ export function CharacterEditor({
               <div className="character-detail-identity-actions">
                 {!renameOpen ? (
                   <button
+                    aria-label="编辑角色名称"
                     aria-expanded={false}
                     className="character-rename-trigger"
                     data-testid="character-rename-trigger"
@@ -410,7 +411,7 @@ export function CharacterEditor({
                     }}
                     type="button"
                   >
-                    编辑名称
+                    ✎
                   </button>
                 ) : null}
                 <details className="character-identity-overflow">
@@ -687,9 +688,7 @@ export function CharacterEditor({
               <ImageAssetPicker
                 assets={imageAssets}
                 emptyOption={{
-                  description: '可以稍后再配置。',
                   label: '暂不配置',
-                  optional: true,
                 }}
                 label="张嘴脸"
                 onChange={onSetAssemblyMouthAsset}
