@@ -108,9 +108,10 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     expect(markup).toContain('张嘴图');
     expect(markup).toContain('未设置');
     expect(markup).toContain('选择图片');
-    expect(markup).toContain('character-delete-overflow');
+    expect(markup).not.toContain('character-delete-overflow');
+    expect(markup).toContain('character-delete-settings');
     expect(markup).not.toContain('管理全部表情');
-    expect(markup).not.toContain('character-danger-zone');
+    expect(markup).toContain('character-danger-zone');
     expect(markup).toContain('删除角色');
   });
 

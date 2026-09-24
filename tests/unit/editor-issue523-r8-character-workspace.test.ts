@@ -78,15 +78,17 @@ describe('Issue #523 R8 unified Character workspace', () => {
 
     expect(markup).toContain('角色详情');
     expect(markup).toContain(`<h3>${character.name}</h3>`);
-    expect(markup).toContain('character-identity-overflow');
-    expect(markup).toContain('character-delete-overflow');
+    expect(markup).not.toContain('character-identity-overflow');
+    expect(markup).not.toContain('character-delete-overflow');
+    expect(markup).toContain('character-detail-identity-title-row');
+    expect(markup).toContain('character-delete-settings');
     expect(markup.match(/data-workspace="(?:expressions|settings)"/gu)).toHaveLength(2);
     expect(markup).toContain('data-testid="character-workspace-expressions-tab"');
     expect(markup).toContain('data-testid="character-workspace-settings-tab"');
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('aria-pressed="false"');
     expect(markup).not.toContain('管理全部表情');
-    expect(markup).not.toContain('character-danger-zone');
+    expect(markup).toContain('character-danger-zone');
   });
 
   it('keeps expression recognition and management in the expression workspace', () => {
@@ -99,7 +101,8 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(markup).toContain('expression-editor-landscape');
     expect(markup).toContain('expression-card-list');
     expect(markup).toContain('expression-add-trigger');
-    expect(markup).toContain('＋ 添加');
+    expect(markup).toContain('＋ 添加表情');
+    expect(markup).not.toContain('＋ 添加</button>');
     expect(markup.match(/data-expression-editing="false"/gu)).toHaveLength(
       character.expressions.length,
     );

@@ -159,8 +159,9 @@ describe('Issue #614 Character Detail polish', () => {
     expect(detail).toContain(
       '<h4 class="sr-only" id="character-expression-workspace-heading">表情</h4>',
     );
-    expect(detail).toContain('＋ 添加</button>');
-    expect(detail).not.toContain('＋ 添加表情');
+    expect(detail).not.toContain('＋ 添加</button>');
+    expect(detail).toContain('＋ 添加表情</button>');
+    expect(detail).not.toContain('class="expression-editor-landscape-heading"');
     expect(standaloneExpression).toContain(
       '<h4 id="character-expression-workspace-heading">表情</h4>',
     );
@@ -206,7 +207,8 @@ describe('Issue #616 Character Detail assembly visual hierarchy', () => {
     expect(markup).toContain('← 角色列表');
     expect(markup).toContain('aria-label="关闭角色抽屉"');
     expect(markup).toContain('aria-label="编辑角色名称"');
-    expect(markup).toContain('data-testid="character-identity-overflow"');
+    expect(markup).not.toContain('character-identity-overflow');
+    expect(markup).toContain('data-testid="character-delete-settings"');
     expect(markup).toContain('data-testid="character-workspace-switcher"');
     expect(markup).toContain(
       'aria-controls="character-workspace-assembly" aria-pressed="true"',

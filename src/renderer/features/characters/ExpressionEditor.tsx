@@ -21,6 +21,8 @@ export interface ExpressionEditorProps {
   presentation?: 'default' | 'landscape';
   /** Use the compact heading/action only when embedded in Character Detail's workspace. */
   compactDetailWorkspace?: boolean;
+  isAddOpen: boolean;
+  onAddOpenChange: (isOpen: boolean) => void;
   onAdd: (name: string, assetId: string) => void;
   onRename: (expressionId: string, name: string) => void;
   onSetAsset: (expressionId: string, assetId: string) => void;
@@ -292,6 +294,8 @@ function LandscapeExpressionEditor({
   warnings,
   disabled = false,
   compactDetailWorkspace = false,
+  isAddOpen,
+  onAddOpenChange,
   onAdd,
   onRename,
   onSetAsset,
@@ -299,7 +303,6 @@ function LandscapeExpressionEditor({
   onSetDefault,
   onThumbnailError,
 }: ExpressionEditorProps): React.JSX.Element {
-  const [isAddOpen, setIsAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newAssetId, setNewAssetId] = useState(imageAssets[0]?.id ?? '');
   const [editingExpressionId, setEditingExpressionId] = useState<string | null>(
@@ -347,7 +350,7 @@ function LandscapeExpressionEditor({
   };
 
   const cancelAdd = (): void => {
-    setIsAddOpen(false);
+    onAddOpenChange(false);
     setNewName('');
     setNewAssetId(imageAssets[0]?.id ?? '');
   };
@@ -362,26 +365,27 @@ function LandscapeExpressionEditor({
       className="expression-editor expression-editor-landscape"
       data-expression-editor-presentation="landscape"
     >
-      <div className="expression-editor-landscape-heading">
-        <div>
-          <h4
-            className={compactDetailWorkspace ? 'sr-only' : undefined}
-            id="character-expression-workspace-heading"
+      {compactDetailWorkspace ? (
+        <h4 className="sr-only" id="character-expression-workspace-heading">
+          表情
+        </h4>
+      ) : (
+        <div className="expression-editor-landscape-heading">
+          <div>
+            <h4 id="character-expression-workspace-heading">表情</h4>
+          </div>
+          <button
+            aria-expanded={isAddOpen}
+            className="expression-add-trigger"
+            data-testid="expression-add-trigger"
+            disabled={disabled || imageAssets.length === 0}
+            onClick={() => onAddOpenChange(!isAddOpen)}
+            type="button"
           >
-            表情
-          </h4>
+            ＋ 添加表情
+          </button>
         </div>
-        <button
-          aria-expanded={isAddOpen}
-          className="expression-add-trigger"
-          data-testid="expression-add-trigger"
-          disabled={disabled || imageAssets.length === 0}
-          onClick={() => setIsAddOpen((open) => !open)}
-          type="button"
-        >
-          {compactDetailWorkspace ? '＋ 添加' : '＋ 添加表情'}
-        </button>
-      </div>
+      )}
       {isAddOpen ? (
         <form
           className="expression-add-form-landscape"
@@ -416,7 +420,11 @@ function LandscapeExpressionEditor({
             disabled={disabled}
           />
           <div className="expression-form-actions">
-            <button onClick={cancelAdd} type="button">
+            <button
+              data-testid="expression-add-cancel"
+              onClick={cancelAdd}
+              type="button"
+            >
               取消
             </button>
             <button

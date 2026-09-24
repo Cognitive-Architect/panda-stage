@@ -146,6 +146,7 @@ export function CharacterEditor({
   const [scale, setScale] = useState(character?.defaultScale ?? 1);
   const [flipX, setFlipX] = useState(character?.defaultFlipX ?? false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [activeWorkspace, setActiveWorkspace] =
     useState<CharacterDetailWorkspace>(
       assemblyDraft ? 'assembly' : 'expressions',
@@ -156,6 +157,7 @@ export function CharacterEditor({
     if (!character) return;
     setName(character.name);
     setRenameOpen(false);
+    setExpressionAddOpen(false);
   }, [character?.id]);
 
   useEffect(() => {
@@ -231,6 +233,7 @@ export function CharacterEditor({
       return;
     }
     if (nextWorkspace === 'assembly' && !onOpenAssembly()) return;
+    if (activeWorkspace === 'expressions') setExpressionAddOpen(false);
     setActiveWorkspace(nextWorkspace);
   };
 
@@ -346,94 +349,89 @@ export function CharacterEditor({
             <div
               className={`character-detail-identity-copy${renameOpen ? ' is-renaming' : ''}`}
             >
-              {renameOpen ? (
-                <form
-                  className="character-inline-rename-form"
-                  data-testid="character-inline-rename-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (disabled || !nextRenameValue) return;
-                    onRenameCharacter(nextRenameValue);
-                    setName(nextRenameValue);
-                    setRenameOpen(false);
-                  }}
-                >
-                  <label
-                    className="sr-only"
-                    htmlFor="character-inline-rename-input"
+              <div className="character-detail-identity-title-row">
+                {renameOpen ? (
+                  <form
+                    className="character-inline-rename-form"
+                    data-testid="character-inline-rename-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (disabled || !nextRenameValue) return;
+                      onRenameCharacter(nextRenameValue);
+                      setName(nextRenameValue);
+                      setRenameOpen(false);
+                    }}
                   >
-                    角色名称
-                  </label>
-                  <input
-                    autoFocus
-                    data-testid="character-inline-rename-input"
-                    disabled={disabled}
-                    id="character-inline-rename-input"
-                    maxLength={200}
-                    onChange={(event) => setName(event.target.value)}
-                    value={name}
-                  />
-                  <div className="character-inline-rename-actions">
+                    <label
+                      className="sr-only"
+                      htmlFor="character-inline-rename-input"
+                    >
+                      角色名称
+                    </label>
+                    <input
+                      autoFocus
+                      data-testid="character-inline-rename-input"
+                      disabled={disabled}
+                      id="character-inline-rename-input"
+                      maxLength={200}
+                      onChange={(event) => setName(event.target.value)}
+                      value={name}
+                    />
+                    <div className="character-inline-rename-actions">
+                      <button
+                        className="character-inline-rename-cancel"
+                        data-testid="character-inline-rename-cancel"
+                        onClick={() => {
+                          setName(character.name);
+                          setRenameOpen(false);
+                        }}
+                        type="button"
+                      >
+                        取消
+                      </button>
+                      <button
+                        className="character-inline-rename-save"
+                        data-testid="character-inline-rename-save"
+                        disabled={disabled || !nextRenameValue}
+                        type="submit"
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
                     <button
-                      className="character-inline-rename-cancel"
-                      data-testid="character-inline-rename-cancel"
+                      aria-label="编辑角色名称"
+                      aria-expanded={false}
+                      className="character-rename-trigger"
+                      data-testid="character-rename-trigger"
                       onClick={() => {
                         setName(character.name);
-                        setRenameOpen(false);
+                        setRenameOpen(true);
                       }}
                       type="button"
                     >
-                      取消
+                      ✎
                     </button>
-                    <button
-                      className="character-inline-rename-save"
-                      data-testid="character-inline-rename-save"
-                      disabled={disabled || !nextRenameValue}
-                      type="submit"
-                    >
-                      保存
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <h3>{character.name}</h3>
-              )}
-              <div className="character-detail-identity-actions">
-                {!renameOpen ? (
-                  <button
-                    aria-label="编辑角色名称"
-                    aria-expanded={false}
-                    className="character-rename-trigger"
-                    data-testid="character-rename-trigger"
-                    onClick={() => {
-                      setName(character.name);
-                      setRenameOpen(true);
-                    }}
-                    type="button"
-                  >
-                    ✎
-                  </button>
-                ) : null}
-                <details className="character-identity-overflow">
-                  <summary
-                    aria-label={`${character.name} 更多操作`}
-                    data-testid="character-identity-overflow"
-                  >
-                    ⋯
-                  </summary>
-                  <div className="character-identity-overflow-menu">
-                    <button
-                      className="character-delete-menu-action"
-                      data-testid="character-delete-overflow"
-                      disabled={disabled}
-                      onClick={onDeleteCharacter}
-                      type="button"
-                    >
-                      删除角色
-                    </button>
-                  </div>
-                </details>
+                    <h3>{character.name}</h3>
+                  </>
+                )}
               </div>
+              {activeWorkspace === 'expressions' ? (
+                <button
+                  aria-expanded={expressionAddOpen}
+                  className="character-detail-add-expression-trigger"
+                  data-testid="expression-add-trigger"
+                  disabled={disabled || imageAssets.length === 0}
+                  onClick={() =>
+                    setExpressionAddOpen((isOpen) => !isOpen)
+                  }
+                  type="button"
+                >
+                  ＋ 添加表情
+                </button>
+              ) : null}
             </div>
           </section>
         </>
@@ -735,7 +733,9 @@ export function CharacterEditor({
               character={character}
               disabled={disabled}
               imageAssets={imageAssets}
+              isAddOpen={expressionAddOpen}
               onAdd={onAddExpression}
+              onAddOpenChange={setExpressionAddOpen}
               onRemove={onRemoveExpression}
               onRename={onRenameExpression}
               onSetAsset={onSetExpressionAsset}
@@ -885,6 +885,27 @@ export function CharacterEditor({
               </div>
             </section>
             ) : null}
+            <section
+              aria-labelledby="character-danger-zone-heading"
+              className="character-settings-section character-danger-zone"
+              data-testid="character-danger-zone"
+            >
+              <div className="character-danger-zone-copy">
+                <h4 id="character-danger-zone-heading">危险操作</h4>
+                <p>
+                  删除当前角色；如果角色被镜头或对白引用，删除会被阻止。
+                </p>
+              </div>
+              <button
+                className="character-delete-settings-action"
+                data-testid="character-delete-settings"
+                disabled={disabled}
+                onClick={onDeleteCharacter}
+                type="button"
+              >
+                删除角色
+              </button>
+            </section>
           </section>
         </>
       ) : null}
@@ -893,7 +914,9 @@ export function CharacterEditor({
           character={character}
           disabled={disabled}
           imageAssets={imageAssets}
+          isAddOpen={expressionAddOpen}
           onAdd={onAddExpression}
+          onAddOpenChange={setExpressionAddOpen}
           onRemove={onRemoveExpression}
           onRename={onRenameExpression}
           onSetAsset={onSetExpressionAsset}
