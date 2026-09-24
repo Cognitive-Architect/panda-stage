@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   Character,
   CreateCharacterInput,
@@ -33,6 +34,7 @@ export interface CharacterListProps {
   onSelect: (characterId: string) => void;
   mode?: CharacterListMode;
   onBack?: () => void;
+  modeSwitchTarget?: HTMLElement | null;
   showHeading?: boolean;
   presentation?: CharacterListPresentation;
   thumbnails?: Readonly<Record<string, ThumbnailState>>;
@@ -56,6 +58,7 @@ export function CharacterList({
   onSelect,
   mode = 'legacy',
   onBack = () => undefined,
+  modeSwitchTarget = null,
   showHeading = true,
   presentation = 'default',
   thumbnails = {},
@@ -74,8 +77,6 @@ export function CharacterList({
   const [creationMode, setCreationMode] = useState<
     'single-image' | 'composite'
   >('single-image');
-  const compactLandscapeComposite =
-    compactLandscapeCreate && creationMode === 'composite';
   const defaultFaceAssetId =
     compositeDraft?.expressions[
       compositeDraft.defaultExpressionIndex ?? 0
@@ -118,6 +119,67 @@ export function CharacterList({
       setCreationMode('single-image');
     }
   }, [creationMode, mode]);
+
+  const changeCreationMode = (
+    nextMode: 'single-image' | 'composite',
+  ): void => {
+    if (nextMode === creationMode) return;
+    if (nextMode === 'single-image') {
+      onCancelCompositeCreate();
+      setCreationMode('single-image');
+      return;
+    }
+
+    const initialFaceAssetId =
+      imageAssets[1]?.id ?? imageAssets[0]?.id ?? '';
+    const began = onBeginCompositeCreate({
+      name,
+      bodyAssetId: imageAssets[0]?.id ?? '',
+      facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+      expressions: initialFaceAssetId
+        ? [{ name: '默认表情', assetId: initialFaceAssetId }]
+        : [],
+      defaultExpressionIndex: 0,
+      ...(mouthAssetId ? { mouthOpenAssetId: mouthAssetId } : {}),
+      defaultScale: 1,
+      defaultFlipX: false,
+    });
+    if (began) setCreationMode('composite');
+  };
+
+  const modeSwitch = (
+    <fieldset
+      aria-label="角色类型"
+      className="character-create-mode-switch"
+      disabled={disabled}
+      data-testid="character-create-mode-switch"
+    >
+      <label>
+        <input
+          checked={creationMode === 'single-image'}
+          name="character-create-mode"
+          onChange={() => changeCreationMode('single-image')}
+          type="radio"
+          value="single-image"
+        />
+        <span>{compactLandscapeCreate ? '整图' : '整图角色'}</span>
+      </label>
+      <label>
+        <input
+          checked={creationMode === 'composite'}
+          name="character-create-mode"
+          onChange={() => changeCreationMode('composite')}
+          type="radio"
+          value="composite"
+        />
+        <span>{compactLandscapeCreate ? '身体+脸' : '身体 + 脸'}</span>
+      </label>
+    </fieldset>
+  );
+  const modeSwitchContent =
+    compactLandscapeCreate && modeSwitchTarget
+      ? createPortal(modeSwitch, modeSwitchTarget)
+      : modeSwitch;
 
   return (
     <aside
@@ -280,6 +342,7 @@ export function CharacterList({
             });
           }}
         >
+          {compactLandscapeCreate ? modeSwitchContent : null}
           {mode === 'legacy' && creationMode === 'single-image' ? (
             <strong>创建含普通 / 生气表情的角色</strong>
           ) : null}
@@ -310,55 +373,7 @@ export function CharacterList({
               }
             />
           </label>
-          <fieldset
-            aria-label="角色类型"
-            className="character-create-mode-switch"
-            disabled={disabled}
-            data-testid="character-create-mode-switch"
-          >
-            <label>
-              <input
-                checked={creationMode === 'single-image'}
-                name="character-create-mode"
-                onChange={() => {
-                  if (creationMode === 'composite') {
-                    onCancelCompositeCreate();
-                  }
-                  setCreationMode('single-image');
-                }}
-                type="radio"
-                value="single-image"
-              />
-              <span>{compactLandscapeCreate ? '整图' : '整图角色'}</span>
-            </label>
-            <label>
-              <input
-                checked={creationMode === 'composite'}
-                name="character-create-mode"
-                onChange={() => {
-                  if (creationMode === 'composite') return;
-                  const initialFaceAssetId =
-                    imageAssets[1]?.id ?? imageAssets[0]?.id ?? '';
-                  const began = onBeginCompositeCreate({
-                    name,
-                    bodyAssetId: imageAssets[0]?.id ?? '',
-                    facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
-                    expressions: initialFaceAssetId
-                      ? [{ name: '默认表情', assetId: initialFaceAssetId }]
-                      : [],
-                    defaultExpressionIndex: 0,
-                    ...(mouthAssetId ? { mouthOpenAssetId: mouthAssetId } : {}),
-                    defaultScale: 1,
-                    defaultFlipX: false,
-                  });
-                  if (began) setCreationMode('composite');
-                }}
-                type="radio"
-                value="composite"
-              />
-              <span>{compactLandscapeCreate ? '身体+脸' : '身体 + 脸'}</span>
-            </label>
-          </fieldset>
+          {!compactLandscapeCreate ? modeSwitchContent : null}
           {creationMode === 'composite' ? (
             <>
               <ImageAssetPicker
@@ -425,16 +440,14 @@ export function CharacterList({
                 assets={imageAssets}
                 emptyOption={{
                   label: '暂不配置',
-                  ...(compactLandscapeComposite
+                  ...(compactLandscapeCreate
                     ? {}
                     : {
                         description: '可以稍后再配置。',
                         optional: true,
                       }),
                 }}
-                label={
-                  compactLandscapeComposite ? '张嘴图' : '张嘴图（可选）'
-                }
+                label={compactLandscapeCreate ? '张嘴图' : '张嘴图（可选）'}
                 onChange={(assetId) => {
                   if (!compositeDraft) return;
                   const next = { ...compositeDraft };
@@ -448,15 +461,39 @@ export function CharacterList({
                 thumbnails={thumbnails}
                 disabled={disabled}
               />
-              <Button
-                className="character-create-submit-compact"
-                variant="primary"
-                data-testid="character-create-composite-submit"
-                disabled={!canCreate}
-                type="submit"
-              >
-                创建角色
-              </Button>
+              {compactLandscapeCreate ? (
+                <div className="character-create-actions">
+                  <Button
+                    aria-label="返回角色列表"
+                    className="character-create-back"
+                    data-testid="character-create-back"
+                    onClick={onBack}
+                    type="button"
+                    variant="secondary"
+                  >
+                    返回
+                  </Button>
+                  <Button
+                    className="character-create-submit-compact"
+                    data-testid="character-create-composite-submit"
+                    disabled={!canCreate}
+                    type="submit"
+                    variant="primary"
+                  >
+                    创建角色
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  className="character-create-submit-compact"
+                  data-testid="character-create-composite-submit"
+                  disabled={!canCreate}
+                  type="submit"
+                  variant="primary"
+                >
+                  创建角色
+                </Button>
+              )}
             </>
           ) : (
             <>
@@ -466,7 +503,7 @@ export function CharacterList({
                   description: '从项目图片中选择一张。',
                   label: '请选择图片',
                 }}
-                label="普通表情图片"
+                label={compactLandscapeCreate ? '普通表情' : '普通表情图片'}
                 onChange={(assetId) => setNormalAssetId(assetId ?? '')}
                 onThumbnailError={onThumbnailError}
                 selectedAssetId={normalAssetId || null}
@@ -483,7 +520,7 @@ export function CharacterList({
                 getDisabledReason={(asset) =>
                   asset.id === normalAssetId ? '已用于普通表情' : undefined
                 }
-                label="生气表情图片"
+                label={compactLandscapeCreate ? '生气表情' : '生气表情图片'}
                 onChange={(assetId) => setAngryAssetId(assetId ?? '')}
                 onThumbnailError={onThumbnailError}
                 selectedAssetId={angryAssetId || null}
@@ -499,11 +536,15 @@ export function CharacterList({
               <ImageAssetPicker
                 assets={imageAssets}
                 emptyOption={{
-                  description: '创建后也可以在角色详情中配置。',
                   label: '暂不配置',
-                  optional: true,
+                  ...(compactLandscapeCreate
+                    ? {}
+                    : {
+                        description: '创建后也可以在角色详情中配置。',
+                        optional: true,
+                      }),
                 }}
-                label="张嘴图（可选）"
+                label={compactLandscapeCreate ? '张嘴图' : '张嘴图（可选）'}
                 onChange={(assetId) => setMouthAssetId(assetId ?? '')}
                 onThumbnailError={onThumbnailError}
                 selectedAssetId={mouthAssetId || null}
@@ -511,13 +552,37 @@ export function CharacterList({
                 thumbnails={thumbnails}
                 disabled={disabled}
               />
-              <button
-                className="character-create-submit-compact"
-                disabled={!canCreate}
-                type="submit"
-              >
-                创建角色
-              </button>
+              {compactLandscapeCreate ? (
+                <div className="character-create-actions">
+                  <Button
+                    aria-label="返回角色列表"
+                    className="character-create-back"
+                    data-testid="character-create-back"
+                    onClick={onBack}
+                    type="button"
+                    variant="secondary"
+                  >
+                    返回
+                  </Button>
+                  <Button
+                    className="character-create-submit-compact"
+                    data-testid="character-create-single-submit"
+                    disabled={!canCreate}
+                    type="submit"
+                    variant="primary"
+                  >
+                    创建角色
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  className="character-create-submit-compact"
+                  disabled={!canCreate}
+                  type="submit"
+                >
+                  创建角色
+                </button>
+              )}
               {mode === 'legacy' && imageAssets.length < 2 ? (
                 <small>至少需要两张不同的项目图片素材。</small>
               ) : null}

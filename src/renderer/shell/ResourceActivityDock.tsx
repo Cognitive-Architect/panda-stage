@@ -18,7 +18,6 @@ import type {
   ShotWorkspaceView,
 } from '../features/shots/ShotManager';
 import {
-  ArrowLeft,
   Clapperboard,
   CirclePlus,
   FileArchive,
@@ -27,7 +26,7 @@ import {
   Upload,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { DecorativeIcon, IconButton } from '../ui';
+import { DecorativeIcon } from '../ui';
 
 export type ResourceActivity = 'shots' | 'assets' | 'characters';
 
@@ -120,6 +119,8 @@ export function ResourceActivityDock({
     useState<AssetWorkspaceView>('browser');
   const [characterView, setCharacterView] =
     useState<CharacterWorkspaceView>('list');
+  const [characterCreateModeSwitchTarget, setCharacterCreateModeSwitchTarget] =
+    useState<HTMLDivElement | null>(null);
   const [assetImportRequest, setAssetImportRequest] = useState(0);
   const [assetFlaReviewRequest, setAssetFlaReviewRequest] = useState(0);
   const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
@@ -283,7 +284,7 @@ export function ResourceActivityDock({
   const showCreateIcon =
     (activeActivity === 'shots' && shotView !== 'create') ||
     (activeActivity === 'characters' && characterView === 'list');
-  const showCharacterBackIcon =
+  const showCharacterCreateModeSelector =
     landscapePresentation &&
     activeActivity === 'characters' &&
     characterView === 'create';
@@ -452,19 +453,13 @@ export function ResourceActivityDock({
                           : undefined
               }
             >
-              {hideLandscapeCharacterPrimaryAction ? null :
-                showCharacterBackIcon ? (
-                  <IconButton
-                    aria-label={primaryAction.label}
-                    className="resource-activity-create-back"
-                    data-resource-action={`${activeActivity}-${primaryAction.label}`}
-                    data-testid="resource-primary-action"
-                    icon={<DecorativeIcon icon={ArrowLeft} size={18} />}
-                    onClick={primaryAction.onClick}
-                    type="button"
-                    variant="secondary"
-                  />
-                ) : (
+              {showCharacterCreateModeSelector ? (
+                <div
+                  className="character-create-mode-switch-slot"
+                  data-testid="character-create-mode-switch-slot"
+                  ref={setCharacterCreateModeSwitchTarget}
+                />
+              ) : hideLandscapeCharacterPrimaryAction ? null : (
                   <button
                     className="resource-activity-primary-action"
                     data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
@@ -521,7 +516,7 @@ export function ResourceActivityDock({
               {hidePortraitAssetsChrome ? null : hidePortraitShotChrome ? null : (
                 <button
                   aria-label="关闭资源工作区"
-                  className={`resource-activity-close${showCharacterBackIcon ? ' resource-activity-create-close' : ''}`}
+                  className={`resource-activity-close${showCharacterCreateModeSelector ? ' resource-activity-create-close' : ''}`}
                   data-testid="resource-activity-close"
                   onClick={() => {
                     if (activeActivity === 'assets') {
@@ -618,6 +613,11 @@ export function ResourceActivityDock({
                 }
                 snapshot={snapshot}
                 view={characterView}
+                modeSwitchTarget={
+                  showCharacterCreateModeSelector
+                    ? characterCreateModeSwitchTarget
+                    : null
+                }
                 onCloseDrawer={() => setDrawerOpen(false)}
               />
             )}

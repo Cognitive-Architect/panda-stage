@@ -819,9 +819,22 @@ async function run() {
       `document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? ''`,
     );
     await openCreate(windowRef);
+    await waitForDom(
+      windowRef,
+      `(() => {
+        const mode = document.querySelector('[data-testid="character-create-mode-switch"]');
+        const slot = document.querySelector('[data-testid="character-create-mode-switch-slot"]');
+        return Boolean(mode && slot && mode.parentElement === slot);
+      })()`,
+      'Landscape Create mode selector did not enter the drawer header.',
+    );
     const compactCreateNavigation = await windowRef.webContents.executeJavaScript(`(() => {
-      const back = document.querySelector('[data-testid="resource-primary-action"]');
+      const back = document.querySelector('[data-testid="character-create-back"]');
+      const topBack = document.querySelector('[data-testid="resource-primary-action"]');
+      const mode = document.querySelector('[data-testid="character-create-mode-switch"]');
+      const modeSlot = document.querySelector('[data-testid="character-create-mode-switch-slot"]');
       const close = document.querySelector('[data-testid="resource-activity-close"]');
+      const actions = back?.parentElement;
       const bounds = (element) => {
         const rect = element?.getBoundingClientRect();
         return rect ? { width: rect.width, height: rect.height } : null;
@@ -830,26 +843,34 @@ async function run() {
         backLabel: back?.getAttribute('aria-label') ?? '',
         backText: back?.textContent.trim() ?? '',
         backBounds: bounds(back),
+        backInBottomRow: actions?.classList.contains('character-create-actions') ?? false,
+        modeInHeader: Boolean(mode && modeSlot && mode.parentElement === modeSlot),
+        topBackPresent: Boolean(topBack),
         closeLabel: close?.getAttribute('aria-label') ?? '',
         closeClass: close?.className ?? '',
         closeBackground: close ? getComputedStyle(close).backgroundColor : '',
         closeBounds: bounds(close),
-        singleImageMouthLabel: document.querySelector('[data-testid="character-create-mouth-picker"] .image-asset-picker-heading strong')?.textContent.trim() ?? '',
+        singleImageLabels: [...document.querySelectorAll('[data-testid^="character-create-"][data-image-asset-picker] .image-asset-picker-heading strong')].map((label) => label.textContent.trim()),
         singleImageMouthOptional: [...(document.querySelector('[data-testid="character-create-mouth-picker"] .image-asset-picker-heading')?.querySelectorAll('small') ?? [])].some((label) => label.textContent.trim() === '可选'),
         singleImageMouthHelp: document.querySelector('[data-testid="character-create-mouth-picker"]')?.textContent.includes('创建后也可以在角色详情中配置。') ?? false,
         createLayout: document.querySelector('[data-create-layout]')?.dataset.createLayout ?? '',
         duplicateBackCount: document.querySelectorAll('[data-testid="character-create-back"]').length,
       };
     })()`);
-    assert(compactCreateNavigation.backLabel === '返回角色列表', 'Landscape Create does not expose an accessible back-arrow action.');
-    assert(compactCreateNavigation.backText === '', 'Landscape Create back navigation still shows a large text label.');
-    assert(compactCreateNavigation.backBounds?.width >= 44 && compactCreateNavigation.backBounds?.height >= 44, 'The compact back arrow lost the shared touch-target size.');
+    assert(compactCreateNavigation.backLabel === '返回角色列表' && compactCreateNavigation.backText === '返回', 'Landscape Create does not expose a compact, accessibly named Return action.');
+    assert(compactCreateNavigation.backInBottomRow, 'Landscape Return is not in the bottom Create action row.');
+    assert(compactCreateNavigation.backBounds?.width >= 44 && compactCreateNavigation.backBounds?.height >= 44, 'The compact Return action lost the shared touch-target size.');
+    assert(compactCreateNavigation.modeInHeader, 'Landscape mode selection is not in the top drawer row.');
+    assert(!compactCreateNavigation.topBackPresent, 'Landscape Create still shows a standalone top back action.');
     assert(compactCreateNavigation.closeLabel === '关闭资源工作区', 'The close X is not a distinct drawer-close action.');
     assert(compactCreateNavigation.closeClass.includes('resource-activity-create-close') && compactCreateNavigation.closeBackground === 'rgba(0, 0, 0, 0)', 'The Create close X is not visually subordinate to the drawer content.');
     assert(compactCreateNavigation.closeBounds?.width >= 44 && compactCreateNavigation.closeBounds?.height >= 44, 'The close X lost the shared touch-target size.');
-    assert(compactCreateNavigation.singleImageMouthLabel === '张嘴图（可选）' && compactCreateNavigation.singleImageMouthOptional && compactCreateNavigation.singleImageMouthHelp, 'Landscape single-image Mouth behavior/copy changed.');
+    assert(compactCreateNavigation.singleImageLabels.join(',') === '普通表情,生气表情,张嘴图', 'Landscape single-image rows do not use the concise labels.');
+    assert(!compactCreateNavigation.singleImageMouthOptional && !compactCreateNavigation.singleImageMouthHelp, 'Landscape single-image Mouth still includes redundant optional/help copy.');
     assert(compactCreateNavigation.createLayout === 'compressed-v2', 'Landscape Create is not using the approved compressed-v2 layout.');
-    assert(compactCreateNavigation.duplicateBackCount === 0, 'Landscape Create still renders a duplicate CharacterList back control.');
+    assert(compactCreateNavigation.duplicateBackCount === 1, 'Landscape Create does not render exactly one bottom Return action.');
+    await wait(250);
+    screenshots.push(await capture(windowRef, 'create-character-single-image-landscape.png'));
     await click(windowRef, '[data-testid="resource-activity-close"]', 'Close Character drawer with X');
     await waitForDom(
       windowRef,
@@ -872,7 +893,7 @@ async function run() {
 
     await click(windowRef, '[data-testid="character-create-mode-switch"] input[value="composite"]', 'Composite Character choice');
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="create"]')`, 'Composite creation did not activate the Assembly workbench.');
-    await click(windowRef, '[data-testid="resource-primary-action"]', 'Back to Character list');
+    await click(windowRef, '[data-testid="character-create-back"]', 'Back to Character list');
     await waitForDom(
       windowRef,
       `document.querySelector('[data-testid="character-list-view"]') && document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true'`,
@@ -899,7 +920,7 @@ async function run() {
       const nameRow = form?.querySelector('.character-create-name-row');
       const nameLabel = nameRow?.querySelector('span');
       const name = form?.querySelector('[data-testid="character-create-name"]');
-      const mode = form?.querySelector('[data-testid="character-create-mode-switch"]');
+      const mode = document.querySelector('[data-testid="character-create-mode-switch"]');
       const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
       const createActions = [...document.querySelectorAll('button')]
         .filter((button) => button.textContent.trim() === '创建角色' && button.getClientRects().length > 0);
@@ -912,13 +933,22 @@ async function run() {
       const nameBounds = name?.getBoundingClientRect();
       const surface = document.querySelector('[data-testid="resource-activity-drawer"]');
       return {
-        nameBeforeMode: Boolean(name && mode && (name.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING)),
+        modeBeforeName: Boolean(mode && name && (mode.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING)),
+        modeInHeader: mode?.parentElement?.dataset.testid === 'character-create-mode-switch-slot',
         nameRowClass: nameRow?.className ?? '',
         nameLabelText: nameLabel?.textContent.trim() ?? '',
         nameAndInputSameRow: Boolean(nameLabelBounds && nameBounds && Math.abs((nameLabelBounds.top + nameLabelBounds.height / 2) - (nameBounds.top + nameBounds.height / 2)) < 3),
         modeLabels: [...(mode?.querySelectorAll('label') ?? [])].map((label) => label.textContent.trim()),
         modeRadioClipPaths: [...(mode?.querySelectorAll('input[type="radio"]') ?? [])].map((input) => getComputedStyle(input).clipPath),
         drawerAssetLabels: [...(form?.querySelectorAll('.image-asset-picker-heading strong') ?? [])].map((label) => label.textContent.trim()),
+        drawerAssetLabelStyles: [...(form?.querySelectorAll('.image-asset-picker-heading strong') ?? [])].map((label) => ({
+          fontSize: getComputedStyle(label).fontSize,
+          fontWeight: getComputedStyle(label).fontWeight,
+        })),
+        nameLabelStyle: nameLabel ? {
+          fontSize: getComputedStyle(nameLabel).fontSize,
+          fontWeight: getComputedStyle(nameLabel).fontWeight,
+        } : null,
         mouthValue: mouth?.querySelector('.image-asset-picker-selected-copy strong')?.textContent.trim() ?? '',
         mouthAction: mouth?.querySelector('.image-asset-picker-selected-action')?.textContent.trim() ?? '',
         mouthExtraCopy: [...(mouth?.querySelectorAll('small') ?? [])].map((label) => label.textContent.trim()).filter(Boolean),
@@ -942,11 +972,12 @@ async function run() {
         },
       };
     })()`);
-    assert(creationSurface.nameBeforeMode, 'Character name is not placed before the creation type/material flow.');
+    assert(creationSurface.modeBeforeName && creationSurface.modeInHeader, 'Landscape mode selection is not the top contextual control before the Create form.');
     assert(creationSurface.nameRowClass === 'character-create-name-row' && creationSurface.nameLabelText === '角色名称' && creationSurface.nameAndInputSameRow, 'Character name label and input are not presented in one usable row.');
     assert(creationSurface.modeLabels.join(',') === '整图,身体+脸', 'Landscape type switch labels do not match the approved compact wording.');
     assert(creationSurface.modeRadioClipPaths.every((clipPath) => clipPath === 'inset(50%)'), 'The compact type switch shows radio-circle indicators.');
     assert(creationSurface.drawerAssetLabels.join(',') === '身体,默认脸,张嘴图', 'Composite asset rows do not use the required short labels.');
+    assert(creationSurface.drawerAssetLabelStyles.every((style) => style.fontSize === creationSurface.nameLabelStyle?.fontSize && style.fontWeight === creationSurface.nameLabelStyle?.fontWeight), 'Composite asset labels do not match the Character name form-label hierarchy.');
     assert(creationSurface.mouthValue === '暂不配置' && creationSurface.mouthAction === '选择' && !creationSurface.mouthOptionalCopyPresent, 'The empty Mouth state has duplicate optional/help copy or the wrong action.');
     assert(creationSurface.createEnabledWithoutMouth, 'Composite Mouth became required for Character creation.');
     assert(creationSurface.createButtonCompact && creationSurface.createButtonTouchHeight >= 44, 'Create is not a compact, touch-usable bottom-right primary action.');
@@ -962,7 +993,7 @@ async function run() {
       'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
     );
     await wait(250);
-    screenshots.push(await capture(windowRef, 'create-character-drawer-compressed-v2.png'));
+    screenshots.push(await capture(windowRef, 'create-character-composite-landscape.png'));
     await setCharacterName(windowRef, 'S07 Composite Panda');
     await chooseImage(windowRef, 'character-create-mouth-picker', IDS.mouth);
     const dragEvidence = await dragFaceWithNativeInput(windowRef);

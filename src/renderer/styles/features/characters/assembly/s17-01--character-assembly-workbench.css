@@ -31,8 +31,8 @@
   accent-color: var(--ui-color-selected-border);
 }
 
-/* Issue #612: keep landscape Create Character content compact without changing
-   the single-image flow or the shared Character Assembly workbench. */
+/* Issues #612/#613: compact the landscape Create surface without changing
+   either creation flow or the shared Character Assembly workbench. */
 .character-list-create[data-character-list-presentation='landscape'] {
   align-content: start;
   gap: 0;
@@ -58,6 +58,7 @@
   gap: var(--ui-space-3);
   color: var(--ui-color-text-secondary);
   font: var(--ui-font-secondary);
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -72,9 +73,39 @@
   gap: var(--ui-space-1);
 }
 
+.character-create-mode-switch-slot {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.character-create-mode-switch-slot > .character-create-mode-switch,
+.character-create-form[data-create-layout='compressed-v2']
+  > .character-create-mode-switch {
+  width: 100%;
+  min-height: var(--ui-touch-icon);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.character-create-mode-switch-slot > .character-create-mode-switch {
+  gap: var(--ui-space-1);
+}
+
 .character-create-form[data-create-layout='compressed-v2']
   .character-create-mode-switch
   label {
+  position: relative;
+  min-width: 0;
+  min-height: var(--ui-touch-icon);
+  padding: 0 var(--ui-space-2);
+  gap: 0;
+  font: var(--ui-font-secondary);
+  white-space: nowrap;
+}
+
+.character-create-mode-switch-slot > .character-create-mode-switch label {
   position: relative;
   min-width: 0;
   min-height: var(--ui-touch-icon);
@@ -99,6 +130,21 @@
   white-space: nowrap;
 }
 
+.character-create-mode-switch-slot
+  .character-create-mode-switch
+  input[type='radio'] {
+  position: absolute;
+  width: 1px;
+  min-width: 1px;
+  height: 1px;
+  min-height: 1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .character-create-form[data-create-layout='compressed-v2']
   .character-create-mode-switch
   label:has(input:focus-visible) {
@@ -106,38 +152,55 @@
   outline-offset: 1px;
 }
 
-.character-create-form[data-create-layout='compressed-v2']
-  > .character-create-submit-compact {
-  justify-self: end;
-  width: auto;
-  min-width: 132px;
-  min-height: var(--ui-touch-regular);
-  margin-top: var(--ui-space-1);
-  padding: var(--ui-space-2) var(--ui-space-4);
+.character-create-mode-switch-slot
+  .character-create-mode-switch
+  label:has(input:focus-visible) {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
 }
 
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
-  .resource-activity-create-back {
-  width: var(--ui-touch-icon);
+.character-create-form[data-create-layout='compressed-v2']
+  .image-asset-picker-heading {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .image-asset-picker-heading
+  strong {
+  font: inherit;
+  font-weight: 600;
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  > .character-create-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-3);
+  margin-top: var(--ui-space-1);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  .character-create-back {
   min-width: var(--ui-touch-icon);
   min-height: var(--ui-touch-icon);
-  padding: 0;
-  border-color: transparent;
-  border-radius: var(--ui-radius-small);
-  color: var(--ui-color-text-secondary);
-  background: transparent;
+  padding: 0 var(--ui-space-3);
+  font: var(--ui-font-secondary);
 }
 
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
-  .resource-activity-create-back:hover:not(:disabled),
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape
-  .resource-activity-create-back:focus-visible {
-  border-color: var(--ui-color-border);
-  color: var(--ui-color-text-primary);
-  background: var(--ui-color-selected-surface);
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  > .character-create-submit-compact {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 116px;
+  min-height: var(--ui-touch-icon);
+  margin-top: 0;
+  padding: 0 var(--ui-space-3);
+  font: var(--ui-font-secondary);
 }
 
 .editor-layout[data-shell-mode='landscape']

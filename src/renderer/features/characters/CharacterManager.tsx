@@ -57,6 +57,8 @@ export interface CharacterManagerProps {
   hideHeading?: boolean;
   /** Apply visual-first Character presentation without changing its owners. */
   presentation?: CharacterManagerPresentation;
+  /** Portal the landscape Create mode selector into its shared drawer header. */
+  modeSwitchTarget?: HTMLElement | null;
   /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
   onCloseDrawer?: () => void;
 }
@@ -67,6 +69,7 @@ export function CharacterManager({
   onViewChange = () => undefined,
   hideHeading = false,
   presentation = 'default',
+  modeSwitchTarget = null,
   onCloseDrawer = () => undefined,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
@@ -520,6 +523,7 @@ export function CharacterManager({
             imageAssets={imageAssets}
             mode="create"
             compositeDraft={createAssemblySnapshot?.draft ?? null}
+            modeSwitchTarget={modeSwitchTarget}
             onBack={() => {
               cancelOwnedSession();
               onViewChange('list');
