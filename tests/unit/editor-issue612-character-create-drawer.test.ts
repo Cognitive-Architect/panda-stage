@@ -138,8 +138,8 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     expect(workbenchStyles).toContain('min-height: var(--ui-touch-icon);');
     expect(workbenchStyles).toContain('.character-create-submit-compact');
     expect(workbenchStyles).toContain('min-width: var(--ui-touch-icon);');
-    expect(workbenchStyles).toContain('min-height: 32px;');
-    expect(workbenchStyles).toContain('min-height: 34px;');
+    expect(workbenchStyles).toContain('height: 36px;');
+    expect(workbenchStyles).toContain('min-height: 36px;');
     expect(workbenchStyles).toContain(
       'border-top: 1px solid var(--ui-color-separator);',
     );
@@ -171,10 +171,28 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     expect(workbenchStyles).toContain(
       ".character-list-create[data-character-list-presentation='landscape']",
     );
-    expect(workbenchStyles).toContain('align-content: space-between;');
-    expect(workbenchStyles).toContain('gap: clamp(16px, 2.5vh, 24px);');
-    expect(workbenchStyles).toContain('min-height: 72px;');
+    expect(workbenchStyles).toContain('flex-direction: column;');
+    expect(workbenchStyles).toContain('justify-content: space-between;');
+    expect(workbenchStyles).toContain('gap: 16px;');
+    expect(workbenchStyles).toContain('min-height: 80px;');
+    expect(workbenchStyles).toContain('padding: 8px 12px;');
+    expect(workbenchStyles).toContain('grid-template-columns: 56px minmax(0, 1fr) max-content;');
     expect(workbenchStyles).toContain('width: 56px;');
+    const issue619Styles = workbenchStyles.slice(
+      workbenchStyles.lastIndexOf('/* Issue #619:'),
+    );
+    expect(issue619Styles).toContain('@media (min-height: 700px)');
+    expect(issue619Styles).toContain('padding-block: 2px;');
+    expect(issue619Styles).toContain('min-height: 44px;');
+    expect(issue619Styles).toContain('height: 42px;');
+    expect(issue619Styles).toContain('min-height: 42px;');
+    expect(issue619Styles).toContain('padding: 2px;');
+    expect(issue619Styles).toContain('min-height: 44px;');
+    expect(issue619Styles).toContain('height: 36px;');
+    expect(issue619Styles).not.toContain('var(--ui-touch-icon)');
+    expect(issue619Styles).toContain(
+      ".character-manager[data-character-presentation='landscape']\n  .character-create-form[data-create-layout='compressed-v2']",
+    );
     const canCreate = characterList.slice(
       characterList.indexOf('const canCreate'),
       characterList.indexOf('const changeCreationMode'),
