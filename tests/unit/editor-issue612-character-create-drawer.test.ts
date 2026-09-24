@@ -126,6 +126,9 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     expect(picker).toContain('emptyOption.description ?');
     expect(workbenchStyles).toContain("data-create-layout='compressed-v2'");
     expect(workbenchStyles).toContain('.character-create-mode-switch-slot');
+    expect(workbenchStyles).toContain('label:has(input:checked)');
+    expect(workbenchStyles).toContain('border: 1px solid var(--ui-color-border);');
+    expect(workbenchStyles).toContain('border-left: 1px solid var(--ui-color-separator);');
     expect(workbenchStyles).toContain('.character-create-actions');
     expect(workbenchStyles).toContain('.image-asset-picker-heading');
     expect(workbenchStyles).toContain('font-weight: 700;');
@@ -164,5 +167,23 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     expect(characterList).toContain('normalAssetId !== angryAssetId');
     expect(characterList).toContain('onCommitCompositeCreate();');
     expect(workbenchStyles).toContain('.resource-activity-create-close');
+    expect(workbenchStyles).toContain('@media (min-height: 700px)');
+    expect(workbenchStyles).toContain(
+      ".character-list-create[data-character-list-presentation='landscape']",
+    );
+    expect(workbenchStyles).toContain('align-content: space-between;');
+    expect(workbenchStyles).toContain('gap: clamp(16px, 2.5vh, 24px);');
+    expect(workbenchStyles).toContain('min-height: 72px;');
+    expect(workbenchStyles).toContain('width: 56px;');
+    const canCreate = characterList.slice(
+      characterList.indexOf('const canCreate'),
+      characterList.indexOf('const changeCreationMode'),
+    );
+    expect(canCreate).toContain("creationMode === 'composite'");
+    expect(canCreate).toContain('normalAssetId !== angryAssetId');
+    expect(canCreate).not.toContain('mouthAssetId');
+    expect(characterList).toContain(
+      '...(mouthAssetId ? { mouthOpenAssetId: mouthAssetId } : {})',
+    );
   });
 });

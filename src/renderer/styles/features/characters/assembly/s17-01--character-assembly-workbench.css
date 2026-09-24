@@ -389,6 +389,144 @@
   align-content: start;
 }
 
+/* Issue #617: restore the mode selector as one connected, equal-segment
+   control in the landscape Create header. */
+.character-create-mode-switch-slot > .character-create-mode-switch,
+.character-create-form[data-create-layout='compressed-v2']
+  > .character-create-mode-switch {
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: rgb(255 255 255 / 2%);
+}
+
+.character-create-mode-switch-slot > .character-create-mode-switch label,
+.character-create-form[data-create-layout='compressed-v2']
+  > .character-create-mode-switch
+  label {
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+}
+
+.character-create-mode-switch-slot
+  > .character-create-mode-switch
+  label:has(input:checked),
+.character-create-form[data-create-layout='compressed-v2']
+  > .character-create-mode-switch
+  label:has(input:checked) {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+  box-shadow: inset 0 0 0 1px var(--ui-color-selected-border);
+}
+
+.character-create-mode-switch-slot
+  > .character-create-mode-switch
+  label
+  + label,
+.character-create-form[data-create-layout='compressed-v2']
+  > .character-create-mode-switch
+  label
+  + label {
+  border-left: 1px solid var(--ui-color-separator);
+}
+
+.character-create-mode-switch-slot
+  > .character-create-mode-switch
+  label:has(input:checked)
+  > span,
+.character-create-form[data-create-layout='compressed-v2']
+  > .character-create-mode-switch
+  label:has(input:checked)
+  > span {
+  color: inherit;
+  background: transparent;
+}
+
+@media (min-height: 700px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape
+    .resource-activity-surface:has(
+      .character-create-form[data-create-layout='compressed-v2']
+    ) {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape
+    .resource-activity-surface:has(
+      .character-create-form[data-create-layout='compressed-v2']
+    )
+    > .resource-activity-body {
+    display: grid;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape
+    .resource-activity-surface:has(
+      .character-create-form[data-create-layout='compressed-v2']
+    )
+    .resource-activity-panel {
+    display: grid;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape
+    .resource-activity-surface:has(
+      .character-create-form[data-create-layout='compressed-v2']
+    )
+    .character-manager[data-character-presentation='landscape'] {
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape
+    .resource-activity-surface:has(
+      .character-create-form[data-create-layout='compressed-v2']
+    )
+    .character-workspace {
+    display: grid;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape
+    .resource-activity-surface:has(
+      .character-create-form[data-create-layout='compressed-v2']
+    )
+    .character-list-create[data-character-list-presentation='landscape'] {
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .character-create-form[data-create-layout='compressed-v2'] {
+    height: 100%;
+    align-content: space-between;
+    gap: clamp(16px, 2.5vh, 24px);
+  }
+
+  .character-create-form[data-create-layout='compressed-v2']
+    > .image-asset-picker
+    .image-asset-picker-selected {
+    min-height: 72px;
+    grid-template-columns: 56px minmax(0, 1fr) max-content;
+  }
+
+  .character-create-form[data-create-layout='compressed-v2']
+    .image-asset-picker-selected-thumbnail {
+    width: 56px;
+    height: 56px;
+  }
+}
+
 .character-assembly-default-face-summary {
   display: grid;
   min-width: 0;
