@@ -471,7 +471,9 @@ export function CharacterList({
                     type="button"
                     variant="secondary"
                   >
-                    返回
+                    <span className="character-create-action-visual">
+                      返回
+                    </span>
                   </Button>
                   <Button
                     className="character-create-submit-compact"
@@ -480,7 +482,9 @@ export function CharacterList({
                     type="submit"
                     variant="primary"
                   >
-                    创建角色
+                    <span className="character-create-action-visual">
+                      创建角色
+                    </span>
                   </Button>
                 </div>
               ) : (
@@ -562,7 +566,9 @@ export function CharacterList({
                     type="button"
                     variant="secondary"
                   >
-                    返回
+                    <span className="character-create-action-visual">
+                      返回
+                    </span>
                   </Button>
                   <Button
                     className="character-create-submit-compact"
@@ -571,7 +577,9 @@ export function CharacterList({
                     type="submit"
                     variant="primary"
                   >
-                    创建角色
+                    <span className="character-create-action-visual">
+                      创建角色
+                    </span>
                   </Button>
                 </div>
               ) : (

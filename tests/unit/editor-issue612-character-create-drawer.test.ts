@@ -48,6 +48,9 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     expect(markup).toContain('data-image-asset-picker="生气表情"');
     expect(markup).toContain('data-image-asset-picker="张嘴图"');
     expect(markup).not.toContain('>可选</small>');
+    expect(markup).not.toContain('张嘴图（可选）');
+    expect(markup).not.toContain('创建后也可以在角色详情中配置。');
+    expect(markup).toContain('character-create-action-visual');
   });
 
   it('does not add description or optional copy to a composite empty Mouth value', () => {
@@ -101,6 +104,9 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     const resourceDock = source(
       'src/renderer/shell/ResourceActivityDock.tsx',
     );
+    const characterManager = source(
+      'src/renderer/features/characters/CharacterManager.tsx',
+    );
     const picker = source(
       'src/renderer/features/characters/ImageAssetPicker.tsx',
     );
@@ -122,13 +128,41 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     expect(workbenchStyles).toContain('.character-create-mode-switch-slot');
     expect(workbenchStyles).toContain('.character-create-actions');
     expect(workbenchStyles).toContain('.image-asset-picker-heading');
-    expect(workbenchStyles).toContain('font-weight: 600;');
+    expect(workbenchStyles).toContain('font-weight: 700;');
     expect(workbenchStyles).toContain("input[type='radio']");
     expect(workbenchStyles).toContain('clip-path: inset(50%);');
     expect(workbenchStyles).toContain('label:has(input:focus-visible)');
     expect(workbenchStyles).toContain('min-height: var(--ui-touch-icon);');
     expect(workbenchStyles).toContain('.character-create-submit-compact');
     expect(workbenchStyles).toContain('min-width: var(--ui-touch-icon);');
+    expect(workbenchStyles).toContain('min-height: 32px;');
+    expect(workbenchStyles).toContain('min-height: 34px;');
+    expect(workbenchStyles).toContain(
+      'border-top: 1px solid var(--ui-color-separator);',
+    );
+    expect(workbenchStyles).toContain(
+      '--image-asset-picker-selected-surface-background:',
+    );
+    expect(workbenchStyles).toContain(
+      'var(--ui-color-surface-overlay);',
+    );
+    expect(workbenchStyles).toContain(
+      'background: var(--ui-color-surface-app);',
+    );
+    expect(workbenchStyles).toContain('.character-create-action-visual');
+    expect(characterList.match(/className="character-create-actions"/gu)).toHaveLength(2);
+    expect(characterList).toContain('onClick={onBack}');
+    expect(characterManager).toContain("onViewChange('list')");
+    expect(characterManager).toContain('onCloseDrawer();');
+    expect(resourceDock).toContain('setDrawerOpen(false);');
+    expect(characterList).toContain(
+      "onChange={() => changeCreationMode('single-image')}",
+    );
+    expect(characterList).toContain(
+      "onChange={() => changeCreationMode('composite')}",
+    );
+    expect(characterList).toContain('normalAssetId !== angryAssetId');
+    expect(characterList).toContain('onCommitCompositeCreate();');
     expect(workbenchStyles).toContain('.resource-activity-create-close');
   });
 });

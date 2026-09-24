@@ -56,9 +56,9 @@
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
   gap: var(--ui-space-3);
-  color: var(--ui-color-text-secondary);
+  color: var(--ui-color-text-primary);
   font: var(--ui-font-secondary);
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -99,20 +99,64 @@
   position: relative;
   min-width: 0;
   min-height: var(--ui-touch-icon);
-  padding: 0 var(--ui-space-2);
+  padding: 0;
   gap: 0;
   font: var(--ui-font-secondary);
   white-space: nowrap;
+  background: transparent;
+  box-shadow: none;
 }
 
 .character-create-mode-switch-slot > .character-create-mode-switch label {
   position: relative;
   min-width: 0;
   min-height: var(--ui-touch-icon);
-  padding: 0 var(--ui-space-2);
+  padding: 0;
   gap: 0;
   font: var(--ui-font-secondary);
   white-space: nowrap;
+  background: transparent;
+  box-shadow: none;
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-mode-switch
+  label
+  > span,
+.character-create-mode-switch-slot
+  > .character-create-mode-switch
+  label
+  > span {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--ui-space-2);
+  border-radius: var(--ui-radius-small);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-mode-switch
+  label:has(input:checked),
+.character-create-mode-switch-slot
+  > .character-create-mode-switch
+  label:has(input:checked) {
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  box-shadow: none;
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-mode-switch
+  label:has(input:checked)
+  > span,
+.character-create-mode-switch-slot
+  > .character-create-mode-switch
+  label:has(input:checked)
+  > span {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
 }
 
 .character-create-form[data-create-layout='compressed-v2']
@@ -161,15 +205,64 @@
 
 .character-create-form[data-create-layout='compressed-v2']
   .image-asset-picker-heading {
-  color: var(--ui-color-text-secondary);
+  color: var(--ui-color-text-primary);
   font: var(--ui-font-secondary);
+  font-weight: 700;
 }
 
 .character-create-form[data-create-layout='compressed-v2']
   .image-asset-picker-heading
   strong {
   font: inherit;
-  font-weight: 600;
+  font-weight: inherit;
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  > .image-asset-picker {
+  --image-asset-picker-selected-surface-background:
+    var(--ui-color-surface-overlay);
+  --image-asset-picker-selected-surface-background-hover:
+    var(--ui-color-surface-work);
+  --image-asset-picker-selected-surface-border: var(--ui-color-border);
+  --image-asset-picker-selected-surface-border-hover:
+    var(--ui-color-selected-border);
+  gap: var(--ui-space-1);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  > .character-create-name-row
+  + .image-asset-picker {
+  margin-top: var(--ui-space-1);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .image-asset-picker-selected {
+  min-height: 64px;
+  padding: var(--ui-space-1) var(--ui-space-2);
+  grid-template-columns: 48px minmax(0, 1fr) max-content;
+  gap: var(--ui-space-2);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .image-asset-picker-selected-thumbnail {
+  width: 48px;
+  height: 48px;
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-surface-app);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .image-asset-picker-neutral-empty-thumbnail {
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-surface-app);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .image-asset-picker-selected-action {
+  border-color: var(--ui-color-border);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-work);
+  font-size: 10px;
 }
 
 .character-create-form[data-create-layout='compressed-v2']
@@ -179,7 +272,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--ui-space-3);
-  margin-top: var(--ui-space-1);
+  padding-top: var(--ui-space-2);
+  border-top: 1px solid var(--ui-color-separator);
 }
 
 .character-create-form[data-create-layout='compressed-v2']
@@ -187,7 +281,9 @@
   .character-create-back {
   min-width: var(--ui-touch-icon);
   min-height: var(--ui-touch-icon);
-  padding: 0 var(--ui-space-3);
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
   font: var(--ui-font-secondary);
 }
 
@@ -196,11 +292,72 @@
   > .character-create-submit-compact {
   flex: 0 0 auto;
   width: auto;
-  min-width: 116px;
+  min-width: 104px;
   min-height: var(--ui-touch-icon);
   margin-top: 0;
-  padding: 0 var(--ui-space-3);
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
   font: var(--ui-font-secondary);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  > button[data-ui-button]:hover:not(:disabled),
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  > button[data-ui-button]:active:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  .character-create-action-visual {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--ui-space-3);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-secondary);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  .character-create-back:hover:not(:disabled)
+  .character-create-action-visual {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-surface-overlay);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  .character-create-submit-compact
+  .character-create-action-visual {
+  min-width: 104px;
+  min-height: 34px;
+  border-color: transparent;
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-primary);
+  font-weight: 700;
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  .character-create-submit-compact:hover:not(:disabled)
+  .character-create-action-visual {
+  background: var(--ui-color-action-hover);
+}
+
+.character-create-form[data-create-layout='compressed-v2']
+  .character-create-actions
+  .character-create-submit-compact:active:not(:disabled)
+  .character-create-action-visual {
+  background: var(--ui-color-action-pressed);
 }
 
 .editor-layout[data-shell-mode='landscape']
