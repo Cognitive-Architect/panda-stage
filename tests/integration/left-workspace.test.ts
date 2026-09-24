@@ -234,6 +234,20 @@ async function click(window, selector) {
   );
 }
 
+async function backFromCharacterCreate(window) {
+  const selector = await window.webContents.executeJavaScript(
+    'document.querySelector(' +
+      JSON.stringify(
+        '[data-testid="resource-primary-action"][aria-label="返回角色列表"]',
+      ) +
+      ') ? ' +
+      JSON.stringify('[data-testid="resource-primary-action"]') +
+      ' : ' +
+      JSON.stringify('[data-testid="character-create-back"]'),
+  );
+  await click(window, selector);
+}
+
 async function openProjectCenter(window) {
   const editorOpen = await window.webContents.executeJavaScript(
     '(() => {' +
@@ -756,7 +770,7 @@ async function verifyIssue81() {
       '.character-create-form input',
       'B create draft must not return',
     );
-    await click(window, '[data-testid="character-create-back"]');
+    await backFromCharacterCreate(window);
     await click(window, '.character-list-items button');
     await waitFor(
       window,
@@ -799,7 +813,7 @@ async function verifyIssue81() {
       '.character-create-form input',
       'A create draft must not enter B',
     );
-    await click(window, '[data-testid="character-create-back"]');
+    await backFromCharacterCreate(window);
     await click(window, '.character-list-items button');
     await waitFor(
       window,
@@ -841,7 +855,7 @@ async function verifyIssue81() {
       '.character-create-form input',
       'B second draft must not enter A',
     );
-    await click(window, '[data-testid="character-create-back"]');
+    await backFromCharacterCreate(window);
     await click(window, '.character-list-items button');
     await waitFor(
       window,
