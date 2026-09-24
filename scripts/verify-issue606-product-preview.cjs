@@ -783,12 +783,12 @@ async function run() {
     window = await newWindow();
     await openProject(window);
     await openPreview(window, 'mouth-failed');
+    await pausePreview(window);
     await waitForDom(
       window,
       `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewReadiness === 'ready' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewDegraded === 'true' && document.querySelector('[data-testid="product-preview-mouth-degraded-warning"]') && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true'`,
       'Failed Mouth did not produce the visible Expression fallback.',
     );
-    await pausePreview(window);
     const fallback = await waitForPreviewPixels(
       window,
       [{ name: 'fallbackFace', x: 1_180, y: 536 }],
