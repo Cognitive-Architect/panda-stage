@@ -204,13 +204,13 @@ export function CharacterEditor({
     character.expressions.find(
       (expression) => expression.id === character.defaultExpressionId,
     ) ?? character.expressions[0];
+  const defaultExpressionAsset = defaultExpression
+    ? imageAssets.find((asset) => asset.id === defaultExpression.assetId)
+    : undefined;
   const defaultThumbnail = defaultExpression
     ? thumbnails[defaultExpression.assetId]
     : undefined;
-  const defaultAssetResolved = Boolean(
-    defaultExpression &&
-      imageAssets.some((asset) => asset.id === defaultExpression.assetId),
-  );
+  const defaultAssetResolved = Boolean(defaultExpressionAsset);
   const hasPendingTransform = isDefaultTransformPending(
     character,
     scale,
@@ -565,6 +565,7 @@ export function CharacterEditor({
           <nav
             aria-label="角色工作区"
             className="character-workspace-switcher"
+            data-workspace-count={compositeCharacter ? 3 : 2}
             data-testid="character-workspace-switcher"
           >
             {compositeCharacter ? (
@@ -633,7 +634,7 @@ export function CharacterEditor({
                   description: '从项目图片中选择身体。',
                   label: '请选择图片',
                 }}
-                label="身体图片"
+                label="身体"
                 onChange={(assetId) => {
                   if (assetId) onSetAssemblyBodyAsset(assetId);
                 }}
@@ -652,34 +653,35 @@ export function CharacterEditor({
                 className="character-assembly-default-face-summary"
                 data-testid="character-assembly-default-face-summary"
               >
-                <span className="character-assembly-field-label">默认表情</span>
+                <div className="image-asset-picker-heading">
+                  <strong>默认脸</strong>
+                </div>
                 {defaultExpression ? (
-                  <div className="character-assembly-default-face-content">
+                  <button
+                    aria-label={`管理默认脸：${defaultExpression.name}`}
+                    className="image-asset-picker-selected"
+                    data-testid="character-assembly-go-expressions"
+                    onClick={() => switchDetailWorkspace('expressions')}
+                    type="button"
+                  >
                     <CharacterExpressionThumbnail
-                      className="character-assembly-default-face-thumbnail"
+                      className="image-asset-picker-selected-thumbnail"
                       expression={defaultExpression}
                       onThumbnailError={onThumbnailError}
                       thumbnail={defaultThumbnail}
                     />
-                    <span>
+                    <span className="image-asset-picker-selected-copy">
                       <strong>{defaultExpression.name}</strong>
                       <small>
-                        {imageAssets.find(
-                          (asset) => asset.id === defaultExpression.assetId,
-                        )?.name ?? defaultExpression.assetId}
+                        {defaultExpressionAsset
+                          ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                          : '素材不可用'}
                       </small>
                     </span>
-                    <button
-                      className="character-assembly-expression-bridge"
-                      data-testid="character-assembly-go-expressions"
-                      onClick={() =>
-                        switchDetailWorkspace('expressions')
-                      }
-                      type="button"
-                    >
-                      去表情
-                    </button>
-                  </div>
+                    <span className="image-asset-picker-selected-action">
+                      管理
+                    </span>
+                  </button>
                 ) : null}
               </div>
               <ImageAssetPicker
@@ -689,7 +691,7 @@ export function CharacterEditor({
                   label: '暂不配置',
                   optional: true,
                 }}
-                label="张嘴图"
+                label="张嘴脸"
                 onChange={onSetAssemblyMouthAsset}
                 onThumbnailError={onThumbnailError}
                 selectedAssetId={
@@ -703,14 +705,20 @@ export function CharacterEditor({
                 selectedAction={
                   (assemblyDraft?.mouthOpenAssetId ??
                     character.mouthOpenAssetId) ? (
-                    <button
-                      className="character-mouth-clear"
-                      disabled={disabled}
-                      onClick={() => onSetAssemblyMouthAsset(null)}
-                      type="button"
-                    >
-                      清除
-                    </button>
+                    <details className="character-assembly-mouth-overflow">
+                      <summary aria-label="张嘴脸更多操作">⋯</summary>
+                      <div className="character-assembly-mouth-overflow-menu">
+                        <button
+                          className="character-mouth-clear"
+                          data-testid="character-assembly-mouth-clear"
+                          disabled={disabled}
+                          onClick={() => onSetAssemblyMouthAsset(null)}
+                          type="button"
+                        >
+                          清除
+                        </button>
+                      </div>
+                    </details>
                   ) : undefined
                 }
               />
@@ -734,6 +742,7 @@ export function CharacterEditor({
               onSetAsset={onSetExpressionAsset}
               onSetDefault={onSetDefaultExpression}
               onThumbnailError={onThumbnailError}
+              compactDetailWorkspace
               presentation="landscape"
               thumbnails={thumbnails}
               warnings={warnings}
@@ -754,19 +763,19 @@ export function CharacterEditor({
               <div className="character-section-heading">
                 <div>
                   <h4 id="character-settings-workspace-heading">
-                    默认大小与方向
+                    初始角色大小
                   </h4>
                 </div>
               </div>
               <div className="character-default-transform-controls">
                 <div className="character-scale-control-group">
                   <div
-                    aria-label="默认缩放"
+                    aria-label="初始角色大小"
                     className="character-scale-stepper"
                     role="group"
                   >
                     <button
-                      aria-label="减小默认缩放"
+                      aria-label="减小初始角色大小"
                       disabled={disabled || scale <= 0.1}
                       onClick={() => adjustScale(-0.1)}
                       type="button"
@@ -775,7 +784,7 @@ export function CharacterEditor({
                     </button>
                     <output aria-live="polite">{scale.toFixed(1)}×</output>
                     <button
-                      aria-label="增大默认缩放"
+                      aria-label="增大初始角色大小"
                       disabled={disabled || scale >= 10}
                       onClick={() => adjustScale(0.1)}
                       type="button"

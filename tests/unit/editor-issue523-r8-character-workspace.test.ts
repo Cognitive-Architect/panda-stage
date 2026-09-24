@@ -99,7 +99,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(markup).toContain('expression-editor-landscape');
     expect(markup).toContain('expression-card-list');
     expect(markup).toContain('expression-add-trigger');
-    expect(markup).toContain('添加表情');
+    expect(markup).toContain('＋ 添加');
     expect(markup.match(/data-expression-editing="false"/gu)).toHaveLength(
       character.expressions.length,
     );
@@ -135,7 +135,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
       }),
     );
 
-    expect(cleanMarkup).toContain('默认大小与方向');
+    expect(cleanMarkup).toContain('初始角色大小');
     expect(cleanMarkup).toContain('data-default-transform-pending="false"');
     expect(cleanMarkup).not.toContain('character-default-pending');
     expect(cleanMarkup).not.toContain('class="character-default-apply"');
@@ -229,7 +229,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(markup).toContain('data-testid="character-assembly-body-picker"');
     expect(markup).toContain('data-testid="character-assembly-mouth-picker"');
     expect(markup).toContain('data-testid="character-assembly-go-expressions"');
-    expect(markup).toContain('>去表情</button>');
+    expect(markup).toContain('class="image-asset-picker-selected-action">管理</span>');
     expect(markup).not.toContain('character-detail-mouth-visual-picker');
     expect(markup).toContain('aria-pressed="true"');
   });

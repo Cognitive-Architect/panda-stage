@@ -77,7 +77,7 @@ describe('Issue #524 R8 Character Detail visual polish', () => {
     expect(editor).not.toContain('<p className="eyebrow">角色表情</p>');
     expect(editor).not.toContain('在此查看并管理当前角色的表情。');
     expect(markup).toContain('id="character-expression-workspace-heading"');
-    expect(markup).toContain('添加表情');
+    expect(markup).toContain('＋ 添加');
   });
 
   it('scopes the calmer tab state and compact card footer to landscape Character Detail', () => {

@@ -137,7 +137,7 @@ export function CharacterList({
       bodyAssetId: imageAssets[0]?.id ?? '',
       facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
       expressions: initialFaceAssetId
-        ? [{ name: '默认表情', assetId: initialFaceAssetId }]
+        ? [{ name: '表情1', assetId: initialFaceAssetId }]
         : [],
       defaultExpressionIndex: 0,
       ...(mouthAssetId ? { mouthOpenAssetId: mouthAssetId } : {}),
@@ -416,7 +416,7 @@ export function CharacterList({
                     };
                   } else if (assetId) {
                     expressions.push({
-                      name: '默认表情',
+                      name: '表情1',
                       assetId,
                     });
                   }

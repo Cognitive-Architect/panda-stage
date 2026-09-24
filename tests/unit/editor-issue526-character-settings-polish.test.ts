@@ -84,7 +84,7 @@ describe('Issue #526 Character Settings visual polish', () => {
 
     expect(markup).toContain('class="character-workspace-tab-count"');
     expect(markup).toContain(`>${character.expressions.length}</span>`);
-    expect(settings).toContain('默认大小与方向');
+    expect(settings).toContain('初始角色大小');
     expect(settings).not.toContain('角色设置');
     expect(settings).not.toContain('嘴型');
     expect(settings).not.toContain('可选');

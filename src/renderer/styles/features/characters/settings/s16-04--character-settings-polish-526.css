@@ -351,6 +351,26 @@
   background: rgb(214 113 98 / 7%);
 }
 
+/* Issue #614: give the existing size stepper clearer spacing without changing
+   its pending Apply/Revert behavior or transform semantics. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-settings-workspace
+  .character-scale-stepper {
+  grid-template-columns: 40px minmax(52px, 1fr) 40px;
+  column-gap: 10px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-settings-workspace
+  .character-scale-stepper
+  output {
+  min-width: 52px;
+}
+
 @media (max-width: 420px) {
   .editor-layout[data-shell-mode='landscape']
     .resource-activity-dock-landscape[data-active-activity='characters']

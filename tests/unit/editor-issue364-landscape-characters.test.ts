@@ -101,7 +101,7 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     expect(markup).toContain('设置');
     expect(markup).toContain('expression-card-preview');
     expect(markup).toContain('默认 ✓');
-    expect(markup).toContain('默认大小与方向');
+    expect(markup).toContain('初始角色大小');
     expect(markup).toContain(`${character.defaultScale.toFixed(1)}×`);
     expect(markup).toContain('role="switch"');
     expect(markup).toContain('水平翻转');

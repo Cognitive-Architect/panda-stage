@@ -19,6 +19,8 @@ export interface ExpressionEditorProps {
   disabled?: boolean;
   /** Select the compact visual workflow only for the landscape drawer. */
   presentation?: 'default' | 'landscape';
+  /** Use the compact heading/action only when embedded in Character Detail's workspace. */
+  compactDetailWorkspace?: boolean;
   onAdd: (name: string, assetId: string) => void;
   onRename: (expressionId: string, name: string) => void;
   onSetAsset: (expressionId: string, assetId: string) => void;
@@ -289,6 +291,7 @@ function LandscapeExpressionEditor({
   thumbnails,
   warnings,
   disabled = false,
+  compactDetailWorkspace = false,
   onAdd,
   onRename,
   onSetAsset,
@@ -361,7 +364,12 @@ function LandscapeExpressionEditor({
     >
       <div className="expression-editor-landscape-heading">
         <div>
-          <h4 id="character-expression-workspace-heading">表情</h4>
+          <h4
+            className={compactDetailWorkspace ? 'sr-only' : undefined}
+            id="character-expression-workspace-heading"
+          >
+            表情
+          </h4>
         </div>
         <button
           aria-expanded={isAddOpen}
@@ -371,7 +379,7 @@ function LandscapeExpressionEditor({
           onClick={() => setIsAddOpen((open) => !open)}
           type="button"
         >
-          ＋ 添加表情
+          {compactDetailWorkspace ? '＋ 添加' : '＋ 添加表情'}
         </button>
       </div>
       {isAddOpen ? (
