@@ -16,8 +16,9 @@ const exampleProject = require('../demo-project/project-v1.example.json');
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
 // Asset Library drag source, Canvas drop target, and Project Save boundary in
-// a real Windows Electron renderer. Synthetic fixture bytes are kept outside
-// the repository, and the receipt does not claim human visual acceptance.
+// a real Windows Electron renderer. The Issue #612 Create-drawer contract is
+// included; synthetic fixture bytes stay outside the repository, and the
+// receipt does not claim human visual acceptance.
 const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
@@ -818,14 +819,70 @@ async function run() {
       `document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? ''`,
     );
     await openCreate(windowRef);
+    const compactCreateNavigation = await windowRef.webContents.executeJavaScript(`(() => {
+      const back = document.querySelector('[data-testid="resource-primary-action"]');
+      const close = document.querySelector('[data-testid="resource-activity-close"]');
+      const bounds = (element) => {
+        const rect = element?.getBoundingClientRect();
+        return rect ? { width: rect.width, height: rect.height } : null;
+      };
+      return {
+        backLabel: back?.getAttribute('aria-label') ?? '',
+        backText: back?.textContent.trim() ?? '',
+        backBounds: bounds(back),
+        closeLabel: close?.getAttribute('aria-label') ?? '',
+        closeClass: close?.className ?? '',
+        closeBackground: close ? getComputedStyle(close).backgroundColor : '',
+        closeBounds: bounds(close),
+        singleImageMouthLabel: document.querySelector('[data-testid="character-create-mouth-picker"] .image-asset-picker-heading strong')?.textContent.trim() ?? '',
+        singleImageMouthOptional: [...(document.querySelector('[data-testid="character-create-mouth-picker"] .image-asset-picker-heading')?.querySelectorAll('small') ?? [])].some((label) => label.textContent.trim() === '可选'),
+        singleImageMouthHelp: document.querySelector('[data-testid="character-create-mouth-picker"]')?.textContent.includes('创建后也可以在角色详情中配置。') ?? false,
+        createLayout: document.querySelector('[data-create-layout]')?.dataset.createLayout ?? '',
+        duplicateBackCount: document.querySelectorAll('[data-testid="character-create-back"]').length,
+      };
+    })()`);
+    assert(compactCreateNavigation.backLabel === '返回角色列表', 'Landscape Create does not expose an accessible back-arrow action.');
+    assert(compactCreateNavigation.backText === '', 'Landscape Create back navigation still shows a large text label.');
+    assert(compactCreateNavigation.backBounds?.width >= 44 && compactCreateNavigation.backBounds?.height >= 44, 'The compact back arrow lost the shared touch-target size.');
+    assert(compactCreateNavigation.closeLabel === '关闭资源工作区', 'The close X is not a distinct drawer-close action.');
+    assert(compactCreateNavigation.closeClass.includes('resource-activity-create-close') && compactCreateNavigation.closeBackground === 'rgba(0, 0, 0, 0)', 'The Create close X is not visually subordinate to the drawer content.');
+    assert(compactCreateNavigation.closeBounds?.width >= 44 && compactCreateNavigation.closeBounds?.height >= 44, 'The close X lost the shared touch-target size.');
+    assert(compactCreateNavigation.singleImageMouthLabel === '张嘴图（可选）' && compactCreateNavigation.singleImageMouthOptional && compactCreateNavigation.singleImageMouthHelp, 'Landscape single-image Mouth behavior/copy changed.');
+    assert(compactCreateNavigation.createLayout === 'compressed-v2', 'Landscape Create is not using the approved compressed-v2 layout.');
+    assert(compactCreateNavigation.duplicateBackCount === 0, 'Landscape Create still renders a duplicate CharacterList back control.');
+    await click(windowRef, '[data-testid="resource-activity-close"]', 'Close Character drawer with X');
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`,
+      'Close X did not close the Character drawer.',
+    );
+    const closeState = await windowRef.webContents.executeJavaScript(`(() => ({
+      activeSubview: document.querySelector('[data-testid="resource-activity-panel"]')?.dataset.activeSubview ?? '',
+      createMounted: Boolean(document.querySelector('[data-testid="character-create-view"]')),
+      drawerOpen: document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen ?? '',
+    }))()`);
+    assert(closeState.activeSubview === 'create' && closeState.createMounted && closeState.drawerOpen === 'false', 'Close X navigated away instead of only closing the Character drawer.');
+    await click(windowRef, '[data-testid="resource-activity-rail-characters"]', 'Reopen Character drawer');
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true' && document.querySelector('[data-testid="character-create-view"]')`,
+      'Reopening the Character drawer did not preserve its Create route.',
+    );
+    evidence.compactCreateNavigation = { ...compactCreateNavigation, closeState };
+
     await click(windowRef, '[data-testid="character-create-mode-switch"] input[value="composite"]', 'Composite Character choice');
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="create"]')`, 'Composite creation did not activate the Assembly workbench.');
-    await click(windowRef, '[data-testid="character-create-back"]', 'Cancel composite creation');
+    await click(windowRef, '[data-testid="resource-primary-action"]', 'Back to Character list');
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="character-list-view"]') && document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true'`,
+      'Back arrow did not navigate from Create to the open Character list.',
+    );
     await waitForDom(windowRef, `document.querySelector('main.editor-shell')?.dataset.characterAssemblyActive === 'false'`, 'Cancel did not exit the non-persisted creation session.');
     const cancelled = await windowRef.webContents.executeJavaScript(`(() => ({
       revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
       undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
-      characterCount: document.querySelector('[data-testid="character-manager"] .character-manager-heading [data-project-revision]')?.textContent ?? '',
+      characterCount: document.querySelector('[data-testid="character-manager"] .character-manager-heading > div:last-child > span')?.textContent ?? '',
     }))()`);
     assert(cancelled.revision === '0', 'Canceling composite creation changed the Project revision.');
     assert(cancelled.undoCount === '0', 'Canceling composite creation created a History entry.');
@@ -834,20 +891,46 @@ async function run() {
     await openCreate(windowRef);
     await click(windowRef, '[data-testid="character-create-mode-switch"] input[value="composite"]', 'Composite Character choice');
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="create"]')`, 'Composite creation workbench did not reopen.');
+    await chooseImage(windowRef, 'character-create-body-picker', IDS.body);
+    await chooseImage(windowRef, 'character-create-face-picker', IDS.face);
     const creationSurface = await windowRef.webContents.executeJavaScript(`(() => {
-      const form = document.querySelector('[data-testid="character-create-view"]');
+      const createView = document.querySelector('[data-testid="character-create-view"]');
+      const form = createView?.querySelector('form.character-create-form');
+      const nameRow = form?.querySelector('.character-create-name-row');
+      const nameLabel = nameRow?.querySelector('span');
       const name = form?.querySelector('[data-testid="character-create-name"]');
       const mode = form?.querySelector('[data-testid="character-create-mode-switch"]');
       const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
       const createActions = [...document.querySelectorAll('button')]
         .filter((button) => button.textContent.trim() === '创建角色' && button.getClientRects().length > 0);
       const controls = document.querySelector('[data-testid="character-assembly-placement-controls"]');
+      const mouth = form?.querySelector('[data-testid="character-create-mouth-picker"]');
+      const submit = form?.querySelector('.character-create-submit-compact');
+      const submitBounds = submit?.getBoundingClientRect();
+      const formBounds = form?.getBoundingClientRect();
+      const nameLabelBounds = nameLabel?.getBoundingClientRect();
+      const nameBounds = name?.getBoundingClientRect();
+      const surface = document.querySelector('[data-testid="resource-activity-drawer"]');
       return {
         nameBeforeMode: Boolean(name && mode && (name.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING)),
+        nameRowClass: nameRow?.className ?? '',
+        nameLabelText: nameLabel?.textContent.trim() ?? '',
+        nameAndInputSameRow: Boolean(nameLabelBounds && nameBounds && Math.abs((nameLabelBounds.top + nameLabelBounds.height / 2) - (nameBounds.top + nameBounds.height / 2)) < 3),
+        modeLabels: [...(mode?.querySelectorAll('label') ?? [])].map((label) => label.textContent.trim()),
+        modeRadioClipPaths: [...(mode?.querySelectorAll('input[type="radio"]') ?? [])].map((input) => getComputedStyle(input).clipPath),
+        drawerAssetLabels: [...(form?.querySelectorAll('.image-asset-picker-heading strong') ?? [])].map((label) => label.textContent.trim()),
+        mouthValue: mouth?.querySelector('.image-asset-picker-selected-copy strong')?.textContent.trim() ?? '',
+        mouthAction: mouth?.querySelector('.image-asset-picker-selected-action')?.textContent.trim() ?? '',
+        mouthExtraCopy: [...(mouth?.querySelectorAll('small') ?? [])].map((label) => label.textContent.trim()).filter(Boolean),
+        mouthOptionalCopyPresent: /可选|可以稍后再配置/u.test(mouth?.textContent ?? ''),
         createActionCount: createActions.length,
         createActionOwnedByDrawer: Boolean(createActions[0]?.closest('[data-testid="character-create-view"]')),
         centralCreateActionCount: [...(workbench?.querySelectorAll('button') ?? [])]
           .filter((button) => button.textContent.trim() === '创建角色').length,
+        createButtonCompact: Boolean(submitBounds && formBounds && submitBounds.width < formBounds.width - 40 && submitBounds.right >= formBounds.right - 2),
+        createButtonTouchHeight: submitBounds?.height ?? 0,
+        createEnabledWithoutMouth: Boolean(submit && !submit.disabled),
+        drawerScroll: surface ? { scrollHeight: surface.scrollHeight, clientHeight: surface.clientHeight, needed: surface.scrollHeight > surface.clientHeight + 1 } : null,
         visibleAssemblyHeadingCount: workbench?.querySelectorAll('h1, h2, h3').length ?? -1,
         helperHintCount: workbench?.querySelectorAll('p').length ?? -1,
         precisionLabels: [...(controls?.querySelectorAll('.character-assembly-control-label') ?? [])].map((label) => label.textContent.trim()),
@@ -860,6 +943,13 @@ async function run() {
       };
     })()`);
     assert(creationSurface.nameBeforeMode, 'Character name is not placed before the creation type/material flow.');
+    assert(creationSurface.nameRowClass === 'character-create-name-row' && creationSurface.nameLabelText === '角色名称' && creationSurface.nameAndInputSameRow, 'Character name label and input are not presented in one usable row.');
+    assert(creationSurface.modeLabels.join(',') === '整图,身体+脸', 'Landscape type switch labels do not match the approved compact wording.');
+    assert(creationSurface.modeRadioClipPaths.every((clipPath) => clipPath === 'inset(50%)'), 'The compact type switch shows radio-circle indicators.');
+    assert(creationSurface.drawerAssetLabels.join(',') === '身体,默认脸,张嘴图', 'Composite asset rows do not use the required short labels.');
+    assert(creationSurface.mouthValue === '暂不配置' && creationSurface.mouthAction === '选择' && !creationSurface.mouthOptionalCopyPresent, 'The empty Mouth state has duplicate optional/help copy or the wrong action.');
+    assert(creationSurface.createEnabledWithoutMouth, 'Composite Mouth became required for Character creation.');
+    assert(creationSurface.createButtonCompact && creationSurface.createButtonTouchHeight >= 44, 'Create is not a compact, touch-usable bottom-right primary action.');
     assert(creationSurface.createActionCount === 1 && creationSurface.createActionOwnedByDrawer, 'Composite Create is not owned by exactly one left-drawer primary action.');
     assert(creationSurface.centralCreateActionCount === 0, 'The central Assembly workbench still owns a competing Create action.');
     assert(creationSurface.visibleAssemblyHeadingCount === 0, 'The central Assembly workbench still shows a permanent title block.');
@@ -868,13 +958,17 @@ async function run() {
     assert(creationSurface.resetLabel === '重置', 'Face Placement precision controls do not expose Reset.');
     assert(creationSurface.values.x !== '' && creationSurface.values.y !== '' && creationSurface.values.scale !== '', 'Face Placement X/Y/scale values are not visible.');
     evidence.creationOwnershipAndControls = creationSurface;
+    await windowRef.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    await wait(250);
+    screenshots.push(await capture(windowRef, 'create-character-drawer-compressed-v2.png'));
     await setCharacterName(windowRef, 'S07 Composite Panda');
-    await chooseImage(windowRef, 'character-create-body-picker', IDS.body);
-    await chooseImage(windowRef, 'character-create-face-picker', IDS.face);
     await chooseImage(windowRef, 'character-create-mouth-picker', IDS.mouth);
     const dragEvidence = await dragFaceWithNativeInput(windowRef);
     assert(dragEvidence.bodyAssetId === IDS.body, 'Create preview did not use the explicitly selected Body.');
     assert(dragEvidence.faceAssetId === IDS.face, 'Create preview did not use the selected default Face.');
+    evidence.createAssemblyAttempt = dragEvidence;
     assert(dragEvidence.revision === '0' && dragEvidence.history === '0', 'Assembly interactions wrote Project or History before Create.');
     assert(dragEvidence.rightInactive === 'true', 'The right Inspector remained active during Assembly.');
     assert(dragEvidence.timelineInactive === 'true', 'The Timeline remained active during Assembly.');
@@ -1220,7 +1314,7 @@ async function run() {
     assert(savedProject.shots[0].layers[0].source.characterId === created.characterId, 'Saved Shot Layer points at the wrong Character.');
 
     return {
-      issue: 609,
+      issue: 612,
       passed: true,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       verificationGate: 'verify:issue609-character-assembly',
@@ -1264,7 +1358,7 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: 609,
+      issue: 612,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       verificationGate: 'verify:issue609-character-assembly',

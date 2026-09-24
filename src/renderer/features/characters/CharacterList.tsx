@@ -61,6 +61,8 @@ export function CharacterList({
   thumbnails = {},
   onThumbnailError = () => undefined,
 }: CharacterListProps): React.JSX.Element {
+  const compactLandscapeCreate =
+    mode === 'create' && presentation === 'landscape';
   const [name, setName] = useState('新角色');
   const [normalAssetId, setNormalAssetId] = useState(
     imageAssets[0]?.id ?? '',
@@ -72,6 +74,8 @@ export function CharacterList({
   const [creationMode, setCreationMode] = useState<
     'single-image' | 'composite'
   >('single-image');
+  const compactLandscapeComposite =
+    compactLandscapeCreate && creationMode === 'composite';
   const defaultFaceAssetId =
     compositeDraft?.expressions[
       compositeDraft.defaultExpressionIndex ?? 0
@@ -117,7 +121,13 @@ export function CharacterList({
 
   return (
     <aside
-      aria-label={showHeading ? undefined : '角色列表'}
+      aria-label={
+        showHeading
+          ? undefined
+          : mode === 'create'
+            ? '创建角色'
+            : '角色列表'
+      }
       className={`character-list character-list-${mode}`}
       data-character-list-presentation={presentation}
       data-testid={
@@ -128,29 +138,31 @@ export function CharacterList({
             : 'character-legacy-view'
       }
     >
-      <div
-        className={
-          showHeading
-            ? 'character-list-heading'
-            : 'character-list-heading character-list-heading-visually-hidden'
-        }
-      >
-        <div>
-          <p className="eyebrow">角色资源</p>
-          <strong>{mode === 'create' ? '新建角色' : '角色列表'}</strong>
+      {!compactLandscapeCreate ? (
+        <div
+          className={
+            showHeading
+              ? 'character-list-heading'
+              : 'character-list-heading character-list-heading-visually-hidden'
+          }
+        >
+          <div>
+            <p className="eyebrow">角色资源</p>
+            <strong>{mode === 'create' ? '新建角色' : '角色列表'}</strong>
+          </div>
+          {mode === 'create' ? (
+            <button
+              data-testid="character-create-back"
+              onClick={onBack}
+              type="button"
+            >
+              返回角色列表
+            </button>
+          ) : (
+            <span>{characters.length}</span>
+          )}
         </div>
-        {mode === 'create' ? (
-          <button
-            data-testid="character-create-back"
-            onClick={onBack}
-            type="button"
-          >
-            返回角色列表
-          </button>
-        ) : (
-          <span>{characters.length}</span>
-        )}
-      </div>
+      ) : null}
       {mode !== 'create' ? (
         <div className="character-list-items">
           {characters.length === 0 ? (
@@ -242,6 +254,9 @@ export function CharacterList({
       {mode !== 'list' ? (
         <form
           className="character-create-form"
+          data-create-layout={
+            compactLandscapeCreate ? 'compressed-v2' : undefined
+          }
           data-creation-mode={creationMode}
           data-testid="character-create-view"
           onSubmit={(event) => {
@@ -268,8 +283,12 @@ export function CharacterList({
           {mode === 'legacy' && creationMode === 'single-image' ? (
             <strong>创建含普通 / 生气表情的角色</strong>
           ) : null}
-          <label>
-            角色名称
+          <label
+            className={
+              compactLandscapeCreate ? 'character-create-name-row' : undefined
+            }
+          >
+            <span>角色名称</span>
             <input
               disabled={disabled}
               data-testid="character-create-name"
@@ -310,7 +329,7 @@ export function CharacterList({
                 type="radio"
                 value="single-image"
               />
-              <span>整图角色</span>
+              <span>{compactLandscapeCreate ? '整图' : '整图角色'}</span>
             </label>
             <label>
               <input
@@ -337,7 +356,7 @@ export function CharacterList({
                 type="radio"
                 value="composite"
               />
-              <span>身体 + 脸</span>
+              <span>{compactLandscapeCreate ? '身体+脸' : '身体 + 脸'}</span>
             </label>
           </fieldset>
           {creationMode === 'composite' ? (
@@ -348,7 +367,7 @@ export function CharacterList({
                   description: '从项目图片中选择身体。',
                   label: '请选择图片',
                 }}
-                label="身体图片"
+                label={compactLandscapeCreate ? '身体' : '身体图片'}
                 onChange={(assetId) => {
                   if (!compositeDraft) return;
                   onCompositeDraftChange({
@@ -368,7 +387,7 @@ export function CharacterList({
                   description: '从项目图片中选择默认脸部。',
                   label: '请选择图片',
                 }}
-                label="默认表情图片"
+                label={compactLandscapeCreate ? '默认脸' : '默认表情图片'}
                 onChange={(assetId) => {
                   if (!compositeDraft) return;
                   const expressionIndex =
@@ -405,11 +424,17 @@ export function CharacterList({
               <ImageAssetPicker
                 assets={imageAssets}
                 emptyOption={{
-                  description: '可以稍后再配置。',
                   label: '暂不配置',
-                  optional: true,
+                  ...(compactLandscapeComposite
+                    ? {}
+                    : {
+                        description: '可以稍后再配置。',
+                        optional: true,
+                      }),
                 }}
-                label="张嘴图（可选）"
+                label={
+                  compactLandscapeComposite ? '张嘴图' : '张嘴图（可选）'
+                }
                 onChange={(assetId) => {
                   if (!compositeDraft) return;
                   const next = { ...compositeDraft };
@@ -424,6 +449,7 @@ export function CharacterList({
                 disabled={disabled}
               />
               <Button
+                className="character-create-submit-compact"
                 variant="primary"
                 data-testid="character-create-composite-submit"
                 disabled={!canCreate}
@@ -485,7 +511,11 @@ export function CharacterList({
                 thumbnails={thumbnails}
                 disabled={disabled}
               />
-              <button disabled={!canCreate} type="submit">
+              <button
+                className="character-create-submit-compact"
+                disabled={!canCreate}
+                type="submit"
+              >
                 创建角色
               </button>
               {mode === 'legacy' && imageAssets.length < 2 ? (

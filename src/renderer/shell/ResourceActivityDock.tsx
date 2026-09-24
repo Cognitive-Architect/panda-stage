@@ -27,7 +27,7 @@ import {
   Upload,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { DecorativeIcon } from '../ui';
+import { DecorativeIcon, IconButton } from '../ui';
 
 export type ResourceActivity = 'shots' | 'assets' | 'characters';
 
@@ -452,33 +452,42 @@ export function ResourceActivityDock({
                           : undefined
               }
             >
-              {hideLandscapeCharacterPrimaryAction ? null : (
-                <button
-                  className="resource-activity-primary-action"
-                  data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
-                  data-resource-action-layout={
-                    showLandscapeAssetActionGroup
-                      ? 'asset-browser-landscape'
-                      : showPortraitAssetActionGroup
-                        ? 'asset-browser'
-                        : undefined
-                  }
-                  data-testid="resource-primary-action"
-                  onClick={primaryAction.onClick}
-                  type="button"
-                >
-                  {showCharacterBackIcon ? (
-                    <DecorativeIcon icon={ArrowLeft} size={18} />
-                  ) : null}
-                  {showCreateIcon ? (
-                    <DecorativeIcon icon={CirclePlus} size={18} />
-                  ) : null}
-                  {activeActivity === 'assets' && assetView === 'browser' ? (
-                    <DecorativeIcon icon={Upload} size={18} />
-                  ) : null}
-                  <span>{primaryAction.label}</span>
-                </button>
-              )}
+              {hideLandscapeCharacterPrimaryAction ? null :
+                showCharacterBackIcon ? (
+                  <IconButton
+                    aria-label={primaryAction.label}
+                    className="resource-activity-create-back"
+                    data-resource-action={`${activeActivity}-${primaryAction.label}`}
+                    data-testid="resource-primary-action"
+                    icon={<DecorativeIcon icon={ArrowLeft} size={18} />}
+                    onClick={primaryAction.onClick}
+                    type="button"
+                    variant="secondary"
+                  />
+                ) : (
+                  <button
+                    className="resource-activity-primary-action"
+                    data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
+                    data-resource-action-layout={
+                      showLandscapeAssetActionGroup
+                        ? 'asset-browser-landscape'
+                        : showPortraitAssetActionGroup
+                          ? 'asset-browser'
+                          : undefined
+                    }
+                    data-testid="resource-primary-action"
+                    onClick={primaryAction.onClick}
+                    type="button"
+                  >
+                    {showCreateIcon ? (
+                      <DecorativeIcon icon={CirclePlus} size={18} />
+                    ) : null}
+                    {activeActivity === 'assets' && assetView === 'browser' ? (
+                      <DecorativeIcon icon={Upload} size={18} />
+                    ) : null}
+                    <span>{primaryAction.label}</span>
+                  </button>
+                )}
               {showLandscapeAssetActionGroup ? (
                 <button
                   aria-label="导入 FLA"
@@ -512,7 +521,7 @@ export function ResourceActivityDock({
               {hidePortraitAssetsChrome ? null : hidePortraitShotChrome ? null : (
                 <button
                   aria-label="关闭资源工作区"
-                  className="resource-activity-close"
+                  className={`resource-activity-close${showCharacterBackIcon ? ' resource-activity-create-close' : ''}`}
                   data-testid="resource-activity-close"
                   onClick={() => {
                     if (activeActivity === 'assets') {

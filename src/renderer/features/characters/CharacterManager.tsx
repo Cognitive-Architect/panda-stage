@@ -439,33 +439,44 @@ export function CharacterManager({
     }
   }, [assemblySnapshot, onViewChange, snapshot?.projectRoot]);
 
+  const hideLandscapeCreateHeading =
+    hideHeading && presentation === 'landscape' && view === 'create';
+
   return (
     <section
       className="character-manager"
-      aria-labelledby="character-manager-heading"
+      aria-label={hideLandscapeCreateHeading ? '创建角色' : undefined}
+      aria-labelledby={
+        hideLandscapeCreateHeading ? undefined : 'character-manager-heading'
+      }
       data-character-presentation={presentation}
       data-testid="character-manager"
     >
+      {!hideLandscapeCreateHeading ? (
+        <div
+          className={
+            hideHeading
+              ? 'character-manager-heading character-manager-heading-visually-hidden'
+              : 'character-manager-heading'
+          }
+        >
+          <div>
+            <p className="eyebrow">角色定义</p>
+            <h2 id="character-manager-heading">角色与表情</h2>
+          </div>
+          <div>
+            <span>
+              {snapshot
+                ? `${snapshot.project.characters.length} 个角色`
+                : '尚未打开项目'}
+            </span>
+          </div>
+        </div>
+      ) : null}
       <div
-        className={
-          hideHeading
-            ? 'character-manager-heading character-manager-heading-visually-hidden'
-            : 'character-manager-heading'
-        }
+        className="character-workspace"
+        data-project-revision={snapshot?.revision ?? 0}
       >
-        <div>
-          <p className="eyebrow">角色定义</p>
-          <h2 id="character-manager-heading">角色与表情</h2>
-        </div>
-        <div>
-          <span data-project-revision={snapshot?.revision ?? 0}>
-            {snapshot
-              ? `${snapshot.project.characters.length} 个角色`
-              : '尚未打开项目'}
-          </span>
-        </div>
-      </div>
-      <div className="character-workspace">
         {view === 'legacy' ? (
           <CharacterList
             characters={project?.characters ?? []}
