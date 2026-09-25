@@ -25,11 +25,22 @@ type Listener = () => void;
 export class EditorProjectStore {
   private snapshot: EditorProjectSnapshot | null = null;
   private savedProjectJson: string | null = null;
+  /** Runtime-only identity for one open Project instance. */
+  private nextProjectInstanceId = 0;
+  private activeProjectInstanceId: number | null = null;
   private readonly listeners = new Set<Listener>();
 
   constructor(readonly history = new HistoryStore()) {}
 
   readonly getSnapshot = (): EditorProjectSnapshot | null => this.snapshot;
+
+  /**
+   * Returns the identity of the current open instance, not the persisted
+   * Project identity or revision. Canvas continuity uses this to distinguish a
+   * same-path close/reopen from an ordinary edit in one still-open instance.
+   */
+  readonly getProjectInstanceId = (): number | null =>
+    this.activeProjectInstanceId;
 
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -39,6 +50,7 @@ export class EditorProjectStore {
   open(projectRoot: string, rawProject: Project): void {
     this.history.clear();
     const project = ProjectSchema.parse(rawProject);
+    this.activeProjectInstanceId = ++this.nextProjectInstanceId;
     this.savedProjectJson = JSON.stringify(project);
     this.snapshot = {
       projectRoot,
@@ -308,6 +320,7 @@ export class EditorProjectStore {
     this.history.clear();
     this.savedProjectJson = null;
     this.snapshot = null;
+    this.activeProjectInstanceId = null;
     this.emit();
   }
 

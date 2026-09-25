@@ -10,6 +10,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
+  PROJECT_SCHEMA_VERSION,
   ShotService,
   migrateProject,
 } from '../../src/domain';
@@ -37,6 +38,11 @@ describe('explicit background identity lifecycle', () => {
     const version2 = {
       ...current,
       schemaVersion: 2,
+      characters: current.characters.map((character) => {
+        const { mode, ...historicalCharacter } = character;
+        void mode;
+        return historicalCharacter;
+      }),
       shots: current.shots.map(({ backgroundLayerId, ...shot }) => {
         void backgroundLayerId;
         return {
@@ -60,7 +66,7 @@ describe('explicit background identity lifecycle', () => {
     expect(migrated).toMatchObject({
       migrated: true,
       sourceVersion: 2,
-      project: { schemaVersion: 6 },
+      project: { schemaVersion: PROJECT_SCHEMA_VERSION },
     });
     const source = migrated.project.shots[0]!;
     expect(source.backgroundLayerId).toBe(source.layers[0]!.id);
@@ -85,7 +91,7 @@ describe('explicit background identity lifecycle', () => {
 
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 6,
+      sourceVersion: PROJECT_SCHEMA_VERSION,
     });
     expect(reopened.project.shots).toHaveLength(1);
     expect(reopened.project.shots[0]!.backgroundLayerId).toBe(
@@ -99,7 +105,7 @@ describe('explicit background identity lifecycle', () => {
     ).toBe(true);
     expect(JSON.parse(await readFile(path.join(root, 'project.json'), 'utf8')))
       .toMatchObject({
-        schemaVersion: 6,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
         shots: [{ backgroundLayerId: copy.backgroundLayerId }],
       });
   });

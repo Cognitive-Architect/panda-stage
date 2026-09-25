@@ -92,11 +92,24 @@
         ],
         "testPatterns": [
           "tests/unit/domain/**",
+          "tests/unit/position-authoring-session.test.ts",
+          "tests/unit/position-project-service.test.ts",
           "tests/unit/migrations/**",
           "tests/integration/schema-*.test.ts",
           "tests/integration/project-create-at-lifecycle.test.ts",
+          "tests/integration/position-project-lifecycle.test.ts",
+          "tests/integration/position-authoring-session.test.ts",
+          "tests/integration/background-identity-lifecycle.test.ts",
+          "tests/integration/bfm-s01-character-lifecycle.test.ts",
+          "tests/integration/bfm-s02-character-lifecycle.test.ts",
+          "tests/integration/layer-placement-lifecycle.test.ts",
+          "tests/integration/layer-transform-lifecycle.test.ts",
+          "tests/integration/project-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
+          "tests/unit/bfm-s01-character-schema.test.ts",
+          "tests/unit/bfm-s02-character-commands.test.ts",
+          "tests/unit/models/project-v1.test.ts",
           "tests/unit/production-resources.test.ts",
           "tests/integration/dialogue-audio-*.test.ts",
           "tests/integration/project-subtitle-background-migration.test.ts",
@@ -187,7 +200,10 @@
           "public/character-empty-angry.png"
         ],
         "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
-        "verifierPatterns": ["scripts/verify-day19*"],
+        "verifierPatterns": [
+          "scripts/verify-day19*",
+          "scripts/verify-issue609-character-assembly.cjs"
+        ],
         "suites": ["character"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -198,7 +214,10 @@
         "id": "shots",
         "sourcePatterns": ["src/renderer/features/shots/**"],
         "testPatterns": ["tests/unit/shot-*.test.ts", "tests/integration/shot-*.test.ts"],
-        "verifierPatterns": ["scripts/verify-day20*"],
+        "verifierPatterns": [
+          "scripts/verify-day20*",
+          "scripts/verify-issue608-shot-thumbnail.cjs"
+        ],
         "suites": ["shot"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -212,6 +231,7 @@
           "src/renderer/features/properties/**",
           "src/renderer/stage/**",
           "src/export-renderer/**",
+          "docs/evidence/issue-606/receipt.json",
           "docs/design/huabu.png"
         ],
         "testPatterns": [
@@ -229,7 +249,9 @@
           "scripts/verify-issue95*",
           "scripts/verify-issue99*",
           "scripts/verify-issue457*",
-          "scripts/verify-issue579*"
+          "scripts/verify-issue579*",
+          "scripts/verify-issue602*",
+          "scripts/verify-issue606*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -386,7 +408,7 @@
       }
     ]
   },
-  "count": 62,
+  "count": 66,
   "gates": [
     {
       "id": "assets",
@@ -579,6 +601,30 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron Live Scrub proof for the 0:00 Base Edit View, non-zero read-only temporal inspection, real Timeline-to-Canvas wiring, blur-race write guard, return-to-zero transition, and one ordinary 0ms edit commit."
+    },
+    {
+      "id": "issue602",
+      "script": "verify:issue602",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron composite Character proof for Body+Face pixels, shared selection/drag, combined bounds, partial opacity, pending complete-visual retention, and Mouth fallback."
+    },
+    {
+      "id": "issue606",
+      "script": "verify:issue606",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
     },
     {
       "id": "fla-v1-5-c3",
@@ -1119,6 +1165,30 @@
       "owner": "shot",
       "supersedes": null,
       "notes": "Wrapper over verify:day20 (also runs build). Preserved per RH-04."
+    },
+    {
+      "id": "issue608-shot-thumbnail",
+      "script": "verify:issue608-shot-thumbnail",
+      "suite": "shot",
+      "subsystem": "shot",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "ci-and-local",
+      "owner": "shot",
+      "supersedes": null,
+      "notes": "Bounded Issue #608 Electron proof for actual base Body + Face Shot thumbnails, rendered pixels, fingerprint refresh, and missing-part retry."
+    },
+    {
+      "id": "issue609-character-assembly",
+      "script": "verify:issue609-character-assembly",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #609 real Electron production-UI proof for composite Character creation/edit, Body-only raw placement, and one-layer Shot placement; synthetic fixture input and screenshot evidence are not human acceptance."
     },
     {
       "id": "timeline",

@@ -78,15 +78,17 @@ describe('Issue #523 R8 unified Character workspace', () => {
 
     expect(markup).toContain('角色详情');
     expect(markup).toContain(`<h3>${character.name}</h3>`);
-    expect(markup).toContain('character-identity-overflow');
-    expect(markup).toContain('character-delete-overflow');
+    expect(markup).not.toContain('character-identity-overflow');
+    expect(markup).not.toContain('character-delete-overflow');
+    expect(markup).toContain('character-detail-identity-title-row');
+    expect(markup).toContain('character-delete-settings');
     expect(markup.match(/data-workspace="(?:expressions|settings)"/gu)).toHaveLength(2);
     expect(markup).toContain('data-testid="character-workspace-expressions-tab"');
     expect(markup).toContain('data-testid="character-workspace-settings-tab"');
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('aria-pressed="false"');
     expect(markup).not.toContain('管理全部表情');
-    expect(markup).not.toContain('character-danger-zone');
+    expect(markup).toContain('character-danger-zone');
   });
 
   it('keeps expression recognition and management in the expression workspace', () => {
@@ -99,7 +101,8 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(markup).toContain('expression-editor-landscape');
     expect(markup).toContain('expression-card-list');
     expect(markup).toContain('expression-add-trigger');
-    expect(markup).toContain('添加表情');
+    expect(markup).toContain('＋ 添加表情');
+    expect(markup).not.toContain('＋ 添加</button>');
     expect(markup.match(/data-expression-editing="false"/gu)).toHaveLength(
       character.expressions.length,
     );
@@ -135,7 +138,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
       }),
     );
 
-    expect(cleanMarkup).toContain('默认大小与方向');
+    expect(cleanMarkup).toContain('初始角色大小');
     expect(cleanMarkup).toContain('data-default-transform-pending="false"');
     expect(cleanMarkup).not.toContain('character-default-pending');
     expect(cleanMarkup).not.toContain('class="character-default-apply"');
@@ -168,5 +171,136 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(manager).toContain('characterStore.setDefaultTransform');
     expect(manager).toContain('characterStore.setMouthOpenAsset');
     expect(manager).toContain('characterStore.deleteCharacter');
+  });
+
+  it('adds Assembly for composite Characters while keeping Expressions as the default workspace', () => {
+    const project = migrateProject(exampleProject);
+    const base = project.characters[0]!;
+    const body = project.assets.find(
+      (asset) => asset.kind === 'image',
+    )!;
+    const character = ProjectSchema.parse({
+      ...project,
+      characters: [
+        {
+          ...base,
+          mode: 'composite' as const,
+          bodyAssetId: body.id,
+          facePlacement: { offsetX: 12, offsetY: -6, scale: 1 },
+          mouthOpenAssetId: project.assets.find(
+            (asset) => asset.kind === 'image' && asset.id !== body.id,
+          )!.id,
+        },
+      ],
+    }).characters[0]!;
+    const imageAssets = project.assets.filter(
+      (asset): asset is ImageAsset => asset.kind === 'image',
+    );
+    const thumbnails = Object.fromEntries(
+      imageAssets.map((asset) => [asset.id, { status: 'loading' as const }]),
+    );
+    const markup = renderToStaticMarkup(
+      createElement(CharacterEditor, {
+        character,
+        imageAssets,
+        thumbnails,
+        warnings: [],
+        onRenameCharacter: noop,
+        onDeleteCharacter: noop,
+        onAddExpression: noop,
+        onRenameExpression: noop,
+        onSetExpressionAsset: noop,
+        onRemoveExpression: noop,
+        onSetDefaultExpression: noop,
+        onSetMouthOpenAsset: noop,
+        onSetDefaultTransform: noop,
+        onThumbnailError: noop,
+        onOpenAssembly: () => true,
+        onLeaveAssembly: () => true,
+        onSetAssemblyBodyAsset: noop,
+        onSetAssemblyMouthAsset: noop,
+        presentation: 'landscape',
+        view: 'detail',
+      }),
+    );
+
+    expect(markup).toContain('data-testid="character-workspace-assembly-tab"');
+    expect(markup.match(/data-workspace="(?:assembly|expressions|settings)"/gu)).toHaveLength(3);
+    expect(markup).toMatch(
+      /data-workspace="expressions"[^>]*id="character-workspace-expressions"/u,
+    );
+    expect(markup).toContain('data-testid="character-assembly-body-picker"');
+    expect(markup).toContain('data-testid="character-assembly-mouth-picker"');
+    expect(markup).toContain('data-testid="character-assembly-go-expressions"');
+    expect(markup).toContain('class="image-asset-picker-selected-action">管理</span>');
+    expect(markup).not.toContain('character-detail-mouth-visual-picker');
+    expect(markup).toContain('aria-pressed="true"');
+  });
+
+  it('resumes Assembly as the active workspace when an edit draft survives resource navigation', () => {
+    const project = migrateProject(exampleProject);
+    const base = project.characters[0]!;
+    const body = project.assets.find(
+      (asset) => asset.kind === 'image',
+    )!;
+    const character = ProjectSchema.parse({
+      ...project,
+      characters: [
+        {
+          ...base,
+          mode: 'composite' as const,
+          bodyAssetId: body.id,
+          facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+        },
+      ],
+    }).characters[0]!;
+    const assemblyDraft = {
+      bodyAssetId: body.id,
+      facePlacement: { offsetX: 8, offsetY: -4, scale: 0.9 },
+      expressionAssets: character.expressions.map((expression) => ({
+        expressionId: expression.id,
+        assetId: expression.assetId,
+      })),
+      mouthOpenAssetId: null,
+    };
+    const imageAssets = project.assets.filter(
+      (asset): asset is ImageAsset => asset.kind === 'image',
+    );
+    const markup = renderToStaticMarkup(
+      createElement(CharacterEditor, {
+        character,
+        imageAssets,
+        thumbnails: {},
+        warnings: [],
+        assemblyDraft,
+        onRenameCharacter: () => undefined,
+        onDeleteCharacter: () => undefined,
+        onAddExpression: () => undefined,
+        onRenameExpression: () => undefined,
+        onSetExpressionAsset: () => undefined,
+        onRemoveExpression: () => undefined,
+        onSetDefaultExpression: () => undefined,
+        onSetMouthOpenAsset: () => undefined,
+        onSetDefaultTransform: () => undefined,
+        onThumbnailError: () => undefined,
+        onOpenAssembly: () => true,
+        onLeaveAssembly: () => true,
+        onSetAssemblyBodyAsset: () => undefined,
+        onSetAssemblyMouthAsset: () => undefined,
+        presentation: 'landscape',
+        view: 'detail',
+      }),
+    );
+    const assemblyPanel = markup.match(
+      /<section[^>]*data-workspace="assembly"[^>]*>/u,
+    )?.[0];
+    const assemblyTab = markup.match(
+      /<button[^>]*data-testid="character-workspace-assembly-tab"[^>]*>/u,
+    )?.[0];
+
+    expect(markup).toContain('data-testid="character-workspace-assembly-tab"');
+    expect(assemblyPanel).toBeDefined();
+    expect(assemblyPanel).not.toContain('hidden=""');
+    expect(assemblyTab).toContain('aria-pressed="true"');
   });
 });

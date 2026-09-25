@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ProjectSchema } from '../domain';
+import { PROJECT_SCHEMA_VERSION, ProjectSchema } from '../domain';
 
 const FileSystemPathSchema = z.string().trim().min(1).max(32_767);
 
@@ -203,6 +203,7 @@ export const ProjectDocumentSchema = z
       z.literal(4),
       z.literal(5),
       z.literal(6),
+      z.literal(PROJECT_SCHEMA_VERSION),
     ]),
   })
   .strict();

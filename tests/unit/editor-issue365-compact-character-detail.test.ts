@@ -100,7 +100,7 @@ describe('Issue #365 compact landscape Character Detail', () => {
     expect(markup).toContain('data-detail-close="true"');
     expect(markup).toContain('data-preview-fit="contain"');
     expect(markup).toContain('data-default-transform-pending="false"');
-    expect(markup).toContain('默认大小与方向');
+    expect(markup).toContain('初始角色大小');
     expect(markup).not.toContain('class="character-default-apply"');
     expect(markup).not.toContain('character-default-pending');
   });
@@ -135,7 +135,7 @@ describe('Issue #365 compact landscape Character Detail', () => {
     expect(editor).toContain('character-default-action-row');
     expect(editor).toContain('character-default-revert');
     expect(editor).toContain('onSetDefaultTransform(scale, flipX)');
-    expect(manager).toContain('onCloseDrawer={onCloseDrawer}');
+    expect(manager).toContain('onCloseDrawer={requestCloseDrawer}');
     expect(dock).toContain('collapseLandscapeCharacterDetailHeader');
     expect(dock).toContain('onCloseDrawer={() => setDrawerOpen(false)}');
     expect(styles).toContain('/* Issue #365:');

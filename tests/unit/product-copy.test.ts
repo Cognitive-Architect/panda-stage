@@ -133,4 +133,21 @@ describe('Stage 1A product copy', () => {
       'event.currentTarget.focus({ preventScroll: true })',
     );
   });
+
+  it('uses concise creator-facing Chinese Canvas continuity warnings', () => {
+    const canvasSource = readFileSync(
+      'src/renderer/features/canvas/CanvasStage.tsx',
+      'utf8',
+    );
+
+    expect(canvasSource).toContain('角色素材读取失败');
+    expect(canvasSource).toContain('张嘴表情不可用，已暂时显示当前表情');
+    expect(canvasSource).toContain('张嘴表情不可用，正在准备当前表情');
+    expect(canvasSource).toContain(
+      '正在读取角色素材；准备完成前不会显示不完整的角色画面。',
+    );
+    expect(canvasSource).not.toContain('Body / Face read failed');
+    expect(canvasSource).not.toContain('Mouth unavailable');
+    expect(canvasSource).not.toContain('complete Character visual');
+  });
 });

@@ -1,0 +1,55 @@
+/* PK-05: Position authoring lives under Transform → Position. Button roles
+   provide the shared Panda Stage semantic surface; this file owns only the
+   local stack geometry and Position-specific guidance. */
+.position-authoring-entry {
+  display: grid;
+  min-width: 0;
+  gap: var(--ui-space-2);
+}
+
+.position-authoring-entry > button {
+  width: 100%;
+  padding: var(--ui-space-2) var(--ui-space-3);
+  border-radius: var(--ui-radius-small);
+  font-weight: 700;
+}
+
+.position-authoring-hold {
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+button.position-authoring-hold:hover:not(:disabled) {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+}
+
+.position-authoring-guidance {
+  margin: 0;
+  padding: var(--ui-space-2) var(--ui-space-3);
+  border-left: 3px solid var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .position-authoring-entry
+  > button {
+  min-height: 44px;
+  font-size: 15px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .position-authoring-hold {
+  font-size: 12px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .position-authoring-entry
+  > button {
+  min-height: 44px;
+}

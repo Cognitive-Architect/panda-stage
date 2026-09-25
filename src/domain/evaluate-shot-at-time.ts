@@ -1,4 +1,5 @@
 import type { Layer, Project, Shot, TimelineEvent } from './models';
+import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 
 /**
  * A single evaluated layer at one exact moment. Shape is intentionally
@@ -9,6 +10,10 @@ import type { Layer, Project, Shot, TimelineEvent } from './models';
 export interface EvaluatedLayer {
   id: string;
   assetId: string;
+  /** The formal Expression state before any transient Mouth projection. */
+  currentExpressionId?: string | null;
+  /** The transient Mouth asset projected after formal evaluation, if any. */
+  mouthOverrideAssetId?: string | null;
   anchor: 'center';
   x: number;
   y: number;
@@ -46,19 +51,23 @@ function clamp01(value: number): number {
 }
 
 function eventEasing(event: TimelineEvent): 'linear' | 'ease-in-out' {
-  if (
-    event.type === 'move' ||
-    event.type === 'scale' ||
-    event.type === 'opacity'
-  ) {
+  if (event.type === 'scale' || event.type === 'opacity') {
     return event.easing;
   }
   return 'linear';
 }
 
-function resolveLayerAssetId(project: Project, layer: Layer): string | null {
+interface ResolvedLayerVisualState {
+  assetId: string | null;
+  currentExpressionId: string | null;
+}
+
+function resolveLayerVisualState(
+  project: Project,
+  layer: Layer,
+): ResolvedLayerVisualState {
   if (layer.source.kind === 'asset') {
-    return layer.source.assetId;
+    return { assetId: layer.source.assetId, currentExpressionId: null };
   }
   const characterId = layer.source.characterId;
   const expressionId = layer.source.expressionId;
@@ -68,20 +77,23 @@ function resolveLayerAssetId(project: Project, layer: Layer): string | null {
   const expression = character?.expressions.find(
     (candidate) => candidate.id === expressionId,
   );
-  return expression?.assetId ?? null;
+  return {
+    assetId: expression?.assetId ?? null,
+    currentExpressionId: expression?.id ?? null,
+  };
 }
 
-function resolveExpressionAssetId(
+function resolveExpressionState(
   project: Project,
   characterId: string,
   expressionId: string,
   fallbackExpressionId: string,
-): string | null {
+): ResolvedLayerVisualState {
   const character = project.characters.find(
     (candidate) => candidate.id === characterId,
   );
   if (!character) {
-    return null;
+    return { assetId: null, currentExpressionId: null };
   }
   const target =
     character.expressions.find(
@@ -90,7 +102,10 @@ function resolveExpressionAssetId(
     character.expressions.find(
       (candidate) => candidate.id === fallbackExpressionId,
     );
-  return target?.assetId ?? null;
+  return {
+    assetId: target?.assetId ?? null,
+    currentExpressionId: target?.id ?? null,
+  };
 }
 
 /**
@@ -121,15 +136,15 @@ export function evaluateShotAtTime(
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EvaluatedLayer => {
-      let x = layer.x;
-      let y = layer.y;
       let scaleX = layer.scaleX;
       let scaleY = layer.scaleY;
       const rotationDeg = layer.rotationDeg;
       let opacity = layer.opacity;
       let flipX = layer.flipX;
       let visible = layer.visible;
-      let assetId = resolveLayerAssetId(project, layer);
+      const initialVisual = resolveLayerVisualState(project, layer);
+      let assetId = initialVisual.assetId;
+      let currentExpressionId = initialVisual.currentExpressionId;
 
       const events = [
         ...(eventsByLayer.get(layer.id) ?? []),
@@ -138,7 +153,15 @@ export function evaluateShotAtTime(
           left.startMs - right.startMs || left.id.localeCompare(right.id),
       );
 
+      const motion = evaluateLayerMotionAtTime(layer, events, timeMs);
+
       for (const event of events) {
+        if (event.type === 'move' || event.type === 'shake') {
+          // Position + Shake are resolved by the single formal motion seam
+          // above. Keeping them out of this state loop prevents a later Move
+          // from overwriting a temporary Shake offset.
+          continue;
+        }
         // Future events (timeMs before the event starts) must not participate
         // in evaluation: skipping them leaves the layer at its base state
         // (or the state produced by earlier events) instead of overwriting it
@@ -157,11 +180,6 @@ export function evaluateShotAtTime(
         const progress = ease(rawProgress, eventEasing(event));
 
         switch (event.type) {
-          case 'move': {
-            x = interpolate(event.from.x, event.to.x, progress);
-            y = interpolate(event.from.y, event.to.y, progress);
-            break;
-          }
           case 'scale': {
             scaleX = interpolate(event.from.x, event.to.x, progress);
             scaleY = interpolate(event.from.y, event.to.y, progress);
@@ -171,26 +189,17 @@ export function evaluateShotAtTime(
             opacity = clamp01(interpolate(event.from, event.to, progress));
             break;
           }
-          case 'shake': {
-            if (timeMs >= event.startMs && timeMs <= event.endMs) {
-              const seconds = (timeMs - event.startMs) / 1000;
-              const wave =
-                Math.sin(2 * Math.PI * event.frequencyHz * seconds);
-              x += event.amplitudeX * wave;
-              y += event.amplitudeY * wave;
-            }
-            break;
-          }
           case 'expression': {
             if (layer.source.kind === 'character') {
-              const resolved = resolveExpressionAssetId(
+              const resolved = resolveExpressionState(
                 project,
                 layer.source.characterId,
                 event.expressionId,
                 layer.source.expressionId,
               );
-              if (resolved) {
-                assetId = resolved;
+              if (resolved.assetId) {
+                assetId = resolved.assetId;
+                currentExpressionId = resolved.currentExpressionId;
               }
             }
             break;
@@ -209,9 +218,11 @@ export function evaluateShotAtTime(
       return {
         id: layer.id,
         assetId: assetId ?? '',
+        currentExpressionId,
+        mouthOverrideAssetId: null,
         anchor: layer.anchor,
-        x,
-        y,
+        x: motion.displayPosition.x,
+        y: motion.displayPosition.y,
         scaleX,
         scaleY,
         flipX,

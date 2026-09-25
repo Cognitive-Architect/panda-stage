@@ -3,12 +3,41 @@ import type { Project } from '../../domain';
 import type { AssetCanvasImageReadResponse } from '../../shared/asset-canvas-image-api';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
 
-export type ProductPreviewAssetLoadStatus = 'loading' | 'ready' | 'error';
+export type ProductPreviewAssetLoadStatus =
+  | 'loading'
+  | 'ready'
+  | 'degraded'
+  | 'error';
+
+export interface ProductPreviewImageFallbackRule {
+  sourceAssetId: string;
+  fallbackAssetId: string;
+}
+
+export interface ProductPreviewImageScope {
+  /** Resources required by the exact current visual. */
+  requiredAssetIds: readonly string[];
+  /** Current Expression resources that can replace a failed Mouth. */
+  fallbackAssetIds?: readonly string[];
+  /** Bounded warmup resources for other times/states. */
+  candidateAssetIds?: readonly string[];
+  mouthFallbacks?: readonly ProductPreviewImageFallbackRule[];
+}
+
+export type ProductPreviewImageScopeInput =
+  | readonly string[]
+  | ProductPreviewImageScope;
 
 export interface ProductPreviewAssetLoadState {
   status: ProductPreviewAssetLoadStatus;
   urls: StageAssetUrlMap;
   missingCount: number;
+  /** Failed active Mouth sources that are currently displayed via fallback. */
+  degradedAssetIds?: readonly string[];
+  /** Required current resources that have no contract-valid fallback. */
+  fatalAssetIds?: readonly string[];
+  /** Candidate failures retained as advisory state, never current-fatal alone. */
+  optionalFailedAssetIds?: readonly string[];
 }
 
 export const INITIAL_PRODUCT_PREVIEW_ASSET_STATE: ProductPreviewAssetLoadState = {
@@ -37,6 +66,56 @@ interface PreviewImageEntry {
   promise: Promise<void>;
   status: 'loading' | 'ready' | 'error';
   url?: string;
+}
+
+interface NormalizedImageScope {
+  requiredAssetIds: string[];
+  fallbackAssetIds: string[];
+  candidateAssetIds: string[];
+  mouthFallbacks: ProductPreviewImageFallbackRule[];
+  structured: boolean;
+}
+
+function unique(ids: readonly string[]): string[] {
+  return [...new Set(ids)];
+}
+
+function normalizeScope(
+  scope: ProductPreviewImageScopeInput,
+): NormalizedImageScope {
+  if (Array.isArray(scope)) {
+    return {
+      requiredAssetIds: unique(scope),
+      fallbackAssetIds: [],
+      candidateAssetIds: [],
+      mouthFallbacks: [],
+      structured: false,
+    };
+  }
+  const structuredScope = scope as ProductPreviewImageScope;
+  const requiredAssetIds = unique(structuredScope.requiredAssetIds);
+  const fallbackAssetIds = unique(structuredScope.fallbackAssetIds ?? []).filter(
+    (assetId) => !requiredAssetIds.includes(assetId),
+  );
+  const candidateAssetIds = unique(structuredScope.candidateAssetIds ?? []).filter(
+    (assetId) =>
+      !requiredAssetIds.includes(assetId) && !fallbackAssetIds.includes(assetId),
+  );
+  return {
+    requiredAssetIds,
+    fallbackAssetIds,
+    candidateAssetIds,
+    mouthFallbacks: [...(structuredScope.mouthFallbacks ?? [])],
+    structured: true,
+  };
+}
+
+function allScopeAssetIds(scope: NormalizedImageScope): string[] {
+  return unique([
+    ...scope.requiredAssetIds,
+    ...scope.fallbackAssetIds,
+    ...scope.candidateAssetIds,
+  ]);
 }
 
 function defaultReadCanvasImage(request: {
@@ -162,17 +241,24 @@ export class ProductPreviewImageSession {
   commitScope(
     projectRoot: string,
     project: Project,
-    activeAssetIds: readonly string[],
-    nextAssetIds: readonly string[] = [],
+    activeScope: ProductPreviewImageScopeInput,
+    nextScope: ProductPreviewImageScopeInput = [],
   ): void {
     if (this.disposed) return;
-    const active = describeImages(projectRoot, project, activeAssetIds);
-    const next = describeImages(projectRoot, project, nextAssetIds);
+    const active = normalizeScope(activeScope);
+    const next = normalizeScope(nextScope);
     this.prune(
       new Set(
-        [...active.descriptors, ...next.descriptors].map(
-          (descriptor) => descriptor.key,
-        ),
+        [...allScopeAssetIds(active), ...allScopeAssetIds(next)]
+          .map((assetId) => {
+            const asset = project.assets.find(
+              (candidate) => candidate.id === assetId,
+            );
+            return asset?.kind === 'image' && asset.sha256
+              ? `${projectRoot}\u0000${asset.id}\u0000${asset.sha256}`
+              : null;
+          })
+          .filter((key): key is string => key !== null),
       ),
     );
   }
@@ -180,66 +266,170 @@ export class ProductPreviewImageSession {
   snapshot(
     projectRoot: string,
     project: Project,
-    assetIds: readonly string[],
+    scopeInput: ProductPreviewImageScopeInput,
   ): ProductPreviewAssetLoadState {
     if (this.disposed) return INITIAL_PRODUCT_PREVIEW_ASSET_STATE;
-    const { descriptors, invalidCount } = describeImages(
+    const scope = normalizeScope(scopeInput);
+    const required = describeImages(projectRoot, project, scope.requiredAssetIds);
+    const fallback = describeImages(projectRoot, project, scope.fallbackAssetIds);
+    const candidates = describeImages(
       projectRoot,
       project,
-      assetIds,
+      scope.candidateAssetIds,
     );
     const urls: Record<string, string | undefined> = {};
-    let missingCount = invalidCount;
+    const fatalAssetIds: string[] = [];
+    const degradedAssetIds: string[] = [];
+    const optionalFailedAssetIds: string[] = [];
     let loading = false;
 
-    for (const descriptor of descriptors) {
+    const readEntry = (descriptor: PreviewImageDescriptor | undefined) => {
+      if (!descriptor) return 'missing' as const;
       const entry = this.entries.get(descriptor.key);
-      if (!entry || entry.status === 'loading') {
-        loading = true;
-      } else if (entry.status === 'ready' && entry.url) {
+      if (!entry || entry.status === 'loading') return 'loading' as const;
+      if (entry.status === 'ready' && entry.url) {
         urls[descriptor.assetId] = entry.url;
+        return 'ready' as const;
+      }
+      return 'error' as const;
+    };
+
+    const fallbackBySource = new Map<string, string[]>();
+    for (const rule of scope.mouthFallbacks) {
+      const fallbackIds = fallbackBySource.get(rule.sourceAssetId) ?? [];
+      if (!fallbackIds.includes(rule.fallbackAssetId)) {
+        fallbackIds.push(rule.fallbackAssetId);
+      }
+      fallbackBySource.set(rule.sourceAssetId, fallbackIds);
+    }
+    const requiredDescriptors = new Map(
+      required.descriptors.map((descriptor) => [descriptor.assetId, descriptor]),
+    );
+    const fallbackDescriptors = new Map(
+      fallback.descriptors.map((descriptor) => [descriptor.assetId, descriptor]),
+    );
+    for (const assetId of scope.requiredAssetIds) {
+      const status = readEntry(requiredDescriptors.get(assetId));
+      if (status === 'ready') continue;
+      if (status === 'loading') {
+        loading = true;
+        continue;
+      }
+
+      const fallbackIds = fallbackBySource.get(assetId) ?? [];
+      if (fallbackIds.length === 0) {
+        fatalAssetIds.push(assetId);
+        continue;
+      }
+      let fallbackLoading = false;
+      let fallbackFailed = false;
+      for (const fallbackId of fallbackIds) {
+        const fallbackStatus = readEntry(fallbackDescriptors.get(fallbackId));
+        if (fallbackStatus === 'loading') fallbackLoading = true;
+        if (fallbackStatus === 'error' || fallbackStatus === 'missing') {
+          fallbackFailed = true;
+        }
+      }
+      if (fallbackLoading) {
+        loading = true;
+      } else if (fallbackFailed) {
+        fatalAssetIds.push(assetId);
       } else {
-        missingCount += 1;
+        degradedAssetIds.push(assetId);
       }
     }
 
-    return {
-      status: loading ? 'loading' : missingCount > 0 ? 'error' : 'ready',
+    for (const descriptor of [...fallback.descriptors, ...candidates.descriptors]) {
+      const status = readEntry(descriptor);
+      if (
+        status === 'error' &&
+        (scope.candidateAssetIds.includes(descriptor.assetId) ||
+          !scope.fallbackAssetIds.includes(descriptor.assetId))
+      ) {
+        optionalFailedAssetIds.push(descriptor.assetId);
+      }
+    }
+
+    const state: ProductPreviewAssetLoadState = {
+      status:
+        loading
+          ? 'loading'
+          : fatalAssetIds.length > 0
+            ? 'error'
+            : degradedAssetIds.length > 0
+              ? 'degraded'
+              : 'ready',
       urls,
-      missingCount,
+      missingCount: fatalAssetIds.length + required.invalidCount,
     };
+    if (scope.structured || degradedAssetIds.length > 0) {
+      state.degradedAssetIds = degradedAssetIds;
+      state.fatalAssetIds = fatalAssetIds;
+      state.optionalFailedAssetIds = unique(optionalFailedAssetIds);
+    }
+    return state;
   }
 
   async prepare(
     projectRoot: string,
     project: Project,
-    activeAssetIds: readonly string[],
-    nextAssetIds: readonly string[] = [],
+    activeScope: ProductPreviewImageScopeInput,
+    nextScope: ProductPreviewImageScopeInput = [],
   ): Promise<ProductPreviewAssetLoadState | null> {
     if (this.disposed) return null;
-    const active = describeImages(projectRoot, project, activeAssetIds);
-    const next = describeImages(projectRoot, project, nextAssetIds);
+    const active = normalizeScope(activeScope);
+    const next = normalizeScope(nextScope);
 
-    const activeEntries = active.descriptors.map((descriptor) =>
-      this.ensureEntry(projectRoot, descriptor),
-    );
-    for (const descriptor of next.descriptors) {
-      this.ensureEntry(projectRoot, descriptor);
+    for (const assetId of allScopeAssetIds(active)) {
+      const descriptor = describeImages(projectRoot, project, [assetId])
+        .descriptors[0];
+      if (descriptor) this.ensureEntry(projectRoot, descriptor);
+    }
+    const requiredEntries = active.requiredAssetIds
+      .map((assetId) =>
+        describeImages(projectRoot, project, [assetId]).descriptors[0],
+      )
+      .filter(
+        (descriptor): descriptor is PreviewImageDescriptor => Boolean(descriptor),
+      )
+      .map((descriptor) => this.ensureEntry(projectRoot, descriptor));
+    for (const assetId of allScopeAssetIds(next)) {
+      const descriptor = describeImages(projectRoot, project, [assetId]).descriptors[0];
+      if (descriptor) this.ensureEntry(projectRoot, descriptor);
     }
 
     // Keep the prior shot's ready URLs alive while the new active shot loads.
-    // The hook commits current + next after the ready render reaches the DOM.
-    await Promise.all(activeEntries.map((entry) => entry.promise));
+    // Candidate/fallback warmup is bounded, but only required current resources
+    // block the exact current target. A failed candidate is retained as advisory
+    // state rather than promoted to a current-frame failure.
+    await Promise.all(requiredEntries.map((entry) => entry.promise));
     if (this.disposed) return null;
-    return this.snapshot(projectRoot, project, activeAssetIds);
+    let state = this.snapshot(projectRoot, project, activeScope);
+    if (state.status === 'loading') {
+      // A failed active Mouth is the one case where a fallback is part of the
+      // current decision. Wait for that bounded fallback before classifying the
+      // frame as degraded or fatal. Candidates never block exact readiness.
+      const fallbackEntries = active.fallbackAssetIds
+        .map((assetId) =>
+          describeImages(projectRoot, project, [assetId]).descriptors[0],
+        )
+        .filter(
+          (descriptor): descriptor is PreviewImageDescriptor => Boolean(descriptor),
+        )
+        .map((descriptor) => this.ensureEntry(projectRoot, descriptor));
+      await Promise.all(fallbackEntries.map((entry) => entry.promise));
+    }
+    if (this.disposed) return null;
+    state = this.snapshot(projectRoot, project, activeScope);
+    return state;
   }
 
   async load(
     projectRoot: string,
     project: Project,
-    assetIds: readonly string[],
+    scope: ProductPreviewImageScopeInput,
   ): Promise<ProductPreviewAssetLoadState | null> {
-    return this.prepare(projectRoot, project, assetIds);
+    return this.prepare(projectRoot, project, scope);
   }
 
   dispose(): void {
@@ -253,25 +443,45 @@ export class ProductPreviewImageSession {
 export function useProductPreviewImages(
   projectRoot: string,
   project: Project,
-  assetIds: readonly string[],
-  nextAssetIds: readonly string[] = [],
+  scope: ProductPreviewImageScopeInput,
+  nextAssetIds: ProductPreviewImageScopeInput = [],
 ): ProductPreviewAssetLoadState {
   const [session, setSession] = useState<ProductPreviewImageSession | null>(null);
   const [, setRevision] = useState(0);
-  const assetKey = assetIds
-    .map((assetId) => {
-      const asset = project.assets.find((candidate) => candidate.id === assetId);
-      return `${assetId}:${asset?.sha256 ?? 'missing'}`;
-    })
-    .sort()
-    .join('|');
-  const nextAssetKey = nextAssetIds
-    .map((assetId) => {
-      const asset = project.assets.find((candidate) => candidate.id === assetId);
-      return `${assetId}:${asset?.sha256 ?? 'missing'}`;
-    })
-    .sort()
-    .join('|');
+  const normalizedScope = normalizeScope(scope);
+  const normalizedNextScope = normalizeScope(nextAssetIds);
+  const scopeKey = (current: NormalizedImageScope): string =>
+    JSON.stringify({
+      required: current.requiredAssetIds
+        .map((assetId) => {
+          const asset = project.assets.find(
+            (candidate) => candidate.id === assetId,
+          );
+          return `${assetId}:${asset?.sha256 ?? 'missing'}`;
+        })
+        .sort(),
+      fallback: current.fallbackAssetIds
+        .map((assetId) => {
+          const asset = project.assets.find(
+            (candidate) => candidate.id === assetId,
+          );
+          return `${assetId}:${asset?.sha256 ?? 'missing'}`;
+        })
+        .sort(),
+      candidates: current.candidateAssetIds
+        .map((assetId) => {
+          const asset = project.assets.find(
+            (candidate) => candidate.id === assetId,
+          );
+          return `${assetId}:${asset?.sha256 ?? 'missing'}`;
+        })
+        .sort(),
+      mouthFallbacks: current.mouthFallbacks
+        .map((rule) => `${rule.sourceAssetId}->${rule.fallbackAssetId}`)
+        .sort(),
+    });
+  const assetKey = scopeKey(normalizedScope);
+  const nextAssetKey = scopeKey(normalizedNextScope);
 
   useEffect(() => {
     const nextSession = new ProductPreviewImageSession();
@@ -283,23 +493,23 @@ export function useProductPreviewImages(
     if (!session) return;
     let active = true;
     void session
-      .prepare(projectRoot, project, assetIds, nextAssetIds)
+      .prepare(projectRoot, project, scope, nextAssetIds)
       .then((nextState) => {
         if (active && nextState) setRevision((current) => current + 1);
       });
     return () => {
       active = false;
     };
-  }, [assetIds, assetKey, nextAssetIds, nextAssetKey, project, projectRoot, session]);
+  }, [assetKey, nextAssetKey, project, projectRoot, session]);
 
   const state =
-    session?.snapshot(projectRoot, project, assetIds) ??
+    session?.snapshot(projectRoot, project, scope) ??
     INITIAL_PRODUCT_PREVIEW_ASSET_STATE;
 
   useLayoutEffect(() => {
     if (!session || state.status === 'loading') return;
-    session.commitScope(projectRoot, project, assetIds, nextAssetIds);
-  }, [assetIds, assetKey, nextAssetIds, nextAssetKey, project, projectRoot, session, state.status]);
+    session.commitScope(projectRoot, project, scope, nextAssetIds);
+  }, [assetKey, nextAssetKey, project, projectRoot, session, state.status]);
 
   return state;
 }

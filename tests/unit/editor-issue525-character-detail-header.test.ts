@@ -58,7 +58,7 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     const identityEnd = markup.indexOf('</section>', identityStart);
     const identity = markup.slice(identityStart, identityEnd);
 
-    expect(markup).toContain('返回角色列表');
+    expect(markup).toContain('← 角色列表');
     expect(markup).not.toContain('← 返回角色列表');
     expect(markup).toContain('character-detail-navigation-detail');
     expect(markup).toContain(

@@ -12,6 +12,7 @@ const {
   MediaInspectionService,
 } = require('../dist-electron/main/services/MediaInspectionService.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { PROJECT_SCHEMA_VERSION } = require('../dist-electron/domain/constants.js');
 const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
@@ -514,7 +515,7 @@ async function verifyDay19() {
         projectFilePath: `${projectRoot}\\project.json`,
         project: savedProject ?? initialProject,
         migrated: !savedProject,
-        sourceVersion: savedProject ? 6 : 1,
+        sourceVersion: savedProject?.schemaVersion ?? 1,
       },
     };
   });
@@ -626,7 +627,7 @@ async function verifyDay19() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('.character-create-form') && " +
-            "document.querySelector('.character-manager-heading span')" +
+            "document.querySelector('.character-workspace')" +
           "?.dataset?.projectRevision === '1'",
         'Character activity did not render.',
       ),
@@ -634,7 +635,7 @@ async function verifyDay19() {
 
     await setInput(
       window,
-      '.character-create-form input',
+      '.character-create-form input:not([type="radio"])',
       'Panda',
     );
     await chooseImageAsset(
@@ -950,7 +951,7 @@ async function verifyDay19() {
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('.character-list-items button') && " +
-          "document.querySelector('.character-manager-heading span')" +
+          "document.querySelector('.character-workspace')" +
           "?.dataset?.projectRevision === '0'",
         'Character list did not render after reopen.',
       ),
@@ -1177,7 +1178,10 @@ async function verifyDay19() {
       { name: 'imported', passed: Boolean(importRequest) },
       { name: 'importRevision', passed: importRequest?.baseRevision === 0 },
       { name: 'saveRevision', passed: saveRequest?.revision === 6 },
-      { name: 'schema', passed: savedProject?.schemaVersion === 6 },
+      {
+        name: 'schema',
+        passed: savedProject?.schemaVersion === PROJECT_SCHEMA_VERSION,
+      },
       {
         name: 'persistedScale',
         passed: persistedCharacter?.defaultScale === expectedScaleNumber,

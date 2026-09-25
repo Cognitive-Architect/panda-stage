@@ -10,6 +10,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PROJECT_SCHEMA_VERSION } from '../../src/domain';
 import {
   PROJECT_DIRECTORIES,
   PROJECT_FILE_NAME,
@@ -256,7 +257,7 @@ describe('project directory lifecycle', () => {
 
     expect(opened.sourceVersion).toBe(0);
     expect(opened.migrated).toBe(true);
-    expect(opened.project.schemaVersion).toBe(6);
+    expect(opened.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(afterHash).toBe(beforeHash);
 
     await service().save(projectRoot, opened.project);

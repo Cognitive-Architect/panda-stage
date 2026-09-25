@@ -102,6 +102,9 @@ describe('UI-M2 adaptive EditorShell state', () => {
     const inspector = readSource('src/renderer/shell/RightInspector.tsx');
     const bottom = readSource('src/renderer/shell/BottomWorkspace.tsx');
     const styles = readSource('src/renderer/styles.css');
+    const assemblySurface = readSource(
+      'src/renderer/styles/shell/layout/s17-02--character-assembly-surface.css',
+    );
 
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
     expect(shell.match(/<RightInspector/gu)).toHaveLength(1);
@@ -119,9 +122,19 @@ describe('UI-M2 adaptive EditorShell state', () => {
       "setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none')",
     );
     expect(shell).toContain(
-      '<CanvasWorkspace\n                showHeading={false}\n                showToolbar={canvasToolbarVisible}',
+      'className="character-assembly-canvas-owner"\n                data-character-assembly-inactive={assemblyActive ? \'true\' : \'false\'}\n                hidden={!portraitCanvasVisible && !assemblyActive}',
     );
-    expect(shell).toContain('hidden={isPortrait');
+    expect(shell).toContain('inert={assemblyActive || undefined}');
+    expect(assemblySurface).toContain(
+      ".editor-workspace-slot-canvas[data-character-assembly-active='true']",
+    );
+    expect(assemblySurface).toContain('visibility: hidden;');
+    expect(shell).toContain(
+      '<CanvasWorkspace\n                  showHeading={false}\n                  showToolbar={canvasToolbarVisible}',
+    );
+    expect(shell).toContain(
+      "hidden={\n                isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive",
+    );
     expect(shell).toContain('aria-hidden={');
     expect(bar).not.toContain('EDITOR_DEVICE_MODE_OPTIONS');
     expect(bar).not.toContain('editor-device-mode-selector');

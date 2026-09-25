@@ -90,7 +90,7 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     );
 
     expect(markup).toContain('data-testid="character-detail-back"');
-    expect(markup).toContain('返回角色列表');
+    expect(markup).toContain('← 角色列表');
     expect(markup).not.toContain('← 返回角色列表');
     expect(markup).toContain('character-detail-identity');
     expect(markup).toContain(`${character.name} 默认表情`);
@@ -98,19 +98,20 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     expect(markup).toContain('character-workspace-switcher');
     expect(markup.match(/data-workspace="(?:expressions|settings)"/gu)).toHaveLength(2);
     expect(markup).toContain('表情');
-    expect(markup).toContain('角色设置');
+    expect(markup).toContain('设置');
     expect(markup).toContain('expression-card-preview');
     expect(markup).toContain('默认 ✓');
-    expect(markup).toContain('默认大小与方向');
+    expect(markup).toContain('初始角色大小');
     expect(markup).toContain(`${character.defaultScale.toFixed(1)}×`);
     expect(markup).toContain('role="switch"');
     expect(markup).toContain('水平翻转');
     expect(markup).toContain('张嘴图');
     expect(markup).toContain('未设置');
     expect(markup).toContain('选择图片');
-    expect(markup).toContain('character-delete-overflow');
+    expect(markup).not.toContain('character-delete-overflow');
+    expect(markup).toContain('character-delete-settings');
     expect(markup).not.toContain('管理全部表情');
-    expect(markup).not.toContain('character-danger-zone');
+    expect(markup).toContain('character-danger-zone');
     expect(markup).toContain('删除角色');
   });
 
@@ -136,7 +137,7 @@ describe('Issue #364 Cloud Touch landscape Character workspace', () => {
     expect(markup).not.toContain(
       '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。',
     );
-    expect(manager).toContain("onBackToList={() => onViewChange('list')}");
+    expect(manager).toContain("if (leaveAssembly()) onViewChange('list');");
     expect(manager).toContain('presentation={presentation}');
     expect(manager).toContain('thumbnails={thumbnails}');
     expect(manager).toContain('characterStore.setDefaultTransform');

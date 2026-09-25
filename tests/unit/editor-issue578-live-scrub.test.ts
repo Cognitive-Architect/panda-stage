@@ -8,6 +8,12 @@ import {
   runLayerTransformMutation,
   TEMPORAL_TRANSFORM_STATUS,
 } from '../../src/renderer/features/properties/layerTransformTemporalGuard';
+import {
+  formatPositionDisplay,
+  getPositionAuthoringPresentation,
+  POSITION_AUTHORING_GUIDANCE,
+  resolvePositionDraftForCommit,
+} from '../../src/renderer/features/properties/positionAuthoringPresentation';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { buildProject, IDS } from './domain/testProject';
@@ -72,6 +78,113 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     );
     expect(zero).toContain('data-temporal-inspection="false"');
     expect(zero).not.toContain('disabled=""');
+  });
+
+  it('renders PK-05 ready and active states with Position-only controls', () => {
+    const ready = renderToStaticMarkup(
+      LayerTransformPanel({
+        compact: true,
+        controller: {
+          ...temporalController(),
+          positionAuthoringAvailable: true,
+          positionHoldAvailable: true,
+          startPositionAuthoring: () => undefined,
+          createPositionHold: () => undefined,
+        },
+        showResetTransform: true,
+      }),
+    );
+    expect(ready).toContain('我要调整位置');
+    expect(ready).toContain('保持不动到这里');
+    expect(ready).not.toContain('把人物拖到想要的位置');
+    expect(ready).not.toContain(TEMPORAL_TRANSFORM_STATUS);
+    expect(ready).toContain('data-ui-variant="primary"');
+    expect(ready).toContain('data-ui-variant="secondary"');
+    expect(ready).toMatch(
+      /data-testid="layer-transform-x"[^>]*value="500"/u,
+    );
+    expect(ready).toMatch(
+      /data-testid="layer-transform-x"[^>]*disabled=""/u,
+    );
+
+    const active = renderToStaticMarkup(
+      LayerTransformPanel({
+        compact: true,
+        controller: {
+          ...temporalController(),
+          positionAuthoringActive: true,
+        },
+        showResetTransform: true,
+      }),
+    );
+    expect(active).toContain('把人物拖到想要的位置');
+    expect(active.match(/把人物拖到想要的位置/gu) ?? []).toHaveLength(1);
+    expect(active).not.toContain('我要调整位置');
+    expect(active).not.toContain('保持不动到这里');
+    expect(active).not.toContain(TEMPORAL_TRANSFORM_STATUS);
+    expect(active).not.toContain('应用变换');
+    expect(active).not.toMatch(
+      /data-testid="layer-transform-x"[^>]*disabled=""/u,
+    );
+    expect(active).toMatch(
+      /data-testid="layer-transform-scale"[\s\S]*disabled=""/u,
+    );
+  });
+
+  it('derives Ready and Active ownership without duplicating Position guidance', () => {
+    const ready = getPositionAuthoringPresentation({
+      temporalInspection: true,
+      active: false,
+      available: true,
+      holdAvailable: true,
+      status: TEMPORAL_TRANSFORM_STATUS,
+    });
+    expect(ready).toMatchObject({
+      primaryVisible: true,
+      holdVisible: true,
+      guidanceVisible: false,
+      status: '',
+    });
+
+    const active = getPositionAuthoringPresentation({
+      temporalInspection: true,
+      active: true,
+      available: false,
+      holdAvailable: false,
+      status: POSITION_AUTHORING_GUIDANCE,
+    });
+    expect(active).toMatchObject({
+      primaryVisible: false,
+      holdVisible: false,
+      guidanceVisible: true,
+      status: '',
+    });
+    expect(
+      getPositionAuthoringPresentation({
+        temporalInspection: true,
+        active: true,
+        available: false,
+        holdAvailable: false,
+        status: '位置已更新。',
+      }).status,
+    ).toBe('位置已更新。');
+  });
+
+  it('keeps formal Position precision behind concise display text', () => {
+    const formal = {
+      x: 1092.1666666666667,
+      y: 728.2042833607907,
+    };
+    const displayed = {
+      x: formatPositionDisplay(formal.x),
+      y: formatPositionDisplay(formal.y),
+    };
+
+    expect(displayed).toEqual({ x: '1092.2', y: '728.2' });
+    expect(resolvePositionDraftForCommit(displayed, formal)).toEqual(formal);
+    expect(
+      resolvePositionDraftForCommit({ x: '1092.3', y: displayed.y }, formal),
+    ).toEqual({ x: 1092.3, y: formal.y });
   });
 
   it('re-checks the live playhead before every guarded mutation, including a blur race', () => {
@@ -259,12 +372,74 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     expect(returnedLayer.render.x).toBe(500);
     expect(returnedLayer.render.scaleX).toBe(0.5);
     expect(returnedLayer.render.assetId).toBe(IDS.assetChar);
-    expect(atReturnToZero.lastValidVisuals.size).toBe(0);
+    expect(atReturnToZero.temporalInspection).toBe(false);
+    expect(atReturnToZero.directEditingEnabled).toBe(true);
+    expect(atReturnToZero.lastValidVisuals.size).toBe(3);
+    expect(
+      atReturnToZero.visualStatusByLayer.get(IDS.layerChar),
+    ).toBe('current-complete');
     expect(editor.getSnapshot()).toMatchObject({
       dirty: false,
       revision: 0,
     });
     expect(editor.history.getSnapshot()).toEqual(historyBefore);
+  });
+
+  it('renders a Position draft as main Position plus Shake without baking Shake', () => {
+    const baseProject = buildProject();
+    const project = {
+      ...baseProject,
+      shots: baseProject.shots.map((shot) =>
+        shot.id === IDS.shot
+          ? {
+              ...shot,
+              timelineEvents: [
+                {
+                  id: '40000000-0000-4000-8000-000000000031',
+                  type: 'move' as const,
+                  layerId: IDS.layerChar,
+                  startMs: 0,
+                  endMs: 2_000,
+                  easing: 'linear' as const,
+                  from: { x: 500, y: 600 },
+                  to: { x: 700, y: 600 },
+                },
+                {
+                  id: '40000000-0000-4000-8000-000000000032',
+                  type: 'shake' as const,
+                  layerId: IDS.layerChar,
+                  startMs: 1_000,
+                  endMs: 1_500,
+                  amplitudeX: 20,
+                  amplitudeY: 10,
+                  frequencyHz: 1,
+                },
+              ],
+            }
+          : shot,
+      ),
+    };
+    const shot = project.shots[0]!;
+    const model = buildEditorTemporalCanvasModel({
+      currentTimeMs: 1_250,
+      previousVisuals: new Map(),
+      positionDraft: {
+        layerId: IDS.layerChar,
+        position: { x: 900, y: 700 },
+      },
+      project,
+      readyAssetIds: new Set([IDS.assetBg, IDS.assetChar, IDS.assetChar2]),
+      shot,
+    });
+    const layer = model.stageModel.layers.find(
+      (candidate) => candidate.layer.id === IDS.layerChar,
+    )!;
+
+    expect(layer.render.x).toBe(920);
+    expect(layer.render.y).toBe(710);
+    expect(model.positionAuthoringShakeOffset).toEqual({ x: 20, y: 10 });
+    expect(project.shots[0]!.timelineEvents).toHaveLength(2);
+    expect(model.directEditingEnabled).toBe(false);
   });
 
   it('drops the previous visual map when Canvas changes Shot context', () => {

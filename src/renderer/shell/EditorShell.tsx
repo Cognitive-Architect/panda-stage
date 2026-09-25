@@ -28,6 +28,8 @@ import {
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
+import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
+import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
@@ -404,6 +406,11 @@ export function EditorShell({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const characterAssemblySnapshot = useSyncExternalStore(
+    characterAssemblySessionStore.subscribe,
+    characterAssemblySessionStore.getSnapshot,
+    characterAssemblySessionStore.getSnapshot,
+  );
   // Read-only subscription to the single existing shot selection. The product
   // preview reuses it instead of owning a second selection source.
   const currentShotId = useSyncExternalStore(
@@ -454,6 +461,15 @@ export function EditorShell({
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
   const page = getEditorShellPage(requestedPage, projectSnapshot);
+  const activeAssemblySession =
+    page === 'editor' &&
+    projectSnapshot &&
+    characterAssemblySnapshot &&
+    characterAssemblySnapshot.projectId === projectSnapshot.project.id &&
+    characterAssemblySnapshot.projectRoot === projectSnapshot.projectRoot
+      ? characterAssemblySnapshot
+      : null;
+  const assemblyActive = activeAssemblySession !== null;
   const recoveryCandidate = getEditorShellRecoveryCandidate(
     shellState,
     sessionSnapshot,
@@ -984,6 +1000,7 @@ export function EditorShell({
       data-editor-shell-state={shellState}
       data-editor-shell-region={sessionRegion}
       data-editor-page={page}
+      data-character-assembly-active={assemblyActive ? 'true' : 'false'}
       data-gate-a={gateA ? 'enabled' : 'disabled'}
     >
       {!renderProductSurface ? null : page === 'project-center' ? (
@@ -1093,23 +1110,40 @@ export function EditorShell({
               />
             </div>
             <div
-              aria-hidden={!portraitCanvasVisible}
+              aria-hidden={!portraitCanvasVisible && !assemblyActive}
               className="editor-workspace-slot editor-workspace-slot-canvas"
-              data-active={portraitCanvasVisible}
+              data-active={portraitCanvasVisible || assemblyActive}
               data-workspace-owner="canvas"
-              hidden={!portraitCanvasVisible}
+              data-character-assembly-active={assemblyActive ? 'true' : 'false'}
+              hidden={!portraitCanvasVisible && !assemblyActive}
             >
-              <CanvasWorkspace
-                showHeading={false}
-                showToolbar={canvasToolbarVisible}
-              />
+              <div
+                aria-hidden={assemblyActive || !portraitCanvasVisible}
+                className="character-assembly-canvas-owner"
+                data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
+                hidden={!portraitCanvasVisible && !assemblyActive}
+                inert={assemblyActive || undefined}
+              >
+                <CanvasWorkspace
+                  showHeading={false}
+                  showToolbar={canvasToolbarVisible}
+                />
+              </div>
+              {activeAssemblySession && projectSnapshot ? (
+                <CharacterAssemblyWorkbench
+                  projectSnapshot={projectSnapshot}
+                  session={activeAssemblySession}
+                />
+              ) : null}
             </div>
             <div
-              aria-hidden={!portraitPropertiesVisible}
-              className="editor-workspace-slot editor-workspace-slot-properties"
-              data-active={portraitPropertiesVisible}
+              aria-hidden={!portraitPropertiesVisible || assemblyActive}
+              className={`editor-workspace-slot editor-workspace-slot-properties${assemblyActive ? ' is-character-assembly-inactive' : ''}`}
+              data-active={portraitPropertiesVisible || assemblyActive}
               data-workspace-owner="properties"
-              hidden={!portraitPropertiesVisible}
+              data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
+              hidden={!portraitPropertiesVisible && !assemblyActive}
+              inert={assemblyActive || undefined}
             >
               {isPortrait ? (
                 <RightInspector
@@ -1139,7 +1173,10 @@ export function EditorShell({
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
             </div>
             <BottomWorkspace
-              hidden={isPortrait && portraitWorkspace !== 'timeline'}
+              hidden={
+                isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
+              }
+              assemblyInactive={assemblyActive}
               presentation={layoutMode}
               resizable={layoutMode === 'landscape'}
               showHistoryControls={false}

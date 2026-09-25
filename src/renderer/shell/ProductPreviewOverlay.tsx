@@ -31,12 +31,16 @@ import {
 } from '../../domain';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 import { CanvasStage } from '../stage/CanvasStage';
+import type { StageImageResourceFailure } from '../stage/stageImageResourceSession';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import {
   advanceProductPreviewTime,
+  applyProductPreviewMouthFallback,
+  buildProductPreviewImagePlan,
   buildProductPreviewCues,
   clampProductPreviewTime,
   formatProductPreviewTimecode,
+  isProductPreviewMouthFallbackFailure,
   listProductPreviewAssetIds,
   projectProductPreviewMouth,
   resolveProductPreviewShot,
@@ -101,6 +105,9 @@ export function ProductPreviewOverlay({
     useState<ProductPreviewHandoffPhase>('warming');
   const [showWarmupStatus, setShowWarmupStatus] = useState(false);
   const [seekRevision, setSeekRevision] = useState(0);
+  const [stageImageFailures, setStageImageFailures] = useState<
+    StageImageResourceFailure[]
+  >([]);
   const initialStageReadyRef = useRef(false);
   const initialReadinessRef = useRef<ProductPreviewInitialReadiness>(
     'preparing',
@@ -140,12 +147,6 @@ export function ProductPreviewOverlay({
   const nextAssetIds = useMemo(
     () => (nextShot ? listProductPreviewAssetIds(project, nextShot) : []),
     [nextShot, project],
-  );
-  const assets = useProductPreviewImages(
-    projectRoot,
-    project,
-    assetIds,
-    nextAssetIds,
   );
   const cues = useMemo(
     () => (shot ? buildProductPreviewCues(shot) : []),
@@ -293,6 +294,81 @@ export function ProductPreviewOverlay({
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
+  const imagePlan = useMemo(
+    () =>
+      shot && renderedShot
+        ? buildProductPreviewImagePlan(project, shot, renderedShot)
+        : {
+            requiredAssetIds: [],
+            fallbackAssetIds: [],
+            candidateAssetIds: assetIds,
+            mouthFallbacks: [],
+          },
+    [assetIds, project, renderedShot, shot],
+  );
+  const decodeFallbackAssetIds = imagePlan.mouthFallbacks
+    .filter((rule) =>
+      stageImageFailures.some(
+        (failure) =>
+          failure.partId === rule.partId &&
+          failure.assetId === rule.sourceAssetId,
+      ),
+    )
+    .map((rule) => rule.fallbackAssetId);
+  const imageScope = {
+    ...imagePlan,
+    requiredAssetIds: [
+      ...new Set([...imagePlan.requiredAssetIds, ...decodeFallbackAssetIds]),
+    ],
+  };
+  const assets = useProductPreviewImages(
+    projectRoot,
+    project,
+    imageScope,
+    nextAssetIds,
+  );
+  const currentStageImageFailures = stageImageFailures.filter(
+    (failure) =>
+      imagePlan.requiredAssetIds.includes(failure.assetId) &&
+      assets.urls[failure.assetId] === failure.sourceUrl,
+  );
+  const stageMouthFailureAssetIds = currentStageImageFailures
+    .filter((failure) =>
+      isProductPreviewMouthFallbackFailure(imagePlan, failure),
+    )
+    .map((failure) => failure.assetId);
+  const degradedAssetIds = [
+    ...new Set([
+      ...(assets.degradedAssetIds ?? []),
+      ...stageMouthFailureAssetIds,
+    ]),
+  ];
+  const fatalAssetIds = [
+    ...new Set([
+      ...(assets.fatalAssetIds ?? []),
+      ...currentStageImageFailures
+        .filter(
+          (failure) =>
+            !isProductPreviewMouthFallbackFailure(imagePlan, failure),
+        )
+        .map((failure) => failure.assetId),
+    ]),
+  ];
+  const displayedShot = useMemo(
+    () =>
+      shot && renderedShot && degradedAssetIds.length > 0
+        ? applyProductPreviewMouthFallback(
+            project,
+            shot,
+            renderedShot,
+            new Set(degradedAssetIds),
+          )
+        : renderedShot,
+    [degradedAssetIds.join('|'), project, renderedShot, shot],
+  );
+  const previewDegraded =
+    degradedAssetIds.length > 0 &&
+    (assets.status === 'ready' || assets.status === 'degraded');
   const handleInitialStageReady = useCallback((): void => {
     if (
       initialStageReadyRef.current ||
@@ -316,6 +392,30 @@ export function ProductPreviewOverlay({
     setHandoffPhase('warming');
     setPlaying(false);
   }, []);
+  const handleImageResourceFailure = useCallback(
+    (failure: StageImageResourceFailure): void => {
+      if (assets.urls[failure.assetId] !== failure.sourceUrl) return;
+      setStageImageFailures((current) =>
+        current.some(
+          (item) =>
+            item.partId === failure.partId &&
+            item.assetId === failure.assetId &&
+            item.sourceUrl === failure.sourceUrl,
+        )
+          ? current
+          : [...current, failure],
+      );
+      if (isProductPreviewMouthFallbackFailure(imagePlan, failure)) return;
+
+      initialReadinessRef.current = 'error';
+      setInitialReadiness('error');
+      setPlaying(false);
+      if (handoffPhaseRef.current !== 'active') {
+        setHandoffPhase('warming');
+      }
+    },
+    [assets.urls, imagePlan],
+  );
   useEffect(() => {
     if (assets.status === 'error') {
       if (handoffPhase !== 'active') handleInitialStageError();
@@ -382,28 +482,46 @@ export function ProductPreviewOverlay({
     assetUrls: typeof assets.urls;
     caption: typeof caption;
     captionStyle: typeof captionStyle;
-    evaluatedShot: NonNullable<typeof renderedShot>;
+    evaluatedShot: NonNullable<typeof displayedShot>;
+    degraded: boolean;
   } | null>(null);
   useLayoutEffect(() => {
-    if (assets.status !== 'ready' || !renderedShot) return;
+    if (
+      (assets.status !== 'ready' && assets.status !== 'degraded') ||
+      !displayedShot
+    ) {
+      return;
+    }
     lastReadyVisual.current = {
       assetUrls: assets.urls,
       caption,
       captionStyle,
-      evaluatedShot: renderedShot,
+      evaluatedShot: displayedShot,
+      degraded: previewDegraded,
     };
-  }, [assets.status, assets.urls, caption, captionStyle, renderedShot]);
+  }, [
+    assets.status,
+    assets.urls,
+    caption,
+    captionStyle,
+    displayedShot,
+    previewDegraded,
+  ]);
   const heldVisual =
     assets.status === 'loading' ? lastReadyVisual.current : null;
   const initialReadinessError =
-    initialReadiness === 'error' || assets.status === 'error';
+    initialReadiness === 'error' ||
+    assets.status === 'error' ||
+    fatalAssetIds.length > 0;
   const previewVisualState = initialReadinessError
     ? 'error'
     : initialReadiness === 'preparing'
       ? 'preparing'
       : heldVisual
         ? 'holding'
-        : assets.status;
+        : previewDegraded
+          ? 'degraded'
+          : assets.status;
   const atEnd = durationMs > 0 && displayedTimeMs >= durationMs;
   const audioWarning = useProductPreviewAudio({
     projectRoot,
@@ -423,6 +541,16 @@ export function ProductPreviewOverlay({
       data-preview-playing={String(playing)}
       data-preview-range={range}
       data-preview-data-ready={String(initialReadiness === 'ready')}
+      data-preview-degraded={String(previewDegraded)}
+      data-preview-failed-asset-ids={JSON.stringify(fatalAssetIds)}
+      data-preview-stage-failures={JSON.stringify(
+        currentStageImageFailures.map(({ partId, assetId, sourceUrl, reason }) => ({
+          partId,
+          assetId,
+          sourceUrl,
+          reason,
+        })),
+      )}
       data-preview-readiness={initialReadiness}
       data-preview-handoff={handoffPhase}
       data-preview-reveal={revealPhase}
@@ -523,25 +651,77 @@ export function ProductPreviewOverlay({
                       <span>请检查项目图片素材后重试。</span>
                     </div>
                   )
-                ) : assets.status === 'ready' && renderedShot ? (
-                  <CanvasStage
-                    assetUrls={assets.urls}
-                    caption={caption}
-                    captionStyle={captionStyle}
-                    evaluatedShot={renderedShot}
-                    onError={handleInitialStageError}
-                    onReady={
-                      initialReadiness === 'preparing'
-                        ? handleInitialStageReady
-                        : undefined
-                    }
-                    project={project}
-                  />
+                ) : assets.status === 'ready' && renderedShot && !previewDegraded ? (
+                  <>
+                    <CanvasStage
+                      assetUrls={assets.urls}
+                      caption={caption}
+                      captionStyle={captionStyle}
+                      evaluatedShot={renderedShot}
+                      onDisplayReady={
+                        initialReadiness === 'preparing'
+                          ? handleInitialStageReady
+                          : undefined
+                      }
+                      onError={handleInitialStageError}
+                      onImageResourceFailure={handleImageResourceFailure}
+                      onReady={
+                        initialReadiness === 'preparing'
+                          ? handleInitialStageReady
+                          : undefined
+                      }
+                      project={project}
+                    />
+                    {(assets.optionalFailedAssetIds?.length ?? 0) > 0 ? (
+                      <div
+                        className="product-preview-message product-preview-warning"
+                        data-testid="product-preview-optional-warning"
+                      >
+                        <strong>部分候选素材未能预加载</strong>
+                        <span>切换到对应画面时仍会按需检查这些素材。</span>
+                      </div>
+                    ) : null}
+                  </>
+                ) : previewDegraded && displayedShot ? (
+                  <>
+                    <CanvasStage
+                      assetUrls={assets.urls}
+                      caption={caption}
+                      captionStyle={captionStyle}
+                      degraded
+                      evaluatedShot={displayedShot}
+                      onDisplayReady={
+                        initialReadiness === 'preparing'
+                          ? handleInitialStageReady
+                          : undefined
+                      }
+                      onError={handleInitialStageError}
+                      onImageResourceFailure={handleImageResourceFailure}
+                      project={project}
+                    />
+                    <div
+                      className="product-preview-message product-preview-warning"
+                      data-testid="product-preview-mouth-degraded-warning"
+                    >
+                      <strong>嘴型素材不可用，已显示当前表情</strong>
+                      <span>修复嘴型素材后，预览会恢复到目标嘴型。</span>
+                    </div>
+                    {(assets.optionalFailedAssetIds?.length ?? 0) > 0 ? (
+                      <div
+                        className="product-preview-message product-preview-warning"
+                        data-testid="product-preview-optional-warning"
+                      >
+                        <strong>部分候选素材未能预加载</strong>
+                        <span>切换到对应画面时仍会按需检查这些素材。</span>
+                      </div>
+                    ) : null}
+                  </>
                 ) : heldVisual ? (
                   <CanvasStage
                     assetUrls={heldVisual.assetUrls}
                     caption={heldVisual.caption}
                     captionStyle={heldVisual.captionStyle}
+                    degraded={heldVisual.degraded}
                     evaluatedShot={heldVisual.evaluatedShot}
                     project={project}
                   />
@@ -553,12 +733,13 @@ export function ProductPreviewOverlay({
                     <strong>预览素材加载中</strong>
                     <span>正在读取当前镜头需要的图片素材。</span>
                   </div>
-                ) : renderedShot ? (
+                ) : displayedShot ? (
                   <CanvasStage
                     assetUrls={assets.urls}
                     caption={caption}
                     captionStyle={captionStyle}
-                    evaluatedShot={renderedShot}
+                    degraded={previewDegraded}
+                    evaluatedShot={displayedShot}
                     project={project}
                   />
                 ) : null}

@@ -5,19 +5,33 @@ export interface CanvasImageAssetSource {
   sha256?: string;
 }
 
+/** Runtime identity for one decoded version of one Canvas asset. */
+export function canvasImageResourceKey(
+  assetId: string,
+  sourceKey: string,
+): string {
+  return `${assetId}\u0000${sourceKey}`;
+}
+
 export interface CanvasImageState {
   images: ReadonlyMap<string, HTMLImageElement>;
   sourceKeys: ReadonlyMap<string, string>;
+  /** All decoded current and explicitly retained continuity resources. */
+  imagesByResourceKey: ReadonlyMap<string, HTMLImageElement>;
+  readyResourceKeys: ReadonlySet<string>;
   missing: ReadonlySet<string>;
 }
 
 export const EMPTY_CANVAS_IMAGE_STATE: CanvasImageState = {
   images: new Map(),
   sourceKeys: new Map(),
+  imagesByResourceKey: new Map(),
+  readyResourceKeys: new Set(),
   missing: new Set(),
 };
 
 interface CanvasImageResource {
+  assetId: string;
   image: HTMLImageElement;
   objectUrl: string;
   sourceKey: string;
@@ -27,6 +41,7 @@ interface CanvasImageResource {
 
 interface PendingCanvasImageResource {
   token: number;
+  assetId: string;
   sourceKey: string;
   resource?: CanvasImageResource;
 }
@@ -46,6 +61,11 @@ export interface CanvasImageReconcileInput {
   contextKey: string | null;
   projectRoot: string | null;
   assets: readonly CanvasImageAssetSource[];
+  /**
+   * Runtime-only resources used by a previous complete visual. They remain
+   * desired until the replacement visual commits; they are never Project data.
+   */
+  retainedAssets?: readonly CanvasImageAssetSource[];
 }
 
 function defaultReadCanvasImage(request: {
@@ -59,7 +79,8 @@ function defaultReadCanvasImage(request: {
 /**
  * Owns decoded editor Canvas images across Project revisions. Reconciliation is
  * keyed by project context plus asset id/hash, so transform-only snapshots do
- * not restart image reads or decodes.
+ * not restart image reads or decodes. A retained source is a second, explicit
+ * runtime version in the same session rather than a second global image cache.
  */
 export class CanvasImageResourceSession {
   private readonly readCanvasImage: NonNullable<
@@ -71,7 +92,8 @@ export class CanvasImageResourceSession {
   private readonly resources = new Map<string, CanvasImageResource>();
   private readonly pending = new Map<string, PendingCanvasImageResource>();
   private readonly missing = new Set<string>();
-  private desiredSources = new Map<string, string | null>();
+  private desiredSources = new Map<string, CanvasImageAssetSource>();
+  private currentSources = new Map<string, string | null>();
   private contextKey: string | null = null;
   private listener: ((state: CanvasImageState) => void) | null = null;
   private nextToken = 0;
@@ -100,71 +122,135 @@ export class CanvasImageResourceSession {
       stateChanged = true;
     }
 
-    const desiredSources = new Map<string, string | null>();
+    const previousSources = this.currentSources;
+    const currentSources = new Map<string, string | null>();
     for (const asset of input.assets) {
-      desiredSources.set(asset.id, asset.sha256 ?? null);
+      currentSources.set(asset.id, asset.sha256 ?? null);
     }
+    const desiredSources = new Map<string, CanvasImageAssetSource>();
+    for (const asset of [
+      ...input.assets,
+      ...(input.retainedAssets ?? []),
+    ]) {
+      if (!asset.sha256) continue;
+      desiredSources.set(
+        canvasImageResourceKey(asset.id, asset.sha256),
+        asset,
+      );
+    }
+    const currentSourceChanged =
+      previousSources.size !== currentSources.size ||
+      [...currentSources].some(
+        ([assetId, sourceKey]) =>
+          previousSources.get(assetId) !== sourceKey,
+      );
+    this.currentSources = currentSources;
     this.desiredSources = desiredSources;
 
-    for (const assetId of [
+    for (const resourceKey of [
       ...new Set([
         ...this.resources.keys(),
         ...this.pending.keys(),
-        ...this.missing,
       ]),
     ]) {
-      if (desiredSources.has(assetId)) continue;
-      stateChanged = this.cancelPending(assetId) || stateChanged;
-      stateChanged = this.releaseActive(assetId) || stateChanged;
-      stateChanged = this.missing.delete(assetId) || stateChanged;
+      if (desiredSources.has(resourceKey)) continue;
+      const resource = this.resources.get(resourceKey);
+      // Preserve a loaded previous source while its replacement is pending;
+      // the current image snapshot has historically exposed this safe visual.
+      // Explicit continuity sources are already in desiredSources and remain
+      // available even after a hard failure.
+      const currentSourceKey = resource
+        ? this.currentSources.get(resource.assetId)
+        : undefined;
+      const currentResource =
+        resource && currentSourceKey
+          ? this.resources.get(
+              canvasImageResourceKey(resource.assetId, currentSourceKey),
+            )
+          : undefined;
+      const replacementPending = Boolean(
+        resource?.loaded &&
+          currentSourceKey &&
+          currentSourceKey !== resource.sourceKey &&
+          !this.missing.has(resource.assetId) &&
+          !currentResource?.loaded,
+      );
+      if (
+        resource?.loaded &&
+        replacementPending
+      ) {
+        continue;
+      }
+      stateChanged = this.cancelPending(resourceKey) || stateChanged;
+      stateChanged = this.releaseActive(resourceKey) || stateChanged;
+    }
+    for (const assetId of [...this.missing]) {
+      if (currentSources.has(assetId)) continue;
+      this.missing.delete(assetId);
+      stateChanged = true;
     }
 
-    for (const [assetId, sourceKey] of desiredSources) {
+    for (const asset of input.assets) {
+      const sourceKey = asset.sha256;
       if (!sourceKey || !input.contextKey || !input.projectRoot) {
-        stateChanged = this.cancelPending(assetId) || stateChanged;
-        stateChanged = this.releaseActive(assetId) || stateChanged;
-        if (!this.missing.has(assetId)) {
-          this.missing.add(assetId);
+        if (!this.missing.has(asset.id)) {
+          this.missing.add(asset.id);
           stateChanged = true;
         }
         continue;
       }
 
-      const active = this.resources.get(assetId);
-      if (active?.sourceKey === sourceKey) {
-        stateChanged = this.cancelPending(assetId) || stateChanged;
-        stateChanged = this.missing.delete(assetId) || stateChanged;
-        continue;
+      // A definitive failure belongs to this exact source version. A new
+      // hash/context is a fresh pending read; the same failed source must not
+      // be silently downgraded to pending by a continuity-only reconcile.
+      if (previousSources.get(asset.id) !== sourceKey) {
+        stateChanged = this.missing.delete(asset.id) || stateChanged;
       }
+      if (this.missing.has(asset.id)) continue;
 
-      const pending = this.pending.get(assetId);
-      if (pending?.sourceKey === sourceKey) {
-        stateChanged = this.missing.delete(assetId) || stateChanged;
-        continue;
-      }
-
-      stateChanged = this.cancelPending(assetId) || stateChanged;
-      stateChanged = this.missing.delete(assetId) || stateChanged;
-      this.startLoad(input.projectRoot, assetId, sourceKey);
+      stateChanged =
+        this.ensureResource(input.projectRoot, asset.id, sourceKey) ||
+        stateChanged;
     }
 
+    if (input.contextKey && input.projectRoot) {
+      for (const asset of input.retainedAssets ?? []) {
+        if (!asset.sha256) continue;
+        stateChanged =
+          this.ensureResource(input.projectRoot, asset.id, asset.sha256) ||
+          stateChanged;
+      }
+    }
+
+    stateChanged = currentSourceChanged || stateChanged;
     if (stateChanged) this.emit();
   }
 
   getSnapshot(): CanvasImageState {
     const images = new Map<string, HTMLImageElement>();
     const sourceKeys = new Map<string, string>();
-    for (const [assetId, resource] of this.resources) {
-      if (!this.desiredSources.has(assetId)) continue;
-      images.set(assetId, resource.image);
-      sourceKeys.set(assetId, resource.sourceKey);
+    const imagesByResourceKey = new Map<string, HTMLImageElement>();
+    const readyResourceKeys = new Set<string>();
+    for (const [resourceKey, resource] of this.resources) {
+      if (!resource.loaded || resource.disposed) continue;
+      imagesByResourceKey.set(resourceKey, resource.image);
+      readyResourceKeys.add(resourceKey);
+      if (
+        this.currentSources.get(resource.assetId) === resource.sourceKey ||
+        !images.has(resource.assetId)
+      ) {
+        images.set(resource.assetId, resource.image);
+        sourceKeys.set(resource.assetId, resource.sourceKey);
+      }
     }
     return {
       images,
       sourceKeys,
+      imagesByResourceKey,
+      readyResourceKeys,
       missing: new Set(
         [...this.missing].filter((assetId) =>
-          this.desiredSources.has(assetId),
+          this.currentSources.has(assetId),
         ),
       ),
     };
@@ -178,13 +264,19 @@ export class CanvasImageResourceSession {
     this.releaseAll();
   }
 
-  private startLoad(
+  private ensureResource(
     projectRoot: string,
     assetId: string,
     sourceKey: string,
-  ): void {
+  ): boolean {
+    const resourceKey = canvasImageResourceKey(assetId, sourceKey);
+    const active = this.resources.get(resourceKey);
+    if (active && !active.disposed) return false;
+    const pending = this.pending.get(resourceKey);
+    if (pending?.sourceKey === sourceKey) return false;
+    this.cancelPending(resourceKey);
     const token = ++this.nextToken;
-    this.pending.set(assetId, { token, sourceKey });
+    this.pending.set(resourceKey, { token, assetId, sourceKey });
 
     void Promise.resolve()
       .then(() =>
@@ -195,9 +287,9 @@ export class CanvasImageResourceSession {
         }),
       )
       .then((response) => {
-        if (!this.isCurrent(assetId, sourceKey, token)) return;
+        if (!this.isCurrent(resourceKey, assetId, sourceKey, token)) return;
         if (!response.ok || response.status !== 'ready') {
-          this.failCurrentLoad(assetId, sourceKey, token);
+          this.failCurrentLoad(resourceKey, assetId, sourceKey, token);
           return;
         }
 
@@ -207,10 +299,10 @@ export class CanvasImageResourceSession {
             new Blob([response.bytes], { type: response.mimeType }),
           );
         } catch {
-          this.failCurrentLoad(assetId, sourceKey, token);
+          this.failCurrentLoad(resourceKey, assetId, sourceKey, token);
           return;
         }
-        if (!this.isCurrent(assetId, sourceKey, token)) {
+        if (!this.isCurrent(resourceKey, assetId, sourceKey, token)) {
           this.revokeObjectUrl(objectUrl);
           return;
         }
@@ -220,17 +312,18 @@ export class CanvasImageResourceSession {
           image = this.createImage();
         } catch {
           this.revokeObjectUrl(objectUrl);
-          this.failCurrentLoad(assetId, sourceKey, token);
+          this.failCurrentLoad(resourceKey, assetId, sourceKey, token);
           return;
         }
         const resource: CanvasImageResource = {
+          assetId,
           image,
           objectUrl,
           sourceKey,
           loaded: false,
           disposed: false,
         };
-        const pending = this.pending.get(assetId);
+        const pending = this.pending.get(resourceKey);
         if (!pending || pending.token !== token) {
           this.disposeResource(resource);
           return;
@@ -239,87 +332,115 @@ export class CanvasImageResourceSession {
 
         image.onload = () => {
           resource.loaded = true;
-          if (!this.isCurrent(assetId, sourceKey, token)) {
+          if (!this.isCurrent(resourceKey, assetId, sourceKey, token)) {
             this.disposeResource(resource);
             return;
           }
           image.onload = null;
           image.onerror = null;
-          this.pending.delete(assetId);
-          const previous = this.resources.get(assetId);
-          this.resources.set(assetId, resource);
-          this.missing.delete(assetId);
-          this.emit();
-          if (previous && previous !== resource) {
-            this.disposeResource(previous);
+          this.pending.delete(resourceKey);
+          this.resources.set(resourceKey, resource);
+          this.releaseSupersededResources(assetId, sourceKey);
+          if (this.currentSources.get(assetId) === sourceKey) {
+            this.missing.delete(assetId);
           }
+          this.emit();
         };
         image.onerror = () => {
-          if (!this.isCurrent(assetId, sourceKey, token)) {
+          if (!this.isCurrent(resourceKey, assetId, sourceKey, token)) {
             this.disposeResource(resource);
             return;
           }
-          this.pending.delete(assetId);
+          this.pending.delete(resourceKey);
           this.disposeResource(resource);
-          this.releaseActive(assetId);
-          this.missing.add(assetId);
+          this.releaseActive(resourceKey);
+          if (this.currentSources.get(assetId) === sourceKey) {
+            this.releaseSupersededResources(assetId, sourceKey);
+            this.missing.add(assetId);
+          }
           this.emit();
         };
         image.src = objectUrl;
       })
       .catch(() => {
-        this.failCurrentLoad(assetId, sourceKey, token);
+        this.failCurrentLoad(resourceKey, assetId, sourceKey, token);
       });
+    return true;
   }
 
   private failCurrentLoad(
+    resourceKey: string,
     assetId: string,
     sourceKey: string,
     token: number,
   ): void {
-    if (!this.isCurrent(assetId, sourceKey, token)) return;
-    const pending = this.pending.get(assetId);
-    this.pending.delete(assetId);
+    if (!this.isCurrent(resourceKey, assetId, sourceKey, token)) return;
+    const pending = this.pending.get(resourceKey);
+    this.pending.delete(resourceKey);
     if (pending?.resource) this.disposeResource(pending.resource);
-    this.releaseActive(assetId);
-    this.missing.add(assetId);
+    this.releaseActive(resourceKey);
+    if (this.currentSources.get(assetId) === sourceKey) {
+      this.releaseSupersededResources(assetId, sourceKey);
+      this.missing.add(assetId);
+    }
     this.emit();
   }
 
   private isCurrent(
+    resourceKey: string,
     assetId: string,
     sourceKey: string,
     token: number,
   ): boolean {
-    if (this.disposed || this.desiredSources.get(assetId) !== sourceKey) {
+    if (
+      this.disposed ||
+      this.desiredSources.get(resourceKey)?.id !== assetId ||
+      this.desiredSources.get(resourceKey)?.sha256 !== sourceKey
+    ) {
       return false;
     }
-    const pending = this.pending.get(assetId);
+    const pending = this.pending.get(resourceKey);
     return pending?.token === token && pending.sourceKey === sourceKey;
   }
 
-  private cancelPending(assetId: string): boolean {
-    const pending = this.pending.get(assetId);
+  private cancelPending(resourceKey: string): boolean {
+    const pending = this.pending.get(resourceKey);
     if (!pending) return false;
-    this.pending.delete(assetId);
+    this.pending.delete(resourceKey);
     if (pending.resource) this.disposeResource(pending.resource);
     return true;
   }
 
-  private releaseActive(assetId: string): boolean {
-    const resource = this.resources.get(assetId);
+  private releaseActive(resourceKey: string): boolean {
+    const resource = this.resources.get(resourceKey);
     if (!resource) return false;
-    this.resources.delete(assetId);
+    this.resources.delete(resourceKey);
     this.disposeResource(resource);
     return true;
   }
 
-  private releaseAll(): void {
-    for (const assetId of [...this.pending.keys()]) {
-      this.cancelPending(assetId);
+  private releaseSupersededResources(
+    assetId: string,
+    currentSourceKey: string,
+  ): void {
+    for (const [resourceKey, resource] of this.resources) {
+      if (
+        resource.assetId !== assetId ||
+        resource.sourceKey === currentSourceKey ||
+        this.desiredSources.has(resourceKey)
+      ) {
+        continue;
+      }
+      this.releaseActive(resourceKey);
     }
-    for (const assetId of [...this.resources.keys()]) {
-      this.releaseActive(assetId);
+  }
+
+  private releaseAll(): void {
+    for (const resourceKey of [...this.pending.keys()]) {
+      this.cancelPending(resourceKey);
+    }
+    for (const resourceKey of [...this.resources.keys()]) {
+      this.releaseActive(resourceKey);
     }
     this.missing.clear();
   }

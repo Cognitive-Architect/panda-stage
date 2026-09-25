@@ -297,7 +297,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(count(shell, /<LegacyWorkspace/gu)).toBe(0);
   });
 
-  it('keeps project revision diagnostic-only in resource manager headings', () => {
+  it('keeps project revision diagnostic-only in resource workspaces', () => {
     const shots = readSource('src/renderer/features/shots/ShotManager.tsx');
     const characters = readSource(
       'src/renderer/features/characters/CharacterManager.tsx',

@@ -2,6 +2,7 @@ import type { Project } from '../models/project';
 
 export type AssetReferenceKind =
   | 'character-base'
+  | 'character-body'
   | 'character-expression'
   | 'character-mouth'
   | 'shot-background'
@@ -54,6 +55,13 @@ export function scanAssetReferences(
         kind: 'character-base',
         path: `characters[${characterIndex}].baseAssetId`,
         label: `角色“${character.name}”的基础图片`,
+      });
+    }
+    if (character.mode === 'composite' && character.bodyAssetId === assetId) {
+      references.push({
+        kind: 'character-body',
+        path: `characters[${characterIndex}].bodyAssetId`,
+        label: `角色“${character.name}”的身体图片`,
       });
     }
     character.expressions.forEach((expression, expressionIndex) => {

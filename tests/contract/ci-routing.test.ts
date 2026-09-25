@@ -116,6 +116,39 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the bounded Issue #608 Shot thumbnail verifier through the Shot owner', () => {
+    const result = draft([
+      change('scripts/verify-issue608-shot-thumbnail.cjs', 'A'),
+    ]);
+
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toEqual(['shots']);
+    expect(result.suites).toEqual(['shot']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes the exact Issue #606 S05 receipt through the existing canvas owner', () => {
+    const result = draft([
+      change('docs/evidence/issue-606/receipt.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toEqual(['canvas']);
+    expect(result.suites).toEqual(['canvas', 'history']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps other Issue evidence receipts on the fail-closed unknown route', () => {
+    const result = draft([
+      change('docs/evidence/issue-607/receipt.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual([
+      'docs/evidence/issue-607/receipt.json',
+    ]);
+  });
+
   it.each([
     'src/domain/services/DialogueService.ts',
     'src/shared/project-contract.ts',

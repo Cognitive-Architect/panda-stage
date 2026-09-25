@@ -15,6 +15,7 @@ import {
   type Shot,
 } from '../models';
 import type { AssetDropPayload } from '../assetDropPayload';
+import { PositionProjectService } from './PositionProjectService';
 
 export type LayerServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -131,10 +132,14 @@ function validateLayerPosition(point: Point): Point {
 export class LayerService {
   private readonly createId: () => string;
   private readonly now: () => Date;
+  private readonly positionProjectService: PositionProjectService;
 
   constructor(options: LayerServiceOptions = {}) {
     this.createId = options.createId ?? (() => crypto.randomUUID());
     this.now = options.now ?? (() => new Date());
+    this.positionProjectService = new PositionProjectService({
+      now: this.now,
+    });
   }
 
   createFromAsset(
@@ -400,9 +405,12 @@ export class LayerService {
     if (layer.x === position.x && layer.y === position.y) {
       return project;
     }
-    const layers = [...shot.layers];
-    layers[layerIndex] = { ...layer, ...position };
-    return this.replaceShot(project, { ...shot, layers });
+    return this.positionProjectService.applyBaseBoundLayerChange(
+      project,
+      shotId,
+      layerId,
+      position,
+    );
   }
 
   updateTransform(
@@ -439,9 +447,12 @@ export class LayerService {
     ) {
       return project;
     }
-    const layers = [...shot.layers];
-    layers[layerIndex] = replacement;
-    return this.replaceShot(project, { ...shot, layers });
+    return this.positionProjectService.applyBaseBoundLayerChange(
+      project,
+      shotId,
+      layerId,
+      replacement,
+    );
   }
 
   toggleFlipX(

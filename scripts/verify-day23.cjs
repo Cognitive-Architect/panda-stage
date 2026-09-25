@@ -8,6 +8,7 @@ const {
   IPC_CHANNELS,
 } = require('../dist-electron/shared/ipc/channels.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const { PROJECT_SCHEMA_VERSION } = require('../dist-electron/domain/constants.js');
 const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
@@ -453,8 +454,8 @@ async function verifyDay23() {
       projectRoot: request.projectRoot,
       projectFilePath: `${request.projectRoot}\\project.json`,
       project: savedProject ?? project,
-      migrated: true,
-      sourceVersion: 5,
+      migrated: !savedProject,
+      sourceVersion: savedProject?.schemaVersion ?? 5,
     },
   }));
   ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
@@ -467,7 +468,7 @@ async function verifyDay23() {
         projectFilePath: `${request.projectRoot}\\project.json`,
         project: request.project,
         migrated: false,
-        sourceVersion: 6,
+        sourceVersion: savedProject.schemaVersion,
       },
     };
   });
@@ -850,7 +851,7 @@ async function verifyDay23() {
       executedAt: new Date().toISOString(),
       baselineSha: '4a5266c',
       contract: {
-        schemaVersion: 6,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
         flipModel: 'explicit flipX boolean; positive uniform scale',
         centerAnchor: 'x/y remain the visual center',
         orderModel: 'continuous zIndex; background pinned at zero',
@@ -958,8 +959,8 @@ async function verifyDay23() {
       evidence.lock.transformerVisible ||
       !evidence.lock.transformInputsDisabled ||
       !evidence.lock.orderButtonsDisabled ||
-      // schema version is 6 after Day 27 v5->v6 migration (PROJECT_SCHEMA_VERSION in src/domain/constants.ts)
-      evidence.persistence.schemaVersion !== 6 ||
+      // v5 projects migrate to the current formal schema version.
+      evidence.persistence.schemaVersion !== PROJECT_SCHEMA_VERSION ||
       evidence.persistence.reopenedLayer?.flipX !== true ||
       evidence.persistence.reopenedLayer?.rotationDeg !== 90 ||
       evidence.persistence.reopenedLayer?.scaleX !== 1.25 ||

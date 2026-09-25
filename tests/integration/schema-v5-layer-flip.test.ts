@@ -9,7 +9,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { ProjectSchema, migrateProject } from '../../src/domain';
+import {
+  PROJECT_SCHEMA_VERSION,
+  ProjectSchema,
+  migrateProject,
+} from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
 const temporaryRoots: string[] = [];
@@ -34,6 +38,11 @@ describe('schema v5 explicit flip lifecycle', () => {
     const version4 = {
       ...current,
       schemaVersion: 4,
+      characters: current.characters.map((character) => {
+        const { mode, ...historicalCharacter } = character;
+        void mode;
+        return historicalCharacter;
+      }),
       shots: current.shots.map((shot) => ({
         ...shot,
         layers: shot.layers.map(({ flipX, ...layer }) => {
@@ -55,7 +64,7 @@ describe('schema v5 explicit flip lifecycle', () => {
     expect(migrated).toMatchObject({
       migrated: true,
       sourceVersion: 4,
-      project: { schemaVersion: 6 },
+      project: { schemaVersion: PROJECT_SCHEMA_VERSION },
     });
     expect(
       migrated.project.shots.flatMap((shot) => shot.layers)
@@ -80,11 +89,11 @@ describe('schema v5 explicit flip lifecycle', () => {
       await readFile(projectFile, 'utf8'),
     );
     const reopened = await service.open(projectRoot);
-    expect(serialized.schemaVersion).toBe(6);
+    expect(serialized.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(reopened).toMatchObject({
       migrated: false,
-      sourceVersion: 6,
-      project: { schemaVersion: 6 },
+      sourceVersion: PROJECT_SCHEMA_VERSION,
+      project: { schemaVersion: PROJECT_SCHEMA_VERSION },
     });
     expect(
       reopened.project.shots[0]!.layers.find(

@@ -123,7 +123,7 @@ function buildShot(overrides: Partial<Shot> = {}): Shot {
 
 function buildProject(shot: Shot = buildShot()): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     id: randomUUID(),
     name: '熊猫剧场',
     width: 1_920,
@@ -138,6 +138,7 @@ function buildProject(shot: Shot = buildShot()): Project {
     characters: [
       {
         id: CHARACTER_ID,
+        mode: 'single-image',
         name: '小熊猫',
         expressions: [
           {
@@ -443,6 +444,22 @@ describe('product preview overlay contract', () => {
     expect(styles).toMatch(
       /\.product-preview-hint\.product-preview-warning\s*\{[\s\S]*?position:\s*absolute/u,
     );
+  });
+
+  it('routes structured Stage image failures through Preview-owned S03 fallback rules', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const previewModel = readSource('src/renderer/shell/productPreviewModel.ts');
+    const stage = readSource('src/renderer/stage/stageImageResourceSession.ts');
+
+    expect(overlay).toContain(
+      'onImageResourceFailure={handleImageResourceFailure}',
+    );
+    expect(overlay).toContain('failure.partId === rule.partId');
+    expect(overlay).toContain('failure.assetId === rule.sourceAssetId');
+    expect(overlay).toContain('data-preview-stage-failures=');
+    expect(previewModel).toContain('isProductPreviewMouthFallbackFailure');
+    expect(stage).toContain("image.onerror = () => {");
+    expect(stage).toContain("'decode'");
   });
 
   it('places a flat, persistently selected range control above the Stage', () => {

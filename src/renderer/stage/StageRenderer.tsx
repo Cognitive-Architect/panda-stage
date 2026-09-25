@@ -7,12 +7,13 @@ import {
   useState,
 } from 'react';
 import type Konva from 'konva';
-import { Image as KonvaImage, Layer, Stage, Text } from 'react-konva';
+import { Group, Image as KonvaImage, Layer, Stage, Text } from 'react-konva';
 import type { EvaluatedShot, Project } from '../../domain';
 import type { SubtitleStyle } from '../../domain';
 import {
   buildStageRenderModel,
   type StageAssetUrlMap,
+  type StageRenderPart,
   type StageRenderLayer,
 } from '../../shared/stage/render-model';
 import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
@@ -26,6 +27,7 @@ import {
   isStageFrameReady,
   StageImageResourceSession,
   type StageImageLayerSource,
+  type StageImageResourceFailure,
   type StageImageResourceState,
 } from './stageImageResourceSession';
 import {
@@ -41,8 +43,13 @@ interface StageRendererProps {
   caption: string | null;
   captionStyle?: SubtitleStyle;
   onReady?: () => void;
+  /** Fires when a complete drawable frame exists, including an intentional Preview fallback. */
+  onDisplayReady?: () => void;
   onError?: (error: Error) => void;
+  onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
   renderToken?: string | number;
+  /** Degraded Preview is drawable, but never exact-frame ready for Export. */
+  degraded?: boolean;
 }
 
 function useStageImages(
@@ -63,7 +70,7 @@ function useStageImages(
   if (layerSourcesRef.current.key !== sourceKey) {
     layerSourcesRef.current = {
       key: sourceKey,
-      layers: layers.map(({ id, sourceUrl }) => ({ id, sourceUrl })),
+      layers: buildStagePartSources(layers),
     };
   }
 
@@ -86,6 +93,89 @@ function useStageImages(
   return state;
 }
 
+function buildStagePartSources(
+  layers: readonly StageRenderLayer[],
+): StageImageLayerSource[] {
+  return layers.flatMap((layer) =>
+    layer.parts.map(({ id, asset, sourceUrl }) => ({
+      id,
+      assetId: asset.id,
+      sourceUrl,
+    })),
+  );
+}
+
+interface StagePartImagesProps {
+  parts: readonly StageRenderPart[];
+  images: ReadonlyMap<string, HTMLImageElement>;
+  composite: boolean;
+}
+
+function StagePartImages({
+  parts,
+  images,
+  composite,
+}: StagePartImagesProps): React.JSX.Element {
+  const visualRef = useRef<Konva.Group | null>(null);
+  const orderedParts = [...parts].sort(
+    (left, right) =>
+      left.render.zIndex - right.render.zIndex ||
+      left.drawOrder - right.drawOrder,
+  );
+  const complete = orderedParts.every((part) => images.has(part.id));
+  useLayoutEffect(() => {
+    const visual = visualRef.current;
+    if (!visual) return;
+    visual.clearCache();
+    if (!composite || !complete || orderedParts.length < 2) return;
+    const minX = Math.min(...orderedParts.map((part) => part.render.x));
+    const minY = Math.min(...orderedParts.map((part) => part.render.y));
+    const maxX = Math.max(
+      ...orderedParts.map((part) => part.render.x + part.render.width),
+    );
+    const maxY = Math.max(
+      ...orderedParts.map((part) => part.render.y + part.render.height),
+    );
+    if (maxX <= minX || maxY <= minY) return;
+    // Flatten the Body + Face overlap before the owner opacity is applied by
+    // the outer Group. This preserves one logical Character alpha.
+    visual.cache({
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    });
+    visual.getLayer()?.batchDraw();
+  }, [complete, composite, images, orderedParts]);
+
+  return (
+    <Group listening={false} ref={visualRef}>
+      {complete
+        ? orderedParts.map((part) => {
+            const image = images.get(part.id);
+            const render = part.render;
+            if (!image || !render.visible) return null;
+            return (
+              <KonvaImage
+                height={render.height}
+                image={image}
+                key={part.id}
+                listening={false}
+                opacity={1}
+                rotation={render.rotationDeg}
+                scaleX={render.scaleX}
+                scaleY={render.scaleY}
+                width={render.width}
+                x={render.x}
+                y={render.y}
+              />
+            );
+          })
+        : null}
+    </Group>
+  );
+}
+
 export function StageRenderer({
   project,
   evaluatedShot,
@@ -93,8 +183,11 @@ export function StageRenderer({
   caption,
   captionStyle,
   onReady,
+  onDisplayReady,
   onError,
+  onImageResourceFailure,
   renderToken,
+  degraded = false,
 }: StageRendererProps): React.JSX.Element {
   const configurePreviewLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
@@ -115,7 +208,7 @@ export function StageRenderer({
     }
   }, [assetUrls, evaluatedShot, project]);
   const layers = modelResult.model?.layers ?? [];
-  const imageSourceKey = buildStageImageSourceKey(layers);
+  const imageSourceKey = buildStageImageSourceKey(buildStagePartSources(layers));
   const desiredFrame = modelResult.model
     ? {
         model: modelResult.model,
@@ -131,15 +224,22 @@ export function StageRenderer({
     imageState,
     layerCount: layers.length,
     sourceKey: imageSourceKey,
+  }) && !degraded;
+  const displayReady = isStageFrameReady({
+    error,
+    hasModel: modelResult.model !== null,
+    imageState,
+    layerCount: layers.length,
+    sourceKey: imageSourceKey,
   });
   const committedFrameRef = useRef<StageVisualFrame | null>(null);
   useLayoutEffect(() => {
     committedFrameRef.current = commitStageVisualFrame(
       committedFrameRef.current,
       desiredFrame,
-      ready,
+      displayReady,
     );
-  }, [desiredFrame, ready]);
+  }, [desiredFrame, displayReady]);
   const displayFrame = selectStageVisualFrame(
     committedFrameRef.current,
     desiredFrame,
@@ -155,6 +255,14 @@ export function StageRenderer({
       onError?.(modelResult.error);
       return;
     }
+    if (imageState.failures.length > 0) {
+      if (onImageResourceFailure) {
+        imageState.failures.forEach(onImageResourceFailure);
+      } else {
+        imageState.failures.forEach((failure) => onError?.(failure.error));
+      }
+      return;
+    }
     if (imageState.error) {
       onError?.(imageState.error);
       return;
@@ -165,13 +273,20 @@ export function StageRenderer({
     return () => window.cancelAnimationFrame(frame);
   }, [
     imageState.error,
+    imageState.failures,
     modelResult.error,
     modelResult.model?.timeMs,
     onError,
+    onImageResourceFailure,
     onReady,
     ready,
     renderToken,
   ]);
+  useEffect(() => {
+    if (!displayReady) return;
+    const frame = window.requestAnimationFrame(() => onDisplayReady?.());
+    return () => window.cancelAnimationFrame(frame);
+  }, [displayReady, onDisplayReady, renderToken]);
 
   if (!modelResult.model || (error && !committedFrame)) {
     return (
@@ -194,6 +309,8 @@ export function StageRenderer({
       )}
       data-render-contract="shared-stage-layer-v1"
       data-stage-error={String(Boolean(error))}
+      data-stage-display-ready={String(displayReady)}
+      data-stage-degraded={String(degraded)}
       data-stage-ready={String(ready)}
       data-stage-render-token={renderToken == null ? '' : String(renderToken)}
       data-stage-time={displayModel!.timeMs}
@@ -206,27 +323,50 @@ export function StageRenderer({
       >
         <Layer listening={false} ref={configurePreviewLayer}>
           {displayModel!.layers.map((layer) => {
-            const image = imageState.images.get(layer.id);
             const render = layer.render;
-            if (!image || !render.visible) {
+            const primaryPart = layer.parts[0];
+            if (!primaryPart || !render.visible) {
               return null;
             }
+            const image = imageState.images.get(primaryPart.id);
+            if (!image && !layer.visual) return null;
+            if (render.isBackground || !layer.visual) {
+              if (!image) return null;
+              return (
+                <KonvaImage
+                  key={layer.id}
+                  height={render.height}
+                  image={image}
+                  listening={render.listening}
+                  offsetX={render.offsetX}
+                  offsetY={render.offsetY}
+                  opacity={render.opacity}
+                  rotation={render.rotationDeg}
+                  scaleX={render.scaleX}
+                  scaleY={render.scaleY}
+                  width={render.width}
+                  x={render.x}
+                  y={render.y}
+                />
+              );
+            }
             return (
-              <KonvaImage
+              <Group
                 key={layer.id}
-                height={render.height}
-                image={image}
                 listening={render.listening}
-                offsetX={render.offsetX}
-                offsetY={render.offsetY}
                 opacity={render.opacity}
                 rotation={render.rotationDeg}
                 scaleX={render.scaleX}
                 scaleY={render.scaleY}
-                width={render.width}
                 x={render.x}
                 y={render.y}
-              />
+              >
+                <StagePartImages
+                  composite={layer.visual.kind === 'composite-character'}
+                  images={imageState.images}
+                  parts={layer.parts}
+                />
+              </Group>
             );
           })}
           <SubtitleRenderer

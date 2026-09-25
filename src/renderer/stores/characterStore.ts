@@ -1,13 +1,26 @@
 import {
   CharacterService,
+  type CharacterExpressionAssetUpdate,
   type CharacterExpressionDraft,
+  type CompositeCharacterDefinition,
+  type CompositeCharacterUpdate,
   type CreateCharacterInput,
+  type CreateCompositeCharacterInput,
+  type FacePlacement,
   type Project,
 } from '../../domain';
 import {
   EditorProjectStore,
   editorProjectStore,
+  type EditorProjectSnapshot,
 } from './EditorProjectStore';
+
+export class CharacterStoreStaleError extends Error {
+  constructor(message = 'Character command target became stale before commit.') {
+    super(message);
+    this.name = 'CharacterStoreStaleError';
+  }
+}
 
 export class CharacterStore {
   constructor(
@@ -19,6 +32,117 @@ export class CharacterStore {
     return this.apply(
       (project) => this.service.create(project, input),
       'Create character',
+    );
+  }
+
+  createComposite(
+    input: CreateCompositeCharacterInput,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) => this.service.createComposite(project, input),
+      'Create composite character',
+      expectedSnapshot,
+    );
+  }
+
+  getCompositeDefinition(
+    characterId: string,
+  ): CompositeCharacterDefinition {
+    const snapshot = this.requireSnapshot();
+    return this.service.getCompositeDefinition(
+      snapshot.project,
+      characterId,
+    );
+  }
+
+  applyCompositeDefinition(
+    characterId: string,
+    definition: CompositeCharacterDefinition,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.applyCompositeDefinition(
+          project,
+          characterId,
+          definition,
+        ),
+      'Apply composite character',
+      expectedSnapshot,
+    );
+  }
+
+  applyCompositeUpdate(
+    characterId: string,
+    update: CompositeCharacterUpdate,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.applyCompositeUpdate(project, characterId, update),
+      'Apply composite character',
+      expectedSnapshot,
+    );
+  }
+
+  replaceBodyAsset(
+    characterId: string,
+    bodyAssetId: string,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.replaceBodyAsset(project, characterId, bodyAssetId),
+      'Replace character Body',
+      expectedSnapshot,
+    );
+  }
+
+  setFacePlacement(
+    characterId: string,
+    facePlacement: FacePlacement,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.setFacePlacement(project, characterId, facePlacement),
+      'Set character Face Placement',
+      expectedSnapshot,
+    );
+  }
+
+  setCompositeExpressionAssets(
+    characterId: string,
+    expressionAssets: readonly CharacterExpressionAssetUpdate[],
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.setCompositeExpressionAssets(
+          project,
+          characterId,
+          expressionAssets,
+        ),
+      'Update character Expressions',
+      expectedSnapshot,
+    );
+  }
+
+  setCompositeMouthOpenAsset(
+    characterId: string,
+    mouthOpenAssetId: string | null,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.setCompositeMouthOpenAsset(
+          project,
+          characterId,
+          mouthOpenAssetId,
+        ),
+      'Update character Mouth image',
+      expectedSnapshot,
     );
   }
 
@@ -144,12 +268,40 @@ export class CharacterStore {
   private apply(
     mutation: (project: Project) => Project,
     label: string,
+    expectedSnapshot?: EditorProjectSnapshot,
   ): Project {
     const snapshot = this.editorStore.getSnapshot();
     if (!snapshot) throw new Error('请先打开项目。');
+    if (expectedSnapshot && snapshot !== expectedSnapshot) {
+      throw new CharacterStoreStaleError();
+    }
+
     const project = mutation(snapshot.project);
+    const current = this.editorStore.getSnapshot();
+    if (
+      !current ||
+      current !== snapshot ||
+      current.projectRoot !== snapshot.projectRoot ||
+      current.project.id !== snapshot.project.id ||
+      current.revision !== snapshot.revision ||
+      JSON.stringify(current.project) !== JSON.stringify(snapshot.project)
+    ) {
+      throw new CharacterStoreStaleError();
+    }
+    if (
+      project === snapshot.project ||
+      JSON.stringify(project) === JSON.stringify(snapshot.project)
+    ) {
+      return snapshot.project;
+    }
     this.editorStore.updateProject(project, label);
     return project;
+  }
+
+  private requireSnapshot(): EditorProjectSnapshot {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    return snapshot;
   }
 }
 

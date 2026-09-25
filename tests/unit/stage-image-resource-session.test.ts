@@ -17,6 +17,8 @@ interface FakeImage {
 
 const LAYER_A = 'layer-a';
 const LAYER_B = 'layer-b';
+const CHARACTER_BODY = 'character-layer:body';
+const CHARACTER_FACE = 'character-layer:face';
 
 function createFakeImage(): FakeImage {
   return {
@@ -51,11 +53,14 @@ function createHarness(): {
 
 function reconcile(
   harness: ReturnType<typeof createHarness>,
-  layers: Array<{ id: string; sourceUrl: string }>,
+  layers: Array<{ id: string; sourceUrl: string; assetId?: string }>,
 ): void {
-  harness.session.reconcile(layers, (state) => {
+  harness.session.reconcile(
+    layers.map((layer) => ({ ...layer, assetId: layer.assetId ?? layer.id })),
+    (state) => {
     harness.states.push(state);
-  });
+    },
+  );
 }
 
 describe('StageImageResourceSession', () => {
@@ -144,6 +149,41 @@ describe('StageImageResourceSession', () => {
     });
     expect(harness.session.getSnapshot().images.get(LAYER_A)).toBe(
       harness.images[0],
+    );
+  });
+
+  it('keeps a Body and Face runtime pair atomic across an expression replacement', () => {
+    const harness = createHarness();
+    const initial = [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-expression' },
+    ];
+
+    reconcile(harness, initial);
+    harness.images[0]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    expect(harness.session.getSnapshot().images.size).toBe(0);
+    harness.images[1]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    reconcile(harness, [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-mouth' },
+    ]);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    expect(harness.session.getSnapshot().images.get(CHARACTER_BODY)).toBe(
+      harness.images[0],
+    );
+    expect(harness.session.getSnapshot().images.get(CHARACTER_FACE)).toBe(
+      harness.images[1],
+    );
+    harness.images[2]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get(CHARACTER_BODY)).toBe(
+      harness.images[0],
+    );
+    expect(harness.session.getSnapshot().images.get(CHARACTER_FACE)).toBe(
+      harness.images[2],
     );
   });
 
@@ -289,11 +329,19 @@ describe('StageImageResourceSession', () => {
 
     reconcile(harness, [{ id: LAYER_A, sourceUrl: 'asset-a' }]);
     harness.images[0]!.succeed();
-    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'asset-b' }]);
+    reconcile(harness, [{ id: LAYER_A, assetId: 'mouth-asset', sourceUrl: 'asset-b' }]);
     harness.images[1]!.fail();
 
     expect(harness.session.getSnapshot().ready).toBe(false);
     expect(harness.session.getSnapshot().error).toBeInstanceOf(Error);
+    expect(harness.session.getSnapshot().failures).toMatchObject([
+      {
+        partId: LAYER_A,
+        assetId: 'mouth-asset',
+        sourceUrl: 'asset-b',
+        reason: 'decode',
+      },
+    ]);
     expect(harness.session.getSnapshot().images.get(LAYER_A)).toBe(
       harness.images[0],
     );

@@ -79,7 +79,7 @@ describe('Issue #527 Character Settings balance polish', () => {
     const detail = detailMarkup();
     const expression = detailMarkup(false, 'expression');
 
-    expect(detail).toContain('返回角色列表');
+    expect(detail).toContain('← 角色列表');
     expect(detail).not.toContain('← 返回角色列表');
     expect(expression).toContain('← 返回角色详情');
   });

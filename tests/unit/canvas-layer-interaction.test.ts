@@ -388,6 +388,66 @@ describe('SelectableLayer interaction adapter', () => {
     expect(scaleY).toBe(ordinary.render.scaleY);
   });
 
+  it('grants only Position drag to the scoped authoring capability', () => {
+    const setDraft = vi.fn(() => ({ ok: true as const, snapshot: null! }));
+    const commit = vi.fn(() => ({
+      status: 'committed' as const,
+      session: null!,
+      snapshot: null!,
+    }));
+    const session = {
+      sessionId: 1,
+      generation: 0,
+      getSnapshot: () => null,
+      setDraft,
+      commit,
+      cancel: vi.fn(),
+      exit: vi.fn(),
+    } as unknown as import('../../src/renderer/stores/positionAuthoringSessionStore').PositionAuthoringSessionHandle;
+    const position = { x: ordinary.render.x, y: ordinary.render.y };
+    const target = {
+      x: () => position.x,
+      y: () => position.y,
+      position: (next?: { x: number; y: number }) => {
+        if (next) Object.assign(position, next);
+        return position;
+      },
+      scaleX: () => ordinary.render.scaleX,
+      scaleY: () => ordinary.render.scaleY,
+      scale: vi.fn(),
+      rotation: () => ordinary.render.rotationDeg,
+    };
+    const element = SelectableLayer({
+      directEditingEnabled: false,
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      nodeRef,
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+      onSelect: vi.fn(),
+      positionAuthoringSession: session,
+      positionAuthoringShakeOffset: { x: 20, y: 10 },
+      render: ordinary.render,
+      selected: true,
+    });
+    const props = element.props as {
+      draggable: boolean;
+      onDragMove: (event: { target: typeof target }) => void;
+      onDragEnd: (event: { target: typeof target }) => void;
+      onTransformEnd: (event: { target: typeof target }) => void;
+    };
+    expect(props.draggable).toBe(true);
+    position.x = 720;
+    position.y = 360;
+    props.onDragMove({ target });
+    props.onDragEnd({ target });
+    expect(setDraft).toHaveBeenCalledWith({ x: 700, y: 350 });
+    expect(commit).toHaveBeenCalledWith({ x: 700, y: 350 });
+    props.onTransformEnd({ target });
+    expect(target.scale).toHaveBeenCalled();
+  });
+
   it('renders content without an interleaved Transformer sibling', () => {
     const element = SelectableLayer({
       image: {} as HTMLImageElement,

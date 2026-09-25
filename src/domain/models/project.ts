@@ -9,7 +9,11 @@ import {
 import { validateProjectReferences } from '../validators/projectReferences';
 import { AssetSchema, type Asset } from './asset';
 import { AudioClipSchema } from './audio';
-import { CharacterSchema, VoiceProfileSchema } from './character';
+import {
+  CharacterSchema,
+  CharacterV6Schema,
+  VoiceProfileSchema,
+} from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import type { Layer, LayerV3, LayerV4 } from './layer';
 import { LayerSchema } from './layer';
@@ -86,7 +90,7 @@ export const ProjectV2Schema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV2Schema),
@@ -104,7 +108,7 @@ export const ProjectV3Schema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV3Schema),
@@ -122,7 +126,7 @@ export const ProjectV4Schema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV4Schema),
@@ -169,10 +173,33 @@ export const ProjectV5Schema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV5Schema),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
+/**
+ * Historical v6 project shape. v6 is the last whole-image Character format;
+ * it must remain independently parseable now that current Characters carry a
+ * required visual mode and optional composite fields.
+ */
+export const ProjectV6Schema = z
+  .object({
+    schemaVersion: z.literal(6),
+    id: IdSchema,
+    name: NameSchema,
+    width: z.literal(PROJECT_WIDTH),
+    height: z.literal(PROJECT_HEIGHT),
+    fps: z.literal(PROJECT_FPS),
+    assets: z.array(AssetSchema),
+    characters: z.array(CharacterV6Schema),
+    voiceProfiles: z.array(VoiceProfileSchema),
+    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
+    shots: z.array(ShotSchema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -242,12 +269,31 @@ function addBackgroundIdentity<T extends {
 }
 
 export function migrateFormalProject(input: unknown): unknown {
+  const version6 = ProjectV6Schema.safeParse(input);
+  if (version6.success) {
+    return {
+      ...version6.data,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      characters: version6.data.characters.map((character) => ({
+        ...character,
+        mode: 'single-image' as const,
+      })),
+    };
+  }
+
   const version5 = ProjectV5Schema.safeParse(input);
   if (version5.success) {
     // v5 dialogues already carry a real audioClipId, which is still valid once
     // audioClipId becomes optional. Only the schemaVersion needs bumping; the
     // dialogue/shot data passes through unchanged.
-    return { ...version5.data, schemaVersion: PROJECT_SCHEMA_VERSION };
+    return {
+      ...version5.data,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      characters: version5.data.characters.map((character) => ({
+        ...character,
+        mode: 'single-image' as const,
+      })),
+    };
   }
 
   const version4 = ProjectV4Schema.safeParse(input);
@@ -255,6 +301,10 @@ export function migrateFormalProject(input: unknown): unknown {
     return {
       ...version4.data,
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      characters: version4.data.characters.map((character) => ({
+        ...character,
+        mode: 'single-image' as const,
+      })),
       shots: version4.data.shots.map((shot) => ({
         ...shot,
         layers: shot.layers.map((layer) => ({
@@ -271,6 +321,10 @@ export function migrateFormalProject(input: unknown): unknown {
     return {
       ...version3.data,
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      characters: version3.data.characters.map((character) => ({
+        ...character,
+        mode: 'single-image' as const,
+      })),
       shots: version3.data.shots.map((shot) => ({
         ...shot,
         layers: shot.layers.map((layer) => ({
@@ -288,6 +342,10 @@ export function migrateFormalProject(input: unknown): unknown {
     return {
       ...version2.data,
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      characters: version2.data.characters.map((character) => ({
+        ...character,
+        mode: 'single-image' as const,
+      })),
       shots: addBackgroundIdentity(version2.data),
     };
   }
@@ -305,6 +363,7 @@ export function migrateFormalProject(input: unknown): unknown {
         ) ?? character.expressions[0]!;
       return {
         ...character,
+        mode: 'single-image' as const,
         baseAssetId: defaultExpression.assetId,
         defaultExpressionId: defaultExpression.id,
         defaultScale: 1,
@@ -315,7 +374,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v5 -> v6) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v6 -> v7) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

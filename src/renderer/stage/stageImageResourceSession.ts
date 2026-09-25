@@ -1,6 +1,20 @@
 export interface StageImageLayerSource {
   id: string;
+  assetId?: string;
   sourceUrl: string;
+}
+
+export type StageImageResourceFailureReason =
+  | 'decode'
+  | 'image-create'
+  | 'source-assignment';
+
+export interface StageImageResourceFailure {
+  partId: string;
+  assetId: string;
+  sourceUrl: string;
+  reason: StageImageResourceFailureReason;
+  error: Error;
 }
 
 export interface StageImageResourceState {
@@ -10,6 +24,7 @@ export interface StageImageResourceState {
   desiredSourceKey: string;
   ready: boolean;
   error: Error | null;
+  failures: readonly StageImageResourceFailure[];
 }
 
 export interface StageFrameReadinessInput {
@@ -48,6 +63,7 @@ export const EMPTY_STAGE_IMAGE_RESOURCE_STATE: StageImageResourceState = {
   desiredSourceKey: '[]',
   ready: false,
   error: null,
+  failures: [],
 };
 
 interface StageImageResource {
@@ -64,7 +80,9 @@ interface PendingStageImageResource {
 }
 
 interface FailedStageImageResource {
+  assetId: string;
   sourceUrl: string;
+  reason: StageImageResourceFailureReason;
   error: Error;
 }
 
@@ -166,7 +184,8 @@ export class StageImageResourceSession {
 
       this.cancelPending(layerId);
       this.failed.delete(layerId);
-      this.startLoad(layerId, sourceUrl);
+      const assetId = layers.find((layer) => layer.id === layerId)?.assetId ?? layerId;
+      this.startLoad(layerId, sourceUrl, assetId);
     }
 
     // A reconcile with only transform/time changes does not need another
@@ -190,6 +209,7 @@ export class StageImageResourceSession {
       desiredSourceKey: this.desiredSourceKey,
       ready: this.isDesiredFrameReady(),
       error: this.currentError(),
+      failures: this.currentFailures(),
     };
   }
 
@@ -212,7 +232,7 @@ export class StageImageResourceSession {
     }
   }
 
-  private startLoad(layerId: string, sourceUrl: string): void {
+  private startLoad(layerId: string, sourceUrl: string, assetId: string): void {
     const pending: PendingStageImageResource = {
       token: ++this.nextToken,
       sourceUrl,
@@ -227,6 +247,8 @@ export class StageImageResourceSession {
         layerId,
         sourceUrl,
         pending.token,
+        assetId,
+        'image-create',
         error instanceof Error
           ? error
           : new Error('Stage image could not be created.'),
@@ -256,6 +278,8 @@ export class StageImageResourceSession {
         layerId,
         sourceUrl,
         pending.token,
+        assetId,
+        'decode',
         new Error(`Stage image failed to load: ${sourceUrl}`),
       );
     };
@@ -267,6 +291,8 @@ export class StageImageResourceSession {
         layerId,
         sourceUrl,
         pending.token,
+        assetId,
+        'source-assignment',
         error instanceof Error
           ? error
           : new Error(`Stage image failed to load: ${sourceUrl}`),
@@ -278,13 +304,15 @@ export class StageImageResourceSession {
     layerId: string,
     sourceUrl: string,
     token: number,
+    assetId: string,
+    reason: StageImageResourceFailureReason,
     error: Error,
   ): void {
     if (!this.isCurrent(layerId, sourceUrl, token)) return;
     const pending = this.pending.get(layerId);
     this.pending.delete(layerId);
     if (pending?.resource) this.disposeResource(pending.resource);
-    this.failed.set(layerId, { sourceUrl, error });
+    this.failed.set(layerId, { assetId, sourceUrl, reason, error });
     this.emit();
   }
 
@@ -343,6 +371,14 @@ export class StageImageResourceSession {
       }
     }
     return null;
+  }
+
+  private currentFailures(): StageImageResourceFailure[] {
+    return [...this.failed.entries()].flatMap(([partId, failure]) =>
+      this.desiredSources.get(partId) === failure.sourceUrl
+        ? [{ partId, ...failure }]
+        : [],
+    );
   }
 
   private isCurrent(

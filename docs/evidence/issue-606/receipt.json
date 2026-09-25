@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "issue": 606,
+  "pullRequest": 584,
+  "parentIssues": [602, 603, 604, 605],
+  "workItem": "BFM-v1 S05 atomic composite Character rendering in Shared Stage and Product Preview",
+  "branch": "issue-583-pk-01",
+  "status": "validated-implementation-pending-maintainer-acceptance",
+  "implementation": {
+    "deliveryBase": "ff12369826b34d3976b4f59864e13c32b017f579",
+    "productionFiles": [
+      "src/shared/stage/render-model.ts",
+      "src/renderer/stage/StageRenderer.tsx",
+      "src/renderer/stage/CanvasStage.tsx",
+      "src/renderer/shell/productPreviewImages.ts",
+      "src/renderer/shell/productPreviewModel.ts",
+      "src/renderer/shell/ProductPreviewOverlay.tsx"
+    ],
+    "testFiles": [
+      "tests/unit/stage-s05-composite.test.ts",
+      "tests/unit/stage-image-resource-session.test.ts",
+      "tests/unit/product-preview-images.test.ts"
+    ],
+    "verifierSupportFiles": [
+      "scripts/verify-issue606-product-preview.cjs"
+    ],
+    "contractBookkeeping": [
+      "package.json",
+      "scripts/verification-manifest.json",
+      "docs/evidence/issue-606/receipt.json"
+    ]
+  },
+  "requirements": {
+    "sharedStageAtomicParts": "PASS: one logical Character Layer owns stable <layerId>:body and <layerId>:face runtime parts; owner transform, z-order, and opacity remain on the root.",
+    "exactReadiness": "PASS: StageImageResourceSession compares the complete stable part source set and commits the frame only after every required Body/Face part is decoded.",
+    "productPreviewClassification": "PASS: current required resources, bounded fallback resources, candidates, fatal failures, and Mouth fallback are classified independently with SHA-aware entries.",
+    "mouthFallback": "PASS: a failed active Mouth falls back through the S03 current Expression resolver and exposes a visible warning; degraded Stage display readiness does not set data-stage-ready.",
+    "fatalBodyOrFace": "PASS: Body or required Face failures remain fatal and produce an explicit Product Preview asset warning.",
+    "boundedContinuity": "PASS: pending replacement keeps the last complete visual; candidate failures do not block the exact current target.",
+    "scopeBoundary": "PASS: no S06 thumbnail or S07/S08 exact export behavior was changed."
+  },
+  "validation": {
+    "gitDiffCheck": "PASS",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "testUnit": "PASS (305 files, 2038 tests)",
+    "testIntegration": "PASS (36 files, 184 tests)",
+    "build": "PASS (renderer, Electron, and preload bundles)",
+    "targetedVerifier": "PASS: pnpm verify:issue606",
+    "targetedVerifierReceipt": "D:\\PandaStage-Acceptance\\issue606-product-preview\\results.json",
+    "historicalVerifierSweep": "not run",
+    "manualFullCiTriggered": false,
+    "manualVerifyProjectRun": false
+  },
+  "windowsElectronRuntime": {
+    "result": "PASS_AGENT_OBSERVED",
+    "worktree": "D:/panda-issue583-pk-01",
+    "fixture": "D:/PandaStage-Acceptance/issue606-product-preview/projects/issue606-product-preview.pandastage",
+    "observed": [
+      "Pending Mouth did not expose a ready half-frame.",
+      "Body-only, Mouth-over-background, and Body+Mouth overlap pixels matched the single-owner-opacity fixture.",
+      "The timed Expression replacement rendered the expected replacement face pixel.",
+      "Failed Mouth rendered the current Expression with a warning while data-stage-display-ready=true and data-stage-ready=false.",
+      "Failed Body produced fatalAssetIds containing the Body asset and an explicit asset warning without a ready Stage."
+    ],
+    "screenshots": [
+      "D:/PandaStage-Acceptance/issue606-product-preview/evidence/preview-mouth-pending.png",
+      "D:/PandaStage-Acceptance/issue606-product-preview/evidence/preview-mouth-ready.png",
+      "D:/PandaStage-Acceptance/issue606-product-preview/evidence/preview-expression-replaced.png",
+      "D:/PandaStage-Acceptance/issue606-product-preview/evidence/preview-mouth-fallback.png",
+      "D:/PandaStage-Acceptance/issue606-product-preview/evidence/preview-body-failure.png"
+    ],
+    "limitations": [
+      "Synthetic fixture and agent-observed Windows Electron rendered-pixel evidence only.",
+      "This does not substitute for maintainer visual watching, physical mouse/touch/cloud-input feel, or listening acceptance."
+    ]
+  },
+  "humanAcceptance": {
+    "status": "UNMEASURED_MAINTAINER_ACCEPTANCE",
+    "required": [
+      "Watch Product Preview first-open and delayed Body/Face transitions in the real Windows Electron app.",
+      "Confirm the Mouth fallback warning and the exact-ready distinction are understandable at representative Chinese and long content sizes.",
+      "Confirm 100%/150% DPI and the declared mouse/touch/cloud input behavior, including close and playback controls.",
+      "Listen to the representative dialogue and confirm no audio regression."
+    ]
+  },
+  "deliveryNotes": [
+    "PR #584 remains Draft/Open; no merge, Ready-for-review, Issue close, or force-push was performed.",
+    "The known unrelated Day23 schema v6/v7 verifier debt was not changed or rerun through the broad canvas wrapper."
+  ]
+}

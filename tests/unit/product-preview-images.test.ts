@@ -1,11 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema, type Project } from '../../src/domain';
+import {
+  evaluateShotAtTime,
+  ProjectSchema,
+  type Project,
+} from '../../src/domain';
 import type { AssetCanvasImageReadResponse } from '../../src/shared/asset-canvas-image-api';
 import { ProductPreviewImageSession } from '../../src/renderer/shell/productPreviewImages';
+import {
+  applyProductPreviewMouthFallback,
+  buildProductPreviewImagePlan,
+  isProductPreviewMouthFallbackFailure,
+  projectProductPreviewMouth,
+  type ProductPreviewImagePlan,
+} from '../../src/renderer/shell/productPreviewModel';
 import { buildProject, IDS } from './domain/testProject';
 
 const PROJECT_ROOT = 'D:\\preview-images.pandastage';
 const HASH = 'a'.repeat(64);
+const MOUTH_ID = '10000000-0000-4000-8000-000000000004';
+const ALT_FACE_ID = '10000000-0000-4000-8000-000000000005';
+const DIALOGUE_ID = '80000000-0000-4000-8000-000000000004';
+const AUDIO_CLIP_ID = '70000000-0000-4000-8000-000000000004';
+const AUDIO_ID = '10000000-0000-4000-8000-000000000006';
 
 function imageProject(): Project {
   const project = buildProject();
@@ -15,6 +31,129 @@ function imageProject(): Project {
       asset.id === IDS.assetBg ? { ...asset, sha256: HASH } : asset,
     ),
   });
+}
+
+function compositePreviewProject(): Project {
+  const base = buildProject();
+  const character = base.characters[0]!;
+  return ProjectSchema.parse({
+    ...base,
+    assets: [
+      ...base.assets.map((asset) =>
+        asset.kind === 'image' ? { ...asset, sha256: HASH } : asset,
+      ),
+      {
+        id: MOUTH_ID,
+        kind: 'image' as const,
+        name: 'mouth-open',
+        relativePath: 'assets/mouth-open.png',
+        mimeType: 'image/png',
+        width: 120,
+        height: 80,
+        sha256: 'b'.repeat(64),
+      },
+      {
+        id: ALT_FACE_ID,
+        kind: 'image' as const,
+        name: 'alternate-face',
+        relativePath: 'assets/alternate-face.png',
+        mimeType: 'image/png',
+        width: 220,
+        height: 120,
+        sha256: 'c'.repeat(64),
+      },
+      {
+        id: AUDIO_ID,
+        kind: 'audio' as const,
+        name: 'voice',
+        relativePath: 'assets/voice.wav',
+        mimeType: 'audio/wav',
+        durationMs: 1_000,
+        sha256: 'd'.repeat(64),
+      },
+    ],
+    characters: [
+      {
+        ...character,
+        mode: 'composite' as const,
+        baseAssetId: IDS.assetChar2,
+        expressions: [
+          {
+            id: IDS.expressionNormal,
+            name: 'normal-face',
+            assetId: IDS.assetChar2,
+          },
+          {
+            id: IDS.expressionAngry,
+            name: 'alternate-face',
+            assetId: ALT_FACE_ID,
+          },
+        ],
+        defaultExpressionId: IDS.expressionNormal,
+        bodyAssetId: IDS.assetChar,
+        facePlacement: { offsetX: 120, offsetY: -40, scale: 0.5 },
+        mouthOpenAssetId: MOUTH_ID,
+      },
+    ],
+    shots: base.shots.map((shot) => ({
+      ...shot,
+      dialogues: [
+        {
+          id: DIALOGUE_ID,
+          characterId: IDS.character,
+          voiceProfileId: IDS.voiceProfile,
+          subtitleStyleId: IDS.subtitle,
+          audioClipId: AUDIO_CLIP_ID,
+          startMs: 0,
+          endMs: 1_000,
+          text: 'speaking',
+        },
+      ],
+      audioClips: [
+        {
+          id: AUDIO_CLIP_ID,
+          name: 'voice',
+          assetId: AUDIO_ID,
+          startMs: 0,
+          endMs: 1_000,
+          offsetMs: 0,
+          volume: 1,
+        },
+      ],
+    })),
+  });
+}
+
+function compositePlan(project: Project): {
+  project: Project;
+  plan: ProductPreviewImagePlan;
+  shot: Project['shots'][number];
+  renderedShot: ReturnType<typeof evaluateShotAtTime>;
+} {
+  const shot = project.shots[0]!;
+  const renderedShot = projectProductPreviewMouth(
+    project,
+    shot,
+    evaluateShotAtTime(shot, 0, project),
+    DIALOGUE_ID,
+  );
+  return {
+    project,
+    plan: buildProductPreviewImagePlan(project, shot, renderedShot),
+    shot,
+    renderedShot,
+  };
+}
+
+function failedImage(assetId: string): AssetCanvasImageReadResponse {
+  return {
+    ok: false,
+    error: {
+      code: 'ASSET_CANVAS_IMAGE_READ_FAILED',
+      message: `failed ${assetId}`,
+      assetId,
+    },
+  };
 }
 
 function readyImage(assetId: string = IDS.assetBg): AssetCanvasImageReadResponse {
@@ -275,6 +414,137 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
       status: 'ready',
       urls: { [IDS.assetChar]: 'blob:created-1' },
       missingCount: 0,
+    });
+    session.dispose();
+  });
+
+  it('classifies a failed Mouth as degraded and falls back to the current Expression', async () => {
+    const fixture = compositePlan(compositePreviewProject());
+    let urlIndex = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) =>
+        assetId === MOUTH_ID ? failedImage(assetId) : readyImage(assetId),
+      createObjectUrl: (blob) => `blob:${blob.size}:${urlIndex++}`,
+    });
+
+    const state = await session.load(PROJECT_ROOT, fixture.project, fixture.plan);
+
+    expect(state).toMatchObject({
+      status: 'degraded',
+      degradedAssetIds: [MOUTH_ID],
+      fatalAssetIds: [],
+    });
+    expect(state?.urls).toHaveProperty(IDS.assetChar);
+    expect(state?.urls).toHaveProperty(IDS.assetChar2);
+    expect(state?.urls).not.toHaveProperty(MOUTH_ID);
+    const fallbackShot = applyProductPreviewMouthFallback(
+      fixture.project,
+      fixture.shot,
+      fixture.renderedShot,
+      new Set(state?.degradedAssetIds),
+    );
+    expect(
+      fallbackShot.layers.find((layer) => layer.id === IDS.layerChar),
+    ).toMatchObject({
+      assetId: IDS.assetChar2,
+      mouthOverrideAssetId: null,
+    });
+    session.dispose();
+  });
+
+  it('allows fallback only for the active Mouth Face part and keeps required Face failures fatal', () => {
+    const fixture = compositePlan(compositePreviewProject());
+    const mouthRule = fixture.plan.mouthFallbacks[0]!;
+
+    expect(mouthRule).toEqual({
+      partId: `${IDS.layerChar}:face`,
+      sourceAssetId: MOUTH_ID,
+      fallbackAssetId: IDS.assetChar2,
+    });
+    expect(
+      isProductPreviewMouthFallbackFailure(fixture.plan, {
+        partId: mouthRule.partId,
+        assetId: MOUTH_ID,
+      }),
+    ).toBe(true);
+    expect(
+      isProductPreviewMouthFallbackFailure(fixture.plan, {
+        partId: `${IDS.layerChar}:body`,
+        assetId: IDS.assetChar,
+      }),
+    ).toBe(false);
+
+    const expressionShot = evaluateShotAtTime(fixture.shot, 1_500, fixture.project);
+    const expressionPlan = buildProductPreviewImagePlan(
+      fixture.project,
+      fixture.shot,
+      expressionShot,
+    );
+    expect(expressionPlan.mouthFallbacks).toEqual([]);
+    const currentFaceAssetId = expressionPlan.requiredAssetIds.find(
+      (assetId) =>
+        assetId !== IDS.assetBg && assetId !== IDS.assetChar,
+    );
+    expect(currentFaceAssetId).toBe(IDS.assetChar2);
+    expect(
+      isProductPreviewMouthFallbackFailure(expressionPlan, {
+        partId: `${IDS.layerChar}:face`,
+        assetId: currentFaceAssetId!,
+      }),
+    ).toBe(false);
+  });
+
+  it('keeps a fallback-loading Mouth in loading and makes Body failure fatal', async () => {
+    const fixture = compositePlan(compositePreviewProject());
+    const fallback = deferred<AssetCanvasImageReadResponse>();
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) => {
+        if (assetId === MOUTH_ID) return failedImage(assetId);
+        if (assetId === IDS.assetChar2) return fallback.promise;
+        return readyImage(assetId);
+      },
+    });
+    const load = session.load(PROJECT_ROOT, fixture.project, fixture.plan);
+    await Promise.resolve();
+    expect(
+      session.snapshot(PROJECT_ROOT, fixture.project, fixture.plan).status,
+    ).toBe('loading');
+    fallback.resolve(readyImage(IDS.assetChar2));
+    await expect(load).resolves.toMatchObject({ status: 'degraded' });
+    session.dispose();
+
+    const bodyFailure = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) =>
+        assetId === IDS.assetChar ? failedImage(assetId) : readyImage(assetId),
+    });
+    await expect(
+      bodyFailure.load(PROJECT_ROOT, fixture.project, fixture.plan),
+    ).resolves.toMatchObject({
+      status: 'error',
+      fatalAssetIds: [IDS.assetChar],
+    });
+    bodyFailure.dispose();
+  });
+
+  it('does not let a failed bounded candidate block the exact current frame', async () => {
+    const fixture = compositePlan(compositePreviewProject());
+    const candidate = deferred<AssetCanvasImageReadResponse>();
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) =>
+        assetId === ALT_FACE_ID ? candidate.promise : readyImage(assetId),
+    });
+
+    await expect(
+      session.load(PROJECT_ROOT, fixture.project, fixture.plan),
+    ).resolves.toMatchObject({ status: 'ready' });
+    candidate.resolve(failedImage(ALT_FACE_ID));
+    await candidate.promise;
+    await Promise.resolve();
+    expect(
+      session.snapshot(PROJECT_ROOT, fixture.project, fixture.plan),
+    ).toMatchObject({
+      status: 'ready',
+      optionalFailedAssetIds: [ALT_FACE_ID],
     });
     session.dispose();
   });

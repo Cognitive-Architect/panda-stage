@@ -1,6 +1,10 @@
 import type { EvaluatedLayer, EvaluatedShot } from '../evaluate-shot-at-time';
 import type { ImageAsset, Project, Shot } from '../models';
-import { resolveLayerImageAsset } from './canvasLayers';
+import { evaluateShotAtTime } from '../evaluate-shot-at-time';
+import {
+  resolveLayerVisualParts,
+  type VisualResourceReference,
+} from './visualParts';
 
 /**
  * Lists the image assets a single Shot may display over time.
@@ -14,28 +18,17 @@ export function listShotRuntimeImageAssets(
   shot: Shot,
 ): ImageAsset[] {
   const assets = new Map<string, ImageAsset>();
-  for (const asset of shot.layers
-    .map((layer) => resolveLayerImageAsset(project, layer))
-    .filter((asset): asset is ImageAsset => asset !== null)) {
-    assets.set(asset.id, asset);
-  }
-
-  const characterIds = new Set(
-    shot.layers.flatMap((layer) =>
-      layer.source.kind === 'character' ? [layer.source.characterId] : [],
-    ),
-  );
-  for (const character of project.characters) {
-    if (!characterIds.has(character.id)) continue;
-
-    const mouthAsset = project.assets.find(
-      (candidate) => candidate.id === character.mouthOpenAssetId,
-    );
-    if (mouthAsset?.kind === 'image') assets.set(mouthAsset.id, mouthAsset);
-
-    for (const expression of character.expressions) {
+  const evaluated = evaluateShotAtTime(shot, 0, project);
+  for (const layer of evaluated.layers) {
+    const visual = resolveLayerVisualParts(project, shot, layer);
+    const resources: VisualResourceReference[] = [
+      ...visual.resources.required,
+      ...visual.resources.candidates,
+      ...visual.resources.fallback,
+    ];
+    for (const resource of resources) {
       const asset = project.assets.find(
-        (candidate) => candidate.id === expression.assetId,
+        (candidate) => candidate.id === resource.assetId,
       );
       if (asset?.kind === 'image') assets.set(asset.id, asset);
     }
@@ -96,13 +89,22 @@ export function projectShotMouth(
     )?.source;
     if (
       source?.kind !== 'character' ||
-      source.characterId !== dialogue.characterId ||
-      layer.assetId === mouthAsset.id
+      source.characterId !== dialogue.characterId
+    ) {
+      return layer;
+    }
+    if (
+      layer.assetId === mouthAsset.id &&
+      layer.mouthOverrideAssetId === mouthAsset.id
     ) {
       return layer;
     }
     changed = true;
-    return { ...layer, assetId: mouthAsset.id };
+    return {
+      ...layer,
+      assetId: mouthAsset.id,
+      mouthOverrideAssetId: mouthAsset.id,
+    };
   });
 
   return changed ? { ...evaluatedShot, layers } : evaluatedShot;

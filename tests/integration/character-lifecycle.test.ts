@@ -3,7 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
-import { CharacterService, migrateProject } from '../../src/domain';
+import {
+  CharacterService,
+  PROJECT_SCHEMA_VERSION,
+  migrateProject,
+} from '../../src/domain';
 import { PROJECT_FILE_NAME } from '../../src/main/services/ProjectFileSystemService';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
@@ -40,7 +44,7 @@ describe('Day 19 character persistence', () => {
     const created = await projectService.create(root, {
       name: 'Day 19 character project',
     });
-    expect(created.sourceVersion).toBe(6);
+    expect(created.sourceVersion).toBe(PROJECT_SCHEMA_VERSION);
     const withAssets = {
       ...created.project,
       assets: [
@@ -111,7 +115,7 @@ describe('Day 19 character persistence', () => {
     );
 
     expect(reopened.migrated).toBe(false);
-    expect(reopened.sourceVersion).toBe(6);
+    expect(reopened.sourceVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(reopened.project.characters[0]).toEqual(
       characterProject.characters[0],
     );
@@ -136,7 +140,7 @@ describe('Day 19 character persistence', () => {
 
     expect(opened.sourceVersion).toBe(1);
     expect(opened.migrated).toBe(true);
-    expect(opened.project.schemaVersion).toBe(6);
+    expect(opened.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(opened.project.characters[0]).toMatchObject({
       defaultExpressionId:
         exampleProject.characters[0]!.expressions[0]!.id,

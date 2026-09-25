@@ -18,6 +18,7 @@ import {
   PROJECT_WIDTH,
   calculateViewportTransform,
   listShotRuntimeImageAssets,
+  resolveImageAsset,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -27,6 +28,10 @@ import {
   canvasViewportStore,
 } from '../../stores/canvasViewportStore';
 import { layerStore } from '../../stores/layerStore';
+import {
+  usePositionAuthoringSession,
+  positionAuthoringSessionStore,
+} from '../../stores/positionAuthoringSessionStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { CanvasToolbar } from './CanvasToolbar';
@@ -51,13 +56,21 @@ import {
 } from '../../stage/konva-pixel-ratio';
 import {
   CanvasImageResourceSession,
+  canvasImageResourceKey,
   EMPTY_CANVAS_IMAGE_STATE,
+  type CanvasImageAssetSource,
   type CanvasImageState,
 } from './canvasImageResources';
 import {
   buildEditorTemporalCanvasModel,
 } from './editorTemporalCanvasModel';
-import type { EditorTemporalVisual } from './temporalVisualContinuity';
+import {
+  commitEditorTemporalContinuityBucket,
+  createEditorTemporalContinuityState,
+  editorTemporalContinuityMode,
+  readEditorTemporalContinuityBucket,
+  type EditorTemporalContinuityMode,
+} from './editorTemporalCanvasContinuity';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
@@ -91,6 +104,7 @@ function CanvasEmptyState(): React.JSX.Element {
 function useCanvasImages(
   snapshot: EditorProjectSnapshot | null,
   shot: Shot | null,
+  retainedAssets: readonly CanvasImageAssetSource[],
 ): CanvasImageState {
   const assets = useMemo(
     () =>
@@ -103,11 +117,18 @@ function useCanvasImages(
     .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
     .sort()
     .join('|');
+  const retainedSourceKey = retainedAssets
+    .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
+    .sort()
+    .join('|');
   const projectId = snapshot?.project.id ?? null;
+  const projectInstanceId = editorProjectStore.getProjectInstanceId();
   const projectRoot = snapshot?.projectRoot ?? null;
   const shotId = shot?.id ?? null;
   const projectContextKey =
-    projectId && projectRoot ? `${projectId}:${projectRoot}` : null;
+    projectId && projectRoot && projectInstanceId !== null
+      ? `${projectId}:${projectRoot}:${projectInstanceId}`
+      : null;
   const [state, setState] = useState<CanvasImageState>(
     EMPTY_CANVAS_IMAGE_STATE,
   );
@@ -128,12 +149,34 @@ function useCanvasImages(
         contextKey: projectContextKey,
         projectRoot,
         assets: shotId ? assets : [],
+        retainedAssets: shotId ? retainedAssets : [],
       },
       setState,
     );
-  }, [assets, projectContextKey, projectRoot, shotId, sourceKey]);
+  }, [
+    assets,
+    projectContextKey,
+    projectRoot,
+    retainedAssets,
+    retainedSourceKey,
+    shotId,
+    sourceKey,
+  ]);
 
   return state;
+}
+
+function isCurrentCanvasAssetReady(
+  project: EditorProjectSnapshot['project'],
+  assetId: string,
+  imageState: CanvasImageState,
+): boolean {
+  if (!imageState.images.has(assetId)) return false;
+  const asset = resolveImageAsset(project, assetId);
+  if (!asset) return false;
+  return (
+    !asset.sha256 || imageState.sourceKeys.get(assetId) === asset.sha256
+  );
 }
 
 export interface CanvasStageProps {
@@ -163,6 +206,9 @@ export function CanvasStage({
     canvasViewportStore.getSnapshot,
   );
   const timelineUi = useTimelineUi();
+  const positionAuthoringSnapshot = usePositionAuthoringSession();
+  const positionAuthoringSession =
+    positionAuthoringSessionStore.getActiveSessionHandle();
   const [toolbarTransform, setToolbarTransform] =
     useState<ViewportTransform>(() =>
       calculateViewportTransform({ width: 0, height: 0 }, 'fit'),
@@ -200,22 +246,30 @@ export function CanvasStage({
     () => evaluateSubtitleAtTime(subtitleCues, timelineUi.currentTimeMs),
     [subtitleCues, timelineUi.currentTimeMs],
   );
-  const imageState = useCanvasImages(snapshot, shot);
   const temporalContextKey =
-    snapshot && shot
-      ? `${snapshot.project.id}:${snapshot.projectRoot}:${shot.id}`
+    snapshot && shot && editorProjectStore.getProjectInstanceId() !== null
+      ? `${snapshot.project.id}:${snapshot.projectRoot}:${editorProjectStore.getProjectInstanceId()}:${shot.id}`
       : null;
-  const temporalContinuityRef = useRef<{
-    contextKey: string | null;
-    visuals: ReadonlyMap<string, EditorTemporalVisual>;
-  }>({
-    contextKey: null,
-    visuals: new Map(),
-  });
-  const previousTemporalVisuals =
-    temporalContinuityRef.current.contextKey === temporalContextKey
-      ? temporalContinuityRef.current.visuals
-      : new Map<string, EditorTemporalVisual>();
+  const continuityMode: EditorTemporalContinuityMode =
+    editorTemporalContinuityMode(timelineUi.currentTimeMs);
+  const temporalContinuityRef = useRef(
+    createEditorTemporalContinuityState(),
+  );
+  const previousTemporalVisuals = readEditorTemporalContinuityBucket(
+    temporalContinuityRef.current,
+    temporalContextKey,
+    continuityMode,
+  );
+  const retainedAssets = useMemo<CanvasImageAssetSource[]>(() => {
+    const assets = new Map<string, CanvasImageAssetSource>();
+    for (const visual of previousTemporalVisuals.values()) {
+      for (const [assetId, sha256] of visual.assetSourceKeys ?? []) {
+        assets.set(`${assetId}:${sha256}`, { id: assetId, sha256 });
+      }
+    }
+    return [...assets.values()];
+  }, [previousTemporalVisuals]);
+  const imageState = useCanvasImages(snapshot, shot, retainedAssets);
   const temporalCanvasModel = useMemo(
     () =>
       snapshot && shot
@@ -225,32 +279,85 @@ export function CanvasStage({
             previousVisuals: previousTemporalVisuals,
             project: snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
+            readyAssetSourceKeys: imageState.sourceKeys,
+            readyResourceKeys: imageState.readyResourceKeys,
+            missingAssetIds: imageState.missing,
             shot,
+            positionDraft: positionAuthoringSnapshot
+              ? {
+                  layerId: positionAuthoringSnapshot.layerId,
+                  position: positionAuthoringSnapshot.draft,
+                }
+              : undefined,
           })
         : null,
     [
       activeCue?.id,
       imageState.images,
+      imageState.readyResourceKeys,
       previousTemporalVisuals,
+      positionAuthoringSnapshot,
       shot,
       snapshot,
+      temporalContextKey,
       timelineUi.currentTimeMs,
     ],
   );
   useEffect(() => {
     if (!temporalCanvasModel) {
-      temporalContinuityRef.current = {
-        contextKey: temporalContextKey,
-        visuals: new Map(),
-      };
+      temporalContinuityRef.current = createEditorTemporalContinuityState(
+        temporalContextKey,
+      );
       return;
     }
-    temporalContinuityRef.current = {
-      contextKey: temporalContextKey,
-      visuals: temporalCanvasModel.lastValidVisuals,
-    };
-  }, [temporalCanvasModel, temporalContextKey]);
+    temporalContinuityRef.current = commitEditorTemporalContinuityBucket(
+      temporalContinuityRef.current,
+      temporalContextKey,
+      continuityMode,
+      temporalCanvasModel.lastValidVisuals,
+    );
+  }, [continuityMode, temporalCanvasModel, temporalContextKey]);
   const stageModel = temporalCanvasModel?.stageModel ?? null;
+  const currentReadyImages = useMemo(() => {
+    if (!snapshot) return new Map<string, HTMLImageElement>();
+    return new Map(
+      [...imageState.images.entries()].filter(([assetId]) =>
+        isCurrentCanvasAssetReady(snapshot.project, assetId, imageState),
+      ),
+    );
+  }, [imageState, snapshot]);
+  const isStageLayerVisualReady = useCallback(
+    (stageLayer: NonNullable<typeof stageModel>['layers'][number]): boolean => {
+      if (!stageLayer.visual.parts.length) return false;
+      const sourceKeys = temporalCanvasModel?.visualSourceKeysByLayer.get(
+        stageLayer.layer.id,
+      );
+      if (sourceKeys && sourceKeys.size > 0) {
+        return stageLayer.visual.parts.every((part) => {
+          const sourceKey = sourceKeys.get(part.assetId);
+          return sourceKey
+            ? imageState.readyResourceKeys.has(
+                canvasImageResourceKey(part.assetId, sourceKey),
+              )
+            : Boolean(
+                snapshot &&
+                  isCurrentCanvasAssetReady(
+                    snapshot.project,
+                    part.assetId,
+                    imageState,
+                  ),
+              );
+        });
+      }
+      return Boolean(
+        snapshot &&
+          stageLayer.visual.parts.every((part) =>
+            isCurrentCanvasAssetReady(snapshot.project, part.assetId, imageState),
+          ),
+      );
+    },
+    [imageState, snapshot, temporalCanvasModel],
+  );
   const directEditingEnabled =
     temporalCanvasModel?.directEditingEnabled ??
     timelineUi.currentTimeMs === 0;
@@ -269,20 +376,90 @@ export function CanvasStage({
   const imageForAsset = (asset: {
     id: string;
   }): HTMLImageElement | undefined =>
-    imageState.images.get(asset.id);
+    currentReadyImages.get(asset.id);
+  const imageForStageLayer = (
+    stageLayer: NonNullable<typeof stageModel>['layers'][number],
+  ): HTMLImageElement | undefined => {
+    const sourceKeys = temporalCanvasModel?.visualSourceKeysByLayer.get(
+      stageLayer.layer.id,
+    );
+    const firstPart = stageLayer.visual.parts[0];
+    const sourceKey = firstPart
+      ? sourceKeys?.get(firstPart.assetId)
+      : undefined;
+    if (!firstPart || !sourceKey) return imageForAsset(stageLayer.asset);
+    return imageState.imagesByResourceKey.get(
+      canvasImageResourceKey(firstPart.assetId, sourceKey),
+    );
+  };
   const backgroundLayer =
     stageModel?.layers.find((layer) => layer.render.isBackground) ?? null;
   const backgroundAsset = backgroundLayer?.asset ?? null;
-  const backgroundImage = backgroundAsset
-    ? imageForAsset(backgroundAsset)
+  const backgroundImage = backgroundLayer && isStageLayerVisualReady(backgroundLayer) && backgroundAsset
+    ? imageForStageLayer(backgroundLayer)
     : undefined;
   const empty = Boolean(stageModel && stageModel.layers.length === 0);
+  const incompleteVisualLayers = stageModel?.layers.filter(
+    (stageLayer) => !isStageLayerVisualReady(stageLayer),
+  ) ?? [];
   const missingBackground =
     Boolean(shot) &&
     !empty &&
-    (!backgroundLayer ||
-      !backgroundAsset ||
-      imageState.missing.has(backgroundAsset.id));
+    (!backgroundLayer || !backgroundAsset || !backgroundImage);
+  const missingNonBackgroundVisual = incompleteVisualLayers.some(
+    (stageLayer) => !stageLayer.render.isBackground,
+  );
+  const nonBackgroundStatuses = stageModel?.layers
+    .filter(({ render }) => !render.isBackground)
+    .map(({ layer }) =>
+      temporalCanvasModel?.visualStatusByLayer.get(layer.id),
+    )
+    .filter((status): status is NonNullable<typeof status> => Boolean(status));
+  const compositeCharacterStatuses = stageModel?.layers
+    .filter(
+      ({ render, visual }) =>
+        !render.isBackground && visual.kind === 'composite-character',
+    )
+    .map(({ layer }) =>
+      temporalCanvasModel?.visualStatusByLayer.get(layer.id),
+    )
+    .filter((status): status is NonNullable<typeof status> => Boolean(status));
+  const baseRequiredVisualFailure =
+    stageModel?.layers.some((stageLayer) => {
+      if (
+        stageLayer.render.isBackground ||
+        stageLayer.visual.kind !== 'composite-character'
+      ) {
+        return false;
+      }
+      const activeMouthId =
+        stageLayer.visual.activeFace?.source === 'mouth'
+          ? stageLayer.visual.activeFace.assetId
+          : null;
+      return stageLayer.visual.resources.required.some(
+        ({ assetId }) =>
+          imageState.missing.has(assetId) && assetId !== activeMouthId,
+      );
+    }) ?? false;
+  const hasRequiredVisualFailure =
+    baseRequiredVisualFailure ||
+    (compositeCharacterStatuses?.includes('required-failed') ?? false);
+  const hasMouthVisualDegradation = compositeCharacterStatuses?.some(
+    (status) =>
+      status === 'mouth-expression-fallback' ||
+      status === 'mouth-fallback-pending',
+  ) ?? false;
+  const hasMouthExpressionFallback = compositeCharacterStatuses?.some(
+    (status) => status === 'mouth-expression-fallback',
+  ) ?? false;
+  const hasPendingVisual = nonBackgroundStatuses?.some(
+    (status) => status === 'pending' || status === 'previous-complete',
+  ) ?? false;
+  const hasNonBackgroundVisualIssue =
+    missingNonBackgroundVisual ||
+    hasRequiredVisualFailure ||
+    hasMouthVisualDegradation ||
+    hasPendingVisual;
   const selectedStageLayer =
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
@@ -292,7 +469,7 @@ export function CanvasStage({
     isBackground: selectedStageLayer?.render.isBackground ?? false,
     locked: selectedStageLayer?.layer.locked ?? false,
     imageReady: selectedStageLayer
-      ? Boolean(imageForAsset(selectedStageLayer.asset))
+      ? isStageLayerVisualReady(selectedStageLayer)
       : false,
   });
   const backgroundSelected =
@@ -392,14 +569,28 @@ export function CanvasStage({
               data-project-revision={snapshot?.revision ?? -1}
               data-render-source="project-assets-original"
               data-rendered-asset-intrinsic-sizes={JSON.stringify(
-                [...imageState.images.entries()].map(([assetId, image]) => ({
+                [...currentReadyImages.entries()].map(([assetId, image]) => ({
                   assetId,
                   width: image.naturalWidth,
                   height: image.naturalHeight,
                 })),
               )}
               data-rendered-asset-ids={JSON.stringify([
-                ...imageState.images.keys(),
+                ...currentReadyImages.keys(),
+              ])}
+              data-composite-layer-ids={JSON.stringify(
+                stageModel?.layers
+                  .filter(({ visual }) => visual.kind === 'composite-character')
+                  .map(({ layer }) => layer.id) ?? [],
+              )}
+              data-incomplete-visual-layer-ids={JSON.stringify(
+                incompleteVisualLayers.map(({ layer }) => layer.id),
+              )}
+              data-visual-status-json={JSON.stringify(
+                [...(temporalCanvasModel?.visualStatusByLayer.entries() ?? [])],
+              )}
+              data-target-ready-layer-ids={JSON.stringify([
+                ...(temporalCanvasModel?.targetReadyLayerIds ?? []),
               ])}
               data-render-contract="shared-stage-layer-v1"
               data-selected-layer-id={selectedLayerId ?? ''}
@@ -429,17 +620,19 @@ export function CanvasStage({
                     width={PROJECT_WIDTH}
                   />
                   {stageModel
-                    ? stageModel.layers.map(({ layer, asset, render }) => {
-                        const image = imageForAsset(asset);
-                        if (!image) return null;
+                    ? stageModel.layers.map((stageLayer) => {
+                        const { layer, render, visual } = stageLayer;
+                        const image = imageForStageLayer(stageLayer);
                         return (
                           <SelectableLayer
                             directEditingEnabled={directEditingEnabled}
                             image={image}
+                            images={currentReadyImages}
+                            imagesByResourceKey={imageState.imagesByResourceKey}
                             key={render.id}
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
-                            onCommitPosition={(layerId, position) => {
+                             onCommitPosition={(layerId, position) => {
                               if (!canCommitCanvasEdit()) {
                                 rejectTemporalCanvasEdit();
                                 return;
@@ -447,9 +640,18 @@ export function CanvasStage({
                               layerStore.updatePosition(layerId, position);
                               setInteractionStatus(
                                 `图层位置已提交为 (${position.x.toFixed(1)}, ${position.y.toFixed(1)})。`,
-                              );
-                            }}
-                            onCommitTransform={(layerId, transform) => {
+                               );
+                             }}
+                             onPositionAuthoringCommit={(result) => {
+                               setInteractionStatus(
+                                 result.status === 'committed'
+                                   ? '位置已更新。'
+                                   : result.status === 'no-op'
+                                     ? '位置未变化。'
+                                     : result.error.message,
+                               );
+                             }}
+                             onCommitTransform={(layerId, transform) => {
                               if (!canCommitCanvasEdit()) {
                                 rejectTemporalCanvasEdit();
                                 return;
@@ -459,8 +661,8 @@ export function CanvasStage({
                                 `图层变换已提交：缩放 ${transform.scale.toFixed(3)}，旋转 ${transform.rotationDeg.toFixed(1)}°。`,
                               );
                             }}
-                            onError={setInteractionStatus}
-                            onSelect={(layerId) => {
+                             onError={setInteractionStatus}
+                             onSelect={(layerId) => {
                               if (render.isBackground) {
                                 selectionStore.selectExplicit(layerId);
                               } else {
@@ -468,8 +670,26 @@ export function CanvasStage({
                               }
                               setInteractionStatus('已选择图层。');
                             }}
-                            render={render}
+                             render={render}
+                             positionAuthoringSession={
+                               positionAuthoringSnapshot?.layerId === layer.id &&
+                               selectedLayerId === layer.id
+                                 ? positionAuthoringSession
+                                 : null
+                             }
+                             positionAuthoringShakeOffset={
+                               positionAuthoringSnapshot?.layerId === layer.id &&
+                               selectedLayerId === layer.id
+                                 ? temporalCanvasModel?.positionAuthoringShakeOffset
+                                 : null
+                             }
                             selected={selectedLayerId === layer.id}
+                            visualSourceKeys={
+                              temporalCanvasModel?.visualSourceKeysByLayer.get(
+                                layer.id,
+                              )
+                            }
+                            visual={visual}
                           />
                         );
                       })
@@ -521,6 +741,51 @@ export function CanvasStage({
                 <strong>背景预览不可用</strong>
                 <span>
                   请添加背景图层，或在项目素材库中重新生成缩略图。
+                </span>
+              </div>
+            ) : null}
+            {(hasRequiredVisualFailure || hasMouthVisualDegradation) ? (
+              <div
+                className="canvas-stage-message canvas-stage-warning"
+                data-testid="canvas-visual-failure-warning"
+                data-visual-warning-kind={
+                  hasRequiredVisualFailure ? 'failed' : 'degraded'
+                }
+              >
+                <strong>
+                  {hasRequiredVisualFailure
+                    ? '角色素材读取失败'
+                    : hasMouthExpressionFallback
+                      ? '张嘴表情不可用，已暂时显示当前表情'
+                      : '张嘴表情不可用，正在准备当前表情'}
+                </strong>
+                <span>
+                  {hasRequiredVisualFailure
+                    ? '当前角色画面不可用，请检查素材后重试。'
+                    : hasMouthExpressionFallback
+                      ? '素材恢复后会自动更新。'
+                      : '当前表情准备完成后会自动更新。'}
+                </span>
+              </div>
+            ) : null}
+            {!missingBackground &&
+            hasNonBackgroundVisualIssue &&
+            !hasRequiredVisualFailure &&
+            !hasMouthVisualDegradation ? (
+              <div
+                className="canvas-stage-message canvas-stage-warning"
+                data-testid="canvas-visual-warning"
+                data-visual-warning-kind={
+                  hasRequiredVisualFailure
+                    ? 'failed'
+                    : hasMouthVisualDegradation
+                      ? 'degraded'
+                      : 'pending'
+                }
+              >
+                <strong>画面仍在准备</strong>
+                <span>
+                  正在读取角色素材；准备完成前不会显示不完整的角色画面。
                 </span>
               </div>
             ) : null}

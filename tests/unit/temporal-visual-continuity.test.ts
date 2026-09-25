@@ -169,10 +169,11 @@ describe('Editor Live Scrub visual continuity', () => {
     )!;
 
     expect(heldLayer).toEqual(previous);
-    expect(held.lastValidVisuals.get(IDS.layerChar)).toEqual(previous);
+    expect(held.lastValidVisuals.get(IDS.layerChar)).toMatchObject(previous);
+    expect(held.lastValidVisuals.get(IDS.layerChar)?.visual).toBeDefined();
   });
 
-  it('uses a ready base visual when a target asset is missing before first paint', () => {
+  it('shows an explicit pending state when a target asset is missing before first paint', () => {
     const project = buildProject();
     const shot = project.shots[0]!;
     const base = evaluateShotAtTime(shot, 0, project);
@@ -198,8 +199,9 @@ describe('Editor Live Scrub visual continuity', () => {
     )!;
 
     expect(heldLayer).toEqual(
-      base.layers.find((layer) => layer.id === IDS.layerChar),
+      pending.layers.find((layer) => layer.id === IDS.layerChar),
     );
-    expect(held.lastValidVisuals.size).toBe(3);
+    expect(held.visualStatusByLayer.get(IDS.layerChar)).toBe('pending');
+    expect(held.visualsByLayer.get(IDS.layerChar)).toBeNull();
   });
 });

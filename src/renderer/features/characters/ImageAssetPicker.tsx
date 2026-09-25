@@ -17,7 +17,7 @@ export interface ImageAssetPickerProps {
   onThumbnailError: (assetId: string) => void;
   emptyOption?: {
     label: string;
-    description: string;
+    description?: string;
     optional?: boolean;
   };
   emptyState?: {
@@ -129,11 +129,11 @@ function SelectionCheck(): React.JSX.Element {
 function assetMetadata(
   asset: ImageAsset | undefined,
   assetId: string | null,
-  emptyState?: { description: string },
+  emptyState?: { description?: string },
 ): string {
   if (asset) return `${asset.width}×${asset.height}`;
   if (assetId) return `素材 ID：${assetId}`;
-  return emptyState?.description ?? '未选择图片';
+  return emptyState ? (emptyState.description ?? '') : '未选择图片';
 }
 
 export function ImageAssetPicker({
@@ -169,6 +169,11 @@ export function ImageAssetPicker({
     : selectedAssetId
       ? '素材不可用'
       : selectedEmptyState?.label ?? '未选择图片';
+  const selectedMetadata = assetMetadata(
+    selectedAsset,
+    selectedAssetId,
+    selectedEmptyState,
+  );
 
   const selectedButton = (
     <button
@@ -193,9 +198,7 @@ export function ImageAssetPicker({
       )}
       <span className="image-asset-picker-selected-copy">
         <strong>{selectedLabel}</strong>
-        <small>
-          {assetMetadata(selectedAsset, selectedAssetId, selectedEmptyState)}
-        </small>
+        {selectedMetadata ? <small>{selectedMetadata}</small> : null}
       </span>
       <span aria-hidden="true" className="image-asset-picker-selected-action">
         {open ? '收起' : selectedAssetId ? '更换' : emptyActionLabel}
@@ -241,7 +244,11 @@ export function ImageAssetPicker({
         >
           {emptyOption ? (
             <button
-              aria-label={`${emptyOption.label}：${emptyOption.description}`}
+              aria-label={
+                emptyOption.description
+                  ? `${emptyOption.label}：${emptyOption.description}`
+                  : emptyOption.label
+              }
               aria-selected={!selectedAssetId}
               className={`image-asset-picker-candidate image-asset-picker-empty-candidate${!selectedAssetId ? ' image-asset-picker-candidate-selected' : ''}`}
               data-asset-empty="true"
@@ -253,7 +260,9 @@ export function ImageAssetPicker({
               <EmptyAssetThumbnail className="image-asset-picker-candidate-thumbnail image-asset-picker-empty-thumbnail" />
               <span className="image-asset-picker-candidate-copy">
                 <strong>{emptyOption.label}</strong>
-                <small>{emptyOption.description}</small>
+                {emptyOption.description ? (
+                  <small>{emptyOption.description}</small>
+                ) : null}
               </span>
               {!selectedAssetId ? <SelectionCheck /> : null}
             </button>

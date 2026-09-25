@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DialogueService,
   DialogueServiceError,
+  PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   ShotService,
   type Project,
@@ -223,7 +224,7 @@ describe('Dialogue audio binding', () => {
       offsetMs: 0,
       volume: 1,
     });
-    expect(bound.schemaVersion).toBe(6);
+    expect(bound.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(ProjectSchema.parse(JSON.parse(JSON.stringify(bound)))).toEqual(
       bound,
     );

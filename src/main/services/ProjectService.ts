@@ -228,7 +228,7 @@ export class ProjectService {
     try {
       const sourceVersion = detectSchemaVersion(input);
       // Single authoritative pipeline for every persisted envelope (v0-v6).
-      // Current (v6) input is validated and receives the narrow compatibility
+      // Current (v7) input is validated and receives the narrow compatibility
       // normalization owned by migrateProject; legacy input is migrated there.
       const project = migrateProject(input);
       const document = this.document(

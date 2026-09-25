@@ -46,6 +46,7 @@ export function assetCategory(
   const characterAssetIds = new Set(
     project.characters.flatMap((character) => [
       character.baseAssetId,
+      ...(character.mode === 'composite' ? [character.bodyAssetId] : []),
       ...character.expressions.map((expression) => expression.assetId),
       ...(character.mouthOpenAssetId
         ? [character.mouthOpenAssetId]
@@ -115,13 +116,25 @@ export function selectAssetLibraryEntries(
       continue;
     }
 
-    // A mouth-open-only/base-only image has no expression identity. It is
-    // intentionally placed as a direct image layer instead of guessing.
+    // Body/Mouth/base-only images have no expression identity. They remain
+    // explicit raw-image actions instead of guessing a Character identity.
+    const isBodyAsset = project.characters.some(
+      (character) =>
+        character.mode === 'composite' &&
+        character.bodyAssetId === asset.id,
+    );
+    const isMouthAsset = project.characters.some(
+      (character) => character.mouthOpenAssetId === asset.id,
+    );
     entries.push({
       id: `character-direct:${asset.id}`,
       asset,
       category: resolvedCategory,
-      contextLabel: '嘴型素材 · 作为普通图片放置',
+      contextLabel: isBodyAsset
+        ? '身体素材 · 作为普通图片放置'
+        : isMouthAsset
+          ? '嘴型素材 · 作为普通图片放置'
+          : '角色素材 · 作为普通图片放置',
       dropPayload: {
         version: 2,
         type: 'asset-image',

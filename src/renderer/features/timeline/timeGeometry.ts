@@ -1,4 +1,9 @@
 import { PROJECT_FPS } from '../../../domain/constants';
+import {
+  frameDurationMs as domainFrameDurationMs,
+  integerFrameSpanMs as domainIntegerFrameSpanMs,
+  snapToFrame as domainSnapToFrame,
+} from '../../../domain/timeline/frame-grid';
 
 /** Timeline time base. Panda Stage renders at 24 FPS. */
 export const TIMELINE_FPS = PROJECT_FPS;
@@ -8,7 +13,7 @@ export const MAX_TIMELINE_ZOOM = 8;
 
 /** Milliseconds spanned by a single frame at the timeline FPS. */
 export function frameDurationMs(fps: number = TIMELINE_FPS): number {
-  return 1000 / fps;
+  return domainFrameDurationMs(fps);
 }
 
 /**
@@ -27,15 +32,12 @@ export function clampTime(timeMs: number, durationMs: number): number {
  * Pure geometry only — never clamps to shot duration (callers clamp after).
  */
 export function snapToFrame(timeMs: number, fps: number = TIMELINE_FPS): number {
-  if (!Number.isFinite(timeMs)) return 0;
-  const frameMs = frameDurationMs(fps);
-  const frames = Math.round(timeMs / frameMs);
-  return Math.max(0, Math.round(frames * frameMs));
+  return domainSnapToFrame(timeMs, fps);
 }
 
 /** Integer persisted span for one Timeline frame at the active FPS. */
 export function integerFrameSpanMs(fps: number = TIMELINE_FPS): number {
-  return Math.max(1, snapToFrame(frameDurationMs(fps), fps));
+  return domainIntegerFrameSpanMs(fps);
 }
 
 /** Pixels per millisecond for a given viewport width, duration and zoom. */

@@ -35,9 +35,9 @@ describe('Issue #479 Character header accessibility repair', () => {
     );
 
     expect(markup).toContain('角色名称');
-    expect(markup).toContain('普通表情图片');
-    expect(markup).toContain('生气表情图片');
-    expect(markup).toContain('张嘴图（可选）');
+    expect(markup).toContain('普通表情');
+    expect(markup).toContain('生气表情');
+    expect(markup).toContain('张嘴图');
     expect(markup).not.toContain('创建含普通 / 生气表情的角色');
     expect(markup).not.toContain('至少需要两张不同的项目图片素材。');
     expect(markup).toContain('disabled=""');
@@ -53,7 +53,7 @@ describe('Issue #479 Character header accessibility repair', () => {
     expect(dock).not.toContain('resource-activity-heading-sr-only');
     expect(styles).not.toContain('resource-activity-heading-sr-only');
     expect(dock).toContain('icon={CirclePlus}');
-    expect(dock).toContain('icon={ArrowLeft}');
+    expect(dock).toContain('character-create-mode-switch-slot');
     expect(dock).toContain("label: '新建角色'");
     expect(dock).toContain("label: '返回角色列表'");
     expect(styles).toContain(
@@ -63,6 +63,7 @@ describe('Issue #479 Character header accessibility repair', () => {
     expect(styles).toContain('justify-content: space-between;');
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr);');
     expect(list).not.toContain('character-empty-state-anchor');
+    expect(list).toContain('data-testid="character-create-back"');
     expect(list).toContain('normalAssetId !== angryAssetId');
     expect(list).toContain('onCreate({');
   });

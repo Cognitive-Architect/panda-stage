@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   Character,
   CharacterDimensionWarning,
+  CompositeCharacterDefinition,
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
@@ -15,7 +16,10 @@ import {
 
 export type CharacterEditorView = 'full' | 'detail' | 'expression';
 export type CharacterEditorPresentation = 'default' | 'landscape';
-export type CharacterDetailWorkspace = 'expressions' | 'settings';
+export type CharacterDetailWorkspace =
+  | 'assembly'
+  | 'expressions'
+  | 'settings';
 
 export function isDefaultTransformPending(
   character: Pick<Character, 'defaultScale' | 'defaultFlipX'>,
@@ -95,6 +99,11 @@ export interface CharacterEditorProps {
   onRemoveExpression: (expressionId: string) => void;
   onSetDefaultExpression: (expressionId: string) => void;
   onSetMouthOpenAsset: (assetId: string | null) => void;
+  assemblyDraft?: CompositeCharacterDefinition | null;
+  onOpenAssembly?: () => boolean;
+  onLeaveAssembly?: () => boolean;
+  onSetAssemblyBodyAsset?: (assetId: string) => void;
+  onSetAssemblyMouthAsset?: (assetId: string | null) => void;
   onSetDefaultTransform: (scale: number, flipX: boolean) => void;
   onThumbnailError: (assetId: string) => void;
   view?: CharacterEditorView;
@@ -119,6 +128,11 @@ export function CharacterEditor({
   onRemoveExpression,
   onSetDefaultExpression,
   onSetMouthOpenAsset,
+  assemblyDraft = null,
+  onOpenAssembly = () => false,
+  onLeaveAssembly = () => true,
+  onSetAssemblyBodyAsset = () => undefined,
+  onSetAssemblyMouthAsset = () => undefined,
   onSetDefaultTransform,
   onThumbnailError,
   view = 'full',
@@ -132,14 +146,18 @@ export function CharacterEditor({
   const [scale, setScale] = useState(character?.defaultScale ?? 1);
   const [flipX, setFlipX] = useState(character?.defaultFlipX ?? false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [activeWorkspace, setActiveWorkspace] =
-    useState<CharacterDetailWorkspace>('expressions');
+    useState<CharacterDetailWorkspace>(
+      assemblyDraft ? 'assembly' : 'expressions',
+    );
+  const assemblyDraftWasOpen = useRef(Boolean(assemblyDraft));
 
   useEffect(() => {
     if (!character) return;
     setName(character.name);
     setRenameOpen(false);
-    setActiveWorkspace('expressions');
+    setExpressionAddOpen(false);
   }, [character?.id]);
 
   useEffect(() => {
@@ -147,6 +165,18 @@ export function CharacterEditor({
     setScale(character.defaultScale);
     setFlipX(character.defaultFlipX);
   }, [character?.defaultFlipX, character?.defaultScale, character?.id]);
+
+  useEffect(() => {
+    const hasAssemblyDraft = Boolean(assemblyDraft);
+    if (
+      activeWorkspace === 'assembly' &&
+      assemblyDraftWasOpen.current &&
+      !hasAssemblyDraft
+    ) {
+      setActiveWorkspace('expressions');
+    }
+    assemblyDraftWasOpen.current = hasAssemblyDraft;
+  }, [activeWorkspace, assemblyDraft]);
 
   const landscapeDetail =
     presentation === 'landscape' && view === 'detail';
@@ -176,19 +206,36 @@ export function CharacterEditor({
     character.expressions.find(
       (expression) => expression.id === character.defaultExpressionId,
     ) ?? character.expressions[0];
+  const defaultExpressionAsset = defaultExpression
+    ? imageAssets.find((asset) => asset.id === defaultExpression.assetId)
+    : undefined;
   const defaultThumbnail = defaultExpression
     ? thumbnails[defaultExpression.assetId]
     : undefined;
-  const defaultAssetResolved = Boolean(
-    defaultExpression &&
-      imageAssets.some((asset) => asset.id === defaultExpression.assetId),
-  );
+  const defaultAssetResolved = Boolean(defaultExpressionAsset);
   const hasPendingTransform = isDefaultTransformPending(
     character,
     scale,
     flipX,
   );
   const nextRenameValue = characterRenameValue(name, character.name);
+  const compositeCharacter = character.mode === 'composite';
+
+  const switchDetailWorkspace = (
+    nextWorkspace: CharacterDetailWorkspace,
+  ): void => {
+    if (nextWorkspace === activeWorkspace) return;
+    if (
+      activeWorkspace === 'assembly' &&
+      nextWorkspace !== 'assembly' &&
+      !onLeaveAssembly()
+    ) {
+      return;
+    }
+    if (nextWorkspace === 'assembly' && !onOpenAssembly()) return;
+    if (activeWorkspace === 'expressions') setExpressionAddOpen(false);
+    setActiveWorkspace(nextWorkspace);
+  };
 
   return (
     <article
@@ -220,7 +267,7 @@ export function CharacterEditor({
             }
             type="button"
           >
-            {landscapeExpression ? '← 返回角色详情' : '返回角色列表'}
+            {landscapeExpression ? '← 返回角色详情' : '← 角色列表'}
           </button>
           {landscapeDetail ? (
             <h1
@@ -302,93 +349,89 @@ export function CharacterEditor({
             <div
               className={`character-detail-identity-copy${renameOpen ? ' is-renaming' : ''}`}
             >
-              {renameOpen ? (
-                <form
-                  className="character-inline-rename-form"
-                  data-testid="character-inline-rename-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (disabled || !nextRenameValue) return;
-                    onRenameCharacter(nextRenameValue);
-                    setName(nextRenameValue);
-                    setRenameOpen(false);
-                  }}
-                >
-                  <label
-                    className="sr-only"
-                    htmlFor="character-inline-rename-input"
+              <div className="character-detail-identity-title-row">
+                {renameOpen ? (
+                  <form
+                    className="character-inline-rename-form"
+                    data-testid="character-inline-rename-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (disabled || !nextRenameValue) return;
+                      onRenameCharacter(nextRenameValue);
+                      setName(nextRenameValue);
+                      setRenameOpen(false);
+                    }}
                   >
-                    角色名称
-                  </label>
-                  <input
-                    autoFocus
-                    data-testid="character-inline-rename-input"
-                    disabled={disabled}
-                    id="character-inline-rename-input"
-                    maxLength={200}
-                    onChange={(event) => setName(event.target.value)}
-                    value={name}
-                  />
-                  <div className="character-inline-rename-actions">
+                    <label
+                      className="sr-only"
+                      htmlFor="character-inline-rename-input"
+                    >
+                      角色名称
+                    </label>
+                    <input
+                      autoFocus
+                      data-testid="character-inline-rename-input"
+                      disabled={disabled}
+                      id="character-inline-rename-input"
+                      maxLength={200}
+                      onChange={(event) => setName(event.target.value)}
+                      value={name}
+                    />
+                    <div className="character-inline-rename-actions">
+                      <button
+                        className="character-inline-rename-cancel"
+                        data-testid="character-inline-rename-cancel"
+                        onClick={() => {
+                          setName(character.name);
+                          setRenameOpen(false);
+                        }}
+                        type="button"
+                      >
+                        取消
+                      </button>
+                      <button
+                        className="character-inline-rename-save"
+                        data-testid="character-inline-rename-save"
+                        disabled={disabled || !nextRenameValue}
+                        type="submit"
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
                     <button
-                      className="character-inline-rename-cancel"
-                      data-testid="character-inline-rename-cancel"
+                      aria-label="编辑角色名称"
+                      aria-expanded={false}
+                      className="character-rename-trigger"
+                      data-testid="character-rename-trigger"
                       onClick={() => {
                         setName(character.name);
-                        setRenameOpen(false);
+                        setRenameOpen(true);
                       }}
                       type="button"
                     >
-                      取消
+                      ✎
                     </button>
-                    <button
-                      className="character-inline-rename-save"
-                      data-testid="character-inline-rename-save"
-                      disabled={disabled || !nextRenameValue}
-                      type="submit"
-                    >
-                      保存
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <h3>{character.name}</h3>
-              )}
-              <div className="character-detail-identity-actions">
-                {!renameOpen ? (
-                  <button
-                    aria-expanded={false}
-                    className="character-rename-trigger"
-                    data-testid="character-rename-trigger"
-                    onClick={() => {
-                      setName(character.name);
-                      setRenameOpen(true);
-                    }}
-                    type="button"
-                  >
-                    编辑名称
-                  </button>
-                ) : null}
-                <details className="character-identity-overflow">
-                  <summary
-                    aria-label={`${character.name} 更多操作`}
-                    data-testid="character-identity-overflow"
-                  >
-                    ⋯
-                  </summary>
-                  <div className="character-identity-overflow-menu">
-                    <button
-                      className="character-delete-menu-action"
-                      data-testid="character-delete-overflow"
-                      disabled={disabled}
-                      onClick={onDeleteCharacter}
-                      type="button"
-                    >
-                      删除角色
-                    </button>
-                  </div>
-                </details>
+                    <h3>{character.name}</h3>
+                  </>
+                )}
               </div>
+              {activeWorkspace === 'expressions' ? (
+                <button
+                  aria-expanded={expressionAddOpen}
+                  className="character-detail-add-expression-trigger"
+                  data-testid="expression-add-trigger"
+                  disabled={disabled || imageAssets.length === 0}
+                  onClick={() =>
+                    setExpressionAddOpen((isOpen) => !isOpen)
+                  }
+                  type="button"
+                >
+                  ＋ 添加表情
+                </button>
+              ) : null}
             </div>
           </section>
         </>
@@ -521,8 +564,25 @@ export function CharacterEditor({
           <nav
             aria-label="角色工作区"
             className="character-workspace-switcher"
+            data-workspace-count={compositeCharacter ? 3 : 2}
             data-testid="character-workspace-switcher"
           >
+            {compositeCharacter ? (
+              <button
+                aria-controls="character-workspace-assembly"
+                aria-pressed={activeWorkspace === 'assembly'}
+                className={
+                  activeWorkspace === 'assembly'
+                    ? 'character-workspace-tab is-active'
+                    : 'character-workspace-tab'
+                }
+                data-testid="character-workspace-assembly-tab"
+                onClick={() => switchDetailWorkspace('assembly')}
+                type="button"
+              >
+                装配
+              </button>
+            ) : null}
             <button
               aria-controls="character-workspace-expressions"
               aria-pressed={activeWorkspace === 'expressions'}
@@ -532,7 +592,7 @@ export function CharacterEditor({
                   : 'character-workspace-tab'
               }
               data-testid="character-workspace-expressions-tab"
-              onClick={() => setActiveWorkspace('expressions')}
+              onClick={() => switchDetailWorkspace('expressions')}
               type="button"
             >
               <span>表情</span>
@@ -552,12 +612,115 @@ export function CharacterEditor({
                   : 'character-workspace-tab'
               }
               data-testid="character-workspace-settings-tab"
-              onClick={() => setActiveWorkspace('settings')}
+              onClick={() => switchDetailWorkspace('settings')}
               type="button"
             >
-              角色设置
+              设置
             </button>
           </nav>
+          {compositeCharacter ? (
+            <section
+              aria-label="角色装配素材"
+              className="character-workspace-panel character-assembly-drawer-panel"
+              data-testid="character-assembly-drawer-panel"
+              data-workspace="assembly"
+              hidden={activeWorkspace !== 'assembly'}
+              id="character-workspace-assembly"
+            >
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyState={{
+                  description: '从项目图片中选择身体。',
+                  label: '请选择图片',
+                }}
+                label="身体"
+                onChange={(assetId) => {
+                  if (assetId) onSetAssemblyBodyAsset(assetId);
+                }}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={
+                  assemblyDraft?.bodyAssetId ??
+                  (character.mode === 'composite'
+                    ? character.bodyAssetId
+                    : '')
+                }
+                testId="character-assembly-body-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <div
+                className="character-assembly-default-face-summary"
+                data-testid="character-assembly-default-face-summary"
+              >
+                <div className="image-asset-picker-heading">
+                  <strong>默认脸</strong>
+                </div>
+                {defaultExpression ? (
+                  <button
+                    aria-label={`管理默认脸：${defaultExpression.name}`}
+                    className="image-asset-picker-selected"
+                    data-testid="character-assembly-go-expressions"
+                    onClick={() => switchDetailWorkspace('expressions')}
+                    type="button"
+                  >
+                    <CharacterExpressionThumbnail
+                      className="image-asset-picker-selected-thumbnail"
+                      expression={defaultExpression}
+                      onThumbnailError={onThumbnailError}
+                      thumbnail={defaultThumbnail}
+                    />
+                    <span className="image-asset-picker-selected-copy">
+                      <strong>{defaultExpression.name}</strong>
+                      <small>
+                        {defaultExpressionAsset
+                          ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                          : '素材不可用'}
+                      </small>
+                    </span>
+                    <span className="image-asset-picker-selected-action">
+                      管理
+                    </span>
+                  </button>
+                ) : null}
+              </div>
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyOption={{
+                  label: '暂不配置',
+                }}
+                label="张嘴脸"
+                onChange={onSetAssemblyMouthAsset}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={
+                  assemblyDraft?.mouthOpenAssetId ??
+                  character.mouthOpenAssetId ??
+                  null
+                }
+                testId="character-assembly-mouth-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+                selectedAction={
+                  (assemblyDraft?.mouthOpenAssetId ??
+                    character.mouthOpenAssetId) ? (
+                    <details className="character-assembly-mouth-overflow">
+                      <summary aria-label="张嘴脸更多操作">⋯</summary>
+                      <div className="character-assembly-mouth-overflow-menu">
+                        <button
+                          className="character-mouth-clear"
+                          data-testid="character-assembly-mouth-clear"
+                          disabled={disabled}
+                          onClick={() => onSetAssemblyMouthAsset(null)}
+                          type="button"
+                        >
+                          清除
+                        </button>
+                      </div>
+                    </details>
+                  ) : undefined
+                }
+              />
+            </section>
+          ) : null}
           <section
             aria-labelledby="character-expression-workspace-heading"
             className="character-workspace-panel character-expression-workspace"
@@ -570,12 +733,15 @@ export function CharacterEditor({
               character={character}
               disabled={disabled}
               imageAssets={imageAssets}
+              isAddOpen={expressionAddOpen}
               onAdd={onAddExpression}
+              onAddOpenChange={setExpressionAddOpen}
               onRemove={onRemoveExpression}
               onRename={onRenameExpression}
               onSetAsset={onSetExpressionAsset}
               onSetDefault={onSetDefaultExpression}
               onThumbnailError={onThumbnailError}
+              compactDetailWorkspace
               presentation="landscape"
               thumbnails={thumbnails}
               warnings={warnings}
@@ -596,19 +762,19 @@ export function CharacterEditor({
               <div className="character-section-heading">
                 <div>
                   <h4 id="character-settings-workspace-heading">
-                    默认大小与方向
+                    初始角色大小
                   </h4>
                 </div>
               </div>
               <div className="character-default-transform-controls">
                 <div className="character-scale-control-group">
                   <div
-                    aria-label="默认缩放"
+                    aria-label="初始角色大小"
                     className="character-scale-stepper"
                     role="group"
                   >
                     <button
-                      aria-label="减小默认缩放"
+                      aria-label="减小初始角色大小"
                       disabled={disabled || scale <= 0.1}
                       onClick={() => adjustScale(-0.1)}
                       type="button"
@@ -617,7 +783,7 @@ export function CharacterEditor({
                     </button>
                     <output aria-live="polite">{scale.toFixed(1)}×</output>
                     <button
-                      aria-label="增大默认缩放"
+                      aria-label="增大初始角色大小"
                       disabled={disabled || scale >= 10}
                       onClick={() => adjustScale(0.1)}
                       type="button"
@@ -683,6 +849,7 @@ export function CharacterEditor({
                 </div>
               ) : null}
             </section>
+            {!compositeCharacter ? (
             <section className="character-settings-section character-mouth-setting-visual">
               <div
                 className={`character-mouth-state${character.mouthOpenAssetId ? ' is-configured' : ''}`}
@@ -717,6 +884,28 @@ export function CharacterEditor({
                 />
               </div>
             </section>
+            ) : null}
+            <section
+              aria-labelledby="character-danger-zone-heading"
+              className="character-settings-section character-danger-zone"
+              data-testid="character-danger-zone"
+            >
+              <div className="character-danger-zone-copy">
+                <h4 id="character-danger-zone-heading">危险操作</h4>
+                <p>
+                  删除当前角色；如果角色被镜头或对白引用，删除会被阻止。
+                </p>
+              </div>
+              <button
+                className="character-delete-settings-action"
+                data-testid="character-delete-settings"
+                disabled={disabled}
+                onClick={onDeleteCharacter}
+                type="button"
+              >
+                删除角色
+              </button>
+            </section>
           </section>
         </>
       ) : null}
@@ -725,7 +914,9 @@ export function CharacterEditor({
           character={character}
           disabled={disabled}
           imageAssets={imageAssets}
+          isAddOpen={expressionAddOpen}
           onAdd={onAddExpression}
+          onAddOpenChange={setExpressionAddOpen}
           onRemove={onRemoveExpression}
           onRename={onRenameExpression}
           onSetAsset={onSetExpressionAsset}

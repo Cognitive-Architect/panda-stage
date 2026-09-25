@@ -1,16 +1,23 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
+import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { AssetLibrary } from '../features/assets/AssetLibrary';
 import type { AssetWorkspaceView } from '../features/assets/AssetLibrary';
 import { CharacterManager } from '../features/characters/CharacterManager';
 import type { CharacterWorkspaceView } from '../features/characters/CharacterManager';
+import { hasPendingCharacterAssemblyEdit } from '../features/characters/characterAssemblyPreview';
 import { ShotManager } from '../features/shots/ShotManager';
 import type {
   ShotEditorPresentation,
   ShotWorkspaceView,
 } from '../features/shots/ShotManager';
 import {
-  ArrowLeft,
   Clapperboard,
   CirclePlus,
   FileArchive,
@@ -105,11 +112,15 @@ export function ResourceActivityDock({
   const [internalActivity, setInternalActivity] =
     useState<ResourceActivity>('shots');
   const activeActivity = requestedActivity ?? internalActivity;
+  const previousActivity = useRef(activeActivity);
+  const approvedPendingExit = useRef(false);
   const [shotView, setShotView] = useState<ShotWorkspaceView>('list');
   const [assetView, setAssetView] =
     useState<AssetWorkspaceView>('browser');
   const [characterView, setCharacterView] =
     useState<CharacterWorkspaceView>('list');
+  const [characterCreateModeSwitchTarget, setCharacterCreateModeSwitchTarget] =
+    useState<HTMLDivElement | null>(null);
   const [assetImportRequest, setAssetImportRequest] = useState(0);
   const [assetFlaReviewRequest, setAssetFlaReviewRequest] = useState(0);
   const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
@@ -120,7 +131,24 @@ export function ResourceActivityDock({
   const drawerOpen = requestedDrawerOpen ?? internalDrawerOpen;
   const surfaceOpen = drawerOpen;
 
+  const confirmLeavingCharacterActivity = (): boolean => {
+    if (activeActivity !== 'characters' || !snapshot) return true;
+    const session = characterAssemblySessionStore.getSnapshot();
+    const hasPendingEdit = Boolean(
+      session &&
+        session.projectRoot === snapshot.projectRoot &&
+        hasPendingCharacterAssemblyEdit(snapshot.project, session),
+    );
+    if (!hasPendingEdit) return true;
+    const confirmed = window.confirm(
+      '装配更改尚未应用，离开将放弃这些更改。继续吗？',
+    );
+    if (confirmed) approvedPendingExit.current = true;
+    return confirmed;
+  };
+
   const setDrawerOpen = (open: boolean): void => {
+    if (!open && !confirmLeavingCharacterActivity()) return;
     if (requestedDrawerOpen === undefined) {
       setInternalDrawerOpen(open);
     }
@@ -129,9 +157,64 @@ export function ResourceActivityDock({
 
   useEffect(() => {
     if (requestedDrawerOpen === undefined) {
-      setInternalDrawerOpen(!narrow);
+      const nextOpen = !narrow;
+      const session = characterAssemblySessionStore.getSnapshot();
+      const keepOpenForPendingAssembly = Boolean(
+        !nextOpen &&
+          activeActivity === 'characters' &&
+          snapshot &&
+          session &&
+          session.projectRoot === snapshot.projectRoot &&
+          hasPendingCharacterAssemblyEdit(snapshot.project, session),
+      );
+      if (!keepOpenForPendingAssembly) setInternalDrawerOpen(nextOpen);
     }
-  }, [narrow, requestedDrawerOpen]);
+  }, [
+    narrow,
+    requestedDrawerOpen,
+    snapshot.project.id,
+    snapshot.projectRoot,
+  ]);
+
+  useLayoutEffect(() => {
+    const previous = previousActivity.current;
+    if (activeActivity === previous) return;
+
+    if (previous === 'characters' && activeActivity !== 'characters') {
+      const session = characterAssemblySessionStore.getSnapshot();
+      const hasPendingEdit = Boolean(
+        snapshot &&
+          session &&
+          session.projectRoot === snapshot.projectRoot &&
+          hasPendingCharacterAssemblyEdit(snapshot.project, session),
+      );
+      if (hasPendingEdit && !approvedPendingExit.current) {
+        if (
+          !window.confirm(
+            '装配更改尚未应用，离开将放弃这些更改。继续吗？',
+          )
+        ) {
+          if (requestedActivity === undefined) {
+            setInternalActivity(previous);
+          } else {
+            onActiveActivityChange?.(previous);
+          }
+          return;
+        }
+        approvedPendingExit.current = true;
+      }
+    } else {
+      approvedPendingExit.current = false;
+    }
+
+    previousActivity.current = activeActivity;
+  }, [
+    activeActivity,
+    onActiveActivityChange,
+    requestedActivity,
+    snapshot.project.id,
+    snapshot.projectRoot,
+  ]);
 
   useEffect(() => {
     if (!narrow) return undefined;
@@ -143,6 +226,19 @@ export function ResourceActivityDock({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [narrow]);
+
+  useEffect(() => {
+    if (activeActivity === 'characters' && drawerOpen) return;
+    const session = characterAssemblySessionStore.getSnapshot();
+    const hasPendingEdit = Boolean(
+      session &&
+        session.projectRoot === snapshot.projectRoot &&
+        hasPendingCharacterAssemblyEdit(snapshot.project, session),
+    );
+    if (hasPendingEdit && !approvedPendingExit.current) return;
+    characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
+    approvedPendingExit.current = false;
+  }, [activeActivity, drawerOpen, snapshot.project, snapshot.projectRoot]);
 
   const activeLabel =
     landscapePresentation && activeActivity === 'assets'
@@ -188,7 +284,7 @@ export function ResourceActivityDock({
   const showCreateIcon =
     (activeActivity === 'shots' && shotView !== 'create') ||
     (activeActivity === 'characters' && characterView === 'list');
-  const showCharacterBackIcon =
+  const showCharacterCreateModeSelector =
     landscapePresentation &&
     activeActivity === 'characters' &&
     characterView === 'create';
@@ -229,6 +325,12 @@ export function ResourceActivityDock({
             };
 
   const selectActivity = (activity: ResourceActivity): void => {
+    if (
+      activity !== activeActivity &&
+      !confirmLeavingCharacterActivity()
+    ) {
+      return;
+    }
     if (narrow && drawerOpen && activity === activeActivity) {
       setDrawerOpen(false);
       return;
@@ -351,33 +453,36 @@ export function ResourceActivityDock({
                           : undefined
               }
             >
-              {hideLandscapeCharacterPrimaryAction ? null : (
-                <button
-                  className="resource-activity-primary-action"
-                  data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
-                  data-resource-action-layout={
-                    showLandscapeAssetActionGroup
-                      ? 'asset-browser-landscape'
-                      : showPortraitAssetActionGroup
-                        ? 'asset-browser'
-                        : undefined
-                  }
-                  data-testid="resource-primary-action"
-                  onClick={primaryAction.onClick}
-                  type="button"
-                >
-                  {showCharacterBackIcon ? (
-                    <DecorativeIcon icon={ArrowLeft} size={18} />
-                  ) : null}
-                  {showCreateIcon ? (
-                    <DecorativeIcon icon={CirclePlus} size={18} />
-                  ) : null}
-                  {activeActivity === 'assets' && assetView === 'browser' ? (
-                    <DecorativeIcon icon={Upload} size={18} />
-                  ) : null}
-                  <span>{primaryAction.label}</span>
-                </button>
-              )}
+              {showCharacterCreateModeSelector ? (
+                <div
+                  className="character-create-mode-switch-slot"
+                  data-testid="character-create-mode-switch-slot"
+                  ref={setCharacterCreateModeSwitchTarget}
+                />
+              ) : hideLandscapeCharacterPrimaryAction ? null : (
+                  <button
+                    className="resource-activity-primary-action"
+                    data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
+                    data-resource-action-layout={
+                      showLandscapeAssetActionGroup
+                        ? 'asset-browser-landscape'
+                        : showPortraitAssetActionGroup
+                          ? 'asset-browser'
+                          : undefined
+                    }
+                    data-testid="resource-primary-action"
+                    onClick={primaryAction.onClick}
+                    type="button"
+                  >
+                    {showCreateIcon ? (
+                      <DecorativeIcon icon={CirclePlus} size={18} />
+                    ) : null}
+                    {activeActivity === 'assets' && assetView === 'browser' ? (
+                      <DecorativeIcon icon={Upload} size={18} />
+                    ) : null}
+                    <span>{primaryAction.label}</span>
+                  </button>
+                )}
               {showLandscapeAssetActionGroup ? (
                 <button
                   aria-label="导入 FLA"
@@ -411,7 +516,7 @@ export function ResourceActivityDock({
               {hidePortraitAssetsChrome ? null : hidePortraitShotChrome ? null : (
                 <button
                   aria-label="关闭资源工作区"
-                  className="resource-activity-close"
+                  className={`resource-activity-close${showCharacterCreateModeSelector ? ' resource-activity-create-close' : ''}`}
                   data-testid="resource-activity-close"
                   onClick={() => {
                     if (activeActivity === 'assets') {
@@ -508,6 +613,11 @@ export function ResourceActivityDock({
                 }
                 snapshot={snapshot}
                 view={characterView}
+                modeSwitchTarget={
+                  showCharacterCreateModeSelector
+                    ? characterCreateModeSwitchTarget
+                    : null
+                }
                 onCloseDrawer={() => setDrawerOpen(false)}
               />
             )}
