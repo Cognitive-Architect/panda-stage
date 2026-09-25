@@ -231,6 +231,7 @@
           "src/renderer/features/properties/**",
           "src/renderer/stage/**",
           "src/export-renderer/**",
+          "docs/evidence/issue-620-bfm-s08/**",
           "docs/evidence/issue-606/receipt.json",
           "docs/design/huabu.png"
         ],
