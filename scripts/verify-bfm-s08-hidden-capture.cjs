@@ -29,6 +29,9 @@ const evidenceDirectory = path.join(
 );
 const timeoutMs = 15_000;
 const facePlacement = BFM_S08_PROBE_PROJECT.characters[0].facePlacement;
+// Center of the cyan marker added at SVG (230, 535), relative to the
+// 640x800 Body image's centered local origin.
+const flipMarkerLocalPoint = { x: -90, y: 135 };
 const assetUrls = Object.fromEntries(
   BFM_S08_PROBE_PROJECT.assets
     .filter((asset) => asset.kind === 'image')
@@ -74,7 +77,7 @@ async function waitForInitialStage(window) {
     if (snapshot?.error) {
       throw new Error(`BFM-S08 probe failed before frame request: ${JSON.stringify(snapshot)}`);
     }
-    if (snapshot?.ready && readyHandshake) return;
+    if (snapshot?.ready && readyHandshake) return snapshot;
     await delay(40);
   }
   throw new Error('BFM-S08 hidden Stage did not become initially ready.');
@@ -84,7 +87,7 @@ async function loadCaptureSample(window, failurePart = null) {
   const query = { issue620BfmS08: 'true' };
   if (failurePart) query.issue620FailurePart = failurePart;
   await window.loadFile(rendererPath, { query });
-  await waitForInitialStage(window);
+  return waitForInitialStage(window);
 }
 
 function evaluateProbeFrame(timeMs) {
@@ -132,6 +135,8 @@ function expectColor(pixel, color, label) {
     assert(blue > red * 1.5 && blue > green * 1.2, `${label} is not normal Face blue: ${JSON.stringify(pixel)}`);
   } else if (color === 'angry-green') {
     assert(green > red * 1.5 && green > blue * 1.2, `${label} is not angry Face green: ${JSON.stringify(pixel)}`);
+  } else if (color === 'flip-marker-cyan') {
+    assert(blue > red * 3 && green > red * 3, `${label} is not the asymmetric cyan flip marker: ${JSON.stringify(pixel)}`);
   } else {
     assert(red > blue * 1.8 && green > blue * 1.5, `${label} is not Mouth yellow: ${JSON.stringify(pixel)}`);
   }
@@ -234,6 +239,28 @@ function evaluateFrameEvidence(response, request, stageSnapshot) {
     faceBodyOverlap: pixelAt(bitmap, size.width, size.height, faceCenterX, faceCenterY),
     bodyUnderTransparentFace: pixelAt(bitmap, size.width, size.height, underFaceX, faceCenterY),
   };
+  const markerPoint = {
+    x: modelLayer.render.x + modelLayer.render.scaleX * flipMarkerLocalPoint.x,
+    y: modelLayer.render.y + modelLayer.render.scaleY * flipMarkerLocalPoint.y,
+  };
+  const markerOppositePoint = {
+    x: modelLayer.render.x - modelLayer.render.scaleX * flipMarkerLocalPoint.x,
+    y: markerPoint.y,
+  };
+  pixels.flipMarker = pixelAt(
+    bitmap,
+    size.width,
+    size.height,
+    markerPoint.x,
+    markerPoint.y,
+  );
+  pixels.flipMarkerOpposite = pixelAt(
+    bitmap,
+    size.width,
+    size.height,
+    markerOppositePoint.x,
+    markerOppositePoint.y,
+  );
   expectColor(pixels.bodyOnly, 'body-red', 'Body-only pixel');
   expectColor(
     pixels.faceBodyOverlap,
@@ -245,6 +272,8 @@ function evaluateFrameEvidence(response, request, stageSnapshot) {
     'Body/Face overlap pixel',
   );
   expectColor(pixels.bodyUnderTransparentFace, 'body-red', 'Body visible through transparent Face pixels');
+  expectColor(pixels.flipMarker, 'flip-marker-cyan', 'Asymmetric flip marker at its expected side');
+  expectColor(pixels.flipMarkerOpposite, 'body-red', 'Opposite side of the asymmetric marker');
   assert(
     Math.max(
       ...pixels.bodyOnly.map((channel, index) =>
@@ -281,6 +310,13 @@ function evaluateFrameEvidence(response, request, stageSnapshot) {
       assetId: part.assetId,
     })),
     activeFace: modelLayer.visual.activeFace,
+    flipMarker: {
+      point: markerPoint,
+      oppositePoint: markerOppositePoint,
+      side: markerPoint.x < modelLayer.render.x ? 'left' : 'right',
+      pixel: pixels.flipMarker,
+      oppositePixel: pixels.flipMarkerOpposite,
+    },
     png: { width: size.width, height: size.height },
     pixels,
   };
@@ -300,17 +336,64 @@ async function captureFrame(manager, window, jobId, frameIndex, timeMs) {
 }
 
 async function verifyRequiredPartFailure(manager, window, failurePart) {
-  await loadCaptureSample(window, failurePart);
+  const initialStage = await loadCaptureSample(window, failurePart);
   const jobId = randomUUID();
   await manager.loadProbe({ jobId, durationMs: 3_000, fps: 24 });
-  const request = { jobId, frameIndex: 1, timeMs: 0 };
+  const mouthFailure = failurePart === 'mouth';
+  const request = {
+    jobId,
+    frameIndex: mouthFailure ? 24 : 1,
+    timeMs: mouthFailure ? 1_000 : 0,
+  };
+  const evaluated = evaluateProbeFrame(request.timeMs);
+  const expectedLayer = buildStageRenderModel(
+    BFM_S08_PROBE_PROJECT,
+    evaluated,
+    assetUrls,
+  ).layers.find((layer) => layer.id === BFM_S08_PROBE_IDS.characterLayer);
+  assert(expectedLayer?.visual?.kind === 'composite-character', 'Failure request did not resolve the formal composite Character.');
+  const initialExpressionLayer = buildStageRenderModel(
+    BFM_S08_PROBE_PROJECT,
+    evaluateProbeFrame(0),
+    assetUrls,
+  ).layers.find((layer) => layer.id === BFM_S08_PROBE_IDS.characterLayer);
+  if (mouthFailure) {
+    assert(initialStage?.ready, 'Expression fallback was not committed before the Mouth failure request.');
+    assert(
+      initialExpressionLayer?.visual?.activeFace?.source === 'expression' &&
+        initialExpressionLayer.visual.activeFace.assetId ===
+          BFM_S08_PROBE_IDS.faceNormalAsset,
+      'Initial committed frame was not the normal Expression visual.',
+    );
+    assert(
+      request.timeMs >= BFM_S08_PROBE_SHOT.dialogues[0].startMs &&
+        request.timeMs < BFM_S08_PROBE_SHOT.dialogues[0].endMs,
+      'Mouth failure request is outside the active speaking interval.',
+    );
+    assert(
+      expectedLayer.visual.activeFace?.source === 'mouth' &&
+        expectedLayer.visual.activeFace.assetId === BFM_S08_PROBE_IDS.mouthAsset &&
+        expectedLayer.visual.parts[1]?.assetId === BFM_S08_PROBE_IDS.mouthAsset,
+      'Formal speaking projection did not require the configured Mouth asset.',
+    );
+  }
+  let response = null;
   let failure = null;
   try {
-    await manager.renderFrame(request);
+    response = await manager.renderFrame(request);
   } catch (error) {
     failure = error instanceof Error ? error.message : String(error);
   }
   assert(failure, `${failurePart} decode failure incorrectly returned a successful PNG.`);
+  assert(response === null, `${failurePart} decode failure resolved with a frame response.`);
+  assert(
+    failure.includes(`Job ${jobId} frame ${request.frameIndex} failed:`) &&
+      failure.includes('Stage image failed to load') &&
+      (mouthFailure
+        ? failure.includes('data:image/png;base64,not-a-valid-png')
+        : true),
+    `${failurePart} failure was not a correlated hidden image-load failure: ${failure}`,
+  );
   const snapshot = await readStageSnapshot(window);
   assert(!snapshot?.ready, `${failurePart} decode failure left Stage exact-ready.`);
   assert(snapshot?.error, `${failurePart} decode failure was not surfaced as a Stage error.`);
@@ -318,7 +401,35 @@ async function verifyRequiredPartFailure(manager, window, failurePart) {
     snapshot?.renderToken === `${jobId}:${request.frameIndex}`,
     `${failurePart} failure was not associated with the current request token.`,
   );
-  return { failurePart, request, error: failure, stage: snapshot };
+  return {
+    failurePart,
+    request,
+    error: failure,
+    successfulPngReturned: response !== null,
+    exactReady: Boolean(snapshot?.ready && !snapshot.error),
+    initialExpressionStage: {
+      ready: initialStage?.ready ?? false,
+      error: initialStage?.error ?? false,
+      timeMs: initialStage?.timeMs ?? null,
+      renderToken: initialStage?.renderToken ?? null,
+      renderContract: initialStage?.renderContract ?? null,
+      activeFace: mouthFailure
+        ? initialExpressionLayer.visual.activeFace
+        : null,
+    },
+    productionMouth: mouthFailure
+      ? {
+          source: expectedLayer.visual.activeFace.source,
+          assetId: expectedLayer.visual.activeFace.assetId,
+          configuredMouthAssetId: BFM_S08_PROBE_IDS.mouthAsset,
+          speakingIntervalMs: [
+            BFM_S08_PROBE_SHOT.dialogues[0].startMs,
+            BFM_S08_PROBE_SHOT.dialogues[0].endMs,
+          ],
+        }
+      : null,
+    stage: snapshot,
+  };
 }
 
 async function run() {
@@ -365,14 +476,19 @@ async function run() {
     );
     assert(captures[0].root.scaleX > 0, 'Unflipped root scale was not positive.');
     assert(captures[1].root.scaleX < 0 && captures[2].root.scaleX < 0, 'Flipped root transform was not applied.');
+    assert(captures[0].flipMarker.side === 'left', 'Unflipped PNG did not place the cyan marker on the known left side.');
+    assert(captures[1].flipMarker.side === 'right', 'Flipped PNG did not mirror the cyan marker to the right side.');
 
     const bodyFailure = await verifyRequiredPartFailure(manager, window, 'body');
     const faceFailure = await verifyRequiredPartFailure(manager, window, 'face');
+    const mouthFailure = await verifyRequiredPartFailure(manager, window, 'mouth');
     const result = {
       issue: 620,
+      followUpIssue: 623,
       section: 'BFM-S08',
       result: 'PASS',
       startingSha: 'b46b8fbf9e17fbd2b77f0569856c4290d8e86b23',
+      repairStartingSha: '6f950a0c081f3ff180358a9c074382cce026b583',
       evidenceBoundary: {
         sharedStageCompositeRendering: 'inherited-and-reused',
         hiddenStageExactRequestedFrameCapture: 'covered-by-this-probe',
@@ -386,10 +502,18 @@ async function run() {
           bodyOnly: capture.pixels.bodyOnly,
           bodyFaceOverlap: capture.pixels.faceBodyOverlap,
           bodyThroughTransparentFace: capture.pixels.bodyUnderTransparentFace,
+          asymmetricFlipMarker: capture.flipMarker,
         })),
       },
       captures,
-      requiredPartFailures: [bodyFailure, faceFailure],
+      asymmetricFlipEvidence: {
+        result: 'PASS',
+        unflippedCapture: captures[0].flipMarker,
+        flippedCapture: captures[1].flipMarker,
+        basis: 'returned hidden PNG pixel samples; root transform assertions are secondary evidence',
+      },
+      requiredPartFailures: [bodyFailure, faceFailure, mouthFailure],
+      mouthFailureExactCapture: mouthFailure,
       fallbackAndStaleGate: 'covered by stage-export-readiness and stage-image-resource-session unit tests',
       cancellationAndLateResponse: 'covered by hidden-window-manager unit tests',
     };

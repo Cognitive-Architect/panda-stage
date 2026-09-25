@@ -113,7 +113,14 @@ export function ExportRendererApp(): React.JSX.Element {
           ? BFM_S08_PROBE_IDS.bodyAsset
           : issue620FailurePart === 'face'
             ? BFM_S08_PROBE_IDS.faceNormalAsset
-            : null;
+            : issue620FailurePart === 'mouth' &&
+                shot.dialogues.some(
+                  (dialogue) =>
+                    requestedTimeMs >= dialogue.startMs &&
+                    requestedTimeMs < dialogue.endMs,
+                )
+              ? BFM_S08_PROBE_IDS.mouthAsset
+              : null;
       if (failedAssetId) {
         return {
           ...baseAssetUrls,
@@ -135,6 +142,7 @@ export function ExportRendererApp(): React.JSX.Element {
     issue620BfmS08,
     issue620FailurePart,
     requestedTimeMs,
+    shot,
   ]);
   const evaluatedShot = useMemo(
     () => {

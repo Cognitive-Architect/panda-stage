@@ -1,8 +1,10 @@
 {
   "issue": 620,
+  "followUpIssue": 623,
   "section": "BFM-S08",
   "result": "PASS",
   "startingSha": "b46b8fbf9e17fbd2b77f0569856c4290d8e86b23",
+  "repairStartingSha": "6f950a0c081f3ff180358a9c074382cce026b583",
   "evidenceBoundary": {
     "sharedStageCompositeRendering": "inherited-and-reused",
     "hiddenStageExactRequestedFrameCapture": "covered-by-this-probe",
@@ -35,7 +37,30 @@
           60,
           60,
           255
-        ]
+        ],
+        "asymmetricFlipMarker": {
+          "point": {
+            "x": 870,
+            "y": 675
+          },
+          "oppositePoint": {
+            "x": 1050,
+            "y": 675
+          },
+          "side": "left",
+          "pixel": [
+            0,
+            229,
+            255,
+            255
+          ],
+          "oppositePixel": [
+            220,
+            60,
+            60,
+            255
+          ]
+        }
       },
       {
         "timeMs": 500,
@@ -56,7 +81,30 @@
           45,
           45,
           191
-        ]
+        ],
+        "asymmetricFlipMarker": {
+          "point": {
+            "x": 1032,
+            "y": 661.5
+          },
+          "oppositePoint": {
+            "x": 888,
+            "y": 661.5
+          },
+          "side": "right",
+          "pixel": [
+            0,
+            171,
+            191,
+            191
+          ],
+          "oppositePixel": [
+            165,
+            45,
+            45,
+            191
+          ]
+        }
       },
       {
         "timeMs": 1000,
@@ -77,23 +125,46 @@
           30,
           30,
           128
-        ]
+        ],
+        "asymmetricFlipMarker": {
+          "point": {
+            "x": 1014,
+            "y": 648
+          },
+          "oppositePoint": {
+            "x": 906,
+            "y": 648
+          },
+          "side": "right",
+          "pixel": [
+            0,
+            115,
+            128,
+            128
+          ],
+          "oppositePixel": [
+            110,
+            30,
+            30,
+            128
+          ]
+        }
       }
     ]
   },
   "captures": [
     {
       "request": {
-        "jobId": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d",
+        "jobId": "395b2937-e44e-4492-a375-71fce95c5087",
         "frameIndex": 0,
         "timeMs": 0,
-        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:0"
+        "renderToken": "395b2937-e44e-4492-a375-71fce95c5087:0"
       },
       "stage": {
         "ready": true,
         "error": false,
         "timeMs": 0,
-        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:0",
+        "renderToken": "395b2937-e44e-4492-a375-71fce95c5087:0",
         "renderContract": "shared-stage-layer-v1"
       },
       "root": {
@@ -125,6 +196,29 @@
         "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
         "fallbackAssetId": null
       },
+      "flipMarker": {
+        "point": {
+          "x": 870,
+          "y": 675
+        },
+        "oppositePoint": {
+          "x": 1050,
+          "y": 675
+        },
+        "side": "left",
+        "pixel": [
+          0,
+          229,
+          255,
+          255
+        ],
+        "oppositePixel": [
+          220,
+          60,
+          60,
+          255
+        ]
+      },
       "png": {
         "width": 1920,
         "height": 1080
@@ -147,22 +241,34 @@
           60,
           60,
           255
+        ],
+        "flipMarker": [
+          0,
+          229,
+          255,
+          255
+        ],
+        "flipMarkerOpposite": [
+          220,
+          60,
+          60,
+          255
         ]
       },
       "pngPath": "docs\\evidence\\issue-620-bfm-s08\\frame-000000.png"
     },
     {
       "request": {
-        "jobId": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d",
+        "jobId": "395b2937-e44e-4492-a375-71fce95c5087",
         "frameIndex": 12,
         "timeMs": 500,
-        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:12"
+        "renderToken": "395b2937-e44e-4492-a375-71fce95c5087:12"
       },
       "stage": {
         "ready": true,
         "error": false,
         "timeMs": 500,
-        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:12",
+        "renderToken": "395b2937-e44e-4492-a375-71fce95c5087:12",
         "renderContract": "shared-stage-layer-v1"
       },
       "root": {
@@ -194,6 +300,29 @@
         "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
         "fallbackAssetId": null
       },
+      "flipMarker": {
+        "point": {
+          "x": 1032,
+          "y": 661.5
+        },
+        "oppositePoint": {
+          "x": 888,
+          "y": 661.5
+        },
+        "side": "right",
+        "pixel": [
+          0,
+          171,
+          191,
+          191
+        ],
+        "oppositePixel": [
+          165,
+          45,
+          45,
+          191
+        ]
+      },
       "png": {
         "width": 1920,
         "height": 1080
@@ -216,22 +345,34 @@
           45,
           45,
           191
+        ],
+        "flipMarker": [
+          0,
+          171,
+          191,
+          191
+        ],
+        "flipMarkerOpposite": [
+          165,
+          45,
+          45,
+          191
         ]
       },
       "pngPath": "docs\\evidence\\issue-620-bfm-s08\\frame-000012.png"
     },
     {
       "request": {
-        "jobId": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d",
+        "jobId": "395b2937-e44e-4492-a375-71fce95c5087",
         "frameIndex": 24,
         "timeMs": 1000,
-        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:24"
+        "renderToken": "395b2937-e44e-4492-a375-71fce95c5087:24"
       },
       "stage": {
         "ready": true,
         "error": false,
         "timeMs": 1000,
-        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:24",
+        "renderToken": "395b2937-e44e-4492-a375-71fce95c5087:24",
         "renderContract": "shared-stage-layer-v1"
       },
       "root": {
@@ -263,6 +404,29 @@
         "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
         "fallbackAssetId": "62000000-0000-4000-8000-000000000003"
       },
+      "flipMarker": {
+        "point": {
+          "x": 1014,
+          "y": 648
+        },
+        "oppositePoint": {
+          "x": 906,
+          "y": 648
+        },
+        "side": "right",
+        "pixel": [
+          0,
+          115,
+          128,
+          128
+        ],
+        "oppositePixel": [
+          110,
+          30,
+          30,
+          128
+        ]
+      },
       "png": {
         "width": 1920,
         "height": 1080
@@ -285,25 +449,98 @@
           30,
           30,
           128
+        ],
+        "flipMarker": [
+          0,
+          115,
+          128,
+          128
+        ],
+        "flipMarkerOpposite": [
+          110,
+          30,
+          30,
+          128
         ]
       },
       "pngPath": "docs\\evidence\\issue-620-bfm-s08\\frame-000024.png"
     }
   ],
+  "asymmetricFlipEvidence": {
+    "result": "PASS",
+    "unflippedCapture": {
+      "point": {
+        "x": 870,
+        "y": 675
+      },
+      "oppositePoint": {
+        "x": 1050,
+        "y": 675
+      },
+      "side": "left",
+      "pixel": [
+        0,
+        229,
+        255,
+        255
+      ],
+      "oppositePixel": [
+        220,
+        60,
+        60,
+        255
+      ]
+    },
+    "flippedCapture": {
+      "point": {
+        "x": 1032,
+        "y": 661.5
+      },
+      "oppositePoint": {
+        "x": 888,
+        "y": 661.5
+      },
+      "side": "right",
+      "pixel": [
+        0,
+        171,
+        191,
+        191
+      ],
+      "oppositePixel": [
+        165,
+        45,
+        45,
+        191
+      ]
+    },
+    "basis": "returned hidden PNG pixel samples; root transform assertions are secondary evidence"
+  },
   "requiredPartFailures": [
     {
       "failurePart": "body",
       "request": {
-        "jobId": "33e41382-6f05-4cbb-a07a-fdffccafab56",
+        "jobId": "977d35b4-e86d-40a8-b8a4-5b268ad0054a",
         "frameIndex": 1,
         "timeMs": 0
       },
-      "error": "Job 33e41382-6f05-4cbb-a07a-fdffccafab56 frame 1 failed: Stage image failed to load: data:image/png;base64,not-a-valid-png",
+      "error": "Job 977d35b4-e86d-40a8-b8a4-5b268ad0054a frame 1 failed: Stage image failed to load: data:image/png;base64,not-a-valid-png",
+      "successfulPngReturned": false,
+      "exactReady": false,
+      "initialExpressionStage": {
+        "ready": true,
+        "error": false,
+        "timeMs": 0,
+        "renderToken": "initial",
+        "renderContract": "shared-stage-layer-v1",
+        "activeFace": null
+      },
+      "productionMouth": null,
       "stage": {
         "ready": false,
         "error": true,
         "timeMs": 0,
-        "renderToken": "33e41382-6f05-4cbb-a07a-fdffccafab56:1",
+        "renderToken": "977d35b4-e86d-40a8-b8a4-5b268ad0054a:1",
         "renderContract": "shared-stage-layer-v1",
         "layers": [
           {
@@ -331,16 +568,90 @@
     {
       "failurePart": "face",
       "request": {
-        "jobId": "069dd3a2-1d56-4cdb-af47-d6daf514edfe",
+        "jobId": "a9663748-2c5f-418a-abc3-f430a5afc971",
         "frameIndex": 1,
         "timeMs": 0
       },
-      "error": "Job 069dd3a2-1d56-4cdb-af47-d6daf514edfe frame 1 failed: Stage image failed to load: data:image/png;base64,not-a-valid-png",
+      "error": "Job a9663748-2c5f-418a-abc3-f430a5afc971 frame 1 failed: Stage image failed to load: data:image/png;base64,not-a-valid-png",
+      "successfulPngReturned": false,
+      "exactReady": false,
+      "initialExpressionStage": {
+        "ready": true,
+        "error": false,
+        "timeMs": 0,
+        "renderToken": "initial",
+        "renderContract": "shared-stage-layer-v1",
+        "activeFace": null
+      },
+      "productionMouth": null,
       "stage": {
         "ready": false,
         "error": true,
         "timeMs": 0,
-        "renderToken": "069dd3a2-1d56-4cdb-af47-d6daf514edfe:1",
+        "renderToken": "a9663748-2c5f-418a-abc3-f430a5afc971:1",
+        "renderContract": "shared-stage-layer-v1",
+        "layers": [
+          {
+            "id": "62000000-0000-4000-8000-000000000009",
+            "assetId": "62000000-0000-4000-8000-000000000001",
+            "isBackground": false,
+            "listening": false,
+            "x": 960,
+            "y": 540,
+            "width": 640,
+            "height": 800,
+            "offsetX": 320,
+            "offsetY": 400,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "coverScale": null
+          }
+        ]
+      }
+    },
+    {
+      "failurePart": "mouth",
+      "request": {
+        "jobId": "8de5a94f-1437-4def-958d-ff954ead9677",
+        "frameIndex": 24,
+        "timeMs": 1000
+      },
+      "error": "Job 8de5a94f-1437-4def-958d-ff954ead9677 frame 24 failed: Stage image failed to load: data:image/png;base64,not-a-valid-png",
+      "successfulPngReturned": false,
+      "exactReady": false,
+      "initialExpressionStage": {
+        "ready": true,
+        "error": false,
+        "timeMs": 0,
+        "renderToken": "initial",
+        "renderContract": "shared-stage-layer-v1",
+        "activeFace": {
+          "currentExpressionId": "62000000-0000-4000-8000-000000000006",
+          "currentExpressionAssetId": "62000000-0000-4000-8000-000000000002",
+          "source": "expression",
+          "assetId": "62000000-0000-4000-8000-000000000002",
+          "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
+          "fallbackAssetId": null
+        }
+      },
+      "productionMouth": {
+        "source": "mouth",
+        "assetId": "62000000-0000-4000-8000-000000000004",
+        "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
+        "speakingIntervalMs": [
+          900,
+          1300
+        ]
+      },
+      "stage": {
+        "ready": false,
+        "error": true,
+        "timeMs": 0,
+        "renderToken": "8de5a94f-1437-4def-958d-ff954ead9677:24",
         "renderContract": "shared-stage-layer-v1",
         "layers": [
           {
@@ -366,6 +677,69 @@
       }
     }
   ],
+  "mouthFailureExactCapture": {
+    "failurePart": "mouth",
+    "request": {
+      "jobId": "8de5a94f-1437-4def-958d-ff954ead9677",
+      "frameIndex": 24,
+      "timeMs": 1000
+    },
+    "error": "Job 8de5a94f-1437-4def-958d-ff954ead9677 frame 24 failed: Stage image failed to load: data:image/png;base64,not-a-valid-png",
+    "successfulPngReturned": false,
+    "exactReady": false,
+    "initialExpressionStage": {
+      "ready": true,
+      "error": false,
+      "timeMs": 0,
+      "renderToken": "initial",
+      "renderContract": "shared-stage-layer-v1",
+      "activeFace": {
+        "currentExpressionId": "62000000-0000-4000-8000-000000000006",
+        "currentExpressionAssetId": "62000000-0000-4000-8000-000000000002",
+        "source": "expression",
+        "assetId": "62000000-0000-4000-8000-000000000002",
+        "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
+        "fallbackAssetId": null
+      }
+    },
+    "productionMouth": {
+      "source": "mouth",
+      "assetId": "62000000-0000-4000-8000-000000000004",
+      "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
+      "speakingIntervalMs": [
+        900,
+        1300
+      ]
+    },
+    "stage": {
+      "ready": false,
+      "error": true,
+      "timeMs": 0,
+      "renderToken": "8de5a94f-1437-4def-958d-ff954ead9677:24",
+      "renderContract": "shared-stage-layer-v1",
+      "layers": [
+        {
+          "id": "62000000-0000-4000-8000-000000000009",
+          "assetId": "62000000-0000-4000-8000-000000000001",
+          "isBackground": false,
+          "listening": false,
+          "x": 960,
+          "y": 540,
+          "width": 640,
+          "height": 800,
+          "offsetX": 320,
+          "offsetY": 400,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "coverScale": null
+        }
+      ]
+    }
+  },
   "fallbackAndStaleGate": "covered by stage-export-readiness and stage-image-resource-session unit tests",
   "cancellationAndLateResponse": "covered by hidden-window-manager unit tests"
 }
