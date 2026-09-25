@@ -187,6 +187,77 @@ describe('StageImageResourceSession', () => {
     );
   });
 
+  it('does not mark Body-only or Face-only decode as an exact composite frame', () => {
+    const layers = [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-v1' },
+    ];
+    const sourceKey = buildStageImageSourceKey(layers);
+
+    for (const firstReadyIndex of [0, 1]) {
+      const harness = createHarness();
+      reconcile(harness, layers);
+      harness.images[firstReadyIndex]!.succeed();
+
+      const partialState = harness.session.getSnapshot();
+      expect(partialState.ready).toBe(false);
+      expect(partialState.images.size).toBe(0);
+      expect(
+        isStageFrameReady({
+          error: null,
+          hasModel: true,
+          imageState: partialState,
+          layerCount: 1,
+          sourceKey,
+        }),
+      ).toBe(false);
+
+      harness.images[1 - firstReadyIndex]!.succeed();
+      expect(
+        isStageFrameReady({
+          error: null,
+          hasModel: true,
+          imageState: harness.session.getSnapshot(),
+          layerCount: 1,
+          sourceKey,
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it('does not promote a drawable complete Body/Face fallback after a required Face failure', () => {
+    const harness = createHarness();
+    const initial = [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-expression' },
+    ];
+    reconcile(harness, initial);
+    harness.images[0]!.succeed();
+    harness.images[1]!.succeed();
+
+    const desired = [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-mouth' },
+    ];
+    reconcile(harness, desired);
+    harness.images[2]!.fail();
+
+    const failedState = harness.session.getSnapshot();
+    expect(failedState.images.get(CHARACTER_BODY)).toBe(harness.images[0]);
+    expect(failedState.images.get(CHARACTER_FACE)).toBe(harness.images[1]);
+    expect(failedState.ready).toBe(false);
+    expect(failedState.error).toBeInstanceOf(Error);
+    expect(
+      isStageFrameReady({
+        error: failedState.error,
+        hasModel: true,
+        imageState: failedState,
+        layerCount: 1,
+        sourceKey: buildStageImageSourceKey(desired),
+      }),
+    ).toBe(false);
+  });
+
   it('reuses unchanged decoded sources across time and transform reconciles', () => {
     const harness = createHarness();
 

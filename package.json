@@ -79,6 +79,7 @@
     "verify:issue606": "pnpm build && electron scripts/verify-issue606-product-preview.cjs",
     "verify:issue608-shot-thumbnail": "pnpm build && electron scripts/verify-issue608-shot-thumbnail.cjs",
     "verify:issue609-character-assembly": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs",
+    "verify:bfm-s08": "pnpm build && electron scripts/verify-bfm-s08-hidden-capture.cjs",
     "verify:issue125": "pnpm build && pnpm test:integration && electron scripts/verify-issue76.cjs && electron scripts/verify-issue102-task3.cjs",
     "verify:m1": "pnpm build && node scripts/verify-m1.cjs",
     "verify:gate-a": "node scripts/verify-gate-a.cjs",

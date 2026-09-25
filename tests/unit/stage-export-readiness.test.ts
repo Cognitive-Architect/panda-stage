@@ -14,11 +14,11 @@ const requestA: ExportRenderFrameRequest = {
 const requestB: ExportRenderFrameRequest = {
   ...requestA,
   frameIndex: 12,
-  timeMs: 500,
 };
 
 describe('hidden Export exact frame readiness', () => {
   it('does not capture drawable fallback A and captures only committed requested frame B', () => {
+    expect(requestB.timeMs).toBe(requestA.timeMs);
     const sentFrames: ExportRenderFrameRequest[] = [];
     const tryCapture = (stage: ReturnType<typeof readExportStageReadiness>) => {
       if (isExactExportFrameReady(stage, requestB)) {
