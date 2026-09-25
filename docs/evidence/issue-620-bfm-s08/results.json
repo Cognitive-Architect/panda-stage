@@ -1,0 +1,371 @@
+{
+  "issue": 620,
+  "section": "BFM-S08",
+  "result": "PASS",
+  "startingSha": "b46b8fbf9e17fbd2b77f0569856c4290d8e86b23",
+  "evidenceBoundary": {
+    "sharedStageCompositeRendering": "inherited-and-reused",
+    "hiddenStageExactRequestedFrameCapture": "covered-by-this-probe",
+    "fullRealProjectVideoExport": "NOT COVERED"
+  },
+  "a20Evidence": {
+    "result": "PASS",
+    "returnedHiddenCanvasPngs": [
+      "docs\\evidence\\issue-620-bfm-s08\\frame-000000.png",
+      "docs\\evidence\\issue-620-bfm-s08\\frame-000012.png",
+      "docs\\evidence\\issue-620-bfm-s08\\frame-000024.png"
+    ],
+    "pixelComparisons": [
+      {
+        "timeMs": 0,
+        "bodyOnly": [
+          220,
+          60,
+          60,
+          255
+        ],
+        "bodyFaceOverlap": [
+          40,
+          120,
+          240,
+          255
+        ],
+        "bodyThroughTransparentFace": [
+          220,
+          60,
+          60,
+          255
+        ]
+      },
+      {
+        "timeMs": 500,
+        "bodyOnly": [
+          165,
+          45,
+          45,
+          191
+        ],
+        "bodyFaceOverlap": [
+          30,
+          157,
+          82,
+          191
+        ],
+        "bodyThroughTransparentFace": [
+          165,
+          45,
+          45,
+          191
+        ]
+      },
+      {
+        "timeMs": 1000,
+        "bodyOnly": [
+          110,
+          30,
+          30,
+          128
+        ],
+        "bodyFaceOverlap": [
+          128,
+          90,
+          20,
+          128
+        ],
+        "bodyThroughTransparentFace": [
+          110,
+          30,
+          30,
+          128
+        ]
+      }
+    ]
+  },
+  "captures": [
+    {
+      "request": {
+        "jobId": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d",
+        "frameIndex": 0,
+        "timeMs": 0,
+        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:0"
+      },
+      "stage": {
+        "ready": true,
+        "error": false,
+        "timeMs": 0,
+        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:0",
+        "renderContract": "shared-stage-layer-v1"
+      },
+      "root": {
+        "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+        "x": 960,
+        "y": 540,
+        "scaleX": 1,
+        "scaleY": 1,
+        "opacity": 1,
+        "flipX": false
+      },
+      "visualParts": [
+        {
+          "slot": "body",
+          "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+          "assetId": "62000000-0000-4000-8000-000000000001"
+        },
+        {
+          "slot": "face",
+          "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+          "assetId": "62000000-0000-4000-8000-000000000002"
+        }
+      ],
+      "activeFace": {
+        "currentExpressionId": "62000000-0000-4000-8000-000000000006",
+        "currentExpressionAssetId": "62000000-0000-4000-8000-000000000002",
+        "source": "expression",
+        "assetId": "62000000-0000-4000-8000-000000000002",
+        "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
+        "fallbackAssetId": null
+      },
+      "png": {
+        "width": 1920,
+        "height": 1080
+      },
+      "pixels": {
+        "bodyOnly": [
+          220,
+          60,
+          60,
+          255
+        ],
+        "faceBodyOverlap": [
+          40,
+          120,
+          240,
+          255
+        ],
+        "bodyUnderTransparentFace": [
+          220,
+          60,
+          60,
+          255
+        ]
+      },
+      "pngPath": "docs\\evidence\\issue-620-bfm-s08\\frame-000000.png"
+    },
+    {
+      "request": {
+        "jobId": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d",
+        "frameIndex": 12,
+        "timeMs": 500,
+        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:12"
+      },
+      "stage": {
+        "ready": true,
+        "error": false,
+        "timeMs": 500,
+        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:12",
+        "renderContract": "shared-stage-layer-v1"
+      },
+      "root": {
+        "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+        "x": 960,
+        "y": 540,
+        "scaleX": -0.8,
+        "scaleY": 0.9,
+        "opacity": 0.75,
+        "flipX": true
+      },
+      "visualParts": [
+        {
+          "slot": "body",
+          "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+          "assetId": "62000000-0000-4000-8000-000000000001"
+        },
+        {
+          "slot": "face",
+          "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+          "assetId": "62000000-0000-4000-8000-000000000003"
+        }
+      ],
+      "activeFace": {
+        "currentExpressionId": "62000000-0000-4000-8000-000000000007",
+        "currentExpressionAssetId": "62000000-0000-4000-8000-000000000003",
+        "source": "expression",
+        "assetId": "62000000-0000-4000-8000-000000000003",
+        "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
+        "fallbackAssetId": null
+      },
+      "png": {
+        "width": 1920,
+        "height": 1080
+      },
+      "pixels": {
+        "bodyOnly": [
+          165,
+          45,
+          45,
+          191
+        ],
+        "faceBodyOverlap": [
+          30,
+          157,
+          82,
+          191
+        ],
+        "bodyUnderTransparentFace": [
+          165,
+          45,
+          45,
+          191
+        ]
+      },
+      "pngPath": "docs\\evidence\\issue-620-bfm-s08\\frame-000012.png"
+    },
+    {
+      "request": {
+        "jobId": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d",
+        "frameIndex": 24,
+        "timeMs": 1000,
+        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:24"
+      },
+      "stage": {
+        "ready": true,
+        "error": false,
+        "timeMs": 1000,
+        "renderToken": "cc0d90aa-7ac2-4c52-b9e0-a7f2398bcb0d:24",
+        "renderContract": "shared-stage-layer-v1"
+      },
+      "root": {
+        "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+        "x": 960,
+        "y": 540,
+        "scaleX": -0.6,
+        "scaleY": 0.8,
+        "opacity": 0.5,
+        "flipX": true
+      },
+      "visualParts": [
+        {
+          "slot": "body",
+          "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+          "assetId": "62000000-0000-4000-8000-000000000001"
+        },
+        {
+          "slot": "face",
+          "ownerLayerId": "62000000-0000-4000-8000-000000000009",
+          "assetId": "62000000-0000-4000-8000-000000000004"
+        }
+      ],
+      "activeFace": {
+        "currentExpressionId": "62000000-0000-4000-8000-000000000007",
+        "currentExpressionAssetId": "62000000-0000-4000-8000-000000000003",
+        "source": "mouth",
+        "assetId": "62000000-0000-4000-8000-000000000004",
+        "configuredMouthAssetId": "62000000-0000-4000-8000-000000000004",
+        "fallbackAssetId": "62000000-0000-4000-8000-000000000003"
+      },
+      "png": {
+        "width": 1920,
+        "height": 1080
+      },
+      "pixels": {
+        "bodyOnly": [
+          110,
+          30,
+          30,
+          128
+        ],
+        "faceBodyOverlap": [
+          128,
+          90,
+          20,
+          128
+        ],
+        "bodyUnderTransparentFace": [
+          110,
+          30,
+          30,
+          128
+        ]
+      },
+      "pngPath": "docs\\evidence\\issue-620-bfm-s08\\frame-000024.png"
+    }
+  ],
+  "requiredPartFailures": [
+    {
+      "failurePart": "body",
+      "request": {
+        "jobId": "33e41382-6f05-4cbb-a07a-fdffccafab56",
+        "frameIndex": 1,
+        "timeMs": 0
+      },
+      "error": "Job 33e41382-6f05-4cbb-a07a-fdffccafab56 frame 1 failed: Stage image failed to load: data:image/png;base64,not-a-valid-png",
+      "stage": {
+        "ready": false,
+        "error": true,
+        "timeMs": 0,
+        "renderToken": "33e41382-6f05-4cbb-a07a-fdffccafab56:1",
+        "renderContract": "shared-stage-layer-v1",
+        "layers": [
+          {
+            "id": "62000000-0000-4000-8000-000000000009",
+            "assetId": "62000000-0000-4000-8000-000000000001",
+            "isBackground": false,
+            "listening": false,
+            "x": 960,
+            "y": 540,
+            "width": 640,
+            "height": 800,
+            "offsetX": 320,
+            "offsetY": 400,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "coverScale": null
+          }
+        ]
+      }
+    },
+    {
+      "failurePart": "face",
+      "request": {
+        "jobId": "069dd3a2-1d56-4cdb-af47-d6daf514edfe",
+        "frameIndex": 1,
+        "timeMs": 0
+      },
+      "error": "Job 069dd3a2-1d56-4cdb-af47-d6daf514edfe frame 1 failed: Stage image failed to load: data:image/png;base64,not-a-valid-png",
+      "stage": {
+        "ready": false,
+        "error": true,
+        "timeMs": 0,
+        "renderToken": "069dd3a2-1d56-4cdb-af47-d6daf514edfe:1",
+        "renderContract": "shared-stage-layer-v1",
+        "layers": [
+          {
+            "id": "62000000-0000-4000-8000-000000000009",
+            "assetId": "62000000-0000-4000-8000-000000000001",
+            "isBackground": false,
+            "listening": false,
+            "x": 960,
+            "y": 540,
+            "width": 640,
+            "height": 800,
+            "offsetX": 320,
+            "offsetY": 400,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDeg": 0,
+            "opacity": 1,
+            "visible": true,
+            "zIndex": 0,
+            "coverScale": null
+          }
+        ]
+      }
+    }
+  ],
+  "fallbackAndStaleGate": "covered by stage-export-readiness and stage-image-resource-session unit tests",
+  "cancellationAndLateResponse": "covered by hidden-window-manager unit tests"
+}

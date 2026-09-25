@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { evaluateShotAtTime } from '../domain';
+import { evaluateShotAtTime, projectShotMouth } from '../domain';
 import type {
   ExportLoadProbeRequest,
   ExportRenderFrameRequest,
 } from '../shared/export-types';
+import {
+  BFM_S08_PROBE_IDS,
+  BFM_S08_PROBE_PROJECT,
+} from '../shared/probe/bfm-s08-project';
 import {
   PROBE_CHARACTER_ASSET_ID,
   PROBE_CHARACTER_LAYER_ID,
@@ -13,7 +17,10 @@ import {
 } from '../shared/probe/probe-project';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from '../renderer/stage/CanvasStage';
-import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
+import {
+  BFM_S08_PROBE_ASSET_URLS,
+  PROBE_ASSET_URLS,
+} from '../renderer/stage/probe-assets';
 import {
   isExactExportFrameReady,
   readExportStageReadiness,
@@ -42,7 +49,13 @@ export function ExportRendererApp(): React.JSX.Element {
     evidenceParameters.get('issue47FlipX') === 'true';
   const issue573ExactFrameProbe =
     evidenceParameters.get('issue573ExactFrameProbe') === 'true';
+  const issue620BfmS08 =
+    evidenceParameters.get('issue620BfmS08') === 'true';
+  const issue620FailurePart = evidenceParameters.get(
+    'issue620FailurePart',
+  );
   const project = useMemo(() => {
+    if (issue620BfmS08) return BFM_S08_PROBE_PROJECT;
     if (!issue47FlipEvidence) return PROBE_PROJECT;
     const characterLayer = PROBE_SHOT.layers.find(
       (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
@@ -69,7 +82,7 @@ export function ExportRendererApp(): React.JSX.Element {
         },
       ],
     };
-  }, [issue47FlipEvidence, issue47FlipX]);
+  }, [issue47FlipEvidence, issue47FlipX, issue620BfmS08]);
   const projectShot = project.shots[0];
   if (!projectShot) {
     throw new Error('Export renderer project must contain one shot.');
@@ -91,23 +104,59 @@ export function ExportRendererApp(): React.JSX.Element {
   );
   const requestedTimeMs = frameRequest?.timeMs ?? 0;
   const exportAssetUrls = useMemo(() => {
-    if (!issue573ExactFrameProbe) return PROBE_ASSET_URLS;
+    const baseAssetUrls = issue620BfmS08
+      ? BFM_S08_PROBE_ASSET_URLS
+      : PROBE_ASSET_URLS;
+    if (issue620BfmS08 && frameRequest) {
+      const failedAssetId =
+        issue620FailurePart === 'body'
+          ? BFM_S08_PROBE_IDS.bodyAsset
+          : issue620FailurePart === 'face'
+            ? BFM_S08_PROBE_IDS.faceNormalAsset
+            : null;
+      if (failedAssetId) {
+        return {
+          ...baseAssetUrls,
+          [failedAssetId]: 'data:image/png;base64,not-a-valid-png',
+        };
+      }
+    }
+    if (!issue573ExactFrameProbe) return baseAssetUrls;
     const characterUrl = PROBE_ASSET_URLS[PROBE_CHARACTER_ASSET_ID];
-    if (!characterUrl) return PROBE_ASSET_URLS;
+    if (!characterUrl) return baseAssetUrls;
     const frame = requestedTimeMs >= 500 ? 'b' : 'a';
     return {
-      ...PROBE_ASSET_URLS,
+      ...baseAssetUrls,
       [PROBE_CHARACTER_ASSET_ID]: `${characterUrl}?issue573-frame=${frame}`,
     };
-  }, [issue573ExactFrameProbe, requestedTimeMs]);
+  }, [
+    frameRequest,
+    issue573ExactFrameProbe,
+    issue620BfmS08,
+    issue620FailurePart,
+    requestedTimeMs,
+  ]);
   const evaluatedShot = useMemo(
-    () => evaluateShotAtTime(shot, requestedTimeMs, project),
-    [requestedTimeMs, shot, project],
+    () => {
+      const evaluated = evaluateShotAtTime(shot, requestedTimeMs, project);
+      if (!issue620BfmS08) return evaluated;
+      const activeDialogue = shot.dialogues.find(
+        (dialogue) =>
+          evaluated.timeMs >= dialogue.startMs &&
+          evaluated.timeMs < dialogue.endMs,
+      );
+      return projectShotMouth(
+        project,
+        shot,
+        evaluated,
+        activeDialogue?.id ?? null,
+      );
+    },
+    [issue620BfmS08, requestedTimeMs, shot, project],
   );
-  const subtitle = evaluateSubtitleAtTime(
-    PROBE_SUBTITLE_CUES,
-    evaluatedShot.timeMs,
-  );
+  const subtitle = issue620BfmS08
+    ? null
+    : evaluateSubtitleAtTime(PROBE_SUBTITLE_CUES, evaluatedShot.timeMs);
 
   const acknowledgeLoad = useCallback((request: ExportLoadProbeRequest) => {
     window.pandaStageHidden.probeLoaded({
