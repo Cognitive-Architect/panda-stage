@@ -21,6 +21,7 @@ import {
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
+import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
 import { isNarrowViewport, useNarrowViewport } from './ResourceActivityDock';
@@ -360,6 +361,9 @@ export function RightInspector({
   const backgroundLayerId =
     snapshot?.project.shots.find((candidate) => candidate.id === currentShotId)
       ?.backgroundLayerId ?? '';
+  const currentShot = snapshot?.project.shots.find(
+    (candidate) => candidate.id === currentShotId,
+  );
   const layerSummary = getRightInspectorLayerSummary(
     snapshot,
     selection.layer,
@@ -566,6 +570,15 @@ export function RightInspector({
     <>
       {inspectorHeading}
       {inspectorSelection}
+      {snapshot && currentShot && selection.layer?.source.kind === 'character' ? (
+        <ExpressionAtTimeControl
+          key={`${currentShot.id}:${selection.layer.id}`}
+          project={snapshot.project}
+          projectRoot={snapshot.projectRoot}
+          shot={currentShot}
+          layer={selection.layer}
+        />
+      ) : null}
       {landscapeEmptyState ? null : (
         <>
           {!portraitEmptyState && compactPresentation ? (

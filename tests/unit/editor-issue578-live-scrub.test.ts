@@ -340,7 +340,9 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
 
     expect(zeroLayer.render.x).toBe(500);
     expect(zeroLayer.render.scaleX).toBe(0.5);
-    expect(zeroLayer.render.assetId).toBe(IDS.assetChar);
+    // At 0:00 only the formal Expression switch is visible; transform editing
+    // still reads the base Layer values above.
+    expect(zeroLayer.render.assetId).toBe(IDS.assetChar2);
     expect(scrubLayer.render.x).toBe(1345);
     expect(scrubLayer.render.scaleX).toBe(1.75);
     expect(scrubLayer.render.assetId).toBe(IDS.assetChar2);
@@ -350,8 +352,8 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     expect(zeroAsset.render.scaleX).toBe(1);
     expect(scrubAsset.render.visible).toBe(false);
     expect(scrubAsset.render.scaleX).toBe(-1);
-    // Runtime Preview/Export semantics stay formal-evaluator based; only the
-    // Editor seam intentionally chooses Base Edit View at 0ms.
+    // Runtime Preview/Export semantics stay formal-evaluator based; the Editor
+    // keeps base transforms at 0ms and projects the formal Face switch.
     expect(runtimeAtZero.layers.find((layer) => layer.id === IDS.layerChar)?.x).toBe(1200);
     expect(runtimeAtZero.layers.find((layer) => layer.id === IDS.layerBg)?.opacity).toBe(0);
     expect(atZero.directEditingEnabled).toBe(true);
@@ -371,7 +373,7 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     )!;
     expect(returnedLayer.render.x).toBe(500);
     expect(returnedLayer.render.scaleX).toBe(0.5);
-    expect(returnedLayer.render.assetId).toBe(IDS.assetChar);
+    expect(returnedLayer.render.assetId).toBe(IDS.assetChar2);
     expect(atReturnToZero.temporalInspection).toBe(false);
     expect(atReturnToZero.directEditingEnabled).toBe(true);
     expect(atReturnToZero.lastValidVisuals.size).toBe(3);
