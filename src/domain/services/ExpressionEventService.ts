@@ -1,5 +1,6 @@
 import { ProjectSchema, type Project, type Shot } from '../models';
 import { TimelineEventSchema, type ExpressionEvent } from '../models/timeline-event';
+import { evaluateShotAtTime } from '../evaluate-shot-at-time';
 import { resolveTimelineFrameTime } from '../timeline/frame-grid';
 import { validatePresetApplication } from '../validators/timelineEventValidator';
 
@@ -71,6 +72,11 @@ export function upsertExpressionEventAtTime(
       ),
     });
   }
+
+  // An inherited Expression is already effective; do not author a redundant switch.
+  if (evaluateShotAtTime(shot, timeMs, project).layers.find(
+    (layer) => layer.id === layerId,
+  )?.currentExpressionId === expressionId) return project;
 
   const event = TimelineEventSchema.parse({
     id: createId(),

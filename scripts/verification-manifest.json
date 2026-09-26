@@ -92,7 +92,6 @@
         ],
         "testPatterns": [
           "tests/unit/domain/**",
-          "tests/unit/expression-event-authoring.test.ts",
           "tests/unit/position-authoring-session.test.ts",
           "tests/unit/position-project-service.test.ts",
           "tests/unit/migrations/**",
@@ -200,7 +199,7 @@
           "public/character-empty-normal.png",
           "public/character-empty-angry.png"
         ],
-        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts", "tests/integration/expression-authoring.test.ts"],
+        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day19*",
           "scripts/verify-issue609-character-assembly.cjs"
@@ -358,7 +357,6 @@
         ],
         "testPatterns": [
           "tests/unit/editor-*.test.ts",
-          "tests/unit/expression-at-time-control.test.ts",
           "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",

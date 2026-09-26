@@ -53,6 +53,9 @@ describe('Issue #627 formal Expression authoring', () => {
 
   it('supports a 0:00 switch, same-time replace/no-op, and deletion fallback', () => {
     const base = projectWithTime();
+    expect(upsertExpressionEventAtTime(
+      base, IDS.shot, IDS.layerChar, IDS.expressionNormal, 0,
+    )).toBe(base);
     const atZero = upsertExpressionEventAtTime(
       base, IDS.shot, IDS.layerChar, IDS.expressionAngry, 0, () => EVENT_ID,
     );
@@ -74,18 +77,34 @@ describe('Issue #627 formal Expression authoring', () => {
     )?.currentExpressionId).toBe(IDS.expressionNormal);
   });
 
+  it('does not create another switch when the chosen Expression is inherited', () => {
+    const base = projectWithTime();
+    const authored = upsertExpressionEventAtTime(
+      base, IDS.shot, IDS.layerChar, IDS.expressionAngry, 3_000, () => EVENT_ID,
+    );
+    expect(upsertExpressionEventAtTime(
+      authored, IDS.shot, IDS.layerChar, IDS.expressionAngry, 4_000,
+    )).toBe(authored);
+    expect(authored.shots[0]!.timelineEvents).toHaveLength(1);
+  });
+
   it('keeps older same-time event ordering while replacing only the effective event', () => {
     const base = projectWithTime();
-    const older = upsertExpressionEventAtTime(
-      base, IDS.shot, IDS.layerChar, IDS.expressionNormal, 3_000, () => EVENT_ID,
-    );
+    const olderEvent = {
+      id: EVENT_ID,
+      type: 'expression' as const,
+      layerId: IDS.layerChar,
+      startMs: 3_000,
+      endMs: 3_000,
+      expressionId: IDS.expressionNormal,
+    };
     const legacy = ProjectSchema.parse({
-      ...older,
-      shots: older.shots.map((shot) => ({
+      ...base,
+      shots: base.shots.map((shot) => ({
         ...shot,
         timelineEvents: [
-          ...shot.timelineEvents,
-          { ...shot.timelineEvents[0]!, id: SECOND_EVENT_ID, expressionId: IDS.expressionAngry },
+          olderEvent,
+          { ...olderEvent, id: SECOND_EVENT_ID, expressionId: IDS.expressionAngry },
         ],
       })),
     });

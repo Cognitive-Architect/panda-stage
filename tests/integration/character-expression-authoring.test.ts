@@ -42,6 +42,14 @@ describe('Issue #627 Character Expression editor bridge', () => {
     expect(editorProjectStore.getSnapshot()).toBe(first);
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
 
+    timelineUiStore.seek(2_000, 3_000);
+    const historyBeforeInheritedNoOp = editorProjectStore.history.getSnapshot();
+    expect(expressionAuthoringStore.setAtCurrentTime(IDS.expressionAngry)).toMatchObject({ ok: true, changed: false });
+    expect(editorProjectStore.getSnapshot()).toBe(first);
+    expect(editorProjectStore.history.getSnapshot()).toEqual(historyBeforeInheritedNoOp);
+    expect(first.project.shots[0]!.timelineEvents).toHaveLength(1);
+    timelineUiStore.seek(1_000, 3_000);
+
     expect(expressionAuthoringStore.setAtCurrentTime(IDS.expressionNormal)).toMatchObject({ ok: true, changed: true });
     expect(editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents).toHaveLength(1);
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
