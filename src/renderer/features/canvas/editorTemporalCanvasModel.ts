@@ -56,10 +56,9 @@ export interface EditorTemporalCanvasModel {
 }
 
 /**
-   * The editor's 0:00 view is deliberately a base-state view. This conversion
- * stays local to the editor seam so the value shown in Canvas is the same
- * Layer value that the Inspector and direct Canvas editing mutate. Preview
- * and Export continue to call the formal runtime evaluator independently.
+ * The editor's 0:00 transform view uses base Layer values so Canvas and
+ * Inspector edits agree. Authored Expression events at 0:00 are projected
+ * separately; Preview and Export use the formal runtime evaluator.
  */
 function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
   const layers = [...shot.layers]
@@ -114,6 +113,30 @@ export function buildEditorTemporalCanvasModel({
 }: EditorTemporalCanvasModelInput): EditorTemporalCanvasModel {
   const temporalInspection = currentTimeMs !== 0;
   const baseEditorShot = buildBaseEditorShot(project, shot);
+  // Keep base transform editing at 0:00, while showing any formally authored
+  // Expression switch that starts there. Only the Face state is projected;
+  // Position, scale, opacity and the non-speaking base view stay unchanged.
+  const zeroTimeExpressionShot = shot.timelineEvents.some(
+    (event) => event.type === 'expression' && event.startMs === 0,
+  )
+    ? (() => {
+        const formal = evaluateShotAtTime(shot, 0, project);
+        return {
+          ...baseEditorShot,
+          layers: baseEditorShot.layers.map((layer) => {
+            const source = shot.layers.find((candidate) => candidate.id === layer.id);
+            const evaluated = formal.layers.find((candidate) => candidate.id === layer.id);
+            return source?.source.kind === 'character' && evaluated
+              ? {
+                  ...layer,
+                  assetId: evaluated.assetId,
+                  currentExpressionId: evaluated.currentExpressionId,
+                }
+              : layer;
+          }),
+        };
+      })()
+    : baseEditorShot;
   const evaluatedShot = temporalInspection
     ? projectShotMouth(
         project,
@@ -121,12 +144,11 @@ export function buildEditorTemporalCanvasModel({
         evaluateShotAtTime(shot, currentTimeMs, project),
         activeDialogueId,
       )
-    : baseEditorShot;
-  // Base Edit View owns the logical 0:00 state, while the continuity resolver
-  // owns how that state transitions as its image resources are replaced. Keep
-  // these responsibilities separate: at 0:00 we still pass the Base shot and
-  // never project runtime Mouth/dialogue state, but we do retain a complete
-  // previous visual until the new Base visual is ready.
+    : zeroTimeExpressionShot;
+  // Base Edit View owns 0:00 transforms and the continuity resolver owns image
+  // transitions. At 0:00 we show authored Expression state without projecting
+  // runtime Mouth/dialogue state, and retain the previous complete visual
+  // until the new Face is ready.
   const resolved = resolveEditorTemporalAssetResolution(
     project,
     shot,

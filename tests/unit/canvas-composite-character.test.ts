@@ -6,6 +6,7 @@ import {
   buildEditorStageRenderModel,
   projectShotMouth,
   ProjectSchema,
+  upsertExpressionEventAtTime,
   type Project,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
@@ -29,6 +30,7 @@ const BODY_REPLACEMENT_ID = '10000000-0000-4000-8000-000000000012';
 const DIALOGUE_ID = '80000000-0000-4000-8000-000000000004';
 const AUDIO_CLIP_ID = '70000000-0000-4000-8000-000000000004';
 const EXPRESSION_EVENT_ID = '90000000-0000-4000-8000-000000000004';
+const AUTHORED_EXPRESSION_EVENT_ID = '90000000-0000-4000-8000-000000000027';
 
 function imageAsset(
   id: string,
@@ -139,6 +141,82 @@ function compositeProject(options: { mouth?: boolean } = {}): Project {
     })),
   });
 }
+
+describe('Issue #627 authored composite Expression switch', () => {
+  it('keeps Body and placement while speaking overrides Face, then recovers B at 5s', () => {
+    const base = compositeProject();
+    const dialogue = base.shots[0]!.dialogues[0]!;
+    const prepared = ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) =>
+        asset.id === AUDIO_ID && asset.kind === 'audio'
+          ? { ...asset, durationMs: 5_000 }
+          : asset,
+      ),
+      shots: [{
+        ...base.shots[0]!,
+        durationMs: 6_000,
+        timelineEvents: [],
+        dialogues: [{ ...dialogue, startMs: 1_000, endMs: 5_000 }],
+        audioClips: [{ ...base.shots[0]!.audioClips[0]!, startMs: 1_000, endMs: 5_000 }],
+      }],
+    });
+    const authored = upsertExpressionEventAtTime(
+      prepared, IDS.shot, IDS.layerChar, IDS.expressionAngry, 3_000,
+      () => AUTHORED_EXPRESSION_EVENT_ID,
+    );
+    const shot = authored.shots[0]!;
+    const atTwo = projectShotMouth(authored, shot, evaluateShotAtTime(shot, 2_000, authored), DIALOGUE_ID);
+    const atFour = projectShotMouth(authored, shot, evaluateShotAtTime(shot, 4_000, authored), DIALOGUE_ID);
+    const atFive = projectShotMouth(authored, shot, evaluateShotAtTime(shot, 5_000, authored), DIALOGUE_ID);
+    const visualAt = (evaluated: typeof atFour) => buildEditorStageRenderModel(authored, shot, evaluated)
+      .layers.find((layer) => layer.layer.id === IDS.layerChar)!;
+
+    expect(atTwo.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
+      currentExpressionId: IDS.expressionNormal,
+      mouthOverrideAssetId: MOUTH_ID,
+    });
+    expect(atFour.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
+      currentExpressionId: IDS.expressionAngry,
+      mouthOverrideAssetId: MOUTH_ID,
+    });
+    expect(visualAt(atFour).visual.parts.map((part) => part.assetId)).toEqual([BODY_ID, MOUTH_ID]);
+    expect(atFive.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
+      currentExpressionId: IDS.expressionAngry,
+      mouthOverrideAssetId: null,
+    });
+    expect(visualAt(atFive).visual.parts.map((part) => part.assetId)).toEqual([BODY_ID, FACE_ANGRY_ID]);
+    expect(visualAt(atFour).render).toMatchObject({ x: 500, y: 600, scaleX: 0.5, scaleY: 0.5 });
+    expect(authored.characters).toEqual(prepared.characters);
+    expect(shot.layers).toEqual(prepared.shots[0]!.layers);
+  });
+
+  it('shows an authored 0:00 Face in the editor without changing base transform editing', () => {
+    const base = compositeProject({ mouth: false });
+    const authored = upsertExpressionEventAtTime(
+      base, IDS.shot, IDS.layerChar, IDS.expressionAngry, 0,
+      () => AUTHORED_EXPRESSION_EVENT_ID,
+    );
+    const model = buildEditorTemporalCanvasModel({
+      project: authored,
+      shot: authored.shots[0]!,
+      currentTimeMs: 0,
+      readyAssetIds: new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID, FACE_ANGRY_ID]),
+      previousVisuals: new Map(),
+    });
+    expect(model.directEditingEnabled).toBe(true);
+    expect(model.evaluatedShot.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
+      currentExpressionId: IDS.expressionAngry,
+      x: 500,
+      y: 600,
+      scaleX: 0.5,
+      scaleY: 0.5,
+    });
+    expect(model.visualsByLayer.get(IDS.layerChar)?.parts.map((part) => part.assetId)).toEqual([
+      BODY_ID, FACE_ANGRY_ID,
+    ]);
+  });
+});
 
 function layerAt(
   project: Project,
