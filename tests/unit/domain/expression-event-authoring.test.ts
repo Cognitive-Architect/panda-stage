@@ -5,8 +5,8 @@ import {
   deleteExpressionEvent,
   evaluateShotAtTime,
   upsertExpressionEventAtTime,
-} from '../../src/domain';
-import { buildProject, IDS } from './domain/testProject';
+} from '../../../src/domain';
+import { buildProject, IDS } from './testProject';
 
 const EVENT_ID = '90000000-0000-4000-8000-000000000027';
 const SECOND_EVENT_ID = '90000000-0000-4000-8000-000000000028';

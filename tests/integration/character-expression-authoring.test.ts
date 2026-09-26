@@ -21,7 +21,7 @@ afterEach(async () => {
   ));
 });
 
-describe('Issue #627 Expression editor bridge', () => {
+describe('Issue #627 Character Expression editor bridge', () => {
   it('creates, replaces, deletes and replays one History step per action', () => {
     const base = buildProject();
     editorProjectStore.open('expression-history.pandastage', base);

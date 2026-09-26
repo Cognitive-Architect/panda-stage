@@ -11,7 +11,7 @@ vi.mock('../../src/renderer/features/timeline/timelineUiStore', async (importOri
   return { ...actual, useTimelineUi: () => actual.timelineUiStore.getSnapshot() };
 });
 
-describe('Issue #627 Expression-at-time control', () => {
+describe('Issue #627 Expression-at-time control in the editor', () => {
   it('shows the selected occurrence’s current Face, visual choices and existing switch', () => {
     const base = buildProject();
     const project = ProjectSchema.parse({
