@@ -26,7 +26,7 @@ describe('Issue #627 Expression-at-time control in the editor', () => {
     const layer = shot.layers.find((candidate) => candidate.id === IDS.layerChar)!;
     const markup = renderToStaticMarkup(createElement(ExpressionAtTimeControl, {
       project: authored,
-      projectRoot: 'D:\expression-ui.pandastage',
+      projectRoot: 'D:/expression-ui.pandastage',
       shot,
       layer,
     }));
@@ -42,7 +42,7 @@ describe('Issue #627 Expression-at-time control in the editor', () => {
 
     const ordinary = renderToStaticMarkup(createElement(ExpressionAtTimeControl, {
       project: authored,
-      projectRoot: 'D:\expression-ui.pandastage',
+      projectRoot: 'D:/expression-ui.pandastage',
       shot,
       layer: shot.layers.find((candidate) => candidate.id === IDS.layerAsset)!,
     }));
