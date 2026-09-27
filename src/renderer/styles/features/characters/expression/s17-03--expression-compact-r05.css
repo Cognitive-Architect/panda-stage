@@ -66,4 +66,83 @@
   max-height: none;
   overflow-y: visible;
   overscroll-behavior: auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* The legacy/narrow Expression edit host opts into the same single-scroll mode. */
+.expression-editor .expression-fields .image-asset-picker-candidates {
+  max-height: none;
+  overflow-y: visible;
+  overscroll-behavior: auto;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-search,
+.expression-editor .expression-fields .image-asset-picker-search {
+  display: grid;
+  min-height: 44px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-overlay);
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-search:focus-within,
+.expression-editor .expression-fields .image-asset-picker-search:focus-within {
+  border-color: var(--ui-color-accent);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-search input,
+.expression-editor .expression-fields .image-asset-picker-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--ui-color-text-primary);
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-pagination,
+.expression-editor .expression-fields .image-asset-picker-pagination {
+  display: grid;
+  align-items: center;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-pagination button,
+.expression-editor .expression-fields .image-asset-picker-pagination button {
+  min-height: 44px;
+  padding: 6px 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-pagination button:first-child,
+.expression-editor .expression-fields .image-asset-picker-pagination button:first-child {
+  justify-self: start;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-pagination button:last-child,
+.expression-editor .expression-fields .image-asset-picker-pagination button:last-child {
+  justify-self: end;
 }

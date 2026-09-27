@@ -197,6 +197,7 @@ function LegacyExpressionEditor({
                     if (assetId) onSetAsset(expression.id, assetId);
                   }}
                   onThumbnailError={onThumbnailError}
+                  searchAndPaginate
                   selectedAssetId={expression.assetId}
                   testId={`expression-asset-picker-${expression.id}`}
                   thumbnails={thumbnails}
@@ -471,6 +472,7 @@ function LandscapeExpressionEditor({
               }}
               onThumbnailError={onThumbnailError}
               presentation="inline"
+              searchAndPaginate
               selectedAssetId={editingExpression.assetId}
               testId={`expression-asset-picker-${editingExpression.id}`}
               thumbnails={thumbnails}

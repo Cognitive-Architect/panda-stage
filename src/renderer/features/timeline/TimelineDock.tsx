@@ -10,6 +10,7 @@ import {
   ChevronUp,
   Clock3,
   MessageSquareText,
+  SkipBack,
   Volume2,
   ZoomIn,
   ZoomOut,
@@ -35,6 +36,16 @@ const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
 
 export interface TimelineDockProps {
   presentation?: 'desktop' | 'landscape' | 'portrait';
+}
+
+/** Seek through the existing Timeline owner and mirror its scroll reset to the DOM. */
+export function returnTimelineToStart(
+  durationMs: number,
+  rulerScroll: Pick<HTMLDivElement, 'scrollLeft'> | null,
+): void {
+  timelineUiStore.seek(0, durationMs);
+  timelineUiStore.setScrollPx(0);
+  if (rulerScroll) rulerScroll.scrollLeft = 0;
 }
 
 /**
@@ -220,6 +231,17 @@ export function TimelineDock({
             {formatTimecode(ui.currentTimeMs)} / {formatTimecode(durationMs)}
           </span>
         </output>
+        <button
+          type="button"
+          className="timeline-return-to-start"
+          data-testid="timeline-return-to-start"
+          aria-label="回到起点"
+          title="回到起点"
+          disabled={!hasShot}
+          onClick={() => returnTimelineToStart(durationMs, scrollRef.current)}
+        >
+          <SkipBack aria-hidden="true" focusable="false" size={18} />
+        </button>
         <div className="timeline-zoom">
           <button
             type="button"
