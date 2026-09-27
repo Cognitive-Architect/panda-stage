@@ -19,6 +19,7 @@ import {
 import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
 import {
   previewDiagnosticNow,
+  previewDiagnosticScenePixelRatio,
   recordPreviewDiagnostic,
   recordPreviewDuration,
 } from './previewDiagnostics';
@@ -215,7 +216,10 @@ export function StageRenderer({
   const instrumentedLayers = useRef(new WeakSet<Konva.Layer>());
   const configurePreviewLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
-      configureKonvaScenePixelRatio(layer, PREVIEW_CANVAS_PIXEL_RATIO);
+      configureKonvaScenePixelRatio(
+        layer,
+        PREVIEW_CANVAS_PIXEL_RATIO * previewDiagnosticScenePixelRatio(),
+      );
       if (previewDiagnosticNow() !== null && !instrumentedLayers.current.has(layer)) {
         instrumentedLayers.current.add(layer);
         const drawScene = layer.drawScene.bind(layer);

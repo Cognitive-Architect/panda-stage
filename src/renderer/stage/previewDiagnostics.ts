@@ -1,6 +1,8 @@
 /** Optional, bounded external probe used only by the Issue #629 diagnostic runner. */
 export interface PreviewDiagnosticSink {
   record(event: string, atMs: number, detail: Record<string, number | string | boolean | null>): void;
+  /** Diagnostic-only backing resolution; absent in normal product use. */
+  scenePixelRatio?: number;
 }
 
 function sink(): PreviewDiagnosticSink | undefined {
@@ -11,6 +13,11 @@ function sink(): PreviewDiagnosticSink | undefined {
 
 export function previewDiagnosticNow(): number | null {
   return sink() ? performance.now() : null;
+}
+
+export function previewDiagnosticScenePixelRatio(): number {
+  const requested = sink()?.scenePixelRatio;
+  return requested === 0.5 || requested === 0.25 ? requested : 1;
 }
 
 export function recordPreviewDiagnostic(

@@ -6,6 +6,7 @@ import {
   resolveEditorCanvasPixelRatio,
   type KonvaSceneLayer,
 } from '../../src/renderer/stage/konva-pixel-ratio';
+import { previewDiagnosticScenePixelRatio } from '../../src/renderer/stage/previewDiagnostics';
 
 function layerWithPixelRatio(initialPixelRatio: number): {
   layer: KonvaSceneLayer;
@@ -46,13 +47,22 @@ describe('Konva scene pixel-ratio ownership', () => {
     expect(preview).not.toContain('Konva.pixelRatio');
     expect(editor).not.toContain('Konva.pixelRatio');
     expect(preview).toContain(
-      'configureKonvaScenePixelRatio(layer, PREVIEW_CANVAS_PIXEL_RATIO)',
+      'PREVIEW_CANVAS_PIXEL_RATIO * previewDiagnosticScenePixelRatio()',
     );
     expect(preview).toContain('ref={configurePreviewLayer}');
     expect(editor).toContain(
       'configureKonvaScenePixelRatio(layer, editorCanvasPixelRatio)',
     );
     expect(editor.match(/ref=\{configureEditorLayer\}/gu)).toHaveLength(2);
+  });
+
+  it('keeps production preview resolution unless an explicit diagnostic ratio is allowed', () => {
+    expect(previewDiagnosticScenePixelRatio()).toBe(1);
+    for (const [requested, expected] of [[0.5, 0.5], [0.25, 0.25], [1, 1], [2, 1], [0, 1]]) {
+      vi.stubGlobal('window', { __pandaPreviewDiagnostics: { scenePixelRatio: requested } });
+      expect(previewDiagnosticScenePixelRatio()).toBe(expected);
+    }
+    vi.unstubAllGlobals();
   });
 
   it('keeps a 150% editor layer sharp without changing the preview layer contract', () => {

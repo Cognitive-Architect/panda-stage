@@ -1,4 +1,4 @@
-const { app, ipcMain } = require('electron');
+const { app, contentTracing, ipcMain } = require('electron');
 const { createHash } = require('node:crypto');
 const { mkdtempSync, mkdirSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
@@ -9,9 +9,16 @@ const { ProjectSchema } = require('../dist-electron/domain/index.js');
 const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
 
-// R02-only diagnostic. Its synthetic projects never touch an existing user project.
+// Isolated R02 fixture, optionally reused for the Issue #631 graphics-path diagnosis.
+// Synthetic projects never touch an existing user project.
+const graphicsMode = process.env.ISSUE631_GRAPHICS === '1';
+const scenePixelRatio = graphicsMode ? Number(process.env.ISSUE631_PIXEL_RATIO ?? '1') : 1;
+if (![1, 0.5, 0.25].includes(scenePixelRatio)) {
+  throw new Error('ISSUE631_PIXEL_RATIO must be 1, 0.5, or 0.25.');
+}
+const traceSceneA = graphicsMode && process.env.ISSUE631_TRACE === '1';
 const acceptanceRoot = 'D:\\PandaStage-Acceptance';
-const runRoot = mkdtempSync(path.join(acceptanceRoot, 'issue629-'));
+const runRoot = mkdtempSync(path.join(acceptanceRoot, graphicsMode ? 'issue631-' : 'issue629-'));
 const projectRoot = path.join(runRoot, 'issue629-abc.pandastage');
 const userDataRoot = path.join(runRoot, 'electron-user-data');
 const ids = (n) => `a0629000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
@@ -31,7 +38,9 @@ const ID = Object.freeze({
 });
 const channels = [];
 let windowRef = null;
+let gpuInfoUpdated = false;
 app.on('window-all-closed', () => {});
+app.on('gpu-info-update', () => { gpuInfoUpdated = true; });
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -299,6 +308,69 @@ async function evaluate(source) {
   return windowRef.webContents.executeJavaScript(source);
 }
 
+async function captureGraphicsStatus() {
+  const deadline = Date.now() + 10000;
+  while (!gpuInfoUpdated && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  let gpuInfo;
+  let gpuInfoError = null;
+  try {
+    gpuInfo = await app.getGPUInfo('complete');
+  } catch (error) {
+    gpuInfoError = String(error);
+  }
+  const graphicsSwitches = [
+    'disable-gpu', 'disable-software-rasterizer', 'use-angle', 'use-gl',
+    'enable-unsafe-swiftshader', 'enable-features', 'disable-features',
+  ];
+  const status = {
+    gpuInfoUpdated,
+    hardwareAccelerationEnabled: gpuInfoUpdated ? app.isHardwareAccelerationEnabled() : null,
+    gpuFeatureStatus: gpuInfoUpdated ? app.getGPUFeatureStatus() : null,
+    gpuInfo: gpuInfo ?? null,
+    gpuInfoError,
+    electronVersion: process.versions.electron,
+    chromiumVersion: process.versions.chrome,
+    processMetrics: app.getAppMetrics().map((metric) => ({
+      pid: metric.pid, type: metric.type, serviceName: metric.serviceName ?? null,
+    })),
+    launchSwitches: Object.fromEntries(graphicsSwitches
+      .filter((name) => app.commandLine.hasSwitch(name))
+      .map((name) => [name, app.commandLine.getSwitchValue(name)])),
+  };
+  writeFileSync(path.join(runRoot, 'graphics-status.json'), JSON.stringify(status, null, 2));
+  return status;
+}
+
+const traceCategories = [
+  'toplevel', 'benchmark', 'cc', 'gpu', 'viz', 'devtools.timeline',
+  'blink', 'blink.user_timing', 'renderer.scheduler', 'sequence_manager',
+  'disabled-by-default-devtools.timeline.frame',
+  'disabled-by-default-cc.debug.scheduler.frames',
+];
+
+async function startSceneTrace() {
+  const availableCategories = await contentTracing.getCategories();
+  await contentTracing.startRecording({
+    recording_mode: 'record-until-full',
+    trace_buffer_size_in_kb: 65536,
+    included_categories: traceCategories,
+    excluded_categories: ['*'],
+  });
+  return { startedAtUtc: new Date().toISOString(), availableCategories };
+}
+
+async function stopSceneTrace(started) {
+  const bufferUsage = await contentTracing.getTraceBufferUsage();
+  const tracePath = path.join(runRoot, 'trace-scene-A.json');
+  await contentTracing.stopRecording(tracePath);
+  return {
+    ...started, stoppedAtUtc: new Date().toISOString(), tracePath,
+    includedCategories: traceCategories, bufferUsage,
+  };
+}
+
 async function openProject() {
   await waitFor(`document.querySelector('[data-testid="project-center-screen"] .recovery-open-row input')`, 'Project Center missing.');
   await evaluate(`(() => {
@@ -314,6 +386,7 @@ async function installProbe() {
   await evaluate(`(() => {
     const events = [];
     window.__pandaPreviewDiagnostics = {
+      scenePixelRatio: ${scenePixelRatio},
       record(event, atMs, detail) {
         if (events.length < 20000) events.push({ event, atMs, ...detail });
       },
@@ -373,6 +446,7 @@ async function measureScene(label, shotId, { hideStage = false, hideCanvas = fal
   if (hideCanvas) {
     await evaluate(`document.querySelector('[data-testid="stage-renderer"] canvas').style.visibility = 'hidden'`);
   }
+  const traceStarted = traceSceneA && label === 'A' ? await startSceneTrace() : null;
   await evaluate(`(() => {
     window.__pandaPreviewDiagnostics.reset();
     window.__issue629ControlRafActive = true;
@@ -431,6 +505,7 @@ async function measureScene(label, shotId, { hideStage = false, hideCanvas = fal
     visibility: pausedRaf.visibility,
     focused: pausedRaf.focused,
   };
+  if (traceStarted) result.trace = await stopSceneTrace(traceStarted);
   await evaluate(`document.querySelector('[data-testid="product-preview-close"]').click()`);
   await waitFor(`!document.querySelector('[data-testid="product-preview-overlay"]')`, 'Preview did not close.');
   return result;
@@ -547,20 +622,29 @@ async function run() {
     windowRef.show();
     windowRef.focus();
     await openProject();
+    const graphicsStatus = graphicsMode ? await captureGraphicsStatus() : null;
     await installProbe();
     const idleRaf = await measureIdleRaf();
     const scenes = {};
-    for (const [label, shotId, options] of [
-      ['A', ID.shotA], ['A-canvas-hidden', ID.shotA, { hideCanvas: true }],
-      ['A-hidden', ID.shotA, { hideStage: true }],
-      ['B', ID.shotB], ['C', ID.shotC],
-    ]) {
+    const sceneSpecs = graphicsMode
+      ? [['A', ID.shotA]]
+      : [
+          ['A', ID.shotA], ['A-canvas-hidden', ID.shotA, { hideCanvas: true }],
+          ['A-hidden', ID.shotA, { hideStage: true }],
+          ['B', ID.shotB], ['C', ID.shotC],
+        ];
+    for (const [label, shotId, options] of sceneSpecs) {
       scenes[label] = await measureScene(label, shotId, options);
       writeFileSync(path.join(runRoot, `scene-${label}.json`), JSON.stringify(scenes[label]));
       console.log(`${label}: ${JSON.stringify(summarize(scenes[label]))}`);
     }
     const summary = {
-      runRoot, branch: 'issue-627-s09-r01', startingSha: '1563e918c6f2b7e96063682b227e4c307af4c35a',
+      runRoot, branch: 'issue-627-s09-r01',
+      startingSha: graphicsMode
+        ? '67df04dc6896cc5d550ac019ad4366b8c19c0805'
+        : '1563e918c6f2b7e96063682b227e4c307af4c35a',
+      diagnosticScenePixelRatio: scenePixelRatio,
+      graphicsStatusPath: graphicsStatus ? path.join(runRoot, 'graphics-status.json') : null,
       fixture: 'One 6s shot per scene; 1100px Position travel over 5s; synthetic full-size PNGs; C has silent WAV, subtitle, Mouth, Expression switch, seven visible Layers.',
       windowSize: scenes.A.windowSize, devicePixelRatio: scenes.A.devicePixelRatio,
       canvas: scenes.A.canvas,
@@ -569,9 +653,12 @@ async function run() {
         p95Ms: percentile(idleRaf.deltas, 0.95),
         visibility: idleRaf.visibility, focused: idleRaf.focused,
       },
-      A: summarize(scenes.A), ACanvasHidden: summarize(scenes['A-canvas-hidden']),
-      AHidden: summarize(scenes['A-hidden']),
-      B: summarize(scenes.B), C: summarize(scenes.C),
+      A: summarize(scenes.A),
+      ...(graphicsMode ? { trace: scenes.A.trace ?? null } : {
+        ACanvasHidden: summarize(scenes['A-canvas-hidden']),
+        AHidden: summarize(scenes['A-hidden']),
+        B: summarize(scenes.B), C: summarize(scenes.C),
+      }),
     };
     writeFileSync(path.join(runRoot, 'summary.json'), JSON.stringify(summary, null, 2));
     console.log(`RESULT_PATH=${path.join(runRoot, 'summary.json')}`);
