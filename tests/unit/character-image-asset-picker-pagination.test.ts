@@ -23,7 +23,7 @@ function assets(count: number): ImageAsset[] {
   }));
 }
 
-describe('Issue #637 Expression image search and pagination', () => {
+describe('Issue #637 Character Expression image search and pagination', () => {
   it('filters names case-insensitively before dividing into 12-item pages', () => {
     const library = assets(105);
     const first = paginateImageAssetCandidates(library, '', 1);
