@@ -32,8 +32,10 @@ import {
 import { CharacterEditor } from './CharacterEditor';
 import { CharacterList } from './CharacterList';
 import {
+  ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   isCharacterAssemblyPending,
   isCharacterCreationSnapshot,
+  resolveAssemblyExitDecision,
 } from './characterAssemblyPreview';
 
 export type CharacterWorkspaceView =
@@ -342,16 +344,38 @@ export function CharacterManager({
     return true;
   };
 
-  const leaveAssembly = (): boolean => {
-    if (!editAssemblySnapshot) return true;
-    if (assemblyPending) {
-      setStatus('请先应用或还原装配更改。');
-      return false;
-    }
+  /**
+   * One dirty-exit contract for every route that truly leaves the assembly
+   * context. Clean leaves immediately; dirty asks before discarding.
+   */
+  const confirmAssemblyDiscard = (): boolean => {
+    // Clean exits must not raise a prompt, so never call confirm() first.
+    if (!assemblyPending) return true;
+    return (
+      resolveAssemblyExitDecision(
+        true,
+        window.confirm(ASSEMBLY_DISCARD_CONFIRM_MESSAGE),
+      ) === 'leave'
+    );
+  };
+
+  const discardAssemblySession = (): void => {
     const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
-    if (active?.sessionId === editAssemblySnapshot.sessionId) active.cancel();
+    if (
+      active &&
+      editAssemblySnapshot &&
+      active.sessionId === editAssemblySnapshot.sessionId
+    ) {
+      active.cancel();
+    }
     ownedSessionIdRef.current = null;
     setStatus('');
+  };
+
+  const leaveAssembly = (): boolean => {
+    if (!editAssemblySnapshot) return true;
+    if (!confirmAssemblyDiscard()) return false;
+    discardAssemblySession();
     return true;
   };
 
@@ -374,12 +398,7 @@ export function CharacterManager({
   };
 
   const requestCloseDrawer = (): void => {
-    if (
-      assemblyPending &&
-      !window.confirm('装配更改尚未应用，关闭将放弃这些更改。继续吗？')
-    ) {
-      return;
-    }
+    if (editAssemblySnapshot && !confirmAssemblyDiscard()) return;
     cancelOwnedSession();
     onCloseDrawer();
   };
@@ -416,6 +435,17 @@ export function CharacterManager({
       ownedSessionIdRef.current = active.sessionId;
     }
   }, [assemblySnapshot, selectedCharacterId]);
+
+  /**
+   * Declare which Character the UI is still deliberately editing in assembly so
+   * Undo / Redo can rebuild a fresh session without auto-reopening assembly
+   * after an explicit exit, a Character switch, or a Project lifecycle change.
+   */
+  useEffect(() => {
+    characterAssemblySessionStore.setAssemblyContinuityOwner(
+      editAssemblySnapshot?.characterId ?? null,
+    );
+  }, [editAssemblySnapshot?.characterId]);
 
   useEffect(() => {
     const baselineIds = creationBaselineIdsRef.current;

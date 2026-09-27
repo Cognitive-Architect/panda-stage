@@ -218,7 +218,7 @@ export type CharacterCreationCommitResult =
 export interface CharacterAssemblySessionDependencies {
   readonly editorStore: Pick<
     EditorProjectStore,
-    'getSnapshot' | 'subscribe'
+    'getSnapshot' | 'subscribe' | 'getProjectInstanceId'
   >;
   readonly characterStore: Pick<
     CharacterStore,
@@ -236,6 +236,8 @@ interface ActiveAssemblySession {
   baselineDefinition: CompositeCharacterDefinition;
   readonly projectId: string;
   readonly projectRoot: string;
+  /** Runtime Project lifetime identity captured when the session started. */
+  readonly projectInstanceId: number | null;
   readonly characterId: string;
   draft: CompositeCharacterDefinition;
 }
@@ -435,6 +437,11 @@ export class CharacterAssemblySessionStore {
     | null = null;
   private commitContext: CommitContext | null = null;
   private nextSessionId = 0;
+  /**
+   * The Character the UI is still deliberately editing in assembly. The UI
+   * declares it; the store never infers continuity from a path or an ID.
+   */
+  private continuityOwner: string | null = null;
 
   constructor(
     private readonly dependencies: CharacterAssemblySessionDependencies,
@@ -452,8 +459,18 @@ export class CharacterAssemblySessionStore {
     return () => this.listeners.delete(listener);
   };
 
+  /**
+   * Declare which Character the UI is still deliberately editing in assembly.
+   * Continuity after an external Project replacement is only allowed for this
+   * Character, and an explicit exit clears it before the next invalidation.
+   */
+  setAssemblyContinuityOwner(characterId: string | null): void {
+    this.continuityOwner = characterId;
+  }
+
   begin(characterId: string): CharacterAssemblyBeginResult {
     const hadActiveSession = this.active !== null;
+    this.continuityOwner = null;
     this.clearActive();
     if (hadActiveSession) this.emit();
 
@@ -485,6 +502,7 @@ export class CharacterAssemblySessionStore {
       baselineDefinition: cloneDefinition(definition),
       projectId: snapshot.project.id,
       projectRoot: snapshot.projectRoot,
+      projectInstanceId: this.dependencies.editorStore.getProjectInstanceId(),
       characterId,
       draft: cloneDefinition(definition),
     };
@@ -575,6 +593,7 @@ export class CharacterAssemblySessionStore {
 
   dispose(): void {
     this.unsubscribeEditor();
+    this.continuityOwner = null;
     this.clearActive();
     this.snapshot = null;
     this.listeners.clear();
@@ -586,8 +605,73 @@ export class CharacterAssemblySessionStore {
       this.commitContext!.editorChangeCount += 1;
       return;
     }
-    this.invalidate();
+    const previous = this.active;
+    // The old session and its handles always die here; continuity may only
+    // build a brand-new session from the latest formal Character definition.
+    this.clearActive();
+    if (this.canResumeAssembly(previous)) {
+      this.resumeAssembly(previous);
+    } else {
+      this.continuityOwner = null;
+    }
+    this.emit();
   };
+
+  /**
+   * Workspace continuity is allowed only when the replacement is still the
+   * same open Project lifetime, the same intended composite Character, the UI
+   * still declares that intent, and no unapplied draft would be discarded.
+   */
+  private canResumeAssembly(
+    previous: ActiveSession,
+  ): previous is ActiveAssemblySession {
+    if (previous.kind !== 'edit') return false;
+    if (this.continuityOwner !== previous.characterId) return false;
+    // Never trade a genuinely pending draft for workspace continuity.
+    if (!definitionsEqual(previous.draft, previous.baselineDefinition)) {
+      return false;
+    }
+    const current = this.dependencies.editorStore.getSnapshot();
+    if (!current) return false;
+    if (current.projectRoot !== previous.projectRoot) return false;
+    if (current.project.id !== previous.projectId) return false;
+    if (
+      this.dependencies.editorStore.getProjectInstanceId() !==
+      previous.projectInstanceId
+    ) {
+      return false;
+    }
+    const character = current.project.characters.find(
+      (candidate) => candidate.id === previous.characterId,
+    );
+    return Boolean(character && character.mode === 'composite');
+  }
+
+  /** Read-only rebuild: no Project write, no dirty change, no History entry. */
+  private resumeAssembly(previous: ActiveAssemblySession): void {
+    const current = this.dependencies.editorStore.getSnapshot();
+    if (!current) return;
+    let definition: CompositeCharacterDefinition;
+    try {
+      definition = this.dependencies.characterStore.getCompositeDefinition(
+        previous.characterId,
+      );
+    } catch {
+      return;
+    }
+    this.active = {
+      kind: 'edit',
+      sessionId: ++this.nextSessionId,
+      generation: 0,
+      baselineSnapshot: current,
+      baselineDefinition: cloneDefinition(definition),
+      projectId: current.project.id,
+      projectRoot: current.projectRoot,
+      projectInstanceId: this.dependencies.editorStore.getProjectInstanceId(),
+      characterId: previous.characterId,
+      draft: cloneDefinition(definition),
+    };
+  }
 
   private createAssemblyHandle(
     sessionId: number,
@@ -1080,11 +1164,14 @@ export class CharacterAssemblySessionStore {
 
   private exit(sessionId: number, generation: number): void {
     if (!this.activeForToken(sessionId, generation)) return;
+    // Explicit user exit wins over any continuity intent.
+    this.continuityOwner = null;
     this.invalidate();
   }
 
   private invalidate(): void {
     if (!this.active) return;
+    this.continuityOwner = null;
     this.clearActive();
     this.emit();
   }
