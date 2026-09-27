@@ -272,13 +272,16 @@ async function readCharacterExpressionUi(window) {
           ?.click();
         await nextFrames();
         const card = document.querySelectorAll('.expression-card-list > li')[index];
-        const picker = card?.querySelector('[data-image-asset-picker]');
+        const panel = document.querySelector(
+          '[data-testid="expression-edit-panel-' + card?.dataset.expressionId + '"]'
+        );
+        const picker = panel?.querySelector('[data-image-asset-picker]');
         values.push({
           name: card?.querySelector('.expression-card-copy strong')
             ?.textContent?.trim(),
           assetId: picker?.dataset.selectedAssetId,
         });
-        card?.querySelector('.expression-edit-trigger')?.click();
+        panel?.querySelector('[data-testid^="expression-cancel-"]')?.click();
         await nextFrames();
       }
       const warningElement = document.querySelector(
