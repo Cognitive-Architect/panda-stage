@@ -31,10 +31,16 @@ import {
 } from '../../domain';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 import { CanvasStage } from '../stage/CanvasStage';
+import {
+  previewDiagnosticNow,
+  recordPreviewDiagnostic,
+  recordPreviewDuration,
+} from '../stage/previewDiagnostics';
 import type { StageImageResourceFailure } from '../stage/stageImageResourceSession';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import {
   advanceProductPreviewTime,
+  PRODUCT_PREVIEW_MAX_STEP_MS,
   applyProductPreviewMouthFallback,
   buildProductPreviewImagePlan,
   buildProductPreviewCues,
@@ -90,6 +96,7 @@ export function ProductPreviewOverlay({
   onHandoffReady,
   onClose,
 }: ProductPreviewOverlayProps): React.JSX.Element {
+  const renderStartedAt = previewDiagnosticNow();
   const currentShot = useMemo(
     () => resolveProductPreviewShot(project, shotId),
     [project, shotId],
@@ -219,8 +226,17 @@ export function ProductPreviewOverlay({
     const tick = (now: number): void => {
       const delta = now - previous;
       previous = now;
+      recordPreviewDiagnostic('tick-callback', { deltaMs: delta });
       setTimeMs((current) => {
         const step = advanceProductPreviewTime(current, delta, durationMs);
+        recordPreviewDiagnostic('raf', {
+          deltaMs: delta,
+          requestedTimeMs: current + delta,
+          nextTimeMs: step.timeMs,
+          clamped: delta > PRODUCT_PREVIEW_MAX_STEP_MS,
+          visibility: document.visibilityState,
+          focused: document.hasFocus(),
+        });
         if (step.ended) {
           setPlaying(false);
         }
@@ -267,43 +283,57 @@ export function ProductPreviewOverlay({
   }, [handoffPhase, onClose]);
 
   const evaluatedShot = useMemo(
-    () =>
-      shot
-        ? evaluateShotAtTime(
-            shot,
-            activeShotTimeMs,
-            project,
-          )
-        : null,
+    () => {
+      if (!shot) return null;
+      const startedAt = previewDiagnosticNow();
+      const evaluated = evaluateShotAtTime(shot, activeShotTimeMs, project);
+      recordPreviewDuration('evaluate-shot', startedAt, {
+        timeMs: activeShotTimeMs,
+        layerCount: evaluated.layers.length,
+      });
+      return evaluated;
+    },
     [activeShotTimeMs, project, shot],
   );
   const activeCue = evaluatedShot
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
   const renderedShot = useMemo(
-    () =>
-      shot && evaluatedShot
-        ? projectProductPreviewMouth(
-            project,
-            shot,
-            evaluatedShot,
-            activeCue?.id ?? null,
-          )
-        : evaluatedShot,
+    () => {
+      if (!shot || !evaluatedShot) return evaluatedShot;
+      const startedAt = previewDiagnosticNow();
+      const projected = projectProductPreviewMouth(
+        project,
+        shot,
+        evaluatedShot,
+        activeCue?.id ?? null,
+      );
+      recordPreviewDuration('mouth-projection', startedAt, {
+        timeMs: evaluatedShot.timeMs,
+      });
+      return projected;
+    },
     [activeCue?.id, evaluatedShot, project, shot],
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
   const imagePlan = useMemo(
-    () =>
-      shot && renderedShot
-        ? buildProductPreviewImagePlan(project, shot, renderedShot)
-        : {
-            requiredAssetIds: [],
-            fallbackAssetIds: [],
-            candidateAssetIds: assetIds,
-            mouthFallbacks: [],
-          },
+    () => {
+      if (!shot || !renderedShot) {
+        return {
+          requiredAssetIds: [],
+          fallbackAssetIds: [],
+          candidateAssetIds: assetIds,
+          mouthFallbacks: [],
+        };
+      }
+      const startedAt = previewDiagnosticNow();
+      const plan = buildProductPreviewImagePlan(project, shot, renderedShot);
+      recordPreviewDuration('image-plan', startedAt, {
+        timeMs: renderedShot.timeMs,
+      });
+      return plan;
+    },
     [assetIds, project, renderedShot, shot],
   );
   const decodeFallbackAssetIds = imagePlan.mouthFallbacks
@@ -532,6 +562,10 @@ export function ProductPreviewOverlay({
     playing,
     seekRevision,
   });
+  useLayoutEffect(() => {
+    recordPreviewDuration('overlay-render-to-commit', renderStartedAt, { timeMs });
+  });
+  recordPreviewDuration('overlay-render-pre-jsx', renderStartedAt, { timeMs });
 
   return (
     <div

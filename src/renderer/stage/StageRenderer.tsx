@@ -18,6 +18,11 @@ import {
 } from '../../shared/stage/render-model';
 import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
 import {
+  previewDiagnosticNow,
+  recordPreviewDiagnostic,
+  recordPreviewDuration,
+} from './previewDiagnostics';
+import {
   configureKonvaScenePixelRatio,
   PREVIEW_CANVAS_PIXEL_RATIO,
 } from './konva-pixel-ratio';
@@ -106,12 +111,14 @@ function buildStagePartSources(
 }
 
 interface StagePartImagesProps {
+  ownerLayerId: string;
   parts: readonly StageRenderPart[];
   images: ReadonlyMap<string, HTMLImageElement>;
   composite: boolean;
 }
 
 function StagePartImages({
+  ownerLayerId,
   parts,
   images,
   composite,
@@ -126,8 +133,13 @@ function StagePartImages({
   useLayoutEffect(() => {
     const visual = visualRef.current;
     if (!visual) return;
+    const startedAt = previewDiagnosticNow();
+    const previouslyCached = visual.isCached();
     visual.clearCache();
-    if (!composite || !complete || orderedParts.length < 2) return;
+    if (!composite || !complete || orderedParts.length < 2) {
+      recordPreviewDuration('composite-cache-clear', startedAt, { ownerLayerId });
+      return;
+    }
     const minX = Math.min(...orderedParts.map((part) => part.render.x));
     const minY = Math.min(...orderedParts.map((part) => part.render.y));
     const maxX = Math.max(
@@ -146,6 +158,16 @@ function StagePartImages({
       height: maxY - minY,
     });
     visual.getLayer()?.batchDraw();
+    recordPreviewDuration('composite-cache-rebuild', startedAt, {
+      ownerLayerId,
+      partCount: orderedParts.length,
+      visualWidth: maxX - minX,
+      visualHeight: maxY - minY,
+      previouslyCached,
+      visualSignature: orderedParts.map((part) =>
+        `${part.id}:${part.sourceUrl}:${part.render.x}:${part.render.y}:${part.render.width}:${part.render.height}`,
+      ).join('|'),
+    });
   }, [complete, composite, images, orderedParts]);
 
   return (
@@ -189,15 +211,33 @@ export function StageRenderer({
   renderToken,
   degraded = false,
 }: StageRendererProps): React.JSX.Element {
+  const renderStartedAt = previewDiagnosticNow();
+  const instrumentedLayers = useRef(new WeakSet<Konva.Layer>());
   const configurePreviewLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
       configureKonvaScenePixelRatio(layer, PREVIEW_CANVAS_PIXEL_RATIO);
+      if (previewDiagnosticNow() !== null && !instrumentedLayers.current.has(layer)) {
+        instrumentedLayers.current.add(layer);
+        const drawScene = layer.drawScene.bind(layer);
+        layer.drawScene = ((...args: Parameters<Konva.Layer['drawScene']>) => {
+          const startedAt = previewDiagnosticNow();
+          const result = drawScene(...args);
+          recordPreviewDuration('konva-draw-scene', startedAt, {});
+          return result;
+        }) as Konva.Layer['drawScene'];
+      }
     }
   }, []);
   const modelResult = useMemo(() => {
+    const startedAt = previewDiagnosticNow();
     try {
+      const model = buildStageRenderModel(project, evaluatedShot, assetUrls);
+      recordPreviewDuration('stage-render-model', startedAt, {
+        timeMs: evaluatedShot.timeMs,
+        layerCount: model.layers.length,
+      });
       return {
-        model: buildStageRenderModel(project, evaluatedShot, assetUrls),
+        model,
         error: null,
       };
     } catch (error) {
@@ -247,6 +287,16 @@ export function StageRenderer({
   );
   const committedFrame = committedFrameRef.current;
   const displayModel = displayFrame?.model ?? modelResult.model;
+  useLayoutEffect(() => {
+    recordPreviewDiagnostic('stage-commit', {
+      timeMs: displayModel?.timeMs ?? -1,
+      ready,
+      displayReady,
+    });
+    recordPreviewDuration('stage-render-to-commit', renderStartedAt, {
+      timeMs: displayModel?.timeMs ?? -1,
+    });
+  });
   const displayCaption = displayFrame?.caption ?? caption;
   const displayCaptionStyle = displayFrame?.captionStyle ?? captionStyle;
 
@@ -296,6 +346,10 @@ export function StageRenderer({
       </div>
     );
   }
+
+  recordPreviewDuration('stage-render-pre-jsx', renderStartedAt, {
+    timeMs: displayModel?.timeMs ?? -1,
+  });
 
   return (
     <div
@@ -364,6 +418,7 @@ export function StageRenderer({
                 <StagePartImages
                   composite={layer.visual.kind === 'composite-character'}
                   images={imageState.images}
+                  ownerLayerId={layer.id}
                   parts={layer.parts}
                 />
               </Group>

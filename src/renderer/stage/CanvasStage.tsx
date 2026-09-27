@@ -3,6 +3,10 @@ import { calculateViewportTransform } from '../../domain';
 import type { EvaluatedShot, Project, SubtitleStyle } from '../../domain';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
 import { StageRenderer } from './StageRenderer';
+import {
+  previewDiagnosticNow,
+  recordPreviewDuration,
+} from './previewDiagnostics';
 import type { StageImageResourceFailure } from './stageImageResourceSession';
 
 interface CanvasStageProps {
@@ -20,6 +24,7 @@ interface CanvasStageProps {
 }
 
 export function CanvasStage(props: CanvasStageProps): React.JSX.Element {
+  const renderStartedAt = previewDiagnosticNow();
   const viewportRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState(() =>
     calculateViewportTransform(
@@ -55,6 +60,15 @@ export function CanvasStage(props: CanvasStageProps): React.JSX.Element {
     updateScale();
     return () => observer.disconnect();
   }, [props.project.width]);
+
+  useLayoutEffect(() => {
+    recordPreviewDuration('canvas-stage-render-to-commit', renderStartedAt, {
+      timeMs: props.evaluatedShot.timeMs,
+    });
+  });
+  recordPreviewDuration('canvas-stage-render-pre-jsx', renderStartedAt, {
+    timeMs: props.evaluatedShot.timeMs,
+  });
 
   return (
     <div
