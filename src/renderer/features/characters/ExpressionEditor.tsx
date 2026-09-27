@@ -336,6 +336,7 @@ function LandscapeExpressionEditor({
   };
 
   const startExpressionEdit = (expression: Character['expressions'][number]): void => {
+    onAddOpenChange(false);
     setEditingExpressionId(expression.id);
     setEditingName(expression.name);
   };
@@ -358,6 +359,9 @@ function LandscapeExpressionEditor({
   const expressionWarnings = (expressionId: string): CharacterDimensionWarning[] =>
     warnings.filter((warning) => warning.expressionId === expressionId);
   const unscopedWarnings = warnings.filter((warning) => !warning.expressionId);
+  const editingExpression = character.expressions.find(
+    (expression) => expression.id === editingExpressionId,
+  );
 
   return (
     <section
@@ -379,7 +383,10 @@ function LandscapeExpressionEditor({
             className="expression-add-trigger"
             data-testid="expression-add-trigger"
             disabled={disabled || imageAssets.length === 0}
-            onClick={() => onAddOpenChange(!isAddOpen)}
+            onClick={() => {
+              if (!isAddOpen) cancelExpressionEdit();
+              onAddOpenChange(!isAddOpen);
+            }}
             type="button"
           >
             ＋ 添加表情
@@ -436,6 +443,68 @@ function LandscapeExpressionEditor({
             </button>
           </div>
         </form>
+      ) : null}
+      {editingExpression ? (
+        <section
+          aria-label={`编辑${editingExpression.name}表情`}
+          className="expression-edit-panel expression-edit-workspace"
+          data-testid={`expression-edit-panel-${editingExpression.id}`}
+        >
+          <strong className="expression-edit-workspace-title">编辑表情</strong>
+          <label>
+            名称
+            <input
+              aria-label={`${editingExpression.name} 表情名称`}
+              data-testid={`expression-name-${editingExpression.id}`}
+              disabled={disabled}
+              maxLength={200}
+              onChange={(event) => setEditingName(event.target.value)}
+              value={editingName}
+            />
+          </label>
+          <div className="expression-current-asset">
+            <ImageAssetPicker
+              assets={imageAssets}
+              label="图片"
+              onChange={(assetId) => {
+                if (assetId) onSetAsset(editingExpression.id, assetId);
+              }}
+              onThumbnailError={onThumbnailError}
+              presentation="inline"
+              selectedAssetId={editingExpression.assetId}
+              testId={`expression-asset-picker-${editingExpression.id}`}
+              thumbnails={thumbnails}
+              disabled={disabled}
+            />
+          </div>
+          {expressionWarnings(editingExpression.id).map((warning) => (
+            <ExpressionWarning
+              key={`${warning.expressionId}-${warning.assetId}`}
+              warning={warning}
+            />
+          ))}
+          <div className="expression-form-actions">
+            <button
+              data-testid={`expression-cancel-${editingExpression.id}`}
+              onClick={cancelExpressionEdit}
+              type="button"
+            >
+              取消
+            </button>
+            <button
+              data-testid={`expression-apply-${editingExpression.id}`}
+              disabled={
+                disabled ||
+                !editingName.trim() ||
+                editingName.trim() === editingExpression.name
+              }
+              onClick={() => applyExpressionName(editingExpression)}
+              type="button"
+            >
+              应用
+            </button>
+          </div>
+        </section>
       ) : null}
       <ul className="expression-card-list">
         {character.expressions.map((expression) => {
@@ -524,66 +593,6 @@ function LandscapeExpressionEditor({
                   </div>
                 </details>
               </div>
-              {isEditing ? (
-                <div
-                  className="expression-edit-panel"
-                  data-testid={`expression-edit-panel-${expression.id}`}
-                >
-                  <label>
-                    名称
-                    <input
-                      aria-label={`${expression.name} 表情名称`}
-                      data-testid={`expression-name-${expression.id}`}
-                      disabled={disabled}
-                      maxLength={200}
-                      onChange={(event) => setEditingName(event.target.value)}
-                      value={editingName}
-                    />
-                  </label>
-                  <div className="expression-current-asset">
-                    <ImageAssetPicker
-                      assets={imageAssets}
-                      label="图片"
-                      onChange={(assetId) => {
-                        if (assetId) onSetAsset(expression.id, assetId);
-                      }}
-                      onThumbnailError={onThumbnailError}
-                      presentation="inline"
-                      selectedAssetId={expression.assetId}
-                      testId={`expression-asset-picker-${expression.id}`}
-                      thumbnails={thumbnails}
-                      disabled={disabled}
-                    />
-                  </div>
-                  {cardWarnings.map((warning) => (
-                    <ExpressionWarning
-                      key={`${warning.expressionId}-${warning.assetId}`}
-                      warning={warning}
-                    />
-                  ))}
-                  <div className="expression-form-actions">
-                    <button
-                      data-testid={`expression-cancel-${expression.id}`}
-                      onClick={cancelExpressionEdit}
-                      type="button"
-                    >
-                      取消
-                    </button>
-                    <button
-                      data-testid={`expression-apply-${expression.id}`}
-                      disabled={
-                        disabled ||
-                        !editingName.trim() ||
-                        editingName.trim() === expression.name
-                      }
-                      onClick={() => applyExpressionName(expression)}
-                      type="button"
-                    >
-                      应用
-                    </button>
-                  </div>
-                </div>
-              ) : null}
             </li>
           );
         })}

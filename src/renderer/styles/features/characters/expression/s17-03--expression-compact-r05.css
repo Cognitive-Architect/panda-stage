@@ -1,0 +1,68 @@
+/* Issue #633: keep Expression cards as a scannable list while the one active
+   editor owns name and image selection above it. The outer drawer scrolls. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing {
+  grid-column: auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card-editing
+  .expression-card-main {
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card-editing
+  .expression-card-preview {
+  width: 64px;
+  height: 64px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card-editing
+  .expression-card-actions {
+  grid-column: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-edit-workspace {
+  padding: 9px 0;
+  border-top: 1px solid var(--ui-color-separator);
+  border-bottom: 1px solid var(--ui-color-separator);
+  gap: 8px;
+}
+
+.expression-edit-workspace-title {
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .image-asset-picker-candidates {
+  max-height: none;
+  overflow-y: visible;
+  overscroll-behavior: auto;
+}

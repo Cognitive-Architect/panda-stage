@@ -51,6 +51,54 @@ const CHARACTER_IDLE_STATUS =
   '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。';
 const CHARACTER_BINDING_REMINDER_DURATION_MS = 5_500;
 
+export interface CharacterThumbnailEntry {
+  resourceKey: string;
+  state: ThumbnailState;
+}
+
+function characterThumbnailResourceKey(
+  projectId: string,
+  projectRoot: string,
+  asset: ImageAsset,
+): string {
+  return `${projectId}\u0000${projectRoot}\u0000${asset.id}\u0000${asset.sha256}`;
+}
+
+export function reconcileCharacterThumbnailEntries(
+  current: Readonly<Record<string, CharacterThumbnailEntry>>,
+  projectId: string,
+  projectRoot: string,
+  assets: readonly ImageAsset[],
+): Record<string, CharacterThumbnailEntry> {
+  const next: Record<string, CharacterThumbnailEntry> = {};
+  for (const asset of assets) {
+    const resourceKey = characterThumbnailResourceKey(projectId, projectRoot, asset);
+    const previous = current[asset.id];
+    next[asset.id] = previous?.resourceKey === resourceKey
+      ? previous
+      : { resourceKey, state: { status: 'loading' } };
+  }
+  return Object.keys(next).length === Object.keys(current).length &&
+    assets.every((asset) => next[asset.id] === current[asset.id])
+    ? current
+    : next;
+}
+
+export function visibleCharacterThumbnails(
+  entries: Readonly<Record<string, CharacterThumbnailEntry>>,
+  projectId: string,
+  projectRoot: string,
+  assets: readonly ImageAsset[],
+): Record<string, ThumbnailState> {
+  return Object.fromEntries(assets.map((asset) => {
+    const resourceKey = characterThumbnailResourceKey(projectId, projectRoot, asset);
+    const entry = entries[asset.id];
+    return [asset.id, entry?.resourceKey === resourceKey
+      ? entry.state
+      : { status: 'loading' as const }];
+  }));
+}
+
 export interface CharacterManagerProps {
   snapshot: EditorProjectSnapshot | null;
   view?: CharacterWorkspaceView;
@@ -95,9 +143,10 @@ export function CharacterManager({
   const [bindingReminderCount, setBindingReminderCount] = useState<
     number | null
   >(null);
-  const [thumbnails, setThumbnails] = useState<
-    Record<string, ThumbnailState>
+  const [thumbnailEntries, setThumbnailEntries] = useState<
+    Record<string, CharacterThumbnailEntry>
   >({});
+  const thumbnailReadsInFlight = useRef(new Set<string>());
   const assemblySnapshot = useSyncExternalStore(
     characterAssemblySessionStore.subscribe,
     characterAssemblySessionStore.getSnapshot,
@@ -115,6 +164,12 @@ export function CharacterManager({
       ) ?? []),
     [project],
   );
+  const thumbnails = useMemo(() => {
+    if (!project || !snapshot) return {};
+    return visibleCharacterThumbnails(
+      thumbnailEntries, project.id, snapshot.projectRoot, imageAssets,
+    );
+  }, [imageAssets, project, snapshot, thumbnailEntries]);
   const selectedCharacter =
     project?.characters.find(
       (character) => character.id === selectedCharacterId,
@@ -174,42 +229,42 @@ export function CharacterManager({
 
   useEffect(() => {
     if (!snapshot) {
-      setThumbnails({});
+      if (Object.keys(thumbnailEntries).length > 0) setThumbnailEntries({});
       return;
     }
-    let cancelled = false;
-    const next: Record<string, ThumbnailState> = {};
-    for (const asset of imageAssets) {
-      next[asset.id] = { status: 'loading' };
+    const projectId = snapshot.project.id;
+    const projectRoot = snapshot.projectRoot;
+    const next = reconcileCharacterThumbnailEntries(
+      thumbnailEntries, projectId, projectRoot, imageAssets,
+    );
+    if (next !== thumbnailEntries) {
+      setThumbnailEntries(next);
+      return;
     }
-    setThumbnails(next);
     for (const asset of imageAssets) {
+      const resourceKey = next[asset.id]!.resourceKey;
+      if (next[asset.id]!.state.status !== 'loading') continue;
+      if (thumbnailReadsInFlight.current.has(resourceKey)) continue;
+      thumbnailReadsInFlight.current.add(resourceKey);
       void window.pandaStage.assets
         .readThumbnail({
-          projectRoot: snapshot.projectRoot,
+          projectRoot,
           assetId: asset.id,
           sha256: asset.sha256,
         })
         .then((response) => {
-          if (cancelled) return;
-          setThumbnails((current) => ({
-            ...current,
-            [asset.id]: thumbnailStateFromResponse(response),
-          }));
+          setThumbnailEntries((current) => current[asset.id]?.resourceKey === resourceKey
+            ? { ...current, [asset.id]: { resourceKey, state: thumbnailStateFromResponse(response) } }
+            : current);
         })
         .catch(() => {
-          if (!cancelled) {
-            setThumbnails((current) => ({
-              ...current,
-              [asset.id]: { status: 'missing', reason: 'error' },
-            }));
-          }
-        });
+          setThumbnailEntries((current) => current[asset.id]?.resourceKey === resourceKey
+            ? { ...current, [asset.id]: { resourceKey, state: { status: 'missing', reason: 'error' } } }
+            : current);
+        })
+        .finally(() => thumbnailReadsInFlight.current.delete(resourceKey));
     }
-    return () => {
-      cancelled = true;
-    };
-  }, [imageAssets, snapshot?.projectRoot]);
+  }, [imageAssets, snapshot, thumbnailEntries]);
 
   const reportError = (error: unknown): void => {
     if (error instanceof CharacterServiceError) {
@@ -223,10 +278,15 @@ export function CharacterManager({
   };
 
   const markThumbnailError = (assetId: string): void => {
-    setThumbnails((current) => ({
-      ...current,
-      [assetId]: { status: 'missing', reason: 'error' },
-    }));
+    if (!project || !snapshot) return;
+    const asset = imageAssets.find((candidate) => candidate.id === assetId);
+    if (!asset) return;
+    const resourceKey = characterThumbnailResourceKey(
+      project.id, snapshot.projectRoot, asset,
+    );
+    setThumbnailEntries((current) => current[assetId]?.resourceKey === resourceKey
+      ? { ...current, [assetId]: { resourceKey, state: { status: 'missing', reason: 'error' } } }
+      : current);
   };
 
   const mutate = (

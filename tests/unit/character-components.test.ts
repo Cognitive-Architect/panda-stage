@@ -10,7 +10,11 @@ import {
 } from '../../src/domain';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import { CharacterList } from '../../src/renderer/features/characters/CharacterList';
-import { CharacterManager } from '../../src/renderer/features/characters/CharacterManager';
+import {
+  CharacterManager,
+  reconcileCharacterThumbnailEntries,
+  visibleCharacterThumbnails,
+} from '../../src/renderer/features/characters/CharacterManager';
 import { ImageAssetPicker } from '../../src/renderer/features/characters/ImageAssetPicker';
 
 const noop = () => undefined;
@@ -30,6 +34,70 @@ function projectWithWarning(): Project {
 }
 
 describe('character management components', () => {
+  it('keeps ready thumbnails for unchanged id/hash across Project revisions', () => {
+    const assets = migrateProject(exampleProject).assets.filter(
+      (asset) => asset.kind === 'image',
+    );
+    const first = reconcileCharacterThumbnailEntries({}, 'project-1', 'D:\\one', assets);
+    const ready = {
+      ...first,
+      [assets[0]!.id]: {
+        ...first[assets[0]!.id]!,
+        state: { status: 'ready' as const, dataUrl: 'data:image/png;base64,ready' },
+      },
+    };
+
+    const replay = reconcileCharacterThumbnailEntries(
+      ready, 'project-1', 'D:\\one', [...assets],
+    );
+    expect(replay).toBe(ready);
+    expect(visibleCharacterThumbnails(replay, 'project-1', 'D:\\one', assets)[assets[0]!.id])
+      .toEqual(ready[assets[0]!.id]!.state);
+
+    const changed = assets.map((asset, index) => index === 0
+      ? { ...asset, sha256: 'changed-hash' }
+      : asset);
+    const next = reconcileCharacterThumbnailEntries(
+      ready, 'project-1', 'D:\\one', changed,
+    );
+    expect(next[assets[0]!.id]!.state).toEqual({ status: 'loading' });
+    expect(next[assets[1]!.id]).toBe(ready[assets[1]!.id]);
+    expect(visibleCharacterThumbnails(ready, 'project-1', 'D:\\one', changed)[assets[0]!.id])
+      .toEqual({ status: 'loading' });
+  });
+
+  it('does not expose thumbnails from another project context and prunes removed assets', () => {
+    const assets = migrateProject(exampleProject).assets.filter(
+      (asset) => asset.kind === 'image',
+    );
+    const prior = reconcileCharacterThumbnailEntries({}, 'project-1', 'D:\\one', assets);
+    const switched = reconcileCharacterThumbnailEntries(
+      prior, 'project-2', 'D:\\two', assets.slice(0, 1),
+    );
+    expect(visibleCharacterThumbnails(prior, 'project-2', 'D:\\two', assets)[assets[0]!.id])
+      .toEqual({ status: 'loading' });
+    expect(switched[assets[0]!.id]!.resourceKey).not.toBe(prior[assets[0]!.id]!.resourceKey);
+    expect(Object.keys(switched)).toEqual([assets[0]!.id]);
+  });
+
+  it('preserves a missing result for an unchanged resource but retries a changed hash', () => {
+    const asset = migrateProject(exampleProject).assets.find(
+      (candidate) => candidate.kind === 'image',
+    )!;
+    const loading = reconcileCharacterThumbnailEntries({}, 'project-1', 'D:\\one', [asset]);
+    const missing = {
+      [asset.id]: {
+        ...loading[asset.id]!,
+        state: { status: 'missing' as const, reason: 'source' as const },
+      },
+    };
+    expect(reconcileCharacterThumbnailEntries(missing, 'project-1', 'D:\\one', [asset]))
+      .toBe(missing);
+    expect(reconcileCharacterThumbnailEntries(
+      missing, 'project-1', 'D:\\one', [{ ...asset, sha256: 'new-hash' }],
+    )[asset.id]!.state).toEqual({ status: 'loading' });
+  });
+
   it('renders the manager and creation form without duplicating the global save action', () => {
     const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(

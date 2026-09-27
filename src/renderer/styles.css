@@ -154,4 +154,5 @@
 @import './styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css';
 @import './styles/features/characters/assembly/s17-01--character-assembly-workbench.css';
 @import './styles/shell/layout/s17-02--character-assembly-surface.css';
+@import './styles/features/characters/expression/s17-03--expression-compact-r05.css';
 @import './styles/features/properties/expression-at-time.css';

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
 import { ProjectSchema, migrateProject } from '../../src/domain';
+import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import {
   buildCharacterAssemblyPreviewVisual,
   getAssemblyPreviewExpressions,
@@ -64,6 +68,45 @@ function fixture(): {
 }
 
 describe('S07 composite assembly preview', () => {
+  it('keeps placement and pending actions in one toolbar without persistent helper copy', () => {
+    const { project, session } = fixture();
+    const pending = {
+      ...session,
+      draft: {
+        ...session.draft,
+        facePlacement: { ...session.draft.facePlacement, offsetX: 80 },
+      },
+    };
+    const markup = renderToStaticMarkup(createElement(CharacterAssemblyWorkbench, {
+      projectSnapshot: {
+        projectRoot: session.projectRoot,
+        project,
+        dirty: false,
+        revision: 0,
+      },
+      session: pending,
+    }));
+
+    for (const control of ['左右', '上下', '大小', '重置', '还原', '应用']) {
+      expect(markup).toContain(control);
+    }
+    expect(markup).toContain('data-testid="character-assembly-pending"');
+    expect(markup).not.toContain('拖动脸部可调整位置，底部可微调大小');
+    expect(markup).not.toContain('有未应用更改');
+    expect(readFileSync('src/renderer/features/characters/CharacterAssemblyWorkbench.tsx', 'utf8'))
+      .toContain('className="character-assembly-message" role="status"');
+  });
+
+  it('reconciles assembly images through one mounted session without clearing on History replay', () => {
+    const source = readFileSync(
+      'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx', 'utf8',
+    );
+    expect(source).toContain('imageSessionRef.current?.reconcile(');
+    expect(source).toContain('imageSession.dispose();');
+    expect(source).toContain('imageResult.contextKey === contextKey');
+    expect(source).not.toContain('setImageState(EMPTY_CANVAS_IMAGE_STATE)');
+  });
+
   it('uses S03 Body/Face local geometry and previews Mouth as a Face replacement', () => {
     const { project, session } = fixture();
     const expressions = getAssemblyPreviewExpressions(project, session);

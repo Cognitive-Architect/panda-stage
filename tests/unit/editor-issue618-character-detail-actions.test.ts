@@ -189,7 +189,8 @@ describe('Issue #618 Character Detail actions', () => {
     expect(openMarkup).toContain('aria-expanded="true"');
     expect(openMarkup).toContain('data-testid="expression-add-form"');
     expect(closedMarkup).not.toContain('data-testid="expression-add-form"');
-    expect(expressionEditor).toContain('onClick={() => onAddOpenChange(!isAddOpen)}');
+    expect(expressionEditor).toContain('if (!isAddOpen) cancelExpressionEdit();');
+    expect(expressionEditor).toContain('onAddOpenChange(!isAddOpen);');
     expect(expressionEditor).toContain('onAdd(newName.trim(), newAssetId);');
     expect(expressionEditor).toContain('onAddOpenChange(false);');
     expect(expressionEditor).toContain('data-testid="expression-add-cancel"');
