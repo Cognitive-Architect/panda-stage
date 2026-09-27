@@ -7,6 +7,27 @@ function source(path: string): string {
 }
 
 describe('Expression inline picker and Issue #633 compact edit workspace', () => {
+  it('lets the Expression candidate grid grow in normal flow after the inline picker cap', () => {
+    const styles = readOrderedStylesheetSource().replace(/\s+/gu, ' ');
+    const selector =
+      ".editor-layout[data-shell-mode='landscape'] " +
+      ".resource-activity-dock-landscape[data-active-activity='characters'] " +
+      ".character-manager[data-character-presentation='landscape'] " +
+      '.character-expression-workspace .image-asset-picker-inline ' +
+      '.image-asset-picker-candidates';
+    const ruleBodies = styles.split(`${selector} {`).slice(1).map(
+      (afterSelector) => afterSelector.split('}', 1)[0]!,
+    );
+
+    expect(ruleBodies).toHaveLength(2);
+    expect(ruleBodies[0]).toContain('max-height: 200px;');
+    expect(ruleBodies[1]).toContain('max-height: none;');
+    expect(ruleBodies[1]).toContain('overflow-y: visible;');
+    expect(ruleBodies[1]).toContain('overscroll-behavior: auto;');
+    expect(source('src/renderer/styles/features/characters/settings/s14-15--mouth-picker-host.css'))
+      .toContain('max-height: 270px;');
+  });
+
   it('keeps the editing card compact and moves the edit surface outside the list', () => {
     const editor = source(
       'src/renderer/features/characters/ExpressionEditor.tsx',

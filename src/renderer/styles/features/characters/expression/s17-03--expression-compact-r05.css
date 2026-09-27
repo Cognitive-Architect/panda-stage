@@ -61,6 +61,7 @@
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-expression-workspace
+  .image-asset-picker-inline
   .image-asset-picker-candidates {
   max-height: none;
   overflow-y: visible;
