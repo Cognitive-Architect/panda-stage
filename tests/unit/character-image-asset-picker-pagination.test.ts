@@ -89,6 +89,10 @@ describe('Issue #637 Character Expression image search and pagination', () => {
     expect(pickerSource).toContain('setPage(1);');
     expect(pickerSource).toContain('onChange(assetId);');
     expect(pickerSource).toContain('setOpen(false);');
+    expect(pickerSource).toContain('disabled={disabled || candidatePage.page === 1}');
+    expect(pickerSource).toContain(
+      'disabled={disabled || candidatePage.page === candidatePage.pageCount}',
+    );
     expect(expressionSource.match(/searchAndPaginate/gu)).toHaveLength(2);
     expect(styles).toContain('.character-expression-workspace');
     expect(styles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
