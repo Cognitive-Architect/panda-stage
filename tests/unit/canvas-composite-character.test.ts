@@ -12,6 +12,8 @@ import {
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { projectProductPreviewMouth } from '../../src/renderer/shell/productPreviewModel';
 import {
   commitEditorTemporalContinuityBucket,
   createEditorTemporalContinuityState,
@@ -143,7 +145,7 @@ function compositeProject(options: { mouth?: boolean } = {}): Project {
 }
 
 describe('Issue #627 authored composite Expression switch', () => {
-  it('keeps Body and placement while speaking overrides Face, then recovers B at 5s', () => {
+  it('flaps over the current Expression, closes to A then B, and recovers B at 5s', () => {
     const base = compositeProject();
     const dialogue = base.shots[0]!.dialogues[0]!;
     const prepared = ProjectSchema.parse({
@@ -167,7 +169,9 @@ describe('Issue #627 authored composite Expression switch', () => {
     );
     const shot = authored.shots[0]!;
     const atTwo = projectShotMouth(authored, shot, evaluateShotAtTime(shot, 2_000, authored), DIALOGUE_ID);
+    const closedBeforeSwitch = projectShotMouth(authored, shot, evaluateShotAtTime(shot, 2_160, authored), DIALOGUE_ID);
     const atFour = projectShotMouth(authored, shot, evaluateShotAtTime(shot, 4_000, authored), DIALOGUE_ID);
+    const closedAfterSwitch = projectShotMouth(authored, shot, evaluateShotAtTime(shot, 3_160, authored), DIALOGUE_ID);
     const atFive = projectShotMouth(authored, shot, evaluateShotAtTime(shot, 5_000, authored), DIALOGUE_ID);
     const visualAt = (evaluated: typeof atFour) => buildEditorStageRenderModel(authored, shot, evaluated)
       .layers.find((layer) => layer.layer.id === IDS.layerChar)!;
@@ -176,10 +180,28 @@ describe('Issue #627 authored composite Expression switch', () => {
       currentExpressionId: IDS.expressionNormal,
       mouthOverrideAssetId: MOUTH_ID,
     });
+    expect(closedBeforeSwitch.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
+      assetId: FACE_NORMAL_ID,
+      currentExpressionId: IDS.expressionNormal,
+      mouthOverrideAssetId: null,
+    });
     expect(atFour.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
       currentExpressionId: IDS.expressionAngry,
       mouthOverrideAssetId: MOUTH_ID,
     });
+    expect(atFour.layers.find((layer) => layer.id === IDS.layerChar)).toEqual({
+      ...evaluateShotAtTime(shot, 4_000, authored).layers.find((layer) => layer.id === IDS.layerChar),
+      assetId: MOUTH_ID,
+      mouthOverrideAssetId: MOUTH_ID,
+    });
+    expect(closedAfterSwitch.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
+      assetId: FACE_ANGRY_ID,
+      currentExpressionId: IDS.expressionAngry,
+      mouthOverrideAssetId: null,
+    });
+    expect(closedAfterSwitch.layers.find((layer) => layer.id === IDS.layerChar)).toEqual(
+      evaluateShotAtTime(shot, 3_160, authored).layers.find((layer) => layer.id === IDS.layerChar),
+    );
     expect(visualAt(atFour).visual.parts.map((part) => part.assetId)).toEqual([BODY_ID, MOUTH_ID]);
     expect(atFive.layers.find((layer) => layer.id === IDS.layerChar)).toMatchObject({
       currentExpressionId: IDS.expressionAngry,
@@ -187,8 +209,41 @@ describe('Issue #627 authored composite Expression switch', () => {
     });
     expect(visualAt(atFive).visual.parts.map((part) => part.assetId)).toEqual([BODY_ID, FACE_ANGRY_ID]);
     expect(visualAt(atFour).render).toMatchObject({ x: 500, y: 600, scaleX: 0.5, scaleY: 0.5 });
+    expect(visualAt(atFour).render).toEqual(
+      visualAt(evaluateShotAtTime(shot, 4_000, authored)).render,
+    );
     expect(authored.characters).toEqual(prepared.characters);
     expect(shot.layers).toEqual(prepared.shots[0]!.layers);
+  });
+
+  it('keeps Editor non-zero scrub and Product Preview on one phase without Project writes', () => {
+    const store = new EditorProjectStore();
+    store.open('D:/mouth-cadence.pandastage', compositeProject());
+    const before = store.getSnapshot()!;
+    const project = before.project;
+    const shot = project.shots[0]!;
+    const readyAssetIds = new Set([IDS.assetBg, BODY_ID, FACE_NORMAL_ID, FACE_ANGRY_ID, MOUTH_ID]);
+    for (const [timeMs, expectedAssetId] of [
+      [159, MOUTH_ID], [160, FACE_NORMAL_ID],
+      [319, FACE_NORMAL_ID], [320, MOUTH_ID],
+      [750, MOUTH_ID], [800, FACE_ANGRY_ID],
+    ] as const) {
+      const editor = buildEditorTemporalCanvasModel({
+        project, shot, currentTimeMs: timeMs, activeDialogueId: DIALOGUE_ID,
+        readyAssetIds, previousVisuals: new Map(),
+      });
+      const preview = projectProductPreviewMouth(
+        project, shot, evaluateShotAtTime(shot, timeMs, project), DIALOGUE_ID,
+      );
+      const editorLayer = editor.evaluatedShot.layers.find((layer) => layer.id === IDS.layerChar);
+      const previewLayer = preview.layers.find((layer) => layer.id === IDS.layerChar);
+      expect(editor.temporalInspection).toBe(true);
+      expect(editorLayer).toEqual(previewLayer);
+      expect(editorLayer?.assetId).toBe(expectedAssetId);
+    }
+    expect(store.getSnapshot()).toBe(before);
+    expect(store.getSnapshot()).toMatchObject({ revision: 0, dirty: false });
+    expect(store.history.getSnapshot().undoCount).toBe(0);
   });
 
   it('shows an authored 0:00 Face in the editor without changing base transform editing', () => {
