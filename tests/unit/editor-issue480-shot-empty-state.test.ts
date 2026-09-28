@@ -83,22 +83,22 @@ describe('Issue #480 landscape Shot empty-state visual pass', () => {
     expect(markup).toContain('data-testid="shot-empty-storyboard"');
   });
 
-  it('suppresses landscape success receipts without silencing errors or default feedback', () => {
+  it('keeps visible Shot success quiet without silencing errors or the empty state', () => {
     const manager = source('src/renderer/features/shots/ShotManager.tsx');
     const styles = source('src/renderer/styles.css');
 
     expect(manager).toMatch(
-      /const createShot[\s\S]*?if \(next && presentation === 'landscape'\) setStatus\(''\);/u,
-    );
-    expect(manager).toMatch(
-      /if \(next\?\.shots\.length === 0\) \{\s+if \(presentation === 'landscape'\) \{\s+setStatus\(''\);/u,
+      /const mutate[\s\S]*?const next = action\(\);\s+setStatus\(''\);\s+return next;/u,
     );
     expect(manager).toContain(
       'error instanceof ShotServiceError || error instanceof Error',
     );
-    expect(manager).toMatch(
-      /presentation === 'landscape'\s+\?\s+success/u,
-    );
+    expect(manager).toContain("const [status, setStatus] = useState('');");
+    expect(manager).toContain('{status ? (');
+    expect(manager).toContain('className="shot-manager-status"');
+    expect(manager).not.toContain('项目尚未保存');
+    expect(manager).not.toContain('镜头名称已更新');
+    expect(manager).not.toContain('镜头顺序已写回项目');
     expect(manager).not.toContain('最后一个镜头已移除，请创建新镜头。');
     expect(styles).toContain('.shot-empty-storyboard');
     expect(styles).toContain('shot-empty-storyboard-card-muted');

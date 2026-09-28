@@ -11,7 +11,10 @@ import {
   LayerOpacityControl,
   isOpacitySliderKey,
 } from '../../src/renderer/features/properties/LayerBackgroundControl';
-import type { LayerTransformController } from '../../src/renderer/features/properties/LayerTransformPanel';
+import {
+  cancelActiveOpacityPreview,
+  type LayerTransformController,
+} from '../../src/renderer/features/properties/LayerTransformPanel';
 import { buildProject, IDS } from './domain/testProject';
 
 function harness() {
@@ -139,14 +142,26 @@ describe('Issue #643 runtime opacity preview', () => {
 
   it('wires pointer/touch and keyboard completion to one gesture boundary', () => {
     const calls: string[] = [];
+    let active = false;
     const controller = {
       draft: { opacity: '1' },
       layer: { locked: false },
       temporalInspection: false,
-      beginOpacityPreview: (kind: string) => calls.push(`begin:${kind}`),
+      beginOpacityPreview: (kind: string) => {
+        active = true;
+        calls.push(`begin:${kind}`);
+      },
       updateOpacityPercentDraft: (value: string) => calls.push(`update:${value}`),
-      finishOpacityPreview: () => calls.push('finish'),
-      cancelOpacityPreview: () => calls.push('cancel'),
+      finishOpacityPreview: () => {
+        if (!active) return;
+        active = false;
+        calls.push('finish');
+      },
+      cancelOpacityPreview: () => {
+        if (!active) return;
+        active = false;
+        calls.push('cancel');
+      },
     } as unknown as LayerTransformController;
     const control = LayerOpacityControl({ controller });
     const range = React.Children.toArray(control.props.children).find(
@@ -157,6 +172,7 @@ describe('Issue #643 runtime opacity preview', () => {
       onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
       onPointerUp: () => void;
       onPointerCancel: () => void;
+      onLostPointerCapture: () => void;
       onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
       onKeyUp: (event: React.KeyboardEvent<HTMLInputElement>) => void;
     }>;
@@ -167,6 +183,7 @@ describe('Issue #643 runtime opacity preview', () => {
     } as unknown as React.PointerEvent<HTMLInputElement>);
     range.props.onChange({ target: { value: '40' } } as React.ChangeEvent<HTMLInputElement>);
     range.props.onPointerUp();
+    range.props.onLostPointerCapture();
     range.props.onKeyDown({ key: 'ArrowLeft' } as React.KeyboardEvent<HTMLInputElement>);
     range.props.onChange({ target: { value: '39.9' } } as React.ChangeEvent<HTMLInputElement>);
     range.props.onKeyUp({ key: 'ArrowLeft' } as React.KeyboardEvent<HTMLInputElement>);
@@ -175,11 +192,40 @@ describe('Issue #643 runtime opacity preview', () => {
       currentTarget: { setPointerCapture: () => undefined },
     } as unknown as React.PointerEvent<HTMLInputElement>);
     range.props.onPointerCancel();
+    range.props.onLostPointerCapture();
     expect(calls).toEqual([
       'begin:pointer', 'update:40', 'finish',
       'begin:keyboard', 'update:39.9', 'finish',
       'begin:pointer', 'cancel',
     ]);
+  });
+
+  it('keeps lost capture inert after pointerup but cancels an active pointer preview', () => {
+    const h = createHarness();
+    const ref = { current: h.preview.begin(IDS.layerChar) };
+    let draftResetCount = 0;
+    expect(ref.current?.setOpacity(0.4)).toBe(true);
+    expect(h.editor.getSnapshot()!.revision).toBe(0);
+    expect(h.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const completed = ref.current!;
+    ref.current = null; // pointerup consumes the controller's active handle first
+    expect(completed.finish((final) => h.commit(final.layerId, final.opacity))).toBe(true);
+    expect(cancelActiveOpacityPreview(ref, () => { draftResetCount += 1; })).toBe(false);
+    expect(cancelActiveOpacityPreview(ref, () => { draftResetCount += 1; })).toBe(false);
+    expect(draftResetCount).toBe(0);
+    expect(h.layer().opacity).toBe(0.4);
+    expect(h.editor.getSnapshot()!.revision).toBe(1);
+    expect(h.editor.history.getSnapshot().undoCount).toBe(1);
+
+    ref.current = h.preview.begin(IDS.layerChar);
+    expect(ref.current?.setOpacity(0.2)).toBe(true);
+    expect(cancelActiveOpacityPreview(ref, () => { draftResetCount += 1; })).toBe(true);
+    expect(cancelActiveOpacityPreview(ref, () => { draftResetCount += 1; })).toBe(false);
+    expect(draftResetCount).toBe(1);
+    expect(h.preview.getSnapshot()).toBeNull();
+    expect(h.layer().opacity).toBe(0.4);
+    expect(h.editor.history.getSnapshot().undoCount).toBe(1);
   });
 
   it('cancels pointer preview without mutating formal opacity, revision or History', () => {

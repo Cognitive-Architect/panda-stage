@@ -205,6 +205,19 @@ export function shouldCommitTransformBlur(
   return relatedTarget === null || !contains(relatedTarget);
 }
 
+/** A completed pointer gesture has no active handle left for lost capture to cancel. */
+export function cancelActiveOpacityPreview(
+  sessionRef: { current: OpacityPreviewHandle | null },
+  resetDraft: () => void,
+): boolean {
+  const session = sessionRef.current;
+  if (!session) return false;
+  sessionRef.current = null;
+  session.cancel();
+  resetDraft();
+  return true;
+}
+
 const EMPTY_DRAFT: LayerTransformDraft = {
   x: '',
   y: '',
@@ -467,14 +480,14 @@ export function useLayerTransformController({
   };
 
   const cancelOpacityPreview = (): void => {
-    opacitySessionRef.current?.cancel();
-    opacitySessionRef.current = null;
-    opacityGestureKindRef.current = null;
-    if (!layer) return;
-    draftVersionRef.current += 1;
-    const nextDraft = { ...draftRef.current, opacity: String(layer.opacity) };
-    draftRef.current = nextDraft;
-    setDraft(nextDraft);
+    cancelActiveOpacityPreview(opacitySessionRef, () => {
+      opacityGestureKindRef.current = null;
+      if (!layer) return;
+      draftVersionRef.current += 1;
+      const nextDraft = { ...draftRef.current, opacity: String(layer.opacity) };
+      draftRef.current = nextDraft;
+      setDraft(nextDraft);
+    });
   };
 
   const draftForCommit = (
