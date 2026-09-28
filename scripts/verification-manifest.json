@@ -28,6 +28,7 @@
     "docsPatterns": [
       "README.md",
       "AGENTS.md",
+      "DESIGN.md",
       "docs/**/*.md"
     ],
     "fullRegressionSuites": [
@@ -240,7 +241,8 @@
           "tests/unit/konva-pixel-ratio.test.ts",
           "tests/unit/viewport-*.test.ts",
           "tests/unit/editor-issue578-live-scrub.test.ts",
-          "tests/unit/temporal-visual-continuity.test.ts"
+          "tests/unit/temporal-visual-continuity.test.ts",
+          "tests/unit/feedback-hygiene.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",

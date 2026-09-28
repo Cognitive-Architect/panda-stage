@@ -43,6 +43,17 @@ const ready = (changes: ReturnType<typeof change>[]) => classifyChanges({
 });
 
 describe('RH-07 FAST Draft policy', () => {
+  it('routes the feedback-hygiene contract while treating root DESIGN.md as documentation', () => {
+    const result = draft([
+      change('DESIGN.md'),
+      change('tests/unit/feedback-hygiene.test.ts', 'A'),
+    ]);
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toEqual(['canvas']);
+    expect(result.suites).toEqual(['canvas', 'history']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it.each([
     ['timeline', 'src/renderer/features/timeline/Timeline.tsx', ['timeline']],
     ['dialogue', 'src/renderer/features/dialogue/DialogueTrack.tsx', ['editor', 'timeline']],
