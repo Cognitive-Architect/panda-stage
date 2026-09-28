@@ -247,6 +247,7 @@ export function CharacterManager({
   const currentShotId = useSyncExternalStore(
     shotStore.subscribe,
     shotStore.getCurrentShotId,
+    shotStore.getCurrentShotId,
   );
   const [status, setStatus] = useState(CHARACTER_IDLE_STATUS);
   const [bindingReminderCount, setBindingReminderCount] = useState<
