@@ -29,6 +29,7 @@ import {
   canvasViewportStore,
 } from '../../stores/canvasViewportStore';
 import { layerStore } from '../../stores/layerStore';
+import { useOpacityPreview } from '../../stores/opacityPreviewStore';
 import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
@@ -227,6 +228,7 @@ export function CanvasStage({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const opacityPreview = useOpacityPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -243,6 +245,20 @@ export function CanvasStage({
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
+  const activeOpacityPreview =
+    opacityPreview &&
+    snapshot &&
+    shot &&
+    opacityPreview.projectInstanceId ===
+      editorProjectStore.getProjectInstanceId() &&
+    opacityPreview.projectId === snapshot.project.id &&
+    opacityPreview.projectRoot === snapshot.projectRoot &&
+    opacityPreview.revision === snapshot.revision &&
+    opacityPreview.shotId === shot.id &&
+    opacityPreview.layerId === selectedLayerId &&
+    timelineUi.currentTimeMs === 0
+      ? opacityPreview
+      : null;
   const subtitleCues = useMemo(
     () => (shot ? buildDialogueSubtitleCues(shot.dialogues) : []),
     [shot],
@@ -558,7 +574,10 @@ export function CanvasStage({
                 backgroundLayer?.render.id ?? ''
               }
               data-background-opacity={
-                backgroundLayer?.render.opacity ?? ''
+                backgroundLayer &&
+                activeOpacityPreview?.layerId === backgroundLayer.layer.id
+                  ? activeOpacityPreview.opacity
+                  : backgroundLayer?.render.opacity ?? ''
               }
               data-background-policy="cover-centered-no-stretch"
               data-background-ready={String(Boolean(backgroundImage))}
@@ -681,7 +700,14 @@ export function CanvasStage({
                               }
                               setInteractionStatus('已选择图层。');
                             }}
-                             render={render}
+                             render={
+                               activeOpacityPreview?.layerId === layer.id
+                                 ? {
+                                     ...render,
+                                     opacity: activeOpacityPreview.opacity,
+                                   }
+                                 : render
+                             }
                              positionAuthoringSession={
                                positionAuthoringSnapshot?.layerId === layer.id &&
                                selectedLayerId === layer.id

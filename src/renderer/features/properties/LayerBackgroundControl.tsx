@@ -42,6 +42,19 @@ export function formatOpacityPercent(opacity: number): string {
   return String(Object.is(percent, -0) ? 0 : percent);
 }
 
+export function isOpacitySliderKey(key: string): boolean {
+  return (
+    key === 'ArrowLeft' ||
+    key === 'ArrowRight' ||
+    key === 'ArrowUp' ||
+    key === 'ArrowDown' ||
+    key === 'Home' ||
+    key === 'End' ||
+    key === 'PageUp' ||
+    key === 'PageDown'
+  );
+}
+
 export function LayerOpacityControl({
   controller,
 }: {
@@ -81,6 +94,21 @@ export function LayerOpacityControl({
         onChange={(event) =>
           controller.updateOpacityPercentDraft(event.target.value)
         }
+        onKeyDown={(event) => {
+          if (isOpacitySliderKey(event.key)) {
+            controller.beginOpacityPreview('keyboard');
+          }
+        }}
+        onKeyUp={(event) => {
+          if (isOpacitySliderKey(event.key)) controller.finishOpacityPreview();
+        }}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          controller.beginOpacityPreview('pointer');
+        }}
+        onPointerUp={() => controller.finishOpacityPreview()}
+        onPointerCancel={() => controller.cancelOpacityPreview()}
+        onLostPointerCapture={() => controller.cancelOpacityPreview()}
         step="0.1"
         type="range"
         value={opacityPercent || '0'}

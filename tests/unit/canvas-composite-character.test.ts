@@ -287,6 +287,29 @@ function selectableComposite(
 }
 
 describe('BFM-S04 composite Character Editor Canvas', () => {
+  it('previews opacity on the one Character root without fading Body and Face separately', () => {
+    const project = compositeProject({ mouth: false });
+    const { model } = selectableComposite(project, 0, [BODY_ID, FACE_NORMAL_ID]);
+    const preview = SelectableLayer({
+      images: imageMap([BODY_ID, FACE_NORMAL_ID]),
+      layer: model.layer,
+      nodeRef: { current: null },
+      render: { ...model.render, opacity: 0.4 },
+      selected: true,
+      visual: model.visual,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+    const root = preview.props as { opacity: number; children: React.ReactNode };
+    const parts = childElements(root.children).filter((child) => child.type === KonvaImage);
+    expect(model.layer.opacity).toBe(1);
+    expect(root.opacity).toBe(0.4);
+    expect(parts).toHaveLength(2);
+    expect(parts.every((part) => !('opacity' in (part.props as object)))).toBe(true);
+  });
+
   it('renders Body and Face under one root with shared selection and combined bounds', () => {
     const project = compositeProject({ mouth: false });
     const { element, model } = selectableComposite(
