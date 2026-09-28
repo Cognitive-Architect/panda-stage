@@ -53,8 +53,6 @@ export type CharacterWorkspaceView =
 
 export type CharacterManagerPresentation = 'default' | 'landscape';
 
-const CHARACTER_IDLE_STATUS =
-  '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。';
 const CHARACTER_BINDING_REMINDER_DURATION_MS = 5_500;
 
 export interface CharacterThumbnailEntry {
@@ -210,7 +208,7 @@ export function placeCharacterInCurrentShot({
       position: { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 },
     });
     selectionStore.select(layer.id);
-    reportStatus('角色已加入当前镜头，项目尚未保存。');
+    reportStatus('');
   } catch (error) {
     reportStatus(error instanceof Error ? error.message : '角色加入镜头失败。');
   }
@@ -249,7 +247,7 @@ export function CharacterManager({
     shotStore.getCurrentShotId,
     shotStore.getCurrentShotId,
   );
-  const [status, setStatus] = useState(CHARACTER_IDLE_STATUS);
+  const [status, setStatus] = useState('');
   const [bindingReminderCount, setBindingReminderCount] = useState<
     number | null
   >(null);
@@ -307,10 +305,6 @@ export function CharacterManager({
     project && selectedCharacter
       ? service.dimensionWarnings(project, selectedCharacter.id)
       : [];
-  const visibleStatus =
-    presentation === 'landscape' && status === CHARACTER_IDLE_STATUS
-      ? ''
-      : status;
 
   useEffect(() => {
     if (bindingReminderCount === null) return undefined;
@@ -399,13 +393,10 @@ export function CharacterManager({
       : current);
   };
 
-  const mutate = (
-    action: () => Project,
-    success: string,
-  ): Project | null => {
+  const mutate = (action: () => Project): Project | null => {
     try {
       const next = action();
-      setStatus(`${success} 修改已应用，项目尚未保存。`);
+      setStatus('');
       return next;
     } catch (error) {
       reportError(error);
@@ -422,10 +413,7 @@ export function CharacterManager({
   };
 
   const createCharacter = (input: CreateCharacterInput): void => {
-    const next = mutate(
-      () => characterStore.create(input),
-      '角色与普通 / 生气表情已创建。',
-    );
+    const next = mutate(() => characterStore.create(input));
     if (next) {
       const createdCharacter = next.characters.at(-1);
       if (!createdCharacter) return;
@@ -755,7 +743,6 @@ export function CharacterManager({
                   name,
                   assetId,
                 }),
-              `表情“${name.trim()}”已添加。`,
             );
             if (next) showBindingReminder(next, [assetId]);
           }}
@@ -770,7 +757,6 @@ export function CharacterManager({
             }
             const next = mutate(
               () => characterStore.deleteCharacter(selectedCharacter.id),
-              `角色“${selectedCharacter.name}”已删除。`,
             );
             if (next) {
               setSelectedCharacterId(next.characters[0]?.id ?? null);
@@ -785,7 +771,6 @@ export function CharacterManager({
                   selectedCharacter.id,
                   expressionId,
                 ),
-              '表情已删除。',
             );
           }}
           onRenameCharacter={(name) => {
@@ -796,7 +781,6 @@ export function CharacterManager({
                   selectedCharacter.id,
                   name,
                 ),
-              '角色名称已更新。',
             );
           }}
           onRenameExpression={(expressionId, name) => {
@@ -808,7 +792,6 @@ export function CharacterManager({
                   expressionId,
                   name,
                 ),
-              '表情名称已更新。',
             );
           }}
           onSetDefaultExpression={(expressionId) => {
@@ -819,7 +802,6 @@ export function CharacterManager({
                   selectedCharacter.id,
                   expressionId,
                 ),
-              '默认表情已替换。',
             );
           }}
           onSetExpressionAsset={(expressionId, assetId) => {
@@ -831,7 +813,6 @@ export function CharacterManager({
                   expressionId,
                   assetId,
                 ),
-              '表情图片已更新，原有镜头与时间轴引用保持不变。',
             );
             if (next) showBindingReminder(next, [assetId]);
           }}
@@ -844,7 +825,6 @@ export function CharacterManager({
                   scale,
                   flipX,
                 ),
-              '默认缩放与翻转已更新。',
             );
           }}
           hasCurrentShot={Boolean(
@@ -869,7 +849,6 @@ export function CharacterManager({
                   selectedCharacter.id,
                   assetId,
                 ),
-              assetId ? '张嘴图已更新。' : '张嘴图已清除。',
             );
           }}
           assemblyDraft={assemblyDraft}
@@ -912,8 +891,8 @@ export function CharacterManager({
           ⓘ {bindingReminderCount} 个已有图层仍是普通图片
         </output>
       ) : null}
-      {visibleStatus ? (
-        <output className="character-manager-status">{visibleStatus}</output>
+      {status ? (
+        <output aria-live="polite" className="character-manager-status">{status}</output>
       ) : null}
     </section>
   );

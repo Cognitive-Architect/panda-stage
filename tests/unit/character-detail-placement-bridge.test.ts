@@ -164,7 +164,7 @@ describe('Issue #639 Character detail placement bridge', () => {
     const statuses = place();
     const after = editorProjectStore.getSnapshot()!;
     const created = after.project.shots[0]!.layers.at(-1)!;
-    expect(statuses.at(-1)).toContain('角色已加入当前镜头');
+    expect(statuses.at(-1)).toBe('');
     expect(after.project.shots[0]!.layers).toHaveLength(beforeLayers + 1);
     expect(created).toMatchObject({
       source: {

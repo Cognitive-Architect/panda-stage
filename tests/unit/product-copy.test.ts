@@ -113,13 +113,15 @@ describe('Stage 1A product copy', () => {
     expect(source).not.toContain('丢弃恢复');
   });
 
-  it('distinguishes local apply actions from whole-project disk save', () => {
+  it('keeps project save state visible without local success suffixes', () => {
     const source = productSources();
 
     expect(source).toContain('应用名称修改');
     expect(source).toContain('应用时长修改');
-    expect(source).toContain('保存整个项目');
-    expect(source).toContain('修改已应用，项目尚未保存');
+    expect(source).toContain('保存项目');
+    expect(source).toContain('有未保存更改');
+    expect(source).not.toContain('修改已应用，项目尚未保存');
+    expect(source).not.toContain('请使用“保存整个项目”写入磁盘');
     expect(source).not.toContain('保存镜头');
   });
 
@@ -143,9 +145,8 @@ describe('Stage 1A product copy', () => {
     expect(canvasSource).toContain('角色素材读取失败');
     expect(canvasSource).toContain('张嘴表情不可用，已暂时显示当前表情');
     expect(canvasSource).toContain('张嘴表情不可用，正在准备当前表情');
-    expect(canvasSource).toContain(
-      '正在读取角色素材；准备完成前不会显示不完整的角色画面。',
-    );
+    expect(canvasSource).toContain('正在准备素材…');
+    expect(canvasSource).not.toContain('画面仍在准备');
     expect(canvasSource).not.toContain('Body / Face read failed');
     expect(canvasSource).not.toContain('Mouth unavailable');
     expect(canvasSource).not.toContain('complete Character visual');

@@ -87,6 +87,14 @@ react-konva, Zod, Vitest, ESLint, and pnpm.
   the repository-root `DESIGN.md`. Treat it as design guidance and red-line
   constraints, not automatic authorization for a broad UI rewrite; the active
   Issue/PR still defines the allowed scope.
+- Before adding or changing visible status, toast, or helper copy, classify the
+  feedback: is the result already obvious; is readiness only a sub-second
+  transient or a meaningful wait; and does a higher-level surface already own
+  the fact? Do not append generic “项目尚未保存” to ordinary local success when
+  project-level save state exists. Keep errors, blocked actions, destructive
+  decisions, and genuinely long progress actionable. Do not delete a status
+  container or error path just to quiet success, or add an artificial delay to
+  make loading feedback visible. The active Issue still defines UI scope.
 
 ## Execution budget and validation proportionality
 

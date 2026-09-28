@@ -58,12 +58,9 @@ describe('Issue #361 landscape Shot drawer corrective polish', () => {
     expect(quickActions).toContain('className="shot-quick-edit-field"');
     expect(quickActions).toContain('durationTouched');
     expect(quickActions).toContain('shot-quick-edit-error');
-    expect(manager).toContain(
-      "presentation === 'landscape' ? '' : SHOT_STATUS_GUIDANCE",
-    );
-    expect(manager).toMatch(
-      /presentation === 'landscape'\s+\? success\s+:/u,
-    );
+    expect(manager).toContain("const [status, setStatus] = useState('');");
+    expect(manager).toContain("setStatus('');");
+    expect(manager).not.toContain('SHOT_STATUS_GUIDANCE');
     expect(markup).toContain('data-testid="shot-selected-actions"');
     expect(markup).not.toContain('已选镜头');
     expect(markup).not.toContain('局部修改会先应用到当前项目');
