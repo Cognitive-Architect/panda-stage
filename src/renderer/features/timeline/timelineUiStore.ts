@@ -226,6 +226,12 @@ export class TimelineUiStore {
     this.patch({ scrollPx: next });
   }
 
+  /** Shared navigation command for the toolbar and Character placement. */
+  returnToStart(durationMs: number): void {
+    this.seek(0, durationMs);
+    this.setScrollPx(0);
+  }
+
   setExpanded(expanded: boolean): void {
     if (expanded === this.state.expanded) return;
     this.patch({ expanded });

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DialogueService } from '../../../../src/domain';
-import { returnTimelineToStart } from '../../../../src/renderer/features/timeline/TimelineDock';
+import { syncTimelineRulerScroll } from '../../../../src/renderer/features/timeline/TimelineDock';
 import { timelineUiStore } from '../../../../src/renderer/features/timeline/timelineUiStore';
 import { editorProjectStore } from '../../../../src/renderer/stores/EditorProjectStore';
 import { dialogueSelectionStore } from '../../../../src/renderer/stores/dialogueSelectionStore';
@@ -12,6 +12,14 @@ import { buildProject, IDS } from '../../domain/testProject';
 import { readOrderedStylesheetSource } from '../../../helpers/read-stylesheet-source';
 
 describe('Issue #637 Timeline return to start', () => {
+  const returnAndMirrorScroll = (
+    durationMs: number,
+    rulerScroll: { scrollLeft: number },
+  ): void => {
+    timelineUiStore.returnToStart(durationMs);
+    syncTimelineRulerScroll(rulerScroll, timelineUiStore.getSnapshot().scrollPx);
+  };
+
   it('seeks through the Timeline owner, resets real scroll, and preserves editing context', () => {
     const project = buildProject();
     editorProjectStore.open('D:/r06-return-to-start.pandastage', project);
@@ -27,7 +35,7 @@ describe('Issue #637 Timeline return to start', () => {
     const beforeShot = shotStore.getCurrentShotId();
     const beforeSelection = selectionStore.getSelectedLayerId();
 
-    returnTimelineToStart(project.shots[0]!.durationMs, rulerScroll);
+    returnAndMirrorScroll(project.shots[0]!.durationMs, rulerScroll);
 
     expect(timelineUiStore.getSnapshot()).toMatchObject({
       currentTimeMs: 0,
@@ -60,7 +68,7 @@ describe('Issue #637 Timeline return to start', () => {
       times.push(timelineUiStore.getSnapshot().currentTimeMs);
     });
 
-    returnTimelineToStart(3_000, rulerScroll);
+    returnAndMirrorScroll(3_000, rulerScroll);
     unsubscribe();
 
     expect(rulerScroll.scrollLeft).toBe(0);
@@ -71,7 +79,7 @@ describe('Issue #637 Timeline return to start', () => {
 
     const alreadyReset = timelineUiStore.getSnapshot();
     rulerScroll.scrollLeft = 75; // DOM and store can temporarily disagree
-    returnTimelineToStart(3_000, rulerScroll);
+    returnAndMirrorScroll(3_000, rulerScroll);
     expect(rulerScroll.scrollLeft).toBe(0);
     expect(timelineUiStore.getSnapshot()).toBe(alreadyReset);
   });
@@ -116,7 +124,7 @@ describe('Issue #637 Timeline return to start', () => {
     const beforeProject = editorProjectStore.getSnapshot();
     const beforeHistory = editorProjectStore.history.getSnapshot();
 
-    returnTimelineToStart(project.shots[0]!.durationMs, { scrollLeft: 160 });
+    returnAndMirrorScroll(project.shots[0]!.durationMs, { scrollLeft: 160 });
 
     expect(dialogueSelectionStore.getSelectedDialogueId()).toBe(dialogueId);
     expect(editorProjectStore.getSnapshot()).toBe(beforeProject);
@@ -135,7 +143,7 @@ describe('Issue #637 Timeline return to start', () => {
     const beforeProject = editorProjectStore.getSnapshot();
     const beforeHistory = editorProjectStore.history.getSnapshot();
 
-    returnTimelineToStart(project.shots[0]!.durationMs, { scrollLeft: 100 });
+    returnAndMirrorScroll(project.shots[0]!.durationMs, { scrollLeft: 100 });
 
     expect(begin.session.commit({ x: 700, y: 800 }).status).toBe('stale');
     expect(editorProjectStore.getSnapshot()).toBe(beforeProject);
@@ -151,7 +159,8 @@ describe('Issue #637 Timeline return to start', () => {
       .toBeLessThan(source.indexOf('className="timeline-zoom"'));
     expect(source).toContain('aria-label="回到起点"');
     expect(source).toContain('title="回到起点"');
-    expect(source).toContain('onClick={() => returnTimelineToStart(durationMs, scrollRef.current)}');
+    expect(source).toContain('onClick={() => timelineUiStore.returnToStart(durationMs)}');
+    expect(source).toContain('syncTimelineRulerScroll(scrollRef.current, ui.scrollPx);');
     expect(styles).toContain('.timeline-toolbar .timeline-return-to-start');
     expect(styles).toContain('flex-basis: 44px;');
   });

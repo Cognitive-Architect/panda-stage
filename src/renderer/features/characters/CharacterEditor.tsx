@@ -6,6 +6,7 @@ import type {
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
+import { Button } from '../../ui/Button';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
 import { ExpressionEditor } from './ExpressionEditor';
 import { ImageAssetPicker } from './ImageAssetPicker';
@@ -105,6 +106,8 @@ export interface CharacterEditorProps {
   onSetAssemblyBodyAsset?: (assetId: string) => void;
   onSetAssemblyMouthAsset?: (assetId: string | null) => void;
   onSetDefaultTransform: (scale: number, flipX: boolean) => void;
+  hasCurrentShot?: boolean;
+  onPlaceInCurrentShot?: (defaultTransformPending: boolean) => void;
   onThumbnailError: (assetId: string) => void;
   view?: CharacterEditorView;
   presentation?: CharacterEditorPresentation;
@@ -134,6 +137,8 @@ export function CharacterEditor({
   onSetAssemblyBodyAsset = () => undefined,
   onSetAssemblyMouthAsset = () => undefined,
   onSetDefaultTransform,
+  hasCurrentShot = false,
+  onPlaceInCurrentShot = () => undefined,
   onThumbnailError,
   view = 'full',
   presentation = 'default',
@@ -198,14 +203,24 @@ export function CharacterEditor({
         <p>
           角色只保存项目素材 ID；不会复制图片、保存绝对路径或嵌入 Base64。
         </p>
+        {view === 'detail' ? (
+          <Button
+            className="character-detail-place-action"
+            data-testid="character-detail-place-current-shot"
+            disabled
+          >
+            加入当前镜头
+          </Button>
+        ) : null}
       </div>
     );
   }
 
+  const formalDefaultExpression = character.expressions.find(
+    (expression) => expression.id === character.defaultExpressionId,
+  );
   const defaultExpression =
-    character.expressions.find(
-      (expression) => expression.id === character.defaultExpressionId,
-    ) ?? character.expressions[0];
+    formalDefaultExpression ?? character.expressions[0];
   const defaultExpressionAsset = defaultExpression
     ? imageAssets.find((asset) => asset.id === defaultExpression.assetId)
     : undefined;
@@ -218,6 +233,21 @@ export function CharacterEditor({
     scale,
     flipX,
   );
+  const placementBlockedByTransform = hasPendingTransform || !Number.isFinite(scale);
+  const formalDefaultAssetAvailable = Boolean(
+    formalDefaultExpression && imageAssets.some(
+      (asset) => asset.id === formalDefaultExpression.assetId,
+    ),
+  );
+  const placementUnavailableReason = disabled
+    ? '请先打开项目'
+    : !hasCurrentShot
+      ? '请先选择镜头'
+      : !formalDefaultAssetAvailable
+        ? '默认表情素材不可用'
+        : placementBlockedByTransform
+          ? '先应用角色大小设置'
+          : null;
   const nextRenameValue = characterRenameValue(name, character.name);
   const compositeCharacter = character.mode === 'composite';
 
@@ -435,6 +465,17 @@ export function CharacterEditor({
             </div>
           </section>
         </>
+      ) : null}
+      {view === 'detail' ? (
+        <Button
+          className="character-detail-place-action"
+          data-testid="character-detail-place-current-shot"
+          disabled={placementUnavailableReason !== null}
+          onClick={() => onPlaceInCurrentShot(placementBlockedByTransform)}
+          title={placementUnavailableReason ?? '加入当前镜头'}
+        >
+          加入当前镜头
+        </Button>
       ) : null}
       {view !== 'expression' && !landscapeDetail ? (
         <section className="character-settings">

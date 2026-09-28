@@ -1,0 +1,8 @@
+/* Issue #639: one prominent, touch-friendly action in Character detail. */
+.character-editor[data-testid='character-detail-view']
+  .character-detail-place-action {
+  display: block;
+  width: 100%;
+  min-height: var(--ui-touch-icon);
+  margin: 0 0 var(--ui-space-2);
+}

@@ -8,6 +8,8 @@ import {
 import {
   CharacterService,
   CharacterServiceError,
+  PROJECT_HEIGHT,
+  PROJECT_WIDTH,
   countLegacyCharacterImageLayers,
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
@@ -20,6 +22,10 @@ import {
   type EditorProjectSnapshot,
 } from '../../stores/EditorProjectStore';
 import { characterStore } from '../../stores/characterStore';
+import { layerStore } from '../../stores/layerStore';
+import { selectionStore } from '../../stores/selectionStore';
+import { shotStore } from '../../stores/shotStore';
+import { timelineUiStore } from '../timeline/timelineUiStore';
 import {
   characterAssemblySessionStore,
   type CharacterAssemblySessionHandle,
@@ -113,6 +119,103 @@ export interface CharacterManagerProps {
   onCloseDrawer?: () => void;
 }
 
+/** Character detail bridge into the existing 0:00 LayerStore creation path. */
+export function placeCharacterInCurrentShot({
+  characterId,
+  getCurrentCharacterId,
+  defaultTransformPending,
+  leaveAssembly,
+  reportStatus,
+}: {
+  characterId: string | null;
+  getCurrentCharacterId: () => string | null;
+  defaultTransformPending: boolean;
+  leaveAssembly: () => boolean;
+  reportStatus: (message: string) => void;
+}): void {
+  const before = editorProjectStore.getSnapshot();
+  const shotId = shotStore.getCurrentShotId();
+  const shot = before?.project.shots.find((candidate) => candidate.id === shotId);
+  const character = before?.project.characters.find(
+    (candidate) => candidate.id === characterId,
+  );
+  if (!before || !shot || !character || !characterId) {
+    reportStatus('请先打开项目、选择镜头和角色。');
+    return;
+  }
+  if (defaultTransformPending) {
+    reportStatus('先应用角色大小设置。');
+    return;
+  }
+  const initialExpression = character.expressions.find(
+    (candidate) => candidate.id === character.defaultExpressionId,
+  );
+  if (!initialExpression || !before.project.assets.some(
+    (asset) => asset.kind === 'image' && asset.id === initialExpression.assetId,
+  )) {
+    reportStatus('默认表情素材不可用，请先设置默认表情。');
+    return;
+  }
+  if (!leaveAssembly()) return;
+
+  const currentContext = (): {
+    snapshot: EditorProjectSnapshot;
+    character: NonNullable<typeof character>;
+    shotDurationMs: number;
+  } | null => {
+    const snapshot = editorProjectStore.getSnapshot();
+    if (
+      snapshot !== before ||
+      shotStore.getCurrentShotId() !== shotId ||
+      getCurrentCharacterId() !== characterId
+    ) return null;
+    const liveShot = snapshot.project.shots.find((candidate) => candidate.id === shotId);
+    const liveCharacter = snapshot.project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (!liveShot || !liveCharacter) return null;
+    return { snapshot, character: liveCharacter, shotDurationMs: liveShot.durationMs };
+  };
+
+  let live = currentContext();
+  if (!live) {
+    reportStatus('项目、镜头或角色已变化，请重试。');
+    return;
+  }
+  const timeline = timelineUiStore.getSnapshot();
+  if (timeline.currentTimeMs !== 0 || timeline.scrollPx !== 0) {
+    timelineUiStore.returnToStart(live.shotDurationMs);
+  }
+  live = currentContext();
+  if (!live || timelineUiStore.getSnapshot().currentTimeMs !== 0) {
+    reportStatus('项目、镜头或角色已变化，请重试。');
+    return;
+  }
+  const expression = live.character.expressions.find(
+    (candidate) => candidate.id === live.character.defaultExpressionId,
+  );
+  if (!expression || !live.snapshot.project.assets.some(
+    (asset) => asset.kind === 'image' && asset.id === expression.assetId,
+  )) {
+    reportStatus('默认表情素材不可用，请先设置默认表情。');
+    return;
+  }
+  try {
+    const layer = layerStore.createFromAsset({
+      version: 2,
+      type: 'character-expression',
+      assetId: expression.assetId,
+      characterId: live.character.id,
+      expressionId: expression.id,
+      position: { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 },
+    });
+    selectionStore.select(layer.id);
+    reportStatus('角色已加入当前镜头，项目尚未保存。');
+  } catch (error) {
+    reportStatus(error instanceof Error ? error.message : '角色加入镜头失败。');
+  }
+}
+
 export function CharacterManager({
   snapshot,
   view = 'legacy',
@@ -139,6 +242,12 @@ export function CharacterManager({
         : null;
     return resumableCharacterId ?? snapshot?.project.characters[0]?.id ?? null;
   });
+  const selectedCharacterIdRef = useRef(selectedCharacterId);
+  selectedCharacterIdRef.current = selectedCharacterId;
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+  );
   const [status, setStatus] = useState(CHARACTER_IDLE_STATUS);
   const [bindingReminderCount, setBindingReminderCount] = useState<
     number | null
@@ -737,6 +846,20 @@ export function CharacterManager({
               '默认缩放与翻转已更新。',
             );
           }}
+          hasCurrentShot={Boolean(
+            snapshot && currentShotId && project?.shots.some(
+              (shot) => shot.id === currentShotId,
+            ),
+          )}
+          onPlaceInCurrentShot={(defaultTransformPending) =>
+            placeCharacterInCurrentShot({
+              characterId: selectedCharacterId,
+              getCurrentCharacterId: () => selectedCharacterIdRef.current,
+              defaultTransformPending,
+              leaveAssembly,
+              reportStatus: setStatus,
+            })
+          }
           onSetMouthOpenAsset={(assetId) => {
             if (!selectedCharacter) return;
             mutate(

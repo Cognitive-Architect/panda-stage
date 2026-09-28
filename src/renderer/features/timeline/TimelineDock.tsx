@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -38,14 +37,14 @@ export interface TimelineDockProps {
   presentation?: 'desktop' | 'landscape' | 'portrait';
 }
 
-/** Seek through the existing Timeline owner and mirror its scroll reset to the DOM. */
-export function returnTimelineToStart(
-  durationMs: number,
+/** Mirror Timeline UI scroll state into its one real horizontal viewport. */
+export function syncTimelineRulerScroll(
   rulerScroll: Pick<HTMLDivElement, 'scrollLeft'> | null,
+  scrollPx: number,
 ): void {
-  timelineUiStore.seek(0, durationMs);
-  timelineUiStore.setScrollPx(0);
-  if (rulerScroll) rulerScroll.scrollLeft = 0;
+  if (rulerScroll && rulerScroll.scrollLeft !== scrollPx) {
+    rulerScroll.scrollLeft = scrollPx;
+  }
 }
 
 /**
@@ -125,13 +124,11 @@ export function TimelineDock({
     return () => observer.disconnect();
   }, [ui.expanded, hasShot]);
 
-  // The store resets scrollPx to 0 on shot switch (resetForShot); mirror that
-  // into the real viewport so the playhead at 0ms stays within the visible
-  // track instead of being left off-screen at a stale horizontal offset.
-  useEffect(() => {
-    const node = scrollRef.current;
-    if (node) node.scrollLeft = 0;
-  }, [currentShotId]);
+  // The store owns horizontal scroll intent, including shot resets and the
+  // shared return-to-start command. Keep the mounted ruler in sync with it.
+  useLayoutEffect(() => {
+    syncTimelineRulerScroll(scrollRef.current, ui.scrollPx);
+  }, [currentShotId, hasShot, ui.expanded, ui.scrollPx]);
 
   const pixelsPerMs = computePixelsPerMs(viewportWidth, durationMs, ui.zoom);
   const trackWidth = durationMs * pixelsPerMs;
@@ -238,7 +235,7 @@ export function TimelineDock({
           aria-label="回到起点"
           title="回到起点"
           disabled={!hasShot}
-          onClick={() => returnTimelineToStart(durationMs, scrollRef.current)}
+          onClick={() => timelineUiStore.returnToStart(durationMs)}
         >
           <SkipBack aria-hidden="true" focusable="false" size={18} />
         </button>
