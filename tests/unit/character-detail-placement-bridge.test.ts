@@ -14,6 +14,7 @@ import {
   isDefaultTransformPending,
 } from '../../src/renderer/features/characters/CharacterEditor';
 import { placeCharacterInCurrentShot } from '../../src/renderer/features/characters/CharacterManager';
+import { bindTimelineRulerScroll } from '../../src/renderer/features/timeline/TimelineDock';
 import { characterAssemblySessionStore } from '../../src/renderer/stores/characterAssemblySessionStore';
 import { characterStore } from '../../src/renderer/stores/characterStore';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -131,6 +132,22 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(timelineUiStore.getSnapshot()).toMatchObject({ currentTimeMs: 0, scrollPx: 0, zoom: 4 });
     expect(editorProjectStore.getSnapshot()!.revision).toBe(before.revision + 1);
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(history.undoCount + 1);
+  });
+
+  it('uses the mounted Timeline ruler binding during Character placement', () => {
+    timelineUiStore.seek(1_000, 3_000);
+    timelineUiStore.setScrollPx(180);
+    const rulerScroll = { scrollLeft: 180 };
+    const unbind = bindTimelineRulerScroll(rulerScroll);
+    const beforeLayers = editorProjectStore.getSnapshot()!.project.shots[0]!.layers.length;
+
+    place();
+    unbind();
+
+    expect(timelineUiStore.getSnapshot()).toMatchObject({ currentTimeMs: 0, scrollPx: 0 });
+    expect(rulerScroll.scrollLeft).toBe(0);
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers)
+      .toHaveLength(beforeLayers + 1);
   });
 
   it('creates exactly one formal Character Layer at Base and restores it with Undo/Redo', () => {

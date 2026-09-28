@@ -32,8 +32,8 @@ describe('Day 26 review follow-up #195 contracts', () => {
   it('V-193-03: TimelineDock resets DOM scroll on shot switch', () => {
     // resetForShot() zeroes scrollPx; the shared DOM mirror observes both
     // shot switches and scroll changes, keeping the 0ms playhead visible.
-    expect(timelineDock).toContain('syncTimelineRulerScroll(scrollRef.current, ui.scrollPx);');
-    expect(timelineDock).toContain('[currentShotId, hasShot, ui.expanded, ui.scrollPx]');
+    expect(timelineDock).toContain('return bindTimelineRulerScroll(scrollRef.current);');
+    expect(timelineDock).toContain('[currentShotId, hasShot, ui.expanded]');
     expect(timelineDock).toContain('rulerScroll.scrollLeft = scrollPx;');
   });
 

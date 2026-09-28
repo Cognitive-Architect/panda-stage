@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DialogueService } from '../../../../src/domain';
-import { syncTimelineRulerScroll } from '../../../../src/renderer/features/timeline/TimelineDock';
+import { bindTimelineRulerScroll } from '../../../../src/renderer/features/timeline/TimelineDock';
 import { timelineUiStore } from '../../../../src/renderer/features/timeline/timelineUiStore';
 import { editorProjectStore } from '../../../../src/renderer/stores/EditorProjectStore';
 import { dialogueSelectionStore } from '../../../../src/renderer/stores/dialogueSelectionStore';
@@ -12,14 +12,6 @@ import { buildProject, IDS } from '../../domain/testProject';
 import { readOrderedStylesheetSource } from '../../../helpers/read-stylesheet-source';
 
 describe('Issue #637 Timeline return to start', () => {
-  const returnAndMirrorScroll = (
-    durationMs: number,
-    rulerScroll: { scrollLeft: number },
-  ): void => {
-    timelineUiStore.returnToStart(durationMs);
-    syncTimelineRulerScroll(rulerScroll, timelineUiStore.getSnapshot().scrollPx);
-  };
-
   it('seeks through the Timeline owner, resets real scroll, and preserves editing context', () => {
     const project = buildProject();
     editorProjectStore.open('D:/r06-return-to-start.pandastage', project);
@@ -35,7 +27,9 @@ describe('Issue #637 Timeline return to start', () => {
     const beforeShot = shotStore.getCurrentShotId();
     const beforeSelection = selectionStore.getSelectedLayerId();
 
-    returnAndMirrorScroll(project.shots[0]!.durationMs, rulerScroll);
+    const unbind = bindTimelineRulerScroll(rulerScroll);
+    timelineUiStore.returnToStart(project.shots[0]!.durationMs);
+    unbind();
 
     expect(timelineUiStore.getSnapshot()).toMatchObject({
       currentTimeMs: 0,
@@ -68,7 +62,8 @@ describe('Issue #637 Timeline return to start', () => {
       times.push(timelineUiStore.getSnapshot().currentTimeMs);
     });
 
-    returnAndMirrorScroll(3_000, rulerScroll);
+    const unbind = bindTimelineRulerScroll(rulerScroll);
+    timelineUiStore.returnToStart(3_000);
     unsubscribe();
 
     expect(rulerScroll.scrollLeft).toBe(0);
@@ -79,9 +74,18 @@ describe('Issue #637 Timeline return to start', () => {
 
     const alreadyReset = timelineUiStore.getSnapshot();
     rulerScroll.scrollLeft = 75; // DOM and store can temporarily disagree
-    returnAndMirrorScroll(3_000, rulerScroll);
+    const noOpTimes: number[] = [];
+    const unsubscribeNoOp = timelineUiStore.subscribe(() => {
+      noOpTimes.push(timelineUiStore.getSnapshot().currentTimeMs);
+    });
+    timelineUiStore.returnToStart(3_000);
+    unsubscribeNoOp();
+    unbind();
     expect(rulerScroll.scrollLeft).toBe(0);
     expect(timelineUiStore.getSnapshot()).toBe(alreadyReset);
+    expect(noOpTimes).toEqual([0]);
+    expect(editorProjectStore.getSnapshot()).toBe(beforeProject);
+    expect(editorProjectStore.history.getSnapshot()).toBe(beforeHistory);
   });
 
   it('keeps a nonzero-time Position draft usable across view-only Timeline updates', () => {
@@ -124,7 +128,10 @@ describe('Issue #637 Timeline return to start', () => {
     const beforeProject = editorProjectStore.getSnapshot();
     const beforeHistory = editorProjectStore.history.getSnapshot();
 
-    returnAndMirrorScroll(project.shots[0]!.durationMs, { scrollLeft: 160 });
+    const rulerScroll = { scrollLeft: 160 };
+    const unbind = bindTimelineRulerScroll(rulerScroll);
+    timelineUiStore.returnToStart(project.shots[0]!.durationMs);
+    unbind();
 
     expect(dialogueSelectionStore.getSelectedDialogueId()).toBe(dialogueId);
     expect(editorProjectStore.getSnapshot()).toBe(beforeProject);
@@ -143,7 +150,10 @@ describe('Issue #637 Timeline return to start', () => {
     const beforeProject = editorProjectStore.getSnapshot();
     const beforeHistory = editorProjectStore.history.getSnapshot();
 
-    returnAndMirrorScroll(project.shots[0]!.durationMs, { scrollLeft: 100 });
+    const rulerScroll = { scrollLeft: 100 };
+    const unbind = bindTimelineRulerScroll(rulerScroll);
+    timelineUiStore.returnToStart(project.shots[0]!.durationMs);
+    unbind();
 
     expect(begin.session.commit({ x: 700, y: 800 }).status).toBe('stale');
     expect(editorProjectStore.getSnapshot()).toBe(beforeProject);
@@ -160,7 +170,8 @@ describe('Issue #637 Timeline return to start', () => {
     expect(source).toContain('aria-label="回到起点"');
     expect(source).toContain('title="回到起点"');
     expect(source).toContain('onClick={() => timelineUiStore.returnToStart(durationMs)}');
-    expect(source).toContain('syncTimelineRulerScroll(scrollRef.current, ui.scrollPx);');
+    expect(source).toContain('return bindTimelineRulerScroll(scrollRef.current);');
+    expect(source).toContain('return timelineUiStore.subscribe(reconcile);');
     expect(styles).toContain('.timeline-toolbar .timeline-return-to-start');
     expect(styles).toContain('flex-basis: 44px;');
   });

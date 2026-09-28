@@ -47,6 +47,17 @@ export function syncTimelineRulerScroll(
   }
 }
 
+/** Bind the actual ruler viewport to Timeline scroll intent and commands. */
+export function bindTimelineRulerScroll(
+  rulerScroll: Pick<HTMLDivElement, 'scrollLeft'> | null,
+): () => void {
+  const reconcile = (): void => {
+    syncTimelineRulerScroll(rulerScroll, timelineUiStore.getSnapshot().scrollPx);
+  };
+  reconcile();
+  return timelineUiStore.subscribe(reconcile);
+}
+
 /**
  * The only product Timeline surface for Day 26. It renders the current shot's
  * `0 → durationMs` range with a mm:ss.mmm readout and a seekable playhead.
@@ -124,11 +135,11 @@ export function TimelineDock({
     return () => observer.disconnect();
   }, [ui.expanded, hasShot]);
 
-  // The store owns horizontal scroll intent, including shot resets and the
-  // shared return-to-start command. Keep the mounted ruler in sync with it.
+  // The store owns horizontal scroll intent. Subscribe the mounted ruler so a
+  // return-to-start request can reconcile DOM even when UI state is 0/0.
   useLayoutEffect(() => {
-    syncTimelineRulerScroll(scrollRef.current, ui.scrollPx);
-  }, [currentShotId, hasShot, ui.expanded, ui.scrollPx]);
+    return bindTimelineRulerScroll(scrollRef.current);
+  }, [currentShotId, hasShot, ui.expanded]);
 
   const pixelsPerMs = computePixelsPerMs(viewportWidth, durationMs, ui.zoom);
   const trackWidth = durationMs * pixelsPerMs;
