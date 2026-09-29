@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { calculateViewportTransform } from '../../domain';
-import type { EvaluatedShot, Project, SubtitleStyle } from '../../domain';
+import type { CameraView, EvaluatedShot, Project, SubtitleStyle } from '../../domain';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
 import { StageRenderer } from './StageRenderer';
 import {
@@ -15,6 +15,7 @@ interface CanvasStageProps {
   assetUrls: StageAssetUrlMap;
   caption: string | null;
   captionStyle?: SubtitleStyle;
+  camera?: CameraView;
   onReady?: () => void;
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;

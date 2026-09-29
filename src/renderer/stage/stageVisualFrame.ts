@@ -1,10 +1,11 @@
-import type { SubtitleStyle } from '../../domain';
+import type { CameraView, SubtitleStyle } from '../../domain';
 import type { StageRenderModel } from '../../shared/stage/render-model';
 
 export interface StageVisualFrame<TModel = StageRenderModel> {
   model: TModel;
   caption: string | null;
   captionStyle?: SubtitleStyle;
+  camera?: CameraView;
 }
 
 /**

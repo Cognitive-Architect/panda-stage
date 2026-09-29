@@ -5,6 +5,29 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.product-preview-speaker-focus {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-color-text-secondary);
+  cursor: pointer;
+}
+
+.product-preview-speaker-focus[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+  color: var(--ui-color-text-primary);
+}
+
+.product-preview-speaker-focus:focus-visible {
+  outline: 2px solid var(--ui-color-selected-border);
+  outline-offset: 2px;
 }
 
 .product-preview-range-control {

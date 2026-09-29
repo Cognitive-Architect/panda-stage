@@ -10,6 +10,7 @@ export * from './validators';
 export * from './actions';
 export * from './timeline/frame-grid';
 export * from './evaluate-layer-motion';
+export * from './resolve-speaker-focus-camera';
 export {
   evaluateShotAtTime,
 } from './evaluate-shot-at-time';

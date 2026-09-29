@@ -8,7 +8,7 @@ import {
 } from 'react';
 import type Konva from 'konva';
 import { Group, Image as KonvaImage, Layer, Stage, Text } from 'react-konva';
-import type { EvaluatedShot, Project } from '../../domain';
+import type { CameraView, EvaluatedShot, Project } from '../../domain';
 import type { SubtitleStyle } from '../../domain';
 import {
   buildStageRenderModel,
@@ -48,6 +48,7 @@ interface StageRendererProps {
   assetUrls: StageAssetUrlMap;
   caption: string | null;
   captionStyle?: SubtitleStyle;
+  camera?: CameraView;
   onReady?: () => void;
   /** Fires when a complete drawable frame exists, including an intentional Preview fallback. */
   onDisplayReady?: () => void;
@@ -205,6 +206,7 @@ export function StageRenderer({
   assetUrls,
   caption,
   captionStyle,
+  camera,
   onReady,
   onDisplayReady,
   onError,
@@ -258,6 +260,7 @@ export function StageRenderer({
         model: modelResult.model,
         caption,
         captionStyle,
+        camera,
       }
     : null;
   const imageState = useStageImages(layers, imageSourceKey);
@@ -303,6 +306,7 @@ export function StageRenderer({
   });
   const displayCaption = displayFrame?.caption ?? caption;
   const displayCaptionStyle = displayFrame?.captionStyle ?? captionStyle;
+  const displayCamera = displayFrame ? displayFrame.camera : camera;
 
   useEffect(() => {
     if (modelResult.error) {
@@ -372,6 +376,7 @@ export function StageRenderer({
       data-stage-ready={String(ready)}
       data-stage-render-token={renderToken == null ? '' : String(renderToken)}
       data-stage-time={displayModel!.timeMs}
+      data-camera-view={displayCamera ? JSON.stringify(displayCamera) : ''}
       data-testid="stage-renderer"
     >
       <Stage
@@ -380,6 +385,13 @@ export function StageRenderer({
         width={displayModel!.width}
       >
         <Layer listening={false} ref={configurePreviewLayer}>
+          <Group
+            listening={false}
+            x={displayModel!.width / 2 - (displayCamera?.centerX ?? displayModel!.width / 2) * (displayCamera?.zoom ?? 1)}
+            y={displayModel!.height / 2 - (displayCamera?.centerY ?? displayModel!.height / 2) * (displayCamera?.zoom ?? 1)}
+            scaleX={displayCamera?.zoom ?? 1}
+            scaleY={displayCamera?.zoom ?? 1}
+          >
           {displayModel!.layers.map((layer) => {
             const render = layer.render;
             const primaryPart = layer.parts[0];
@@ -428,6 +440,7 @@ export function StageRenderer({
               </Group>
             );
           })}
+          </Group>
           <SubtitleRenderer
             text={displayCaption}
             style={displayCaptionStyle}

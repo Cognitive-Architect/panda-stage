@@ -27,6 +27,8 @@ import {
   evaluateShotAtTime,
   mapProjectTime,
   projectDurationMs,
+  resolveSpeakerFocusCamera,
+  type CameraView,
   type Project,
 } from '../../domain';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
@@ -102,6 +104,7 @@ export function ProductPreviewOverlay({
     [project, shotId],
   );
   const [range, setRange] = useState<ProductPreviewRange>('project');
+  const [speakerFocus, setSpeakerFocus] = useState(false);
   // Playback position and transport flag: the ONLY temporal state in the app
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);
@@ -298,6 +301,9 @@ export function ProductPreviewOverlay({
   const activeCue = evaluatedShot
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
+  const camera = speakerFocus && shot
+    ? resolveSpeakerFocusCamera(project, shot, activeShotTimeMs)
+    : undefined;
   const renderedShot = useMemo(
     () => {
       if (!shot || !evaluatedShot) return evaluatedShot;
@@ -514,6 +520,7 @@ export function ProductPreviewOverlay({
     captionStyle: typeof captionStyle;
     evaluatedShot: NonNullable<typeof displayedShot>;
     degraded: boolean;
+    camera?: CameraView;
   } | null>(null);
   useLayoutEffect(() => {
     if (
@@ -528,12 +535,14 @@ export function ProductPreviewOverlay({
       captionStyle,
       evaluatedShot: displayedShot,
       degraded: previewDegraded,
+      camera,
     };
   }, [
     assets.status,
     assets.urls,
     caption,
     captionStyle,
+    camera,
     displayedShot,
     previewDegraded,
   ]);
@@ -574,6 +583,7 @@ export function ProductPreviewOverlay({
       className="product-preview-overlay"
       data-preview-playing={String(playing)}
       data-preview-range={range}
+      data-speaker-focus={String(speakerFocus)}
       data-preview-data-ready={String(initialReadiness === 'ready')}
       data-preview-degraded={String(previewDegraded)}
       data-preview-failed-asset-ids={JSON.stringify(fatalAssetIds)}
@@ -658,6 +668,15 @@ export function ProductPreviewOverlay({
                   ]}
                   value={range}
                 />
+                <button
+                  aria-pressed={speakerFocus}
+                  className="product-preview-speaker-focus"
+                  data-testid="product-preview-speaker-focus"
+                  onClick={() => setSpeakerFocus((current) => !current)}
+                  type="button"
+                >
+                  说话人聚焦
+                </button>
               </div>
               <div
                 className="product-preview-stage"
@@ -689,6 +708,7 @@ export function ProductPreviewOverlay({
                   <>
                     <CanvasStage
                       assetUrls={assets.urls}
+                      camera={camera}
                       caption={caption}
                       captionStyle={captionStyle}
                       evaluatedShot={renderedShot}
@@ -720,6 +740,7 @@ export function ProductPreviewOverlay({
                   <>
                     <CanvasStage
                       assetUrls={assets.urls}
+                      camera={camera}
                       caption={caption}
                       captionStyle={captionStyle}
                       degraded
@@ -753,6 +774,7 @@ export function ProductPreviewOverlay({
                 ) : heldVisual ? (
                   <CanvasStage
                     assetUrls={heldVisual.assetUrls}
+                    camera={heldVisual.camera}
                     caption={heldVisual.caption}
                     captionStyle={heldVisual.captionStyle}
                     degraded={heldVisual.degraded}
@@ -770,6 +792,7 @@ export function ProductPreviewOverlay({
                 ) : displayedShot ? (
                   <CanvasStage
                     assetUrls={assets.urls}
+                    camera={camera}
                     caption={caption}
                     captionStyle={captionStyle}
                     degraded={previewDegraded}
