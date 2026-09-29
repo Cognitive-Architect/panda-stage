@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isValidFrameTime } from '../../../../src/domain/timeline/frame-grid';
+import { isolatePositionMarkerPointer } from '../../../../src/renderer/features/timeline/PositionKeyMarker';
 import { positionActionPlacement, previewPositionKeyTime } from '../../../../src/renderer/features/timeline/positionKeyGesture';
 
 const base = {
@@ -11,6 +12,12 @@ const base = {
 };
 
 describe('Issue #647 Position Key drag geometry', () => {
+  it('stops marker pointer events before the parent Timeline seek handler', () => {
+    let stopped = 0;
+    isolatePositionMarkerPointer({ stopPropagation: () => { stopped += 1; } } as never);
+    expect(stopped).toBe(1);
+  });
+
   it('snaps to legal 24fps times in both directions', () => {
     expect(previewPositionKeyTime({ ...base, deltaPx: 9 })).toBe(1_042);
     expect(previewPositionKeyTime({ ...base, deltaPx: -9 })).toBe(958);
