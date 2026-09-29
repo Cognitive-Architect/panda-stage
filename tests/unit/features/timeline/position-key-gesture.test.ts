@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { isValidFrameTime } from '../../../../src/domain/timeline/frame-grid';
 import { isolatePositionMarkerPointer } from '../../../../src/renderer/features/timeline/PositionKeyMarker';
@@ -10,6 +11,8 @@ const base = {
   nextTimeMs: 2_000,
   durationMs: 3_001,
 };
+
+const ACTION_OUTER_HEIGHT = 48 + 3 * 2 + 1 * 2;
 
 describe('Issue #647 Position Key drag geometry', () => {
   it('stops marker pointer events before the parent Timeline seek handler', () => {
@@ -65,14 +68,16 @@ describe('Issue #648 portrait Delete placement', () => {
     const placed = place({}, true);
     expect(placed?.below).toBe(true);
     expect(placed?.top).toBe(92);
+    expect(placed!.top + ACTION_OUTER_HEIGHT).toBeLessThanOrEqual(300 - 8);
   });
 
   it('flips above for a portrait Key near the viewport bottom edge', () => {
     const bottomKey = { top: 244, bottom: 288 };
     const placed = place(bottomKey, true);
     expect(placed?.below).toBe(false);
-    expect(placed?.top).toBe(196);
-    expect(placed!.top + 48).toBeLessThanOrEqual(300 - 8);
+    expect(placed?.top).toBe(188);
+    expect(placed!.top + ACTION_OUTER_HEIGHT).toBeLessThanOrEqual(bottomKey.top);
+    expect(placed!.top + ACTION_OUTER_HEIGHT).toBeLessThanOrEqual(300 - 8);
   });
 
   it('keeps a portrait Key above when even above space is tight', () => {
@@ -80,13 +85,15 @@ describe('Issue #648 portrait Delete placement', () => {
     const placed = place({ top: 280, bottom: 296 }, true, 300);
     expect(placed?.below).toBe(false);
     expect(placed!.top).toBeGreaterThanOrEqual(8);
-    expect(placed!.top + 48).toBeLessThanOrEqual(300 - 8);
+    expect(placed!.top + ACTION_OUTER_HEIGHT).toBeLessThanOrEqual(300 - 8);
   });
 
   it('leaves landscape above/below behaviour unchanged', () => {
     expect(place({ top: 40, bottom: 84 }, false)?.below).toBe(true);
     expect(place({ top: 110, bottom: 154 }, false)?.below).toBe(false);
-    expect(place({ top: 110, bottom: 154 }, false)?.top).toBe(62);
+    const above = place({ top: 110, bottom: 154 }, false);
+    expect(above?.top).toBe(54);
+    expect(above!.top + ACTION_OUTER_HEIGHT).toBeLessThanOrEqual(110);
   });
 
   it('keeps horizontal edge clamping in both orientations', () => {
@@ -98,5 +105,20 @@ describe('Issue #648 portrait Delete placement', () => {
   it('still hides the action when the marker is scrolled out of the Timeline viewport', () => {
     expect(place({ left: 500, right: 544 }, true)).toBeNull();
     expect(place({ left: -100, right: -56 }, false)).toBeNull();
+  });
+});
+
+describe('Issue #649 Delete overlay outer-height contract', () => {
+  it('matches the rendered shared touch target, local padding and border', () => {
+    const tokens = readFileSync('src/renderer/styles/tokens.css', 'utf8');
+    const primitives = readFileSync('src/renderer/styles/primitives.css', 'utf8');
+    const local = readFileSync('src/renderer/styles/features/timeline/pk06-position-lane.css', 'utf8');
+    expect(tokens).toMatch(/--ui-touch-regular:\s*48px;/u);
+    expect(primitives).toMatch(/button\[data-ui-button\]\s*\{[^}]*min-height:\s*var\(--ui-touch-regular\);/u);
+    expect(local).toMatch(/\.position-key-action\s*\{[^}]*box-sizing:\s*border-box;[^}]*padding:\s*3px;[^}]*border:\s*1px /u);
+    const localButtonRule = /\.position-key-action \[data-ui-button\]\s*\{([^}]*)\}/u.exec(local)?.[1];
+    expect(localButtonRule).toBeDefined();
+    expect(localButtonRule).not.toContain('min-height');
+    expect(ACTION_OUTER_HEIGHT).toBe(56);
   });
 });

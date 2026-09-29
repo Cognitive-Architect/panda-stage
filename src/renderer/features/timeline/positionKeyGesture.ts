@@ -36,7 +36,8 @@ interface RectLike {
 }
 
 const ACTION_WIDTH = 104;
-const ACTION_HEIGHT = 48;
+// Shared Button minimum (48px) + overlay padding (3px × 2) + border (1px × 2).
+const ACTION_OUTER_HEIGHT = 56;
 const VIEWPORT_INSET = 8;
 const MARKER_GAP = 8;
 /** Landscape keeps the incumbent above-first rule: flip below near the ruler. */
@@ -55,12 +56,14 @@ export function positionActionPlacement(input: {
       marker.bottom < scrollViewport.top || marker.top > scrollViewport.bottom)) return null;
   // Portrait prefers below per #647; only a bottom-edge Key flips above.
   const below = portrait
-    ? marker.bottom + MARKER_GAP + ACTION_HEIGHT <= viewportHeight - VIEWPORT_INSET
+    ? marker.bottom + MARKER_GAP + ACTION_OUTER_HEIGHT <= viewportHeight - VIEWPORT_INSET
     : marker.top < LANDSCAPE_ABOVE_MIN_TOP;
+  const maximumTop = viewportHeight - VIEWPORT_INSET - ACTION_OUTER_HEIGHT;
   return {
-    top: below
-      ? Math.min(viewportHeight - VIEWPORT_INSET - ACTION_HEIGHT, marker.bottom + MARKER_GAP)
-      : Math.max(VIEWPORT_INSET, marker.top - ACTION_HEIGHT),
+    top: Math.max(VIEWPORT_INSET, Math.min(
+      maximumTop,
+      below ? marker.bottom + MARKER_GAP : marker.top - ACTION_OUTER_HEIGHT,
+    )),
     left: Math.max(VIEWPORT_INSET, Math.min(
       viewportWidth - ACTION_WIDTH - VIEWPORT_INSET,
       marker.left + marker.width / 2 - ACTION_WIDTH / 2,
