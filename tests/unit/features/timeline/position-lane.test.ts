@@ -115,4 +115,32 @@ describe('Issue #647 PK-06 Position lane read and navigation', () => {
     expect(markup.match(/data-testid="position-key-marker"/gu)).toHaveLength(3);
     expect(markup.match(/data-testid="position-base-marker"/gu)).toHaveLength(1);
   });
+
+  it('keeps a composite BFM Character on one root-owned Position lane', () => {
+    const original = projectWithKeys();
+    const project = ProjectSchema.parse({
+      ...original,
+      characters: [{
+        ...original.characters[0]!,
+        mode: 'composite',
+        bodyAssetId: IDS.assetBg,
+        facePlacement: { offsetX: 8, offsetY: -4, scale: 1 },
+      }],
+    });
+    const editor = new EditorProjectStore();
+    editor.open('D:/pk06-bfm.pandastage', project);
+    const snapshot = editor.getSnapshot()!;
+    const shot = snapshot.project.shots[0]!;
+    expect(shot.layers.filter((layer) => layer.source.kind === 'character')).toHaveLength(1);
+    const selected = recognizeSelectedPositionLane(shot, IDS.layerChar)!;
+    expect(selected.recognition.status).toBe('editable');
+    const markup = renderToStaticMarkup(createElement(PositionLane, {
+      shot, layer: selected.layer, currentTimeMs: 1_000,
+      pixelsPerMs: 0.2, trackWidth: 600, snapshot,
+    }));
+    expect(markup.match(/data-testid="position-lane"/gu)).toHaveLength(1);
+    expect(markup.match(/data-testid="position-key-marker"/gu)).toHaveLength(2);
+    expect(editor.getSnapshot()).toBe(snapshot);
+    expect(editor.history.getSnapshot().undoCount).toBe(0);
+  });
 });
