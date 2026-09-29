@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isValidFrameTime } from '../../src/domain/timeline/frame-grid';
-import { positionActionPlacement, previewPositionKeyTime } from '../../src/renderer/features/timeline/positionKeyGesture';
+import { isValidFrameTime } from '../../../../src/domain/timeline/frame-grid';
+import { positionActionPlacement, previewPositionKeyTime } from '../../../../src/renderer/features/timeline/positionKeyGesture';
 
 const base = {
   fromTimeMs: 1_000,

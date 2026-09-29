@@ -1,13 +1,13 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { PositionProjectService, ProjectSchema, type Project } from '../../src/domain';
-import { seekPositionMarker } from '../../src/renderer/features/timeline/PositionKeyMarker';
-import { PositionLane, recognizeSelectedPositionLane } from '../../src/renderer/features/timeline/PositionLane';
-import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
-import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
-import { PositionStore } from '../../src/renderer/stores/positionStore';
-import { buildProject, IDS } from './domain/testProject';
+import { PositionProjectService, ProjectSchema, type Project } from '../../../../src/domain';
+import { seekPositionMarker } from '../../../../src/renderer/features/timeline/PositionKeyMarker';
+import { PositionLane, recognizeSelectedPositionLane } from '../../../../src/renderer/features/timeline/PositionLane';
+import { timelineUiStore } from '../../../../src/renderer/features/timeline/timelineUiStore';
+import { EditorProjectStore } from '../../../../src/renderer/stores/EditorProjectStore';
+import { PositionStore } from '../../../../src/renderer/stores/positionStore';
+import { buildProject, IDS } from '../../domain/testProject';
 
 function projectWithKeys(): Project {
   const base = buildProject();
