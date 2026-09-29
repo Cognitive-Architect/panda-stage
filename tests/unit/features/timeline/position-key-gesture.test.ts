@@ -48,3 +48,55 @@ describe('Issue #647 Position Key drag geometry', () => {
       viewportWidth: 340, viewportHeight: 300, portrait: true })).toBeNull();
   });
 });
+
+describe('Issue #648 portrait Delete placement', () => {
+  const scrollViewport = { left: 0, right: 340, top: 0, bottom: 300, width: 340 };
+  const marker = { left: 148, right: 192, top: 40, bottom: 84, width: 44 };
+  const place = (overrides: Partial<typeof marker>, portrait: boolean, viewportHeight = 300) =>
+    positionActionPlacement({
+      marker: { ...marker, ...overrides },
+      scrollViewport: { ...scrollViewport, bottom: viewportHeight },
+      viewportWidth: 340,
+      viewportHeight,
+      portrait,
+    });
+
+  it('prefers below for a portrait Key that has room below', () => {
+    const placed = place({}, true);
+    expect(placed?.below).toBe(true);
+    expect(placed?.top).toBe(92);
+  });
+
+  it('flips above for a portrait Key near the viewport bottom edge', () => {
+    const bottomKey = { top: 244, bottom: 288 };
+    const placed = place(bottomKey, true);
+    expect(placed?.below).toBe(false);
+    expect(placed?.top).toBe(196);
+    expect(placed!.top + 48).toBeLessThanOrEqual(300 - 8);
+  });
+
+  it('keeps a portrait Key above when even above space is tight', () => {
+    // Marker sits at the very bottom: below cannot fit, so Delete must not hang off-screen.
+    const placed = place({ top: 280, bottom: 296 }, true, 300);
+    expect(placed?.below).toBe(false);
+    expect(placed!.top).toBeGreaterThanOrEqual(8);
+    expect(placed!.top + 48).toBeLessThanOrEqual(300 - 8);
+  });
+
+  it('leaves landscape above/below behaviour unchanged', () => {
+    expect(place({ top: 40, bottom: 84 }, false)?.below).toBe(true);
+    expect(place({ top: 110, bottom: 154 }, false)?.below).toBe(false);
+    expect(place({ top: 110, bottom: 154 }, false)?.top).toBe(62);
+  });
+
+  it('keeps horizontal edge clamping in both orientations', () => {
+    expect(place({ left: 8, right: 52 }, true)?.left).toBe(8);
+    expect(place({ left: 310, right: 354 }, true)?.left).toBe(228);
+    expect(place({ left: 310, right: 354 }, false)?.left).toBe(228);
+  });
+
+  it('still hides the action when the marker is scrolled out of the Timeline viewport', () => {
+    expect(place({ left: 500, right: 544 }, true)).toBeNull();
+    expect(place({ left: -100, right: -56 }, false)).toBeNull();
+  });
+});
