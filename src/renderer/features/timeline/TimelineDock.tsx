@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { getBoundAudioEndRange } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import {
   computePixelsPerMs,
@@ -29,6 +30,7 @@ import { DialogueClip } from './DialogueClip';
 import { AudioClip } from './AudioClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { usePendingDialoguePlacement } from './PendingDialoguePlacement';
+import { PositionLane, recognizeSelectedPositionLane } from './PositionLane';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
@@ -77,6 +79,10 @@ export function TimelineDock({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const selectedLayerId = useSyncExternalStore(
+    selectionStore.subscribe,
+    selectionStore.getSelectedLayerId,
+  );
   const ui = useTimelineUi();
   const selectedDialogueId = useSyncExternalStore(
     dialogueSelectionStore.subscribe,
@@ -90,6 +96,7 @@ export function TimelineDock({
   const shot = currentShotId
     ? snapshot?.project.shots.find((candidate) => candidate.id === currentShotId) ?? null
     : null;
+  const positionLane = recognizeSelectedPositionLane(shot, selectedLayerId);
   const characters = snapshot?.project.characters ?? [];
   const audioClips = shot?.audioClips ?? [];
   const laneLabelWidth =
@@ -112,6 +119,7 @@ export function TimelineDock({
   const trackRef = useRef<HTMLDivElement>(null);
   const subtitleLaneContentRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const mediaGestureRef = useRef<{ pointerId: number; x: number; y: number; axis: 'pending' | 'horizontal' | 'vertical' } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const {
     drag: pendingDrag,
@@ -187,6 +195,31 @@ export function TimelineDock({
     timelineUiStore.setScrollPx(event.currentTarget.scrollLeft);
   };
 
+  const mediaPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.pointerType !== 'touch' ||
+        getComputedStyle(event.currentTarget).overflowY !== 'auto') return;
+    event.stopPropagation();
+    mediaGestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, axis: 'pending' };
+  };
+
+  const mediaPointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const gesture = mediaGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    if (gesture.axis === 'pending' && Math.max(Math.abs(dx), Math.abs(dy)) > 6) {
+      gesture.axis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+    }
+    if (gesture.axis === 'horizontal') seekFromClientX(event.clientX);
+  };
+
+  const mediaPointerEnd = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (mediaGestureRef.current?.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    mediaGestureRef.current = null;
+  };
+
   return (
     <section
       aria-label="镜头时间轴"
@@ -194,6 +227,7 @@ export function TimelineDock({
       data-expanded={ui.expanded ? 'true' : 'false'}
       data-has-shot={hasShot ? 'true' : 'false'}
       data-lane-label-width={laneLabelWidth}
+      data-has-position-lane={positionLane ? 'true' : 'false'}
       data-presentation={presentation}
       data-testid="timeline-dock"
       style={
@@ -331,6 +365,24 @@ export function TimelineDock({
                 role="group"
               >
                 <div className="timeline-lanes" data-testid="timeline-lanes">
+                  {positionLane && shot ? (
+                    <PositionLane
+                      key={`${shot.id}:${positionLane.layer.id}`}
+                      currentTimeMs={ui.currentTimeMs}
+                      layer={positionLane.layer}
+                      pixelsPerMs={pixelsPerMs}
+                      shot={shot}
+                      trackWidth={trackWidth}
+                      snapshot={snapshot!}
+                    />
+                  ) : null}
+                  <div
+                    className="timeline-media-lanes"
+                    onPointerDown={mediaPointerDown}
+                    onPointerMove={mediaPointerMove}
+                    onPointerUp={mediaPointerEnd}
+                    onPointerCancel={mediaPointerEnd}
+                  >
                   <div
                     className="timeline-lane timeline-subtitle-lane"
                     data-testid="timeline-subtitle-track"
@@ -494,6 +546,7 @@ export function TimelineDock({
                         </span>
                       ) : null}
                     </div>
+                  </div>
                   </div>
                 </div>
               </div>
