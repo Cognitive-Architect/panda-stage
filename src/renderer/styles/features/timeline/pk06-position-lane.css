@@ -120,17 +120,18 @@
   z-index: 1000;
   box-sizing: border-box;
   width: 104px;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid var(--ui-color-separator);
   border-radius: var(--ui-radius-small);
   background: var(--ui-color-surface-overlay);
   box-shadow: 0 4px 16px rgb(0 0 0 / 28%);
 }
 
+/* No local min-height override: Delete keeps the shared touch target
+   (--ui-touch-regular) and the bubble stays compact through its own padding. */
 .position-key-action [data-ui-button] {
   display: flex;
   width: 100%;
-  min-height: 36px;
   align-items: center;
   justify-content: center;
   gap: 5px;
@@ -141,12 +142,19 @@
   z-index: 1001;
   right: 16px;
   bottom: 16px;
+  display: flex;
   max-width: min(320px, calc(100vw - 32px));
-  padding: 10px 14px;
+  align-items: center;
+  gap: var(--ui-space-2);
+  padding: 6px 6px 6px 14px;
   border: 1px solid var(--ui-color-separator);
   border-radius: var(--ui-radius-small);
   background: var(--ui-color-surface-overlay);
   color: var(--ui-color-text-primary);
+}
+
+.position-lane-error-text {
+  min-width: 0;
 }
 
 /* Keep the external 162–324px landscape budget. At its minimum the Position

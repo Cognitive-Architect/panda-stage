@@ -358,7 +358,7 @@ export function TimelineDock({
                 ))}
               </div>
               <div
-                aria-label="字幕和音频轨道"
+                aria-label="时间轴轨道"
                 className="timeline-track-stack"
                 data-testid="timeline-track-stack"
                 data-timeline-layer="track-stack"

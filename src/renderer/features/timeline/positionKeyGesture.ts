@@ -35,6 +35,13 @@ interface RectLike {
   readonly width: number;
 }
 
+const ACTION_WIDTH = 104;
+const ACTION_HEIGHT = 48;
+const VIEWPORT_INSET = 8;
+const MARKER_GAP = 8;
+/** Landscape keeps the incumbent above-first rule: flip below near the ruler. */
+const LANDSCAPE_ABOVE_MIN_TOP = 76;
+
 /** Fixed-overlay placement keeps Delete attached without scroll clipping. */
 export function positionActionPlacement(input: {
   marker: RectLike;
@@ -46,11 +53,18 @@ export function positionActionPlacement(input: {
   const { marker, scrollViewport, viewportWidth, viewportHeight, portrait } = input;
   if (scrollViewport && (marker.right < scrollViewport.left || marker.left > scrollViewport.right ||
       marker.bottom < scrollViewport.top || marker.top > scrollViewport.bottom)) return null;
-  const below = portrait || marker.top < 76;
-  const width = 104;
+  // Portrait prefers below per #647; only a bottom-edge Key flips above.
+  const below = portrait
+    ? marker.bottom + MARKER_GAP + ACTION_HEIGHT <= viewportHeight - VIEWPORT_INSET
+    : marker.top < LANDSCAPE_ABOVE_MIN_TOP;
   return {
-    top: below ? Math.min(viewportHeight - 48, marker.bottom + 8) : Math.max(8, marker.top - 48),
-    left: Math.max(8, Math.min(viewportWidth - width - 8, marker.left + marker.width / 2 - width / 2)),
+    top: below
+      ? Math.min(viewportHeight - VIEWPORT_INSET - ACTION_HEIGHT, marker.bottom + MARKER_GAP)
+      : Math.max(VIEWPORT_INSET, marker.top - ACTION_HEIGHT),
+    left: Math.max(VIEWPORT_INSET, Math.min(
+      viewportWidth - ACTION_WIDTH - VIEWPORT_INSET,
+      marker.left + marker.width / 2 - ACTION_WIDTH / 2,
+    )),
     below,
   };
 }

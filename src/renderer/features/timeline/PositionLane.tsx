@@ -5,8 +5,9 @@ import {
   type Shot,
 } from '../../../domain';
 import { useState } from 'react';
-import { LockKeyhole } from 'lucide-react';
+import { LockKeyhole, X } from 'lucide-react';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import { IconButton } from '../../ui/Button';
 import { PositionKeyMarker } from './PositionKeyMarker';
 import { timeToPx } from './timeGeometry';
 
@@ -29,6 +30,37 @@ export function recognizeSelectedPositionLane(
     return null;
   }
   return { layer, recognition: recognizePositionChain({ shot, layer }) };
+}
+
+/**
+ * Local PK-06 error surface. It stays inside the Timeline DOM, so its pointer
+ * input is isolated from the parent seek gesture, and dismissal is a real
+ * reachable button instead of a clickable container.
+ */
+export function PositionLaneErrorNotice({ message, onDismiss }: {
+  message: string;
+  onDismiss: () => void;
+}): React.JSX.Element {
+  return (
+    <div
+      className="position-lane-error"
+      data-testid="position-lane-error"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <span className="position-lane-error-text" role="alert">{message}</span>
+      <IconButton
+        aria-label="关闭提示"
+        className="position-lane-error-dismiss"
+        icon={<X size={14} />}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDismiss();
+        }}
+        variant="secondary"
+      />
+    </div>
+  );
 }
 
 export function PositionLane({
@@ -87,7 +119,7 @@ export function PositionLane({
           </>
         )}
       </div>
-      {error ? <div className="position-lane-error" role="alert" onClick={() => setError(null)}>{error}</div> : null}
+      {error ? <PositionLaneErrorNotice message={error} onDismiss={() => setError(null)} /> : null}
     </div>
   );
 }
