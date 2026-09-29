@@ -25,9 +25,10 @@ import {
 } from 'react';
 import {
   evaluateShotAtTime,
+  evaluateSpeakerFocusCamera,
   mapProjectTime,
+  prepareSpeakerFocusCamera,
   projectDurationMs,
-  resolveSpeakerFocusCamera,
   type CameraView,
   type Project,
 } from '../../domain';
@@ -301,8 +302,12 @@ export function ProductPreviewOverlay({
   const activeCue = evaluatedShot
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
-  const camera = speakerFocus && shot
-    ? resolveSpeakerFocusCamera(project, shot, activeShotTimeMs)
+  const cameraPlan = useMemo(
+    () => (speakerFocus && shot ? prepareSpeakerFocusCamera(project, shot) : null),
+    [project, shot, speakerFocus],
+  );
+  const camera = cameraPlan
+    ? evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)
     : undefined;
   const renderedShot = useMemo(
     () => {

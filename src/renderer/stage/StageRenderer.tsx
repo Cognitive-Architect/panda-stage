@@ -386,6 +386,7 @@ export function StageRenderer({
       >
         <Layer listening={false} ref={configurePreviewLayer}>
           <Group
+            name="camera-world"
             listening={false}
             x={displayModel!.width / 2 - (displayCamera?.centerX ?? displayModel!.width / 2) * (displayCamera?.zoom ?? 1)}
             y={displayModel!.height / 2 - (displayCamera?.centerY ?? displayModel!.height / 2) * (displayCamera?.zoom ?? 1)}

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  evaluateSpeakerFocusCamera,
+  prepareSpeakerFocusCamera,
   resolveSpeakerFocusCamera,
   type Project,
   type Shot,
@@ -88,5 +90,30 @@ describe('Speaker Focus Camera', () => {
     shot.timelineEvents.push({ id: 'hide', layerId: 'a', type: 'visibility', startMs: 500, endMs: 500, visible: false });
     expect(resolveSpeakerFocusCamera(project, shot, 499).zoom).toBe(1.5);
     expect(resolveSpeakerFocusCamera(project, shot, 750).zoom).toBe(1);
+  });
+
+  it('reuses a many-boundary plan without rereading static Shot history per frame', () => {
+    const { project, shot } = fixture();
+    for (let index = 0; index < 80; index += 1) {
+      shot.dialogues.push(dialogue(`D${index}`, index % 2 ? 'B' : 'A', index * 20, index * 20 + 16));
+    }
+    shot.timelineEvents.push({ id: 'move', layerId: 'a', type: 'move', startMs: 100, endMs: 1000, from: { x: 400, y: 500 }, to: { x: 800, y: 600 }, easing: 'linear' });
+    shot.timelineEvents.push({ id: 'shake', layerId: 'a', type: 'shake', startMs: 100, endMs: 1000, amplitudeX: 30, amplitudeY: 20, frequencyHz: 1 });
+    const times = [0, 10, 20, 125, 250, 501, 999, 1200, 1599, 1750];
+    const expected = times.map((time) => resolveSpeakerFocusCamera(project, shot, time));
+    const dialogues = shot.dialogues;
+    const events = shot.timelineEvents;
+    let dialogueReads = 0;
+    let eventReads = 0;
+    Object.defineProperty(shot, 'dialogues', { get: () => { dialogueReads += 1; return dialogues; } });
+    Object.defineProperty(shot, 'timelineEvents', { get: () => { eventReads += 1; return events; } });
+    const plan = prepareSpeakerFocusCamera(project, shot);
+    const readsAfterPreparation = { dialogueReads, eventReads };
+    expect(times.map((time) => evaluateSpeakerFocusCamera(plan, time))).toEqual(expected);
+    expect({ dialogueReads, eventReads }).toEqual(readsAfterPreparation);
+    expect(plan.transitions.length).toBeGreaterThan(100);
+    const sought = evaluateSpeakerFocusCamera(plan, 999);
+    for (let time = 0; time <= 999; time += 7) evaluateSpeakerFocusCamera(plan, time);
+    expect(evaluateSpeakerFocusCamera(plan, 999)).toEqual(sought);
   });
 });
