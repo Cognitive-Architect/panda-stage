@@ -128,6 +128,9 @@ export function ProductPreviewOverlay({
     'preparing',
   );
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    overlayRef.current?.focus();
+  }, []);
   const handoffPhaseRef = useRef<ProductPreviewHandoffPhase>('warming');
   handoffPhaseRef.current = handoffPhase;
   const handoffReadyNotifiedRef = useRef(false);
@@ -614,6 +617,7 @@ export function ProductPreviewOverlay({
       data-testid="product-preview-overlay"
       ref={overlayRef}
       role="dialog"
+      tabIndex={-1}
     >
       {!previewSurfaceActive && (showWarmupStatus || initialReadinessError) ? (
         <div

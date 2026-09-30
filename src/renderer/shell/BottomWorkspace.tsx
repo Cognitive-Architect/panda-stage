@@ -29,6 +29,7 @@ import type { EditorShellLayoutMode } from './adaptiveEditorShell';
  * touched, and no second collapse state is introduced here.
  */
 export interface BottomWorkspaceProps {
+  productPreviewOpen?: boolean;
   hidden?: boolean;
   assemblyInactive?: boolean;
   presentation?: EditorShellLayoutMode;
@@ -138,6 +139,7 @@ function readLiveTimelineHeightBounds(
 }
 
 export function BottomWorkspace({
+  productPreviewOpen = false,
   hidden = false,
   assemblyInactive = false,
   presentation = 'landscape',
@@ -290,7 +292,7 @@ export function BottomWorkspace({
       data-testid="bottom-workspace"
       data-timeline-expanded={expanded ? 'true' : 'false'}
       hidden={hidden}
-      inert={assemblyInactive || undefined}
+      inert={assemblyInactive || productPreviewOpen || undefined}
       ref={workspaceRef}
       style={
         {
@@ -329,7 +331,7 @@ export function BottomWorkspace({
           <span className="timeline-resize-grip" aria-hidden="true" />
         </div>
       ) : null}
-      <TimelineDock presentation={presentation} />
+      <TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />
       {showHistoryControls ? <HistoryControls presentation="bottom" /> : null}
     </section>
   );

@@ -12,6 +12,7 @@ import { PositionKeyMarker } from './PositionKeyMarker';
 import { timeToPx } from './timeGeometry';
 
 export interface PositionLaneProps {
+  productPreviewOpen?: boolean;
   shot: Shot;
   layer: Layer;
   currentTimeMs: number;
@@ -64,6 +65,7 @@ export function PositionLaneErrorNotice({ message, onDismiss }: {
 }
 
 export function PositionLane({
+  productPreviewOpen = false,
   shot,
   layer,
   currentTimeMs,
@@ -103,6 +105,7 @@ export function PositionLane({
             />
             {points.map((point, index) => (
               <PositionKeyMarker
+                productPreviewOpen={productPreviewOpen}
                 current={point.timeMs === currentTimeMs}
                 durationMs={shot.durationMs}
                 key={point.timeMs}

@@ -1046,6 +1046,7 @@ export function EditorShell({
         >
           <div
             className="editor-top-region"
+            inert={productPreviewOpen || undefined}
             data-testid="editor-top-region"
           >
             {recoveryCandidate ? (
@@ -1066,6 +1067,7 @@ export function EditorShell({
           <PendingDialoguePlacementProvider>
             <div
               className="editor-body"
+              inert={productPreviewOpen || undefined}
               data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
               data-portrait-surface={portraitContextSurface}
               data-shell-mode={layoutMode}
@@ -1182,6 +1184,7 @@ export function EditorShell({
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
             </div>
             <BottomWorkspace
+              productPreviewOpen={productPreviewOpen}
               hidden={
                 isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
               }

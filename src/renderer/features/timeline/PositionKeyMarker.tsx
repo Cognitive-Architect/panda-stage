@@ -14,6 +14,7 @@ import { positionActionPlacement, previewPositionKeyTime } from './positionKeyGe
 import { recognizeSelectedPositionLane } from './PositionLane';
 
 export interface PositionKeyMarkerProps {
+  productPreviewOpen?: boolean;
   point: PositionKey;
   current: boolean;
   durationMs: number;
@@ -56,6 +57,7 @@ function targetIsCurrent(props: PositionKeyMarkerProps, snapshot: EditorProjectS
 }
 
 export function PositionKeyMarker(props: PositionKeyMarkerProps): React.JSX.Element {
+  const productPreviewOpen = props.productPreviewOpen ?? false;
   const { point, current, durationMs, pixelsPerMs, shotId, layerId, previousTimeMs, nextTimeMs, snapshot, onError } = props;
   const base = point.kind === 'base';
   const markerRef = useRef<HTMLButtonElement>(null);
@@ -64,15 +66,23 @@ export function PositionKeyMarker(props: PositionKeyMarkerProps): React.JSX.Elem
   const [previewTimeMs, setPreviewTimeMs] = useState<number | null>(null);
   const [actionPosition, setActionPosition] = useState<{ top: number; left: number; below: boolean } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(true);
+  const deleteAvailableRef = useRef(false);
+  deleteAvailableRef.current = !productPreviewOpen && !base && current && deleteOpen;
   const displayTime = previewTimeMs ?? point.timeMs;
   const name = base ? '0 秒，基础位置' : `${formatTimecode(point.timeMs)}，位置点`;
 
   useLayoutEffect(() => {
-    if (!current) setDeleteOpen(true);
-  }, [current]);
+    if (productPreviewOpen) {
+      setDeleteOpen(false);
+      dragRef.current = null;
+      setPreviewTimeMs(null);
+    } else if (!current) {
+      setDeleteOpen(true);
+    }
+  }, [current, productPreviewOpen]);
 
   useLayoutEffect(() => {
-    if (base || !current || !deleteOpen || previewTimeMs !== null) {
+    if (productPreviewOpen || base || !current || !deleteOpen || previewTimeMs !== null) {
       setActionPosition(null);
       return;
     }
@@ -95,10 +105,10 @@ export function PositionKeyMarker(props: PositionKeyMarkerProps): React.JSX.Elem
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [base, current, deleteOpen, previewTimeMs, pixelsPerMs]);
+  }, [base, current, deleteOpen, previewTimeMs, pixelsPerMs, productPreviewOpen]);
 
   useLayoutEffect(() => {
-    if (!current || base || !deleteOpen) return;
+    if (productPreviewOpen || !current || base || !deleteOpen) return;
     const escape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         setDeleteOpen(false);
@@ -107,13 +117,13 @@ export function PositionKeyMarker(props: PositionKeyMarkerProps): React.JSX.Elem
     };
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
-  }, [base, current, deleteOpen]);
+  }, [base, current, deleteOpen, productPreviewOpen]);
 
   const reportStale = (): void => onError('这个位置点已发生变化，请重新操作。');
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     isolatePositionMarkerPointer(event);
-    if (base || event.button !== 0) return;
+    if (productPreviewOpen || base || event.button !== 0) return;
     if (editorProjectStore.getSnapshot() !== snapshot ||
         shotStore.getCurrentShotId() !== shotId ||
         selectionStore.getSelectedLayerId() !== layerId) {
@@ -178,6 +188,8 @@ export function PositionKeyMarker(props: PositionKeyMarkerProps): React.JSX.Elem
   };
 
   const deleteKey = (): void => {
+    // Also reject a retained event handler from the dismissed portal.
+    if (!deleteAvailableRef.current) return;
     if (!targetIsCurrent(props, snapshot, editorProjectStore.getProjectInstanceId()) ||
         timelineUiStore.getSnapshot().currentTimeMs !== point.timeMs) {
       reportStale();
@@ -198,12 +210,14 @@ export function PositionKeyMarker(props: PositionKeyMarkerProps): React.JSX.Elem
         aria-current={current ? 'time' : undefined}
         aria-label={name}
         className="position-key-marker"
+        disabled={productPreviewOpen}
         data-current={current ? 'true' : 'false'}
         data-dragging={previewTimeMs === null ? 'false' : 'true'}
         data-kind={point.kind}
         data-testid={base ? 'position-base-marker' : 'position-key-marker'}
         onClick={(event) => {
           event.stopPropagation();
+          if (productPreviewOpen) return;
           if (suppressClickRef.current && event.detail !== 0) {
             suppressClickRef.current = false;
             return;
@@ -229,7 +243,7 @@ export function PositionKeyMarker(props: PositionKeyMarkerProps): React.JSX.Elem
           {formatTimecode(previewTimeMs)}
         </span>
       ) : null}
-      {!base && current && deleteOpen && actionPosition && typeof document !== 'undefined'
+      {!productPreviewOpen && !base && current && deleteOpen && actionPosition && typeof document !== 'undefined'
         ? createPortal(
           <div
             className="position-key-action"

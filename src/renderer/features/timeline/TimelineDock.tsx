@@ -36,6 +36,7 @@ const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
 
 export interface TimelineDockProps {
+  productPreviewOpen?: boolean;
   presentation?: 'desktop' | 'landscape' | 'portrait';
 }
 
@@ -69,6 +70,7 @@ export function bindTimelineRulerScroll(
  * are never touched.
  */
 export function TimelineDock({
+  productPreviewOpen = false,
   presentation = 'landscape',
 }: TimelineDockProps = {}): React.JSX.Element {
   const currentShotId = useSyncExternalStore(
@@ -367,6 +369,7 @@ export function TimelineDock({
                 <div className="timeline-lanes" data-testid="timeline-lanes">
                   {positionLane && shot ? (
                     <PositionLane
+                      productPreviewOpen={productPreviewOpen}
                       key={`${shot.id}:${positionLane.layer.id}`}
                       currentTimeMs={ui.currentTimeMs}
                       layer={positionLane.layer}

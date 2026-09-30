@@ -11,6 +11,7 @@ const hooks = vi.hoisted(() => ({
   states: [] as unknown[],
   refIndex: 0,
   stateIndex: 0,
+  effects: [] as Array<() => unknown>,
 }));
 
 vi.mock('react', async (importOriginal) => {
@@ -26,7 +27,7 @@ vi.mock('react', async (importOriginal) => {
       if (!(index in hooks.states)) hooks.states[index] = initial;
       return [hooks.states[index], (value: unknown) => { hooks.states[index] = value; }];
     },
-    useLayoutEffect: () => undefined,
+    useLayoutEffect: (effect: () => unknown) => { hooks.effects.push(effect); },
   };
 });
 
@@ -73,6 +74,8 @@ function setup(): PositionKeyMarkerProps {
 
 type TestPointer = ReturnType<typeof pointer>;
 type TestButton = { props: {
+  onClick: (event: { stopPropagation: () => void; detail: number }) => void;
+  disabled: boolean;
   onPointerDown: (event: TestPointer) => void;
   onPointerMove: (event: TestPointer) => void;
   onPointerUp: (event: TestPointer) => void;
@@ -86,6 +89,7 @@ type TestPortal = { type: string; props: { children: {
 function marker(props: PositionKeyMarkerProps): { button: TestButton; portal: TestPortal } {
   hooks.refIndex = 0;
   hooks.stateIndex = 0;
+  hooks.effects = [];
   const rendered = PositionKeyMarker(props);
   const children = rendered.props.children as unknown[];
   return { button: children[0] as TestButton, portal: children[2] as TestPortal };
@@ -106,7 +110,7 @@ function pointer(x: number) {
 beforeEach(() => {
   hooks.refs = [];
   hooks.states = [];
-  vi.stubGlobal('window', { setTimeout: vi.fn() });
+  vi.stubGlobal('window', { setTimeout: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), innerWidth: 1280, innerHeight: 800 });
   vi.stubGlobal('document', { body: {} });
 });
 
@@ -117,6 +121,46 @@ afterEach(() => {
 });
 
 describe('Issue #647 Position marker pointer lifecycle', () => {
+  it('dismisses Delete for Preview, rejects its retained handler, and requires explicit reopening after close', () => {
+    const props = { ...setup(), current: true };
+    timelineUiStore.seek(props.point.timeMs, props.durationMs);
+    hooks.states[1] = { top: 20, left: 20, below: false };
+    const opened = marker(props);
+    expect(opened.portal).not.toBeNull();
+    const retainedDelete = opened.portal!.props.children.props.children.props.onClick;
+    hooks.refs[0]!.current = {
+      getBoundingClientRect: () => ({ top: 600, left: 300, right: 312, bottom: 612, width: 12, height: 12 }),
+      closest: () => null,
+    };
+
+    const previewProps = { ...props, productPreviewOpen: true };
+    expect(marker(previewProps).portal).toBeNull();
+    for (const effect of hooks.effects) effect();
+    const isolated = marker(previewProps);
+    expect(isolated.button.props.disabled).toBe(true);
+    retainedDelete();
+    isolated.button.props.onClick({ stopPropagation: vi.fn(), detail: 0 });
+    expect(editorProjectStore.getSnapshot()).toBe(props.snapshot);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+
+    expect(marker(props).portal).toBeNull();
+    for (const effect of hooks.effects) effect();
+    const closed = marker(props);
+    expect(closed.button.props.disabled).toBe(false);
+    expect(closed.portal).toBeNull();
+    retainedDelete();
+    expect(editorProjectStore.getSnapshot()).toBe(props.snapshot);
+
+    closed.button.props.onClick({ stopPropagation: vi.fn(), detail: 0 });
+    marker(props);
+    for (const effect of hooks.effects) effect();
+    const reopened = marker(props);
+    expect(reopened.portal).not.toBeNull();
+    reopened.portal!.props.children.props.children.props.onClick();
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(1);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+  });
+
   it('previews without a write, then releases exactly one retime and one Undo unit', () => {
     const props = setup();
     const { button } = marker(props);
