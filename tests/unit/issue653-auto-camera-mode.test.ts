@@ -6,6 +6,7 @@ const shell = readFileSync('src/renderer/shell/EditorShell.tsx', 'utf8');
 const workspace = readFileSync('src/renderer/shell/RightWorkspace.tsx', 'utf8');
 const preview = readFileSync('src/renderer/shell/ProductPreviewOverlay.tsx', 'utf8');
 const styles = readFileSync('src/renderer/styles/shell/right-workspace/issue653-auto-camera-mode.css', 'utf8');
+const activityStyles = readFileSync('src/renderer/styles/shell/right-workspace/s02-03--right-workspace.css', 'utf8');
 
 function functionBody(source: string, start: string, end: string): string {
   const beginning = source.indexOf(start);
@@ -28,11 +29,28 @@ describe('Issue #653 persistent automatic Camera mode', () => {
     expect(mode).toContain('aria-pressed={autoCameraEnabled}');
     expect(mode).toContain('onClick={() => onAutoCameraChange(!autoCameraEnabled)}');
     expect(mode).toContain('data-testid="right-mode-auto-camera"');
-    expect(mode).toContain('<strong>自动运镜</strong>');
+    expect(mode).toContain('aria-label="自动运镜"');
+    expect(mode).toContain('<span>自动</span>');
+    expect(mode).toContain('<span>运镜</span>');
     expect(mode).not.toMatch(/aria-controls|aria-expanded|selectActivity/u);
     expect(styles).toContain('.right-mode-group');
     expect(styles).toContain('border-top: 1px solid var(--ui-color-border)');
     expect(styles).toContain("button[aria-pressed='true']");
+  });
+
+  it('restores the original three-row navigation rhythm and anchors a compact secondary mode', () => {
+    expect(activityStyles).toMatch(/\.right-activity-rail\s*\{[^}]*height:\s*min\(100%, 360px\);[^}]*grid-template-rows:\s*repeat\(3, minmax\(72px, 1fr\)\);[^}]*gap:\s*8px;/u);
+    expect(styles).not.toMatch(/\.right-activity-rail\s*\{[^}]*height:\s*auto;/u);
+    expect(styles).toMatch(/\.right-rail-stack\s*\{[^}]*display:\s*flex;[^}]*width:\s*56px;[^}]*height:\s*100%;[^}]*flex-direction:\s*column;/u);
+    expect(styles).toMatch(/\.right-mode-group\s*\{[^}]*margin-top:\s*auto;[^}]*border-top:/u);
+    expect(styles).toContain('min-height: calc(3 * 72px + 2 * 8px)');
+    expect(styles).toContain('overflow-y: auto');
+    expect(styles).toMatch(/\.right-mode-group button\s*\{[^}]*width:\s*52px;[^}]*min-height:\s*72px;/u);
+    expect(styles).toMatch(/\.right-mode-label\s*\{[^}]*writing-mode:\s*horizontal-tb;/u);
+    expect(styles).not.toMatch(/position:\s*absolute/u);
+    expect(workspace).toContain('<strong aria-hidden="true" className="right-mode-label">');
+    expect(workspace).toContain('<span>自动</span>');
+    expect(workspace).toContain('<span>运镜</span>');
   });
 
   it('shares one OFF-by-default session owner across the rail and Preview', () => {

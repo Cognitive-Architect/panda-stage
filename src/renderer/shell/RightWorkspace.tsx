@@ -152,13 +152,17 @@ export function RightWorkspace({
         </nav>
         <div aria-label="预览模式" className="right-mode-group" role="group">
           <button
+            aria-label="自动运镜"
             aria-pressed={autoCameraEnabled}
             data-testid="right-mode-auto-camera"
             onClick={() => onAutoCameraChange(!autoCameraEnabled)}
             type="button"
           >
             <DecorativeIcon icon={Video} size={20} />
-            <strong>自动运镜</strong>
+            <strong aria-hidden="true" className="right-mode-label">
+              <span>自动</span>
+              <span>运镜</span>
+            </strong>
           </button>
         </div>
       </div>
