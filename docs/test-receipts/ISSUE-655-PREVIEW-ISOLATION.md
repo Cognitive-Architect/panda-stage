@@ -15,7 +15,8 @@ coordinate adjustment was needed.
 
 Validation:
 
-- Focused Timeline / Position / Preview / Auto Camera tests: 8 files, 86 passed.
+- Focused Timeline / Position / Preview / Auto Camera tests: 8 files, 87 passed,
+  including cancellation of an unfinished retime when Preview opens.
 - `pnpm lint` and `pnpm build` (including typecheck) passed.
 - `pnpm exec electron scripts/verify-issue655-preview-isolation.cjs` passed in
   Windows Electron. It opens a non-base key's Delete action, opens Preview,
@@ -24,11 +25,15 @@ Validation:
   Preview autoplay and focus ownership are preserved. Close leaves the popup
   dismissed; explicit reopening, Escape, and normal Delete work. The deliberate
   final Delete produces one revision and one Undo entry.
+- Verification manifest / CI routing contracts: 2 files, 87 passed after
+  registering this new verifier with the Timeline route.
 - `git diff --check` passed. No manual Full CI or broad verifier sweep was run.
 
 Generated screenshots and `results.json` are under
 `D:\PandaStage-Acceptance\issue655-preview-isolation\`. The isolated fixture for
-human re-check is `fixture.pandastage` in that directory.
+human re-check is `fixture.pandastage` in that directory. It was opened through
+the formal application's Main/IPC path, with the non-base key's Delete action
+open. `human-ready.png` records that prepared window.
 
 Normal automatic CI and the Issue-required final Windows human re-check are
 pending at submission. Automated screenshots are not human acceptance.

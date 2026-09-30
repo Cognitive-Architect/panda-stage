@@ -25,6 +25,8 @@ shot.timelineEvents = [
     startMs: 1000, endMs: 2000, from: { x: 600, y: 690 }, to: { x: 700, y: 690 }, easing: 'linear' },
 ];
 for (const asset of project.assets) if (asset.kind === 'image') {
+  asset.width = png.readUInt32BE(16);
+  asset.height = png.readUInt32BE(20);
   asset.sha256 = createHash('sha256').update(png).digest('hex');
   const target = path.join(projectRoot, asset.relativePath);
   mkdirSync(path.dirname(target), { recursive: true });
@@ -36,7 +38,7 @@ app.setPath('userData', path.join(acceptanceRoot, 'user-data'));
 process.env.VITE_DEV_SERVER_URL = '';
 app.on('window-all-closed', () => {});
 
-const documentFor = () => ({ projectRoot, projectFilePath: path.join(projectRoot, 'project.json'), project, migrated: false, sourceVersion: 6 });
+const documentFor = () => ({ projectRoot, projectFilePath: path.join(projectRoot, 'project.json'), project, migrated: false, sourceVersion: project.schemaVersion });
 const register = (name, handler) => ipcMain.handle(IPC_CHANNELS[name], handler);
 register('PROJECT_OPEN', () => ({ ok: true, value: documentFor() }));
 register('RECENT_PROJECTS_LIST', () => ({ ok: true, entries: [{ projectId: project.id, projectName: project.name, projectRoot, lastOpenedAt: new Date().toISOString(), status: 'available' }] }));

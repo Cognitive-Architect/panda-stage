@@ -121,6 +121,20 @@ afterEach(() => {
 });
 
 describe('Issue #647 Position marker pointer lifecycle', () => {
+  it('cancels an unfinished retime when Preview takes interaction ownership', () => {
+    const props = setup();
+    const { button } = marker(props);
+    button.props.onPointerDown(pointer(100));
+    button.props.onPointerMove(pointer(120));
+    expect(hooks.states[0]).not.toBeNull();
+    marker({ ...props, productPreviewOpen: true });
+    for (const effect of hooks.effects) effect();
+    button.props.onPointerUp(pointer(120));
+    expect(hooks.states[0]).toBeNull();
+    expect(editorProjectStore.getSnapshot()).toBe(props.snapshot);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+  });
+
   it('dismisses Delete for Preview, rejects its retained handler, and requires explicit reopening after close', () => {
     const props = { ...setup(), current: true };
     timelineUiStore.seek(props.point.timeMs, props.durationMs);
