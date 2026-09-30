@@ -12,7 +12,8 @@ Baseline: PR #628 branch `issue-627-s09-r01` at `c44a587`. Windows human accepta
 ## Automated validation
 
 - Focused shell/Preview/Camera and compatibility tests: 6 files / 45 tests passed; focused follow-up historical-contract suite: 4 files / 17 tests passed.
-- `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` (325 files / 2194 tests), `pnpm test:integration` (37 files / 188 tests), `pnpm build`, and `git diff --check`: passed.
+- `pnpm typecheck`, `pnpm lint`, `pnpm test:unit` (325 files / 2195 tests after the route assertion), `pnpm test:integration` (37 files / 188 tests), `pnpm build`, and `git diff --check`: passed.
+- The initial automatic CI unknown-path guard identified the new test file; `043a5c8` registered it under the existing editor-shell risk route, and its focused routing/manifest tests (2 files / 87 tests) passed.
 - No manual Full CI, `pnpm verify:project`, or repository-wide historical verifier sweep was run.
 
 This receipt is automated evidence only. The Windows owner must confirm the landscape one-click flow, first auto-play Camera behavior, and live mirror/close/reopen behavior before #653 can be called human-accepted.
