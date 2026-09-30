@@ -1,0 +1,55 @@
+/* #653: a persistent Preview mode beside, not inside, right activity navigation. */
+.editor-shell[data-editor-shell-layout='landscape'] .right-rail-stack {
+  width: 56px;
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-activity-rail {
+  height: auto;
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-mode-group {
+  display: grid;
+  width: 56px;
+  margin-top: var(--ui-space-3);
+  padding-top: var(--ui-space-3);
+  border-top: 1px solid var(--ui-color-border);
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-mode-group button {
+  display: grid;
+  width: 52px;
+  min-height: 72px;
+  padding: 10px 4px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: 12px;
+  color: #a9c5b0;
+  background: #142019;
+  place-items: center;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-mode-group button:hover:not(:disabled),
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-mode-group button[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #d8f2df;
+  background: rgb(45 104 62 / 28%);
+  box-shadow: inset 0 0 0 1px rgb(131 211 154 / 10%),
+    0 0 14px rgb(131 211 154 / 8%);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-mode-group button:focus-visible {
+  outline: 3px solid rgb(149 224 172 / 42%);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-mode-group strong {
+  font-size: 12px;
+  line-height: 1.1;
+  writing-mode: vertical-rl;
+}

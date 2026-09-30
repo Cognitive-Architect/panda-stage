@@ -8,9 +8,9 @@
  *   - Strictly read-only. The overlay never writes the project, the revision,
  *     the dirty flag, the selection or the history. It receives the already
  *     loaded project as a prop and only *reads* it.
- *   - The only state it owns is its own playback clock (`timeMs`, `playing`),
- *     the first-frame data/handoff readiness gates, and the asset URLs it needs
- *     to draw.
+ *   - It owns its playback clock (`timeMs`, `playing`), first-frame
+ *     data/handoff readiness gates, and bounded asset URLs. The optional
+ *     Camera mode is owned by EditorShell across Preview mounts.
  *     Closing the overlay throws that state away; the editor is untouched.
  *   - No second project tree and no hidden DOM: the overlay is mounted only
  *     while open and unmounted on close.
@@ -80,6 +80,9 @@ export interface ProductPreviewOverlayProps {
   shotId: string | null;
   /** Starts the existing preview transport immediately when the overlay mounts. */
   autoPlay?: boolean;
+  /** Session-only Camera mode shared with the persistent editor rail. */
+  autoCameraEnabled: boolean;
+  onAutoCameraChange(enabled: boolean): void;
   /** Whether EditorShell has committed the Preview surface handoff. */
   surfaceActive: boolean;
   /** Requests that EditorShell commit visual ownership after warmup. */
@@ -95,6 +98,8 @@ export function ProductPreviewOverlay({
   project,
   shotId,
   autoPlay = false,
+  autoCameraEnabled,
+  onAutoCameraChange,
   surfaceActive,
   onHandoffReady,
   onClose,
@@ -105,7 +110,6 @@ export function ProductPreviewOverlay({
     [project, shotId],
   );
   const [range, setRange] = useState<ProductPreviewRange>('project');
-  const [speakerFocus, setSpeakerFocus] = useState(false);
   // Playback position and transport flag: the ONLY temporal state in the app
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);
@@ -303,8 +307,8 @@ export function ProductPreviewOverlay({
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
   const cameraPlan = useMemo(
-    () => (speakerFocus && shot ? prepareSpeakerFocusCamera(project, shot) : null),
-    [project, shot, speakerFocus],
+    () => (autoCameraEnabled && shot ? prepareSpeakerFocusCamera(project, shot) : null),
+    [project, shot, autoCameraEnabled],
   );
   const camera = cameraPlan
     ? evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)
@@ -588,7 +592,7 @@ export function ProductPreviewOverlay({
       className="product-preview-overlay"
       data-preview-playing={String(playing)}
       data-preview-range={range}
-      data-speaker-focus={String(speakerFocus)}
+      data-speaker-focus={String(autoCameraEnabled)}
       data-preview-data-ready={String(initialReadiness === 'ready')}
       data-preview-degraded={String(previewDegraded)}
       data-preview-failed-asset-ids={JSON.stringify(fatalAssetIds)}
@@ -674,13 +678,13 @@ export function ProductPreviewOverlay({
                   value={range}
                 />
                 <button
-                  aria-pressed={speakerFocus}
+                  aria-pressed={autoCameraEnabled}
                   className="product-preview-speaker-focus"
                   data-testid="product-preview-speaker-focus"
-                  onClick={() => setSpeakerFocus((current) => !current)}
+                  onClick={() => onAutoCameraChange(!autoCameraEnabled)}
                   type="button"
                 >
-                  说话人聚焦
+                  自动运镜
                 </button>
               </div>
               <div

@@ -23,12 +23,12 @@ function descendants<T extends ts.Node>(root: ts.Node, predicate: (node: ts.Node
   return found;
 }
 
-function speakerFocusDefaultsOff(source: string): boolean {
+function autoCameraDefaultsOff(source: string): boolean {
   return descendants(parseTsx(source), ts.isVariableDeclaration).some((declaration) => {
     if (!ts.isArrayBindingPattern(declaration.name)) return false;
     const [value, setter] = declaration.name.elements;
     if (!value || ts.isOmittedExpression(value) || !setter || ts.isOmittedExpression(setter)) return false;
-    if (value.name.getText() !== 'speakerFocus' || setter.name.getText() !== 'setSpeakerFocus') return false;
+    if (value.name.getText() !== 'autoCameraEnabled' || setter.name.getText() !== 'setAutoCameraEnabled') return false;
     const initializer = declaration.initializer;
     return Boolean(
       initializer &&
@@ -118,11 +118,13 @@ describe('Speaker Focus Preview integration contract', () => {
     expect(previewFrameLayout).toMatch(/\.product-preview-close\s*\{[^}]*position:\s*absolute;[^}]*right:\s*10px;/u);
   });
 
-  it('keeps the opt-in local to a newly mounted Preview and uses one resolver in both ranges', () => {
-    expect(speakerFocusDefaultsOff(overlay)).toBe(true);
-    expect(speakerFocusDefaultsOff(overlay.replace('const [speakerFocus, setSpeakerFocus] = useState(false)', 'const [speakerFocus, setSpeakerFocus] = useState(true)'))).toBe(false);
+  it('defaults the editor-session mode OFF and uses one resolver in both ranges', () => {
+    expect(autoCameraDefaultsOff(shell)).toBe(true);
+    expect(autoCameraDefaultsOff(shell.replace('const [autoCameraEnabled, setAutoCameraEnabled] = useState(false)', 'const [autoCameraEnabled, setAutoCameraEnabled] = useState(true)'))).toBe(false);
+    expect(overlay).not.toContain('const [speakerFocus, setSpeakerFocus]');
     expect(overlay).toContain('data-testid="product-preview-speaker-focus"');
-    expect(overlay).toContain('aria-pressed={speakerFocus}');
+    expect(overlay).toContain('aria-pressed={autoCameraEnabled}');
+    expect(overlay).toContain('自动运镜');
     expect(overlay).toContain('prepareSpeakerFocusCamera(project, shot)');
     expect(overlay).toContain('evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)');
     expect(overlay).toContain('camera={camera}');

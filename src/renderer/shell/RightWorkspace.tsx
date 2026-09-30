@@ -6,6 +6,7 @@ import {
 import {
   MessageCircleMore,
   SlidersHorizontal,
+  Video,
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
@@ -34,7 +35,15 @@ export function getNextRightActivity(
   return current === requested ? null : requested;
 }
 
-export function RightWorkspace(): React.JSX.Element {
+export interface RightWorkspaceProps {
+  autoCameraEnabled: boolean;
+  onAutoCameraChange(enabled: boolean): void;
+}
+
+export function RightWorkspace({
+  autoCameraEnabled,
+  onAutoCameraChange,
+}: RightWorkspaceProps): React.JSX.Element {
   const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
     useState<RightActivity | null>(null);
@@ -112,34 +121,47 @@ export function RightWorkspace(): React.JSX.Element {
           )}
         </div>
       ) : null}
-      <nav
-        aria-label="右侧活动"
-        className="right-activity-rail"
-        data-testid="right-activity-rail"
-      >
-        {RIGHT_ACTIVITIES.map((activity) => {
-          const active = activity.id === activeActivity;
-          return (
-            <button
-              ref={(node) => {
-                if (node) triggerRefs.current[activity.id] = node;
-              }}
-              aria-controls="right-workspace-surface"
-              aria-expanded={active}
-              aria-label={`${active ? '关闭' : '打开'}${activity.label}工作区`}
-              aria-pressed={active}
-              className={active ? 'right-activity-rail-active' : ''}
-              data-activity={activity.id}
-              data-testid={`right-activity-rail-${activity.id}`}
-              onClick={() => selectActivity(activity.id)}
-              type="button"
-            >
-              <DecorativeIcon icon={activity.icon} size={20} />
-              <strong>{activity.label}</strong>
-            </button>
-          );
-        })}
-      </nav>
+      <div className="right-rail-stack">
+        <nav
+          aria-label="右侧活动"
+          className="right-activity-rail"
+          data-testid="right-activity-rail"
+        >
+          {RIGHT_ACTIVITIES.map((activity) => {
+            const active = activity.id === activeActivity;
+            return (
+              <button
+                ref={(node) => {
+                  if (node) triggerRefs.current[activity.id] = node;
+                }}
+                aria-controls="right-workspace-surface"
+                aria-expanded={active}
+                aria-label={`${active ? '关闭' : '打开'}${activity.label}工作区`}
+                aria-pressed={active}
+                className={active ? 'right-activity-rail-active' : ''}
+                data-activity={activity.id}
+                data-testid={`right-activity-rail-${activity.id}`}
+                onClick={() => selectActivity(activity.id)}
+                type="button"
+              >
+                <DecorativeIcon icon={activity.icon} size={20} />
+                <strong>{activity.label}</strong>
+              </button>
+            );
+          })}
+        </nav>
+        <div aria-label="预览模式" className="right-mode-group" role="group">
+          <button
+            aria-pressed={autoCameraEnabled}
+            data-testid="right-mode-auto-camera"
+            onClick={() => onAutoCameraChange(!autoCameraEnabled)}
+            type="button"
+          >
+            <DecorativeIcon icon={Video} size={20} />
+            <strong>自动运镜</strong>
+          </button>
+        </div>
+      </div>
     </aside>
   );
 }

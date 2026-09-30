@@ -159,3 +159,4 @@
 @import './styles/features/characters/workspace/s17-05--character-placement-bridge.css';
 @import './styles/features/properties/expression-at-time.css';
 @import './styles/features/timeline/pk06-position-lane.css';
+@import './styles/shell/right-workspace/issue653-auto-camera-mode.css';
