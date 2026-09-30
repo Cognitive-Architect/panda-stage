@@ -73,6 +73,14 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the #653 editor-session Camera mode regression through the editor owner', () => {
+    const result = draft([change('tests/unit/issue653-auto-camera-mode.test.ts', 'A')]);
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toEqual(['editor-shell']);
+    expect(result.suites).toEqual(['editor', 'timeline']);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it('keeps the Main Process application menu policy test on the Full-risk core owner', () => {
     const result = draft([change('tests/unit/application-menu-policy.test.ts')]);
     expect(result.tier).toBe('focused');
