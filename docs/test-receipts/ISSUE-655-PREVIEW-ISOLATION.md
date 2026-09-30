@@ -27,6 +27,11 @@ Validation:
   final Delete produces one revision and one Undo entry.
 - Verification manifest / CI routing contracts: 2 files, 87 passed after
   registering this new verifier with the Timeline route.
+- The first production CI exposed four directly affected source contracts.
+  Three Timeline host assertions now include the Preview-open prop. The
+  historical BottomWorkspace hash still protects every byte except the four
+  explicitly authorized modal-isolation additions. These four files / 17 tests
+  passed with focused lint after adaptation; no unrelated verifier work followed.
 - `git diff --check` passed. No manual Full CI or broad verifier sweep was run.
 
 Generated screenshots and `results.json` are under

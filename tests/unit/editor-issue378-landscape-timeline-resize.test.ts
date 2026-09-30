@@ -96,7 +96,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
     expect(bottom).toContain('timelineUiStore.setResizing(true)');
     expect(bottom).toContain('timelineUiStore.setResizing(false)');
     expect(bottom).toContain('getTimelineHeightFromPointer');
-    expect(bottom).toContain('<TimelineDock presentation={presentation} />');
+    expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
     expect(bottom.match(/<TimelineDock/gu)).toHaveLength(1);
     expect(bottom).not.toContain('useState');
 
