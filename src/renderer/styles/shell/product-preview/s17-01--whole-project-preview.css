@@ -1,12 +1,15 @@
 /* N2-PREVIEW-SER — compact range and project-position adaptation. */
 .product-preview-transport-meta {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   align-items: center;
-  gap: 12px;
+  box-sizing: border-box;
+  gap: var(--ui-space-3);
+  /* The frame's absolute close action owns this upper-right hit area. */
+  padding-inline-end: calc(var(--ui-touch-icon) + var(--ui-space-3));
 }
 
 .product-preview-speaker-focus {
@@ -17,6 +20,7 @@
   background: transparent;
   color: var(--ui-color-text-secondary);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .product-preview-speaker-focus[aria-pressed='true'] {
@@ -66,11 +70,15 @@
   }
 
   .product-preview-transport-meta {
-    justify-content: center;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .product-preview-range-control {
-    max-width: calc(100% - 68px);
+    max-width: 100%;
+  }
+
+  .product-preview-speaker-focus {
+    justify-self: center;
   }
 
   .product-preview-range-control button.ui-segmented-tabs__item {

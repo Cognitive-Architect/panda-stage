@@ -6,6 +6,8 @@ import { commitStageVisualFrame, selectStageVisualFrame } from '../../src/render
 const overlay = readFileSync('src/renderer/shell/ProductPreviewOverlay.tsx', 'utf8');
 const renderer = readFileSync('src/renderer/stage/StageRenderer.tsx', 'utf8');
 const shell = readFileSync('src/renderer/shell/EditorShell.tsx', 'utf8');
+const previewLayout = readFileSync('src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css', 'utf8');
+const previewFrameLayout = readFileSync('src/renderer/styles/shell/product-preview/s06-09--product-preview.css', 'utf8');
 
 function parseTsx(source: string): ts.SourceFile {
   return ts.createSourceFile('contract.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -42,6 +44,15 @@ function jsxTag(node: ts.JsxElement | ts.JsxSelfClosingElement): string {
   return ts.isJsxElement(node)
     ? node.openingElement.tagName.getText()
     : node.tagName.getText();
+}
+
+function jsxStringAttribute(node: ts.JsxElement, name: string): string | null {
+  const attribute = node.openingElement.attributes.properties.find((item) =>
+    ts.isJsxAttribute(item) && ts.isIdentifier(item.name) && item.name.text === name,
+  );
+  return attribute && ts.isJsxAttribute(attribute) && attribute.initializer && ts.isStringLiteral(attribute.initializer)
+    ? attribute.initializer.text
+    : null;
 }
 
 function isCameraWorld(node: ts.Node): node is ts.JsxElement {
@@ -83,6 +94,30 @@ function worldAndScreenAreSeparated(source: string): boolean {
 }
 
 describe('Speaker Focus Preview integration contract', () => {
+  it('reserves the close hit area at accepted and narrow Preview widths', () => {
+    const ast = parseTsx(overlay);
+    const elements = descendants(ast, ts.isJsxElement);
+    const frame = elements.find((node) => jsxStringAttribute(node, 'className') === 'product-preview-frame');
+    expect(frame).toBeDefined();
+    const close = frame!.children.find((child): child is ts.JsxElement =>
+      ts.isJsxElement(child) && jsxStringAttribute(child, 'data-testid') === 'product-preview-close',
+    );
+    const player = descendants(frame!, ts.isJsxElement).find((node) =>
+      jsxStringAttribute(node, 'className') === 'product-preview-player',
+    );
+    expect(close).toBeDefined();
+    expect(player).toBeDefined();
+    const meta = player!.children.find((child): child is ts.JsxElement =>
+      ts.isJsxElement(child) && jsxStringAttribute(child, 'className') === 'product-preview-transport-meta',
+    );
+    expect(meta).toBeDefined();
+    expect(meta!.getText()).toContain('product-preview-speaker-focus');
+    expect(meta!.getText()).toContain('product-preview-range-control');
+    expect(previewLayout).toMatch(/\.product-preview-transport-meta\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;[^}]*box-sizing:\s*border-box;[^}]*padding-inline-end:\s*calc\(var\(--ui-touch-icon\) \+ var\(--ui-space-3\)\);/u);
+    expect(previewLayout).toMatch(/@media \(max-width: 680px\)[\s\S]*?\.product-preview-transport-meta\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/u);
+    expect(previewFrameLayout).toMatch(/\.product-preview-close\s*\{[^}]*position:\s*absolute;[^}]*right:\s*10px;/u);
+  });
+
   it('keeps the opt-in local to a newly mounted Preview and uses one resolver in both ranges', () => {
     expect(speakerFocusDefaultsOff(overlay)).toBe(true);
     expect(speakerFocusDefaultsOff(overlay.replace('const [speakerFocus, setSpeakerFocus] = useState(false)', 'const [speakerFocus, setSpeakerFocus] = useState(true)'))).toBe(false);

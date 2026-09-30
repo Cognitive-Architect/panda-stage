@@ -90,6 +90,9 @@ export interface StageImageResourceSessionOptions {
   createImage?: () => HTMLImageElement;
 }
 
+/** Extra decoded replacements retained by one mounted Stage (active images are separate). */
+export const MAX_RETAINED_STAGE_SOURCES = 16;
+
 function sourceKey(sources: ReadonlyMap<string, string>): string {
   return JSON.stringify(
     [...sources.entries()].sort(([left], [right]) =>
@@ -130,6 +133,7 @@ function mapsEqual(
 export class StageImageResourceSession {
   private readonly createImage: () => HTMLImageElement;
   private readonly resources = new Map<string, StageImageResource>();
+  private readonly retained = new Map<string, StageImageResource>();
   private readonly pending = new Map<string, PendingStageImageResource>();
   private readonly failed = new Map<string, FailedStageImageResource>();
   private desiredSources = new Map<string, string>();
@@ -184,6 +188,15 @@ export class StageImageResourceSession {
 
       this.cancelPending(layerId);
       this.failed.delete(layerId);
+      const reused = this.takeRetained(layerId, sourceUrl);
+      if (reused) {
+        this.pending.set(layerId, {
+          token: ++this.nextToken,
+          sourceUrl,
+          resource: reused,
+        });
+        continue;
+      }
       const assetId = layers.find((layer) => layer.id === layerId)?.assetId ?? layerId;
       this.startLoad(layerId, sourceUrl, assetId);
     }
@@ -230,6 +243,10 @@ export class StageImageResourceSession {
       this.resources.delete(layerId);
       this.disposeResource(resource);
     }
+    for (const resource of this.retained.values()) {
+      this.disposeResource(resource);
+    }
+    this.retained.clear();
   }
 
   private startLoad(layerId: string, sourceUrl: string, assetId: string): void {
@@ -338,7 +355,7 @@ export class StageImageResourceSession {
 
     for (const [layerId, resource] of this.resources) {
       if (nextResources.get(layerId) !== resource) {
-        this.disposeResource(resource);
+        this.retainResource(layerId, resource);
       }
     }
 
@@ -397,7 +414,45 @@ export class StageImageResourceSession {
     const pending = this.pending.get(layerId);
     if (!pending) return;
     this.pending.delete(layerId);
-    if (pending.resource) this.disposeResource(pending.resource);
+    if (pending.resource) {
+      if (pending.resource.loaded && !this.disposed) {
+        this.retainResource(layerId, pending.resource);
+      } else {
+        this.disposeResource(pending.resource);
+      }
+    }
+  }
+
+  private retainedKey(layerId: string, sourceUrl: string): string {
+    return `${layerId}\u0000${sourceUrl}`;
+  }
+
+  private takeRetained(layerId: string, sourceUrl: string): StageImageResource | null {
+    const key = this.retainedKey(layerId, sourceUrl);
+    const resource = this.retained.get(key) ?? null;
+    this.retained.delete(key);
+    return resource;
+  }
+
+  private retainResource(layerId: string, resource: StageImageResource): void {
+    if (this.disposed || !resource.loaded) {
+      this.disposeResource(resource);
+      return;
+    }
+    resource.image.onload = null;
+    resource.image.onerror = null;
+    const key = this.retainedKey(layerId, resource.sourceUrl);
+    const previous = this.retained.get(key);
+    if (previous && previous !== resource) this.disposeResource(previous);
+    this.retained.delete(key);
+    this.retained.set(key, resource);
+    while (this.retained.size > MAX_RETAINED_STAGE_SOURCES) {
+      const oldestKey = this.retained.keys().next().value;
+      if (!oldestKey) break;
+      const oldest = this.retained.get(oldestKey);
+      this.retained.delete(oldestKey);
+      if (oldest) this.disposeResource(oldest);
+    }
   }
 
   private disposeResource(resource: StageImageResource): void {

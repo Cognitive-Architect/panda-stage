@@ -1,11 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  evaluateSpeakerFocusCamera,
+  prepareSpeakerFocusCamera,
+  type Project,
+  type Shot,
+} from '../../src/domain';
+import {
   buildStageImageSourceKey,
   isStageFrameReady,
+  MAX_RETAINED_STAGE_SOURCES,
   StageImageResourceSession,
   type StageImageResourceState,
 } from '../../src/renderer/stage/stageImageResourceSession';
+import {
+  commitStageVisualFrame,
+  selectStageVisualFrame,
+} from '../../src/renderer/stage/stageVisualFrame';
 
 interface FakeImage {
   onload: ((event: Event) => unknown) | null;
@@ -236,6 +247,125 @@ describe('StageImageResourceSession', () => {
     expect(harness.session.getSnapshot().sourceUrls.get(LAYER_A)).toBe(
       'asset-b',
     );
+  });
+
+  it('reuses an already decoded A source on A → B → A without another decode', () => {
+    const harness = createHarness();
+    const a = [{ id: CHARACTER_FACE, sourceUrl: 'face-expression-a' }];
+    const b = [{ id: CHARACTER_FACE, sourceUrl: 'face-mouth-b' }];
+
+    reconcile(harness, a);
+    harness.images[0]!.succeed();
+    reconcile(harness, b);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    expect(harness.session.getSnapshot().images.get(CHARACTER_FACE)).toBe(harness.images[0]);
+    harness.images[1]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    reconcile(harness, a);
+    expect(harness.images).toHaveLength(2);
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get(CHARACTER_FACE)).toBe(harness.images[0]);
+    expect(isStageFrameReady({
+      error: null,
+      hasModel: true,
+      imageState: harness.session.getSnapshot(),
+      layerCount: 1,
+      sourceKey: buildStageImageSourceKey(a),
+    })).toBe(true);
+  });
+
+  it('lets the text-only return to A show its scheduled Camera without redundant decode wait', () => {
+    const shot = {
+      id: 'shot', durationMs: 1000, backgroundLayerId: null,
+      dialogues: [
+        { id: 'A1', characterId: 'A', startMs: 0, endMs: 300, text: 'A', audioClipId: 'audio-a' },
+        { id: 'B1', characterId: 'B', startMs: 300, endMs: 600, text: 'B', audioClipId: 'audio-b' },
+        { id: 'A2', characterId: 'A', startMs: 600, endMs: 900, text: 'A again' },
+      ],
+      timelineEvents: [{ id: 'shake-a', layerId: 'A-layer', type: 'shake', startMs: 600, endMs: 900, amplitudeX: 50, amplitudeY: 20, frequencyHz: 2 }],
+      layers: [
+        { id: 'A-layer', source: { kind: 'character', characterId: 'A' }, x: 400, y: 500, visible: true },
+        { id: 'B-layer', source: { kind: 'character', characterId: 'B' }, x: 1500, y: 500, visible: true },
+      ],
+    } as unknown as Shot;
+    const project = { width: 1920, height: 1080, characters: [], shots: [shot] } as unknown as Project;
+    const plan = prepareSpeakerFocusCamera(project, shot);
+    const harness = createHarness();
+    const sourceA = [{ id: CHARACTER_FACE, sourceUrl: 'expression-a' }];
+    const sourceB = [{ id: CHARACTER_FACE, sourceUrl: 'mouth-b' }];
+
+    reconcile(harness, sourceA);
+    harness.images[0]!.succeed();
+    const frameA = { model: { timeMs: 250 }, caption: 'A', camera: evaluateSpeakerFocusCamera(plan, 250) };
+    let committed = commitStageVisualFrame(null, frameA, harness.session.getSnapshot().ready);
+
+    reconcile(harness, sourceB);
+    const frameB = { model: { timeMs: 550 }, caption: 'B', camera: evaluateSpeakerFocusCamera(plan, 550) };
+    expect(selectStageVisualFrame(committed, frameB, harness.session.getSnapshot().ready)).toEqual(frameA);
+    harness.images[1]!.succeed();
+    committed = commitStageVisualFrame(committed, frameB, harness.session.getSnapshot().ready);
+    expect(committed?.camera?.centerX).toBe(1280);
+
+    reconcile(harness, sourceA);
+    const returnCamera = evaluateSpeakerFocusCamera(plan, 650);
+    const returnFrame = { model: { timeMs: 650 }, caption: 'A again', camera: returnCamera };
+    expect(harness.images).toHaveLength(2);
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(selectStageVisualFrame(committed, returnFrame, true)).toEqual(returnFrame);
+    expect(returnCamera.centerX).toBeLessThan(frameB.camera.centerX);
+    expect(returnCamera.centerX).toBeGreaterThan(frameA.camera.centerX);
+    expect(returnCamera).toEqual(evaluateSpeakerFocusCamera(plan, 650));
+  });
+
+  it('keeps Body and both Face occurrences atomic when a decoded expression returns', () => {
+    const harness = createHarness();
+    const a = [
+      { id: 'A:body', sourceUrl: 'body-a' },
+      { id: 'A:face', sourceUrl: 'expression-a' },
+      { id: 'B:body', sourceUrl: 'body-b' },
+      { id: 'B:face', sourceUrl: 'expression-b' },
+    ];
+    const b = [
+      a[0]!,
+      { id: 'A:face', sourceUrl: 'mouth-a' },
+      a[2]!,
+      { id: 'B:face', sourceUrl: 'mouth-b' },
+    ];
+    reconcile(harness, a);
+    harness.images.forEach((image) => image.succeed());
+    reconcile(harness, b);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    harness.images[4]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    harness.images[5]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    reconcile(harness, a);
+    const state = harness.session.getSnapshot();
+    expect(harness.images).toHaveLength(6);
+    expect(state.ready).toBe(true);
+    expect(state.images.get('A:face')).toBe(harness.images[1]);
+    expect(state.images.get('B:face')).toBe(harness.images[3]);
+    expect(state.images.get('A:body')).toBe(harness.images[0]);
+    expect(state.images.get('B:body')).toBe(harness.images[2]);
+  });
+
+  it('keeps only a finite number of superseded decoded sources', () => {
+    const harness = createHarness();
+    for (let index = 0; index <= MAX_RETAINED_STAGE_SOURCES + 1; index += 1) {
+      reconcile(harness, [{ id: LAYER_A, sourceUrl: `source-${index}` }]);
+      harness.images.at(-1)!.succeed();
+      expect(harness.session.getSnapshot().ready).toBe(true);
+    }
+    const countBeforeReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'source-0' }]);
+    expect(harness.images).toHaveLength(countBeforeReturn + 1);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    harness.session.dispose();
+    expect(harness.session.getSnapshot().images.size).toBe(0);
   });
 
   it('does not re-decode or remove unchanged siblings during one-layer replacement', () => {
