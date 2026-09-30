@@ -286,7 +286,7 @@
           "tests/contract/*timeline*.test.ts",
           "tests/contract/day26-*.test.ts"
         ],
-        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*"],
+        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*", "scripts/verify-issue655-preview-isolation.cjs"],
         "suites": ["timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
