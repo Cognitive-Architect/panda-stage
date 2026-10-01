@@ -780,9 +780,10 @@ async function verifyDay19() {
     );
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-manager-status')" +
-          "?.textContent?.includes('原有镜头与时间轴引用保持不变') && " +
-          "document.querySelector(" +
+        // Observable replacement and stable identity, not redundant success copy.
+        "[...document.querySelectorAll('.expression-card-list > li, .expression-list li')]" +
+          ".some((row) => row.dataset.expressionId === " +
+          JSON.stringify(expressionIdBeforeReplacement) + ") && document.querySelector(" +
           "'.expression-edit-panel [data-image-asset-picker], " +
             ".expression-list li:not(.expression-default) .expression-fields [data-image-asset-picker]')" +
           "?.dataset?.selectedAssetId === " +
@@ -858,8 +859,18 @@ async function verifyDay19() {
     }
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.character-manager-status')" +
-          "?.textContent?.includes('默认缩放与翻转已更新')",
+        // Keep persisted/reopened checks below; readiness is the actual control state.
+        `(() => {
+          const output = document.querySelector('.character-scale-stepper output');
+          const input = document.querySelector('.character-settings input[type="number"]');
+          const flipSwitch = document.querySelector('.character-flip-switch');
+          const flipInput = document.querySelector('.character-settings input[type="checkbox"]');
+          const scale = output ? output.textContent?.replace(/[^\\d.]/g, '') : input?.value;
+          const flipped = flipSwitch
+            ? flipSwitch.getAttribute('aria-checked') === 'true'
+            : Boolean(flipInput?.checked);
+          return Number(scale) === ${expectedScaleNumber} && flipped;
+        })()`,
         'Default transform was not applied.',
       ),
     );
