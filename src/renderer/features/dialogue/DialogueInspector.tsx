@@ -242,6 +242,9 @@ export function DialogueInspector({
   );
   const [error, setError] = useState<DialogueInspectorError | null>(null);
   const [audioTrimEditorOpen, setAudioTrimEditorOpen] = useState(false);
+  const [audioPickerOpen, setAudioPickerOpen] = useState(false);
+  const audioPickerTriggerRef = useRef<HTMLButtonElement>(null);
+  const audioPickerOptionsRef = useRef<HTMLDivElement>(null);
   const [audioTrimDurationMs, setAudioTrimDurationMs] = useState(
     audioClipDurationMs,
   );
@@ -264,6 +267,16 @@ export function DialogueInspector({
     setAudioTrimEditorOpen(false);
     setAudioTrimDurationMs(audioClipDurationMs);
   }, [audioClip?.id, audioClip?.startMs, audioClip?.endMs]);
+
+  useEffect(() => {
+    setAudioPickerOpen(false);
+  }, [dialogue?.id, currentShotId, presentation, dialogue?.startMs, dialogue?.endMs]);
+
+  useEffect(() => {
+    if (audioPickerOpen) {
+      audioPickerOptionsRef.current?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [audioPickerOpen]);
 
   if (!shot || !dialogue) {
     return timelinePresentation ? (
@@ -471,42 +484,23 @@ export function DialogueInspector({
         </div>
       ) : (
         <div className="dialogue-audio-actions">
-          <select
+          <button
             aria-label={audioClip ? '更换配音' : '选择配音'}
+            aria-expanded={audioPickerOpen}
+            aria-controls={`dialogue-audio-options-${dialogue.id}`}
             className="dialogue-audio-select-action"
             data-testid="dialogue-inspector-audio"
             disabled={audioAssets.length === 0}
-            value=""
-            onChange={(event) => {
-              if (!event.target.value) return;
-              report(
-                'audio',
-                () => dialogueStore.bindAudio(dialogue.id, event.target.value),
-                '配音绑定失败。',
-              );
-            }}
+            ref={audioPickerTriggerRef}
+            onClick={() => setAudioPickerOpen((open) => !open)}
+            type="button"
           >
-            <option value="">
-              {audioAssets.length === 0
+            {audioAssets.length === 0
                 ? '当前项目没有可用配音'
                 : audioClip
                   ? '更换配音'
                   : '选择配音'}
-            </option>
-            {audioAssets.map((asset) => {
-              const ready =
-                asset.durationMs !== undefined &&
-                asset.metadata?.status !== 'error';
-              return (
-                <option disabled={!ready} key={asset.id} value={asset.id}>
-                  {asset.name}
-                  {ready
-                    ? ` · ${formatTimecode(asset.durationMs!)}`
-                    : ' · 正在准备…'}
-                </option>
-              );
-            })}
-          </select>
+          </button>
           {audioClip ? (
             <>
               <button
@@ -533,6 +527,63 @@ export function DialogueInspector({
                 移除配音
               </button>
             </>
+          ) : null}
+          {audioPickerOpen ? (
+            <div
+              aria-label="配音素材"
+              className="dialogue-audio-options"
+              data-testid="dialogue-inspector-audio-options"
+              id={`dialogue-audio-options-${dialogue.id}`}
+              ref={audioPickerOptionsRef}
+              role="group"
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape') return;
+                event.stopPropagation();
+                setAudioPickerOpen(false);
+                audioPickerTriggerRef.current?.focus();
+              }}
+            >
+              {audioAssets.map((asset) => {
+                const ready =
+                  asset.durationMs !== undefined &&
+                  asset.durationMs > 0 &&
+                  asset.metadata?.status !== 'error';
+                return (
+                  <button
+                    aria-pressed={audioClip?.assetId === asset.id}
+                    className="dialogue-audio-option"
+                    data-asset-id={asset.id}
+                    data-testid="dialogue-inspector-audio-option"
+                    disabled={!ready}
+                    key={asset.id}
+                    onClick={() => {
+                      const applied = report(
+                        'audio',
+                        () => dialogueStore.bindAudio(dialogue.id, asset.id),
+                        '配音绑定失败。',
+                      );
+                      if (applied) {
+                        setAudioPickerOpen(false);
+                        audioPickerTriggerRef.current?.focus();
+                      }
+                    }}
+                    type="button"
+                  >
+                    <strong>{asset.name}</strong>
+                    <span>
+                      {ready
+                        ? '可用'
+                        : asset.metadata?.status === 'error'
+                          ? '不可用'
+                          : '尚未准备好'}
+                      {asset.durationMs !== undefined
+                        ? ` · ${formatTimecode(asset.durationMs)}`
+                        : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           ) : null}
         </div>
       )}

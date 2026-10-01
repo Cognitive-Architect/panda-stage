@@ -299,7 +299,7 @@
         "id": "dialogue",
         "sourcePatterns": ["src/renderer/features/dialogue/**"],
         "testPatterns": ["tests/unit/dialogue-*.test.ts", "tests/contract/issue220-*.test.ts", "tests/contract/issue221-*.test.ts"],
-        "verifierPatterns": [],
+        "verifierPatterns": ["scripts/verify-issue663-dialogue-voice.cjs"],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -417,8 +417,20 @@
       }
     ]
   },
-  "count": 69,
+  "count": 70,
   "gates": [
+    {
+      "id": "issue663-dialogue-voice",
+      "script": "verify:issue663-dialogue-voice",
+      "suite": "editor",
+      "subsystem": "dialogue",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "dialogue",
+      "supersedes": null,
+      "notes": "Real sandboxed landscape Cloud Touch chooser integration: touch/mouse Ready selection, immediate bound UI, one-command History, change/remove, unavailable assets and BGM/SFX isolation. Human hardware/listening acceptance remains separate."
+    },
     {
       "id": "issue659-preview-mixer",
       "script": "verify:issue659-preview-mixer",
