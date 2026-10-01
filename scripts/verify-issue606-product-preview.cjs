@@ -750,11 +750,26 @@ async function run() {
     screenshots.push('preview-mouth-pending.png');
     releasePendingAssetRead();
     await waitExactPreview(window);
-    const normal = await readPreview(window, [
-      { name: 'bodyOnly', x: 1_000, y: 540 },
-      { name: 'mouthOnly', x: 1_180, y: 536 },
-      { name: 'overlap', x: 1_152, y: 536 },
-    ]);
+    // Quick Play auto-starts after the handoff. On a busy CI runner it may
+    // reach the post-dialogue Expression before the pause is processed. Seek
+    // through the real scrubber to the frame whose Mouth pixels we assert.
+    await seekPreview(window, 0);
+    await waitExactPreview(window);
+    const normal = await waitForPreviewPixels(
+      window,
+      [
+        { name: 'bodyOnly', x: 1_000, y: 540 },
+        { name: 'mouthOnly', x: 1_180, y: 536 },
+        { name: 'overlap', x: 1_152, y: 536 },
+      ],
+      {
+        bodyOnly: [130, 54, 52, 255],
+        mouthOnly: [145, 114, 42, 255],
+        overlap: [145, 114, 42, 255],
+      },
+      'Requested initial Mouth frame did not become drawable after seek.',
+    );
+    assert(normal.stage?.time === '0', `Mouth pixels were sampled at the wrong time: ${JSON.stringify(normal)}`);
     assert(normal.preview?.degraded === false, `Ready Preview was degraded: ${JSON.stringify(normal)}`);
     assert(normal.stage?.ready === true, `Ready Stage was not exact: ${JSON.stringify(normal)}`);
     assert(near(normal.pixels.bodyOnly, [130, 54, 52, 255]), `Body pixel mismatch: ${JSON.stringify(normal)}`);
