@@ -6,7 +6,7 @@ import {
   NameSchema,
 } from './common';
 
-export const AudioClipSchema = z
+export const AudioClipV7Schema = z
   .object({
     id: IdSchema,
     name: NameSchema,
@@ -26,5 +26,10 @@ export const AudioClipSchema = z
       });
     }
   });
+
+export const AudioClipRoleSchema = z.enum(['dialogue', 'bgm', 'sfx']);
+export const AudioClipSchema = AudioClipV7Schema.safeExtend({
+  role: AudioClipRoleSchema,
+});
 
 export type AudioClip = z.infer<typeof AudioClipSchema>;

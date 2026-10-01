@@ -47,6 +47,7 @@ describe('explicit background identity lifecycle', () => {
         void backgroundLayerId;
         return {
           ...shot,
+          audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),
           layers: shot.layers.map(({ locked, flipX, ...layer }) => {
             void locked;
             void flipX;

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SHOT_MIN_DURATION_MS } from '../constants';
-import { AudioClipSchema } from './audio';
+import { AudioClipSchema, AudioClipV7Schema } from './audio';
 import { IdSchema, NameSchema } from './common';
 import { DialogueSchema } from './dialogue';
 import {
@@ -16,7 +16,7 @@ const ShotBaseShape = {
   durationMs: z.number().int().min(SHOT_MIN_DURATION_MS),
   defaultSubtitleStyleId: IdSchema,
   dialogues: z.array(DialogueSchema),
-  audioClips: z.array(AudioClipSchema),
+  audioClips: z.array(AudioClipV7Schema),
   timelineEvents: z.array(TimelineEventSchema).default([]),
 };
 
@@ -30,11 +30,16 @@ export const ShotV2Schema = z
 export const ShotSchema = z
   .object({
     ...ShotBaseShape,
+    audioClips: z.array(AudioClipSchema),
     layers: z.array(LayerSchema),
     /** The only layer rendered with the background cover contract. */
     backgroundLayerId: IdSchema.nullable(),
   })
   .strict();
+
+export const ShotV7Schema = ShotSchema.extend({
+  audioClips: z.array(AudioClipV7Schema),
+});
 
 export const ShotV3Schema = z
   .object({

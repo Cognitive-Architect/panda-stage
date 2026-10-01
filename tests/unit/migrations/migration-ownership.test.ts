@@ -203,7 +203,7 @@ describe('migration ownership: single pipeline routes every envelope to v7', () 
 
 describe('migration ownership: rejects future / ambiguous / corrupt', () => {
   it('rejects a future schema version', () => {
-    expect(() => migrateProject({ schemaVersion: 8 })).toThrow(
+    expect(() => migrateProject({ schemaVersion: PROJECT_SCHEMA_VERSION + 1 })).toThrow(
       UnsupportedSchemaVersionError,
     );
   });

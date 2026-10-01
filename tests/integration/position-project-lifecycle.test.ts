@@ -84,6 +84,7 @@ function lifecycleProject() {
         audioClips: [
           {
             id: AUDIO_CLIP,
+            role: 'dialogue',
             name: 'Dialogue clip',
             assetId: AUDIO_ASSET,
             startMs: 0,

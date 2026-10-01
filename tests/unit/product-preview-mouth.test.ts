@@ -130,6 +130,7 @@ function buildMouthProject(twoCharacters = false): Project {
       audioClips: [
         {
           id: CLIP_A_ID,
+          role: 'dialogue',
           name: 'voice-a',
           assetId: AUDIO_ID,
           startMs: 0,
@@ -141,6 +142,7 @@ function buildMouthProject(twoCharacters = false): Project {
           ? [
               {
                 id: CLIP_B_ID,
+                role: 'dialogue',
                 name: 'voice-b',
                 assetId: AUDIO_ID,
                 startMs: 700,

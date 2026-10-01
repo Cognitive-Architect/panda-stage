@@ -135,7 +135,7 @@ describe('Issue #627 Character Expression editor bridge', () => {
         }],
         audioClips: [{
           id: clipId, name: 'Speech', assetId: audioId,
-          startMs: 1_000, endMs: 4_000, offsetMs: 0, volume: 1,
+          role: 'dialogue', startMs: 1_000, endMs: 4_000, offsetMs: 0, volume: 1,
         }],
       })),
     });

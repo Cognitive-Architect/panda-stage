@@ -23,11 +23,11 @@ export const IDS = {
   unknownExpression: '20000000-0000-4000-8000-000000000099',
 } as const;
 
-/** Builds a fully valid v7 project with a background, an asset, and a
+/** Builds a fully valid v8 project with a background, an asset, and a
  * character layer so preset/evaluator tests have realistic fixtures. */
 export function buildProject(): Project {
   return ProjectSchema.parse({
-    schemaVersion: 7,
+    schemaVersion: 8,
     id: IDS.project,
     name: '测试项目',
     width: 1920,

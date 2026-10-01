@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ProjectSchema, type Project } from '../../src/domain';
 import type {
   AssetPreviewAudioReadRequest,
@@ -64,6 +64,7 @@ function buildAudioProject(): Project {
       audioClips: [
         {
           id: CLIP_A_ID,
+          role: 'dialogue',
           name: '第一句配音',
           assetId: AUDIO_ID,
           startMs: 500,
@@ -73,6 +74,7 @@ function buildAudioProject(): Project {
         },
         {
           id: CLIP_B_ID,
+          role: 'dialogue',
           name: '第二句配音',
           assetId: AUDIO_ID,
           startMs: 1_500,
@@ -171,6 +173,46 @@ function syncInput(
 }
 
 describe('Product Preview audio transport — Phase 2 gate A', () => {
+  it('amplifies persisted gain above 1 through Web Audio and disposes its source/context', async () => {
+    const audio = new FakeAudio();
+    const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+    const source = { connect: vi.fn(), disconnect: vi.fn() };
+    const close = vi.fn(async () => undefined);
+    const resume = vi.fn(async () => undefined);
+    vi.stubGlobal('Audio', class { constructor() { return audio; } });
+    vi.stubGlobal('AudioContext', class {
+      state = 'suspended';
+      destination = {};
+      createMediaElementSource = vi.fn(() => source);
+      createGain = vi.fn(() => gain);
+      close = close;
+      resume = resume;
+    });
+    try {
+      const project = buildAudioProject();
+      project.shots[0]!.audioClips[0]!.volume = 1.8;
+      const transport = new ProductPreviewAudioTransport({
+        readAudio: async (request) => readyResponse(request),
+        createObjectUrl: () => 'blob:gain', revokeObjectUrl: () => undefined,
+      });
+      transport.sync(syncInput(project));
+      await flush();
+      expect(gain.gain.value).toBe(1.8);
+      expect(audio.volume).toBe(1);
+      expect(audio.playCount).toBe(1);
+      expect(resume).toHaveBeenCalledOnce();
+      project.shots[0]!.audioClips[0]!.volume = 0;
+      transport.sync(syncInput(project, { seekRevision: 1 }));
+      await flush();
+      expect(gain.gain.value).toBe(0);
+      transport.dispose();
+      expect(source.disconnect).toHaveBeenCalledOnce();
+      expect(gain.disconnect).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it('resolves only the active Dialogue binding and maps bounded source time', () => {
     const project = buildAudioProject();
     const shot = project.shots[0]!;

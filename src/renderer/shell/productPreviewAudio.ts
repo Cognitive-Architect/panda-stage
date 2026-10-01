@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { audioClipGain, audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../../domain';
 import type {
   AudioAsset,
   AudioClip,
@@ -30,7 +31,7 @@ export function resolveProductPreviewAudio(
   const clip = shot.audioClips.find(
     (candidate) => candidate.id === dialogue.audioClipId,
   );
-  if (!clip) return null;
+  if (!clip || clip.role !== 'dialogue') return null;
   const asset = project.assets.find(
     (candidate) => candidate.id === clip.assetId,
   );
@@ -53,10 +54,7 @@ export function productPreviewSourceTimeMs(
   asset: AudioAsset,
 ): number {
   const sourceDurationMs = asset.durationMs ?? 0;
-  const rawTimeMs =
-    clip.offsetMs +
-    (Number.isFinite(previewTimeMs) ? previewTimeMs : clip.startMs) -
-    clip.startMs;
+  const rawTimeMs = audioClipSourceTimeMs(clip, Number.isFinite(previewTimeMs) ? previewTimeMs : clip.startMs);
   return Math.min(sourceDurationMs, Math.max(0, rawTimeMs));
 }
 
@@ -65,20 +63,59 @@ export function isProductPreviewAudioActiveAtTime(
   timeMs: number,
   selection: ProductPreviewAudioSelection,
 ): boolean {
-  return (
-    Number.isFinite(timeMs) &&
-    timeMs >= selection.clip.startMs &&
-    timeMs < selection.clip.endMs
-  );
+  return isAudioClipActiveAtTime(selection.clip, timeMs);
 }
 
 export interface ProductPreviewAudioElement {
   src: string;
   currentTime: number;
   volume: number;
+  setGain?(gain: number): Promise<void>;
+  disposeGain?(): void;
   pause(): void;
   play(): Promise<void>;
   load?(): void;
+}
+
+/** Preserve persisted gain on the existing single-source transport, including amplification. */
+function createPreviewAudioElement(): ProductPreviewAudioElement {
+  const element = new Audio();
+  let context: AudioContext | null = null;
+  let source: MediaElementAudioSourceNode | null = null;
+  let gain: GainNode | null = null;
+  return {
+    get src() { return element.src; },
+    set src(value: string) { element.src = value; },
+    get currentTime() { return element.currentTime; },
+    set currentTime(value: number) { element.currentTime = value; },
+    get volume() { return gain?.gain.value ?? element.volume; },
+    set volume(value: number) { element.volume = value; },
+    pause: () => element.pause(),
+    play: () => element.play(),
+    load: () => element.load(),
+    async setGain(value: number) {
+      const linearGain = audioClipGain(value);
+      if (!context && linearGain <= 1) {
+        element.volume = linearGain;
+        return;
+      }
+      if (!context) {
+        context = new AudioContext();
+        source = context.createMediaElementSource(element);
+        gain = context.createGain();
+        source.connect(gain);
+        gain.connect(context.destination);
+      }
+      element.volume = 1;
+      gain!.gain.value = linearGain;
+      if (context.state === 'suspended') await context.resume();
+    },
+    disposeGain() {
+      source?.disconnect();
+      gain?.disconnect();
+      if (context) void context.close().catch(() => undefined);
+    },
+  };
 }
 
 export interface ProductPreviewAudioTransportOptions {
@@ -135,7 +172,7 @@ export class ProductPreviewAudioTransport {
   private disposed = false;
 
   constructor(options: ProductPreviewAudioTransportOptions = {}) {
-    this.audio = (options.createAudio ?? (() => new Audio()))();
+    this.audio = (options.createAudio ?? createPreviewAudioElement)();
     this.readAudio = options.readAudio ?? defaultReadAudio;
     this.createObjectUrl =
       options.createObjectUrl ?? ((blob) => URL.createObjectURL(blob));
@@ -223,6 +260,7 @@ export class ProductPreviewAudioTransport {
     this.stopTransport(true);
     this.audio.src = '';
     this.audio.load?.();
+    this.audio.disposeGain?.();
     for (const url of this.urlCache.values()) {
       this.revokeObjectUrl(url);
     }
@@ -248,7 +286,13 @@ export class ProductPreviewAudioTransport {
       }
       this.audio.src = url;
       this.sourceAttached = true;
-      this.audio.volume = Math.min(1, Math.max(0, selection.clip.volume));
+      const gain = audioClipGain(selection.clip.volume);
+      if (this.audio.setGain) {
+        await this.audio.setGain(gain);
+        if (!this.isCurrent(token, key)) return;
+      } else {
+        this.audio.volume = gain;
+      }
       this.audio.currentTime =
         productPreviewSourceTimeMs(
           currentTimeMs,

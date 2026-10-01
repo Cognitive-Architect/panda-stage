@@ -111,6 +111,7 @@ function compositeProject(options: { mouth?: boolean } = {}): Project {
             audioClips: [
               {
                 id: AUDIO_CLIP_ID,
+                role: 'dialogue',
                 name: 'voice',
                 assetId: AUDIO_ID,
                 startMs: 0,
@@ -434,6 +435,7 @@ describe('BFM-S03 unified visual-parts resolver', () => {
         audioClips: [
           {
             id: AUDIO_CLIP_ID,
+            role: 'dialogue',
             name: 'voice',
             assetId: AUDIO_ID,
             startMs: 0,

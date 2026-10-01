@@ -130,6 +130,7 @@ function compositeProject(options: { mouth?: boolean } = {}): Project {
             audioClips: [
               {
                 id: AUDIO_CLIP_ID,
+                role: 'dialogue',
                 name: 'voice',
                 assetId: AUDIO_ID,
                 startMs: 0,

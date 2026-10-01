@@ -274,6 +274,7 @@ export class DialogueService {
         : this.nextId(this.collectIds(project));
     const nextClip: AudioClip = {
       id: clipId,
+      role: 'dialogue',
       name,
       assetId: asset.id,
       startMs: timing.startMs,

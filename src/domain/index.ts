@@ -1,4 +1,5 @@
 export * from './constants';
+export * from './audio-contract';
 export * from './assetDropPayload';
 export * from './geometry';
 export * from './migrations';
