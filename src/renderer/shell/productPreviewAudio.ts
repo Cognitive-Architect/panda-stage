@@ -192,7 +192,8 @@ export class ProductPreviewAudioTransport {
       source.onended = () => {
         if (!this.isCurrent(key, voice)) return;
         this.releaseVoice(voice);
-        voice.state = 'ended';
+        // The next master tick, not the audio clock, decides whether to rebuild.
+        this.voices.delete(key);
       };
       source.start(voice.startedAt, offset, duration);
       voice.state = 'started';

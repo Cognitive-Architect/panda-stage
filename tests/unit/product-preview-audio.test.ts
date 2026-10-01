@@ -9,6 +9,7 @@ import {
   type ProductPreviewAudioContext, type ProductPreviewAudioSyncInput,
 } from '../../src/renderer/shell/productPreviewAudio';
 import { buildProject, IDS } from './domain/testProject';
+import { advanceProductPreviewTime } from '../../src/renderer/shell/productPreviewModel';
 
 const AUDIO_ID = '10000000-0000-4000-8000-000000000401';
 const AUDIO_B_ID = '10000000-0000-4000-8000-000000000402';
@@ -374,14 +375,78 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     transport.dispose();
   });
 
-  it('releases naturally ended nodes without restarting them on an ordinary tick', async () => {
-    const { project, context, transport } = setup();
+  it.each(['dialogue', 'bgm', 'sfx'] as const)('rebuilds naturally ended %s on the next clamped master tick using the latest source offset', async (role) => {
+    const { project, context, transport, readAudio } = setup(buildAudioProject());
+    project.shots[0]!.audioClips[0]!.role = role;
+    if (role !== 'dialogue') project.shots[0]!.dialogues = [];
     transport.sync(syncInput(project)); await flush();
-    context.sources[2]!.onended!();
-    expect(context.sources[2]!.buffer).toBeNull();
-    context.currentTime += 0.01;
-    transport.sync(syncInput(project, { timeMs: 610 })); await flush();
-    expect(context.sources).toHaveLength(4);
+    const old = context.sources[0]!;
+    const lateEnd = old.onended!;
+    context.currentTime += 3; // Audio elapsed through clip end during a stalled RAF.
+    lateEnd();
+    expect(old.buffer).toBeNull();
+    expect(old.disconnect).toHaveBeenCalledTimes(1);
+    expect(context.gains[0]!.disconnect).toHaveBeenCalledTimes(1);
+    expect(context.sources).toHaveLength(1); // Callback is cleanup only, not a second clock.
+    const next = advanceProductPreviewTime(600, 3000, project.shots[0]!.durationMs);
+    expect(next.timeMs).toBe(850); // The incumbent 250ms clamp must remain intact.
+    transport.sync(syncInput(project, { timeMs: next.timeMs })); await flush();
+    expect(context.sources).toHaveLength(2);
+    expect(context.sources[1]!.start).toHaveBeenCalledWith(13, 0.45, 0.15);
+    expect(internals(transport).voices.size).toBe(1);
+    expect(context.sources.filter((source) => source.buffer !== null)).toHaveLength(1);
+    expect(readAudio).toHaveBeenCalledTimes(1);
+    expect(context.decodeAudioData).toHaveBeenCalledTimes(1);
+    lateEnd(); // Even a repeated old callback cannot remove the replacement Voice.
+    transport.sync(syncInput(project, { timeMs: 850 })); await flush();
+    expect(context.sources).toHaveLength(2);
+    expect(context.sources[1]!.stop).not.toHaveBeenCalled();
+    transport.dispose();
+  });
+
+  it('does not rebuild a naturally ended source when the next master tick is outside its window', async () => {
+    const { project, context, transport, readAudio } = setup(buildAudioProject());
+    transport.sync(syncInput(project)); await flush();
+    context.sources[0]!.onended!();
+    transport.sync(syncInput(project, { timeMs: 1000 })); await flush();
+    expect(context.sources).toHaveLength(1);
+    expect(context.sources[0]!.buffer).toBeNull();
+    expect(internals(transport).voices.size).toBe(0);
+    expect(readAudio).toHaveBeenCalledTimes(1);
+    transport.dispose();
+  });
+
+  it.each(['seek', 'shot'] as const)('ignores obsolete onended callbacks after %s without killing or restarting the new owner', async (action) => {
+    const { project, context, transport } = setup(buildAudioProject());
+    transport.sync(syncInput(project)); await flush();
+    const lateEnd = context.sources[0]!.onended!;
+    const input = syncInput(project, { timeMs: 800,
+      ...(action === 'seek' ? { seekRevision: 1 } : { shot: { ...project.shots[0]!, id: 'new-shot' } }),
+    });
+    transport.sync(input); await flush();
+    lateEnd();
+    transport.sync(input); await flush();
+    expect(context.sources).toHaveLength(2);
+    expect(context.sources[1]!.start).toHaveBeenCalledWith(10, 0.4, 0.2);
+    expect(context.sources[1]!.stop).not.toHaveBeenCalled();
+    expect(internals(transport).voices.size).toBe(1);
+    transport.dispose();
+  });
+
+  it.each(['pause', 'stop', 'unmount'] as const)('does not restart naturally ended audio after %s or a stale ended callback', async (action) => {
+    const { project, context, transport } = setup(buildAudioProject());
+    transport.sync(syncInput(project)); await flush();
+    const lateEnd = context.sources[0]!.onended!;
+    lateEnd();
+    if (action === 'unmount') transport.dispose();
+    const paused = syncInput(project, { playing: false, timeMs: action === 'stop' ? 0 : 650,
+      seekRevision: action === 'stop' ? 1 : 0 });
+    transport.sync(paused);
+    lateEnd();
+    transport.sync(paused); await flush();
+    expect(context.sources).toHaveLength(1);
+    expect(context.sources[0]!.buffer).toBeNull();
+    expect(internals(transport).voices.size).toBe(0);
     transport.dispose();
   });
 
