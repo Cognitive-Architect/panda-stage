@@ -578,7 +578,6 @@ export function ProductPreviewOverlay({
     projectRoot,
     project,
     shot,
-    activeDialogueId: activeCue?.id ?? null,
     timeMs: activeShotTimeMs,
     playing,
     seekRevision,

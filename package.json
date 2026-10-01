@@ -10,6 +10,7 @@
     "pnpm": ">=10 <11"
   },
   "scripts": {
+    "verify:issue659-preview-mixer": "pnpm build && electron scripts/verify-issue659-preview-mixer.cjs",
     "verify:issue658-audio-timeline": "pnpm build && electron scripts/verify-issue658-audio-timeline.cjs",
     "dev": "pnpm build:electron && concurrently --kill-others --success first \"pnpm dev:renderer\" \"pnpm dev:electron\"",
     "dev:renderer": "vite",

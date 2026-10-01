@@ -4,6 +4,8 @@ import {
   ProjectSchema,
   evaluateShotAtTime,
   mapProjectTime,
+  prepareSpeakerFocusCamera,
+  evaluateSpeakerFocusCamera,
   type Project,
 } from '../../src/domain';
 import { evaluateSubtitleAtTime } from '../../src/shared/preview/subtitle-engine';
@@ -433,6 +435,30 @@ describe('Product Preview mouth projection - Phase 3 B', () => {
 });
 
 describe('Product Preview mouth integration - Phase 3 C', () => {
+  it('BGM and overlapping SFX cannot change active Dialogue, Mouth or Auto Camera speaker focus', () => {
+    const baseline = buildMouthProject(true);
+    const project = structuredClone(baseline);
+    const shot = project.shots[0]!;
+    const template = shot.audioClips[0]!;
+    shot.audioClips.push(
+      { ...template, id: 'bgm', role: 'bgm', startMs: 0, endMs: 2000 },
+      { ...template, id: 'sfx-a', role: 'sfx', startMs: 400, endMs: 2000 },
+      { ...template, id: 'sfx-b', role: 'sfx', startMs: 600, endMs: 2000 },
+    );
+    const before = structuredClone(project);
+    const baselineShot = baseline.shots[0]!;
+    const baselineCamera = prepareSpeakerFocusCamera(baseline, baselineShot);
+    const mixedCamera = prepareSpeakerFocusCamera(project, shot);
+    for (const timeMs of [100, 800, 1250, 1600]) {
+      const cue = evaluateSubtitleAtTime(buildProductPreviewCues(shot), timeMs);
+      const originalCue = evaluateSubtitleAtTime(buildProductPreviewCues(baselineShot), timeMs);
+      expect(cue).toEqual(originalCue);
+      expect(projectProductPreviewMouth(project, shot, evaluateShotAtTime(shot, timeMs, project), cue?.id ?? null).layers)
+        .toEqual(projectProductPreviewMouth(baseline, baselineShot, evaluateShotAtTime(baselineShot, timeMs, baseline), originalCue?.id ?? null).layers);
+      expect(evaluateSpeakerFocusCamera(mixedCamera, timeMs)).toEqual(evaluateSpeakerFocusCamera(baselineCamera, timeMs));
+    }
+    expect(project).toEqual(before);
+  });
   it('projects between the formal evaluator and CanvasStage using the shared clock', () => {
     const overlay = readFileSync(
       'src/renderer/shell/ProductPreviewOverlay.tsx',

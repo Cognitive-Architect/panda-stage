@@ -374,11 +374,13 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('shotId: string | null;');
   });
 
-  it('drives one subordinate audio transport from the shared subtitle winner', () => {
+  it('drives one subordinate Shot-local mixer independently of the subtitle winner', () => {
     const overlay = readSource(OVERLAY_PATH);
 
     expect(overlay).toContain('useProductPreviewAudio({');
-    expect(overlay).toContain('activeDialogueId: activeCue?.id ?? null');
+    const audio = readSource(AUDIO_PATH);
+    expect(audio).toContain('resolveProductPreviewAudios(input.project, input.shot, input.timeMs)');
+    expect(overlay).not.toContain('activeDialogueId: activeCue?.id ?? null');
     expect(overlay).toContain('timeMs: activeShotTimeMs');
     expect(overlay).toContain('playing,');
     expect(overlay).toContain('seekRevision,');

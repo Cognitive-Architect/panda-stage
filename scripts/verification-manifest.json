@@ -406,7 +406,8 @@
           "scripts/verify-issue456*",
           "scripts/verify-issue457*",
           "scripts/verify-issue460*",
-          "scripts/verify-css-split.cjs"
+          "scripts/verify-css-split.cjs",
+          "scripts/verify-issue659-preview-mixer.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
@@ -416,8 +417,20 @@
       }
     ]
   },
-  "count": 68,
+  "count": 69,
   "gates": [
+    {
+      "id": "issue659-preview-mixer",
+      "script": "verify:issue659-preview-mixer",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "A03 native sandboxed Electron read/decode/gain/spectrum evidence for overlapping Dialogue/BGM/SFX, seek/pause/resume/replay/unmount; not Export mix or human listening acceptance."
+    },
     {
       "id": "issue658-audio-timeline",
       "script": "verify:issue658-audio-timeline",
