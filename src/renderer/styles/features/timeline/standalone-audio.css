@@ -71,29 +71,39 @@
 .standalone-audio-trim:focus-visible { outline: 2px solid var(--ui-color-focus-ring); }
 .standalone-audio-lane [data-drop-active='true'] { background: var(--ui-color-selected-surface); }
 
-.standalone-audio-controls {
-  position: fixed;
-  z-index: 100;
+.timeline-toolbar .standalone-audio-controls {
   display: flex;
+  flex: 0 1 420px;
+  min-width: 0;
+  max-width: 420px;
   align-items: center;
   gap: var(--ui-space-2);
-  max-width: calc(100vw - 24px);
-  padding: 4px 8px;
-  border-radius: var(--ui-radius-small);
-  background: var(--ui-color-surface-overlay);
+  margin-left: auto;
   color: var(--ui-color-text-primary);
-  box-shadow: 0 2px 10px rgb(0 0 0 / 25%);
+  font-size: 12px;
+}
+
+.standalone-audio-identity {
+  flex: 1 1 140px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .standalone-audio-controls label {
   display: flex;
+  flex: 0 1 184px;
+  min-width: 0;
   align-items: center;
   gap: var(--ui-space-2);
   font-size: 12px;
   white-space: nowrap;
 }
-.standalone-audio-controls input { width: 100px; min-height: 44px; }
-.standalone-audio-controls output { min-width: 36px; font-variant-numeric: tabular-nums; }
+.standalone-audio-controls input { flex: 1 1 100px; min-width: 44px; width: 100px; min-height: 44px; margin: 0; }
+.standalone-audio-controls output { flex: 0 0 36px; font-variant-numeric: tabular-nums; }
+.standalone-audio-controls [data-ui-size='icon'] { flex: 0 0 var(--ui-touch-icon); }
+.timeline-toolbar .standalone-audio-controls + .timeline-zoom { flex: 0 0 auto; margin-left: 0; }
 .standalone-audio-drop-error { position: sticky; left: 90px; color: var(--ui-color-text-primary); font-size: 12px; }
 
 /* Override the earlier two-media-lane flexible split, not its outer budget. */

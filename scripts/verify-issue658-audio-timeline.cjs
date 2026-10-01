@@ -8,7 +8,7 @@ const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 // Isolated actual Windows Electron renderer / sandboxed Preload, not human acceptance.
-const root = 'D:\\PandaStage-Acceptance\\issue658-audio-timeline';
+const root = 'D:\\PandaStage-Acceptance\\issue658-inline-audio-controls';
 mkdirSync(root, { recursive: true });
 app.setPath('userData', path.join(root, 'user-data'));
 process.env.VITE_DEV_SERVER_URL = '';
@@ -24,6 +24,7 @@ shot.timelineEvents = [];
 const audioAsset = project.assets.find(asset => asset.kind === 'audio');
 audioAsset.durationMs = 2000;
 audioAsset.metadata = { status: 'ready', warnings: [] };
+audioAsset.name = '沙雕之歌_' + '很长的背景音乐文件名称_'.repeat(12) + '.wav';
 shot.audioClips = [{ id: '70000000-0000-4000-8000-000000000658', assetId: audioAsset.id, name: 'Dialogue sample', role: 'dialogue', startMs: 100, endMs: 1100, offsetMs: 0, volume: 1 }];
 shot.dialogues = [{ ...shot.dialogues[0], id: '80000000-0000-4000-8000-000000000658', characterId: project.characters[0].id, text: '对白保留', startMs: 100, endMs: 2100, audioClipId: shot.audioClips[0].id }];
 for (const asset of project.assets) if (asset.kind === 'image') {
@@ -73,6 +74,35 @@ async function state() {
   })()`);
 }
 async function capture(name) { writeFileSync(path.join(root, `${name}.png`), (await win.webContents.capturePage()).toPNG()); }
+async function toolbarState() {
+  return js(`(() => {
+    const q = s => document.querySelector(s), r = el => el.getBoundingClientRect().toJSON();
+    const controls = q('[data-testid="standalone-audio-controls"]'), header = q('[data-testid="timeline-toolbar"]');
+    const identity = q('[data-testid="standalone-audio-identity"]'), zoom = q('.timeline-zoom');
+    return {
+      inline: controls?.parentElement === header,
+      identity: identity?.textContent,
+      ellipsis: identity ? getComputedStyle(identity).textOverflow : null,
+      nameTruncated: identity ? identity.scrollWidth > identity.clientWidth : false,
+      position: controls ? getComputedStyle(controls).position : null,
+      header: r(header), controls: controls ? r(controls) : null, zoom: r(zoom),
+      ruler: r(q('[data-testid="timeline-ruler"]')),
+      beforeZoom: controls?.nextElementSibling === zoom,
+    };
+  })()`);
+}
+async function changeVolume(value) {
+  await js(`(() => {
+    const input = document.querySelector('[aria-label="音频片段音量"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(String(value))});
+    input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await pause(60);
+}
+async function commitVolume() {
+  await js(`document.querySelector('[aria-label="音频片段音量"]').dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }))`);
+  await pause(180);
+}
 async function drop(role, time) {
   await js(`(() => {
     const content = document.querySelector('[data-testid="timeline-${role}-track"] .timeline-lane-content');
@@ -124,6 +154,8 @@ async function run() {
     assert((await state()).revision === 0, 'Dialogue lane accepted generic audio drop');
     await drop('sfx', 1000);
     result.states.sfx = await state();
+    result.states.sfxToolbar = await toolbarState();
+    assert(result.states.sfxToolbar.inline && result.states.sfxToolbar.identity.startsWith('音效 · '), 'SFX identity / controls not inside Timeline Header');
     assert(result.states.sfx.revision === 1 && result.states.sfx.undo === 1 && result.states.sfx.selected, 'Drop did not select / commit once');
     let clip = authored.shots[0].audioClips.find(candidate => candidate.role === 'sfx');
     assert(Math.abs(clip.startMs - 1000) <= 1, 'Drop time disagrees with existing Timeline geometry');
@@ -140,14 +172,11 @@ async function run() {
     assert(clip.offsetMs > 0, 'Trim-start did not advance source offset');
     const endDraft = await gesture('[data-testid="standalone-audio-trim-end"]', -25);
     assert(endDraft.revision === 3 && (await state()).revision === 4, 'Trim-end commit count incorrect');
-    await js(`(() => {
-      const input = document.querySelector('[aria-label="音频片段音量"]');
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '1.8');
-      input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
-    })()`);
-    await pause(60);
-    await js(`document.querySelector('[aria-label="音频片段音量"]').dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }))`);
-    await pause(180);
+    const beforeVolume = await state();
+    await changeVolume(1.8);
+    assert((await state()).revision === beforeVolume.revision, 'Volume draft committed before the interaction ended');
+    await commitVolume();
+    assert((await state()).undo === beforeVolume.undo + 1, 'One volume interaction did not create exactly one History command');
     assert(authored.shots[0].audioClips.find(candidate => candidate.role === 'sfx').volume === 1.8, 'Volume capped or did not commit');
     await capture('selected-sfx-controls');
     for (const [keyCode, expected] of [['Home', 0], ['End', 2]]) {
@@ -158,11 +187,38 @@ async function run() {
       assert(authored.shots[0].audioClips.find(candidate => candidate.role === 'sfx').volume === expected, `Volume endpoint ${expected} inaccessible`);
       assert((await state()).undo === before.undo + 1, 'Volume key edit did not create exactly one command');
     }
+    for (const cancel of ['pointercancel', 'Escape']) {
+      const before = await state();
+      const oldVolume = authored.shots[0].audioClips.find(candidate => candidate.role === 'sfx').volume;
+      await changeVolume(1.2);
+      await js(`(() => {
+        const input = document.querySelector('[aria-label="音频片段音量"]');
+        input.dispatchEvent(${cancel === 'pointercancel'
+          ? "new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 })"
+          : "new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' })"});
+      })()`); await pause(80);
+      assert((await state()).revision === before.revision && authored.shots[0].audioClips.find(candidate => candidate.role === 'sfx').volume === oldVolume, `${cancel} committed the volume draft`);
+      await js(`document.querySelector(${JSON.stringify(selected)}).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`); await pause(180);
+      assert((await state()).revision === before.revision + 1, 'Fixture edit did not change revision after volume cancel');
+      const nextVolume = cancel === 'pointercancel' ? 1.6 : 1.7;
+      await changeVolume(nextVolume); await commitVolume();
+      assert(authored.shots[0].audioClips.find(candidate => candidate.role === 'sfx').volume === nextVolume, `${cancel} retained volumeOrigin and swallowed the next edit`);
+      assert((await state()).undo === before.undo + 2, `${cancel}: next volume edit did not commit exactly once`);
+      result.states[cancel] = await state();
+    }
     await drop('bgm', 4000);
     result.states.bgm = await state();
+    result.states.bgmToolbar = await toolbarState();
+    const bar = result.states.bgmToolbar;
+    assert(bar.inline && bar.beforeZoom && bar.position === 'static', 'Selected audio controls remain a portal/fixed overlay or follow zoom');
+    assert(bar.identity.startsWith('BGM · ') && bar.nameTruncated && bar.ellipsis === 'ellipsis', 'BGM identity did not update or long filename did not truncate');
+    assert(bar.controls.top >= bar.header.top && bar.controls.bottom <= bar.header.bottom && bar.controls.left >= bar.header.left && bar.controls.right <= bar.zoom.left, 'Inline controls escaped / overlapped their Timeline Header');
+    assert(bar.zoom.right <= bar.header.right && bar.header.right - bar.zoom.right <= 14, 'Zoom is no longer the far-right toolbar owner');
+    assert(bar.controls.top >= initial.canvas.bottom && bar.controls.bottom <= bar.ruler.top, 'Audio controls overlap Canvas or ruler');
     assert(authored.shots[0].audioClips.some(candidate => candidate.role === 'bgm'), 'BGM drop missing');
     assert(result.states.bgm.bottom.height === initial.bottom.height && result.states.bgm.canvas.height === initial.canvas.height, 'New lanes / controls grew Timeline budget');
     await js(`document.querySelector('.timeline-media-lanes').scrollTop = 999`); await pause(100); await capture('bgm-vertical-access');
+    await capture('selected-bgm-inline-header');
     const access = await js(`(() => { const q = s => document.querySelector(s), m = q('.timeline-media-lanes').getBoundingClientRect(), b = q('[data-testid="timeline-bgm-track"]').getBoundingClientRect(); return b.bottom <= m.bottom+1 && b.top >= m.top; })()`);
     assert(access, 'BGM lane is not vertically reachable');
     await click('[data-testid="timeline-zoom-in"]');
@@ -175,6 +231,7 @@ async function run() {
     assert((await state()).playhead === initial.playhead, 'Clip gestures moved ruler playhead');
     await click('[aria-label="删除音频片段"]');
     assert(!authored.shots[0].audioClips.some(candidate => candidate.role === 'bgm'), 'Delete did not use standalone authoring');
+    assert(await js(`!document.querySelector('[data-testid="standalone-audio-controls"]')`), 'Delete retained stale contextual controls');
     await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))`); await pause(180);
     assert(authored.shots[0].audioClips.some(candidate => candidate.role === 'bgm'), 'Undo did not restore deleted clip');
     await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: true, bubbles: true }))`); await pause(180);

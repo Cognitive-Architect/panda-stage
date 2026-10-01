@@ -251,7 +251,6 @@ export function TimelineDock({
         data-timeline-layer="toolbar"
         role="toolbar"
       >
-        {selectedAudioClip && ui.expanded && !productPreviewOpen ? <StandaloneAudioControls key={`${editorProjectStore.getProjectInstanceId()}:${selectedAudioClip.id}`} clip={selectedAudioClip} /> : null}
         <button
           type="button"
           className="timeline-collapse"
@@ -293,6 +292,13 @@ export function TimelineDock({
         >
           <SkipBack aria-hidden="true" focusable="false" size={18} />
         </button>
+        {selectedAudioClip && ui.expanded && !productPreviewOpen ? (
+          <StandaloneAudioControls
+            key={`${editorProjectStore.getProjectInstanceId()}:${selectedAudioClip.id}`}
+            clip={selectedAudioClip}
+            displayName={audioClipName(selectedAudioClip.assetId, selectedAudioClip.name)}
+          />
+        ) : null}
         <div className="timeline-zoom">
           <button
             type="button"
