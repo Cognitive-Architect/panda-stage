@@ -75,6 +75,16 @@ function removeCurrentCharacterMode(
   });
 }
 
+function legacyShot(shot: ReturnType<typeof migrateProject>['shots'][number]) {
+  return {
+    ...shot,
+    audioClips: shot.audioClips.map(({ role, ...clip }) => {
+      void role;
+      return clip;
+    }),
+  };
+}
+
 function createLegacyBackgroundCandidate(
   width: number,
   height: number,
@@ -184,7 +194,7 @@ describe('project migration framework', () => {
   });
 
   it.each([
-    { schemaVersion: 8 },
+    { schemaVersion: 9 },
     { schemaVersion: 99 },
     {},
   ])('rejects unknown or missing schema versions', (input) => {
@@ -296,6 +306,7 @@ describe('project migration framework', () => {
       ...current,
       schemaVersion: 6 as const,
       characters: removeCurrentCharacterMode(current),
+      shots: current.shots.map(legacyShot),
     };
     const snapshot = structuredClone(version6);
     const migrated = migrateProject(version6);
@@ -323,6 +334,7 @@ describe('project migration framework', () => {
         void backgroundLayerId;
         return {
           ...shot,
+          audioClips: legacyShot({ ...shot, backgroundLayerId }).audioClips,
           layers: shot.layers.map(({ locked, flipX, ...layer }) => {
             void locked;
             void flipX;
@@ -355,6 +367,7 @@ describe('project migration framework', () => {
           void backgroundLayerId;
           return {
           ...shot,
+          audioClips: legacyShot({ ...shot, backgroundLayerId }).audioClips,
           layers: [
             {
               ...shot.layers[1]!,
@@ -388,7 +401,7 @@ describe('project migration framework', () => {
       schemaVersion: 3 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map((shot) => ({
-        ...shot,
+        ...legacyShot(shot),
         layers: shot.layers.map(({ locked, flipX, ...layer }) => {
           void locked;
           void flipX;
@@ -437,7 +450,7 @@ describe('project migration framework', () => {
       schemaVersion: 4 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map((shot, shotIndex) => ({
-        ...shot,
+        ...legacyShot(shot),
         layers: shot.layers.map(
           ({ flipX, ...layer }, layerIndex) => {
             void flipX;
@@ -465,7 +478,7 @@ describe('project migration framework', () => {
       schemaVersion: 5 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map((shot, shotIndex) => ({
-        ...shot,
+        ...legacyShot(shot),
         layers: shot.layers.map((layer, layerIndex) => ({
           ...layer,
           flipX: shotIndex === 0 && layerIndex === 1,

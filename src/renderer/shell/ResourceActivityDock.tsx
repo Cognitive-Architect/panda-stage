@@ -11,7 +11,11 @@ import { AssetLibrary } from '../features/assets/AssetLibrary';
 import type { AssetWorkspaceView } from '../features/assets/AssetLibrary';
 import { CharacterManager } from '../features/characters/CharacterManager';
 import type { CharacterWorkspaceView } from '../features/characters/CharacterManager';
-import { hasPendingCharacterAssemblyEdit } from '../features/characters/characterAssemblyPreview';
+import {
+  ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
+  hasPendingCharacterAssemblyEdit,
+  resolveAssemblyExitDecision,
+} from '../features/characters/characterAssemblyPreview';
 import { ShotManager } from '../features/shots/ShotManager';
 import type {
   ShotEditorPresentation,
@@ -140,11 +144,13 @@ export function ResourceActivityDock({
         hasPendingCharacterAssemblyEdit(snapshot.project, session),
     );
     if (!hasPendingEdit) return true;
-    const confirmed = window.confirm(
-      '装配更改尚未应用，离开将放弃这些更改。继续吗？',
+    const decision = resolveAssemblyExitDecision(
+      true,
+      window.confirm(ASSEMBLY_DISCARD_CONFIRM_MESSAGE),
     );
-    if (confirmed) approvedPendingExit.current = true;
-    return confirmed;
+    if (decision === 'stay') return false;
+    approvedPendingExit.current = true;
+    return true;
   };
 
   const setDrawerOpen = (open: boolean): void => {
@@ -189,11 +195,11 @@ export function ResourceActivityDock({
           hasPendingCharacterAssemblyEdit(snapshot.project, session),
       );
       if (hasPendingEdit && !approvedPendingExit.current) {
-        if (
-          !window.confirm(
-            '装配更改尚未应用，离开将放弃这些更改。继续吗？',
-          )
-        ) {
+        const decision = resolveAssemblyExitDecision(
+          true,
+          window.confirm(ASSEMBLY_DISCARD_CONFIRM_MESSAGE),
+        );
+        if (decision === 'stay') {
           if (requestedActivity === undefined) {
             setInternalActivity(previous);
           } else {

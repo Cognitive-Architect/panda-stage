@@ -212,8 +212,22 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
 
     expect(bottom).toContain('timelineUiStore.setHeightMax(bounds.maxHeight)');
     expect(editorShell).toContain('data-testid="editor-body"');
-    expect(sha256(bottom.replace(/\r\n/gu, '\n'))).toBe('f6bead7d4fbc6f62582fe8c1de42f97a60330a2098e32728d4ea21e2ca69fb1b');
-    expect(sha256(editorShell.replace(/\r\n/gu, '\n'))).toBe('a7876c31904ae439faacb8cdb313a98855c57e2f747c1e11b661f1e519e92261');
+    // #655 adds only the Preview-open input and modal isolation at this owner.
+    // Keep the original whole-file protection for every other byte.
+    expect(bottom.match(/<TimelineDock\b/gu)).toHaveLength(1);
+    expect(bottom).toContain('inert={assemblyInactive || productPreviewOpen || undefined}');
+    expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
+    const beforePreviewIsolation = bottom.replace(/\r\n/gu, '\n')
+      .replace('  productPreviewOpen?: boolean;\n', '')
+      .replace('  productPreviewOpen = false,\n', '')
+      .replace('inert={assemblyInactive || productPreviewOpen || undefined}', 'inert={assemblyInactive || undefined}')
+      .replace('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />', '<TimelineDock presentation={presentation} />');
+    expect(sha256(beforePreviewIsolation)).toBe('f6bead7d4fbc6f62582fe8c1de42f97a60330a2098e32728d4ea21e2ca69fb1b');
+    // #653 adds a session-only Camera mode to this shell. Keep the historical
+    // Quick/History/Tools ownership checks above, not a whole-file freeze.
+    expect(editorShell).toContain('<CompactProjectBar');
+    expect(editorShell).toContain('<RightWorkspace');
+    expect(editorShell).toContain('<BottomWorkspace');
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
     expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(true);
   });

@@ -1,0 +1,246 @@
+/* PK-06: one contextual Position rail inside the incumbent Timeline owner. */
+.timeline-position-lane {
+  grid-template-columns: var(--timeline-lane-label-width, 82px) max-content;
+}
+
+.timeline-media-lanes {
+  display: contents;
+}
+
+.timeline-position-lane .timeline-lane-label {
+  gap: 4px;
+  padding-inline: 7px;
+  white-space: nowrap;
+}
+
+.position-lane-content {
+  position: relative;
+  overflow: visible;
+}
+
+.position-chain-line {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 1px;
+  background: var(--ui-color-separator);
+  pointer-events: none;
+}
+
+.position-key-marker {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  background: transparent;
+  color: var(--ui-color-text-secondary);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.position-key-marker[data-kind='base'] {
+  color: var(--ui-color-selected-border);
+}
+
+.position-key-marker[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.position-key-marker[data-current='true'],
+.position-key-marker:hover {
+  color: var(--ui-color-selected-border);
+}
+
+.position-key-marker:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.position-key-diamond {
+  position: relative;
+  display: grid;
+  width: 10px;
+  height: 10px;
+  place-items: center;
+  transform: rotate(45deg);
+  border: 1.5px solid currentColor;
+  background: var(--ui-color-surface-work);
+}
+
+.position-key-marker[data-current='true'] .position-key-diamond {
+  background: currentColor;
+}
+
+.position-key-marker[data-kind='base'] .position-key-diamond {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}
+
+.position-key-root {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.position-key-marker[data-kind='base'][data-current='true'] .position-key-root {
+  background: var(--ui-color-surface-work);
+}
+
+.position-lane-lock {
+  font-size: 11px;
+}
+
+.position-key-time-bubble {
+  position: absolute;
+  z-index: 9;
+  top: -26px;
+  transform: translateX(-50%);
+  padding: 3px 6px;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.position-key-action {
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  width: 104px;
+  padding: 3px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 28%);
+}
+
+/* No local min-height override: Delete keeps the shared touch target
+   (--ui-touch-regular) and the bubble stays compact through its own padding. */
+.position-key-action [data-ui-button] {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.position-lane-error {
+  position: fixed;
+  z-index: 1001;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  max-width: min(320px, calc(100vw - 32px));
+  align-items: center;
+  gap: var(--ui-space-2);
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+}
+
+.position-lane-error-text {
+  min-width: 0;
+}
+
+/* Keep the external 162–324px landscape budget. At its minimum the Position
+   rail stays fixed while Subtitle and Audio move inside the media region. */
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-dock[data-has-position-lane='true'] .timeline-track-stack {
+  container: pk06-track / size;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-dock[data-has-position-lane='true'] .timeline-ruler-scroll {
+  scrollbar-width: thin;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-dock[data-has-position-lane='true'] .position-key-marker {
+  width: 44px;
+  height: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-dock[data-has-position-lane='true'] .timeline-media-lanes {
+  display: flex;
+  flex: 2 1 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-dock[data-has-position-lane='true'] .timeline-position-lane {
+  flex: 1 1 0;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-dock[data-has-position-lane='true'] .timeline-media-lanes > .timeline-lane {
+  flex: 1 1 0;
+}
+
+@container pk06-track (max-height: 132px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-dock[data-has-position-lane='true'] .timeline-position-lane {
+    flex: 0 0 38px;
+    height: 38px;
+  }
+
+  .timeline-dock[data-has-position-lane='true'] .timeline-media-lanes {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    touch-action: auto;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+    .bottom-workspace[data-resizable='true']
+    .timeline-dock[data-has-position-lane='true'] .timeline-media-lanes > .timeline-lane {
+    flex: 0 0 48px;
+    height: 48px;
+  }
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .editor-layout[data-active-workspace='timeline']
+  .timeline-dock[data-presentation='portrait'][data-has-position-lane='true']
+  .timeline-ruler-scroll {
+  flex-basis: 280px;
+  height: 280px;
+}
+
+.position-lane-readonly {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding-inline: 12px;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.timeline-dock[data-presentation='portrait'] .timeline-position-lane .timeline-lane-label {
+  padding-inline: 3px;
+  font-size: 11px;
+}
+
+.timeline-dock[data-presentation='portrait'] .position-key-marker {
+  width: 44px;
+  height: 44px;
+}

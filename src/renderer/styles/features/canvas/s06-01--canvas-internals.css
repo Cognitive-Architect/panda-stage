@@ -136,6 +136,17 @@
   color: #f8e7bd;
 }
 
+.canvas-stage-pending {
+  top: 120px;
+  width: max-content;
+  max-width: calc(100% - 48px);
+  padding: var(--ui-space-3) var(--ui-space-5);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  color: var(--ui-color-text-secondary);
+  font-size: 24px;
+}
+
 .canvas-empty-state-overlay {
   position: absolute;
   z-index: 3;

@@ -1,0 +1,77 @@
+/* #653: a persistent Preview mode beside, not inside, right activity navigation. */
+.editor-shell[data-editor-shell-layout='landscape'] .right-rail-stack {
+  display: flex;
+  width: 56px;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  grid-column: 2;
+  grid-row: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-rail-stack::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-rail-stack .right-activity-rail {
+  flex-shrink: 1;
+  min-height: calc(3 * 72px + 2 * 8px);
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-mode-group {
+  display: grid;
+  width: 56px;
+  flex: none;
+  margin-top: auto;
+  padding-top: var(--ui-space-3);
+  border-top: 1px solid var(--ui-color-border);
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-mode-group button {
+  display: grid;
+  width: 52px;
+  min-height: 72px;
+  padding: 10px 4px;
+  border: 1px solid rgb(127 199 148 / 34%);
+  border-radius: 12px;
+  color: #a9c5b0;
+  background: #142019;
+  place-items: center;
+  gap: 4px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-mode-group button:hover:not(:disabled),
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-mode-group button[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: #d8f2df;
+  background: rgb(45 104 62 / 28%);
+  box-shadow: inset 0 0 0 1px rgb(131 211 154 / 10%),
+    0 0 14px rgb(131 211 154 / 8%);
+}
+
+.editor-shell[data-editor-shell-layout='landscape']
+  .right-mode-group button:focus-visible {
+  outline: 3px solid rgb(149 224 172 / 42%);
+  outline-offset: 2px;
+}
+
+.editor-shell[data-editor-shell-layout='landscape'] .right-mode-label {
+  display: grid;
+  font-size: 12px;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+}
+
+@media (max-height: 620px) {
+  .editor-shell[data-editor-shell-layout='landscape'] .right-mode-group {
+    padding-top: var(--ui-space-1);
+  }
+}

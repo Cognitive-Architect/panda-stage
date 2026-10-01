@@ -984,7 +984,7 @@ async function run() {
     assert(creationSurface.createActionCount === 1 && creationSurface.createActionOwnedByDrawer, 'Composite Create is not owned by exactly one left-drawer primary action.');
     assert(creationSurface.centralCreateActionCount === 0, 'The central Assembly workbench still owns a competing Create action.');
     assert(creationSurface.visibleAssemblyHeadingCount === 0, 'The central Assembly workbench still shows a permanent title block.');
-    assert(creationSurface.helperHintCount === 1, 'The central Assembly workbench does not have exactly one lightweight helper hint.');
+    assert(creationSurface.helperHintCount === 0, 'The central Assembly workbench still shows a permanent helper hint.');
     assert(creationSurface.precisionLabels.join(',') === '左右,上下,大小', 'Face Placement precision controls are missing a labeled axis/size group.');
     assert(creationSurface.resetLabel === '重置', 'Face Placement precision controls do not expose Reset.');
     assert(creationSurface.values.x !== '' && creationSurface.values.y !== '' && creationSurface.values.scale !== '', 'Face Placement X/Y/scale values are not visible.');

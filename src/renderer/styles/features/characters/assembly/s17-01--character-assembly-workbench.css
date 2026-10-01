@@ -839,12 +839,6 @@
   font: var(--ui-font-secondary);
 }
 
-.character-assembly-workbench-footer > p {
-  margin: 0 auto 0 0;
-  color: var(--ui-color-text-muted);
-  font: var(--ui-font-secondary);
-}
-
 .character-assembly-pending-actions > button:last-child {
   min-height: 42px;
   padding: 8px 18px;
@@ -861,6 +855,9 @@
   min-height: 42px;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
+  padding-left: 8px;
+  border-left: 1px solid var(--ui-color-separator);
   color: var(--ui-color-text-secondary);
   font: var(--ui-font-secondary);
 }
@@ -1109,10 +1106,6 @@
     gap: 6px;
   }
 
-  .character-assembly-workbench-footer > p {
-    order: 3;
-    flex-basis: 100%;
-  }
 }
 
 /* Issue #618: keep Character actions with identity and reserve Settings for

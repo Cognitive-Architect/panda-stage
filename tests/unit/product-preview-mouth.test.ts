@@ -4,6 +4,8 @@ import {
   ProjectSchema,
   evaluateShotAtTime,
   mapProjectTime,
+  prepareSpeakerFocusCamera,
+  evaluateSpeakerFocusCamera,
   type Project,
 } from '../../src/domain';
 import { evaluateSubtitleAtTime } from '../../src/shared/preview/subtitle-engine';
@@ -130,6 +132,7 @@ function buildMouthProject(twoCharacters = false): Project {
       audioClips: [
         {
           id: CLIP_A_ID,
+          role: 'dialogue',
           name: 'voice-a',
           assetId: AUDIO_ID,
           startMs: 0,
@@ -141,6 +144,7 @@ function buildMouthProject(twoCharacters = false): Project {
           ? [
               {
                 id: CLIP_B_ID,
+                role: 'dialogue',
                 name: 'voice-b',
                 assetId: AUDIO_ID,
                 startMs: 700,
@@ -219,30 +223,61 @@ describe('Product Preview mouth preload - Phase 3 A', () => {
 describe('Product Preview mouth projection - Phase 3 B', () => {
   it('uses the bound AudioClip half-open interval, not the subtitle tail', () => {
     const project = buildMouthProject();
-
-    expect(
-      layerAsset(project, 0, DIALOGUE_A_ID).layers.find(
+    for (const [timeMs, assetId] of [
+      [0, MOUTH_A_ID], [159, MOUTH_A_ID],
+      [160, IDS.assetChar], [319, IDS.assetChar],
+      [320, MOUTH_A_ID], [899, IDS.assetChar],
+      [900, IDS.assetChar],
+    ] as const) {
+      expect(layerAsset(project, timeMs, DIALOGUE_A_ID).layers.find(
         (layer) => layer.id === IDS.layerChar,
-      )?.assetId,
-    ).toBe(MOUTH_A_ID);
-    expect(
-      layerAsset(project, 899, DIALOGUE_A_ID).layers.find(
-        (layer) => layer.id === IDS.layerChar,
-      )?.assetId,
-    ).toBe(MOUTH_A_ID);
-    expect(
-      layerAsset(project, 900, DIALOGUE_A_ID).layers.find(
-        (layer) => layer.id === IDS.layerChar,
-      )?.assetId,
-    ).toBe(IDS.assetChar);
+      )?.assetId).toBe(assetId);
+    }
     expect(evaluateSubtitleAtTime(buildProductPreviewCues(project.shots[0]!), 900)?.id)
       .toBe(DIALOGUE_A_ID);
+  });
+
+  it('starts open at 1000ms and repeats the same audio-relative phase after moving the clip', () => {
+    const base = buildMouthProject();
+    const shot = base.shots[0]!;
+    const moved = ProjectSchema.parse({
+      ...base,
+      shots: [{
+        ...shot,
+        dialogues: shot.dialogues.map((dialogue) => ({
+          ...dialogue, startMs: 1_000, endMs: 2_200,
+        })),
+        audioClips: shot.audioClips.map((clip) => ({
+          ...clip, startMs: 1_000, endMs: 2_000,
+        })),
+      }],
+    });
+    const before = JSON.stringify(moved);
+    for (const [timeMs, assetId] of [
+      [999, IDS.assetChar], [1_000, MOUTH_A_ID],
+      [1_159, MOUTH_A_ID], [1_160, IDS.assetChar],
+      [1_319, IDS.assetChar], [1_320, MOUTH_A_ID],
+      [2_000, IDS.assetChar],
+    ] as const) {
+      const first = layerAsset(moved, timeMs, DIALOGUE_A_ID);
+      expect(first.layers.find((layer) => layer.id === IDS.layerChar)?.assetId)
+        .toBe(assetId);
+      expect(layerAsset(moved, timeMs, DIALOGUE_A_ID)).toEqual(first);
+    }
+    for (const elapsed of [0, 159, 160, 319, 320, 899]) {
+      expect(layerAsset(moved, 1_000 + elapsed, DIALOGUE_A_ID).layers.find(
+        (layer) => layer.id === IDS.layerChar,
+      )?.assetId).toBe(layerAsset(base, elapsed, DIALOGUE_A_ID).layers.find(
+        (layer) => layer.id === IDS.layerChar,
+      )?.assetId);
+    }
+    expect(JSON.stringify(moved)).toBe(before);
   });
 
   it('changes only the speaking character asset and preserves formal state', () => {
     const project = buildMouthProject(true);
     const shot = project.shots[0]!;
-    const evaluated = evaluateShotAtTime(shot, 800, project);
+    const evaluated = evaluateShotAtTime(shot, 750, project);
     const snapshot = structuredClone(evaluated);
     const projectedA = projectProductPreviewMouth(
       project,
@@ -272,9 +307,19 @@ describe('Product Preview mouth projection - Phase 3 B', () => {
   it('falls back to the exact formal result for missing or invalid inputs', () => {
     const project = buildMouthProject();
     const shot = project.shots[0]!;
-    const evaluated = evaluateShotAtTime(shot, 500, project);
+    const evaluated = evaluateShotAtTime(shot, 400, project);
 
     expect(projectProductPreviewMouth(project, shot, evaluated, null)).toBe(evaluated);
+    expect(
+      projectProductPreviewMouth(
+        project,
+        { ...shot, dialogues: shot.dialogues.map((dialogue) => ({
+          ...dialogue, audioClipId: undefined,
+        })) },
+        evaluated,
+        DIALOGUE_A_ID,
+      ),
+    ).toBe(evaluated);
     expect(
       projectProductPreviewMouth(
         project,
@@ -344,25 +389,76 @@ describe('Product Preview mouth projection - Phase 3 B', () => {
     const project = buildMouthProject(true);
     const shot = project.shots[0]!;
     const cues = buildProductPreviewCues(shot);
-    const winnerA = evaluateSubtitleAtTime(cues, 600);
-    const winnerB = evaluateSubtitleAtTime(cues, 800);
+    const winnerA = evaluateSubtitleAtTime(cues, 640);
+    const winnerB = evaluateSubtitleAtTime(cues, 750);
 
     expect(winnerA?.id).toBe(DIALOGUE_A_ID);
     expect(winnerB?.id).toBe(DIALOGUE_B_ID);
     expect(
-      layerAsset(project, 600, winnerA!.id).layers.find(
+      layerAsset(project, 640, winnerA!.id).layers.find(
         (layer) => layer.id === IDS.layerChar,
       )?.assetId,
     ).toBe(MOUTH_A_ID);
     expect(
-      layerAsset(project, 800, winnerB!.id).layers.find(
+      layerAsset(project, 750, winnerB!.id).layers.find(
         (layer) => layer.id === LAYER_B_ID,
       )?.assetId,
     ).toBe(MOUTH_B_ID);
+    expect(layerAsset(project, 750, winnerB!.id).layers.find(
+      (layer) => layer.id === IDS.layerChar,
+    )?.assetId).toBe(IDS.assetChar);
+  });
+
+  it('keeps Character-based Mouth ownership across two occurrences', () => {
+    const base = buildMouthProject();
+    const shot = base.shots[0]!;
+    const secondId = '60000000-0000-4000-8000-000000000305';
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: [{
+        ...shot,
+        layers: [
+          ...shot.layers,
+          { ...shot.layers.find((layer) => layer.id === IDS.layerChar)!,
+            id: secondId, zIndex: 3 },
+        ],
+      }],
+    });
+    for (const [timeMs, assetId] of [
+      [320, MOUTH_A_ID], [480, IDS.assetChar],
+    ] as const) {
+      const layers = layerAsset(project, timeMs, DIALOGUE_A_ID).layers;
+      expect(layers.find((layer) => layer.id === IDS.layerChar)?.assetId).toBe(assetId);
+      expect(layers.find((layer) => layer.id === secondId)?.assetId).toBe(assetId);
+    }
   });
 });
 
 describe('Product Preview mouth integration - Phase 3 C', () => {
+  it('BGM and overlapping SFX cannot change active Dialogue, Mouth or Auto Camera speaker focus', () => {
+    const baseline = buildMouthProject(true);
+    const project = structuredClone(baseline);
+    const shot = project.shots[0]!;
+    const template = shot.audioClips[0]!;
+    shot.audioClips.push(
+      { ...template, id: 'bgm', role: 'bgm', startMs: 0, endMs: 2000 },
+      { ...template, id: 'sfx-a', role: 'sfx', startMs: 400, endMs: 2000 },
+      { ...template, id: 'sfx-b', role: 'sfx', startMs: 600, endMs: 2000 },
+    );
+    const before = structuredClone(project);
+    const baselineShot = baseline.shots[0]!;
+    const baselineCamera = prepareSpeakerFocusCamera(baseline, baselineShot);
+    const mixedCamera = prepareSpeakerFocusCamera(project, shot);
+    for (const timeMs of [100, 800, 1250, 1600]) {
+      const cue = evaluateSubtitleAtTime(buildProductPreviewCues(shot), timeMs);
+      const originalCue = evaluateSubtitleAtTime(buildProductPreviewCues(baselineShot), timeMs);
+      expect(cue).toEqual(originalCue);
+      expect(projectProductPreviewMouth(project, shot, evaluateShotAtTime(shot, timeMs, project), cue?.id ?? null).layers)
+        .toEqual(projectProductPreviewMouth(baseline, baselineShot, evaluateShotAtTime(baselineShot, timeMs, baseline), originalCue?.id ?? null).layers);
+      expect(evaluateSpeakerFocusCamera(mixedCamera, timeMs)).toEqual(evaluateSpeakerFocusCamera(baselineCamera, timeMs));
+    }
+    expect(project).toEqual(before);
+  });
   it('projects between the formal evaluator and CanvasStage using the shared clock', () => {
     const overlay = readFileSync(
       'src/renderer/shell/ProductPreviewOverlay.tsx',

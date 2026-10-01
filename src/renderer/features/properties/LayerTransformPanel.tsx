@@ -18,6 +18,10 @@ import {
 import { Check, FlipHorizontal2, Info, RotateCcw } from 'lucide-react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
+import {
+  opacityPreviewStore,
+  type OpacityPreviewHandle,
+} from '../../stores/opacityPreviewStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import {
@@ -93,8 +97,11 @@ export interface LayerTransformController {
   updateDraft: (key: keyof LayerTransformDraft, value: string) => void;
   updateScalePercentDraft: (value: string) => void;
   updateOpacityPercentDraft: (value: string) => void;
+  beginOpacityPreview: (kind: 'pointer' | 'keyboard') => void;
+  finishOpacityPreview: () => void;
+  cancelOpacityPreview: () => void;
   commitPendingDraft: (
-    reason: 'action' | 'blur' | 'submit',
+    reason: 'action' | 'blur' | 'submit' | 'opacity',
     draftOverride?: LayerTransformDraft,
     scaleValue?: string,
   ) => CommitTransformDraftResult;
@@ -198,6 +205,19 @@ export function shouldCommitTransformBlur(
   return relatedTarget === null || !contains(relatedTarget);
 }
 
+/** A completed pointer gesture has no active handle left for lost capture to cancel. */
+export function cancelActiveOpacityPreview(
+  sessionRef: { current: OpacityPreviewHandle | null },
+  resetDraft: () => void,
+): boolean {
+  const session = sessionRef.current;
+  if (!session) return false;
+  sessionRef.current = null;
+  session.cancel();
+  resetDraft();
+  return true;
+}
+
 const EMPTY_DRAFT: LayerTransformDraft = {
   x: '',
   y: '',
@@ -260,6 +280,11 @@ export function useLayerTransformController({
       ? { x: layer.x, y: layer.y }
       : null;
   const [draft, setDraft] = useState<LayerTransformDraft>(EMPTY_DRAFT);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const opacitySessionRef = useRef<OpacityPreviewHandle | null>(null);
+  const opacityGestureKindRef = useRef<'pointer' | 'keyboard' | null>(null);
+  const projectInstanceId = editorProjectStore.getProjectInstanceId();
   const [scalePercentDraft, setScalePercentDraft] = useState('');
   const [status, setStatus] = useState(
     compact ? '' : '选择普通图层后可编辑中心位置与静态变换。',
@@ -290,7 +315,12 @@ export function useLayerTransformController({
   const basePositionX = basePositionDraft?.x;
   const basePositionY = basePositionDraft?.y;
 
+  useEffect(() => () => opacitySessionRef.current?.cancel(), []);
+
   useEffect(() => {
+    opacitySessionRef.current?.cancel();
+    opacitySessionRef.current = null;
+    opacityGestureKindRef.current = null;
     setDraft(
       layer
         ? {
@@ -390,11 +420,74 @@ export function useLayerTransformController({
   };
 
   const updateOpacityPercentDraft = (value: string): void => {
+    const opacity = Number(value) / 100;
+    if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) return;
+    if (!opacitySessionRef.current) beginOpacityPreview('keyboard');
+    if (!opacitySessionRef.current?.setOpacity(opacity)) return;
     draftVersionRef.current += 1;
-    setDraft((current) => ({
-      ...current,
-      opacity: value.trim() ? String(Number(value) / 100) : '',
-    }));
+    const nextDraft = { ...draftRef.current, opacity: String(opacity) };
+    draftRef.current = nextDraft;
+    setDraft(nextDraft);
+  };
+
+  const isOpacityContextCurrent = (): boolean => {
+    const current = editorProjectStore.getSnapshot();
+    return Boolean(
+      layer &&
+      snapshot &&
+      current &&
+      !layer.locked &&
+      editorProjectStore.getProjectInstanceId() === projectInstanceId &&
+      current.project.id === snapshot.project.id &&
+      current.projectRoot === snapshot.projectRoot &&
+      current.revision === snapshot.revision &&
+      shotStore.getCurrentShotId() === shotId &&
+      selectionStore.getSelectedLayerId() === layer.id &&
+      timelineUiStore.getSnapshot().currentTimeMs === 0,
+    );
+  };
+
+  const beginOpacityPreview = (kind: 'pointer' | 'keyboard'): void => {
+    if (opacitySessionRef.current || !isOpacityContextCurrent()) return;
+    const session = opacityPreviewStore.begin(layer!.id);
+    if (!session) {
+      setStatus('透明度预览暂不可用，请重新选择图层。');
+      return;
+    }
+    opacitySessionRef.current = session;
+    opacityGestureKindRef.current = kind;
+  };
+
+  const finishOpacityPreview = (): void => {
+    const session = opacitySessionRef.current;
+    if (!session) return;
+    opacitySessionRef.current = null;
+    opacityGestureKindRef.current = null;
+    let accepted = false;
+    const finished = session.finish((result) => {
+      if (!isOpacityContextCurrent() || result.layerId !== layer?.id) return;
+      accepted = true;
+      const nextDraft = {
+        ...draftRef.current,
+        opacity: String(result.opacity),
+      };
+      draftRef.current = nextDraft;
+      commitPendingDraft('opacity', nextDraft);
+    });
+    if (!finished || !accepted) {
+      setStatus('透明度预览已失效，请重新操作。');
+    }
+  };
+
+  const cancelOpacityPreview = (): void => {
+    cancelActiveOpacityPreview(opacitySessionRef, () => {
+      opacityGestureKindRef.current = null;
+      if (!layer) return;
+      draftVersionRef.current += 1;
+      const nextDraft = { ...draftRef.current, opacity: String(layer.opacity) };
+      draftRef.current = nextDraft;
+      setDraft(nextDraft);
+    });
   };
 
   const draftForCommit = (
@@ -489,7 +582,7 @@ export function useLayerTransformController({
   };
 
   const commitPendingDraft = (
-    reason: 'action' | 'blur' | 'submit',
+    reason: 'action' | 'blur' | 'submit' | 'opacity',
     draftOverride = draft,
     scaleValue = scalePercentDraft,
   ): CommitTransformDraftResult => {
@@ -497,7 +590,7 @@ export function useLayerTransformController({
     if (temporalInspection) {
       if (positionAuthoringActive) {
         const result = commitPositionDraft(
-          reason === 'action' ? 'submit' : reason,
+          reason === 'blur' ? 'blur' : 'submit',
           draftOverride,
         );
         return result === 'committed'
@@ -547,7 +640,9 @@ export function useLayerTransformController({
       const result =
         revisionAfter === revisionBefore ? 'noop' : 'committed';
       setStatus(
-        result === 'noop'
+        reason === 'opacity'
+          ? ''
+          : result === 'noop'
           ? '属性值未变化，未新增历史。'
           : reason === 'blur'
             ? '图层变换已在离开属性表单时写入项目。'
@@ -653,6 +748,10 @@ export function useLayerTransformController({
 
   const commitDraftRef = useRef(commitPendingDraft);
   commitDraftRef.current = commitPendingDraft;
+  const finishOpacityRef = useRef(finishOpacityPreview);
+  finishOpacityRef.current = finishOpacityPreview;
+  const cancelOpacityRef = useRef(cancelOpacityPreview);
+  cancelOpacityRef.current = cancelOpacityPreview;
 
   useEffect(() => {
     const isTransformEditorTarget = (target: EventTarget | null): boolean => {
@@ -676,6 +775,14 @@ export function useLayerTransformController({
       ) {
         return;
       }
+      if (opacityGestureKindRef.current === 'pointer') {
+        cancelOpacityRef.current();
+        return;
+      }
+      if (opacityGestureKindRef.current === 'keyboard') {
+        finishOpacityRef.current();
+        return;
+      }
       commitDraftRef.current('blur');
     };
     const onMouseDown = (event: MouseEvent): void => {
@@ -687,6 +794,14 @@ export function useLayerTransformController({
         !isTransformEditorTarget(activeElement) ||
         isTransformEditorTarget(target)
       ) {
+        return;
+      }
+      if (opacityGestureKindRef.current === 'pointer') {
+        cancelOpacityRef.current();
+        return;
+      }
+      if (opacityGestureKindRef.current === 'keyboard') {
+        finishOpacityRef.current();
         return;
       }
       // Konva and the sibling Appearance section can clear selection during
@@ -718,6 +833,9 @@ export function useLayerTransformController({
     updateDraft,
     updateScalePercentDraft,
     updateOpacityPercentDraft,
+    beginOpacityPreview,
+    finishOpacityPreview,
+    cancelOpacityPreview,
     commitPendingDraft,
     startPositionAuthoring,
     createPositionHold,

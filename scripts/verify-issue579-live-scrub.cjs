@@ -37,6 +37,7 @@ const probePng = readFileSync(
 const IDS = Object.freeze({
   background: '60000000-0000-4000-8000-000000000001',
   character: '60000000-0000-4000-8000-000000000002',
+  baseExpression: '20000000-0000-4000-8000-000000000002',
   angryExpression: '20000000-0000-4000-8000-000000000003',
 });
 
@@ -159,6 +160,17 @@ function createFixture() {
                 startMs: 0,
                 endMs: 3000,
                 expressionId: IDS.angryExpression,
+              },
+              // R01 projects authored Expression events at 0ms while retaining
+              // base transforms. A later switch keeps this verifier's real
+              // Timeline source-transition and return-to-zero proof meaningful.
+              {
+                id: '90000000-0000-4000-8000-000000000106',
+                type: 'expression',
+                layerId: IDS.character,
+                startMs: 100,
+                endMs: 3000,
+                expressionId: IDS.baseExpression,
               },
               {
                 id: '90000000-0000-4000-8000-000000000105',
@@ -651,6 +663,11 @@ async function run() {
       (expression) => expression.id === '20000000-0000-4000-8000-000000000002',
     )?.assetId;
   assert(baseCharacterAssetId, 'Issue #579 fixture base character asset was not resolved.');
+  const zeroExpressionAssetId = project.characters
+    .find((character) => character.id === '20000000-0000-4000-8000-000000000001')
+    ?.expressions.find((expression) => expression.id === IDS.angryExpression)?.assetId;
+  assert(zeroExpressionAssetId && zeroExpressionAssetId !== baseCharacterAssetId,
+    'Fixture must have distinct base and authored zero-time Expression assets.');
   registerAcceptanceHandlers(project);
   await app.whenReady();
   configureElectronPaths();
@@ -663,7 +680,7 @@ async function run() {
   });
 
   try {
-    await openProject(window, baseCharacterAssetId);
+    await openProject(window, zeroExpressionAssetId);
     await waitForDom(
       window,
       `document.querySelector('[data-testid="timeline-tick"]') || document.querySelector('[data-testid="timeline-ruler-track"]')`,
@@ -684,7 +701,9 @@ async function run() {
     assert(atZero.backgroundOpacity === 1, `0ms background is not base opacity 1: ${JSON.stringify(atZero)}`);
     assert(atZero.baseLayer?.x === 430, `Unexpected base character x: ${JSON.stringify(atZero.baseLayer)}`);
     assert(atZero.evaluatedLayer?.x === 430, `0ms Canvas does not show base x: ${JSON.stringify(atZero.evaluatedLayer)}`);
-    assert(atZero.evaluatedLayer?.assetId === baseCharacterAssetId, `0ms Canvas asset differs from the base character source: ${JSON.stringify(atZero)}`);
+    assert(atZero.evaluatedLayer?.assetId === zeroExpressionAssetId, `0ms Canvas does not show the authored Expression: ${JSON.stringify(atZero)}`);
+    assert(atZero.evaluatedLayer?.currentExpressionId === IDS.angryExpression, '0ms authored Expression identity is incorrect.');
+    assert(atZero.baseLayer?.source.expressionId === IDS.baseExpression, 'Authored Expression changed the base Layer source.');
     assert(atZero.evaluatedLayer?.flipX === atZero.baseLayer?.flipX, '0ms Canvas flip differs from base source.');
     assert(atZero.controls?.temporalInspection === 'false', '0ms Inspector reports temporal inspection.');
     assert(atZero.controls?.inputs.every((control) => !control.disabled), `0ms Inspector inputs are disabled: ${JSON.stringify(atZero.controls)}`);
@@ -704,6 +723,9 @@ async function run() {
     assert(atTemporal.temporalInspection, 'Non-zero Canvas is not marked temporal.');
     assert(atTemporal.evaluatedLayer?.x !== atTemporal.baseLayer?.x, 'Non-zero Canvas did not show evaluated movement.');
     assert(atTemporal.evaluatedLayer?.assetId !== atZero.evaluatedLayer?.assetId, 'Non-zero Canvas did not show evaluated source.');
+    assert(atTemporal.currentTimeMs >= 100 && atTemporal.evaluatedLayer?.assetId === baseCharacterAssetId,
+      'Real seek did not display the later formal Expression switch.');
+    assert(atTemporal.evaluatedLayer?.currentExpressionId === IDS.baseExpression, 'Later Expression identity is incorrect.');
     assert(atTemporal.backgroundOpacity < 1, `Non-zero Canvas did not show the 0ms opacity event: ${JSON.stringify(atTemporal)}`);
     assert(atTemporal.controls?.temporalInspection === 'true', 'Non-zero Inspector is not marked temporal.');
     assert(atTemporal.controls?.inputs.every((control) => control.disabled), `Non-zero Inspector input is writable: ${JSON.stringify(atTemporal.controls)}`);

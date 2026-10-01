@@ -8,7 +8,7 @@ import {
 } from '../constants';
 import { validateProjectReferences } from '../validators/projectReferences';
 import { AssetSchema, type Asset } from './asset';
-import { AudioClipSchema } from './audio';
+import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
   CharacterV6Schema,
@@ -22,6 +22,7 @@ import {
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
+  ShotV7Schema,
 } from './shot';
 import { SubtitleStyleSchema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
@@ -136,11 +137,10 @@ export const ProjectV4Schema = z
   .strict();
 
 /**
- * Historical v5 shot shape. Identical to the current shot except its dialogues
- * use the v5 Dialogue schema, where `audioClipId` is mandatory. This is the
- * only field that differs from the current `ShotSchema`; kept so the v5 →
- * current migration entry recognises a project the v5 product wrote and bumps
- * its schemaVersion without rewriting dialogue data (v5 dialogues already carry
+ * Historical v5 shot shape: role-less audio and mandatory Dialogue.audioClipId.
+ * Kept so the v5 →
+ * current migration entry recognises a project the v5 product wrote without
+ * rewriting dialogue data (v5 dialogues already carry
  * a real audioClipId, which stays valid once `audioClipId` becomes optional).
  */
 const ShotV5BaseShape = {
@@ -149,7 +149,7 @@ const ShotV5BaseShape = {
   durationMs: z.number().int().min(SHOT_MIN_DURATION_MS),
   defaultSubtitleStyleId: IdSchema,
   dialogues: z.array(DialogueV5Schema),
-  audioClips: z.array(AudioClipSchema),
+  audioClips: z.array(AudioClipV7Schema),
   timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerSchema),
   backgroundLayerId: IdSchema.nullable(),
@@ -161,8 +161,8 @@ export const ShotV5Schema = z.object(ShotV5BaseShape).strict();
  * Historical v5 project shape. Matches exactly what the v5 product persisted,
  * including the mandatory `audioClipId` on each dialogue. Used as the explicit
  * v5 → current migration entry point so a project the v5 product saved can be
- * unambiguously recognised and migrated forward (schemaVersion bump only; the
- * dialogue data is already valid under the optional-audioClipId schema).
+ * unambiguously recognised and migrated forward with explicit audio roles;
+ * dialogue data is already valid under the optional-audioClipId schema.
  */
 export const ProjectV5Schema = z
   .object({
@@ -199,11 +199,28 @@ export const ProjectV6Schema = z
     characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
-    shots: z.array(ShotSchema),
+    shots: z.array(ShotV7Schema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
+
+export const ProjectV7Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(7),
+  shots: z.array(ShotV7Schema),
+});
+
+function addAudioRoles<T extends {
+  audioClips: z.infer<typeof AudioClipV7Schema>[];
+}>(shot: T) {
+  return {
+    ...shot,
+    audioClips: shot.audioClips.map((clip) => ({
+      ...clip,
+      role: 'dialogue' as const,
+    })),
+  };
+}
 
 const LEGACY_BACKGROUND_MIN_WIDTH_RATIO = 0.75;
 const LEGACY_BACKGROUND_MIN_HEIGHT_RATIO = 0.75;
@@ -250,7 +267,7 @@ function addBackgroundIdentity<T extends {
   shots: z.infer<typeof ShotV2Schema>[];
 }>(project: T): Array<z.infer<typeof ShotSchema>> {
   return project.shots.map((shot) => ({
-    ...shot,
+    ...addAudioRoles(shot),
     layers: shot.layers.map((layer) => ({
       ...layer,
       locked: false,
@@ -269,11 +286,20 @@ function addBackgroundIdentity<T extends {
 }
 
 export function migrateFormalProject(input: unknown): unknown {
+  const version7 = ProjectV7Schema.safeParse(input);
+  if (version7.success) {
+    return {
+      ...version7.data,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      shots: version7.data.shots.map(addAudioRoles),
+    };
+  }
   const version6 = ProjectV6Schema.safeParse(input);
   if (version6.success) {
     return {
       ...version6.data,
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      shots: version6.data.shots.map(addAudioRoles),
       characters: version6.data.characters.map((character) => ({
         ...character,
         mode: 'single-image' as const,
@@ -284,11 +310,11 @@ export function migrateFormalProject(input: unknown): unknown {
   const version5 = ProjectV5Schema.safeParse(input);
   if (version5.success) {
     // v5 dialogues already carry a real audioClipId, which is still valid once
-    // audioClipId becomes optional. Only the schemaVersion needs bumping; the
-    // dialogue/shot data passes through unchanged.
+    // audioClipId becomes optional. Add roles without rewriting Dialogue data.
     return {
       ...version5.data,
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      shots: version5.data.shots.map(addAudioRoles),
       characters: version5.data.characters.map((character) => ({
         ...character,
         mode: 'single-image' as const,
@@ -306,7 +332,7 @@ export function migrateFormalProject(input: unknown): unknown {
         mode: 'single-image' as const,
       })),
       shots: version4.data.shots.map((shot) => ({
-        ...shot,
+        ...addAudioRoles(shot),
         layers: shot.layers.map((layer) => ({
           ...layer,
           flipX: false,
@@ -326,7 +352,7 @@ export function migrateFormalProject(input: unknown): unknown {
         mode: 'single-image' as const,
       })),
       shots: version3.data.shots.map((shot) => ({
-        ...shot,
+        ...addAudioRoles(shot),
         layers: shot.layers.map((layer) => ({
           ...layer,
           locked: false,
@@ -374,7 +400,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v6 -> v7) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v7 -> v8) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

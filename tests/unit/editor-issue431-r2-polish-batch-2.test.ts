@@ -43,7 +43,7 @@ describe('Issue #431 R2 Subtitle Workspace polish P-04 / P-05 / P-06', () => {
     expect(timeline).toContain('data-track-kind="subtitle"');
     expect(timeline).toContain('data-track-kind="audio"');
     expect(timeline).toContain('data-testid="timeline-collapse"');
-    expect(bottom).toContain('<TimelineDock presentation={presentation} />');
+    expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
   });
 
   it('P-05: gives AUTHORING one stable scroll body and one shared content gutter', () => {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Search } from 'lucide-react';
 import type { ImageAsset } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
 import {
@@ -12,6 +13,8 @@ export interface ImageAssetPickerProps {
   selectedAssetId: string | null;
   thumbnails: Readonly<Record<string, ThumbnailState>>;
   presentation?: 'default' | 'inline';
+  /** Opt-in Expression workflow capacity controls; other picker hosts stay unchanged. */
+  searchAndPaginate?: boolean;
   disabled?: boolean;
   onChange: (assetId: string | null) => void;
   onThumbnailError: (assetId: string) => void;
@@ -136,12 +139,42 @@ function assetMetadata(
   return emptyState ? (emptyState.description ?? '') : '未选择图片';
 }
 
+export const IMAGE_ASSET_PAGE_SIZE = 12;
+
+export function paginateImageAssetCandidates(
+  assets: readonly ImageAsset[],
+  query: string,
+  requestedPage: number,
+): {
+  assets: readonly ImageAsset[];
+  matchCount: number;
+  page: number;
+  pageCount: number;
+} {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const matches = normalizedQuery
+    ? assets.filter((asset) => asset.name.toLocaleLowerCase().includes(normalizedQuery))
+    : assets;
+  const pageCount = Math.max(1, Math.ceil(matches.length / IMAGE_ASSET_PAGE_SIZE));
+  const page = Number.isFinite(requestedPage)
+    ? Math.min(pageCount, Math.max(1, Math.trunc(requestedPage)))
+    : 1;
+  const start = (page - 1) * IMAGE_ASSET_PAGE_SIZE;
+  return {
+    assets: matches.slice(start, start + IMAGE_ASSET_PAGE_SIZE),
+    matchCount: matches.length,
+    page,
+    pageCount,
+  };
+}
+
 export function ImageAssetPicker({
   label,
   assets,
   selectedAssetId,
   thumbnails,
   presentation = 'default',
+  searchAndPaginate = false,
   disabled = false,
   onChange,
   onThumbnailError,
@@ -155,8 +188,14 @@ export function ImageAssetPicker({
   testId,
 }: ImageAssetPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId);
   const selectedEmptyState = emptyOption ?? emptyState;
+  const candidatePage = searchAndPaginate
+    ? paginateImageAssetCandidates(assets, searchQuery, page)
+    : null;
+  const candidateAssets = candidatePage?.assets ?? assets;
 
   const selectAsset = (assetId: string | null): void => {
     if (disabled) return;
@@ -183,7 +222,13 @@ export function ImageAssetPicker({
       className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}`}
       data-testid={testId ? `${testId}-selected` : undefined}
       disabled={disabled}
-      onClick={() => setOpen((current) => !current)}
+      onClick={() => {
+        if (!open) {
+          setSearchQuery('');
+          setPage(1);
+        }
+        setOpen(!open);
+      }}
       type="button"
     >
       {selectedAssetId ? (
@@ -236,6 +281,24 @@ export function ImageAssetPicker({
         <small className="image-asset-picker-helper">{helperText}</small>
       ) : null}
       {open ? (
+        <>
+        {searchAndPaginate ? (
+          <label className="image-asset-picker-search">
+            <Search aria-hidden="true" focusable="false" size={16} />
+            <input
+              aria-label="搜索素材名称"
+              data-testid={testId ? `${testId}-search` : undefined}
+              disabled={disabled}
+              onChange={(event) => {
+                setSearchQuery(event.currentTarget.value);
+                setPage(1);
+              }}
+              placeholder="搜索素材名称"
+              type="search"
+              value={searchQuery}
+            />
+          </label>
+        ) : null}
         <div
           aria-label={`${label}候选素材`}
           className="image-asset-picker-candidates"
@@ -267,7 +330,7 @@ export function ImageAssetPicker({
               {!selectedAssetId ? <SelectionCheck /> : null}
             </button>
           ) : null}
-          {assets.map((asset) => {
+          {candidateAssets.map((asset) => {
             const disabledReason = getDisabledReason?.(asset);
             const candidateSelected = asset.id === selectedAssetId;
             return (
@@ -299,10 +362,36 @@ export function ImageAssetPicker({
               </button>
             );
           })}
-          {assets.length === 0 && !emptyOption ? (
-            <p className="image-asset-picker-empty-state">暂无图片素材</p>
+          {candidateAssets.length === 0 && !emptyOption ? (
+            <p className="image-asset-picker-empty-state">
+              {assets.length === 0 ? '暂无图片素材' : '没有匹配的图片素材'}
+            </p>
           ) : null}
         </div>
+        {candidatePage && candidatePage.pageCount > 1 ? (
+          <div className="image-asset-picker-pagination">
+            <button
+              data-testid={testId ? `${testId}-previous` : undefined}
+              disabled={disabled || candidatePage.page === 1}
+              onClick={() => setPage(candidatePage.page - 1)}
+              type="button"
+            >
+              ‹ 上一页
+            </button>
+            <span data-testid={testId ? `${testId}-page` : undefined}>
+              {candidatePage.page} / {candidatePage.pageCount}
+            </span>
+            <button
+              data-testid={testId ? `${testId}-next` : undefined}
+              disabled={disabled || candidatePage.page === candidatePage.pageCount}
+              onClick={() => setPage(candidatePage.page + 1)}
+              type="button"
+            >
+              下一页 ›
+            </button>
+          </div>
+        ) : null}
+        </>
       ) : null}
     </section>
   );

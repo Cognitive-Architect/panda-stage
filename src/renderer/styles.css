@@ -154,3 +154,11 @@
 @import './styles/features/characters/image-picker/s16-07--image-picker-inline-and-host.css';
 @import './styles/features/characters/assembly/s17-01--character-assembly-workbench.css';
 @import './styles/shell/layout/s17-02--character-assembly-surface.css';
+@import './styles/features/characters/expression/s17-03--expression-compact-r05.css';
+@import './styles/features/timeline/s17-04--return-to-start.css';
+@import './styles/features/characters/workspace/s17-05--character-placement-bridge.css';
+@import './styles/features/properties/expression-at-time.css';
+@import './styles/features/timeline/pk06-position-lane.css';
+@import './styles/shell/right-workspace/issue653-auto-camera-mode.css';
+@import './styles/features/timeline/standalone-audio.css';
+@import './styles/features/dialogue/properties/audio-picker.css';

@@ -689,7 +689,7 @@
       "sourceLocalRange": { "startLine": 1, "endLine": 244 },
       "sourceStartByte": 0,
       "sourceEndByteExclusive": 5220,
-      "sourceSha256": "89a21ad2e95a374096db5bd63ef87e198afee865a473bf5994d0ed52959b6fcf",
+      "sourceSha256": "f730e9fdedbf5955dfe35b4733c5aa91506da605f6b84679124e108e5f92dbd8",
       "targetPath": "src/renderer/styles/features/canvas/s06-01--canvas-internals.css",
       "endAnchor": ".layer-position-panel",
       "placement": "source-order",

@@ -28,6 +28,7 @@
     "docsPatterns": [
       "README.md",
       "AGENTS.md",
+      "DESIGN.md",
       "docs/**/*.md"
     ],
     "fullRegressionSuites": [
@@ -94,6 +95,7 @@
           "tests/unit/domain/**",
           "tests/unit/position-authoring-session.test.ts",
           "tests/unit/position-project-service.test.ts",
+          "tests/unit/speaker-focus-camera.test.ts",
           "tests/unit/migrations/**",
           "tests/integration/schema-*.test.ts",
           "tests/integration/project-create-at-lifecycle.test.ts",
@@ -113,9 +115,11 @@
           "tests/unit/production-resources.test.ts",
           "tests/integration/dialogue-audio-*.test.ts",
           "tests/integration/project-subtitle-background-migration.test.ts",
-          "tests/unit/application-menu-policy.test.ts"
+          "tests/unit/application-menu-policy.test.ts",
+          "tests/unit/standalone-audio.test.ts",
+          "tests/integration/standalone-audio-persistence.test.ts"
         ],
-        "verifierPatterns": ["scripts/verify-issue257-slice3*"],
+        "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
@@ -237,9 +241,11 @@
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
           "tests/unit/stage-*.test.ts",
+          "tests/unit/konva-pixel-ratio.test.ts",
           "tests/unit/viewport-*.test.ts",
           "tests/unit/editor-issue578-live-scrub.test.ts",
-          "tests/unit/temporal-visual-continuity.test.ts"
+          "tests/unit/temporal-visual-continuity.test.ts",
+          "tests/unit/feedback-hygiene.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",
@@ -282,7 +288,7 @@
           "tests/contract/*timeline*.test.ts",
           "tests/contract/day26-*.test.ts"
         ],
-        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*"],
+        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*", "scripts/verify-issue655-preview-isolation.cjs", "scripts/verify-issue658-audio-timeline.cjs"],
         "suites": ["timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -293,7 +299,7 @@
         "id": "dialogue",
         "sourcePatterns": ["src/renderer/features/dialogue/**"],
         "testPatterns": ["tests/unit/dialogue-*.test.ts", "tests/contract/issue220-*.test.ts", "tests/contract/issue221-*.test.ts"],
-        "verifierPatterns": [],
+        "verifierPatterns": ["scripts/verify-issue663-dialogue-voice.cjs"],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -360,6 +366,8 @@
           "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",
+          "tests/unit/speaker-focus-preview-contract.test.ts",
+          "tests/unit/issue653-auto-camera-mode.test.ts",
           "tests/unit/project-time-mapper.test.ts",
           "tests/unit/left-workspace.test.ts",
           "tests/unit/right-inspector*.test.ts",
@@ -398,7 +406,8 @@
           "scripts/verify-issue456*",
           "scripts/verify-issue457*",
           "scripts/verify-issue460*",
-          "scripts/verify-css-split.cjs"
+          "scripts/verify-css-split.cjs",
+          "scripts/verify-issue659-preview-mixer.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
@@ -408,8 +417,56 @@
       }
     ]
   },
-  "count": 66,
+  "count": 70,
   "gates": [
+    {
+      "id": "issue663-dialogue-voice",
+      "script": "verify:issue663-dialogue-voice",
+      "suite": "editor",
+      "subsystem": "dialogue",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "dialogue",
+      "supersedes": null,
+      "notes": "Real sandboxed landscape Cloud Touch chooser integration: touch/mouse Ready selection, immediate bound UI, one-command History, change/remove, unavailable assets and BGM/SFX isolation. Human hardware/listening acceptance remains separate."
+    },
+    {
+      "id": "issue659-preview-mixer",
+      "script": "verify:issue659-preview-mixer",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "A03 native sandboxed Electron read/decode/gain/spectrum evidence for overlapping Dialogue/BGM/SFX, seek/pause/resume/replay/unmount; not Export mix or human listening acceptance."
+    },
+    {
+      "id": "issue658-audio-timeline",
+      "script": "verify:issue658-audio-timeline",
+      "suite": "timeline",
+      "subsystem": "timeline",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "timeline",
+      "supersedes": null,
+      "notes": "A02 focused isolated Electron role-lane/drop/move/trim/gain/delete/History/layout evidence. Does not claim Preview mixer, Export mix or human acceptance."
+    },
+    {
+      "id": "issue657-audio-foundation",
+      "script": "verify:issue657-audio-foundation",
+      "suite": "project",
+      "subsystem": "project",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "architecture",
+      "supersedes": null,
+      "notes": "A01 bounded sandboxed Electron proof for v7/v8 audio role migration, trusted Project IPC, invalid-role rejection and save/reopen; not multi-track UI or human acceptance."
+    },
     {
       "id": "assets",
       "script": "verify:assets",

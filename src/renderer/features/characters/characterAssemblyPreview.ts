@@ -64,6 +64,24 @@ export function hasPendingCharacterAssemblyEdit(
   );
 }
 
+/** One product-level decision for every route that exits the assembly context. */
+export const ASSEMBLY_DISCARD_CONFIRM_MESSAGE =
+  '装配更改尚未应用，离开将放弃这些更改。继续吗？';
+
+export type AssemblyExitDecision = 'leave' | 'stay';
+
+/**
+ * Unifies the dirty-exit contract: a clean assembly leaves immediately, a
+ * dirty one leaves only on an explicit discard confirmation and otherwise
+ * keeps the draft and the workspace exactly where they are.
+ */
+export function resolveAssemblyExitDecision(
+  pending: boolean,
+  confirmed: boolean,
+): AssemblyExitDecision {
+  return !pending || confirmed ? 'leave' : 'stay';
+}
+
 const PREVIEW_CHARACTER_ID = '00000000-0000-4000-8000-000000000609';
 const PREVIEW_LAYER_ID = '00000000-0000-4000-8000-000000000610';
 const PREVIEW_VOICE_ID = '00000000-0000-4000-8000-000000000611';

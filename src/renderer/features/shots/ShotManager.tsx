@@ -1,23 +1,19 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import {
   projectDurationMs,
   ShotServiceError,
   type Project,
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
-import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import { ShotCreateForm } from './ShotCreateForm';
-import { formatShotDuration, ShotEditor } from './ShotEditor';
+import { ShotEditor } from './ShotEditor';
 import { nextAvailableShotName, ShotList } from './ShotList';
 import { ShotQuickActions } from './ShotQuickActions';
 
 export type ShotWorkspaceView = 'list' | 'create';
 export type ShotManagerPresentation = 'default' | 'landscape';
 export type ShotEditorPresentation = 'default' | 'portrait';
-
-const SHOT_STATUS_GUIDANCE =
-  '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。';
 
 export interface ShotManagerProps {
   snapshot: EditorProjectSnapshot | null;
@@ -44,12 +40,7 @@ export function ShotManager({
     shotStore.getCurrentShotId,
     shotStore.getCurrentShotId,
   );
-  const [status, setStatus] = useState(
-    presentation === 'landscape' ? '' : SHOT_STATUS_GUIDANCE,
-  );
-  useEffect(() => {
-    setStatus(presentation === 'landscape' ? '' : SHOT_STATUS_GUIDANCE);
-  }, [presentation]);
+  const [status, setStatus] = useState('');
   const project = snapshot?.project ?? null;
   const effectiveSelectedId =
     project?.shots.some((shot) => shot.id === selectedShotId)
@@ -61,21 +52,10 @@ export function ShotManager({
   const selectedShot =
     selectedIndex >= 0 ? project?.shots[selectedIndex] ?? null : null;
 
-  const mutate = (
-    action: () => Project,
-    success: string,
-    unchanged?: string,
-  ): Project | null => {
-    const current = editorProjectStore.getSnapshot()?.project;
+  const mutate = (action: () => Project): Project | null => {
     try {
       const next = action();
-      setStatus(
-        unchanged && next === current
-          ? unchanged
-          : presentation === 'landscape'
-            ? success
-            : `${success} 修改已应用，项目尚未保存。`,
-      );
+      setStatus('');
       return next;
     } catch (error) {
       setStatus(
@@ -88,20 +68,13 @@ export function ShotManager({
   };
 
   const createShot = (name: string, durationMs: number): boolean => {
-    const next = mutate(
-      () => shotStore.create({ name, durationMs }),
-      `镜头“${name.trim()}”已创建。`,
-    );
-    if (next && presentation === 'landscape') setStatus('');
+    const next = mutate(() => shotStore.create({ name, durationMs }));
     return next !== null;
   };
 
   const duplicateSelectedShot = (): void => {
     if (!selectedShot) return;
-    mutate(
-      () => shotStore.duplicate(selectedShot.id),
-      `镜头“${selectedShot.name}”已复制，所有子实体 ID 已重建。`,
-    );
+    mutate(() => shotStore.duplicate(selectedShot.id));
   };
 
   const removeSelectedShot = (): void => {
@@ -113,33 +86,17 @@ export function ShotManager({
     ) {
       return;
     }
-    const next = mutate(
-      () => shotStore.remove(selectedShot.id),
-      `镜头“${selectedShot.name}”已移除。`,
-    );
-    if (next?.shots.length === 0) {
-      if (presentation === 'landscape') {
-        setStatus('');
-      } else {
-        setStatus('最后一个镜头已移除；请创建新镜头继续。项目尚未保存。');
-      }
-    }
+    mutate(() => shotStore.remove(selectedShot.id));
   };
 
   const renameSelectedShot = (name: string): void => {
     if (!selectedShot) return;
-    mutate(
-      () => shotStore.rename(selectedShot.id, name),
-      '镜头名称已更新。',
-    );
+    mutate(() => shotStore.rename(selectedShot.id, name));
   };
 
   const setSelectedShotDuration = (durationMs: number): void => {
     if (!selectedShot) return;
-    mutate(
-      () => shotStore.setDuration(selectedShot.id, durationMs),
-      `镜头时长已更新为 ${formatShotDuration(durationMs)}。`,
-    );
+    mutate(() => shotStore.setDuration(selectedShot.id, durationMs));
   };
 
   return (
@@ -186,13 +143,7 @@ export function ShotManager({
             key={project?.id ?? 'no-project'}
             onCreate={createShot}
             onMove={(shotId, targetIndex) => {
-              mutate(
-                () => shotStore.move(shotId, targetIndex),
-                '镜头顺序已写回项目。',
-                presentation === 'landscape'
-                  ? '镜头位置未变化。'
-                  : '镜头位置未变化，未新增待保存修改。',
-              );
+              mutate(() => shotStore.move(shotId, targetIndex));
             }}
             onSelect={(shotId) => shotStore.select(shotId)}
             project={project}

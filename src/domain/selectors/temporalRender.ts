@@ -6,6 +6,9 @@ import {
   type VisualResourceReference,
 } from './visualParts';
 
+const MOUTH_FLAP_PERIOD_MS = 320;
+const MOUTH_OPEN_MS = 160;
+
 /**
  * Lists the image assets a single Shot may display over time.
  *
@@ -38,10 +41,10 @@ export function listShotRuntimeImageAssets(
 }
 
 /**
- * Applies the transient mouth-open projection used by both Editor Live Scrub
- * and Product Preview. The formal evaluator remains the source of every other
- * temporal value; this function only projects the active dialogue's bound
- * audio interval onto the speaking character's image asset.
+ * Applies the transient Mouth projection used by Editor Live Scrub and Product
+ * Preview. The bound AudioClip starts an open-first 320ms cycle: 160ms Mouth,
+ * then 160ms of the current formal Expression. All other temporal values stay
+ * owned by the formal evaluator.
  */
 export function projectShotMouth(
   project: Project,
@@ -63,6 +66,15 @@ export function projectShotMouth(
     !audioClip ||
     evaluatedShot.timeMs < audioClip.startMs ||
     evaluatedShot.timeMs >= audioClip.endMs
+  ) {
+    return evaluatedShot;
+  }
+
+  // Closed phases use the exact formal Expression already in evaluatedShot.
+  // Keeping the phase audio-relative makes seeks and dropped frames inert.
+  if (
+    (evaluatedShot.timeMs - audioClip.startMs) % MOUTH_FLAP_PERIOD_MS >=
+    MOUTH_OPEN_MS
   ) {
     return evaluatedShot;
   }

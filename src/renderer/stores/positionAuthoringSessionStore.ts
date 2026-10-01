@@ -237,7 +237,7 @@ function positionIsFiniteAndInCanvas(point: Point): boolean {
  *
  * The store keeps no Project copy. It keeps only a reference to the formal
  * EditorProjectStore snapshot that granted the capability plus a Point draft.
- * Any Editor/Shot/Layer/Timeline context change invalidates that capability;
+ * Any Editor/Shot/Layer/playhead-time context change invalidates that capability;
  * the only Project write goes through PositionStore.applyOperation().
  */
 export class PositionAuthoringSessionStore {
@@ -265,7 +265,7 @@ export class PositionAuthoringSessionStore {
       this.handleContextChange,
     );
     this.unsubscribeTimeline = dependencies.timeline.subscribe(
-      this.handleContextChange,
+      this.handleTimelineChange,
     );
   }
 
@@ -486,6 +486,14 @@ export class PositionAuthoringSessionStore {
       return;
     }
     this.invalidate();
+  };
+
+  private readonly handleTimelineChange = (): void => {
+    if (!this.active) return;
+    // Timeline scroll, zoom, and layout are view-only; only a changed
+    // playhead time invalidates the Position authoring capability.
+    if (this.dependencies.timeline.getSnapshot().currentTimeMs === this.active.timeMs) return;
+    this.handleContextChange();
   };
 
   private createHandle(

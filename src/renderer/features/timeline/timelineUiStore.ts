@@ -177,6 +177,10 @@ export class TimelineUiStore {
 
   private patch(next: Partial<TimelineUiState>): void {
     this.state = { ...this.state, ...next };
+    this.notify();
+  }
+
+  private notify(): void {
     for (const listener of this.listeners) listener();
   }
 
@@ -224,6 +228,16 @@ export class TimelineUiStore {
     const next = Number.isFinite(scrollPx) && scrollPx > 0 ? Math.round(scrollPx) : 0;
     if (next === this.state.scrollPx) return;
     this.patch({ scrollPx: next });
+  }
+
+  /** Shared navigation command for the toolbar and Character placement. */
+  returnToStart(durationMs: number): void {
+    const before = this.state;
+    this.seek(0, durationMs);
+    this.setScrollPx(0);
+    // The real ruler can temporarily diverge from scrollPx. A no-op command
+    // still asks its mounted DOM mirror to reconcile, without changing time.
+    if (this.state === before) this.notify();
   }
 
   setExpanded(expanded: boolean): void {

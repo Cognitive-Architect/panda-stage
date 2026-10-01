@@ -30,11 +30,11 @@ describe('Day 26 review follow-up #195 contracts', () => {
   });
 
   it('V-193-03: TimelineDock resets DOM scroll on shot switch', () => {
-    // store resetForShot() zeroes scrollPx; mirror that into the real viewport
-    // via an effect keyed on the active shot so the 0ms playhead stays visible.
-    expect(timelineDock).toMatch(
-      /useEffect\(\(\)\s*=>\s*\{[\s\S]*?scrollLeft = 0;[\s\S]*?\}, \[currentShotId\]\)/u,
-    );
+    // resetForShot() zeroes scrollPx; the shared DOM mirror observes both
+    // shot switches and scroll changes, keeping the 0ms playhead visible.
+    expect(timelineDock).toContain('return bindTimelineRulerScroll(scrollRef.current);');
+    expect(timelineDock).toContain('[currentShotId, hasShot, ui.expanded]');
+    expect(timelineDock).toContain('rulerScroll.scrollLeft = scrollPx;');
   });
 
   it('V-CI-01: Issue-102 gate accepts the Day-26 Timeline Shell height budget', () => {

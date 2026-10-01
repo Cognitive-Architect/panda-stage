@@ -2,6 +2,7 @@ import {
   createRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -28,6 +29,7 @@ import {
   canvasViewportStore,
 } from '../../stores/canvasViewportStore';
 import { layerStore } from '../../stores/layerStore';
+import { useOpacityPreview } from '../../stores/opacityPreviewStore';
 import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
@@ -64,6 +66,10 @@ import {
 import {
   buildEditorTemporalCanvasModel,
 } from './editorTemporalCanvasModel';
+import {
+  failedRequiredCanvasLayers,
+  scheduleCanvasPendingFeedback,
+} from './canvasReadinessFeedback';
 import {
   commitEditorTemporalContinuityBucket,
   createEditorTemporalContinuityState,
@@ -222,6 +228,7 @@ export function CanvasStage({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const opacityPreview = useOpacityPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -238,6 +245,20 @@ export function CanvasStage({
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
+  const activeOpacityPreview =
+    opacityPreview &&
+    snapshot &&
+    shot &&
+    opacityPreview.projectInstanceId ===
+      editorProjectStore.getProjectInstanceId() &&
+    opacityPreview.projectId === snapshot.project.id &&
+    opacityPreview.projectRoot === snapshot.projectRoot &&
+    opacityPreview.revision === snapshot.revision &&
+    opacityPreview.shotId === shot.id &&
+    opacityPreview.layerId === selectedLayerId &&
+    timelineUi.currentTimeMs === 0
+      ? opacityPreview
+      : null;
   const subtitleCues = useMemo(
     () => (shot ? buildDialogueSubtitleCues(shot.dialogues) : []),
     [shot],
@@ -424,26 +445,16 @@ export function CanvasStage({
       temporalCanvasModel?.visualStatusByLayer.get(layer.id),
     )
     .filter((status): status is NonNullable<typeof status> => Boolean(status));
-  const baseRequiredVisualFailure =
-    stageModel?.layers.some((stageLayer) => {
-      if (
-        stageLayer.render.isBackground ||
-        stageLayer.visual.kind !== 'composite-character'
-      ) {
-        return false;
-      }
-      const activeMouthId =
-        stageLayer.visual.activeFace?.source === 'mouth'
-          ? stageLayer.visual.activeFace.assetId
-          : null;
-      return stageLayer.visual.resources.required.some(
-        ({ assetId }) =>
-          imageState.missing.has(assetId) && assetId !== activeMouthId,
-      );
-    }) ?? false;
+  const failedRequiredVisualLayers = failedRequiredCanvasLayers(
+    stageModel?.layers ?? [],
+    imageState.missing,
+  );
+  const hasRequiredCharacterFailure =
+    failedRequiredVisualLayers.some(
+      ({ visual }) => visual.kind === 'composite-character',
+    ) || (compositeCharacterStatuses?.includes('required-failed') ?? false);
   const hasRequiredVisualFailure =
-    baseRequiredVisualFailure ||
-    (compositeCharacterStatuses?.includes('required-failed') ?? false);
+    failedRequiredVisualLayers.length > 0 || hasRequiredCharacterFailure;
   const hasMouthVisualDegradation = compositeCharacterStatuses?.some(
     (status) =>
       status === 'mouth-expression-fallback' ||
@@ -460,6 +471,22 @@ export function CanvasStage({
     hasRequiredVisualFailure ||
     hasMouthVisualDegradation ||
     hasPendingVisual;
+  const routineVisualPending =
+    !missingBackground &&
+    hasNonBackgroundVisualIssue &&
+    !hasRequiredVisualFailure &&
+    !hasMouthVisualDegradation;
+  const pendingFeedbackKey = `${temporalContextKey}:${snapshot?.revision}:${timelineUi.currentTimeMs}`;
+  const [visiblePendingKey, setVisiblePendingKey] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    setVisiblePendingKey(null);
+    if (!routineVisualPending) return undefined;
+    return scheduleCanvasPendingFeedback(() => {
+      setVisiblePendingKey(pendingFeedbackKey);
+    });
+  }, [pendingFeedbackKey, routineVisualPending]);
+  const showRoutineVisualPending =
+    routineVisualPending && visiblePendingKey === pendingFeedbackKey;
   const selectedStageLayer =
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
@@ -547,7 +574,10 @@ export function CanvasStage({
                 backgroundLayer?.render.id ?? ''
               }
               data-background-opacity={
-                backgroundLayer?.render.opacity ?? ''
+                backgroundLayer &&
+                activeOpacityPreview?.layerId === backgroundLayer.layer.id
+                  ? activeOpacityPreview.opacity
+                  : backgroundLayer?.render.opacity ?? ''
               }
               data-background-policy="cover-centered-no-stretch"
               data-background-ready={String(Boolean(backgroundImage))}
@@ -670,7 +700,14 @@ export function CanvasStage({
                               }
                               setInteractionStatus('已选择图层。');
                             }}
-                             render={render}
+                             render={
+                               activeOpacityPreview?.layerId === layer.id
+                                 ? {
+                                     ...render,
+                                     opacity: activeOpacityPreview.opacity,
+                                   }
+                                 : render
+                             }
                              positionAuthoringSession={
                                positionAuthoringSnapshot?.layerId === layer.id &&
                                selectedLayerId === layer.id
@@ -754,39 +791,32 @@ export function CanvasStage({
               >
                 <strong>
                   {hasRequiredVisualFailure
-                    ? '角色素材读取失败'
+                    ? hasRequiredCharacterFailure
+                      ? '角色素材读取失败'
+                      : '素材读取失败'
                     : hasMouthExpressionFallback
                       ? '张嘴表情不可用，已暂时显示当前表情'
                       : '张嘴表情不可用，正在准备当前表情'}
                 </strong>
                 <span>
                   {hasRequiredVisualFailure
-                    ? '当前角色画面不可用，请检查素材后重试。'
+                    ? hasRequiredCharacterFailure
+                      ? '当前角色画面不可用，请检查素材后重试。'
+                      : '当前画面素材不可用，请检查素材后重试。'
                     : hasMouthExpressionFallback
                       ? '素材恢复后会自动更新。'
                       : '当前表情准备完成后会自动更新。'}
                 </span>
               </div>
             ) : null}
-            {!missingBackground &&
-            hasNonBackgroundVisualIssue &&
-            !hasRequiredVisualFailure &&
-            !hasMouthVisualDegradation ? (
+            {showRoutineVisualPending ? (
               <div
-                className="canvas-stage-message canvas-stage-warning"
+                className="canvas-stage-message canvas-stage-pending"
                 data-testid="canvas-visual-warning"
-                data-visual-warning-kind={
-                  hasRequiredVisualFailure
-                    ? 'failed'
-                    : hasMouthVisualDegradation
-                      ? 'degraded'
-                      : 'pending'
-                }
+                data-visual-warning-kind="pending"
+                role="status"
               >
-                <strong>画面仍在准备</strong>
-                <span>
-                  正在读取角色素材；准备完成前不会显示不完整的角色画面。
-                </span>
+                <span>正在准备素材…</span>
               </div>
             ) : null}
             <span

@@ -297,6 +297,15 @@ export function validateProjectReferences(
           `Dialogue references unknown audio clip: ${dialogue.audioClipId}`,
         );
       }
+      const boundClip = dialogue.audioClipId === undefined
+        ? undefined : audioClips.get(dialogue.audioClipId);
+      if (boundClip && boundClip.role !== 'dialogue') {
+        addIssue(
+          context,
+          ['shots', shotIndex, 'dialogues', dialogueIndex, 'audioClipId'],
+          'Dialogue must reference a dialogue-role audio clip.',
+        );
+      }
       if (!subtitleStyles.has(dialogue.subtitleStyleId)) {
         addIssue(
           context,

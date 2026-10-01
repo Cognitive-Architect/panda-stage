@@ -1,0 +1,42 @@
+.dialogue-audio-options {
+  display: grid;
+  flex-basis: 100%;
+  gap: var(--ui-space-2);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.dialogue-audio-option {
+  display: grid;
+  gap: var(--ui-space-1);
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dialogue-audio-option strong {
+  overflow-wrap: anywhere;
+}
+
+.dialogue-audio-option span {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.dialogue-audio-option:focus-visible,
+.dialogue-audio-option[aria-pressed='true'] {
+  outline: 2px solid var(--ui-color-selected-border);
+  outline-offset: -2px;
+}
+
+.dialogue-audio-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

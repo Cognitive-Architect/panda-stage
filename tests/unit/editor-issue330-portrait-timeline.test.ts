@@ -29,7 +29,7 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(shell).toContain("portraitWorkspace !== 'timeline'");
     expect(shell).toContain('dialogueSelectionVisible=');
     expect(shell).not.toContain('timelineStore');
-    expect(bottom).toContain('<TimelineDock presentation={presentation} />');
+    expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
   });
 
   it('promotes the existing ruler and current subtitle/audio clip owners', () => {

@@ -144,23 +144,35 @@ export function CharacterAssemblyWorkbench({
     projectRoot,
     imageAssets.map(({ id, sha256 }) => [id, sha256]),
   ]);
-  const [imageState, setImageState] = useState<CanvasImageState>(
-    EMPTY_CANVAS_IMAGE_STATE,
-  );
+  const contextKey = `${project.id}\u0000${projectRoot}`;
+  const imageSessionRef = useRef<CanvasImageResourceSession | null>(null);
+  const [imageResult, setImageResult] = useState<{
+    contextKey: string | null;
+    state: CanvasImageState;
+  }>({ contextKey: null, state: EMPTY_CANVAS_IMAGE_STATE });
+  const imageState = imageResult.contextKey === contextKey
+    ? imageResult.state
+    : EMPTY_CANVAS_IMAGE_STATE;
 
   useEffect(() => {
     const imageSession = new CanvasImageResourceSession();
-    setImageState(EMPTY_CANVAS_IMAGE_STATE);
-    imageSession.reconcile(
+    imageSessionRef.current = imageSession;
+    return () => {
+      imageSessionRef.current = null;
+      imageSession.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    imageSessionRef.current?.reconcile(
       {
-        contextKey: `${project.id}\u0000${projectRoot}`,
+        contextKey,
         projectRoot,
         assets: imageAssets,
       },
-      setImageState,
+      (state) => setImageResult({ contextKey, state }),
     );
-    return () => imageSession.dispose();
-  }, [imageSourceKey, imageAssets, project.id, projectRoot]);
+  }, [contextKey, imageSourceKey, imageAssets, projectRoot]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -497,20 +509,18 @@ export function CharacterAssemblyWorkbench({
           >
             重置
           </button>
+          {!isCreating && pending ? (
+            <div
+              aria-label="待应用操作"
+              className="character-assembly-pending-actions"
+              data-testid="character-assembly-pending"
+              role="group"
+            >
+              <button onClick={revert} type="button">还原</button>
+              <button onClick={commit} type="button">应用</button>
+            </div>
+          ) : null}
         </div>
-        <p>拖动脸部可调整位置，底部可微调大小</p>
-        {!isCreating && pending ? (
-          <div
-            aria-live="polite"
-            className="character-assembly-pending-actions"
-            data-testid="character-assembly-pending"
-            role="status"
-          >
-            <span>有未应用更改</span>
-            <button onClick={revert} type="button">还原</button>
-            <button onClick={commit} type="button">应用</button>
-          </div>
-        ) : null}
         {message ? (
           <output className="character-assembly-message" role="status">
             {message}

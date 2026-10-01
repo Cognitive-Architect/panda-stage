@@ -168,12 +168,12 @@ describe('Issue #366 Cloud Touch landscape Expression Management', () => {
     expect(landscapeEditor).toContain('editingExpressionId');
     expect(landscapeEditor).toContain('setEditingExpressionId(expression.id)');
     expect(landscapeEditor).toContain('onRename(expression.id, nextName)');
-    expect(landscapeEditor).toContain('expression-cancel-${expression.id}');
-    expect(landscapeEditor).toContain('expression-apply-${expression.id}');
+    expect(landscapeEditor).toContain('expression-cancel-${editingExpression.id}');
+    expect(landscapeEditor).toContain('expression-apply-${editingExpression.id}');
     expect(landscapeEditor).not.toContain('onBlur');
   });
 
-  it('keeps only one editing card, uses the compact shared picker, and protects default deletion', () => {
+  it('keeps one editing surface, uses the compact shared picker, and protects default deletion', () => {
     const { character } = fixture();
     const markup = expressionMarkup();
     const defaultExpression = character.expressions.find(
@@ -195,7 +195,7 @@ describe('Issue #366 Cloud Touch landscape Expression Management', () => {
     const editor = source(
       'src/renderer/features/characters/ExpressionEditor.tsx',
     );
-    expect(editor).toContain('expression-asset-picker-${expression.id}');
+    expect(editor).toContain('expression-asset-picker-${editingExpression.id}');
     expect(editor).toContain('presentation="inline"');
     expect(editor).toContain('label="图片"');
     expect(editor).not.toContain('更换素材会立即应用；名称修改请点击应用。');
@@ -203,9 +203,11 @@ describe('Issue #366 Cloud Touch landscape Expression Management', () => {
     expect(editor).toContain('setEditingExpressionId(expression.id)');
     expect(editor).toContain('setEditingName(expression.name)');
     expect(editor).toContain('ImageAssetPicker');
-    expect(editor).toContain('if (assetId) onSetAsset(expression.id, assetId);');
+    expect(editor).toContain('if (assetId) onSetAsset(editingExpression.id, assetId);');
     expect(editor).not.toContain('<select');
-    expect(editor).toContain('cardWarnings.map');
+    expect(editor).toContain('expressionWarnings(editingExpression.id).map');
+    expect(editor.indexOf('className="expression-edit-panel expression-edit-workspace"'))
+      .toBeLessThan(editor.indexOf('<ul className="expression-card-list">'));
   });
 
   it('keeps the existing default/portrait ExpressionEditor path and scopes the new header to landscape', () => {

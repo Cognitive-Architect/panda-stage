@@ -45,6 +45,7 @@ describe('schema v5 explicit flip lifecycle', () => {
       }),
       shots: current.shots.map((shot) => ({
         ...shot,
+        audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),
         layers: shot.layers.map(({ flipX, ...layer }) => {
           void flipX;
           return layer;

@@ -8,6 +8,8 @@ import {
 import {
   CharacterService,
   CharacterServiceError,
+  PROJECT_HEIGHT,
+  PROJECT_WIDTH,
   countLegacyCharacterImageLayers,
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
@@ -20,6 +22,10 @@ import {
   type EditorProjectSnapshot,
 } from '../../stores/EditorProjectStore';
 import { characterStore } from '../../stores/characterStore';
+import { layerStore } from '../../stores/layerStore';
+import { selectionStore } from '../../stores/selectionStore';
+import { shotStore } from '../../stores/shotStore';
+import { timelineUiStore } from '../timeline/timelineUiStore';
 import {
   characterAssemblySessionStore,
   type CharacterAssemblySessionHandle,
@@ -32,8 +38,10 @@ import {
 import { CharacterEditor } from './CharacterEditor';
 import { CharacterList } from './CharacterList';
 import {
+  ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   isCharacterAssemblyPending,
   isCharacterCreationSnapshot,
+  resolveAssemblyExitDecision,
 } from './characterAssemblyPreview';
 
 export type CharacterWorkspaceView =
@@ -45,9 +53,55 @@ export type CharacterWorkspaceView =
 
 export type CharacterManagerPresentation = 'default' | 'landscape';
 
-const CHARACTER_IDLE_STATUS =
-  '局部修改会先应用到当前项目；请使用“保存整个项目”写入磁盘。';
 const CHARACTER_BINDING_REMINDER_DURATION_MS = 5_500;
+
+export interface CharacterThumbnailEntry {
+  resourceKey: string;
+  state: ThumbnailState;
+}
+
+function characterThumbnailResourceKey(
+  projectId: string,
+  projectRoot: string,
+  asset: ImageAsset,
+): string {
+  return `${projectId}\u0000${projectRoot}\u0000${asset.id}\u0000${asset.sha256}`;
+}
+
+export function reconcileCharacterThumbnailEntries(
+  current: Readonly<Record<string, CharacterThumbnailEntry>>,
+  projectId: string,
+  projectRoot: string,
+  assets: readonly ImageAsset[],
+): Record<string, CharacterThumbnailEntry> {
+  const next: Record<string, CharacterThumbnailEntry> = {};
+  for (const asset of assets) {
+    const resourceKey = characterThumbnailResourceKey(projectId, projectRoot, asset);
+    const previous = current[asset.id];
+    next[asset.id] = previous?.resourceKey === resourceKey
+      ? previous
+      : { resourceKey, state: { status: 'loading' } };
+  }
+  return Object.keys(next).length === Object.keys(current).length &&
+    assets.every((asset) => next[asset.id] === current[asset.id])
+    ? current
+    : next;
+}
+
+export function visibleCharacterThumbnails(
+  entries: Readonly<Record<string, CharacterThumbnailEntry>>,
+  projectId: string,
+  projectRoot: string,
+  assets: readonly ImageAsset[],
+): Record<string, ThumbnailState> {
+  return Object.fromEntries(assets.map((asset) => {
+    const resourceKey = characterThumbnailResourceKey(projectId, projectRoot, asset);
+    const entry = entries[asset.id];
+    return [asset.id, entry?.resourceKey === resourceKey
+      ? entry.state
+      : { status: 'loading' as const }];
+  }));
+}
 
 export interface CharacterManagerProps {
   snapshot: EditorProjectSnapshot | null;
@@ -61,6 +115,103 @@ export interface CharacterManagerProps {
   modeSwitchTarget?: HTMLElement | null;
   /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
   onCloseDrawer?: () => void;
+}
+
+/** Character detail bridge into the existing 0:00 LayerStore creation path. */
+export function placeCharacterInCurrentShot({
+  characterId,
+  getCurrentCharacterId,
+  defaultTransformPending,
+  leaveAssembly,
+  reportStatus,
+}: {
+  characterId: string | null;
+  getCurrentCharacterId: () => string | null;
+  defaultTransformPending: boolean;
+  leaveAssembly: () => boolean;
+  reportStatus: (message: string) => void;
+}): void {
+  const before = editorProjectStore.getSnapshot();
+  const shotId = shotStore.getCurrentShotId();
+  const shot = before?.project.shots.find((candidate) => candidate.id === shotId);
+  const character = before?.project.characters.find(
+    (candidate) => candidate.id === characterId,
+  );
+  if (!before || !shot || !character || !characterId) {
+    reportStatus('请先打开项目、选择镜头和角色。');
+    return;
+  }
+  if (defaultTransformPending) {
+    reportStatus('先应用角色大小设置。');
+    return;
+  }
+  const initialExpression = character.expressions.find(
+    (candidate) => candidate.id === character.defaultExpressionId,
+  );
+  if (!initialExpression || !before.project.assets.some(
+    (asset) => asset.kind === 'image' && asset.id === initialExpression.assetId,
+  )) {
+    reportStatus('默认表情素材不可用，请先设置默认表情。');
+    return;
+  }
+  if (!leaveAssembly()) return;
+
+  const currentContext = (): {
+    snapshot: EditorProjectSnapshot;
+    character: NonNullable<typeof character>;
+    shotDurationMs: number;
+  } | null => {
+    const snapshot = editorProjectStore.getSnapshot();
+    if (
+      snapshot !== before ||
+      shotStore.getCurrentShotId() !== shotId ||
+      getCurrentCharacterId() !== characterId
+    ) return null;
+    const liveShot = snapshot.project.shots.find((candidate) => candidate.id === shotId);
+    const liveCharacter = snapshot.project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (!liveShot || !liveCharacter) return null;
+    return { snapshot, character: liveCharacter, shotDurationMs: liveShot.durationMs };
+  };
+
+  let live = currentContext();
+  if (!live) {
+    reportStatus('项目、镜头或角色已变化，请重试。');
+    return;
+  }
+  const timeline = timelineUiStore.getSnapshot();
+  if (timeline.currentTimeMs !== 0 || timeline.scrollPx !== 0) {
+    timelineUiStore.returnToStart(live.shotDurationMs);
+  }
+  live = currentContext();
+  if (!live || timelineUiStore.getSnapshot().currentTimeMs !== 0) {
+    reportStatus('项目、镜头或角色已变化，请重试。');
+    return;
+  }
+  const expression = live.character.expressions.find(
+    (candidate) => candidate.id === live.character.defaultExpressionId,
+  );
+  if (!expression || !live.snapshot.project.assets.some(
+    (asset) => asset.kind === 'image' && asset.id === expression.assetId,
+  )) {
+    reportStatus('默认表情素材不可用，请先设置默认表情。');
+    return;
+  }
+  try {
+    const layer = layerStore.createFromAsset({
+      version: 2,
+      type: 'character-expression',
+      assetId: expression.assetId,
+      characterId: live.character.id,
+      expressionId: expression.id,
+      position: { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 },
+    });
+    selectionStore.select(layer.id);
+    reportStatus('');
+  } catch (error) {
+    reportStatus(error instanceof Error ? error.message : '角色加入镜头失败。');
+  }
 }
 
 export function CharacterManager({
@@ -89,13 +240,21 @@ export function CharacterManager({
         : null;
     return resumableCharacterId ?? snapshot?.project.characters[0]?.id ?? null;
   });
-  const [status, setStatus] = useState(CHARACTER_IDLE_STATUS);
+  const selectedCharacterIdRef = useRef(selectedCharacterId);
+  selectedCharacterIdRef.current = selectedCharacterId;
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+    shotStore.getCurrentShotId,
+  );
+  const [status, setStatus] = useState('');
   const [bindingReminderCount, setBindingReminderCount] = useState<
     number | null
   >(null);
-  const [thumbnails, setThumbnails] = useState<
-    Record<string, ThumbnailState>
+  const [thumbnailEntries, setThumbnailEntries] = useState<
+    Record<string, CharacterThumbnailEntry>
   >({});
+  const thumbnailReadsInFlight = useRef(new Set<string>());
   const assemblySnapshot = useSyncExternalStore(
     characterAssemblySessionStore.subscribe,
     characterAssemblySessionStore.getSnapshot,
@@ -113,6 +272,12 @@ export function CharacterManager({
       ) ?? []),
     [project],
   );
+  const thumbnails = useMemo(() => {
+    if (!project || !snapshot) return {};
+    return visibleCharacterThumbnails(
+      thumbnailEntries, project.id, snapshot.projectRoot, imageAssets,
+    );
+  }, [imageAssets, project, snapshot, thumbnailEntries]);
   const selectedCharacter =
     project?.characters.find(
       (character) => character.id === selectedCharacterId,
@@ -140,10 +305,6 @@ export function CharacterManager({
     project && selectedCharacter
       ? service.dimensionWarnings(project, selectedCharacter.id)
       : [];
-  const visibleStatus =
-    presentation === 'landscape' && status === CHARACTER_IDLE_STATUS
-      ? ''
-      : status;
 
   useEffect(() => {
     if (bindingReminderCount === null) return undefined;
@@ -172,42 +333,42 @@ export function CharacterManager({
 
   useEffect(() => {
     if (!snapshot) {
-      setThumbnails({});
+      if (Object.keys(thumbnailEntries).length > 0) setThumbnailEntries({});
       return;
     }
-    let cancelled = false;
-    const next: Record<string, ThumbnailState> = {};
-    for (const asset of imageAssets) {
-      next[asset.id] = { status: 'loading' };
+    const projectId = snapshot.project.id;
+    const projectRoot = snapshot.projectRoot;
+    const next = reconcileCharacterThumbnailEntries(
+      thumbnailEntries, projectId, projectRoot, imageAssets,
+    );
+    if (next !== thumbnailEntries) {
+      setThumbnailEntries(next);
+      return;
     }
-    setThumbnails(next);
     for (const asset of imageAssets) {
+      const resourceKey = next[asset.id]!.resourceKey;
+      if (next[asset.id]!.state.status !== 'loading') continue;
+      if (thumbnailReadsInFlight.current.has(resourceKey)) continue;
+      thumbnailReadsInFlight.current.add(resourceKey);
       void window.pandaStage.assets
         .readThumbnail({
-          projectRoot: snapshot.projectRoot,
+          projectRoot,
           assetId: asset.id,
           sha256: asset.sha256,
         })
         .then((response) => {
-          if (cancelled) return;
-          setThumbnails((current) => ({
-            ...current,
-            [asset.id]: thumbnailStateFromResponse(response),
-          }));
+          setThumbnailEntries((current) => current[asset.id]?.resourceKey === resourceKey
+            ? { ...current, [asset.id]: { resourceKey, state: thumbnailStateFromResponse(response) } }
+            : current);
         })
         .catch(() => {
-          if (!cancelled) {
-            setThumbnails((current) => ({
-              ...current,
-              [asset.id]: { status: 'missing', reason: 'error' },
-            }));
-          }
-        });
+          setThumbnailEntries((current) => current[asset.id]?.resourceKey === resourceKey
+            ? { ...current, [asset.id]: { resourceKey, state: { status: 'missing', reason: 'error' } } }
+            : current);
+        })
+        .finally(() => thumbnailReadsInFlight.current.delete(resourceKey));
     }
-    return () => {
-      cancelled = true;
-    };
-  }, [imageAssets, snapshot?.projectRoot]);
+  }, [imageAssets, snapshot, thumbnailEntries]);
 
   const reportError = (error: unknown): void => {
     if (error instanceof CharacterServiceError) {
@@ -221,19 +382,21 @@ export function CharacterManager({
   };
 
   const markThumbnailError = (assetId: string): void => {
-    setThumbnails((current) => ({
-      ...current,
-      [assetId]: { status: 'missing', reason: 'error' },
-    }));
+    if (!project || !snapshot) return;
+    const asset = imageAssets.find((candidate) => candidate.id === assetId);
+    if (!asset) return;
+    const resourceKey = characterThumbnailResourceKey(
+      project.id, snapshot.projectRoot, asset,
+    );
+    setThumbnailEntries((current) => current[assetId]?.resourceKey === resourceKey
+      ? { ...current, [assetId]: { resourceKey, state: { status: 'missing', reason: 'error' } } }
+      : current);
   };
 
-  const mutate = (
-    action: () => Project,
-    success: string,
-  ): Project | null => {
+  const mutate = (action: () => Project): Project | null => {
     try {
       const next = action();
-      setStatus(`${success} 修改已应用，项目尚未保存。`);
+      setStatus('');
       return next;
     } catch (error) {
       reportError(error);
@@ -250,10 +413,7 @@ export function CharacterManager({
   };
 
   const createCharacter = (input: CreateCharacterInput): void => {
-    const next = mutate(
-      () => characterStore.create(input),
-      '角色与普通 / 生气表情已创建。',
-    );
+    const next = mutate(() => characterStore.create(input));
     if (next) {
       const createdCharacter = next.characters.at(-1);
       if (!createdCharacter) return;
@@ -342,16 +502,38 @@ export function CharacterManager({
     return true;
   };
 
-  const leaveAssembly = (): boolean => {
-    if (!editAssemblySnapshot) return true;
-    if (assemblyPending) {
-      setStatus('请先应用或还原装配更改。');
-      return false;
-    }
+  /**
+   * One dirty-exit contract for every route that truly leaves the assembly
+   * context. Clean leaves immediately; dirty asks before discarding.
+   */
+  const confirmAssemblyDiscard = (): boolean => {
+    // Clean exits must not raise a prompt, so never call confirm() first.
+    if (!assemblyPending) return true;
+    return (
+      resolveAssemblyExitDecision(
+        true,
+        window.confirm(ASSEMBLY_DISCARD_CONFIRM_MESSAGE),
+      ) === 'leave'
+    );
+  };
+
+  const discardAssemblySession = (): void => {
     const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
-    if (active?.sessionId === editAssemblySnapshot.sessionId) active.cancel();
+    if (
+      active &&
+      editAssemblySnapshot &&
+      active.sessionId === editAssemblySnapshot.sessionId
+    ) {
+      active.cancel();
+    }
     ownedSessionIdRef.current = null;
     setStatus('');
+  };
+
+  const leaveAssembly = (): boolean => {
+    if (!editAssemblySnapshot) return true;
+    if (!confirmAssemblyDiscard()) return false;
+    discardAssemblySession();
     return true;
   };
 
@@ -374,12 +556,7 @@ export function CharacterManager({
   };
 
   const requestCloseDrawer = (): void => {
-    if (
-      assemblyPending &&
-      !window.confirm('装配更改尚未应用，关闭将放弃这些更改。继续吗？')
-    ) {
-      return;
-    }
+    if (editAssemblySnapshot && !confirmAssemblyDiscard()) return;
     cancelOwnedSession();
     onCloseDrawer();
   };
@@ -416,6 +593,17 @@ export function CharacterManager({
       ownedSessionIdRef.current = active.sessionId;
     }
   }, [assemblySnapshot, selectedCharacterId]);
+
+  /**
+   * Declare which Character the UI is still deliberately editing in assembly so
+   * Undo / Redo can rebuild a fresh session without auto-reopening assembly
+   * after an explicit exit, a Character switch, or a Project lifecycle change.
+   */
+  useEffect(() => {
+    characterAssemblySessionStore.setAssemblyContinuityOwner(
+      editAssemblySnapshot?.characterId ?? null,
+    );
+  }, [editAssemblySnapshot?.characterId]);
 
   useEffect(() => {
     const baselineIds = creationBaselineIdsRef.current;
@@ -555,7 +743,6 @@ export function CharacterManager({
                   name,
                   assetId,
                 }),
-              `表情“${name.trim()}”已添加。`,
             );
             if (next) showBindingReminder(next, [assetId]);
           }}
@@ -570,7 +757,6 @@ export function CharacterManager({
             }
             const next = mutate(
               () => characterStore.deleteCharacter(selectedCharacter.id),
-              `角色“${selectedCharacter.name}”已删除。`,
             );
             if (next) {
               setSelectedCharacterId(next.characters[0]?.id ?? null);
@@ -585,7 +771,6 @@ export function CharacterManager({
                   selectedCharacter.id,
                   expressionId,
                 ),
-              '表情已删除。',
             );
           }}
           onRenameCharacter={(name) => {
@@ -596,7 +781,6 @@ export function CharacterManager({
                   selectedCharacter.id,
                   name,
                 ),
-              '角色名称已更新。',
             );
           }}
           onRenameExpression={(expressionId, name) => {
@@ -608,7 +792,6 @@ export function CharacterManager({
                   expressionId,
                   name,
                 ),
-              '表情名称已更新。',
             );
           }}
           onSetDefaultExpression={(expressionId) => {
@@ -619,7 +802,6 @@ export function CharacterManager({
                   selectedCharacter.id,
                   expressionId,
                 ),
-              '默认表情已替换。',
             );
           }}
           onSetExpressionAsset={(expressionId, assetId) => {
@@ -631,7 +813,6 @@ export function CharacterManager({
                   expressionId,
                   assetId,
                 ),
-              '表情图片已更新，原有镜头与时间轴引用保持不变。',
             );
             if (next) showBindingReminder(next, [assetId]);
           }}
@@ -644,9 +825,22 @@ export function CharacterManager({
                   scale,
                   flipX,
                 ),
-              '默认缩放与翻转已更新。',
             );
           }}
+          hasCurrentShot={Boolean(
+            snapshot && currentShotId && project?.shots.some(
+              (shot) => shot.id === currentShotId,
+            ),
+          )}
+          onPlaceInCurrentShot={(defaultTransformPending) =>
+            placeCharacterInCurrentShot({
+              characterId: selectedCharacterId,
+              getCurrentCharacterId: () => selectedCharacterIdRef.current,
+              defaultTransformPending,
+              leaveAssembly,
+              reportStatus: setStatus,
+            })
+          }
           onSetMouthOpenAsset={(assetId) => {
             if (!selectedCharacter) return;
             mutate(
@@ -655,7 +849,6 @@ export function CharacterManager({
                   selectedCharacter.id,
                   assetId,
                 ),
-              assetId ? '张嘴图已更新。' : '张嘴图已清除。',
             );
           }}
           assemblyDraft={assemblyDraft}
@@ -698,8 +891,8 @@ export function CharacterManager({
           ⓘ {bindingReminderCount} 个已有图层仍是普通图片
         </output>
       ) : null}
-      {visibleStatus ? (
-        <output className="character-manager-status">{visibleStatus}</output>
+      {status ? (
+        <output aria-live="polite" className="character-manager-status">{status}</output>
       ) : null}
     </section>
   );

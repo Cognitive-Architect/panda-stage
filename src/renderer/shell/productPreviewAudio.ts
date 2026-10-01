@@ -1,93 +1,54 @@
 import { useEffect, useRef, useState } from 'react';
-import type {
-  AudioAsset,
-  AudioClip,
-  Dialogue,
-  Project,
-  Shot,
-} from '../../domain';
-import type {
-  AssetPreviewAudioReadRequest,
-  AssetPreviewAudioReadResponse,
-} from '../../shared/asset-preview-audio-api';
+import { audioClipGain, audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../../domain';
+import type { AudioAsset, AudioClip, Dialogue, Project, Shot } from '../../domain';
+import type { AssetPreviewAudioReadRequest, AssetPreviewAudioReadResponse } from '../../shared/asset-preview-audio-api';
 
 export interface ProductPreviewAudioSelection {
-  dialogue: Dialogue;
   clip: AudioClip;
   asset: AudioAsset;
+  dialogue?: Dialogue;
 }
 
-export function resolveProductPreviewAudio(
-  project: Project,
-  shot: Shot,
-  activeDialogueId: string | null,
-): ProductPreviewAudioSelection | null {
-  if (!activeDialogueId) return null;
-  const dialogue = shot.dialogues.find(
-    (candidate) => candidate.id === activeDialogueId,
-  );
-  if (!dialogue?.audioClipId) return null;
-  const clip = shot.audioClips.find(
-    (candidate) => candidate.id === dialogue.audioClipId,
-  );
-  if (!clip) return null;
-  const asset = project.assets.find(
-    (candidate) => candidate.id === clip.assetId,
-  );
-  if (
-    !asset ||
-    asset.kind !== 'audio' ||
-    asset.durationMs === undefined ||
-    !asset.sha256 ||
-    (asset.mimeType !== 'audio/mpeg' && asset.mimeType !== 'audio/wav')
-  ) {
-    return null;
-  }
-  return { dialogue, clip, asset };
+function selectionFor(project: Project, clip: AudioClip): ProductPreviewAudioSelection | null {
+  const asset = project.assets.find((candidate) => candidate.id === clip.assetId);
+  if (!asset || asset.kind !== 'audio' || asset.durationMs === undefined || !asset.sha256 ||
+      (asset.mimeType !== 'audio/mpeg' && asset.mimeType !== 'audio/wav')) return null;
+  return { clip, asset };
 }
 
-/** Maps the Preview master clock to a source position bounded by the asset. */
-export function productPreviewSourceTimeMs(
-  previewTimeMs: number,
-  clip: AudioClip,
-  asset: AudioAsset,
-): number {
-  const sourceDurationMs = asset.durationMs ?? 0;
-  const rawTimeMs =
-    clip.offsetMs +
-    (Number.isFinite(previewTimeMs) ? previewTimeMs : clip.startMs) -
-    clip.startMs;
-  return Math.min(sourceDurationMs, Math.max(0, rawTimeMs));
+/** Dialogue-only lookup for the Mouth/Dialogue contract, never the mixer gate. */
+export function resolveProductPreviewAudio(project: Project, shot: Shot, activeDialogueId: string | null): ProductPreviewAudioSelection | null {
+  const dialogue = shot.dialogues.find((candidate) => candidate.id === activeDialogueId);
+  const clip = shot.audioClips.find((candidate) => candidate.id === dialogue?.audioClipId);
+  if (!dialogue || !clip || clip.role !== 'dialogue') return null;
+  const selection = selectionFor(project, clip);
+  return selection ? { ...selection, dialogue } : null;
 }
 
-/** Dialogue audio exists only inside its independent AudioClip window. */
-export function isProductPreviewAudioActiveAtTime(
-  timeMs: number,
-  selection: ProductPreviewAudioSelection,
-): boolean {
-  return (
-    Number.isFinite(timeMs) &&
-    timeMs >= selection.clip.startMs &&
-    timeMs < selection.clip.endMs
-  );
+/** All roles use the same half-open Shot-local window, independently of active speaker. */
+export function resolveProductPreviewAudios(project: Project, shot: Shot, timeMs: number): ProductPreviewAudioSelection[] {
+  return shot.audioClips.flatMap((clip) => {
+    if (!isAudioClipActiveAtTime(clip, timeMs)) return [];
+    const selection = selectionFor(project, clip);
+    return selection ? [selection] : [];
+  });
 }
 
-export interface ProductPreviewAudioElement {
-  src: string;
-  currentTime: number;
-  volume: number;
-  pause(): void;
-  play(): Promise<void>;
-  load?(): void;
+export function productPreviewSourceTimeMs(timeMs: number, clip: AudioClip, asset: AudioAsset): number {
+  return Math.min(asset.durationMs ?? 0, Math.max(0,
+    audioClipSourceTimeMs(clip, Number.isFinite(timeMs) ? timeMs : clip.startMs)));
 }
+
+export function isProductPreviewAudioActiveAtTime(timeMs: number, selection: ProductPreviewAudioSelection): boolean {
+  return isAudioClipActiveAtTime(selection.clip, timeMs);
+}
+
+export type ProductPreviewAudioContext = Pick<AudioContext,
+  'currentTime' | 'state' | 'destination' | 'createBufferSource' | 'createGain' | 'decodeAudioData' | 'resume' | 'close'>;
 
 export interface ProductPreviewAudioTransportOptions {
-  createAudio?: () => ProductPreviewAudioElement;
-  readAudio?: (
-    request: AssetPreviewAudioReadRequest,
-  ) => Promise<AssetPreviewAudioReadResponse>;
-  createObjectUrl?: (blob: Blob) => string;
-  revokeObjectUrl?: (url: string) => void;
+  createContext?: () => ProductPreviewAudioContext;
+  readAudio?: (request: AssetPreviewAudioReadRequest) => Promise<AssetPreviewAudioReadResponse>;
   onWarning?: (message: string | null) => void;
 }
 
@@ -95,305 +56,234 @@ export interface ProductPreviewAudioSyncInput {
   projectRoot: string;
   project: Project;
   shot: Shot | null;
-  activeDialogueId: string | null;
   timeMs: number;
   playing: boolean;
   seekRevision: number;
 }
 
-const AUDIO_READ_WARNING = '配音无法预览，画面和字幕将继续播放。';
+export const PRODUCT_PREVIEW_AUDIO_CACHE_ENTRIES = 8;
+export const PRODUCT_PREVIEW_AUDIO_CACHE_BYTES = 64 * 1024 * 1024;
+export const PRODUCT_PREVIEW_AUDIO_MAX_READS = 4;
+export const PRODUCT_PREVIEW_AUDIO_DRIFT_MS = 80;
+const AUDIO_READ_WARNING = '部分音频无法预览，画面和字幕将继续播放。';
 
-function defaultReadAudio(
-  request: AssetPreviewAudioReadRequest,
-): Promise<AssetPreviewAudioReadResponse> {
-  return window.pandaStage.assets.readAudio(request);
+interface Voice {
+  selection: ProductPreviewAudioSelection;
+  state: 'waiting' | 'loading' | 'started' | 'ended' | 'failed';
+  source?: AudioBufferSourceNode;
+  gain?: GainNode;
+  startedAt?: number;
+  masterAtStart?: number;
 }
 
 /**
- * One reusable audio element subordinate to Product Preview's master clock.
- * Ordinary clock ticks never seek the element. Selection changes, explicit
- * seeks, pause/resume, Stop and Replay invalidate and reposition it.
+ * One session-owned graph, driven ONLY by the Product Preview master input.
+ * AudioContext time schedules samples; it never advances Preview or picks a Shot.
+ * Explicit seeks/pause/handoff invalidate voice identity before async work settles.
  */
 export class ProductPreviewAudioTransport {
-  private readonly audio: ProductPreviewAudioElement;
-  private readonly readAudio: (
-    request: AssetPreviewAudioReadRequest,
-  ) => Promise<AssetPreviewAudioReadResponse>;
-  private readonly createObjectUrl: (blob: Blob) => string;
-  private readonly revokeObjectUrl: (url: string) => void;
-  private readonly onWarning: (message: string | null) => void;
-  private readonly urlCache = new Map<string, string>();
-  private readonly urlReads = new Map<string, Promise<string>>();
-  private generation = 0;
-  private activeKey: string | null = null;
-  private pendingKey: string | null = null;
-  private startedKey: string | null = null;
-  private failedKey: string | null = null;
-  private lastSeekRevision: number | null = null;
+  private readonly createContext: () => ProductPreviewAudioContext;
+  private readonly readAudio: NonNullable<ProductPreviewAudioTransportOptions['readAudio']>;
+  private readonly onWarning: NonNullable<ProductPreviewAudioTransportOptions['onWarning']>;
+  private context: ProductPreviewAudioContext | null = null;
+  private readonly voices = new Map<string, Voice>();
+  private readonly bufferCache = new Map<string, AudioBuffer>();
+  private readonly reads = new Map<string, Promise<AudioBuffer>>();
+  private cacheBytes = 0;
+  private cacheEpoch = 0;
   private latestInput: ProductPreviewAudioSyncInput | null = null;
-  private sourceAttached = false;
+  private warning: string | null = null;
   private disposed = false;
 
   constructor(options: ProductPreviewAudioTransportOptions = {}) {
-    this.audio = (options.createAudio ?? (() => new Audio()))();
-    this.readAudio = options.readAudio ?? defaultReadAudio;
-    this.createObjectUrl =
-      options.createObjectUrl ?? ((blob) => URL.createObjectURL(blob));
-    this.revokeObjectUrl =
-      options.revokeObjectUrl ?? ((url) => URL.revokeObjectURL(url));
+    this.createContext = options.createContext ?? (() => new AudioContext({ latencyHint: 'interactive' }));
+    this.readAudio = options.readAudio ?? ((request) => window.pandaStage.assets.readAudio(request));
     this.onWarning = options.onWarning ?? (() => undefined);
-    this.audio.src = '';
   }
 
   sync(input: ProductPreviewAudioSyncInput): void {
     if (this.disposed) return;
+    const previous = this.latestInput;
     this.latestInput = input;
-    const shot = input.shot;
-    const selection = shot
-      ? resolveProductPreviewAudio(
-          input.project,
-          shot,
-          input.activeDialogueId,
-        )
-      : null;
-    const seekChanged = this.lastSeekRevision !== input.seekRevision;
+    const projectChanged = previous && (previous.projectRoot !== input.projectRoot || previous.project.id !== input.project.id);
+    if (projectChanged) {
+      this.cacheEpoch += 1;
+      this.bufferCache.clear();
+      this.cacheBytes = 0;
+    }
+    if (projectChanged || previous?.shot?.id !== input.shot?.id ||
+        previous?.seekRevision !== input.seekRevision || previous?.playing !== input.playing) this.clearVoices();
+    if (!input.playing || !input.shot) {
+      this.clearVoices();
+      this.publishWarning();
+      return;
+    }
 
-    if (
-      !shot ||
-      !selection ||
-      !isProductPreviewAudioActiveAtTime(input.timeMs, selection)
-    ) {
-      this.stopTransport(input.timeMs <= 0);
-      this.lastSeekRevision = input.seekRevision;
-      if (seekChanged || (input.playing && !selection)) {
-        this.emitWarning(null);
+    const selections = resolveProductPreviewAudios(input.project, input.shot, input.timeMs);
+    const desired = new Set(selections.map((selection) => this.voiceKey(selection)));
+    for (const [key, voice] of this.voices) {
+      if (!desired.has(key)) {
+        this.releaseVoice(voice);
+        this.voices.delete(key);
       }
-      return;
     }
-
-    const key = this.selectionKey(input.projectRoot, shot, selection);
-
-    if (!input.playing) {
-      // Seek is intentionally a paused operation. When the destination still
-      // has an active clip, prepare the one audio element at the mapped local
-      // time without starting playback; Play can then resume from that exact
-      // position. A plain Pause does not cause a new read.
-      const shouldPrepare =
-        input.timeMs > 0 &&
-        (seekChanged || this.activeKey !== key);
-      this.stopTransport(input.timeMs <= 0);
-      this.lastSeekRevision = input.seekRevision;
-      if (seekChanged) this.emitWarning(null);
-      if (!shouldPrepare) return;
-
-      this.activeKey = key;
-      this.failedKey = null;
-      const token = this.generation;
-      this.pendingKey = key;
-      void this.startSelection(token, key, input.projectRoot, selection);
-      return;
+    for (const selection of selections) {
+      const key = this.voiceKey(selection);
+      let voice = this.voices.get(key);
+      // Correct bounded drift against the incumbent master; ordinary ticks do not restart.
+      if (voice?.state === 'started' && this.context && voice.startedAt !== undefined && voice.masterAtStart !== undefined &&
+          Math.abs(voice.masterAtStart + (this.context.currentTime - voice.startedAt) * 1000 - input.timeMs) > PRODUCT_PREVIEW_AUDIO_DRIFT_MS) {
+        this.releaseVoice(voice);
+        this.voices.delete(key);
+        voice = undefined;
+      }
+      if (!voice) this.voices.set(key, { selection, state: 'waiting' });
     }
-
-    const selectionChanged = this.activeKey !== key;
-    if (selectionChanged || seekChanged) {
-      this.cancelActivePlayback();
-      this.activeKey = key;
-      this.lastSeekRevision = input.seekRevision;
-      this.failedKey = null;
-      this.emitWarning(null);
-    }
-
-    if (
-      this.startedKey === key ||
-      this.pendingKey === key ||
-      this.failedKey === key
-    ) {
-      return;
-    }
-
-    const token = this.generation;
-    this.pendingKey = key;
-    void this.startSelection(token, key, input.projectRoot, selection);
+    this.pump();
+    this.publishWarning();
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.cacheEpoch += 1;
     this.latestInput = null;
-    this.stopTransport(true);
-    this.audio.src = '';
-    this.audio.load?.();
-    for (const url of this.urlCache.values()) {
-      this.revokeObjectUrl(url);
-    }
-    this.urlCache.clear();
-    this.urlReads.clear();
+    this.clearVoices();
+    this.bufferCache.clear();
+    this.cacheBytes = 0;
+    this.reads.clear();
+    if (this.context) void this.context.close().catch(() => undefined);
+    this.context = null;
   }
 
-  private async startSelection(
-    token: number,
-    key: string,
-    projectRoot: string,
-    selection: ProductPreviewAudioSelection,
-  ): Promise<void> {
+  private pump(): void {
+    if (this.disposed || !this.latestInput?.playing) return;
+    for (const [key, voice] of this.voices) {
+      if (voice.state !== 'waiting') continue;
+      const assetKey = this.assetKey(voice.selection);
+      if (!this.bufferCache.has(assetKey) && !this.reads.has(assetKey) && this.reads.size >= PRODUCT_PREVIEW_AUDIO_MAX_READS) continue;
+      voice.state = 'loading';
+      void this.startVoice(key, voice);
+    }
+  }
+
+  private async startVoice(key: string, voice: Voice): Promise<void> {
     try {
-      const url = await this.urlFor(projectRoot, selection);
-      if (!this.isCurrent(token, key)) return;
-      const currentTimeMs = this.latestInput?.timeMs;
-      if (
-        currentTimeMs === undefined ||
-        !isProductPreviewAudioActiveAtTime(currentTimeMs, selection)
-      ) {
-        return;
-      }
-      this.audio.src = url;
-      this.sourceAttached = true;
-      this.audio.volume = Math.min(1, Math.max(0, selection.clip.volume));
-      this.audio.currentTime =
-        productPreviewSourceTimeMs(
-          currentTimeMs,
-          selection.clip,
-          selection.asset,
-        ) / 1_000;
-      if (this.latestInput?.playing !== true) return;
-      await this.audio.play();
-      // The shared element may already belong to a newer shot when the old
-      // play Promise settles. The newer transport owns pause/resume in that
-      // case; an obsolete callback must not pause its audio.
-      if (!this.isCurrent(token, key)) return;
-      this.startedKey = key;
-      this.failedKey = null;
-      this.emitWarning(null);
+      const buffer = await this.bufferFor(voice.selection);
+      if (!this.isCurrent(key, voice)) return;
+      const context = this.context!;
+      if (context.state === 'suspended') await context.resume();
+      if (!this.isCurrent(key, voice)) return;
+      if (context.state !== 'running') throw new Error('Audio context unavailable.');
+      const input = this.latestInput!;
+      const offset = productPreviewSourceTimeMs(input.timeMs, voice.selection.clip, voice.selection.asset) / 1000;
+      const duration = Math.min((voice.selection.clip.endMs - input.timeMs) / 1000, buffer.duration - offset);
+      if (duration <= 0) { voice.state = 'ended'; return; }
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      voice.source = source;
+      voice.gain = gain;
+      source.buffer = buffer;
+      gain.gain.value = audioClipGain(voice.selection.clip.volume);
+      source.connect(gain);
+      gain.connect(context.destination);
+      voice.startedAt = context.currentTime;
+      voice.masterAtStart = input.timeMs;
+      source.onended = () => {
+        if (!this.isCurrent(key, voice)) return;
+        this.releaseVoice(voice);
+        // The next master tick, not the audio clock, decides whether to rebuild.
+        this.voices.delete(key);
+      };
+      source.start(voice.startedAt, offset, duration);
+      voice.state = 'started';
     } catch {
-      if (this.isCurrent(token, key)) {
-        this.failedKey = key;
-        this.emitWarning(AUDIO_READ_WARNING);
+      if (this.isCurrent(key, voice)) {
+        this.releaseVoice(voice);
+        voice.state = 'failed';
+        this.publishWarning();
       }
     } finally {
-      if (!this.disposed && this.pendingKey === key) this.pendingKey = null;
+      this.pump();
     }
   }
 
-  private async urlFor(
-    projectRoot: string,
-    selection: ProductPreviewAudioSelection,
-  ): Promise<string> {
-    const key = `${projectRoot}\u0000${selection.asset.id}\u0000${selection.asset.sha256}`;
-    const cached = this.urlCache.get(key);
-    if (cached) return cached;
-    const pending = this.urlReads.get(key);
+  private bufferFor(selection: ProductPreviewAudioSelection): Promise<AudioBuffer> {
+    const key = this.assetKey(selection);
+    const cached = this.bufferCache.get(key);
+    if (cached) {
+      this.bufferCache.delete(key);
+      this.bufferCache.set(key, cached);
+      return Promise.resolve(cached);
+    }
+    const pending = this.reads.get(key);
     if (pending) return pending;
-
-    const read = this.readAudio({
-      projectRoot,
-      assetId: selection.asset.id,
-      sha256: selection.asset.sha256!,
-    })
-      .then((response) => {
-        if (!response.ok || response.status !== 'ready') {
-          throw new Error('Audio read did not return a ready response.');
+    const epoch = this.cacheEpoch;
+    const context = this.context ??= this.createContext();
+    const read = this.readAudio({ projectRoot: this.latestInput!.projectRoot, assetId: selection.asset.id, sha256: selection.asset.sha256! })
+      .then(async (response) => {
+        if (this.disposed || epoch !== this.cacheEpoch) throw new Error('Obsolete audio read.');
+        if (!response.ok || response.status !== 'ready') throw new Error('Audio read failed.');
+        const buffer = await context.decodeAudioData(new Uint8Array(response.bytes).buffer);
+        if (this.disposed || epoch !== this.cacheEpoch) throw new Error('Obsolete decode.');
+        const bytes = this.bufferBytes(buffer);
+        // Oversized buffers can play but never remain in the session cache.
+        if (bytes <= PRODUCT_PREVIEW_AUDIO_CACHE_BYTES) {
+          while (this.bufferCache.size >= PRODUCT_PREVIEW_AUDIO_CACHE_ENTRIES || this.cacheBytes + bytes > PRODUCT_PREVIEW_AUDIO_CACHE_BYTES) {
+            const oldest = this.bufferCache.keys().next().value!;
+            this.cacheBytes -= this.bufferBytes(this.bufferCache.get(oldest)!);
+            this.bufferCache.delete(oldest);
+          }
+          this.bufferCache.set(key, buffer);
+          this.cacheBytes += bytes;
         }
-        if (this.disposed) {
-          throw new Error('Audio transport was disposed during read.');
-        }
-        const blob = new Blob([response.bytes], { type: response.mimeType });
-        const url = this.createObjectUrl(blob);
-        if (this.disposed) {
-          this.revokeObjectUrl(url);
-          throw new Error('Audio transport was disposed during URL creation.');
-        }
-        this.urlCache.set(key, url);
-        return url;
-      })
-      .finally(() => {
-        if (!this.disposed) this.urlReads.delete(key);
-      });
-    this.urlReads.set(key, read);
+        return buffer;
+      }).finally(() => { if (this.reads.get(key) === read) this.reads.delete(key); });
+    this.reads.set(key, read);
     return read;
   }
 
-  private selectionKey(
-    projectRoot: string,
-    shot: Shot,
-    selection: ProductPreviewAudioSelection,
-  ): string {
-    const { clip, asset, dialogue } = selection;
-    return [
-      projectRoot,
-      shot.id,
-      dialogue.id,
-      clip.id,
-      asset.id,
-      asset.sha256,
-      clip.startMs,
-      clip.endMs,
-      clip.offsetMs,
-      clip.volume,
-    ].join('\u0000');
+  private bufferBytes(buffer: AudioBuffer): number { return buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT; }
+  private assetKey(selection: ProductPreviewAudioSelection): string {
+    return [this.latestInput!.projectRoot, this.latestInput!.project.id, selection.asset.id, selection.asset.sha256].join('\u0000');
   }
-
-  private stopTransport(reset: boolean): void {
-    const hasTransport =
-      this.sourceAttached ||
-      this.activeKey !== null ||
-      this.pendingKey !== null ||
-      this.startedKey !== null;
-    if (hasTransport) {
-      this.cancelActivePlayback();
-      this.audio.src = '';
-      this.audio.load?.();
-      this.sourceAttached = false;
+  private voiceKey({ clip, asset }: ProductPreviewAudioSelection): string {
+    return [clip.id, asset.id, asset.sha256, clip.startMs, clip.endMs, clip.offsetMs, clip.volume].join('\u0000');
+  }
+  private isCurrent(key: string, voice: Voice): boolean {
+    return !this.disposed && this.latestInput?.playing === true && this.voices.get(key) === voice &&
+      isAudioClipActiveAtTime(voice.selection.clip, this.latestInput.timeMs);
+  }
+  private releaseVoice(voice: Voice): void {
+    if (voice.source) {
+      voice.source.onended = null;
+      try { voice.source.stop(); } catch { /* Source may already have ended. */ }
+      voice.source.disconnect();
+      voice.source.buffer = null;
+      voice.source = undefined;
     }
-    if (!reset) return;
-    try {
-      this.audio.currentTime = 0;
-    } catch {
-      // The element may not have loaded a source yet.
-    }
+    voice.gain?.disconnect();
+    voice.gain = undefined;
   }
-
-  private cancelActivePlayback(): void {
-    this.generation += 1;
-    this.audio.pause();
-    this.activeKey = null;
-    this.pendingKey = null;
-    this.startedKey = null;
-    this.failedKey = null;
+  private clearVoices(): void {
+    for (const voice of this.voices.values()) this.releaseVoice(voice);
+    this.voices.clear();
   }
-
-  private emitWarning(message: string | null): void {
-    if (!this.disposed) this.onWarning(message);
-  }
-
-  private isCurrent(token: number, key: string): boolean {
-    return (
-      !this.disposed &&
-      token === this.generation &&
-      this.activeKey === key
-    );
+  private publishWarning(): void {
+    if (this.disposed) return;
+    const warning = [...this.voices.values()].some((voice) => voice.state === 'failed') ? AUDIO_READ_WARNING : null;
+    if (warning !== this.warning) { this.warning = warning; this.onWarning(warning); }
   }
 }
 
-export function useProductPreviewAudio(
-  input: ProductPreviewAudioSyncInput,
-): string | null {
+export function useProductPreviewAudio(input: ProductPreviewAudioSyncInput): string | null {
   const [warning, setWarning] = useState<string | null>(null);
   const transportRef = useRef<ProductPreviewAudioTransport | null>(null);
-
   useEffect(() => {
-    const transport = new ProductPreviewAudioTransport({
-      onWarning: setWarning,
-    });
+    const transport = new ProductPreviewAudioTransport({ onWarning: setWarning });
     transportRef.current = transport;
-    return () => {
-      transport.dispose();
-      transportRef.current = null;
-    };
+    return () => { transport.dispose(); transportRef.current = null; };
   }, []);
-
-  useEffect(() => {
-    transportRef.current?.sync(input);
-  }, [input]);
-
+  useEffect(() => { transportRef.current?.sync(input); }, [input]);
   return warning;
 }

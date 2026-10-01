@@ -1,0 +1,148 @@
+/* Issue #633: keep Expression cards as a scannable list while the one active
+   editor owns name and image selection above it. The outer drawer scrolls. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card.expression-card-editing {
+  grid-column: auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card-editing
+  .expression-card-main {
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card-editing
+  .expression-card-preview {
+  width: 64px;
+  height: 64px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-card-editing
+  .expression-card-actions {
+  grid-column: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .expression-edit-workspace {
+  padding: 9px 0;
+  border-top: 1px solid var(--ui-color-separator);
+  border-bottom: 1px solid var(--ui-color-separator);
+  gap: 8px;
+}
+
+.expression-edit-workspace-title {
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  font-weight: 700;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-expression-workspace
+  .image-asset-picker-inline
+  .image-asset-picker-candidates {
+  max-height: none;
+  overflow-y: visible;
+  overscroll-behavior: auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* The legacy/narrow Expression edit host opts into the same single-scroll mode. */
+.expression-editor .expression-fields .image-asset-picker-candidates {
+  max-height: none;
+  overflow-y: visible;
+  overscroll-behavior: auto;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-search,
+.expression-editor .expression-fields .image-asset-picker-search {
+  display: grid;
+  min-height: 44px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-overlay);
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-search:focus-within,
+.expression-editor .expression-fields .image-asset-picker-search:focus-within {
+  border-color: var(--ui-color-accent);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-search input,
+.expression-editor .expression-fields .image-asset-picker-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--ui-color-text-primary);
+  background: transparent;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-pagination,
+.expression-editor .expression-fields .image-asset-picker-pagination {
+  display: grid;
+  align-items: center;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-pagination button,
+.expression-editor .expression-fields .image-asset-picker-pagination button {
+  min-height: 44px;
+  padding: 6px 8px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-pagination button:first-child,
+.expression-editor .expression-fields .image-asset-picker-pagination button:first-child {
+  justify-self: start;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .character-expression-workspace
+  .image-asset-picker-pagination button:last-child,
+.expression-editor .expression-fields .image-asset-picker-pagination button:last-child {
+  justify-self: end;
+}

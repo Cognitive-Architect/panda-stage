@@ -1,0 +1,32 @@
+/* Issue #637: one touch-sized seek shortcut beside the current timecode. */
+.timeline-toolbar .timeline-return-to-start {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.timeline-toolbar .timeline-return-to-start:hover:not(:disabled),
+.timeline-toolbar .timeline-return-to-start:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.timeline-toolbar .timeline-return-to-start:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .timeline-toolbar .timeline-return-to-start {
+  flex-basis: 44px;
+  width: 44px;
+  height: 44px;
+}

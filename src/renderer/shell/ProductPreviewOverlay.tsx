@@ -8,9 +8,9 @@
  *   - Strictly read-only. The overlay never writes the project, the revision,
  *     the dirty flag, the selection or the history. It receives the already
  *     loaded project as a prop and only *reads* it.
- *   - The only state it owns is its own playback clock (`timeMs`, `playing`),
- *     the first-frame data/handoff readiness gates, and the asset URLs it needs
- *     to draw.
+ *   - It owns its playback clock (`timeMs`, `playing`), first-frame
+ *     data/handoff readiness gates, and bounded asset URLs. The optional
+ *     Camera mode is owned by EditorShell across Preview mounts.
  *     Closing the overlay throws that state away; the editor is untouched.
  *   - No second project tree and no hidden DOM: the overlay is mounted only
  *     while open and unmounted on close.
@@ -25,16 +25,25 @@ import {
 } from 'react';
 import {
   evaluateShotAtTime,
+  evaluateSpeakerFocusCamera,
   mapProjectTime,
+  prepareSpeakerFocusCamera,
   projectDurationMs,
+  type CameraView,
   type Project,
 } from '../../domain';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 import { CanvasStage } from '../stage/CanvasStage';
+import {
+  previewDiagnosticNow,
+  recordPreviewDiagnostic,
+  recordPreviewDuration,
+} from '../stage/previewDiagnostics';
 import type { StageImageResourceFailure } from '../stage/stageImageResourceSession';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import {
   advanceProductPreviewTime,
+  PRODUCT_PREVIEW_MAX_STEP_MS,
   applyProductPreviewMouthFallback,
   buildProductPreviewImagePlan,
   buildProductPreviewCues,
@@ -71,6 +80,9 @@ export interface ProductPreviewOverlayProps {
   shotId: string | null;
   /** Starts the existing preview transport immediately when the overlay mounts. */
   autoPlay?: boolean;
+  /** Session-only Camera mode shared with the persistent editor rail. */
+  autoCameraEnabled: boolean;
+  onAutoCameraChange(enabled: boolean): void;
   /** Whether EditorShell has committed the Preview surface handoff. */
   surfaceActive: boolean;
   /** Requests that EditorShell commit visual ownership after warmup. */
@@ -86,10 +98,13 @@ export function ProductPreviewOverlay({
   project,
   shotId,
   autoPlay = false,
+  autoCameraEnabled,
+  onAutoCameraChange,
   surfaceActive,
   onHandoffReady,
   onClose,
 }: ProductPreviewOverlayProps): React.JSX.Element {
+  const renderStartedAt = previewDiagnosticNow();
   const currentShot = useMemo(
     () => resolveProductPreviewShot(project, shotId),
     [project, shotId],
@@ -113,6 +128,9 @@ export function ProductPreviewOverlay({
     'preparing',
   );
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    overlayRef.current?.focus();
+  }, []);
   const handoffPhaseRef = useRef<ProductPreviewHandoffPhase>('warming');
   handoffPhaseRef.current = handoffPhase;
   const handoffReadyNotifiedRef = useRef(false);
@@ -219,8 +237,17 @@ export function ProductPreviewOverlay({
     const tick = (now: number): void => {
       const delta = now - previous;
       previous = now;
+      recordPreviewDiagnostic('tick-callback', { deltaMs: delta });
       setTimeMs((current) => {
         const step = advanceProductPreviewTime(current, delta, durationMs);
+        recordPreviewDiagnostic('raf', {
+          deltaMs: delta,
+          requestedTimeMs: current + delta,
+          nextTimeMs: step.timeMs,
+          clamped: delta > PRODUCT_PREVIEW_MAX_STEP_MS,
+          visibility: document.visibilityState,
+          focused: document.hasFocus(),
+        });
         if (step.ended) {
           setPlaying(false);
         }
@@ -267,43 +294,64 @@ export function ProductPreviewOverlay({
   }, [handoffPhase, onClose]);
 
   const evaluatedShot = useMemo(
-    () =>
-      shot
-        ? evaluateShotAtTime(
-            shot,
-            activeShotTimeMs,
-            project,
-          )
-        : null,
+    () => {
+      if (!shot) return null;
+      const startedAt = previewDiagnosticNow();
+      const evaluated = evaluateShotAtTime(shot, activeShotTimeMs, project);
+      recordPreviewDuration('evaluate-shot', startedAt, {
+        timeMs: activeShotTimeMs,
+        layerCount: evaluated.layers.length,
+      });
+      return evaluated;
+    },
     [activeShotTimeMs, project, shot],
   );
   const activeCue = evaluatedShot
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
+  const cameraPlan = useMemo(
+    () => (autoCameraEnabled && shot ? prepareSpeakerFocusCamera(project, shot) : null),
+    [project, shot, autoCameraEnabled],
+  );
+  const camera = cameraPlan
+    ? evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)
+    : undefined;
   const renderedShot = useMemo(
-    () =>
-      shot && evaluatedShot
-        ? projectProductPreviewMouth(
-            project,
-            shot,
-            evaluatedShot,
-            activeCue?.id ?? null,
-          )
-        : evaluatedShot,
+    () => {
+      if (!shot || !evaluatedShot) return evaluatedShot;
+      const startedAt = previewDiagnosticNow();
+      const projected = projectProductPreviewMouth(
+        project,
+        shot,
+        evaluatedShot,
+        activeCue?.id ?? null,
+      );
+      recordPreviewDuration('mouth-projection', startedAt, {
+        timeMs: evaluatedShot.timeMs,
+      });
+      return projected;
+    },
     [activeCue?.id, evaluatedShot, project, shot],
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
   const imagePlan = useMemo(
-    () =>
-      shot && renderedShot
-        ? buildProductPreviewImagePlan(project, shot, renderedShot)
-        : {
-            requiredAssetIds: [],
-            fallbackAssetIds: [],
-            candidateAssetIds: assetIds,
-            mouthFallbacks: [],
-          },
+    () => {
+      if (!shot || !renderedShot) {
+        return {
+          requiredAssetIds: [],
+          fallbackAssetIds: [],
+          candidateAssetIds: assetIds,
+          mouthFallbacks: [],
+        };
+      }
+      const startedAt = previewDiagnosticNow();
+      const plan = buildProductPreviewImagePlan(project, shot, renderedShot);
+      recordPreviewDuration('image-plan', startedAt, {
+        timeMs: renderedShot.timeMs,
+      });
+      return plan;
+    },
     [assetIds, project, renderedShot, shot],
   );
   const decodeFallbackAssetIds = imagePlan.mouthFallbacks
@@ -484,6 +532,7 @@ export function ProductPreviewOverlay({
     captionStyle: typeof captionStyle;
     evaluatedShot: NonNullable<typeof displayedShot>;
     degraded: boolean;
+    camera?: CameraView;
   } | null>(null);
   useLayoutEffect(() => {
     if (
@@ -498,12 +547,14 @@ export function ProductPreviewOverlay({
       captionStyle,
       evaluatedShot: displayedShot,
       degraded: previewDegraded,
+      camera,
     };
   }, [
     assets.status,
     assets.urls,
     caption,
     captionStyle,
+    camera,
     displayedShot,
     previewDegraded,
   ]);
@@ -527,11 +578,14 @@ export function ProductPreviewOverlay({
     projectRoot,
     project,
     shot,
-    activeDialogueId: activeCue?.id ?? null,
     timeMs: activeShotTimeMs,
     playing,
     seekRevision,
   });
+  useLayoutEffect(() => {
+    recordPreviewDuration('overlay-render-to-commit', renderStartedAt, { timeMs });
+  });
+  recordPreviewDuration('overlay-render-pre-jsx', renderStartedAt, { timeMs });
 
   return (
     <div
@@ -540,6 +594,7 @@ export function ProductPreviewOverlay({
       className="product-preview-overlay"
       data-preview-playing={String(playing)}
       data-preview-range={range}
+      data-speaker-focus={String(autoCameraEnabled)}
       data-preview-data-ready={String(initialReadiness === 'ready')}
       data-preview-degraded={String(previewDegraded)}
       data-preview-failed-asset-ids={JSON.stringify(fatalAssetIds)}
@@ -561,6 +616,7 @@ export function ProductPreviewOverlay({
       data-testid="product-preview-overlay"
       ref={overlayRef}
       role="dialog"
+      tabIndex={-1}
     >
       {!previewSurfaceActive && (showWarmupStatus || initialReadinessError) ? (
         <div
@@ -624,6 +680,15 @@ export function ProductPreviewOverlay({
                   ]}
                   value={range}
                 />
+                <button
+                  aria-pressed={autoCameraEnabled}
+                  className="product-preview-speaker-focus"
+                  data-testid="product-preview-speaker-focus"
+                  onClick={() => onAutoCameraChange(!autoCameraEnabled)}
+                  type="button"
+                >
+                  自动运镜
+                </button>
               </div>
               <div
                 className="product-preview-stage"
@@ -655,6 +720,7 @@ export function ProductPreviewOverlay({
                   <>
                     <CanvasStage
                       assetUrls={assets.urls}
+                      camera={camera}
                       caption={caption}
                       captionStyle={captionStyle}
                       evaluatedShot={renderedShot}
@@ -686,6 +752,7 @@ export function ProductPreviewOverlay({
                   <>
                     <CanvasStage
                       assetUrls={assets.urls}
+                      camera={camera}
                       caption={caption}
                       captionStyle={captionStyle}
                       degraded
@@ -719,6 +786,7 @@ export function ProductPreviewOverlay({
                 ) : heldVisual ? (
                   <CanvasStage
                     assetUrls={heldVisual.assetUrls}
+                    camera={heldVisual.camera}
                     caption={heldVisual.caption}
                     captionStyle={heldVisual.captionStyle}
                     degraded={heldVisual.degraded}
@@ -736,6 +804,7 @@ export function ProductPreviewOverlay({
                 ) : displayedShot ? (
                   <CanvasStage
                     assetUrls={assets.urls}
+                    camera={camera}
                     caption={caption}
                     captionStyle={captionStyle}
                     degraded={previewDegraded}

@@ -405,16 +405,23 @@ async function dragShot(window, sourceName, targetIndex) {
       cancelable: true,
       dataTransfer
     }));
+    if (!dataTransfer.getData('application/x-panda-stage-shot')) {
+      throw new Error('Shot dragstart did not populate the production payload.');
+    }
     target.dispatchEvent(new DragEvent('dragover', {
       bubbles: true,
       cancelable: true,
       dataTransfer
     }));
-    target.dispatchEvent(new DragEvent('drop', {
+    const drop = new DragEvent('drop', {
       bubbles: true,
       cancelable: true,
       dataTransfer
-    }));
+    });
+    target.dispatchEvent(drop);
+    if (!drop.defaultPrevented) {
+      throw new Error('Shot drop was not handled by the production target.');
+    }
   })()`);
   await window.webContents.executeJavaScript(
     waitFor(
@@ -574,6 +581,8 @@ async function verifyDay20() {
         projectRevision: Number(document.querySelector(
           '.shot-manager-heading span'
         ).dataset.projectRevision),
+        undoCount: Number(document.querySelector('[data-testid="history-controls"]').dataset.undoCount),
+        redoCount: Number(document.querySelector('[data-testid="history-controls"]').dataset.redoCount),
         saveDisabled: document.querySelector(
           '[data-testid="quick-action-save"]'
         ).disabled
@@ -582,9 +591,8 @@ async function verifyDay20() {
     await dragShot(window, 'Opening', 0);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.shot-manager-status')" +
-          "?.textContent?.includes('位置未变化')",
-        'No-op drag did not report an unchanged position.',
+        "!document.querySelector('.shot-manager-status')",
+        'No-op drag reported an unexpected status/error.',
       ),
     );
     await window.webContents.executeJavaScript(
@@ -597,12 +605,14 @@ async function verifyDay20() {
         projectRevision: Number(document.querySelector(
           '.shot-manager-heading span'
         ).dataset.projectRevision),
+        undoCount: Number(document.querySelector('[data-testid="history-controls"]').dataset.undoCount),
+        redoCount: Number(document.querySelector('[data-testid="history-controls"]').dataset.redoCount),
         saveDisabled: document.querySelector(
           '[data-testid="quick-action-save"]'
         ).disabled,
         status: document.querySelector(
           '.shot-manager-status'
-        ).textContent.trim()
+        )?.textContent?.trim() ?? ''
       }))()`);
     const noOpMove = {
       before: noOpBefore,
@@ -677,12 +687,16 @@ async function verifyDay20() {
     );
     await click(window, '[data-testid="shot-quick-duration"]');
     await setInput(window, '[data-testid="shot-quick-duration-form"] input', 3.5);
+    const durationBefore = await window.webContents.executeJavaScript(`({
+      revision: Number(document.querySelector('.shot-manager-heading span').dataset.projectRevision),
+      undoCount: Number(document.querySelector('[data-testid="history-controls"]').dataset.undoCount)
+    })`);
     await click(window, '[data-testid="shot-quick-duration-apply"]');
     await window.webContents.executeJavaScript(
       waitFor(
         "Number.parseFloat(document.querySelector('.shot-list-item-selected small')?.textContent) === 3.5 && " +
-          "document.querySelector('.shot-manager-status')" +
-          "?.textContent?.includes('3.500 秒')",
+          `Number(document.querySelector('.shot-manager-heading span').dataset.projectRevision) === ${durationBefore.revision + 1} && ` +
+          `Number(document.querySelector('[data-testid="history-controls"]').dataset.undoCount) === ${durationBefore.undoCount + 1}`,
         'Duplicated shot duration was not updated.',
       ),
     );
@@ -976,6 +990,9 @@ async function verifyDay20() {
         noOpMove.after.names.join(',') ||
       noOpMove.before.projectRevision !==
         noOpMove.after.projectRevision ||
+      noOpMove.before.undoCount !== noOpMove.after.undoCount ||
+      noOpMove.before.redoCount !== noOpMove.after.redoCount ||
+      noOpMove.after.status !== '' ||
       !noOpMove.before.saveDisabled ||
       !noOpMove.after.saveDisabled ||
       noOpMove.autosaveUpdateDelta !== 0 ||

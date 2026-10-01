@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -10,12 +9,14 @@ import {
   ChevronUp,
   Clock3,
   MessageSquareText,
+  SkipBack,
   Volume2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import { getBoundAudioEndRange } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import {
   computePixelsPerMs,
@@ -29,23 +30,50 @@ import { DialogueClip } from './DialogueClip';
 import { AudioClip } from './AudioClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { usePendingDialoguePlacement } from './PendingDialoguePlacement';
+import { PositionLane, recognizeSelectedPositionLane } from './PositionLane';
+import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
+import { StandaloneAudioLane } from './StandaloneAudioLane';
+import { StandaloneAudioControls } from './StandaloneAudioControls';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
 
 export interface TimelineDockProps {
+  productPreviewOpen?: boolean;
   presentation?: 'desktop' | 'landscape' | 'portrait';
 }
 
+/** Mirror Timeline UI scroll state into its one real horizontal viewport. */
+export function syncTimelineRulerScroll(
+  rulerScroll: Pick<HTMLDivElement, 'scrollLeft'> | null,
+  scrollPx: number,
+): void {
+  if (rulerScroll && rulerScroll.scrollLeft !== scrollPx) {
+    rulerScroll.scrollLeft = scrollPx;
+  }
+}
+
+/** Bind the actual ruler viewport to Timeline scroll intent and commands. */
+export function bindTimelineRulerScroll(
+  rulerScroll: Pick<HTMLDivElement, 'scrollLeft'> | null,
+): () => void {
+  const reconcile = (): void => {
+    syncTimelineRulerScroll(rulerScroll, timelineUiStore.getSnapshot().scrollPx);
+  };
+  reconcile();
+  return timelineUiStore.subscribe(reconcile);
+}
+
 /**
- * The only product Timeline surface for Day 26. It renders the current shot's
+ * The single product Timeline surface. It renders the current shot's
  * `0 → durationMs` range with a mm:ss.mmm readout and a seekable playhead.
  *
- * All interactions (seek / zoom / scroll / collapse) write only to
- * `timelineUiStore`; the project snapshot, dirty flag, revision and History
- * are never touched.
+ * Seek / zoom / scroll / collapse write only to `timelineUiStore`.
+ * Clip authoring delegates to the existing Dialogue / standalone audio owners;
+ * this surface never directly mutates the project snapshot or History.
  */
 export function TimelineDock({
+  productPreviewOpen = false,
   presentation = 'landscape',
 }: TimelineDockProps = {}): React.JSX.Element {
   const currentShotId = useSyncExternalStore(
@@ -56,7 +84,12 @@ export function TimelineDock({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const selectedLayerId = useSyncExternalStore(
+    selectionStore.subscribe,
+    selectionStore.getSelectedLayerId,
+  );
   const ui = useTimelineUi();
+  const selectedAudioClipId = useSyncExternalStore(audioClipSelectionStore.subscribe, audioClipSelectionStore.getSelectedAudioClipId);
   const selectedDialogueId = useSyncExternalStore(
     dialogueSelectionStore.subscribe,
     dialogueSelectionStore.getSelectedDialogueId,
@@ -69,8 +102,10 @@ export function TimelineDock({
   const shot = currentShotId
     ? snapshot?.project.shots.find((candidate) => candidate.id === currentShotId) ?? null
     : null;
+  const positionLane = recognizeSelectedPositionLane(shot, selectedLayerId);
   const characters = snapshot?.project.characters ?? [];
-  const audioClips = shot?.audioClips ?? [];
+  const audioClips = shot?.audioClips.filter(clip => clip.role === 'dialogue') ?? [];
+  const selectedAudioClip = shot?.audioClips.find(clip => clip.id === selectedAudioClipId && clip.role !== 'dialogue');
   const laneLabelWidth =
     presentation === 'portrait'
       ? PORTRAIT_TIMELINE_LANE_LABEL_WIDTH
@@ -91,6 +126,7 @@ export function TimelineDock({
   const trackRef = useRef<HTMLDivElement>(null);
   const subtitleLaneContentRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const mediaGestureRef = useRef<{ pointerId: number; x: number; y: number; axis: 'pending' | 'horizontal' | 'vertical' } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const {
     drag: pendingDrag,
@@ -114,13 +150,11 @@ export function TimelineDock({
     return () => observer.disconnect();
   }, [ui.expanded, hasShot]);
 
-  // The store resets scrollPx to 0 on shot switch (resetForShot); mirror that
-  // into the real viewport so the playhead at 0ms stays within the visible
-  // track instead of being left off-screen at a stale horizontal offset.
-  useEffect(() => {
-    const node = scrollRef.current;
-    if (node) node.scrollLeft = 0;
-  }, [currentShotId]);
+  // The store owns horizontal scroll intent. Subscribe the mounted ruler so a
+  // return-to-start request can reconcile DOM even when UI state is 0/0.
+  useLayoutEffect(() => {
+    return bindTimelineRulerScroll(scrollRef.current);
+  }, [currentShotId, hasShot, ui.expanded]);
 
   const pixelsPerMs = computePixelsPerMs(viewportWidth, durationMs, ui.zoom);
   const trackWidth = durationMs * pixelsPerMs;
@@ -168,6 +202,31 @@ export function TimelineDock({
     timelineUiStore.setScrollPx(event.currentTarget.scrollLeft);
   };
 
+  const mediaPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.pointerType !== 'touch' ||
+        getComputedStyle(event.currentTarget).overflowY !== 'auto') return;
+    event.stopPropagation();
+    mediaGestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, axis: 'pending' };
+  };
+
+  const mediaPointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const gesture = mediaGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    if (gesture.axis === 'pending' && Math.max(Math.abs(dx), Math.abs(dy)) > 6) {
+      gesture.axis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+    }
+    if (gesture.axis === 'horizontal') seekFromClientX(event.clientX);
+  };
+
+  const mediaPointerEnd = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (mediaGestureRef.current?.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    mediaGestureRef.current = null;
+  };
+
   return (
     <section
       aria-label="镜头时间轴"
@@ -175,11 +234,13 @@ export function TimelineDock({
       data-expanded={ui.expanded ? 'true' : 'false'}
       data-has-shot={hasShot ? 'true' : 'false'}
       data-lane-label-width={laneLabelWidth}
+      data-has-position-lane={positionLane ? 'true' : 'false'}
       data-presentation={presentation}
       data-testid="timeline-dock"
       style={
         {
           '--timeline-lane-label-width': `${laneLabelWidth}px`,
+          '--timeline-scroll-px': `${ui.scrollPx}px`,
         } as React.CSSProperties
       }
     >
@@ -220,6 +281,24 @@ export function TimelineDock({
             {formatTimecode(ui.currentTimeMs)} / {formatTimecode(durationMs)}
           </span>
         </output>
+        <button
+          type="button"
+          className="timeline-return-to-start"
+          data-testid="timeline-return-to-start"
+          aria-label="回到起点"
+          title="回到起点"
+          disabled={!hasShot}
+          onClick={() => timelineUiStore.returnToStart(durationMs)}
+        >
+          <SkipBack aria-hidden="true" focusable="false" size={18} />
+        </button>
+        {selectedAudioClip && ui.expanded && !productPreviewOpen ? (
+          <StandaloneAudioControls
+            key={`${editorProjectStore.getProjectInstanceId()}:${selectedAudioClip.id}`}
+            clip={selectedAudioClip}
+            displayName={audioClipName(selectedAudioClip.assetId, selectedAudioClip.name)}
+          />
+        ) : null}
         <div className="timeline-zoom">
           <button
             type="button"
@@ -294,13 +373,32 @@ export function TimelineDock({
                 ))}
               </div>
               <div
-                aria-label="字幕和音频轨道"
+                aria-label="时间轴轨道"
                 className="timeline-track-stack"
                 data-testid="timeline-track-stack"
                 data-timeline-layer="track-stack"
                 role="group"
               >
                 <div className="timeline-lanes" data-testid="timeline-lanes">
+                  {positionLane && shot ? (
+                    <PositionLane
+                      productPreviewOpen={productPreviewOpen}
+                      key={`${shot.id}:${positionLane.layer.id}`}
+                      currentTimeMs={ui.currentTimeMs}
+                      layer={positionLane.layer}
+                      pixelsPerMs={pixelsPerMs}
+                      shot={shot}
+                      trackWidth={trackWidth}
+                      snapshot={snapshot!}
+                    />
+                  ) : null}
+                  <div
+                    className="timeline-media-lanes"
+                    onPointerDown={mediaPointerDown}
+                    onPointerMove={mediaPointerMove}
+                    onPointerUp={mediaPointerEnd}
+                    onPointerCancel={mediaPointerEnd}
+                  >
                   <div
                     className="timeline-lane timeline-subtitle-lane"
                     data-testid="timeline-subtitle-track"
@@ -412,7 +510,7 @@ export function TimelineDock({
                         focusable="false"
                         size={16}
                       />
-                      <span className="timeline-lane-label-text">音频</span>
+                      <span className="timeline-lane-label-text">对白</span>
                     </span>
                     <div
                       className="timeline-lane-content"
@@ -464,6 +562,11 @@ export function TimelineDock({
                         </span>
                       ) : null}
                     </div>
+                  </div>
+                  {shot && snapshot ? (['sfx', 'bgm'] as const).map(role => (
+                    <StandaloneAudioLane key={`${editorProjectStore.getProjectInstanceId()}:${shot.id}:${role}`} role={role} project={snapshot.project} shotId={shot.id}
+                      trackWidth={trackWidth} pixelsPerMs={pixelsPerMs} selectedClipId={selectedAudioClipId} />
+                  )) : null}
                   </div>
                 </div>
               </div>

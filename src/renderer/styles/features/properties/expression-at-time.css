@@ -1,0 +1,162 @@
+.expression-at-time {
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border-bottom: 1px solid var(--ui-color-separator);
+  color: var(--ui-color-text-primary);
+}
+
+.expression-at-time-heading,
+.expression-at-time-events li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-2);
+}
+
+.expression-at-time h3,
+.expression-at-time h4,
+.expression-at-time p {
+  margin: 0;
+}
+
+.expression-at-time h3 {
+  font: var(--ui-font-section-heading);
+}
+
+.expression-at-time h4,
+.expression-at-time-heading time {
+  font: var(--ui-font-secondary);
+  color: var(--ui-color-text-secondary);
+}
+
+.expression-at-time-active {
+  margin-top: var(--ui-space-1);
+  font: var(--ui-font-secondary);
+  color: var(--ui-color-text-secondary);
+}
+
+.expression-at-time-active strong {
+  color: var(--ui-color-text-primary);
+}
+
+.expression-at-time-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ui-space-2);
+  margin-top: var(--ui-space-3);
+}
+
+.expression-at-time-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  padding: var(--ui-space-1);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: transparent;
+  color: var(--ui-color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.expression-at-time-choice:hover:not(:disabled),
+.expression-at-time-seek:hover,
+.expression-at-time-delete:hover:not(:disabled) {
+  background: var(--ui-color-action-hover);
+}
+
+.expression-at-time-choice[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+}
+
+.expression-at-time-choice:disabled,
+.expression-at-time-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.expression-at-time-choice img,
+.expression-at-time-placeholder {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ui-radius-small);
+  object-fit: cover;
+}
+
+.expression-at-time-placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-eyebrow);
+  color: var(--ui-color-text-muted);
+}
+
+.expression-at-time-choice > span:last-child,
+.expression-at-time-seek > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expression-at-time-events {
+  margin-top: var(--ui-space-3);
+}
+
+.expression-at-time-events ul {
+  margin: var(--ui-space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.expression-at-time-events li + li {
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.expression-at-time-seek,
+.expression-at-time-delete {
+  min-height: var(--ui-touch-icon);
+  border: 0;
+  background: transparent;
+  color: var(--ui-color-text-primary);
+  cursor: pointer;
+}
+
+.expression-at-time-seek {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+
+.expression-at-time-seek[data-current='true'] time {
+  color: var(--ui-color-selected-border);
+}
+
+.expression-at-time-delete {
+  flex: none;
+  color: var(--ui-color-text-secondary);
+}
+
+.expression-at-time button:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.expression-at-time-note,
+.expression-at-time-error {
+  margin-top: var(--ui-space-2);
+  font: var(--ui-font-secondary);
+}
+
+.expression-at-time-note {
+  color: var(--ui-color-text-secondary);
+}
+
+.expression-at-time-error {
+  color: #f5b5a6;
+}

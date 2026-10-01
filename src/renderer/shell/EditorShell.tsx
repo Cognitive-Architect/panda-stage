@@ -434,6 +434,8 @@ export function EditorShell({
   const [newProjectNameTouched, setNewProjectNameTouched] = useState(false);
   const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
+  // Preview Camera is an editor-session mode, not Project or Preview state.
+  const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
     useState(false);
   const commitProductPreviewSurface = useCallback((): void => {
@@ -573,6 +575,7 @@ export function EditorShell({
     // The preview belongs to the project that was open when it was requested.
     setProductPreviewOpen(false);
     setProductPreviewSurfaceActive(false);
+    setAutoCameraEnabled(false);
     setSaveActivity({ phase: 'idle', revision: null });
     updateSession(nextSession, cleanStatus);
     setRequestedPage('editor');
@@ -591,6 +594,9 @@ export function EditorShell({
         nextSession,
         '已从最近项目打开，暂无未保存更改。',
       );
+      setProductPreviewOpen(false);
+      setProductPreviewSurfaceActive(false);
+      setAutoCameraEnabled(false);
       setSaveActivity({ phase: 'idle', revision: null });
       setRequestedPage('editor');
     } catch (error) {
@@ -819,6 +825,7 @@ export function EditorShell({
     setSessionSnapshot(nextSession);
     setProductPreviewOpen(false);
     setProductPreviewSurfaceActive(false);
+    setAutoCameraEnabled(false);
     setCloseConfirmOpen(false);
     setCloseConfirmStatus('');
     setOpenCandidatePath('');
@@ -1039,6 +1046,7 @@ export function EditorShell({
         >
           <div
             className="editor-top-region"
+            inert={productPreviewOpen || undefined}
             data-testid="editor-top-region"
           >
             {recoveryCandidate ? (
@@ -1059,6 +1067,7 @@ export function EditorShell({
           <PendingDialoguePlacementProvider>
             <div
               className="editor-body"
+              inert={productPreviewOpen || undefined}
               data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
               data-portrait-surface={portraitContextSurface}
               data-shell-mode={layoutMode}
@@ -1166,13 +1175,16 @@ export function EditorShell({
                 />
               ) : (
                 <RightWorkspace
+                  autoCameraEnabled={autoCameraEnabled}
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
+                  onAutoCameraChange={setAutoCameraEnabled}
                 />
               )}
             </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
             </div>
             <BottomWorkspace
+              productPreviewOpen={productPreviewOpen}
               hidden={
                 isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
               }
@@ -1185,6 +1197,8 @@ export function EditorShell({
           {productPreviewOpen ? (
             <ProductPreviewOverlay
               autoPlay
+              autoCameraEnabled={autoCameraEnabled}
+              onAutoCameraChange={setAutoCameraEnabled}
               onClose={closeProductPreview}
               onHandoffReady={commitProductPreviewSurface}
               project={projectSnapshot.project}

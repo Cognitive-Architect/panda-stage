@@ -113,7 +113,7 @@ describe('ProjectSchema v7', () => {
     expect(ShotSchema.parse(migrated.shots[0])).toBeTruthy();
     expect(LayerSchema.parse(migrated.shots[0]!.layers[0])).toBeTruthy();
     expect(DialogueSchema.parse(exampleProject.shots[0]!.dialogues[0])).toBeTruthy();
-    expect(AudioClipSchema.parse(exampleProject.shots[0]!.audioClips[0])).toBeTruthy();
+    expect(AudioClipSchema.parse(migrated.shots[0]!.audioClips[0])).toBeTruthy();
   });
 
   it('is semantically stable across parse → serialize → parse', () => {
