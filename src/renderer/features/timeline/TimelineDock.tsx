@@ -31,6 +31,9 @@ import { AudioClip } from './AudioClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { usePendingDialoguePlacement } from './PendingDialoguePlacement';
 import { PositionLane, recognizeSelectedPositionLane } from './PositionLane';
+import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
+import { StandaloneAudioLane } from './StandaloneAudioLane';
+import { StandaloneAudioControls } from './StandaloneAudioControls';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
@@ -62,12 +65,12 @@ export function bindTimelineRulerScroll(
 }
 
 /**
- * The only product Timeline surface for Day 26. It renders the current shot's
+ * The single product Timeline surface. It renders the current shot's
  * `0 → durationMs` range with a mm:ss.mmm readout and a seekable playhead.
  *
- * All interactions (seek / zoom / scroll / collapse) write only to
- * `timelineUiStore`; the project snapshot, dirty flag, revision and History
- * are never touched.
+ * Seek / zoom / scroll / collapse write only to `timelineUiStore`.
+ * Clip authoring delegates to the existing Dialogue / standalone audio owners;
+ * this surface never directly mutates the project snapshot or History.
  */
 export function TimelineDock({
   productPreviewOpen = false,
@@ -86,6 +89,7 @@ export function TimelineDock({
     selectionStore.getSelectedLayerId,
   );
   const ui = useTimelineUi();
+  const selectedAudioClipId = useSyncExternalStore(audioClipSelectionStore.subscribe, audioClipSelectionStore.getSelectedAudioClipId);
   const selectedDialogueId = useSyncExternalStore(
     dialogueSelectionStore.subscribe,
     dialogueSelectionStore.getSelectedDialogueId,
@@ -100,7 +104,8 @@ export function TimelineDock({
     : null;
   const positionLane = recognizeSelectedPositionLane(shot, selectedLayerId);
   const characters = snapshot?.project.characters ?? [];
-  const audioClips = shot?.audioClips ?? [];
+  const audioClips = shot?.audioClips.filter(clip => clip.role === 'dialogue') ?? [];
+  const selectedAudioClip = shot?.audioClips.find(clip => clip.id === selectedAudioClipId && clip.role !== 'dialogue');
   const laneLabelWidth =
     presentation === 'portrait'
       ? PORTRAIT_TIMELINE_LANE_LABEL_WIDTH
@@ -235,6 +240,7 @@ export function TimelineDock({
       style={
         {
           '--timeline-lane-label-width': `${laneLabelWidth}px`,
+          '--timeline-scroll-px': `${ui.scrollPx}px`,
         } as React.CSSProperties
       }
     >
@@ -245,6 +251,7 @@ export function TimelineDock({
         data-timeline-layer="toolbar"
         role="toolbar"
       >
+        {selectedAudioClip && ui.expanded && !productPreviewOpen ? <StandaloneAudioControls key={`${editorProjectStore.getProjectInstanceId()}:${selectedAudioClip.id}`} clip={selectedAudioClip} /> : null}
         <button
           type="button"
           className="timeline-collapse"
@@ -497,7 +504,7 @@ export function TimelineDock({
                         focusable="false"
                         size={16}
                       />
-                      <span className="timeline-lane-label-text">音频</span>
+                      <span className="timeline-lane-label-text">对白</span>
                     </span>
                     <div
                       className="timeline-lane-content"
@@ -550,6 +557,10 @@ export function TimelineDock({
                       ) : null}
                     </div>
                   </div>
+                  {shot && snapshot ? (['sfx', 'bgm'] as const).map(role => (
+                    <StandaloneAudioLane key={`${editorProjectStore.getProjectInstanceId()}:${shot.id}:${role}`} role={role} project={snapshot.project} shotId={shot.id}
+                      trackWidth={trackWidth} pixelsPerMs={pixelsPerMs} selectedClipId={selectedAudioClipId} />
+                  )) : null}
                   </div>
                 </div>
               </div>

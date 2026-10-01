@@ -288,7 +288,7 @@
           "tests/contract/*timeline*.test.ts",
           "tests/contract/day26-*.test.ts"
         ],
-        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*", "scripts/verify-issue655-preview-isolation.cjs"],
+        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*", "scripts/verify-issue655-preview-isolation.cjs", "scripts/verify-issue658-audio-timeline.cjs"],
         "suites": ["timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -416,8 +416,20 @@
       }
     ]
   },
-  "count": 67,
+  "count": 68,
   "gates": [
+    {
+      "id": "issue658-audio-timeline",
+      "script": "verify:issue658-audio-timeline",
+      "suite": "timeline",
+      "subsystem": "timeline",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "timeline",
+      "supersedes": null,
+      "notes": "A02 focused isolated Electron role-lane/drop/move/trim/gain/delete/History/layout evidence. Does not claim Preview mixer, Export mix or human acceptance."
+    },
     {
       "id": "issue657-audio-foundation",
       "script": "verify:issue657-audio-foundation",
