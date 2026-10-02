@@ -6,7 +6,10 @@ import { ProjectSchema, migrateProject } from '../../src/domain';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import {
   buildCharacterAssemblyPreviewVisual,
+  characterLocalPointerDelta,
+  findVisibleImageBounds,
   getAssemblyPreviewExpressions,
+  headScaleFromPointerDistance,
   hasPendingCharacterAssemblyEdit,
   isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
@@ -75,7 +78,7 @@ function fixture(): {
 }
 
 describe('S07 composite assembly preview', () => {
-  it('keeps placement and pending actions in one toolbar without persistent helper copy', () => {
+  it('keeps precision controls collapsed while pending actions stay visible', () => {
     const { project, session } = fixture();
     const pending = {
       ...session,
@@ -94,9 +97,11 @@ describe('S07 composite assembly preview', () => {
       session: pending,
     }));
 
-    for (const control of ['左右', '上下', '大小', '重置', '还原', '应用']) {
+    for (const control of ['精调', '还原', '应用']) {
       expect(markup).toContain(control);
     }
+    expect(markup).not.toContain('data-testid="character-assembly-fine-tune-panel"');
+    expect(markup).not.toContain('data-testid="character-assembly-reset"');
     expect(markup).toContain('data-testid="character-assembly-pending"');
     expect(markup).not.toContain('拖动脸部可调整位置，底部可微调大小');
     expect(markup).not.toContain('有未应用更改');
@@ -256,19 +261,21 @@ describe('S07 composite assembly preview', () => {
       },
       session,
     }));
-    const groupStart = markup.indexOf('data-testid="character-assembly-head-group"');
-    const pivotIndex = markup.indexOf('data-testid="character-assembly-head-pivot"');
-    const groupEnd = markup.indexOf('</div>', pivotIndex) + '</div>'.length;
-    const groupMarkup = markup.slice(groupStart, groupEnd);
-
     expect(markup).toContain('data-testid="character-assembly-head-asset-selected"');
-    expect(groupMarkup).toContain('data-testid="character-assembly-face-drag-target"');
-    expect(groupMarkup).toContain('data-testid="character-assembly-head-pivot"');
-    expect(groupMarkup).toMatch(/transform-origin:\s*1160px\s+750px/);
-    expect(markup).toContain('data-testid="character-assembly-head-offset-x"');
-    expect(markup).toContain('data-testid="character-assembly-head-offset-y"');
+    expect(markup).toContain('data-edit-target="head"');
+    expect(markup).toContain('data-testid="character-assembly-edit-head"');
+    expect(markup).toContain('data-testid="character-assembly-edit-face"');
+    expect(markup).toContain('data-testid="character-assembly-head-drag-fallback"');
+    expect(markup).toContain('data-testid="character-assembly-head-scale-handle"');
+    expect(markup).not.toContain('data-testid="character-assembly-face-drag-target"');
+    expect(markup).not.toContain('data-testid="character-assembly-head-pivot"');
+    expect(markup).toContain('data-testid="character-assembly-head-pivot-marker"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('data-testid="character-assembly-head-offset-x"');
     expect(markup).toContain('data-testid="character-assembly-test-head-motion"');
-    expect(markup).toContain('测试摇头');
+    expect(markup).toContain('▶ 测试摇头');
+    expect(markup).toContain('data-testid="character-assembly-pivot-mode-toggle"');
+    expect(markup).toContain('调整脖子转轴');
 
     const { head, ...headlessDraft } = session.draft;
     expect(head).toBeDefined();
@@ -281,9 +288,48 @@ describe('S07 composite assembly preview', () => {
       },
       session: { ...session, draft: headlessDraft },
     }));
+    expect(headlessMarkup).toContain('data-edit-target="face"');
     expect(headlessMarkup).toContain('data-testid="character-assembly-face-drag-target"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-head-pivot"');
-    expect(headlessMarkup).toContain('data-testid="character-assembly-test-head-motion" disabled=""');
+    expect(headlessMarkup).not.toContain('data-testid="character-assembly-test-head-motion"');
+  });
+
+  it('calculates transparent-image bounds and viewport-independent pointer adjustments', () => {
+    const rgba = new Uint8ClampedArray(4 * 3 * 4);
+    rgba[(1 * 4 + 2) * 4 + 3] = 255;
+    rgba[(2 * 4 + 3) * 4 + 3] = 8;
+    expect(findVisibleImageBounds(rgba, 4, 3)).toEqual({
+      x: 0.5,
+      y: 1 / 3,
+      width: 0.5,
+      height: 2 / 3,
+    });
+    expect(findVisibleImageBounds(new Uint8ClampedArray(16), 2, 2)).toBeNull();
+    expect(characterLocalPointerDelta(10, 20, 30, 60, 2)).toEqual({ x: 10, y: 20 });
+    expect(characterLocalPointerDelta(10, 20, 30, 60, 0.5)).toEqual({ x: 40, y: 80 });
+    expect(headScaleFromPointerDistance(0.8, 20, 30)).toBeCloseTo(1.2);
+    expect(headScaleFromPointerDistance(0.1, 20, 1)).toBe(0.05);
+  });
+
+  it('loads picker thumbnails only for the visible page and the selected Head', () => {
+    const pickerSource = readFileSync(
+      'src/renderer/features/characters/ImageAssetPicker.tsx',
+      'utf8',
+    );
+    const workbenchSource = readFileSync(
+      'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx',
+      'utf8',
+    );
+    expect(pickerSource).toContain('const visibleCandidateIds = useMemo(');
+    expect(pickerSource).toContain('onVisibleCandidatesChange?.(visibleCandidateIds)');
+    expect(workbenchSource).toContain('headPickerOpen ? headPickerVisibleAssetIds : []');
+    expect(workbenchSource).toContain('if (head) requestedAssetIds.add(head.assetId);');
+    const testButton = workbenchSource.match(
+      /data-testid="character-assembly-test-head-motion"([\s\S]*?)<\/button>/u,
+    )?.[1];
+    expect(testButton).toBeDefined();
+    expect(testButton).not.toContain('disabled={isEditingNeckPivot}');
+    expect(workbenchSource).toContain('观察头和脸是否贴合，转轴是否像从脖子处转动');
   });
 
   it('reports pending only when the edit draft differs from the persisted definition', () => {

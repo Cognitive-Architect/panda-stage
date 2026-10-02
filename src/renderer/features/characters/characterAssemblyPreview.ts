@@ -32,6 +32,18 @@ export interface AssemblyHeadPreviewPart {
   localRect: VisualLocalRect;
 }
 
+export interface NormalizedImageBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface CharacterLocalPointerDelta {
+  x: number;
+  y: number;
+}
+
 export interface CharacterAssemblyPreviewVisual extends LayerVisualParts {
   /** Assembly-only visual; it never enters the production Stage resolver. */
   headPart: AssemblyHeadPreviewPart | null;
@@ -47,6 +59,79 @@ export function isAssemblyHeadMotionTestRunning(
       token.sessionId === session.sessionId &&
       token.generation === session.generation,
   );
+}
+
+export function findVisibleImageBounds(
+  rgba: ArrayLike<number>,
+  width: number,
+  height: number,
+  alphaThreshold = 8,
+): NormalizedImageBounds | null {
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width <= 0 ||
+    height <= 0 ||
+    rgba.length < width * height * 4
+  ) {
+    return null;
+  }
+
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (rgba[(y * width + x) * 4 + 3]! < alphaThreshold) continue;
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+
+  if (right < left || bottom < top) return null;
+  return {
+    x: left / width,
+    y: top / height,
+    width: (right - left + 1) / width,
+    height: (bottom - top + 1) / height,
+  };
+}
+
+export function characterLocalPointerDelta(
+  startX: number,
+  startY: number,
+  currentX: number,
+  currentY: number,
+  viewportScale: number,
+): CharacterLocalPointerDelta {
+  const safeScale = Number.isFinite(viewportScale)
+    ? Math.max(viewportScale, 0.0001)
+    : 0.0001;
+  return {
+    x: (currentX - startX) / safeScale,
+    y: (currentY - startY) / safeScale,
+  };
+}
+
+export function headScaleFromPointerDistance(
+  startScale: number,
+  startDistance: number,
+  currentDistance: number,
+): number {
+  if (
+    !Number.isFinite(startScale) ||
+    !Number.isFinite(startDistance) ||
+    !Number.isFinite(currentDistance) ||
+    startScale <= 0 ||
+    startDistance <= 0 ||
+    currentDistance < 0
+  ) {
+    return Math.max(0.05, Number.isFinite(startScale) ? startScale : 1);
+  }
+  return Math.max(0.05, startScale * (currentDistance / startDistance));
 }
 
 export function isCharacterCreationSnapshot(

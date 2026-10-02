@@ -914,6 +914,21 @@ async function run() {
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="create"]')`, 'Composite creation workbench did not reopen.');
     await chooseImage(windowRef, 'character-create-body-picker', IDS.body);
     await chooseImage(windowRef, 'character-create-face-picker', IDS.face);
+    const fineTuneDefault = await windowRef.webContents.executeJavaScript(`(() => {
+      const toggle = document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]');
+      return {
+        expanded: toggle?.getAttribute('aria-expanded') ?? '',
+        panelVisible: Boolean(document.querySelector('[data-testid="character-assembly-fine-tune-panel"]')),
+      };
+    })()`);
+    assert(fineTuneDefault.expanded === 'false' && !fineTuneDefault.panelVisible, 'Assembly precision controls are not collapsed by default.');
+    evidence.fineTuneDisclosureDefault = fineTuneDefault;
+    await click(windowRef, '[data-testid="character-assembly-fine-tune-toggle"]', 'Open Assembly precision controls');
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="character-assembly-fine-tune-panel"]') && document.querySelector('[data-testid="character-assembly-offset-x"]')`,
+      'Opening Fine Tune did not reveal the existing Face Placement controls.',
+    );
     const creationSurface = await windowRef.webContents.executeJavaScript(`(() => {
       const createView = document.querySelector('[data-testid="character-create-view"]');
       const form = createView?.querySelector('form.character-create-form');
