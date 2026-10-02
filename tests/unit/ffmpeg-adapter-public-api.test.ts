@@ -100,6 +100,7 @@ describe('FFmpegAdapter public export surface', () => {
       'validateAudioMuxExecutable',
       'encodePngSequence',
       'muxSingleAudio',
+      'muxAudioMix',
       'probeVideo',
       'probeAudioFile',
       'analyzeAudioTiming',

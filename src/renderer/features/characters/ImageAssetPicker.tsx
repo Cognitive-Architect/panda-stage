@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { ImageAsset } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
@@ -16,6 +16,8 @@ export interface ImageAssetPickerProps {
   /** Opt-in Expression workflow capacity controls; other picker hosts stay unchanged. */
   searchAndPaginate?: boolean;
   disabled?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onVisibleCandidatesChange?: (assetIds: readonly string[]) => void;
   onChange: (assetId: string | null) => void;
   onThumbnailError: (assetId: string) => void;
   emptyOption?: {
@@ -176,6 +178,8 @@ export function ImageAssetPicker({
   presentation = 'default',
   searchAndPaginate = false,
   disabled = false,
+  onOpenChange,
+  onVisibleCandidatesChange,
   onChange,
   onThumbnailError,
   emptyOption,
@@ -192,15 +196,27 @@ export function ImageAssetPicker({
   const [page, setPage] = useState(1);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId);
   const selectedEmptyState = emptyOption ?? emptyState;
-  const candidatePage = searchAndPaginate
-    ? paginateImageAssetCandidates(assets, searchQuery, page)
-    : null;
+  const candidatePage = useMemo(
+    () => searchAndPaginate
+      ? paginateImageAssetCandidates(assets, searchQuery, page)
+      : null,
+    [assets, page, searchAndPaginate, searchQuery],
+  );
   const candidateAssets = candidatePage?.assets ?? assets;
+  const visibleCandidateIds = useMemo(
+    () => candidateAssets.map((asset) => asset.id),
+    [candidateAssets],
+  );
+
+  useEffect(() => {
+    if (open) onVisibleCandidatesChange?.(visibleCandidateIds);
+  }, [onVisibleCandidatesChange, open, visibleCandidateIds]);
 
   const selectAsset = (assetId: string | null): void => {
     if (disabled) return;
     onChange(assetId);
     setOpen(false);
+    onOpenChange?.(false);
   };
 
   const selectedLabel = selectedAsset
@@ -223,11 +239,13 @@ export function ImageAssetPicker({
       data-testid={testId ? `${testId}-selected` : undefined}
       disabled={disabled}
       onClick={() => {
-        if (!open) {
+        const nextOpen = !open;
+        if (nextOpen) {
           setSearchQuery('');
           setPage(1);
         }
-        setOpen(!open);
+        setOpen(nextOpen);
+        onOpenChange?.(nextOpen);
       }}
       type="button"
     >

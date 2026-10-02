@@ -29,6 +29,31 @@ export const FacePlacementSchema = z
   })
   .strict();
 
+/** Head translation and scale relative to its owning Character origin. */
+export const HeadPlacementSchema = z
+  .object({
+    offsetX: FiniteNumberSchema,
+    offsetY: FiniteNumberSchema,
+    scale: FiniteNumberSchema.positive(),
+  })
+  .strict();
+
+/** Head pivot point expressed in the owning Character's local coordinates. */
+export const HeadPivotSchema = z
+  .object({
+    x: FiniteNumberSchema,
+    y: FiniteNumberSchema,
+  })
+  .strict();
+
+export const CharacterHeadSchema = z
+  .object({
+    assetId: IdSchema,
+    placement: HeadPlacementSchema,
+    pivot: HeadPivotSchema,
+  })
+  .strict();
+
 const SingleImageCharacterSchema = z
   .object({
     ...CharacterBaseShape,
@@ -42,8 +67,24 @@ const CompositeCharacterSchema = z
     mode: z.literal('composite'),
     bodyAssetId: IdSchema,
     facePlacement: FacePlacementSchema,
+    head: CharacterHeadSchema.optional(),
   })
   .strict();
+
+const CompositeCharacterV8Schema = z
+  .object({
+    ...CharacterBaseShape,
+    mode: z.literal('composite'),
+    bodyAssetId: IdSchema,
+    facePlacement: FacePlacementSchema,
+  })
+  .strict();
+
+/** Historical v8 Character data: composite Body + Face, with no Head field. */
+export const CharacterV8Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema,
+  CompositeCharacterV8Schema,
+]);
 
 /**
  * Current Character data is explicit about whether its face assets represent
@@ -78,6 +119,10 @@ export const VoiceProfileSchema = z
 
 export type CharacterExpression = z.infer<typeof CharacterExpressionSchema>;
 export type FacePlacement = z.infer<typeof FacePlacementSchema>;
+export type HeadPlacement = z.infer<typeof HeadPlacementSchema>;
+export type HeadPivot = z.infer<typeof HeadPivotSchema>;
+export type CharacterHead = z.infer<typeof CharacterHeadSchema>;
 export type Character = z.infer<typeof CharacterSchema>;
+export type CharacterV8 = z.infer<typeof CharacterV8Schema>;
 export type CharacterV6 = z.infer<typeof CharacterV6Schema>;
 export type VoiceProfile = z.infer<typeof VoiceProfileSchema>;

@@ -204,7 +204,7 @@ describe('Issue #616 Character Detail assembly visual hierarchy', () => {
     const markup = detailMarkup({ composite: true, withAssemblyDraft: true });
     const styles = readOrderedStylesheetSource();
 
-    expect(markup).toContain('← 角色列表');
+    expect(markup).toContain('aria-label="返回角色列表"');
     expect(markup).toContain('aria-label="关闭角色抽屉"');
     expect(markup).toContain('aria-label="编辑角色名称"');
     expect(markup).not.toContain('character-identity-overflow');

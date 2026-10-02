@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  ProjectV8Schema,
   UnsupportedSchemaVersionError,
   detectSchemaVersion,
   inferLegacyBackgroundLayerId,
@@ -191,10 +192,11 @@ describe('project migration framework', () => {
     expect(detectSchemaVersion({ schemaVersion: 3 })).toBe(3);
     expect(detectSchemaVersion({ schemaVersion: 4 })).toBe(4);
     expect(detectSchemaVersion({ schemaVersion: 5 })).toBe(5);
+    expect(detectSchemaVersion({ schemaVersion: 8 })).toBe(8);
   });
 
   it.each([
-    { schemaVersion: 9 },
+    { schemaVersion: 10 },
     { schemaVersion: 99 },
     {},
   ])('rejects unknown or missing schema versions', (input) => {
@@ -254,6 +256,57 @@ describe('project migration framework', () => {
     });
   });
 
+  it('migrates strict v8 composites to v9 without changing their visual contract', () => {
+    const current = migrateProject(exampleProject);
+    const sourceCharacter = current.characters[0]!;
+    const composite = ProjectSchema.parse({
+      ...current,
+      characters: [
+        {
+          ...sourceCharacter,
+          mode: 'composite',
+          bodyAssetId: sourceCharacter.baseAssetId,
+          facePlacement: { offsetX: 17, offsetY: -8, scale: 0.9 },
+        },
+      ],
+    });
+    const v8 = { ...composite, schemaVersion: 8 as const };
+    const snapshot = structuredClone(v8);
+
+    expect(ProjectV8Schema.parse(v8)).toEqual(v8);
+    expect(ProjectSchema.safeParse(v8).success).toBe(false);
+
+    const migrated = migrateProject(v8);
+    expect(v8).toEqual(snapshot);
+    expect(migrated).toEqual({
+      ...v8,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+    });
+    expect(migrated.characters[0]).toMatchObject({
+      id: sourceCharacter.id,
+      mode: 'composite',
+      bodyAssetId: sourceCharacter.baseAssetId,
+      facePlacement: { offsetX: 17, offsetY: -8, scale: 0.9 },
+    });
+    expect(migrated.characters[0]).not.toHaveProperty('head');
+
+    const character = v8.characters[0]!;
+    const withSmuggledHead = {
+      ...v8,
+      characters: [
+        {
+          ...character,
+          head: {
+            assetId: character.baseAssetId,
+            placement: { offsetX: 0, offsetY: 0, scale: 1 },
+            pivot: { x: 0, y: 0 },
+          },
+        },
+      ],
+    };
+    expect(() => ProjectV8Schema.parse(withSmuggledHead)).toThrow();
+  });
+
   it('explicitly migrates the legacy probe schemaVersion 1 collision', () => {
     const migrated = migrateProject(PROBE_PROJECT);
 
@@ -273,7 +326,7 @@ describe('project migration framework', () => {
     expect(migrated.shots[0]!.layers[1]!.flipX).toBe(true);
   });
 
-  it('migrates a formal v1 project to v7 with character defaults and explicit background', () => {
+  it('migrates a formal v1 project to the current schema with character defaults and explicit background', () => {
     const snapshot = structuredClone(exampleProject);
     const migrated = migrateProject(exampleProject);
     const character = migrated.characters[0]!;
@@ -394,7 +447,7 @@ describe('project migration framework', () => {
     expect(migrateProject(contentOnly).shots[0]!.backgroundLayerId).toBeNull();
   });
 
-  it('migrates strict v3 layers to v7 with locked=false and flipX=false', () => {
+  it('migrates strict v3 layers to the current schema with locked=false and flipX=false', () => {
     const current = migrateProject(exampleProject);
     const version3 = {
       ...current,
@@ -421,7 +474,7 @@ describe('project migration framework', () => {
     ).toBe(true);
   });
 
-  it('requires flipX in the current v7 schema and rejects v4 files that smuggle it in', () => {
+  it('requires flipX in the current schema and rejects v4 files that smuggle it in', () => {
     const current = migrateProject(exampleProject);
     const missingFlip = {
       ...current,
@@ -443,7 +496,7 @@ describe('project migration framework', () => {
     expect(() => migrateProject(v4WithFlip)).toThrow();
   });
 
-  it('migrates v4 to v7, preserving locked and adding flipX=false', () => {
+  it('migrates v4 to the current schema, preserving locked and adding flipX=false', () => {
     const current = migrateProject(exampleProject);
     const version4 = {
       ...current,

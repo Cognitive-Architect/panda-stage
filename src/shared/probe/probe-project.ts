@@ -1,4 +1,9 @@
-import { ProjectSchema, type Project, type Shot } from '../../domain';
+import {
+  PROJECT_SCHEMA_VERSION,
+  ProjectSchema,
+  type Project,
+  type Shot,
+} from '../../domain';
 import { SubtitleTrackSchema } from '../preview/subtitle-engine';
 
 export const PROBE_BACKGROUND_ASSET_ID =
@@ -26,7 +31,7 @@ export const PROBE_SUBTITLE_CUES = SubtitleTrackSchema.parse([
 ]);
 
 export const PROBE_PROJECT: Project = ProjectSchema.parse({
-  schemaVersion: 8,
+  schemaVersion: PROJECT_SCHEMA_VERSION,
   id: '00000000-0000-4000-8000-000000000004',
   name: 'Day 04 共享舞台探针',
   width: 1920,

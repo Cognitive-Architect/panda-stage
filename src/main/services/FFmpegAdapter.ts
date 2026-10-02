@@ -6,12 +6,14 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
   EncodePngSequenceRequestSchema,
+  MuxAudioMixRequestSchema,
   MuxProbeExpectationSchema,
   MuxSingleAudioRequestSchema,
   VideoProbeExpectationSchema,
   type AudioProbeResult,
   type AudioTimingResult,
   type EncodePngSequenceRequest,
+  type MuxAudioMixRequest,
   type MuxProbeExpectation,
   type MuxSingleAudioRequest,
   type VideoProbeExpectation,
@@ -113,6 +115,16 @@ export interface MuxSingleAudioResult {
   elapsedMs: number;
   args: readonly string[];
   versionLine: string;
+  stderr: string;
+}
+
+export interface MuxAudioMixResult {
+  outputPath: string;
+  videoPath: string;
+  audioMixPlan: MuxAudioMixRequest['audioMixPlan'];
+  elapsedMs: number;
+  args: readonly string[];
+  versionLine: string | null;
   stderr: string;
 }
 
@@ -549,6 +561,109 @@ export class FFmpegAdapter {
     };
   }
 
+  async muxAudioMix(
+    rawRequest: MuxAudioMixRequest,
+    signal?: AbortSignal,
+  ): Promise<MuxAudioMixResult> {
+    const request = MuxAudioMixRequestSchema.parse(rawRequest);
+    const videoPath = path.resolve(request.videoPath);
+    const outputPath = path.resolve(request.outputPath);
+    await this.assertReadableInput(videoPath, 'video');
+    await this.assertOutputWritable(outputPath);
+    await this.assertOverwriteAllowed(outputPath, request.overwrite);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+
+    const audioInputs = [];
+    for (const clip of request.audioMixPlan.clips) {
+      const sourcePath = path.resolve(clip.sourcePath);
+      await this.assertReadableInput(sourcePath, 'audio');
+      const probe = await this.probeAudioFile(sourcePath, signal);
+      if (signal?.aborted) {
+        throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+      }
+      audioInputs.push({ clip, sourcePath, channels: probe.channels });
+    }
+
+    let versionLine: string | null = null;
+    if (audioInputs.length > 0) {
+      const validation = await this.validateAudioMuxExecutable(signal);
+      versionLine = validation.versionLine;
+      if (signal?.aborted) {
+        throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+      }
+    }
+
+    const temporaryOutputPath = createTemporaryOutputPath(outputPath);
+    const args = this.buildMuxAudioMixArguments({
+      videoPath,
+      audioInputs,
+      outputPath: temporaryOutputPath,
+      overwrite: request.overwrite,
+    });
+    const startedAt = performance.now();
+    let result: ProcessResult;
+    try {
+      result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) {
+        throw this.cancelledError(
+          this.ffmpegPath,
+          args,
+          result.code,
+          result.signal,
+          result.stderr,
+        );
+      }
+      if (result.code !== 0) {
+        throw this.mapAudioMixFailure(args, result, audioInputs);
+      }
+      const outputStats = await stat(temporaryOutputPath).catch(() => null);
+      if (!outputStats?.isFile() || outputStats.size === 0) {
+        throw new FFmpegAdapterError(
+          'PROCESS_FAILED',
+          'FFmpeg 已退出，但没有生成可用的音视频文件。',
+          {
+            executable: this.ffmpegPath,
+            args,
+            exitCode: result.code,
+            signal: result.signal,
+            stderr: technicalTail(result.stderr),
+          },
+        );
+      }
+      if (signal?.aborted) {
+        throw this.cancelledError(
+          this.ffmpegPath,
+          args,
+          result.code,
+          result.signal,
+          result.stderr,
+        );
+      }
+      await this.commitTemporaryOutput(
+        temporaryOutputPath,
+        outputPath,
+        request.overwrite,
+        args,
+        result,
+      );
+    } catch (error) {
+      await this.cleanupTemporaryOutput(temporaryOutputPath, error);
+      throw error;
+    }
+
+    return {
+      outputPath,
+      videoPath,
+      audioMixPlan: request.audioMixPlan,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      args,
+      versionLine,
+      stderr: technicalTail(result.stderr),
+    };
+  }
+
   async probeVideo(
     videoPath: string,
     signal?: AbortSignal,
@@ -946,6 +1061,89 @@ export class FFmpegAdapter {
     ];
   }
 
+  private buildMuxAudioMixArguments(request: {
+    videoPath: string;
+    audioInputs: Array<{
+      clip: MuxAudioMixRequest['audioMixPlan']['clips'][number];
+      sourcePath: string;
+      channels: number;
+    }>;
+    outputPath: string;
+    overwrite: boolean;
+  }): readonly string[] {
+    const args = [
+      request.overwrite ? '-y' : '-n',
+      '-hide_banner',
+      '-loglevel',
+      'info',
+      '-i',
+      request.videoPath,
+    ];
+    for (const input of request.audioInputs) {
+      args.push('-i', input.sourcePath);
+    }
+
+    if (request.audioInputs.length === 0) {
+      args.push(
+        '-map',
+        '0:v:0',
+        '-c:v',
+        'copy',
+        '-an',
+        '-movflags',
+        '+faststart',
+        request.outputPath,
+      );
+      return args;
+    }
+
+    const mixEndMs = request.audioInputs.reduce(
+      (latestEndMs, { clip }) => Math.max(latestEndMs, clip.endMs),
+      0,
+    );
+    const mixEndSamples = mixEndMs * 48;
+    const filters = request.audioInputs.map(({ clip, channels }, index) => {
+      const inputIndex = index + 1;
+      const sourceDurationMs = clip.endMs - clip.startMs;
+      const channelDelays = Array.from(
+        { length: channels },
+        () => clip.startMs,
+      ).join('|');
+      return `[${inputIndex}:a:0]atrim=start=${this.seconds(clip.sourceOffsetMs)}:duration=${this.seconds(sourceDurationMs)},asetpts=PTS-STARTPTS,volume=${clip.volume},aresample=48000,adelay=${channelDelays},apad=whole_len=${mixEndSamples}[clip_${index}]`;
+    });
+    const mixedInputs = request.audioInputs
+      .map((_, index) => `[clip_${index}]`)
+      .join('');
+    // The bundled FFmpeg predates amix's normalize option. Keep every input
+    // alive through the same end time so its default N-way average stays
+    // constant, then restore the linear sum with one N gain after the mix.
+    filters.push(
+      `${mixedInputs}amix=inputs=${request.audioInputs.length}:duration=longest:dropout_transition=0,volume=${request.audioInputs.length}[mixed]`,
+    );
+    args.push(
+      '-filter_complex',
+      filters.join(';'),
+      '-map',
+      '0:v:0',
+      '-map',
+      '[mixed]',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-movflags',
+      '+faststart',
+      request.outputPath,
+    );
+    return args;
+  }
+
+  private seconds(milliseconds: number): string {
+    return (milliseconds / 1_000).toFixed(3).replace(/\.?0+$/u, '');
+  }
+
   private async inspectFrameSequence(framesDirectory: string): Promise<number> {
     let entries;
     try {
@@ -1157,6 +1355,78 @@ export class FFmpegAdapter {
     return new FFmpegAdapterError(
       'PROCESS_FAILED',
       `音视频合成失败（FFmpeg 退出码 ${result.code ?? 'unknown'}）。`,
+      {
+        executable: this.ffmpegPath,
+        args,
+        exitCode: result.code,
+        signal: result.signal,
+        stderr,
+      },
+    );
+  }
+
+  private mapAudioMixFailure(
+    args: readonly string[],
+    result: ProcessResult,
+    audioInputs: Array<{
+      clip: MuxAudioMixRequest['audioMixPlan']['clips'][number];
+      sourcePath: string;
+      channels: number;
+    }>,
+  ): FFmpegAdapterError {
+    const stderr = technicalTail(result.stderr);
+    if (/unknown encoder ['"]?aac/iu.test(stderr)) {
+      return new FFmpegAdapterError(
+        'ENCODER_UNAVAILABLE',
+        '当前 FFmpeg 不包含 AAC 编码器，无法合成带声音的视频。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    if (
+      /invalid data found|error while decoding|could not find codec parameters|invalid.*audio|failed to open codec/iu.test(
+        stderr,
+      )
+    ) {
+      const failingInput = audioInputs.find(({ sourcePath }) =>
+        stderr.includes(sourcePath),
+      );
+      const clipIdentity = failingInput
+        ? `音频片段 ${failingInput.clip.clipId}`
+        : `${audioInputs.length} 条参与混合的音频`;
+      return new FFmpegAdapterError(
+        'AUDIO_INPUT_INVALID',
+        `无法解码${clipIdentity}，请检查来源素材后重试。`,
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    if (/permission denied|access is denied/iu.test(stderr)) {
+      return new FFmpegAdapterError(
+        'OUTPUT_NOT_WRITABLE',
+        'FFmpeg 无法写入含声视频输出文件。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    return new FFmpegAdapterError(
+      'PROCESS_FAILED',
+      `多轨音频混合失败（FFmpeg 退出码 ${result.code ?? 'unknown'}）。`,
       {
         executable: this.ffmpegPath,
         args,

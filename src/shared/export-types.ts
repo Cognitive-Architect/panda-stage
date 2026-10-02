@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ExportAudioClipInputSchema } from './audio-mix-types';
 
 export const EXPORT_FPS = 24 as const;
 export const MAX_PENDING_FRAMES = 3 as const;
@@ -95,11 +96,10 @@ const Mp4OutputPathSchema = FileSystemPathSchema.refine(
 export const FullProbeExportRequestSchema = z
   .object({
     projectDirectory: FileSystemPathSchema,
-    audioPath: FileSystemPathSchema,
+    audioClips: z.array(ExportAudioClipInputSchema),
     outputPath: Mp4OutputPathSchema,
     durationMs: DurationSchema,
     fps: z.literal(EXPORT_FPS),
-    audioStartMs: z.number().int().nonnegative(),
     overwrite: z.boolean().default(false),
   })
   .strict();

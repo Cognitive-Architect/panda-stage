@@ -103,6 +103,7 @@ export interface CharacterEditorProps {
   assemblyDraft?: CompositeCharacterDefinition | null;
   onOpenAssembly?: () => boolean;
   onLeaveAssembly?: () => boolean;
+  onSetAssemblyHeadAsset?: (assetId: string | null) => void;
   onSetAssemblyBodyAsset?: (assetId: string) => void;
   onSetAssemblyMouthAsset?: (assetId: string | null) => void;
   onSetDefaultTransform: (scale: number, flipX: boolean) => void;
@@ -134,6 +135,7 @@ export function CharacterEditor({
   assemblyDraft = null,
   onOpenAssembly = () => false,
   onLeaveAssembly = () => true,
+  onSetAssemblyHeadAsset = () => undefined,
   onSetAssemblyBodyAsset = () => undefined,
   onSetAssemblyMouthAsset = () => undefined,
   onSetDefaultTransform,
@@ -286,6 +288,7 @@ export function CharacterEditor({
           className={`character-detail-navigation${landscapeDetail ? ' character-detail-navigation-detail' : ''}`}
         >
           <button
+            aria-label={landscapeDetail ? '返回角色列表' : undefined}
             className="character-back-button"
             data-testid={
               landscapeExpression
@@ -295,9 +298,14 @@ export function CharacterEditor({
             onClick={
               landscapeExpression ? onBackToDetail : onBackToList
             }
+            title={landscapeDetail ? '返回角色列表' : undefined}
             type="button"
           >
-            {landscapeExpression ? '← 返回角色详情' : '← 角色列表'}
+            {landscapeDetail ? (
+              <span aria-hidden="true">←</span>
+            ) : (
+              '← 返回角色详情'
+            )}
           </button>
           {landscapeDetail ? (
             <h1
@@ -448,25 +456,40 @@ export function CharacterEditor({
                   </>
                 )}
               </div>
-              {activeWorkspace === 'expressions' ? (
-                <button
-                  aria-expanded={expressionAddOpen}
-                  className="character-detail-add-expression-trigger"
-                  data-testid="expression-add-trigger"
-                  disabled={disabled || imageAssets.length === 0}
+              <div className="character-detail-identity-actions">
+                {activeWorkspace === 'expressions' ? (
+                  <button
+                    aria-expanded={expressionAddOpen}
+                    className="character-detail-add-expression-trigger"
+                    data-testid="expression-add-trigger"
+                    disabled={disabled || imageAssets.length === 0}
+                    onClick={() =>
+                      setExpressionAddOpen((isOpen) => !isOpen)
+                    }
+                    type="button"
+                  >
+                    ＋ 添加表情
+                  </button>
+                ) : null}
+                <Button
+                  aria-label="加入当前镜头"
+                  className="character-detail-place-action"
+                  data-testid="character-detail-place-current-shot"
+                  disabled={placementUnavailableReason !== null}
                   onClick={() =>
-                    setExpressionAddOpen((isOpen) => !isOpen)
+                    onPlaceInCurrentShot(placementBlockedByTransform)
                   }
-                  type="button"
+                  title={placementUnavailableReason ?? '加入当前镜头'}
+                  variant="secondary"
                 >
-                  ＋ 添加表情
-                </button>
-              ) : null}
+                  ＋ 加入镜头
+                </Button>
+              </div>
             </div>
           </section>
         </>
       ) : null}
-      {view === 'detail' ? (
+      {view === 'detail' && !landscapeDetail ? (
         <Button
           className="character-detail-place-action"
           data-testid="character-detail-place-current-shot"
@@ -621,7 +644,7 @@ export function CharacterEditor({
                 onClick={() => switchDetailWorkspace('assembly')}
                 type="button"
               >
-                装配
+                组装
               </button>
             ) : null}
             <button
@@ -661,7 +684,7 @@ export function CharacterEditor({
           </nav>
           {compositeCharacter ? (
             <section
-              aria-label="角色装配素材"
+              aria-label="角色组装素材"
               className="character-workspace-panel character-assembly-drawer-panel"
               data-testid="character-assembly-drawer-panel"
               data-workspace="assembly"
@@ -686,6 +709,23 @@ export function CharacterEditor({
                     : '')
                 }
                 testId="character-assembly-body-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyOption={{ label: '不添加头部', optional: true }}
+                emptyActionLabel="选择"
+                label="头部"
+                onChange={onSetAssemblyHeadAsset}
+                onThumbnailError={onThumbnailError}
+                searchAndPaginate
+                selectedAssetId={
+                  assemblyDraft
+                    ? assemblyDraft.head?.assetId ?? null
+                    : character.head?.assetId ?? null
+                }
+                testId="character-assembly-head-asset"
                 thumbnails={thumbnails}
                 disabled={disabled}
               />

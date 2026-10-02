@@ -23,6 +23,11 @@ function compositeProject() {
           offsetY: 8,
           scale: 1.25,
         },
+        head: {
+          assetId: IDS.assetChar2,
+          placement: { offsetX: 14, offsetY: -6, scale: 0.8 },
+          pivot: { x: 320, y: 280 },
+        },
       },
     ],
   });
@@ -41,6 +46,11 @@ describe('BFM-S01 Character schema', () => {
         offsetX: -12.5,
         offsetY: 8,
         scale: 1.25,
+      },
+      head: {
+        assetId: IDS.assetChar2,
+        placement: { offsetX: 14, offsetY: -6, scale: 0.8 },
+        pivot: { x: 320, y: 280 },
       },
       baseAssetId: IDS.assetChar,
     });
@@ -99,6 +109,110 @@ describe('BFM-S01 Character schema', () => {
     }
   });
 
+  it('requires a valid Character-local Head only on composite Characters', () => {
+    const project = buildProject();
+    const character = project.characters[0]!;
+    const validHead = {
+      assetId: IDS.assetChar2,
+      placement: { offsetX: 4, offsetY: -9, scale: 0.75 },
+      pivot: { x: 320, y: 280 },
+    };
+
+    expect(
+      ProjectSchema.safeParse({
+        ...project,
+        characters: [
+          {
+            ...character,
+            mode: 'composite',
+            bodyAssetId: IDS.assetBg,
+            facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+            head: validHead,
+          },
+        ],
+      }).success,
+    ).toBe(true);
+
+    for (const head of [
+      { ...validHead, placement: { ...validHead.placement, scale: 0 } },
+      {
+        ...validHead,
+        placement: { ...validHead.placement, offsetX: Number.NaN },
+      },
+      { ...validHead, pivot: { ...validHead.pivot, y: Number.POSITIVE_INFINITY } },
+    ]) {
+      expect(
+        ProjectSchema.safeParse({
+          ...project,
+          characters: [
+            {
+              ...character,
+              mode: 'composite',
+              bodyAssetId: IDS.assetBg,
+              facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+              head,
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    }
+
+    expect(
+      ProjectSchema.safeParse({
+        ...project,
+        characters: [{ ...character, head: validHead }],
+      }).success,
+    ).toBe(false);
+
+    const dangling = ProjectSchema.safeParse({
+      ...project,
+      characters: [
+        {
+          ...character,
+          mode: 'composite',
+          bodyAssetId: IDS.assetBg,
+          facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+          head: { ...validHead, assetId: 'ffffffff-ffff-4fff-8fff-fffffffffff1' },
+        },
+      ],
+    });
+    expect(dangling.success).toBe(false);
+    if (!dangling.success) {
+      expect(dangling.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: ['characters', 0, 'head', 'assetId'] }),
+        ]),
+      );
+    }
+
+    const nonImage = ProjectSchema.safeParse({
+      ...project,
+      assets: [
+        ...project.assets,
+        {
+          id: '10000000-0000-4000-8000-000000000004',
+          kind: 'audio',
+          name: 'Voice asset',
+          relativePath: 'voice.wav',
+          mimeType: 'audio/wav',
+        },
+      ],
+      characters: [
+        {
+          ...character,
+          mode: 'composite',
+          bodyAssetId: IDS.assetBg,
+          facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+          head: {
+            ...validHead,
+            assetId: '10000000-0000-4000-8000-000000000004',
+          },
+        },
+      ],
+    });
+    expect(nonImage.success).toBe(false);
+  });
+
   it('keeps the historical v6 Character shape independent from current validation', () => {
     const project = buildProject();
     const { mode, ...historicalCharacter } = project.characters[0]!;
@@ -128,6 +242,20 @@ describe('BFM-S01 Character schema', () => {
         expect.objectContaining({
           kind: 'character-body',
           path: 'characters[0].bodyAssetId',
+        }),
+      ]),
+    );
+  });
+
+  it('scans the composite Head asset reference for deletion protection', () => {
+    const project = compositeProject();
+    const references = scanAssetReferences(project, IDS.assetChar2);
+
+    expect(references).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'character-head',
+          path: 'characters[0].head.assetId',
         }),
       ]),
     );

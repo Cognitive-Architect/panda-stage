@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { buildExportAudioMixPlan } from '../../domain';
 import {
   ExportProbeConfigSchema,
   FullProbeExportRequestSchema,
@@ -36,11 +37,10 @@ export interface FullProbeMediaAdapter {
     },
     signal?: AbortSignal,
   ): Promise<unknown>;
-  muxSingleAudio(
+  muxAudioMix(
     request: {
       videoPath: string;
-      audioPath: string;
-      startMs: number;
+      audioMixPlan: ReturnType<typeof buildExportAudioMixPlan>;
       outputPath: string;
       overwrite: boolean;
     },
@@ -240,10 +240,19 @@ export class ExportService {
     if (!this.mediaAdapter) {
       throw new Error('Full probe export requires an FFmpeg adapter.');
     }
+    const audioMixPlan = buildExportAudioMixPlan(
+      request.durationMs,
+      request.audioClips,
+    );
     const active = this.createJob(request);
     return {
       jobId: active.jobId,
-      completion: this.executeFullProbe(active, request, this.mediaAdapter),
+      completion: this.executeFullProbe(
+        active,
+        request,
+        audioMixPlan,
+        this.mediaAdapter,
+      ),
     };
   }
 
@@ -256,6 +265,7 @@ export class ExportService {
   private async executeFullProbe(
     active: ActiveJob,
     request: FullProbeExportRequest,
+    audioMixPlan: ReturnType<typeof buildExportAudioMixPlan>,
     adapter: FullProbeMediaAdapter,
   ): Promise<FullProbeExportResult> {
     const record = this.requireJob(active.jobId);
@@ -306,11 +316,10 @@ export class ExportService {
 
       record.phase = 'muxing';
       this.emit(record);
-      await adapter.muxSingleAudio(
+      await adapter.muxAudioMix(
         {
           videoPath: silentVideoPath,
-          audioPath: request.audioPath,
-          startMs: request.audioStartMs,
+          audioMixPlan,
           outputPath: finalOutputStagingPath,
           overwrite: false,
         },

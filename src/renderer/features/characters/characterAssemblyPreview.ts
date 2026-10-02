@@ -1,10 +1,13 @@
 import {
   resolveLayerVisualParts,
   type Character,
+  type CharacterHead,
   type EvaluatedLayer,
+  type ImageAsset,
   type Layer,
   type LayerVisualParts,
   type Project,
+  type VisualLocalRect,
 } from '../../../domain';
 import type {
   CharacterAssemblySnapshot,
@@ -18,6 +21,118 @@ export type CharacterAssemblySnapshotUnion =
 export type AssemblyFaceSelection =
   | { kind: 'expression'; expressionId: string }
   | { kind: 'mouth' };
+
+export interface AssemblyHeadMotionTestToken {
+  sessionId: number;
+  generation: number;
+}
+
+export interface AssemblyHeadPreviewPart {
+  assetId: string;
+  localRect: VisualLocalRect;
+}
+
+export interface NormalizedImageBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface CharacterLocalPointerDelta {
+  x: number;
+  y: number;
+}
+
+export interface CharacterAssemblyPreviewVisual extends LayerVisualParts {
+  /** Assembly-only visual; it never enters the production Stage resolver. */
+  headPart: AssemblyHeadPreviewPart | null;
+}
+
+export function isAssemblyHeadMotionTestRunning(
+  token: AssemblyHeadMotionTestToken | null,
+  session: CharacterAssemblySnapshotUnion,
+): boolean {
+  return Boolean(
+    token &&
+      session.draft.head &&
+      token.sessionId === session.sessionId &&
+      token.generation === session.generation,
+  );
+}
+
+export function findVisibleImageBounds(
+  rgba: ArrayLike<number>,
+  width: number,
+  height: number,
+  alphaThreshold = 8,
+): NormalizedImageBounds | null {
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width <= 0 ||
+    height <= 0 ||
+    rgba.length < width * height * 4
+  ) {
+    return null;
+  }
+
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (rgba[(y * width + x) * 4 + 3]! < alphaThreshold) continue;
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+
+  if (right < left || bottom < top) return null;
+  return {
+    x: left / width,
+    y: top / height,
+    width: (right - left + 1) / width,
+    height: (bottom - top + 1) / height,
+  };
+}
+
+export function characterLocalPointerDelta(
+  startX: number,
+  startY: number,
+  currentX: number,
+  currentY: number,
+  viewportScale: number,
+): CharacterLocalPointerDelta {
+  const safeScale = Number.isFinite(viewportScale)
+    ? Math.max(viewportScale, 0.0001)
+    : 0.0001;
+  return {
+    x: (currentX - startX) / safeScale,
+    y: (currentY - startY) / safeScale,
+  };
+}
+
+export function headScaleFromPointerDistance(
+  startScale: number,
+  startDistance: number,
+  currentDistance: number,
+): number {
+  if (
+    !Number.isFinite(startScale) ||
+    !Number.isFinite(startDistance) ||
+    !Number.isFinite(currentDistance) ||
+    startScale <= 0 ||
+    startDistance <= 0 ||
+    currentDistance < 0
+  ) {
+    return Math.max(0.05, Number.isFinite(startScale) ? startScale : 1);
+  }
+  return Math.max(0.05, startScale * (currentDistance / startDistance));
+}
 
 export function isCharacterCreationSnapshot(
   session: CharacterAssemblySnapshotUnion,
@@ -43,6 +158,7 @@ export function isCharacterAssemblyPending(
   const current = {
     bodyAssetId: character.bodyAssetId,
     facePlacement: character.facePlacement,
+    ...(character.head ? { head: character.head } : {}),
     expressionAssets: character.expressions.map((expression) => ({
       expressionId: expression.id,
       assetId: expression.assetId,
@@ -66,7 +182,7 @@ export function hasPendingCharacterAssemblyEdit(
 
 /** One product-level decision for every route that exits the assembly context. */
 export const ASSEMBLY_DISCARD_CONFIRM_MESSAGE =
-  '装配更改尚未应用，离开将放弃这些更改。继续吗？';
+  '组装更改尚未应用，离开将放弃这些更改。继续吗？';
 
 export type AssemblyExitDecision = 'leave' | 'stay';
 
@@ -146,6 +262,15 @@ function previewCharacter(
       defaultFlipX: session.draft.defaultFlipX ?? false,
       bodyAssetId: session.draft.bodyAssetId,
       facePlacement: { ...session.draft.facePlacement },
+      ...(session.draft.head
+        ? {
+            head: {
+              assetId: session.draft.head.assetId,
+              placement: { ...session.draft.head.placement },
+              pivot: { ...session.draft.head.pivot },
+            },
+          }
+        : {}),
     };
   }
 
@@ -170,15 +295,39 @@ function previewCharacter(
   if (!defaultExpression) return null;
   const baseCharacter = { ...existing };
   delete baseCharacter.mouthOpenAssetId;
+  delete baseCharacter.head;
   return {
     ...baseCharacter,
     baseAssetId: defaultExpression.assetId,
     expressions,
     bodyAssetId: session.draft.bodyAssetId,
     facePlacement: { ...session.draft.facePlacement },
+    ...(session.draft.head
+      ? {
+          head: {
+            assetId: session.draft.head.assetId,
+            placement: { ...session.draft.head.placement },
+            pivot: { ...session.draft.head.pivot },
+          },
+        }
+      : {}),
     ...(session.draft.mouthOpenAssetId
       ? { mouthOpenAssetId: session.draft.mouthOpenAssetId }
       : {}),
+  };
+}
+
+function centeredHeadRect(
+  asset: ImageAsset,
+  placement: CharacterHead['placement'],
+): VisualLocalRect {
+  const width = asset.width * placement.scale;
+  const height = asset.height * placement.scale;
+  return {
+    x: placement.offsetX - width / 2,
+    y: placement.offsetY - height / 2,
+    width,
+    height,
   };
 }
 
@@ -190,7 +339,7 @@ export function buildCharacterAssemblyPreviewVisual(
   project: Project,
   session: CharacterAssemblySnapshotUnion,
   selection: AssemblyFaceSelection,
-): LayerVisualParts | null {
+): CharacterAssemblyPreviewVisual | null {
   const character = previewCharacter(project, session);
   if (!character || character.mode !== 'composite') return null;
   const expressions = character.expressions;
@@ -233,7 +382,7 @@ export function buildCharacterAssemblyPreviewVisual(
   };
   const layer: Layer = {
     id: PREVIEW_LAYER_ID,
-    name: '临时装配预览',
+    name: '临时组装预览',
     source: {
       kind: 'character',
       characterId: character.id,
@@ -267,5 +416,25 @@ export function buildCharacterAssemblyPreviewVisual(
     visible: layer.visible,
     zIndex: layer.zIndex,
   };
-  return resolveLayerVisualParts(previewProject, { layers: [layer] }, evaluated);
+  const visual = resolveLayerVisualParts(
+    previewProject,
+    { layers: [layer] },
+    evaluated,
+  );
+  const headAsset = character.head
+    ? project.assets.find(
+        (asset): asset is ImageAsset =>
+          asset.id === character.head?.assetId && asset.kind === 'image',
+      )
+    : undefined;
+  return {
+    ...visual,
+    headPart:
+      character.head && headAsset
+        ? {
+            assetId: headAsset.id,
+            localRect: centeredHeadRect(headAsset, character.head.placement),
+          }
+        : null,
+  };
 }

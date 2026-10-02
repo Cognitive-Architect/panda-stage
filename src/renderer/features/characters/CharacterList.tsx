@@ -398,6 +398,34 @@ export function CharacterList({
               />
               <ImageAssetPicker
                 assets={imageAssets}
+                emptyOption={{ label: '不添加头部', optional: true }}
+                emptyActionLabel="选择"
+                label="头部"
+                onChange={(assetId) => {
+                  if (!compositeDraft) return;
+                  const next = { ...compositeDraft };
+                  if (assetId) {
+                    next.head = compositeDraft.head
+                      ? { ...compositeDraft.head, assetId }
+                      : {
+                          assetId,
+                          placement: { offsetX: 0, offsetY: 0, scale: 1 },
+                          pivot: { x: 0, y: 0 },
+                        };
+                  } else {
+                    delete next.head;
+                  }
+                  onCompositeDraftChange(next);
+                }}
+                onThumbnailError={onThumbnailError}
+                searchAndPaginate
+                selectedAssetId={compositeDraft?.head?.assetId ?? null}
+                testId="character-create-head-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <ImageAssetPicker
+                assets={imageAssets}
                 emptyState={{
                   description: '从项目图片中选择默认脸部。',
                   label: '请选择图片',

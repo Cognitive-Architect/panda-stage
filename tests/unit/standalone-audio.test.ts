@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PROJECT_SCHEMA_VERSION,
   AudioClipService, AudioClipSchema, DialogueService, ProjectSchema,
   audioClipDurationMs, audioClipGain, audioClipSourceTimeMs, isAudioClipActiveAtTime, migrateProject,
 } from '../../src/domain';
@@ -126,7 +127,7 @@ describe('A01 standalone audio foundation', () => {
     const before = structuredClone(legacy);
     const migrated = migrateProject(legacy);
     expect(legacy).toEqual(before);
-    expect(migrated.schemaVersion).toBe(8);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(migrated.shots[0]!.dialogues).toEqual(project.shots[0]!.dialogues);
     expect(migrated.shots[0]!.audioClips).toEqual(legacy.shots[0]!.audioClips.map((clip) => ({ ...clip, role: 'dialogue' })));
     expect(() => service.remove(migrated, { shotId: IDS.shot, clipId: migrated.shots[0]!.audioClips[0]!.id })).toThrow();
