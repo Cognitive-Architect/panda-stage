@@ -297,6 +297,14 @@ describe('R1-B SVG builder: SVG for a renderable target', () => {
     const outOfRange = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 5 });
     expect(outOfRange.ok).toBe(false);
     if (!outOfRange.ok) expect(outOfRange.code).toBe('TARGET_OUT_OF_RANGE');
+
+    const targetRange = await buildSvgForRenderTarget(bytes, {
+      ...target,
+      frameCount: 3,
+      selectedFrameIndex: 3,
+    });
+    expect(targetRange.ok).toBe(false);
+    if (!targetRange.ok) expect(targetRange.code).toBe('TARGET_OUT_OF_RANGE');
   });
 
   it('rejects a Graphic tween interior instead of repeating the keyframe state', async () => {

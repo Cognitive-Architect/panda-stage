@@ -633,15 +633,22 @@ function resolveTargetDisplayList(
       return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'Graphic symbol not found: ' + (sourceName ?? '(unset)') };
     }
     const selectedFrameIndex = target.selectedFrameIndex ?? 0;
-    if (selectedFrameIndex >= descriptor.frameCount) {
-      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: 'selectedFrameIndex ' + selectedFrameIndex + ' >= frameCount ' + descriptor.frameCount };
+    const frameCount = Math.min(target.frameCount, descriptor.frameCount);
+    if (selectedFrameIndex >= frameCount) {
+      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: 'selectedFrameIndex ' + selectedFrameIndex + ' >= frameCount ' + frameCount };
     }
-    const frameContext = source.buildGraphicFrameContext(
-      descriptor.timelineXml,
-      descriptor.frameSpanIndex,
-      selectedFrameIndex,
-      'graphic:' + descriptor.sourceLibraryItemName,
-    );
+    // The adapter already resolved index 0 to populate the accepted P0
+    // symbol table and catalog descriptor. Reuse that frame-local context so
+    // a normal first-frame preview does not spend the bounded source-node
+    // budget parsing the same source elements a second time.
+    const frameContext = selectedFrameIndex === 0
+      ? { ok: true as const, value: descriptor.frameContext }
+      : source.buildGraphicFrameContext(
+          descriptor.timelineXml,
+          descriptor.frameSpanIndex,
+          selectedFrameIndex,
+          'graphic:' + descriptor.sourceLibraryItemName,
+        );
     if (!frameContext.ok) {
       return {
         ok: false,
