@@ -13,6 +13,7 @@
     "verify:issue663-dialogue-voice": "pnpm build && electron scripts/verify-issue663-dialogue-voice.cjs",
     "verify:issue659-preview-mixer": "pnpm build && electron scripts/verify-issue659-preview-mixer.cjs",
     "verify:issue658-audio-timeline": "pnpm build && electron scripts/verify-issue658-audio-timeline.cjs",
+    "verify:issue676-p0-c02": "pnpm build && electron scripts/verify-issue676-p0-c02.cjs",
     "dev": "pnpm build:electron && concurrently --kill-others --success first \"pnpm dev:renderer\" \"pnpm dev:electron\"",
     "dev:renderer": "vite",
     "dev:electron": "concurrently --kill-others \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron dist-electron/main/index.js\"",

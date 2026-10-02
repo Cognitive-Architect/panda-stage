@@ -35,6 +35,11 @@ import type {
   FlaRenderTarget,
   FlaStaticSnapshotPreviewErrorCode,
 } from '../../shared/fla-static-snapshot-api';
+import { FLA_STATIC_SNAPSHOT_LIMITS } from '../../shared/fla-static-snapshot-api';
+import type {
+  FlaResolvedDisplayList,
+  FlaResolvedDisplayNode,
+} from './fla-display-list-resolver';
 
 // ---- Limits (subset of FLA_IMPORT_LIMITS used by the R1 SVG builder) ----
 const MAX_SOURCE_BYTES = FLA_IMPORT_LIMITS.maxSourceBytes; // 256 MiB
@@ -532,11 +537,12 @@ function applyMatrixToPoint(m: Matrix2D, x: number, y: number): { x: number; y: 
 interface ParsedShape {
   matrix: Matrix2D | null;
   fillColor: string | null;
+  fillOpacity: number;
   edgeStrings: Array<{ cubics: string; edges: string }>;
 }
 
 function parseShapeAt(block: string): ParsedShape {
-  const result: ParsedShape = { matrix: null, fillColor: null, edgeStrings: [] };
+  const result: ParsedShape = { matrix: null, fillColor: null, fillOpacity: 1, edgeStrings: [] };
   const matrixBlock = extractBalancedBlocks(block, 'matrix')[0];
   if (matrixBlock) {
     const m = matrixBlock.match(/<Matrix\b([^/>]*)\/?>/);
@@ -553,7 +559,9 @@ function parseShapeAt(block: string): ParsedShape {
   if (fillsBlock) {
     const fillStyleBlocks = extractBalancedBlocks(fillsBlock, 'FillStyle');
     if (fillStyleBlocks.length > 0) {
-      result.fillColor = parseFillStyle(fillStyleBlocks[0] as string).color;
+      const fill = parseFillStyle(fillStyleBlocks[0] as string);
+      result.fillColor = fill.color;
+      result.fillOpacity = Number.isFinite(fill.alpha) ? Math.max(0, Math.min(1, fill.alpha)) : 1;
     }
   }
   const edgesBlock = extractBalancedBlocks(block, 'edges')[0];
@@ -821,5 +829,283 @@ export async function buildSvgForRenderTarget(bytes: Uint8Array, target: FlaRend
     pathCommandCount: allCommands.length,
     firstFillColor: fillColor,
     hasRenderablePath,
+  };
+}
+
+export interface FlaStaticSnapshotBitmapMedia {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+  readonly pngBytes: Uint8Array;
+}
+
+export type FlaStaticSnapshotBitmapMediaLookupResult =
+  | { readonly ok: true; readonly media: FlaStaticSnapshotBitmapMedia }
+  | { readonly ok: false; readonly reason: 'missing' | 'ambiguous' };
+
+export type FlaStaticSnapshotBitmapMediaLookup = (
+  sourceLibraryItemName: string,
+) => FlaStaticSnapshotBitmapMediaLookupResult;
+
+export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
+  /** C02 receipt facts consumed by tests and later production diagnostics. */
+  readonly composition: {
+    readonly resolvedNodeCount: number;
+    readonly bitmapInstanceCount: number;
+    readonly shapeCount: number;
+  };
+}
+
+export type BuildComposedSvgResult = BuildComposedSvgSuccess | BuildSvgFailure;
+
+export interface BuildComposedSvgInput {
+  readonly displayList: FlaResolvedDisplayList;
+  readonly stageWidth: number;
+  readonly stageHeight: number;
+  /** C01 shape ids map to source DOMShape blocks held in the Main process. */
+  readonly shapeBlocks: ReadonlyMap<string, string>;
+  /** Resolves names against the Panda-owned inspection-session PNG payloads. */
+  readonly resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup;
+}
+
+interface ComposedLeaf {
+  readonly node: Exclude<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+function validSvgColor(value: string | null): string {
+  if (value && /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(value)) {
+    return value;
+  }
+  return '#808080';
+}
+
+function matrixIsFinite(matrix: FlaResolvedDisplayNode['worldTransform']): boolean {
+  return [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty].every(Number.isFinite);
+}
+
+function isPngWithExpectedDimensions(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+): boolean {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.byteLength < 33 || signature.some((value, index) => bytes[index] !== value)) return false;
+  const readUint32 = (offset: number): number =>
+    ((bytes[offset] ?? 0) * 0x1000000) +
+    ((bytes[offset + 1] ?? 0) << 16) +
+    ((bytes[offset + 2] ?? 0) << 8) +
+    (bytes[offset + 3] ?? 0);
+  return readUint32(16) === width && readUint32(20) === height && bytes[25] === 6;
+}
+
+function flattenResolvedDisplayList(
+  displayList: FlaResolvedDisplayList,
+): { readonly ok: true; readonly leaves: readonly ComposedLeaf[] } | BuildSvgFailure {
+  const leaves: ComposedLeaf[] = [];
+  let visited = 0;
+  const visit = (
+    node: FlaResolvedDisplayNode,
+    depth: number,
+  ): BuildSvgFailure | null => {
+    visited += 1;
+    if (visited > 100_000) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Resolved display list exceeds the node budget' };
+    }
+    if (depth > 64) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Resolved display list exceeds the recursion budget' };
+    }
+    if (!matrixIsFinite(node.worldTransform)) {
+      return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains a non-finite transform' };
+    }
+    if (node.kind === 'group') {
+      for (const child of node.children) {
+        const nestedFailure = visit(child, depth + 1);
+        if (nestedFailure) return nestedFailure;
+      }
+      return null;
+    }
+    leaves.push({ node });
+    return null;
+  };
+
+  for (const layer of displayList.layers) {
+    for (const node of layer.children) {
+      const nestedFailure = visit(node, 0);
+      if (nestedFailure) return nestedFailure;
+    }
+  }
+  if (displayList.resolvedNodeCount > 100_000 || visited > displayList.resolvedNodeCount) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Resolved display-list count is inconsistent or exceeds its budget' };
+  }
+  return { ok: true, leaves };
+}
+
+/**
+ * C02 compositor for an already-resolved C01 tree. It flattens drawable leaves
+ * and applies each absolute worldTransform once; group transforms are never
+ * nested around descendants that already carry absolute matrices. Layers and
+ * leaves are emitted in input order. XFL parser source order is back-to-front,
+ * and SVG paints later siblings on top, matching Animate's stacking semantics.
+ */
+export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): BuildComposedSvgResult {
+  const { displayList, stageWidth, stageHeight, shapeBlocks, resolveBitmapMedia } = input;
+  if (!displayList || !Array.isArray(displayList.layers) || !shapeBlocks ||
+      typeof shapeBlocks.get !== 'function' ||
+      typeof resolveBitmapMedia !== 'function') {
+    return { ok: false, code: 'RENDER_FAILED', message: 'Invalid composed display-list input' };
+  }
+  if (!Number.isFinite(stageWidth) || !Number.isFinite(stageHeight) || stageWidth <= 0 || stageHeight <= 0) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Stage dimensions must be finite and positive' };
+  }
+  const width = Math.ceil(stageWidth);
+  const height = Math.ceil(stageHeight);
+  if (width > MAX_OUTPUT_WIDTH || height > MAX_OUTPUT_HEIGHT) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: `Output ${width}x${height} exceeds budget` };
+  }
+  if (width * height > MAX_OUTPUT_PIXELS) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: `Output pixel count ${width * height} exceeds ${MAX_OUTPUT_PIXELS}` };
+  }
+
+  const flattened = flattenResolvedDisplayList(displayList);
+  if (!flattened.ok) return flattened;
+
+  const definitions = new Map<string, string>();
+  const resolvedMediaByName = new Map<string, FlaStaticSnapshotBitmapMediaLookupResult>();
+  const emittedNodes: string[] = [];
+  let embeddedPngBytes = 0;
+  let emittedContentBytes = 0;
+  let pathCommandCount = 0;
+  let shapeCount = 0;
+  let bitmapInstanceCount = 0;
+  let firstFillColor: string | null = null;
+
+  for (const { node } of flattened.leaves) {
+    if (node.kind === 'shape') {
+      const shapeBlock = shapeBlocks.get(node.shapeId);
+      if (!shapeBlock) {
+        return { ok: false, code: 'RENDER_FAILED', message: `Resolved shape source not found: ${node.shapeId}` };
+      }
+      const shape = parseShapeAt(shapeBlock);
+      if (shape.edgeStrings.length === 0) {
+        return { ok: false, code: 'RENDER_FAILED', message: `Resolved shape has no Edge children: ${node.shapeId}` };
+      }
+      const commands: DecodedEdges['commands'] = [];
+      for (const { cubics, edges } of shape.edgeStrings) {
+        const encodedEdges = cubics || edges;
+        if (encodedEdges.length > MAX_EDGE_CHARS) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: `Edge attribute exceeds ${MAX_EDGE_CHARS} chars` };
+        }
+        const decoded = decodeEdgesWithStyleChanges(encodedEdges);
+        commands.push(...decoded.commands);
+        if (commands.length > 1_000_000) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed vector path exceeds the command budget' };
+        }
+      }
+      if (commands.length === 0) {
+        return { ok: false, code: 'RENDER_FAILED', message: `Resolved shape has no decoded path: ${node.shapeId}` };
+      }
+      const fillColor = validSvgColor(shape.fillColor);
+      if (firstFillColor === null) firstFillColor = fillColor;
+      const pathD = commandsToSvgPath(commands);
+      const pathBytes = Buffer.byteLength(pathD, 'utf8');
+      if (pathBytes > MAX_EDGE_CHARS || pathBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+      }
+      const pathNode = `<path d="${pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fillColor}" fill-opacity="${shape.fillOpacity}" stroke="none" fill-rule="evenodd"/>`;
+      emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
+      emittedNodes.push(pathNode);
+      pathCommandCount += commands.length;
+      shapeCount += 1;
+      continue;
+    }
+
+    bitmapInstanceCount += 1;
+    let resolution = resolvedMediaByName.get(node.libraryItemName);
+    if (!resolution) {
+      resolution = resolveBitmapMedia(node.libraryItemName);
+      resolvedMediaByName.set(node.libraryItemName, resolution);
+    }
+    if (!resolution.ok) {
+      const reason = resolution.reason === 'ambiguous' ? 'is ambiguous' : 'was not found';
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Bitmap media reference ${reason}: ${node.libraryItemName}`,
+      };
+    }
+    const media = resolution.media;
+    if (!media.id || !Number.isSafeInteger(media.width) || !Number.isSafeInteger(media.height) ||
+        media.width <= 0 || media.height <= 0 || media.width > MAX_OUTPUT_WIDTH ||
+        media.height > MAX_OUTPUT_HEIGHT || media.width * media.height > MAX_OUTPUT_PIXELS ||
+        !(media.pngBytes instanceof Uint8Array) || media.pngBytes.byteLength <= 0 ||
+        media.pngBytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes ||
+        !isPngWithExpectedDimensions(media.pngBytes, media.width, media.height)) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Bitmap media payload is not a bounded RGBA PNG: ${node.libraryItemName}`,
+      };
+    }
+    const mediaKey = crypto.createHash('sha256').update(media.id, 'utf8').digest('hex').slice(0, 24);
+    const imageId = `fla-bitmap-${mediaKey}`;
+    if (!definitions.has(imageId)) {
+      const base64Length = Math.ceil(media.pngBytes.byteLength / 3) * 4;
+      const estimatedSvgBytes = embeddedPngBytes + emittedContentBytes + base64Length + 512;
+      if (estimatedSvgBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Embedded PNG media exceeds the SVG byte budget' };
+      }
+      const dataUri = Buffer.from(
+        media.pngBytes.buffer,
+        media.pngBytes.byteOffset,
+        media.pngBytes.byteLength,
+      ).toString('base64');
+      embeddedPngBytes += dataUri.length;
+      definitions.set(
+        imageId,
+        `<image id="${imageId}" x="0" y="0" width="${media.width}" height="${media.height}" preserveAspectRatio="none" href="data:image/png;base64,${dataUri}"/>`,
+      );
+    }
+    const useNode = `<use href="#${imageId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
+    emittedContentBytes += Buffer.byteLength(useNode, 'utf8');
+    if (embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+    }
+    emittedNodes.push(useNode);
+  }
+
+  const title = escapeXmlText(displayList.sourceName);
+  const defs = definitions.size > 0 ? `<defs>${[...definitions.values()].join('')}</defs>` : '';
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    `<title>FLA composed snapshot — ${title}</title>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount}</desc>` +
+    defs + emittedNodes.join('') + '</svg>\n';
+  const svgByteLength = Buffer.byteLength(svg, 'utf8');
+  if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+  }
+  return {
+    ok: true,
+    svg,
+    width,
+    height,
+    pixelCount: width * height,
+    pathCommandCount,
+    firstFillColor,
+    hasRenderablePath: shapeCount > 0,
+    composition: {
+      resolvedNodeCount: displayList.resolvedNodeCount,
+      bitmapInstanceCount,
+      shapeCount,
+    },
   };
 }
