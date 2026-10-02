@@ -182,7 +182,8 @@ describe('R1-B SVG builder: catalog discovery', () => {
     const result = await buildRenderableTargetCatalog(bytes);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.entries[0]?.target.frameCount).toBe(2);
+    const graphic = result.entries.find((entry) => entry.target.kind === 'graphic-symbol');
+    expect(graphic?.target.frameCount).toBe(2);
   });
 
   it('discovers the main scene target with kind=scene and frameCount=1', async () => {

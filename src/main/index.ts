@@ -395,7 +395,7 @@ async function initialize(): Promise<void> {
         const { sourceBytes } = session;
         const { basename, sha256 } = session.ir.source;
         if (!sourceBytes || !basename || !sha256) return null;
-        return { bytes: sourceBytes, basename, sha256 };
+        return { bytes: sourceBytes, basename, sha256, media: session.ir.media };
       },
     },
   });
@@ -453,7 +453,7 @@ async function initialize(): Promise<void> {
         const { sourceBytes } = session;
         const { basename, sha256 } = session.ir.source;
         if (!sourceBytes || !basename || !sha256) return null;
-        return { bytes: sourceBytes, basename, sha256 };
+        return { bytes: sourceBytes, basename, sha256, media: session.ir.media };
       },
     },
   });

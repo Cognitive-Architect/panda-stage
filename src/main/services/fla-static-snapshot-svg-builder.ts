@@ -39,7 +39,16 @@ import { FLA_STATIC_SNAPSHOT_LIMITS } from '../../shared/fla-static-snapshot-api
 import type {
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
+  FlaDisplayListResolverInput,
 } from './fla-display-list-resolver';
+import {
+  resolveFlaDisplayList,
+  type FlaDisplayListResolverResult,
+} from './fla-display-list-resolver';
+import {
+  adaptFlaXflDisplaySource,
+  type FlaStaticSnapshotDisplaySource,
+} from './fla-static-snapshot-display-list-adapter';
 
 // ---- Limits (subset of FLA_IMPORT_LIMITS used by the R1 SVG builder) ----
 const MAX_SOURCE_BYTES = FLA_IMPORT_LIMITS.maxSourceBytes; // 256 MiB
@@ -63,9 +72,8 @@ export interface BuildSvgSuccess {
   // The first FillStyle color used (hex). R1-C surfaces fidelity notes
   // in the UX; the renderer does not need to inspect it.
   firstFillColor: string | null;
-  // Whether the source has any path. R1-C honesty: if false, the
-  // resulting PNG is the transparent background, NOT a faithful
-  // representation of the target.
+  // Whether any vector path was emitted; a bitmap-only snapshot can still
+  // contain visible content when this is false.
   hasRenderablePath: boolean;
 }
 
@@ -530,10 +538,6 @@ function matrixToSvgTransform(m: Matrix2D): string {
   return `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.tx} ${m.ty})`;
 }
 
-function applyMatrixToPoint(m: Matrix2D, x: number, y: number): { x: number; y: number } {
-  return { x: m.a * x + m.c * y + m.tx, y: m.b * x + m.d * y + m.ty };
-}
-
 interface ParsedShape {
   matrix: Matrix2D | null;
   fillColor: string | null;
@@ -576,40 +580,11 @@ function parseShapeAt(block: string): ParsedShape {
   return result;
 }
 
-function pathBoundingBoxAfterMatrix(commands: DecodedEdges['commands'], m: Matrix2D | null): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  let x = 0, y = 0;
-  for (const cmd of commands) {
-    if (cmd.type === 'M') { x = cmd.x; y = cmd.y; }
-    else if (cmd.type === 'L') { x = cmd.x; y = cmd.y; }
-    else if (cmd.type === 'Q') { x = cmd.x; y = cmd.y; }
-    else if (cmd.type === 'C') { x = cmd.x; y = cmd.y; }
-    else if (cmd.type === 'Z') { /* keep position */ }
-    const p = m ? applyMatrixToPoint(m, x, y) : { x, y };
-    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
-  }
-  if (!Number.isFinite(minX)) return null;
-  return { minX, minY, maxX, maxY };
-}
-
-function stageSize(docXml: string): { width: number; height: number } {
-  const widthMatch = docXml.match(/<DOMDocument\b[^>]*\bwidth="([^"]*)"/);
-  const heightMatch = docXml.match(/<DOMDocument\b[^>]*\bheight="([^"]*)"/);
-  const width = widthMatch ? parseFloat(widthMatch[1] as string) : 550;
-  const height = heightMatch ? parseFloat(heightMatch[1] as string) : 400;
-  return { width, height };
-}
-
-// ---- Renderable target discovery ----
+// ---- Renderable target discovery and Main-side C01/C02 build path ----
 /**
  * R2 corrective (#309): catalog discovery and frame-source assembly can run
- * at different times, so an id generated during one build cannot be used as
- * the identity of the same logical target during a later build. Derive the
- * Panda-owned id from the accepted source bytes plus a stable logical target
- * key instead. The source bytes keep equal labels from different FLA sources
- * apart; the logical key keeps distinct targets in one source apart without
- * making the UI label the identity.
+ * at different times, so target ids derive from source bytes and a logical
+ * target key rather than from catalog build order.
  */
 function stableRenderTargetId(bytes: Uint8Array, logicalTargetKey: string): string {
   const digest = crypto
@@ -618,218 +593,204 @@ function stableRenderTargetId(bytes: Uint8Array, logicalTargetKey: string): stri
     .update('\u0000', 'utf8')
     .update(logicalTargetKey, 'utf8')
     .digest('hex');
-  return `fla-render-target-${digest}`;
+  return 'fla-render-target-' + digest;
 }
 
-function findGraphicSymbolShape(libraryXml: string): { shapeBlock: string; matrix: Matrix2D | null; symbolName: string; graphicFrameCount: number } | null {
-  const symbolName = (libraryXml.match(/<DOMSymbolItem\b[^>]*\bname="([^"]*)"/) ?? ['', 'unnamed-graphic'])[1] as string;
-  const timelines = extractBalancedBlocks(libraryXml, 'DOMTimeline');
-  for (const tl of timelines) {
-    const layers = extractBalancedBlocks(tl, 'DOMLayer');
-    for (const layer of layers) {
-      const frames = extractBalancedBlocks(layer, 'DOMFrame');
-      for (const frame of frames) {
-        const groups = extractBalancedBlocks(frame, 'DOMGroup');
-        for (const group of groups) {
-          const shapes = extractBalancedBlocks(group, 'DOMShape');
-          if (shapes.length > 0) {
-            return { shapeBlock: shapes[0] as string, matrix: parseShapeAt(group as string).matrix, symbolName, graphicFrameCount: frames.length };
-          }
-        }
-        const directShapes = extractBalancedBlocks(frame, 'DOMShape');
-        if (directShapes.length > 0) {
-          return { shapeBlock: directShapes[0] as string, matrix: null, symbolName, graphicFrameCount: frames.length };
-        }
-      }
-    }
-  }
-  return null;
+function displaySourceFromArchive(
+  archive: ParsedArchive,
+): { readonly ok: true; readonly source: FlaStaticSnapshotDisplaySource } | BuildSvgFailure {
+  // ActionScript is never interpreted; static display-list extraction does
+  // not need to reject otherwise renderable frames that happen to contain it.
+  const adapted = adaptFlaXflDisplaySource(archive.docXml, archive.libraryXmlEntries);
+  if (!adapted.ok) return adapted;
+  return { ok: true, source: adapted.source };
 }
 
-function findSceneTimelineFrameShape(docXml: string, frameIndex: number): { shapeBlock: string; matrix: Matrix2D | null; frameCount: number } | null {
-  const timelines = extractBalancedBlocks(docXml, 'DOMTimeline');
-  for (const tl of timelines) {
-    const layers = extractBalancedBlocks(tl, 'DOMLayer');
-    let frameCount = 0;
-    for (const layer of layers) {
-      const frames = extractBalancedBlocks(layer, 'DOMFrame');
-      frameCount = Math.max(frameCount, frames.length);
+function mapResolverFailure(result: FlaDisplayListResolverResult): BuildSvgFailure {
+  if (result.ok) return { ok: false, code: 'RENDER_FAILED', message: 'Expected a failed display-list resolution' };
+  const code = result.code === 'MAX_RECURSION_DEPTH_EXCEEDED' ||
+      result.code === 'MAX_RESOLVED_NODES_EXCEEDED'
+    ? 'BUDGET_EXCEEDED'
+    : result.code === 'MISSING_SYMBOL' || result.code === 'SYMBOL_CYCLE' ||
+        result.code === 'UNSUPPORTED_SYMBOL_TYPE'
+      ? 'TARGET_UNSUPPORTED'
+      : 'RENDER_FAILED';
+  return { ok: false, code, message: (result.message + ' (' + result.sourcePath + ')').slice(0, 1_000) };
+}
+
+function resolveTargetDisplayList(
+  source: FlaStaticSnapshotDisplaySource,
+  target: FlaRenderTarget,
+): { readonly ok: true; readonly displayList: FlaResolvedDisplayList } | BuildSvgFailure {
+  let root: FlaDisplayListResolverInput['root'];
+  if (target.kind === 'graphic-symbol') {
+    const sourceName = target.sourceLibraryItemName;
+    const descriptor = sourceName
+      ? source.graphicSymbols.find((symbol) => symbol.sourceLibraryItemName === sourceName)
+      : undefined;
+    if (!descriptor) {
+      return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'Graphic symbol not found: ' + (sourceName ?? '(unset)') };
     }
-    if (frameIndex >= frameCount) return null;
-    for (const layer of layers) {
-      const frames = extractBalancedBlocks(layer, 'DOMFrame');
-      const frame = frames[frameIndex];
-      if (!frame) continue;
-      const groups = extractBalancedBlocks(frame, 'DOMGroup');
-      for (const group of groups) {
-        const shapes = extractBalancedBlocks(group, 'DOMShape');
-        if (shapes.length > 0) {
-          return { shapeBlock: shapes[0] as string, matrix: parseShapeAt(group as string).matrix, frameCount };
-        }
-      }
-      const directShapes = extractBalancedBlocks(frame, 'DOMShape');
-      if (directShapes.length > 0) {
-        return { shapeBlock: directShapes[0] as string, matrix: null, frameCount };
-      }
+    const selectedFrameIndex = target.selectedFrameIndex ?? 0;
+    if (selectedFrameIndex >= target.frameCount || selectedFrameIndex >= descriptor.frameCount) {
+      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: 'selectedFrameIndex ' + selectedFrameIndex + ' >= frameCount ' + target.frameCount };
     }
+    // C03 resolves the Graphic target's initial display list. True Graphic
+    // frame synchronization remains outside this ticket.
+    root = {
+      kind: 'graphic',
+      name: descriptor.sourceLibraryItemName,
+      frameContext: descriptor.frameContext,
+    };
+  } else if (target.kind === 'scene' || target.kind === 'timeline') {
+    const timelineIndex = target.sourceTimelineIndex ?? 0;
+    const descriptor = source.sceneTimelines.find((timeline) => timeline.index === timelineIndex);
+    if (!descriptor) {
+      return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'Scene timeline not found: ' + timelineIndex };
+    }
+    const selectedFrameIndex = target.selectedFrameIndex ?? 0;
+    if (selectedFrameIndex >= target.frameCount || selectedFrameIndex >= descriptor.frameCount) {
+      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: 'selectedFrameIndex ' + selectedFrameIndex + ' >= frameCount ' + target.frameCount };
+    }
+    const frameContext = selectedFrameIndex === 0
+      ? { ok: true as const, value: descriptor.frameContext }
+      : source.buildSceneFrameContext(descriptor.xml, selectedFrameIndex, 'scene:' + timelineIndex);
+    if (!frameContext.ok) {
+      return {
+        ok: false,
+        code: frameContext.code === 'BUDGET_EXCEEDED' ? 'BUDGET_EXCEEDED' : 'RENDER_FAILED',
+        message: frameContext.message,
+      };
+    }
+    root = {
+      kind: 'scene',
+      name: descriptor.name,
+      frameContext: frameContext.value,
+    };
+  } else {
+    return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'Unknown target kind: ' + (target.kind as string) };
   }
-  return null;
+
+  const resolved = resolveFlaDisplayList({ root, symbols: source.symbols });
+  if (!resolved.ok) return mapResolverFailure(resolved);
+  return { ok: true, displayList: resolved.displayList };
+}
+
+function catalogSupportReason(
+  source: FlaStaticSnapshotDisplaySource,
+  displayList: FlaResolvedDisplayList,
+  resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
+): string | null {
+  let drawableCount = 0;
+  let reason: string | null = null;
+  const visit = (node: FlaResolvedDisplayNode): void => {
+    if (reason) return;
+    if (node.kind === 'group') {
+      for (const child of node.children) visit(child);
+      return;
+    }
+    drawableCount += 1;
+    if (node.kind === 'bitmap') {
+      const media = resolveBitmapMedia(node.libraryItemName);
+      if (!media.ok) reason = 'Bitmap media ' + (media.reason === 'ambiguous' ? 'is ambiguous: ' : 'was not found: ') + node.libraryItemName;
+      return;
+    }
+    const shapeBlock = source.shapeBlocks.get(node.shapeId);
+    const shape = shapeBlock ? parseShapeAt(shapeBlock) : null;
+    if (!shape || !shape.edgeStrings.some(({ cubics, edges }) => Boolean(cubics || edges))) {
+      reason = 'Shape has no supported path data: ' + node.shapeId;
+    }
+  };
+  for (const layer of displayList.layers) {
+    for (const node of layer.children) visit(node);
+  }
+  if (reason) return reason;
+  return drawableCount > 0 ? null : 'No visible bitmap or vector content is available in this frame';
 }
 
 // ---- Public catalog builder ----
-export async function buildRenderableTargetCatalog(bytes: Uint8Array): Promise<BuildCatalogResult> {
+export async function buildRenderableTargetCatalog(
+  bytes: Uint8Array,
+  resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
+): Promise<BuildCatalogResult> {
   const archive = await parseArchive(bytes);
   if (!archive.ok) return archive;
-  const { docXml, libraryXmlEntries } = archive.archive;
+  const adapted = displaySourceFromArchive(archive.archive);
+  if (!adapted.ok) return adapted;
+  const source = adapted.source;
   const entries: BuildCatalogSuccess['entries'] = [];
-  // 1. graphic symbols
-  for (const lib of libraryXmlEntries) {
-    const found = findGraphicSymbolShape(lib.xml);
-    if (!found) continue;
-    const renderTargetId = stableRenderTargetId(
-      bytes,
-      `graphic-symbol\u0000${lib.name}\u0000${found.symbolName}`,
-    );
+
+  // Keep the scene selectable even when it is made from bitmap placements
+  // or nested Graphic symbols, and reserve its slot within the target cap.
+  const scene = source.sceneTimelines[0];
+  if (scene && scene.frameCount > 0 && scene.frameContext.layers.some((layer) => layer.elements.length > 0)) {
     const target: FlaRenderTarget = {
-      renderTargetId,
-      kind: 'graphic-symbol',
-      userLabel: found.symbolName, // The library item name is the most beginner-readable label.
-      sourceLibraryItemName: found.symbolName,
-      frameCount: found.graphicFrameCount,
-      compatibility: found.graphicFrameCount > 0 ? ['degraded'] : ['unsupported'],
-    };
-    entries.push({ target, previewSupported: true });
-    if (entries.length >= MAX_TARGETS) break;
-  }
-  // 2. main scene timeline (single scene, frame 0+)
-  const sceneShape = findSceneTimelineFrameShape(docXml, 0);
-  if (sceneShape) {
-    const renderTargetId = stableRenderTargetId(bytes, 'scene\u0000timeline\u00000');
-    const target: FlaRenderTarget = {
-      renderTargetId,
+      renderTargetId: stableRenderTargetId(bytes, 'scene\u0000timeline\u0000' + scene.index),
       kind: 'scene',
-      userLabel: '主场景 · 第 1 帧',
-      sourceTimelineIndex: 0,
-      frameCount: sceneShape.frameCount,
+      userLabel: '\u4e3b\u573a\u666f \u00b7 \u7b2c 1 \u5e27',
+      sourceTimelineIndex: scene.index,
+      frameCount: Math.min(100_000, scene.frameCount),
       compatibility: ['degraded'],
     };
-    entries.push({ target, previewSupported: true });
+    const resolved = resolveTargetDisplayList(source, target);
+    const unsupportedReason = resolved.ok
+      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia)
+      : resolved.message;
+    entries.push({ target, previewSupported: unsupportedReason === null, ...(unsupportedReason ? { unsupportedReason } : {}) });
   }
-  // If the FLA had 0 renderable targets, surface that honestly.
+
+  // Nested Graphic targets go first so the fixed catalog limit cannot hide
+  // the recursion path required by the nested-symbol acceptance corpus.
+  const orderedSymbols = [
+    ...source.graphicSymbols.filter((symbol) => symbol.hasNestedSymbol),
+    ...source.graphicSymbols.filter((symbol) => !symbol.hasNestedSymbol),
+  ];
+  for (const symbol of orderedSymbols) {
+    if (entries.length >= MAX_TARGETS) break;
+    if (!symbol.hasDisplayElements) continue;
+    const target: FlaRenderTarget = {
+      renderTargetId: stableRenderTargetId(
+        bytes,
+        'graphic-symbol\u0000' + symbol.sourceLibraryItemName + '\u0000' + symbol.userLabel,
+      ),
+      kind: 'graphic-symbol',
+      userLabel: symbol.userLabel,
+      sourceLibraryItemName: symbol.sourceLibraryItemName,
+      frameCount: Math.min(100_000, Math.max(1, symbol.frameCount)),
+      compatibility: ['degraded'],
+    };
+    const resolved = resolveTargetDisplayList(source, target);
+    const unsupportedReason = resolved.ok
+      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia)
+      : resolved.message;
+    entries.push({ target, previewSupported: unsupportedReason === null, ...(unsupportedReason ? { unsupportedReason } : {}) });
+  }
+
   const summary = entries.length === 0
-    ? '这个 FLA 没有可渲染的矢量内容。'
-    : `这个 FLA 有 ${entries.length} 个可渲染的图形。`;
+    ? '\u8fd9\u4e2a FLA \u6ca1\u6709\u53ef\u6e32\u67d3\u5185\u5bb9\u3002'
+    : '\u8fd9\u4e2a FLA \u6709 ' + entries.length + ' \u4e2a\u53ef\u9884\u89c8\u76ee\u6807\u3002';
   return { ok: true, entries, summary };
 }
 
 // ---- Public SVG builder for a given render target ----
-export async function buildSvgForRenderTarget(bytes: Uint8Array, target: FlaRenderTarget): Promise<BuildSvgResult> {
+export async function buildSvgForRenderTarget(
+  bytes: Uint8Array,
+  target: FlaRenderTarget,
+  resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
+): Promise<BuildComposedSvgResult> {
   const archive = await parseArchive(bytes);
   if (!archive.ok) return archive;
-  const { docXml, libraryXmlEntries } = archive.archive;
-  const stage = stageSize(docXml);
-
-  // 1. Resolve the target to a DOMShape block.
-  let shapeBlock: string;
-  let groupMatrix: Matrix2D | null;
-  if (target.kind === 'graphic-symbol') {
-    const lib = libraryXmlEntries.find(l => l.name.endsWith(`/${target.sourceLibraryItemName ?? ''}.xml`) || l.name === `LIBRARY/${target.sourceLibraryItemName ?? ''}.xml`);
-    if (!lib) {
-      return { ok: false, code: 'TARGET_UNSUPPORTED', message: `Library item not found: ${target.sourceLibraryItemName ?? '(unset)'}` };
-    }
-    const found = findGraphicSymbolShape(lib.xml);
-    if (!found) {
-      return { ok: false, code: 'TARGET_UNSUPPORTED', message: `Graphic symbol has no renderable shape: ${target.sourceLibraryItemName}` };
-    }
-    shapeBlock = found.shapeBlock;
-    groupMatrix = found.matrix;
-  } else if (target.kind === 'scene' || target.kind === 'timeline') {
-    const idx = target.selectedFrameIndex ?? 0;
-    if (idx >= target.frameCount) {
-      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: `selectedFrameIndex ${idx} >= frameCount ${target.frameCount}` };
-    }
-    const found = findSceneTimelineFrameShape(docXml, idx);
-    if (!found) {
-      return { ok: false, code: 'TARGET_UNSUPPORTED', message: `Scene frame ${idx} has no renderable shape` };
-    }
-    shapeBlock = found.shapeBlock;
-    groupMatrix = found.matrix;
-  } else {
-    return { ok: false, code: 'TARGET_UNSUPPORTED', message: `Unknown target kind: ${target.kind as string}` };
-  }
-
-  // 2. Parse the shape block (matrix + fills + edges).
-  const shape = parseShapeAt(shapeBlock);
-  if (shape.edgeStrings.length === 0) {
-    return { ok: false, code: 'RENDER_FAILED', message: 'DOMShape has no <Edge> children' };
-  }
-
-  // 3. Decode all edges, preferring cubics.
-  const allCommands: DecodedEdges['commands'] = [];
-  for (const { cubics, edges } of shape.edgeStrings) {
-    const src = cubics || edges;
-    if (!src) continue;
-    if (src.length > MAX_EDGE_CHARS) {
-      return { ok: false, code: 'BUDGET_EXCEEDED', message: `Edge attribute exceeds ${MAX_EDGE_CHARS} chars` };
-    }
-    const { commands } = decodeEdgesWithStyleChanges(src);
-    for (const c of commands) allCommands.push(c);
-  }
-  if (allCommands.length === 0) {
-    return { ok: false, code: 'RENDER_FAILED', message: 'Edge decoder produced no commands' };
-  }
-  const hasRenderablePath = true;
-
-  // 4. Build SVG with viewBox fitted to transformed bounding box.
-  const transform = shape.matrix ? matrixToSvgTransform(shape.matrix) : (groupMatrix ? matrixToSvgTransform(groupMatrix) : '');
-  const effectiveMatrix = shape.matrix ?? groupMatrix;
-  const bbox = pathBoundingBoxAfterMatrix(allCommands, effectiveMatrix);
-  let viewBox: string;
-  let width: number;
-  let height: number;
-  if (bbox) {
-    const w = Math.max(1, bbox.maxX - bbox.minX);
-    const h = Math.max(1, bbox.maxY - bbox.minY);
-    const margin = Math.max(w, h) * 0.05;
-    viewBox = `${bbox.minX - margin} ${bbox.minY - margin} ${w + margin * 2} ${h + margin * 2}`;
-    width = w + margin * 2;
-    height = h + margin * 2;
-  } else {
-    viewBox = `0 0 ${stage.width} ${stage.height}`;
-    width = stage.width;
-    height = stage.height;
-  }
-  if (width > MAX_OUTPUT_WIDTH || height > MAX_OUTPUT_HEIGHT) {
-    return { ok: false, code: 'BUDGET_EXCEEDED', message: `Output ${width}x${height} exceeds budget` };
-  }
-  if (width * height > MAX_OUTPUT_PIXELS) {
-    return { ok: false, code: 'BUDGET_EXCEEDED', message: `Output pixel count ${width * height} exceeds ${MAX_OUTPUT_PIXELS}` };
-  }
-
-  const pathD = commandsToSvgPath(allCommands);
-  const fillColor = shape.fillColor ?? '#808080';
-  const fillOpacity = 1;
-
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${width.toFixed(4)}" height="${height.toFixed(4)}">
-  <title>FLA V2-R1 snapshot — ${target.userLabel}</title>
-  <desc>target=${target.renderTargetId} kind=${target.kind} frame=${target.selectedFrameIndex ?? 0}</desc>
-  <g transform="${transform}">
-    <path d="${pathD}" fill="${fillColor}" fill-opacity="${fillOpacity}" stroke="none" fill-rule="evenodd"/>
-  </g>
-</svg>
-`;
-
-  return {
-    ok: true,
-    svg,
-    width: Math.round(width),
-    height: Math.round(height),
-    pixelCount: Math.round(width) * Math.round(height),
-    pathCommandCount: allCommands.length,
-    firstFillColor: fillColor,
-    hasRenderablePath,
-  };
+  const adapted = displaySourceFromArchive(archive.archive);
+  if (!adapted.ok) return adapted;
+  const resolved = resolveTargetDisplayList(adapted.source, target);
+  if (!resolved.ok) return resolved;
+  return buildSvgForResolvedDisplayList({
+    displayList: resolved.displayList,
+    stageWidth: adapted.source.stageWidth,
+    stageHeight: adapted.source.stageHeight,
+    shapeBlocks: adapted.source.shapeBlocks,
+    resolveBitmapMedia,
+  });
 }
 
 export interface FlaStaticSnapshotBitmapMedia {
@@ -848,11 +809,13 @@ export type FlaStaticSnapshotBitmapMediaLookup = (
 ) => FlaStaticSnapshotBitmapMediaLookupResult;
 
 export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
-  /** C02 receipt facts consumed by tests and later production diagnostics. */
+  /** Bounded Main-side receipt facts used by acceptance evidence. */
   readonly composition: {
     readonly resolvedNodeCount: number;
     readonly bitmapInstanceCount: number;
     readonly shapeCount: number;
+    readonly groupCount: number;
+    readonly expandedSymbolCount: number;
   };
 }
 
@@ -909,9 +872,16 @@ function isPngWithExpectedDimensions(
 
 function flattenResolvedDisplayList(
   displayList: FlaResolvedDisplayList,
-): { readonly ok: true; readonly leaves: readonly ComposedLeaf[] } | BuildSvgFailure {
+): {
+  readonly ok: true;
+  readonly leaves: readonly ComposedLeaf[];
+  readonly groupCount: number;
+  readonly expandedSymbolCount: number;
+} | BuildSvgFailure {
   const leaves: ComposedLeaf[] = [];
   let visited = 0;
+  let groupCount = 0;
+  let expandedSymbolCount = 0;
   const visit = (
     node: FlaResolvedDisplayNode,
     depth: number,
@@ -927,6 +897,8 @@ function flattenResolvedDisplayList(
       return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains a non-finite transform' };
     }
     if (node.kind === 'group') {
+      groupCount += 1;
+      if (node.symbolLibraryItemName) expandedSymbolCount += 1;
       for (const child of node.children) {
         const nestedFailure = visit(child, depth + 1);
         if (nestedFailure) return nestedFailure;
@@ -946,7 +918,7 @@ function flattenResolvedDisplayList(
   if (displayList.resolvedNodeCount > 100_000 || visited > displayList.resolvedNodeCount) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Resolved display-list count is inconsistent or exceeds its budget' };
   }
-  return { ok: true, leaves };
+  return { ok: true, leaves, groupCount, expandedSymbolCount };
 }
 
 /**
@@ -1087,7 +1059,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +
-    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount}</desc>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount}</desc>` +
     defs + emittedNodes.join('') + '</svg>\n';
   const svgByteLength = Buffer.byteLength(svg, 'utf8');
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -1106,6 +1078,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,
       shapeCount,
+      groupCount: flattened.groupCount,
+      expandedSymbolCount: flattened.expandedSymbolCount,
     },
   };
 }
