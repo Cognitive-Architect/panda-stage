@@ -699,6 +699,7 @@ function catalogSupportReason(
   source: FlaStaticSnapshotDisplaySource,
   displayList: FlaResolvedDisplayList,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
+  allowBlankFrame = false,
 ): string | null {
   let drawableCount = 0;
   let reason: string | null = null;
@@ -724,7 +725,9 @@ function catalogSupportReason(
     for (const node of layer.children) visit(node);
   }
   if (reason) return reason;
-  return drawableCount > 0 ? null : 'No visible bitmap or vector content is available in this frame';
+  return drawableCount > 0 || allowBlankFrame
+    ? null
+    : 'No visible bitmap or vector content is available in this frame';
 }
 
 // ---- Public catalog builder ----
@@ -766,7 +769,7 @@ export async function buildRenderableTargetCatalog(
   ];
   for (const symbol of orderedSymbols) {
     if (entries.length >= MAX_TARGETS) break;
-    if (!symbol.hasDisplayElements) continue;
+    if (!symbol.hasPotentialDisplayElements) continue;
     const target: FlaRenderTarget = {
       renderTargetId: stableRenderTargetId(
         bytes,
@@ -779,8 +782,11 @@ export async function buildRenderableTargetCatalog(
       compatibility: ['degraded'],
     };
     const resolved = resolveTargetDisplayList(source, target);
+    const initialFrameIsBlank = symbol.frameContext.layers.every(
+      (layer) => !layer.visible || layer.elements.length === 0,
+    );
     const unsupportedReason = resolved.ok
-      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia)
+      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia, initialFrameIsBlank)
       : resolved.message;
     entries.push({ target, previewSupported: unsupportedReason === null, ...(unsupportedReason ? { unsupportedReason } : {}) });
   }
@@ -1332,12 +1338,17 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   }
 
   const graphicViewport = graphicBounds ? createGraphicViewport(graphicBounds) : null;
-  if (framingMode === 'content' && !graphicViewport) {
+  const blankGraphic = framingMode === 'content' && flattened.leaves.length === 0;
+  if (framingMode === 'content' && !graphicViewport && !blankGraphic) {
     return { ok: false, code: 'RENDER_FAILED', message: 'Graphic has no finite drawable content bounds' };
   }
-  const width = graphicViewport?.outputWidth ?? stageOutputWidth;
-  const height = graphicViewport?.outputHeight ?? stageOutputHeight;
-  const viewBox = graphicViewport?.viewBox ?? { x: 0, y: 0, width: stageOutputWidth, height: stageOutputHeight };
+  // A truly blank Graphic frame has no content bounds to frame. Represent it
+  // as a bounded transparent pixel so it remains a valid authored state.
+  const width = graphicViewport?.outputWidth ?? (blankGraphic ? 1 : stageOutputWidth);
+  const height = graphicViewport?.outputHeight ?? (blankGraphic ? 1 : stageOutputHeight);
+  const viewBox = graphicViewport?.viewBox ?? (blankGraphic
+    ? { x: 0, y: 0, width: 1, height: 1 }
+    : { x: 0, y: 0, width: stageOutputWidth, height: stageOutputHeight });
   const contentBounds = graphicViewport?.contentBounds ?? null;
   const formatRect = (rect: Rect2D): string =>
     `${formatSvgNumber(rect.x)} ${formatSvgNumber(rect.y)} ${formatSvgNumber(rect.width)} ${formatSvgNumber(rect.height)}`;

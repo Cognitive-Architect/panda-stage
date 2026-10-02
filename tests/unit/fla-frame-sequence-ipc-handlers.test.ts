@@ -240,6 +240,52 @@ describe('R2-H.1 frame sequence render IPC', () => {
     expect(staticFrameOne.svg).not.toBe(staticFrameZero.svg);
   });
 
+  it('keeps blank-first Graphic frames reachable in a sequence', async () => {
+    const bytes = await buildMultiFrameGraphicFla({ blankFirstFrame: true });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const entry = catalog.entries.find((candidate) => candidate.target.kind === 'graphic-symbol');
+    expect(entry?.previewSupported).toBe(true);
+    expect(entry?.target.frameCount).toBe(4);
+    if (!entry) return;
+    const target = entry.target;
+
+    const collected: Array<{ frameIndex: number; svg: string }> = [];
+    const mocks = makeMocks();
+    mocks.sourceLookup.getSource = vi.fn((): FlaStaticSnapshotSource => ({
+      bytes,
+      basename: 'r2-blank-first-multi-frame-fixture.fla',
+      sha256: 'c'.repeat(64),
+    }));
+    mocks.sequenceService.renderSequence.mockImplementation(async (
+      _session: string,
+      _requestedRange: FlaFrameSequenceRange,
+      sourceIterable: AsyncIterable<{ frameIndex: number; svg: string }>,
+    ) => {
+      for await (const frame of sourceIterable) collected.push(frame);
+      return { ...successResponse, renderTargetId: target.renderTargetId };
+    });
+    register(mocks);
+
+    const response = await handler(IPC_CHANNELS.FLA_FRAME_SEQUENCE_RENDER)(event(), {
+      ...validRenderRequest,
+      range: { renderTargetId: target.renderTargetId, startFrameIndex: 0, endFrameIndex: 3 },
+    });
+
+    expect(response).toMatchObject({ ok: true, renderTargetId: target.renderTargetId });
+    expect(collected.map((frame) => frame.frameIndex)).toEqual([0, 1, 2, 3]);
+    expect(collected[0]?.svg).not.toContain('<path');
+    expect(collected[1]?.svg).not.toContain('<path');
+    expect(collected[2]?.svg).toContain('<path');
+    expect(collected[3]?.svg).toContain('<path');
+    for (const frameIndex of [0, 1, 2, 3]) {
+      const staticFrame = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: frameIndex });
+      expect(staticFrame.ok).toBe(true);
+      if (staticFrame.ok) expect(collected[frameIndex]?.svg).toBe(staticFrame.svg);
+    }
+  });
+
   it('rejects an untrusted sender without invoking the service', async () => {
     const mocks = makeMocks();
     const untrusted = { isDestroyed: () => false, webContents: { id: 99 } } as unknown as BrowserWindow;

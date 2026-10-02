@@ -52,7 +52,7 @@ export interface FlaXflGraphicSymbolDescriptor extends FlaGraphicSymbolDefinitio
   readonly frameCount: number;
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly hasNestedSymbol: boolean;
-  readonly hasDisplayElements: boolean;
+  readonly hasPotentialDisplayElements: boolean;
   readonly timelineXml: string;
 }
 
@@ -677,6 +677,26 @@ function countNestedSymbols(elements: readonly FlaDisplayListElement[]): boolean
   );
 }
 
+function frameHasPotentialDisplayElements(frame: FlaXflElementBlock): boolean {
+  const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
+  return getFlaXflDirectChildren(elementContainer.xml, elementContainer.name)
+    .some((element) => element.name === 'DOMGroup' || element.name === 'DOMShape' ||
+      element.name === 'DOMBitmapInstance' || element.name === 'DOMSymbolInstance');
+}
+
+/**
+ * Catalog eligibility is a bounded structural check across authored spans.
+ * It never builds/rasterizes each timeline frame; it only checks whether any
+ * visible layer span contains a display element understood by this adapter.
+ */
+function timelineHasPotentialDisplayElements(
+  frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
+): boolean {
+  return frameSpanIndex.layers.some((layer) =>
+    layer.visible && layer.spans.some((span) => frameHasPotentialDisplayElements(span.sourceFrame)),
+  );
+}
+
 function timelineDescriptors(
   xml: string,
   parentName: string,
@@ -781,7 +801,7 @@ export function adaptFlaXflDisplaySource(
       frameCount: shell.frameCount,
       frameSpanIndex: shell.frameSpanIndex,
       hasNestedSymbol: countNestedSymbols(parsed.value.layers.flatMap((layer) => layer.elements)),
-      hasDisplayElements: parsed.value.layers.some((layer) => layer.elements.length > 0),
+      hasPotentialDisplayElements: timelineHasPotentialDisplayElements(shell.frameSpanIndex),
       timelineXml: shell.timelineXml,
     });
   }
