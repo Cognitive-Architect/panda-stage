@@ -182,8 +182,8 @@ describe('Issue #618 Character Detail actions', () => {
     expect(editor).toContain(
       'const [expressionAddOpen, setExpressionAddOpen] = useState(false);',
     );
-    expect(editor).toContain(
-      'onClick={() =>\n                    setExpressionAddOpen((isOpen) => !isOpen)',
+    expect(editor).toMatch(
+      /onClick=\{\(\) =>\s*setExpressionAddOpen\(\(isOpen\) => !isOpen\)\s*\}/u,
     );
     expect(editor).toContain('if (activeWorkspace === \'expressions\') setExpressionAddOpen(false);');
     expect(openMarkup).toContain('aria-expanded="true"');

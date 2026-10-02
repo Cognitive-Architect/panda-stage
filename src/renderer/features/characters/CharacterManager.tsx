@@ -13,6 +13,7 @@ import {
   countLegacyCharacterImageLayers,
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
+  type CharacterHead,
   type CompositeCharacterDefinition,
   type ImageAsset,
   type Project,
@@ -854,6 +855,19 @@ export function CharacterManager({
           assemblyDraft={assemblyDraft}
           onOpenAssembly={openAssembly}
           onLeaveAssembly={leaveAssembly}
+          onSetAssemblyHeadAsset={(assetId) => {
+            const currentHead = assemblyDraft?.head;
+            const head: CharacterHead | null = assetId
+              ? currentHead
+                ? { ...currentHead, assetId }
+                : {
+                    assetId,
+                    placement: { offsetX: 0, offsetY: 0, scale: 1 },
+                    pivot: { x: 0, y: 0 },
+                  }
+              : null;
+            updateAssembly({ head });
+          }}
           onSetAssemblyBodyAsset={(assetId) =>
             updateAssembly({ bodyAssetId: assetId })
           }

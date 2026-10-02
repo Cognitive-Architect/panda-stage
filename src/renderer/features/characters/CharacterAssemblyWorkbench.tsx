@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -11,7 +10,6 @@ import {
   type CharacterHead,
   type FacePlacement,
   type HeadPivot,
-  type ImageAsset,
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import {
@@ -25,11 +23,6 @@ import {
   type CanvasImageAssetSource,
   type CanvasImageState,
 } from '../canvas/canvasImageResources';
-import {
-  thumbnailStateFromResponse,
-  type ThumbnailState,
-} from '../assets/AssetCard';
-import { ImageAssetPicker } from './ImageAssetPicker';
 import {
   buildCharacterAssemblyPreviewVisual,
   characterLocalPointerDelta,
@@ -69,34 +62,6 @@ type ActiveDragDefinition =
 
 type ActiveDrag = ActiveDragStart &
   ActiveDragDefinition & { pointerId: number };
-
-function headWithAsset(
-  current: CharacterHead | undefined,
-  assetId: string,
-): CharacterHead {
-  return current
-    ? { ...current, assetId }
-    : {
-        assetId,
-        placement: { offsetX: 0, offsetY: 0, scale: 1 },
-        pivot: { x: 0, y: 0 },
-      };
-}
-
-function thumbnailFailure(): ThumbnailState {
-  return { status: 'missing', reason: 'error' };
-}
-
-function readThumbnailState(
-  projectRoot: string,
-  asset: ImageAsset,
-): Promise<ThumbnailState> {
-  if (!asset.sha256) return Promise.resolve({ status: 'missing', reason: 'source' });
-  return window.pandaStage.assets
-    .readThumbnail({ projectRoot, assetId: asset.id, sha256: asset.sha256 })
-    .then(thumbnailStateFromResponse)
-    .catch(thumbnailFailure);
-}
 
 function measureImageVisibleBounds(
   image: HTMLImageElement | null,
@@ -165,6 +130,7 @@ export function CharacterAssemblyWorkbench({
   const { project, projectRoot } = projectSnapshot;
   const isCreating = isCharacterCreationSnapshot(session);
   const head = session.draft.head;
+  const headAssetId = head?.assetId;
   const expressions = useMemo(
     () => getAssemblyPreviewExpressions(project, session),
     [project, session],
@@ -185,10 +151,6 @@ export function CharacterAssemblyWorkbench({
   }, [expressions, project.characters, session]);
   const [selectedFace, setSelectedFace] = useState('');
   const [message, setMessage] = useState('');
-  const [headPickerOpen, setHeadPickerOpen] = useState(false);
-  const [headPickerVisibleAssetIds, setHeadPickerVisibleAssetIds] = useState<
-    readonly string[]
-  >([]);
   const [editTarget, setEditTarget] = useState<'head' | 'face'>(
     head ? 'head' : 'face',
   );
@@ -211,23 +173,6 @@ export function CharacterAssemblyWorkbench({
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ActiveDrag | null>(null);
   const mountedRef = useRef(true);
-
-  const handleHeadPickerOpenChange = useCallback((open: boolean): void => {
-    setHeadPickerOpen(open);
-    if (open) setHeadPickerVisibleAssetIds([]);
-  }, []);
-
-  const handleVisibleHeadCandidatesChange = useCallback(
-    (assetIds: readonly string[]): void => {
-      setHeadPickerVisibleAssetIds((current) =>
-        current.length === assetIds.length &&
-        current.every((assetId, index) => assetId === assetIds[index])
-          ? current
-          : [...assetIds],
-      );
-    },
-    [],
-  );
 
   useEffect(() => {
     setSelectedFace(defaultExpressionId);
@@ -268,10 +213,6 @@ export function CharacterAssemblyWorkbench({
   const headPart = visual?.headPart ?? null;
   const faceRect = facePart?.localRect;
   const bodyRect = bodyPart?.localRect;
-  const imageAssetCandidates = useMemo(
-    () => project.assets.filter((asset): asset is ImageAsset => asset.kind === 'image'),
-    [project.assets],
-  );
   const imageAssets = useMemo(() => {
     const assetIds = new Set([
       session.draft.bodyAssetId,
@@ -284,35 +225,12 @@ export function CharacterAssemblyWorkbench({
         : [],
     );
   }, [head, previewFaceAssetId, project.assets, session.draft.bodyAssetId]);
-  const imageAssetKey = JSON.stringify(
-    imageAssetCandidates.map(({ id, sha256 }) => [id, sha256]),
-  );
   const imageSourceKey = JSON.stringify([
     project.id,
     projectRoot,
     imageAssets.map(({ id, sha256 }) => [id, sha256]),
   ]);
   const contextKey = `${project.id}\u0000${projectRoot}`;
-  const [thumbnailEntries, setThumbnailEntries] = useState<
-    Record<string, { resourceKey: string; state: ThumbnailState }>
-  >({});
-  const thumbnailReadsInFlight = useRef(new Set<string>());
-  const visibleThumbnails = useMemo(
-    () =>
-      Object.fromEntries(
-        imageAssetCandidates.map((asset) => {
-          const resourceKey = `${contextKey}\u0000${asset.id}\u0000${asset.sha256 ?? ''}`;
-          const entry = thumbnailEntries[asset.id];
-          return [
-            asset.id,
-            entry?.resourceKey === resourceKey
-              ? entry.state
-              : { status: 'loading' as const },
-          ];
-        }),
-      ),
-    [contextKey, imageAssetCandidates, thumbnailEntries],
-  );
   const imageSessionRef = useRef<CanvasImageResourceSession | null>(null);
   const [imageResult, setImageResult] = useState<{
     contextKey: string | null;
@@ -342,51 +260,6 @@ export function CharacterAssemblyWorkbench({
       mountedRef.current = false;
     };
   }, []);
-
-  useEffect(() => {
-    const requestedAssetIds = new Set(
-      headPickerOpen ? headPickerVisibleAssetIds : [],
-    );
-    if (head) requestedAssetIds.add(head.assetId);
-    if (requestedAssetIds.size === 0) return undefined;
-    for (const asset of imageAssetCandidates) {
-      if (!requestedAssetIds.has(asset.id)) continue;
-      const resourceKey = `${contextKey}\u0000${asset.id}\u0000${asset.sha256 ?? ''}`;
-      const existing = thumbnailEntries[asset.id];
-      if (
-        existing?.resourceKey === resourceKey &&
-        existing.state.status !== 'loading'
-      ) {
-        continue;
-      }
-      if (thumbnailReadsInFlight.current.has(resourceKey)) continue;
-      thumbnailReadsInFlight.current.add(resourceKey);
-      setThumbnailEntries((current) => ({
-        ...current,
-        [asset.id]: { resourceKey, state: { status: 'loading' } },
-      }));
-      void readThumbnailState(projectRoot, asset)
-        .then((state) => {
-          if (!mountedRef.current) return;
-          setThumbnailEntries((current) =>
-            current[asset.id]?.resourceKey === resourceKey
-              ? { ...current, [asset.id]: { resourceKey, state } }
-              : current,
-          );
-        })
-        .finally(() => thumbnailReadsInFlight.current.delete(resourceKey));
-    }
-    return undefined;
-  }, [
-    contextKey,
-    headPickerOpen,
-    headPickerVisibleAssetIds,
-    head?.assetId,
-    imageAssetCandidates,
-    imageAssetKey,
-    projectRoot,
-    thumbnailEntries,
-  ]);
 
   useEffect(() => {
     const imageSession = new CanvasImageResourceSession();
@@ -463,13 +336,6 @@ export function CharacterAssemblyWorkbench({
       dragRef.current = null;
     }
     return true;
-  };
-
-  const chooseHeadAsset = (assetId: string | null): void => {
-    if (updateHead(assetId ? headWithAsset(head, assetId) : null) && assetId) {
-      setEditTarget('head');
-      setIsEditingNeckPivot(false);
-    }
   };
 
   const adjustHeadScale = (delta: number): void => {
@@ -653,17 +519,6 @@ export function CharacterAssemblyWorkbench({
     );
   };
 
-  const handleThumbnailError = (assetId: string): void => {
-    const asset = imageAssetCandidates.find((candidate) => candidate.id === assetId);
-    if (!asset) return;
-    const resourceKey = `${contextKey}\u0000${asset.id}\u0000${asset.sha256 ?? ''}`;
-    setThumbnailEntries((current) =>
-      current[assetId]?.resourceKey === resourceKey
-        ? { ...current, [assetId]: { resourceKey, state: thumbnailFailure() } }
-        : current,
-    );
-  };
-
   const moveFace = (dx: number, dy: number): void => {
     updateFacePlacement({
       ...session.draft.facePlacement,
@@ -691,7 +546,6 @@ export function CharacterAssemblyWorkbench({
   };
 
   useEffect(() => {
-    setHeadPickerOpen(false);
     setHeadMotionTestToken(null);
     dragRef.current = null;
     setEditTarget(session.draft.head ? 'head' : 'face');
@@ -700,12 +554,16 @@ export function CharacterAssemblyWorkbench({
   }, [session.generation, session.sessionId]);
 
   useEffect(() => {
-    if (head) return;
+    if (headAssetId) {
+      setEditTarget('head');
+      setIsEditingNeckPivot(false);
+      return;
+    }
     setHeadMotionTestToken(null);
     setEditTarget('face');
     setIsEditingNeckPivot(false);
     dragRef.current = null;
-  }, [head]);
+  }, [headAssetId]);
 
   const pending = !isCreating && isCharacterAssemblyPending(project, session);
   const commit = (): void => {
@@ -828,23 +686,6 @@ export function CharacterAssemblyWorkbench({
               </button>
             </nav>
           ) : null}
-          <div className="character-assembly-head-picker" data-testid="character-assembly-head-picker">
-            <ImageAssetPicker
-              assets={imageAssetCandidates}
-              emptyOption={{ label: '不添加头部', optional: true }}
-              emptyActionLabel="选择"
-              label="头部"
-              onChange={chooseHeadAsset}
-              onOpenChange={handleHeadPickerOpenChange}
-              onThumbnailError={handleThumbnailError}
-              onVisibleCandidatesChange={handleVisibleHeadCandidatesChange}
-              presentation="inline"
-              searchAndPaginate
-              selectedAssetId={head?.assetId ?? null}
-              testId="character-assembly-head-asset"
-              thumbnails={visibleThumbnails}
-            />
-          </div>
           {head && isEditingNeckPivot ? (
             <div
               className="character-assembly-pivot-guidance"

@@ -64,7 +64,7 @@ function compositeProject(): Project {
 beforeEach(() => open());
 
 describe('Issue #639 Character detail placement bridge', () => {
-  it('shows a primary touch action in detail and disables it without a Shot/default Expression', () => {
+  it('shows a secondary touch action in landscape detail and disables it without a Shot/default Expression', () => {
     const project = buildProject();
     const imageAssets = project.assets.filter(
       (asset): asset is ImageAsset => asset.kind === 'image',
@@ -92,8 +92,10 @@ describe('Issue #639 Character detail placement bridge', () => {
       }));
 
     expect(render(true)).toContain('data-testid="character-detail-place-current-shot"');
-    expect(render(true)).toContain('data-ui-variant="primary"');
-    expect(render(true)).toContain('加入当前镜头');
+    expect(render(true)).toContain('data-ui-variant="secondary"');
+    expect(render(true)).toContain('aria-label="加入当前镜头"');
+    expect(render(true)).toContain('title="加入当前镜头"');
+    expect(render(true)).toContain('＋ 加入镜头');
     expect(render(false)).toContain('title="请先选择镜头"');
     expect(render(false)).toContain('disabled=""');
     expect(render(true, [])).toContain('title="默认表情素材不可用"');

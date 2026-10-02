@@ -261,7 +261,8 @@ describe('S07 composite assembly preview', () => {
       },
       session,
     }));
-    expect(markup).toContain('data-testid="character-assembly-head-asset-selected"');
+    expect(markup).not.toContain('data-testid="character-assembly-head-asset-selected"');
+    expect(markup).not.toContain('data-testid="character-assembly-head-picker"');
     expect(markup).toContain('data-edit-target="head"');
     expect(markup).toContain('data-testid="character-assembly-edit-head"');
     expect(markup).toContain('data-testid="character-assembly-edit-face"');
@@ -311,9 +312,17 @@ describe('S07 composite assembly preview', () => {
     expect(headScaleFromPointerDistance(0.1, 20, 1)).toBe(0.05);
   });
 
-  it('loads picker thumbnails only for the visible page and the selected Head', () => {
+  it('keeps Head search and pagination in Character side panels, outside the canvas workbench', () => {
     const pickerSource = readFileSync(
       'src/renderer/features/characters/ImageAssetPicker.tsx',
+      'utf8',
+    );
+    const editorSource = readFileSync(
+      'src/renderer/features/characters/CharacterEditor.tsx',
+      'utf8',
+    );
+    const listSource = readFileSync(
+      'src/renderer/features/characters/CharacterList.tsx',
       'utf8',
     );
     const workbenchSource = readFileSync(
@@ -322,8 +331,12 @@ describe('S07 composite assembly preview', () => {
     );
     expect(pickerSource).toContain('const visibleCandidateIds = useMemo(');
     expect(pickerSource).toContain('onVisibleCandidatesChange?.(visibleCandidateIds)');
-    expect(workbenchSource).toContain('headPickerOpen ? headPickerVisibleAssetIds : []');
-    expect(workbenchSource).toContain('if (head) requestedAssetIds.add(head.assetId);');
+    expect(editorSource).toContain('testId="character-assembly-head-asset"');
+    expect(listSource).toContain('testId="character-create-head-picker"');
+    expect(editorSource).toContain('searchAndPaginate');
+    expect(listSource).toContain('searchAndPaginate');
+    expect(workbenchSource).not.toContain('ImageAssetPicker');
+    expect(workbenchSource).not.toContain('character-assembly-head-picker');
     const testButton = workbenchSource.match(
       /data-testid="character-assembly-test-head-motion"([\s\S]*?)<\/button>/u,
     )?.[1];

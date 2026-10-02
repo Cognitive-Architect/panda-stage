@@ -1077,7 +1077,7 @@ async function run() {
     })()`);
     assert(created.characterId, 'Created Character did not reach its existing Detail workflow.');
     assert(created.revision === '1' && created.undoCount === '1', 'Create did not produce exactly one Project/History operation.');
-    assert(created.tabs.length === 3 && created.tabs[0].label === '装配', 'Composite detail did not expose Assembly, Expressions, and Settings.');
+    assert(created.tabs.length === 3 && created.tabs[0].label === '组装', 'Composite detail did not expose Assembly, Expressions, and Settings.');
     assert(created.tabs.find((tab) => tab.label.includes('表情'))?.pressed === 'true', 'Composite detail did not open on Expressions by default.');
     assert(created.expressionCount === 1, 'Composite creation imposed or created extra Expressions.');
     evidence.createdCharacter = created;

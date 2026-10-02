@@ -115,6 +115,10 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     );
 
     expect(characterList).toContain("compactLandscapeCreate ? '身体' : '身体图片'");
+    expect(characterList).toContain('testId="character-create-head-picker"');
+    expect(characterList).toContain('searchAndPaginate');
+    expect(characterList).toContain('next.head = compositeDraft.head');
+    expect(characterList).toContain('delete next.head;');
     expect(characterList).toContain("compactLandscapeCreate ? '默认脸' : '默认表情图片'");
     expect(characterList).toContain("compactLandscapeCreate ? '张嘴图' : '张嘴图（可选）'");
     expect(characterList).toContain("compactLandscapeCreate ? '普通表情' : '普通表情图片'");
