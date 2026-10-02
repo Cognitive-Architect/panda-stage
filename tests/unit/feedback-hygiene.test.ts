@@ -130,7 +130,7 @@ describe('Issue #641 feedback hierarchy', () => {
     expect(character).not.toContain('项目尚未保存');
     expect(shot).not.toContain('项目尚未保存');
     expect(character).toContain('reportError(error);');
-    expect(character).toContain('角色装配草稿已失效');
+    expect(character).toContain('角色组装草稿已失效');
     expect(character).toContain('默认表情素材不可用');
     expect(character).toContain('<output aria-live="polite" className="character-manager-status">');
     expect(shot).toContain("error instanceof ShotServiceError || error instanceof Error");

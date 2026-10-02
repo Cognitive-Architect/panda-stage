@@ -227,12 +227,14 @@ describe('Issue #523 R8 unified Character workspace', () => {
 
     expect(markup).toContain('data-testid="character-workspace-assembly-tab"');
     expect(markup).toContain('>组装</button>');
+    expect(markup).toContain('aria-label="角色组装素材"');
     expect(markup.match(/data-workspace="(?:assembly|expressions|settings)"/gu)).toHaveLength(3);
     expect(markup).toMatch(
       /data-workspace="expressions"[^>]*id="character-workspace-expressions"/u,
     );
     expect(markup).toContain('data-testid="character-assembly-body-picker"');
     expect(markup).toContain('data-testid="character-assembly-head-asset"');
+    expect(markup).toContain('<small>可选</small>');
     expect(markup).toContain('data-testid="character-assembly-mouth-picker"');
     expect(markup).toContain('data-testid="character-assembly-go-expressions"');
     expect(markup).toContain('class="image-asset-picker-selected-action">管理</span>');
@@ -249,6 +251,9 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(
       source('src/renderer/features/characters/CharacterAssemblyWorkbench.tsx'),
     ).not.toContain('character-assembly-head-asset');
+    const manager = source('src/renderer/features/characters/CharacterManager.tsx');
+    expect(manager).toContain('...currentHead, assetId');
+    expect(manager).toContain('updateAssembly({ head });');
     expect(markup).toContain('aria-pressed="true"');
   });
 

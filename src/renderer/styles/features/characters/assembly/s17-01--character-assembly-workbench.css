@@ -1478,7 +1478,8 @@
   .character-manager[data-character-presentation='landscape']
   .character-detail-identity-actions {
   min-width: 0;
-  flex: 0 0 auto;
+  max-width: 100%;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
 }

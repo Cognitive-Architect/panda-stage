@@ -107,6 +107,9 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     expect(identity).toContain('＋ 加入镜头');
     expect(styles).toContain('min-height: 44px;\n  margin: 0;');
     expect(styles).toContain('text-overflow: ellipsis;');
+    expect(styles).toContain('max-width: 100%;\n  flex: 0 1 auto;');
+    expect(styles).toContain('margin-bottom: var(--ui-space-2);');
+    expect(styles).toContain('flex: 0 0 44px;');
   });
 
   it('preserves trim, empty, unchanged, and valid rename semantics', () => {

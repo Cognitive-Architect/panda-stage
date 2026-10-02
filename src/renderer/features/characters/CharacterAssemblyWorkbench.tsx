@@ -304,7 +304,7 @@ export function CharacterAssemblyWorkbench({
       ? activeCreationHandle(session)?.updateDraft({ facePlacement: placement })
       : activeAssemblyHandle(session)?.updateDraft({ facePlacement: placement });
     if (!result) {
-      setMessage('装配草稿已失效，请重新打开角色装配。');
+      setMessage('组装草稿已失效，请重新打开角色组装。');
       return;
     }
     if (!result.ok) {
@@ -320,7 +320,7 @@ export function CharacterAssemblyWorkbench({
       : activeAssemblyHandle(session)?.updateDraft({ head: nextHead });
     if (!result) {
       setHeadMotionTestToken(null);
-      setMessage('装配草稿已失效，请重新打开角色装配。');
+      setMessage('组装草稿已失效，请重新打开角色组装。');
       dragRef.current = null;
       return false;
     }
@@ -571,7 +571,7 @@ export function CharacterAssemblyWorkbench({
     dragRef.current = null;
     const result = activeAssemblyHandle(session)?.commit();
     if (!result) {
-      setMessage('装配草稿已失效，请重新打开角色装配。');
+      setMessage('组装草稿已失效，请重新打开角色组装。');
       return;
     }
     if (result.status === 'rejected' || result.status === 'stale') {
@@ -600,7 +600,7 @@ export function CharacterAssemblyWorkbench({
 
   return (
     <section
-      aria-label="角色装配工作区"
+      aria-label="角色组装工作区"
       className="character-assembly-workbench"
       data-body-asset-id={session.draft.bodyAssetId}
       data-face-offset-x={session.draft.facePlacement.offsetX}
@@ -709,7 +709,7 @@ export function CharacterAssemblyWorkbench({
       </header>
 
       <div
-        aria-label="角色装配预览"
+        aria-label="角色组装预览"
         className="character-assembly-preview-viewport"
         data-testid="character-assembly-preview"
         ref={viewportRef}

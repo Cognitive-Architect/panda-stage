@@ -11,6 +11,7 @@ import {
 } from '../../src/renderer/stores/characterAssemblySessionStore';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import {
+  ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   isCharacterCreationSnapshot,
   resolveAssemblyExitDecision,
 } from '../../src/renderer/features/characters/characterAssemblyPreview';
@@ -110,6 +111,12 @@ function applyAssemblyChange(harnessValue: ReturnType<typeof harness>) {
 }
 
 describe('S09-R04 assembly exit decision', () => {
+  it('uses the human-facing “组装” term in the discard warning', () => {
+    expect(ASSEMBLY_DISCARD_CONFIRM_MESSAGE).toBe(
+      '组装更改尚未应用，离开将放弃这些更改。继续吗？',
+    );
+  });
+
   it('leaves immediately when nothing is pending', () => {
     expect(resolveAssemblyExitDecision(false, false)).toBe('leave');
     expect(resolveAssemblyExitDecision(false, true)).toBe('leave');

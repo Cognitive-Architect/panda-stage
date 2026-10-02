@@ -182,7 +182,7 @@ export function hasPendingCharacterAssemblyEdit(
 
 /** One product-level decision for every route that exits the assembly context. */
 export const ASSEMBLY_DISCARD_CONFIRM_MESSAGE =
-  '装配更改尚未应用，离开将放弃这些更改。继续吗？';
+  '组装更改尚未应用，离开将放弃这些更改。继续吗？';
 
 export type AssemblyExitDecision = 'leave' | 'stay';
 
@@ -382,7 +382,7 @@ export function buildCharacterAssemblyPreviewVisual(
   };
   const layer: Layer = {
     id: PREVIEW_LAYER_ID,
-    name: '临时装配预览',
+    name: '临时组装预览',
     source: {
       kind: 'character',
       characterId: character.id,

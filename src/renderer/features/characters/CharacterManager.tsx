@@ -548,7 +548,7 @@ export function CharacterManager({
       active.sessionId !== editAssemblySnapshot?.sessionId ||
       active.generation !== editAssemblySnapshot.generation
     ) {
-      setStatus('角色装配草稿已失效，请重新打开装配。');
+      setStatus('角色组装草稿已失效，请重新打开组装。');
       return;
     }
     const result = active.updateDraft(update);
