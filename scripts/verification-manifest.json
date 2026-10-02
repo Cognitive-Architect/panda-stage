@@ -137,7 +137,9 @@
           "tests/unit/export-*.test.ts",
           "tests/unit/ffmpeg-*.test.ts"
         ],
-        "verifierPatterns": [],
+        "verifierPatterns": [
+          "scripts/verify-issue660-export-audio-mix.cjs"
+        ],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
@@ -417,8 +419,20 @@
       }
     ]
   },
-  "count": 70,
+  "count": 71,
   "gates": [
+    {
+      "id": "issue660-export-audio-mix",
+      "script": "verify:issue660-export-audio-mix",
+      "suite": "issue660-export-audio-mix",
+      "subsystem": "export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "release",
+      "supersedes": null,
+      "notes": "A04 real bundled-FFmpeg overlap/mix evidence with focused cancellation and cleanup tests; does not claim full real-project Export or Gate B graduation."
+    },
     {
       "id": "issue663-dialogue-voice",
       "script": "verify:issue663-dialogue-voice",

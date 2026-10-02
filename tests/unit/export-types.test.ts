@@ -34,11 +34,21 @@ describe('export frame schedule', () => {
   it('accepts MP4 case-insensitively and rejects other full-export extensions', () => {
     const request = {
       projectDirectory: 'C:\\项目',
-      audioPath: 'C:\\项目\\声音.wav',
+      audioClips: [
+        {
+          clipId: '70000000-0000-4000-8000-000000000660',
+          assetId: '10000000-0000-4000-8000-000000000660',
+          role: 'dialogue',
+          sourcePath: 'C:\\项目\\声音.wav',
+          startMs: 400,
+          endMs: 3_000,
+          offsetMs: 0,
+          volume: 1,
+        },
+      ],
       outputPath: 'C:\\输出\\成片.MP4',
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: true,
     } as const;
     expect(FullProbeExportRequestSchema.parse(request).outputPath).toBe(
@@ -48,6 +58,13 @@ describe('export frame schedule', () => {
       FullProbeExportRequestSchema.safeParse({
         ...request,
         outputPath: 'C:\\输出\\成片.mkv',
+      }).success,
+    ).toBe(false);
+    expect(
+      FullProbeExportRequestSchema.safeParse({
+        ...request,
+        audioPath: 'C:\\项目\\声音.wav',
+        audioStartMs: 400,
       }).success,
     ).toBe(false);
   });

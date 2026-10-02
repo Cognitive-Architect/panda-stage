@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { ProjectSchema, type Project } from '../../src/domain';
+import {
+  ProjectSchema,
+  buildExportAudioMixPlan,
+  type Project,
+} from '../../src/domain';
 import type { AssetPreviewAudioReadRequest, AssetPreviewAudioReadResponse } from '../../src/shared/asset-preview-audio-api';
 import {
   ProductPreviewAudioTransport, resolveProductPreviewAudio, resolveProductPreviewAudios,
@@ -15,6 +19,9 @@ const AUDIO_ID = '10000000-0000-4000-8000-000000000401';
 const AUDIO_B_ID = '10000000-0000-4000-8000-000000000402';
 const CLIP_A_ID = '70000000-0000-4000-8000-000000000401';
 const CLIP_B_ID = '70000000-0000-4000-8000-000000000402';
+const BGM_ID = '70000000-0000-4000-8000-000000000403';
+const SFX_A_ID = '70000000-0000-4000-8000-000000000404';
+const SFX_B_ID = '70000000-0000-4000-8000-000000000405';
 const DIALOGUE_A_ID = '80000000-0000-4000-8000-000000000401';
 const DIALOGUE_B_ID = '80000000-0000-4000-8000-000000000402';
 const PROJECT_ROOT = 'D:\\preview-audio.pandastage';
@@ -135,9 +142,9 @@ function mixedProject(): Project {
   const shot = project.shots[0]!;
   const template = shot.audioClips[0]!;
   shot.audioClips = [template,
-    { ...template, id: 'bgm', role: 'bgm', startMs: 0, endMs: 2500, offsetMs: 0, volume: 0.25 },
-    { ...template, id: 'sfx-a', role: 'sfx', startMs: 550, endMs: 850, offsetMs: 200, volume: 1.8 },
-    { ...template, id: 'sfx-b', role: 'sfx', startMs: 600, endMs: 900, offsetMs: 500, volume: 2 }];
+    { ...template, id: BGM_ID, role: 'bgm', startMs: 0, endMs: 2500, offsetMs: 0, volume: 0.25 },
+    { ...template, id: SFX_A_ID, role: 'sfx', startMs: 550, endMs: 850, offsetMs: 200, volume: 1.8 },
+    { ...template, id: SFX_B_ID, role: 'sfx', startMs: 600, endMs: 900, offsetMs: 500, volume: 2 }];
   return project;
 }
 function setup(project = mixedProject()) {
@@ -175,10 +182,10 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     const project = mixedProject();
     const shot = project.shots[0]!;
     expect(resolveProductPreviewAudios(project, shot, 600).map(({ clip }) => clip.id))
-      .toEqual([CLIP_A_ID, 'bgm', 'sfx-a', 'sfx-b']);
+      .toEqual([CLIP_A_ID, BGM_ID, SFX_A_ID, SFX_B_ID]);
     expect(resolveProductPreviewAudios(project, shot, 850).map(({ clip }) => clip.id))
-      .toEqual([CLIP_A_ID, 'bgm', 'sfx-b']);
-    expect(resolveProductPreviewAudios(project, shot, 1000).map(({ clip }) => clip.id)).toEqual(['bgm']);
+      .toEqual([CLIP_A_ID, BGM_ID, SFX_B_ID]);
+    expect(resolveProductPreviewAudios(project, shot, 1000).map(({ clip }) => clip.id)).toEqual([BGM_ID]);
     expect(resolveProductPreviewAudios(project, shot, 2500)).toEqual([]);
     expect(resolveProductPreviewAudios(project, shot, NaN)).toEqual([]);
     const selection = resolveProductPreviewAudio(project, shot, DIALOGUE_A_ID)!;
@@ -186,6 +193,42 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     expect(productPreviewSourceTimeMs(-100, selection.clip, selection.asset)).toBe(0);
     expect(productPreviewSourceTimeMs(99999, selection.clip, selection.asset)).toBe(3000);
     expect(resolveProductPreviewAudio(project, shot, null)).toBeNull();
+  });
+
+  it('keeps Preview and Export active windows, source offsets, and linear gain in parity', () => {
+    const project = mixedProject();
+    const shot = project.shots[0]!;
+    const plan = buildExportAudioMixPlan(
+      2_500,
+      shot.audioClips.map((clip) => ({
+        clipId: clip.id,
+        assetId: clip.assetId,
+        role: clip.role,
+        sourcePath: `C:\\export\\${clip.assetId}.wav`,
+        startMs: clip.startMs,
+        endMs: clip.endMs,
+        offsetMs: clip.offsetMs,
+        volume: clip.volume,
+      })),
+    );
+
+    for (const timeMs of [0, 499, 500, 549, 550, 600, 849, 850, 999, 1_000, 1_600, 2_499, 2_500]) {
+      const preview = resolveProductPreviewAudios(project, shot, timeMs);
+      const exported = plan.clips.filter(
+        (clip) => clip.startMs <= timeMs && timeMs < clip.endMs,
+      );
+
+      expect(exported.map((clip) => clip.clipId)).toEqual(
+        preview.map(({ clip }) => clip.id),
+      );
+      for (const { clip, asset } of preview) {
+        const exportClip = exported.find((candidate) => candidate.clipId === clip.id)!;
+        expect(exportClip.sourceOffsetMs + timeMs - exportClip.startMs).toBe(
+          productPreviewSourceTimeMs(timeMs, clip, asset),
+        );
+        expect(exportClip.volume).toBe(clip.volume);
+      }
+    }
   });
 
   it('mixes four sources with separate gains/offsets/durations, deduplicates read/decode, never edits Project', async () => {

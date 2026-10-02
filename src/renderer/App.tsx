@@ -8,6 +8,8 @@ import { EditorShell } from './shell/EditorShell';
 import { FlaImportDebugSurface } from './fla-import/FlaImportDebugSurface';
 
 const GATE_PREVIEW_EVENT = 'panda-stage:gate-preview-time';
+const EXPORT_PROBE_CLIP_ID = '70000000-0000-4000-8000-000000000660';
+const EXPORT_PROBE_ASSET_ID = '10000000-0000-4000-8000-000000000660';
 
 interface GatePreviewRequest {
   timeMs: number;
@@ -98,11 +100,21 @@ export function App(): React.JSX.Element {
     try {
       const response = await window.pandaStage.export.startProbe({
         projectDirectory,
-        audioPath,
+        audioClips: [
+          {
+            clipId: EXPORT_PROBE_CLIP_ID,
+            assetId: EXPORT_PROBE_ASSET_ID,
+            role: 'dialogue',
+            sourcePath: audioPath,
+            startMs: 400,
+            endMs: 3_000,
+            offsetMs: 0,
+            volume: 1,
+          },
+        ],
         outputPath,
         durationMs: 3_000,
         fps: 24,
-        audioStartMs: 400,
         overwrite: true,
       });
       setExportJob({

@@ -12,6 +12,7 @@ import type { MediaToolPaths } from './services/production-resources';
 import { HiddenWindowManager } from './windows/hidden-window-manager';
 import { createMainWindow } from './windows/main-window';
 import { frameTimeMs } from '../shared/export-types';
+import type { FullProbeExportRequest } from '../shared/export-types';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import {
   PROBE_PROJECT,
@@ -21,7 +22,15 @@ import {
 const CONFIG = {
   durationMs: 3_000,
   fps: 24 as const,
-  audioStartMs: 400,
+};
+const PROBE_AUDIO_CLIP = {
+  clipId: '70000000-0000-4000-8000-000000000660',
+  assetId: '10000000-0000-4000-8000-000000000660',
+  role: 'dialogue' as const,
+  startMs: 400,
+  endMs: 3_000,
+  offsetMs: 0,
+  volume: 1,
 };
 const KEY_FRAMES = [0, 24, 48, 71] as const;
 const PREVIEW_READY_TIMEOUT_MS = 15_000;
@@ -203,13 +212,7 @@ async function verifyChromiumPlayback(mediaPath: string): Promise<{
 async function waitForCancellation(
   service: ExportService,
   outputPath: string,
-  request: {
-    projectDirectory: string;
-    audioPath: string;
-    durationMs: number;
-    fps: 24;
-    audioStartMs: number;
-  },
+  request: Omit<FullProbeExportRequest, 'outputPath' | 'overwrite'>,
 ): Promise<Record<string, unknown>> {
   const handle = service.startFullProbe({
     ...request,
@@ -300,9 +303,11 @@ export async function runPackagedGateA(
     }),
   });
 
-  const request = {
+  const request: Omit<FullProbeExportRequest, 'outputPath' | 'overwrite'> = {
     projectDirectory,
-    audioPath: mediaTools.audioProbePath,
+    audioClips: [
+      { ...PROBE_AUDIO_CLIP, sourcePath: mediaTools.audioProbePath },
+    ],
     ...CONFIG,
   };
   try {
@@ -347,8 +352,8 @@ export async function runPackagedGateA(
         audioSampleRate: 48_000,
         audioChannels: 1,
         videoDurationSeconds: 3,
-        audioDurationSeconds: 3.4,
-        formatDurationSeconds: 3.4,
+        audioDurationSeconds: 3,
+        formatDurationSeconds: 3,
         durationToleranceSeconds: 0.05,
       });
       const timing = await adapter.analyzeAudioTiming(outputPath);
