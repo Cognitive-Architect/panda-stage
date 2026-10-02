@@ -21,18 +21,36 @@ import type { FlaRenderTarget } from '../../src/shared/fla-static-snapshot-api';
 
 const SIMPLE_RECT_CUBICS = '!0 0|100 0|100 100|0 100|0 0';
 
+interface SyntheticGraphicFrame {
+  readonly index: number;
+  readonly duration?: number;
+  readonly tweenType?: 'none' | 'motion' | 'shape';
+  readonly tx?: number;
+  readonly color?: string;
+}
+
 async function buildSyntheticFla(
   options: {
     includeLibrary?: boolean;
     symbolName?: string;
     symbolNames?: string[];
     graphicFrameCount?: number;
+    graphicFrames?: readonly {
+      readonly index: number;
+      readonly duration?: number;
+      readonly tweenType?: 'none' | 'motion' | 'shape';
+      readonly tx?: number;
+      readonly color?: string;
+    }[];
     includeSceneShape?: boolean;
   } = {},
 ): Promise<Uint8Array> {
   const includeLibrary = options.includeLibrary ?? true;
   const symbolNames = options.symbolNames ?? [options.symbolName ?? 'synthetic-symbol'];
-  const graphicFrameCount = options.graphicFrameCount ?? 1;
+  const graphicFrames: readonly SyntheticGraphicFrame[] = options.graphicFrames ?? Array.from(
+    { length: options.graphicFrameCount ?? 1 },
+    (_, index): SyntheticGraphicFrame => ({ index, tx: 10 + index, color: '#336699' }),
+  );
   const includeSceneShape = options.includeSceneShape ?? true;
   const zip = new JSZip();
 
@@ -75,14 +93,14 @@ async function buildSyntheticFla(
 
   if (includeLibrary) {
     for (const currentSymbolName of symbolNames) {
-      const frames = Array.from({ length: graphicFrameCount }, (_, frameIndex) => `<DOMFrame index="${frameIndex}">
+      const frames = graphicFrames.map((frame) => `<DOMFrame index="${frame.index}"${frame.duration === undefined ? '' : ` duration="${frame.duration}"`}${frame.tweenType === undefined ? '' : ` tweenType="${frame.tweenType}"`}>
               <DOMGroup>
-                <matrix><Matrix a="2" d="2" tx="10" ty="20"/></matrix>
+                <matrix><Matrix a="2" d="2" tx="${frame.tx ?? 10}" ty="20"/></matrix>
                 <members>
                   <DOMShape>
                     <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
                     <fills>
-                      <FillStyle index="1"><SolidColor color="#336699" alpha="1"/></FillStyle>
+                      <FillStyle index="1"><SolidColor color="${frame.color ?? '#336699'}" alpha="1"/></FillStyle>
                     </fills>
                     <strokes/>
                     <edges>
@@ -239,6 +257,70 @@ describe('R1-B SVG builder: SVG for a renderable target', () => {
     if (!result.ok) return;
     expect(result.svg).toContain('<path');
     expect(result.svg).toContain('fill="#abcdef"');
+  });
+
+  it('selects Graphic display states by authored spans and uses their true frame count', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'authored-span-symbol',
+      graphicFrames: [
+        { index: 0, duration: 3, tx: 10, color: '#336699' },
+        { index: 3, duration: 2, tx: 30, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const target = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol')?.target;
+    expect(target?.frameCount).toBe(5);
+    if (!target) return;
+
+    const first = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 0 });
+    const held = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 2 });
+    const second = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 3 });
+    expect(first.ok).toBe(true);
+    expect(held.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !held.ok || !second.ok) return;
+
+    const visiblePath = (svg: string) => svg.match(/<path[^>]*\/>/u)?.[0];
+    expect(visiblePath(held.svg)).toBe(visiblePath(first.svg));
+    expect(held.width).toBe(first.width);
+    expect(held.height).toBe(first.height);
+    expect(visiblePath(second.svg)).not.toBe(visiblePath(first.svg));
+    expect(second.svg).not.toBe(first.svg);
+    expect({ ...target, selectedFrameIndex: 3 }.renderTargetId).toBe(target.renderTargetId);
+    expect(first.svg).toContain('fill="#336699"');
+    expect(second.svg).toContain('fill="#cc3355"');
+
+    const outOfRange = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 5 });
+    expect(outOfRange.ok).toBe(false);
+    if (!outOfRange.ok) expect(outOfRange.code).toBe('TARGET_OUT_OF_RANGE');
+  });
+
+  it('rejects a Graphic tween interior instead of repeating the keyframe state', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'tween-symbol',
+      graphicFrames: [{ index: 0, duration: 3, tweenType: 'motion' }],
+      includeSceneShape: false,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const target = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol')?.target;
+    expect(target?.frameCount).toBe(3);
+    if (!target) return;
+
+    const keyframe = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 0 });
+    const tweenInterior = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 1 });
+    expect(keyframe.ok).toBe(true);
+    expect(tweenInterior.ok).toBe(false);
+    if (!tweenInterior.ok) {
+      expect(tweenInterior.code).toBe('RENDER_FAILED');
+      expect(tweenInterior.message).toContain('unsupported motion tween interpolation');
+    }
   });
 
   it('honors a non-zero selectedFrameIndex on a scene target', async () => {

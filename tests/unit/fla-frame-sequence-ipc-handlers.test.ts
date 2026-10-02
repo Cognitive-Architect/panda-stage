@@ -32,7 +32,10 @@ import {
 } from '../../src/shared/fla-frame-sequence-api';
 import { IPC_CHANNELS } from '../../src/shared/ipc/channels';
 import type { FlaStaticSnapshotSource } from '../../src/main/services/fla-static-snapshot-render-session';
-import { buildRenderableTargetCatalog } from '../../src/main/services/fla-static-snapshot-svg-builder';
+import {
+  buildRenderableTargetCatalog,
+  buildSvgForRenderTarget,
+} from '../../src/main/services/fla-static-snapshot-svg-builder';
 import { buildMultiFrameGraphicFla } from '../helpers/fla-render-fixture';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject, type Project } from '../../src/domain';
@@ -227,6 +230,14 @@ describe('R2-H.1 frame sequence render IPC', () => {
     expect(response).toMatchObject({ ok: true, renderTargetId: target.renderTargetId });
     expect(collected.map((frame) => frame.frameIndex)).toEqual([0, 1]);
     expect(collected.every((frame) => frame.svg.includes('<path'))).toBe(true);
+    const staticFrameZero = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 0 });
+    const staticFrameOne = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 1 });
+    expect(staticFrameZero.ok).toBe(true);
+    expect(staticFrameOne.ok).toBe(true);
+    if (!staticFrameZero.ok || !staticFrameOne.ok) return;
+    expect(collected[0]?.svg).toBe(staticFrameZero.svg);
+    expect(collected[1]?.svg).toBe(staticFrameOne.svg);
+    expect(staticFrameOne.svg).not.toBe(staticFrameZero.svg);
   });
 
   it('rejects an untrusted sender without invoking the service', async () => {

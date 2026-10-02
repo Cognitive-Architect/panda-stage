@@ -39,7 +39,7 @@ export async function buildMultiFrameGraphicFla(): Promise<Uint8Array> {
                   <DOMShape>
                     <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
                     <fills>
-                      <FillStyle index="1"><SolidColor color="#336699" alpha="1"/></FillStyle>
+                      <FillStyle index="1"><SolidColor color="${frameIndex === 0 ? '#336699' : '#cc3355'}" alpha="1"/></FillStyle>
                     </fills>
                     <strokes/>
                     <edges>

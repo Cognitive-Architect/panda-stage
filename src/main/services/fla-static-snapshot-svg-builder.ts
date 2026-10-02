@@ -633,15 +633,26 @@ function resolveTargetDisplayList(
       return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'Graphic symbol not found: ' + (sourceName ?? '(unset)') };
     }
     const selectedFrameIndex = target.selectedFrameIndex ?? 0;
-    if (selectedFrameIndex >= target.frameCount || selectedFrameIndex >= descriptor.frameCount) {
-      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: 'selectedFrameIndex ' + selectedFrameIndex + ' >= frameCount ' + target.frameCount };
+    if (selectedFrameIndex >= descriptor.frameCount) {
+      return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: 'selectedFrameIndex ' + selectedFrameIndex + ' >= frameCount ' + descriptor.frameCount };
     }
-    // C03 resolves the Graphic target's initial display list. True Graphic
-    // frame synchronization remains outside this ticket.
+    const frameContext = source.buildGraphicFrameContext(
+      descriptor.timelineXml,
+      descriptor.frameSpanIndex,
+      selectedFrameIndex,
+      'graphic:' + descriptor.sourceLibraryItemName,
+    );
+    if (!frameContext.ok) {
+      return {
+        ok: false,
+        code: frameContext.code === 'BUDGET_EXCEEDED' ? 'BUDGET_EXCEEDED' : 'RENDER_FAILED',
+        message: frameContext.message,
+      };
+    }
     root = {
       kind: 'graphic',
       name: descriptor.sourceLibraryItemName,
-      frameContext: descriptor.frameContext,
+      frameContext: frameContext.value,
     };
   } else if (target.kind === 'scene' || target.kind === 'timeline') {
     const timelineIndex = target.sourceTimelineIndex ?? 0;

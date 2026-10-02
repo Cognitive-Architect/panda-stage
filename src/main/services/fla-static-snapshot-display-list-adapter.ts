@@ -7,6 +7,11 @@
 
 import crypto from 'node:crypto';
 import {
+  buildFlaTimelineFrameSpanIndex,
+  resolveFlaTimelineFrameSpan,
+  type FlaTimelineFrameSpanIndex,
+} from './fla-timeline-frame-span-resolver';
+import {
   FLA_DISPLAY_LIST_IDENTITY_MATRIX,
   type FlaDisplayListElement,
   type FlaDisplayListFrameContext,
@@ -36,6 +41,7 @@ export interface FlaXflTimelineDescriptor {
   readonly index: number;
   readonly name: string;
   readonly frameCount: number;
+  readonly frameSpanIndex?: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly xml: string;
   readonly frameContext: FlaDisplayListFrameContext;
 }
@@ -44,6 +50,7 @@ export interface FlaXflGraphicSymbolDescriptor extends FlaGraphicSymbolDefinitio
   readonly sourceLibraryItemName: string;
   readonly userLabel: string;
   readonly frameCount: number;
+  readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly hasNestedSymbol: boolean;
   readonly hasDisplayElements: boolean;
   readonly timelineXml: string;
@@ -59,6 +66,13 @@ export interface FlaStaticSnapshotDisplaySource {
   /** Build an already-selected Scene frame without changing symbol frame semantics. */
   buildSceneFrameContext(
     timelineXml: string,
+    frameIndex: number,
+    scope: string,
+  ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext>;
+  /** Resolve a Graphic's authored frame span before the P0 display-list path. */
+  buildGraphicFrameContext(
+    timelineXml: string,
+    frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
     frameIndex: number,
     scope: string,
   ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext>;
@@ -299,6 +313,35 @@ function layersForTimeline(timelineXml: string): readonly FlaXflElementBlock[] {
 function framesForLayer(layerXml: string): readonly FlaXflElementBlock[] {
   const wrapper = directChild(layerXml, 'DOMLayer', 'frames');
   return wrapper ? getFlaXflDirectChildren(wrapper.xml, 'frames').filter((child) => child.name === 'DOMFrame') : [];
+}
+
+function sourceLayerIsVisible(layer: FlaXflElementBlock): boolean {
+  const layerType = (layer.attributes.layerType ?? '').toLocaleLowerCase('en-US');
+  return layer.attributes.visible !== 'false' &&
+    layer.attributes.isVisible !== 'false' &&
+    layerType !== 'guide' && layerType !== 'folder' && layerType !== 'camera';
+}
+
+function timelineFrameSpanIndex(
+  timelineXml: string,
+): FlaStaticSnapshotDisplaySourceResult<FlaTimelineFrameSpanIndex<FlaXflElementBlock>> {
+  const result = buildFlaTimelineFrameSpanIndex(
+    layersForTimeline(timelineXml).map((layer) => ({
+      visible: sourceLayerIsVisible(layer),
+      frames: framesForLayer(layer.xml).map((frame) => ({
+        index: frame.attributes.index,
+        duration: frame.attributes.duration,
+        tweenType: frame.attributes.tweenType,
+        sourceFrame: frame,
+      })),
+    })),
+  );
+  if (result.ok) return { ok: true, value: result.index };
+  const code = result.code === 'FRAME_COUNT_LIMIT_EXCEEDED' ||
+      result.code === 'FRAME_SPAN_BUDGET_EXCEEDED'
+    ? 'BUDGET_EXCEEDED'
+    : 'RENDER_FAILED';
+  return fail(code, `Invalid XFL timeline frame spans: ${result.message}`);
 }
 
 function frameCountForTimeline(timelineXml: string): number {
@@ -582,6 +625,52 @@ function buildFrameContext(
   };
 }
 
+function buildGraphicFrameContext(
+  timelineXml: string,
+  frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
+  frameIndex: number,
+  scope: string,
+  state: SourceBuildState,
+): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext> {
+  const resolution = resolveFlaTimelineFrameSpan(frameSpanIndex, frameIndex);
+  if (!resolution.ok) return fail('RENDER_FAILED', resolution.message);
+
+  const layers = layersForTimeline(timelineXml);
+  const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
+  for (const selection of resolution.layers) {
+    const layer = layers[selection.layerIndex];
+    if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
+    if (selection.kind === 'unsupported-tween-interior' && selection.visible) {
+      return fail(
+        'RENDER_FAILED',
+        `Graphic frame ${frameIndex} requires unsupported ${selection.span.tweenType} tween interpolation on layer ${selection.layerIndex}`,
+      );
+    }
+
+    let elements: readonly FlaDisplayListElement[] = [];
+    if (selection.kind === 'authored-frame') {
+      const frame = selection.sourceFrame;
+      const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
+      const parsed = parseDisplayElements(elementContainer, {
+        scope,
+        parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+        depth: 0,
+        path: `layer-${selection.layerIndex}-frame-${selection.span.index}`,
+        state,
+      });
+      if (!parsed.ok) return parsed;
+      elements = parsed.value;
+    }
+
+    resolvedLayers.push({
+      name: layer.attributes.name?.trim() || `Layer ${selection.layerIndex + 1}`,
+      visible: selection.visible,
+      elements,
+    });
+  }
+  return { ok: true, value: { frameIndex, layers: resolvedLayers } };
+}
+
 function countNestedSymbols(elements: readonly FlaDisplayListElement[]): boolean {
   return elements.some((element) =>
     element.kind === 'symbol' || (element.kind === 'group' && countNestedSymbols(element.elements)),
@@ -591,13 +680,28 @@ function countNestedSymbols(elements: readonly FlaDisplayListElement[]): boolean
 function timelineDescriptors(
   xml: string,
   parentName: string,
-): readonly Omit<FlaXflTimelineDescriptor, 'frameContext'>[] {
-  return timelineBlocks(xml, parentName).map((timeline, index) => ({
-    index,
-    name: timeline.attributes.name?.trim() || `Timeline ${index + 1}`,
-    frameCount: frameCountForTimeline(timeline.xml),
-    xml: timeline.xml,
-  }));
+): FlaStaticSnapshotDisplaySourceResult<readonly Omit<FlaXflTimelineDescriptor, 'frameContext'>[]> {
+  const descriptors: Omit<FlaXflTimelineDescriptor, 'frameContext'>[] = [];
+  for (const [index, timeline] of timelineBlocks(xml, parentName).entries()) {
+    const descriptor = {
+      index,
+      name: timeline.attributes.name?.trim() || `Timeline ${index + 1}`,
+      xml: timeline.xml,
+    };
+    if (parentName === 'DOMSymbolItem') {
+      const frameSpanIndex = timelineFrameSpanIndex(timeline.xml);
+      if (!frameSpanIndex.ok) return frameSpanIndex;
+      descriptors.push({
+        ...descriptor,
+        frameCount: frameSpanIndex.value.frameCount,
+        frameSpanIndex: frameSpanIndex.value,
+      });
+    } else {
+      // Keep the accepted Scene/Timeline selection path unchanged in C02.
+      descriptors.push({ ...descriptor, frameCount: frameCountForTimeline(timeline.xml) });
+    }
+  }
+  return { ok: true, value: descriptors };
 }
 
 function parseStageDimension(xml: string, key: 'width' | 'height', fallback: number): number {
@@ -612,6 +716,7 @@ interface GraphicSymbolShell {
   readonly userLabel: string;
   readonly timelineXml: string;
   readonly frameCount: number;
+  readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
 }
 
 export function adaptFlaXflDisplaySource(
@@ -625,6 +730,7 @@ export function adaptFlaXflDisplaySource(
     visitedNodeCount: 0,
   };
   const sceneSources = timelineDescriptors(docXml, 'DOMDocument');
+  if (!sceneSources.ok) return sceneSources;
 
   const shells: GraphicSymbolShell[] = [];
   for (const library of libraryXmlEntries) {
@@ -637,13 +743,15 @@ export function adaptFlaXflDisplaySource(
     if (!sourceLibraryItemName || sourceLibraryItemName.length > 500 ||
         !userLabel || userLabel.length > 500) continue;
     const timelines = timelineDescriptors(library.xml, 'DOMSymbolItem');
-    const timeline = timelines[0];
-    if (!timeline || timeline.frameCount <= 0) continue;
+    if (!timelines.ok) return timelines;
+    const timeline = timelines.value[0];
+    if (!timeline || !timeline.frameSpanIndex || timeline.frameCount <= 0) continue;
     shells.push({
       sourceLibraryItemName,
       userLabel,
       timelineXml: timeline.xml,
       frameCount: timeline.frameCount,
+      frameSpanIndex: timeline.frameSpanIndex,
     });
   }
 
@@ -652,8 +760,9 @@ export function adaptFlaXflDisplaySource(
   const symbols = new Map<string, FlaGraphicSymbolDefinition>();
   const graphicSymbols: FlaXflGraphicSymbolDescriptor[] = [];
   for (const shell of shells) {
-    const parsed = buildFrameContext(
+    const parsed = buildGraphicFrameContext(
       shell.timelineXml,
+      shell.frameSpanIndex,
       0,
       `graphic:${shell.sourceLibraryItemName}`,
       state,
@@ -670,6 +779,7 @@ export function adaptFlaXflDisplaySource(
       sourceLibraryItemName: shell.sourceLibraryItemName,
       userLabel: shell.userLabel,
       frameCount: shell.frameCount,
+      frameSpanIndex: shell.frameSpanIndex,
       hasNestedSymbol: countNestedSymbols(parsed.value.layers.flatMap((layer) => layer.elements)),
       hasDisplayElements: parsed.value.layers.some((layer) => layer.elements.length > 0),
       timelineXml: shell.timelineXml,
@@ -677,7 +787,7 @@ export function adaptFlaXflDisplaySource(
   }
 
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
-  for (const scene of sceneSources) {
+  for (const scene of sceneSources.value) {
     const parsed = buildFrameContext(scene.xml, 0, `scene:${scene.index}`, state);
     if (!parsed.ok) return parsed;
     sceneTimelines.push({ ...scene, frameContext: parsed.value });
@@ -694,6 +804,8 @@ export function adaptFlaXflDisplaySource(
       shapeBlocks,
       buildSceneFrameContext: (timelineXml, frameIndex, scope) =>
         buildFrameContext(timelineXml, frameIndex, scope, state),
+      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) =>
+        buildGraphicFrameContext(timelineXml, frameSpanIndex, frameIndex, scope, state),
     },
   };
 }
