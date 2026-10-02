@@ -138,6 +138,7 @@
           "tests/unit/ffmpeg-*.test.ts"
         ],
         "verifierPatterns": [
+          "scripts/verify-day09.cjs",
           "scripts/verify-issue660-export-audio-mix.cjs"
         ],
         "suites": [],
@@ -145,7 +146,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "release",
-        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths."
+        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths. The exact legacy Day09 export probe path is registered because this request-contract migration updates its fixture; no broad scripts/** route is added."
       }
     ],
     "routes": [
