@@ -1,5 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { calculateViewportTransform, type FacePlacement } from '../../../domain';
+import {
+  calculateViewportTransform,
+  type CharacterHead,
+  type FacePlacement,
+  type HeadPivot,
+  type ImageAsset,
+} from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import {
   characterAssemblySessionStore,
@@ -13,10 +19,17 @@ import {
   type CanvasImageState,
 } from '../canvas/canvasImageResources';
 import {
+  thumbnailStateFromResponse,
+  type ThumbnailState,
+} from '../assets/AssetCard';
+import { ImageAssetPicker } from './ImageAssetPicker';
+import {
   buildCharacterAssemblyPreviewVisual,
   getAssemblyPreviewExpressions,
+  isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
   isCharacterCreationSnapshot,
+  type AssemblyHeadMotionTestToken,
   type AssemblyFaceSelection,
   type CharacterAssemblySnapshotUnion,
 } from './characterAssemblyPreview';
@@ -26,11 +39,44 @@ interface CharacterAssemblyWorkbenchProps {
   session: CharacterAssemblySnapshotUnion;
 }
 
-interface ActiveDrag {
-  pointerId: number;
+interface ActiveDragStart {
   startX: number;
   startY: number;
-  placement: FacePlacement;
+}
+
+type ActiveDragDefinition =
+  | { kind: 'face'; placement: FacePlacement }
+  | { kind: 'pivot'; pivot: HeadPivot };
+
+type ActiveDrag = ActiveDragStart &
+  ActiveDragDefinition & { pointerId: number };
+
+function headWithAsset(
+  current: CharacterHead | undefined,
+  assetId: string,
+): CharacterHead {
+  return current
+    ? { ...current, assetId }
+    : {
+        assetId,
+        placement: { offsetX: 0, offsetY: 0, scale: 1 },
+        pivot: { x: 0, y: 0 },
+      };
+}
+
+function thumbnailFailure(): ThumbnailState {
+  return { status: 'missing', reason: 'error' };
+}
+
+function readThumbnailState(
+  projectRoot: string,
+  asset: ImageAsset,
+): Promise<ThumbnailState> {
+  if (!asset.sha256) return Promise.resolve({ status: 'missing', reason: 'source' });
+  return window.pandaStage.assets
+    .readThumbnail({ projectRoot, assetId: asset.id, sha256: asset.sha256 })
+    .then(thumbnailStateFromResponse)
+    .catch(thumbnailFailure);
 }
 
 function activeCreationHandle(
@@ -82,6 +128,13 @@ export function CharacterAssemblyWorkbench({
   }, [expressions, project.characters, session]);
   const [selectedFace, setSelectedFace] = useState('');
   const [message, setMessage] = useState('');
+  const [headPickerOpen, setHeadPickerOpen] = useState(false);
+  const [headMotionTestToken, setHeadMotionTestToken] =
+    useState<AssemblyHeadMotionTestToken | null>(null);
+  const isTestingHeadMotion = isAssemblyHeadMotionTestRunning(
+    headMotionTestToken,
+    session,
+  );
   const [transform, setTransform] = useState(() =>
     calculateViewportTransform(
       { width: 0, height: 0 },
@@ -91,6 +144,7 @@ export function CharacterAssemblyWorkbench({
   );
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ActiveDrag | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     setSelectedFace(defaultExpressionId);
@@ -128,23 +182,55 @@ export function CharacterAssemblyWorkbench({
   );
   const facePart = visual?.parts.find((part) => part.slot === 'face') ?? null;
   const bodyPart = visual?.parts.find((part) => part.slot === 'body') ?? null;
+  const headPart = visual?.headPart ?? null;
+  const faceRect = facePart?.localRect;
+  const bodyRect = bodyPart?.localRect;
+  const head = session.draft.head;
+  const imageAssetCandidates = useMemo(
+    () => project.assets.filter((asset): asset is ImageAsset => asset.kind === 'image'),
+    [project.assets],
+  );
   const imageAssets = useMemo(() => {
     const assetIds = new Set([
       session.draft.bodyAssetId,
       previewFaceAssetId,
+      ...(head ? [head.assetId] : []),
     ]);
     return project.assets.flatMap((asset): CanvasImageAssetSource[] =>
       assetIds.has(asset.id) && asset.kind === 'image' && asset.sha256
         ? [{ id: asset.id, sha256: asset.sha256 }]
         : [],
     );
-  }, [previewFaceAssetId, project.assets, session.draft.bodyAssetId]);
+  }, [head, previewFaceAssetId, project.assets, session.draft.bodyAssetId]);
+  const imageAssetKey = JSON.stringify(
+    imageAssetCandidates.map(({ id, sha256 }) => [id, sha256]),
+  );
   const imageSourceKey = JSON.stringify([
     project.id,
     projectRoot,
     imageAssets.map(({ id, sha256 }) => [id, sha256]),
   ]);
   const contextKey = `${project.id}\u0000${projectRoot}`;
+  const [thumbnailEntries, setThumbnailEntries] = useState<
+    Record<string, { resourceKey: string; state: ThumbnailState }>
+  >({});
+  const thumbnailReadsInFlight = useRef(new Set<string>());
+  const visibleThumbnails = useMemo(
+    () =>
+      Object.fromEntries(
+        imageAssetCandidates.map((asset) => {
+          const resourceKey = `${contextKey}\u0000${asset.id}\u0000${asset.sha256 ?? ''}`;
+          const entry = thumbnailEntries[asset.id];
+          return [
+            asset.id,
+            entry?.resourceKey === resourceKey
+              ? entry.state
+              : { status: 'loading' as const },
+          ];
+        }),
+      ),
+    [contextKey, imageAssetCandidates, thumbnailEntries],
+  );
   const imageSessionRef = useRef<CanvasImageResourceSession | null>(null);
   const [imageResult, setImageResult] = useState<{
     contextKey: string | null;
@@ -153,6 +239,51 @@ export function CharacterAssemblyWorkbench({
   const imageState = imageResult.contextKey === contextKey
     ? imageResult.state
     : EMPTY_CANVAS_IMAGE_STATE;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!headPickerOpen) return undefined;
+    for (const asset of imageAssetCandidates) {
+      const resourceKey = `${contextKey}\u0000${asset.id}\u0000${asset.sha256 ?? ''}`;
+      const existing = thumbnailEntries[asset.id];
+      if (
+        existing?.resourceKey === resourceKey &&
+        existing.state.status !== 'loading'
+      ) {
+        continue;
+      }
+      if (thumbnailReadsInFlight.current.has(resourceKey)) continue;
+      thumbnailReadsInFlight.current.add(resourceKey);
+      setThumbnailEntries((current) => ({
+        ...current,
+        [asset.id]: { resourceKey, state: { status: 'loading' } },
+      }));
+      void readThumbnailState(projectRoot, asset)
+        .then((state) => {
+          if (!mountedRef.current) return;
+          setThumbnailEntries((current) =>
+            current[asset.id]?.resourceKey === resourceKey
+              ? { ...current, [asset.id]: { resourceKey, state } }
+              : current,
+          );
+        })
+        .finally(() => thumbnailReadsInFlight.current.delete(resourceKey));
+    }
+    return undefined;
+  }, [
+    contextKey,
+    headPickerOpen,
+    imageAssetCandidates,
+    imageAssetKey,
+    projectRoot,
+    thumbnailEntries,
+  ]);
 
   useEffect(() => {
     const imageSession = new CanvasImageResourceSession();
@@ -207,6 +338,123 @@ export function CharacterAssemblyWorkbench({
     setMessage('');
   };
 
+  const updateHead = (nextHead: CharacterHead | null): void => {
+    const result = isCreating
+      ? activeCreationHandle(session)?.updateDraft({ head: nextHead })
+      : activeAssemblyHandle(session)?.updateDraft({ head: nextHead });
+    if (!result) {
+      setHeadMotionTestToken(null);
+      setMessage('装配草稿已失效，请重新打开角色装配。');
+      return;
+    }
+    if (!result.ok) {
+      setMessage(result.error.message);
+      return;
+    }
+    setMessage('');
+  };
+
+  const chooseHeadAsset = (assetId: string | null): void => {
+    updateHead(assetId ? headWithAsset(head, assetId) : null);
+  };
+
+  const adjustHeadScale = (delta: number): void => {
+    if (!head) return;
+    const scale = Number(
+      Math.max(0.05, head.placement.scale + delta).toFixed(2),
+    );
+    updateHead({
+      ...head,
+      placement: { ...head.placement, scale },
+    });
+  };
+
+  const nudgeHead = (dx: number, dy: number): void => {
+    if (!head) return;
+    updateHead({
+      ...head,
+      placement: {
+        ...head.placement,
+        offsetX: head.placement.offsetX + dx,
+        offsetY: head.placement.offsetY + dy,
+      },
+    });
+  };
+
+  const nudgePivot = (dx: number, dy: number): void => {
+    if (!head) return;
+    updateHead({
+      ...head,
+      pivot: { x: head.pivot.x + dx, y: head.pivot.y + dy },
+    });
+  };
+
+  const beginPointerDrag = (
+    event: React.PointerEvent<HTMLElement>,
+    definition: ActiveDragDefinition,
+  ): void => {
+    if (event.button !== 0 || isTestingHeadMotion) return;
+    dragRef.current = {
+      ...definition,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const movePointerDrag = (event: React.PointerEvent<HTMLElement>): void => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || isTestingHeadMotion) return;
+    const safeScale = Math.max(transform.scale, 0.0001);
+    const dx = (event.clientX - drag.startX) / safeScale;
+    const dy = (event.clientY - drag.startY) / safeScale;
+    if (drag.kind === 'face') {
+      updateFacePlacement({
+        ...drag.placement,
+        offsetX: drag.placement.offsetX + dx,
+        offsetY: drag.placement.offsetY + dy,
+      });
+    } else {
+      if (!head) return;
+      updateHead({
+        ...head,
+        pivot: { x: drag.pivot.x + dx, y: drag.pivot.y + dy },
+      });
+    }
+  };
+
+  const endPointerDrag = (event: React.PointerEvent<HTMLElement>): void => {
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const stopPointerDrag = (): void => {
+    dragRef.current = null;
+  };
+
+  const toggleHeadMotionTest = (): void => {
+    if (!head) return;
+    setHeadMotionTestToken(
+      isTestingHeadMotion
+        ? null
+        : { sessionId: session.sessionId, generation: session.generation },
+    );
+  };
+
+  const handleThumbnailError = (assetId: string): void => {
+    const asset = imageAssetCandidates.find((candidate) => candidate.id === assetId);
+    if (!asset) return;
+    const resourceKey = `${contextKey}\u0000${asset.id}\u0000${asset.sha256 ?? ''}`;
+    setThumbnailEntries((current) =>
+      current[assetId]?.resourceKey === resourceKey
+        ? { ...current, [assetId]: { resourceKey, state: thumbnailFailure() } }
+        : current,
+    );
+  };
+
   const moveFace = (dx: number, dy: number): void => {
     updateFacePlacement({
       ...session.draft.facePlacement,
@@ -226,8 +474,16 @@ export function CharacterAssemblyWorkbench({
     updateFacePlacement({ offsetX: 0, offsetY: 0, scale: 1 });
   };
 
+  useEffect(() => {
+    setHeadPickerOpen(false);
+    setHeadMotionTestToken(null);
+    dragRef.current = null;
+  }, [session.generation, session.sessionId]);
+
   const pending = !isCreating && isCharacterAssemblyPending(project, session);
   const commit = (): void => {
+    setHeadMotionTestToken(null);
+    dragRef.current = null;
     const result = activeAssemblyHandle(session)?.commit();
     if (!result) {
       setMessage('装配草稿已失效，请重新打开角色装配。');
@@ -246,13 +502,13 @@ export function CharacterAssemblyWorkbench({
 
   const revert = (): void => {
     if (isCreating) return;
+    setHeadMotionTestToken(null);
+    dragRef.current = null;
     const result = characterAssemblySessionStore.begin(session.characterId);
     if (!result.ok) setMessage(result.error.message);
     else setMessage('');
   };
 
-  const faceRect = facePart?.localRect;
-  const bodyRect = bodyPart?.localRect;
   const left = project.width / 2;
   const top = project.height / 2;
 
@@ -264,58 +520,83 @@ export function CharacterAssemblyWorkbench({
       data-face-offset-x={session.draft.facePlacement.offsetX}
       data-face-offset-y={session.draft.facePlacement.offsetY}
       data-face-scale={session.draft.facePlacement.scale}
+      data-head-asset-id={head?.assetId ?? ''}
+      data-head-offset-x={head?.placement.offsetX ?? ''}
+      data-head-offset-y={head?.placement.offsetY ?? ''}
+      data-head-scale={head?.placement.scale ?? ''}
+      data-head-pivot-x={head?.pivot.x ?? ''}
+      data-head-pivot-y={head?.pivot.y ?? ''}
+      data-head-motion-test-running={isTestingHeadMotion}
       data-preview-face-asset-id={facePart?.assetId ?? ''}
       data-selected-face={selectedFace}
       data-session-kind={isCreating ? 'create' : 'edit'}
       data-testid="character-assembly-workbench"
     >
       <header className="character-assembly-workbench-header">
-        {!isCreating ? (
-          <nav aria-label="预览表情" className="character-assembly-face-choices">
-            {expressions.map((expression) => (
+        <div className="character-assembly-header-tools">
+          {!isCreating ? (
+            <nav aria-label="预览表情" className="character-assembly-face-choices">
+              {expressions.map((expression) => (
+                <button
+                  aria-pressed={selectedFace === expression.id}
+                  key={expression.id}
+                  onClick={() => setSelectedFace(expression.id)}
+                  type="button"
+                >
+                  {expression.name}
+                </button>
+              ))}
+              {hasMouth ? (
+                <button
+                  aria-pressed={selectedFace === '$mouth'}
+                  onClick={() => setSelectedFace('$mouth')}
+                  type="button"
+                >
+                  张嘴
+                </button>
+              ) : null}
+            </nav>
+          ) : (
+            <nav aria-label="预览表情" className="character-assembly-face-choices">
               <button
-                aria-pressed={selectedFace === expression.id}
-                key={expression.id}
-                onClick={() => setSelectedFace(expression.id)}
+                aria-pressed={selectedFace !== '$mouth'}
+                onClick={() => setSelectedFace(defaultExpressionId)}
                 type="button"
               >
-                {expression.name}
+                默认
               </button>
-            ))}
-            {hasMouth ? (
-              <button
-                aria-pressed={selectedFace === '$mouth'}
-                onClick={() => setSelectedFace('$mouth')}
-                type="button"
-              >
-                张嘴
-              </button>
-            ) : null}
-          </nav>
-        ) : (
-          <nav aria-label="预览表情" className="character-assembly-face-choices">
-            <button
-              aria-pressed={selectedFace !== '$mouth'}
-              onClick={() => setSelectedFace(defaultExpressionId)}
-              type="button"
-            >
-              默认
-            </button>
-            {hasMouth ? (
-              <button
-                aria-pressed={selectedFace === '$mouth'}
-                onClick={() => setSelectedFace('$mouth')}
-                type="button"
-              >
-                张嘴
-              </button>
-            ) : null}
-          </nav>
-        )}
+              {hasMouth ? (
+                <button
+                  aria-pressed={selectedFace === '$mouth'}
+                  onClick={() => setSelectedFace('$mouth')}
+                  type="button"
+                >
+                  张嘴
+                </button>
+              ) : null}
+            </nav>
+          )}
+          <div className="character-assembly-head-picker" data-testid="character-assembly-head-picker">
+            <ImageAssetPicker
+              assets={imageAssetCandidates}
+              emptyOption={{ label: '不添加头部', optional: true }}
+              emptyActionLabel="选择"
+              label="头部"
+              onChange={chooseHeadAsset}
+              onOpenChange={setHeadPickerOpen}
+              onThumbnailError={handleThumbnailError}
+              presentation="inline"
+              searchAndPaginate
+              selectedAssetId={head?.assetId ?? null}
+              testId="character-assembly-head-asset"
+              thumbnails={visibleThumbnails}
+            />
+          </div>
+        </div>
       </header>
 
       <div
-        aria-label="身体和脸部预览"
+        aria-label="角色装配预览"
         className="character-assembly-preview-viewport"
         data-testid="character-assembly-preview"
         ref={viewportRef}
@@ -331,86 +612,135 @@ export function CharacterAssemblyWorkbench({
             width: project.width,
           }}
         >
-          {visual?.parts.map((part) => {
-            const image = imageState.images.get(part.assetId);
-            return image ? (
-              <img
-                alt=""
-                className={`character-assembly-part character-assembly-part-${part.slot}`}
-                data-asset-id={part.assetId}
-                draggable={false}
-                key={part.partId}
-                src={image.src}
-                style={{
-                  height: part.localRect.height,
-                  left: left + part.localRect.x,
-                  top: top + part.localRect.y,
-                  width: part.localRect.width,
-                }}
-              />
-            ) : null;
-          })}
-          {faceRect ? (
-            <div
-              aria-label="拖动脸部调整位置，使用方向键微调"
-              aria-roledescription="可拖动脸部"
-              className="character-assembly-face-hit-area"
-              data-testid="character-assembly-face-drag-target"
-              onKeyDown={(event) => {
-                const step = event.shiftKey ? 10 : 1;
-                if (event.key === 'ArrowLeft') moveFace(-step, 0);
-                else if (event.key === 'ArrowRight') moveFace(step, 0);
-                else if (event.key === 'ArrowUp') moveFace(0, -step);
-                else if (event.key === 'ArrowDown') moveFace(0, step);
-                else return;
-                event.preventDefault();
-              }}
-              onLostPointerCapture={() => {
-                dragRef.current = null;
-              }}
-              onPointerCancel={() => {
-                dragRef.current = null;
-              }}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                dragRef.current = {
-                  pointerId: event.pointerId,
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  placement: { ...session.draft.facePlacement },
-                };
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
-              onPointerMove={(event) => {
-                const drag = dragRef.current;
-                if (!drag || drag.pointerId !== event.pointerId) return;
-                const safeScale = Math.max(transform.scale, 0.0001);
-                updateFacePlacement({
-                  ...drag.placement,
-                  offsetX:
-                    drag.placement.offsetX +
-                    (event.clientX - drag.startX) / safeScale,
-                  offsetY:
-                    drag.placement.offsetY +
-                    (event.clientY - drag.startY) / safeScale,
-                });
-              }}
-              onPointerUp={(event) => {
-                dragRef.current = null;
-                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                }
-              }}
-              role="group"
+          {bodyPart && imageState.images.get(bodyPart.assetId) ? (
+            <img
+              alt=""
+              className="character-assembly-part character-assembly-part-body"
+              data-asset-id={bodyPart.assetId}
+              draggable={false}
+              src={imageState.images.get(bodyPart.assetId)!.src}
               style={{
-                height: faceRect.height,
-                left: left + faceRect.x,
-                top: top + faceRect.y,
-                width: faceRect.width,
+                height: bodyPart.localRect.height,
+                left: left + bodyPart.localRect.x,
+                top: top + bodyPart.localRect.y,
+                width: bodyPart.localRect.width,
               }}
-              tabIndex={0}
             />
           ) : null}
+          <div
+            aria-label={head ? '头部、脸部与张嘴图' : '脸部与张嘴图'}
+            className={`character-assembly-head-group${isTestingHeadMotion ? ' is-head-motion-test-running' : ''}`}
+            data-testid="character-assembly-head-group"
+            style={{
+              transformOrigin: head
+                ? `${left + head.pivot.x}px ${top + head.pivot.y}px`
+                : undefined,
+            }}
+          >
+            {headPart && imageState.images.get(headPart.assetId) ? (
+              <img
+                alt=""
+                className="character-assembly-part character-assembly-part-head"
+                data-asset-id={headPart.assetId}
+                draggable={false}
+                src={imageState.images.get(headPart.assetId)!.src}
+                style={{
+                  height: headPart.localRect.height,
+                  left: left + headPart.localRect.x,
+                  top: top + headPart.localRect.y,
+                  width: headPart.localRect.width,
+                }}
+              />
+            ) : null}
+            {facePart && imageState.images.get(facePart.assetId) ? (
+              <img
+                alt=""
+                className="character-assembly-part character-assembly-part-face"
+                data-asset-id={facePart.assetId}
+                draggable={false}
+                src={imageState.images.get(facePart.assetId)!.src}
+                style={{
+                  height: facePart.localRect.height,
+                  left: left + facePart.localRect.x,
+                  top: top + facePart.localRect.y,
+                  width: facePart.localRect.width,
+                }}
+              />
+            ) : null}
+            {faceRect ? (
+              <div
+                aria-label="拖动脸部调整位置，使用方向键微调"
+                aria-roledescription="可拖动脸部"
+                aria-disabled={isTestingHeadMotion}
+                className="character-assembly-face-hit-area"
+                data-testid="character-assembly-face-drag-target"
+                onKeyDown={(event) => {
+                  if (isTestingHeadMotion) return;
+                  const step = event.shiftKey ? 10 : 1;
+                  if (event.key === 'ArrowLeft') moveFace(-step, 0);
+                  else if (event.key === 'ArrowRight') moveFace(step, 0);
+                  else if (event.key === 'ArrowUp') moveFace(0, -step);
+                  else if (event.key === 'ArrowDown') moveFace(0, step);
+                  else return;
+                  event.preventDefault();
+                }}
+                onLostPointerCapture={stopPointerDrag}
+                onPointerCancel={stopPointerDrag}
+                onPointerDown={(event) =>
+                  beginPointerDrag(event, {
+                    kind: 'face',
+                    placement: { ...session.draft.facePlacement },
+                  })
+                }
+                onPointerMove={movePointerDrag}
+                onPointerUp={endPointerDrag}
+                role="group"
+                style={{
+                  height: faceRect.height,
+                  left: left + faceRect.x,
+                  pointerEvents: isTestingHeadMotion ? 'none' : undefined,
+                  top: top + faceRect.y,
+                  width: faceRect.width,
+                }}
+                tabIndex={isTestingHeadMotion ? -1 : 0}
+              />
+            ) : null}
+            {head ? (
+              <button
+                aria-label="拖动头部旋转中心到颈部，使用方向键微调"
+                aria-roledescription="可拖动旋转中心"
+                className="character-assembly-pivot-handle"
+                data-testid="character-assembly-head-pivot"
+                disabled={isTestingHeadMotion}
+                onKeyDown={(event) => {
+                  const step = event.shiftKey ? 10 : 1;
+                  if (event.key === 'ArrowLeft') nudgePivot(-step, 0);
+                  else if (event.key === 'ArrowRight') nudgePivot(step, 0);
+                  else if (event.key === 'ArrowUp') nudgePivot(0, -step);
+                  else if (event.key === 'ArrowDown') nudgePivot(0, step);
+                  else return;
+                  event.preventDefault();
+                }}
+                onLostPointerCapture={stopPointerDrag}
+                onPointerCancel={stopPointerDrag}
+                onPointerDown={(event) =>
+                  beginPointerDrag(event, {
+                    kind: 'pivot',
+                    pivot: { ...head.pivot },
+                  })
+                }
+                onPointerMove={movePointerDrag}
+                onPointerUp={endPointerDrag}
+                style={{
+                  left: left + head.pivot.x,
+                  top: top + head.pivot.y,
+                }}
+                type="button"
+              >
+                <span aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
           {!bodyRect || !faceRect ? (
             <span className="character-assembly-preview-empty">
               选择身体和默认表情
@@ -501,9 +831,98 @@ export function CharacterAssemblyWorkbench({
               +
             </button>
           </div>
+          <div
+            aria-label="头部调节"
+            className="character-assembly-head-controls"
+            data-testid="character-assembly-head-controls"
+            role="group"
+          >
+            <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
+              <span className="character-assembly-control-label">头部左右</span>
+              <button
+                aria-label="向左移动头部"
+                data-testid="character-assembly-head-left-step"
+                disabled={!head || isTestingHeadMotion}
+                onClick={() => nudgeHead(-1, 0)}
+                type="button"
+              >
+                −
+              </button>
+              <output aria-label="头部水平位置" data-testid="character-assembly-head-offset-x">
+                {head ? head.placement.offsetX.toFixed(1) : '—'}
+              </output>
+              <button
+                aria-label="向右移动头部"
+                data-testid="character-assembly-head-right-step"
+                disabled={!head || isTestingHeadMotion}
+                onClick={() => nudgeHead(1, 0)}
+                type="button"
+              >
+                +
+              </button>
+            </div>
+            <div aria-label="头部上下位置" className="character-assembly-control-set" role="group">
+              <span className="character-assembly-control-label">头部上下</span>
+              <button
+                aria-label="向上移动头部"
+                data-testid="character-assembly-head-up-step"
+                disabled={!head || isTestingHeadMotion}
+                onClick={() => nudgeHead(0, -1)}
+                type="button"
+              >
+                −
+              </button>
+              <output aria-label="头部垂直位置" data-testid="character-assembly-head-offset-y">
+                {head ? head.placement.offsetY.toFixed(1) : '—'}
+              </output>
+              <button
+                aria-label="向下移动头部"
+                data-testid="character-assembly-head-down-step"
+                disabled={!head || isTestingHeadMotion}
+                onClick={() => nudgeHead(0, 1)}
+                type="button"
+              >
+                +
+              </button>
+            </div>
+            <div aria-label="头部大小" className="character-assembly-control-set" role="group">
+              <span className="character-assembly-control-label">头部大小</span>
+              <button
+                aria-label="缩小头部"
+                data-testid="character-assembly-head-scale-down"
+                disabled={!head || isTestingHeadMotion}
+                onClick={() => adjustHeadScale(-0.05)}
+                type="button"
+              >
+                −
+              </button>
+              <output aria-label="头部大小" data-testid="character-assembly-head-scale">
+                {head ? `${head.placement.scale.toFixed(2)}×` : '—'}
+              </output>
+              <button
+                aria-label="放大头部"
+                data-testid="character-assembly-head-scale-up"
+                disabled={!head || isTestingHeadMotion}
+                onClick={() => adjustHeadScale(0.05)}
+                type="button"
+              >
+                +
+              </button>
+            </div>
+            <button
+              aria-pressed={isTestingHeadMotion}
+              data-testid="character-assembly-test-head-motion"
+              disabled={!head}
+              onClick={toggleHeadMotionTest}
+              type="button"
+            >
+              {isTestingHeadMotion ? '停止摇头' : '测试摇头'}
+            </button>
+          </div>
           <button
             className="character-assembly-reset"
             data-testid="character-assembly-reset"
+            disabled={isTestingHeadMotion}
             onClick={resetPlacement}
             type="button"
           >

@@ -588,6 +588,57 @@ describe('BFM-S02 Character commands', () => {
     input.assembly.dispose();
   });
 
+  it('keeps Head choose/replace/remove, placement, and pivot in the Assembly draft until Apply', () => {
+    const input = harness();
+    const before = input.editor.getSnapshot()!;
+    const begin = input.assembly.begin(IDS.character);
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    const replacement = {
+      ...INITIAL_HEAD,
+      assetId: IDS.assetChar2,
+    };
+    expect(begin.session.updateDraft({ head: replacement }).ok).toBe(true);
+    expect(begin.session.getSnapshot()?.draft.head).toEqual(replacement);
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const placed = {
+      ...replacement,
+      placement: { offsetX: 42, offsetY: -18, scale: 1.25 },
+      pivot: { x: 286, y: 248 },
+    };
+    expect(begin.session.updateDraft({ head: placed }).ok).toBe(true);
+    expect(begin.session.getSnapshot()?.draft.head).toEqual(placed);
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const removed = begin.session.updateDraft({ head: null });
+    expect(removed.ok).toBe(true);
+    expect(begin.session.getSnapshot()?.draft).not.toHaveProperty('head');
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const finalHead = UPDATED_HEAD;
+    expect(begin.session.updateDraft({ head: finalHead }).ok).toBe(true);
+    expect(input.editor.getSnapshot()).toBe(before);
+    const applied = begin.session.commit();
+    expect(applied.status).toBe('committed');
+    expect(input.editor.getSnapshot()!.revision).toBe(before.revision + 1);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(1);
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      head: finalHead,
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(before.project);
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      head: finalHead,
+    });
+    input.assembly.dispose();
+  });
+
   it('treats unchanged Apply and Cancel as zero-write operations', () => {
     const input = harness();
     const before = input.editor.getSnapshot()!;

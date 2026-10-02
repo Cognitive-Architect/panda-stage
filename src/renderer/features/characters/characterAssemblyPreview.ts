@@ -1,10 +1,13 @@
 import {
   resolveLayerVisualParts,
   type Character,
+  type CharacterHead,
   type EvaluatedLayer,
+  type ImageAsset,
   type Layer,
   type LayerVisualParts,
   type Project,
+  type VisualLocalRect,
 } from '../../../domain';
 import type {
   CharacterAssemblySnapshot,
@@ -18,6 +21,33 @@ export type CharacterAssemblySnapshotUnion =
 export type AssemblyFaceSelection =
   | { kind: 'expression'; expressionId: string }
   | { kind: 'mouth' };
+
+export interface AssemblyHeadMotionTestToken {
+  sessionId: number;
+  generation: number;
+}
+
+export interface AssemblyHeadPreviewPart {
+  assetId: string;
+  localRect: VisualLocalRect;
+}
+
+export interface CharacterAssemblyPreviewVisual extends LayerVisualParts {
+  /** Assembly-only visual; it never enters the production Stage resolver. */
+  headPart: AssemblyHeadPreviewPart | null;
+}
+
+export function isAssemblyHeadMotionTestRunning(
+  token: AssemblyHeadMotionTestToken | null,
+  session: CharacterAssemblySnapshotUnion,
+): boolean {
+  return Boolean(
+    token &&
+      session.draft.head &&
+      token.sessionId === session.sessionId &&
+      token.generation === session.generation,
+  );
+}
 
 export function isCharacterCreationSnapshot(
   session: CharacterAssemblySnapshotUnion,
@@ -202,6 +232,20 @@ function previewCharacter(
   };
 }
 
+function centeredHeadRect(
+  asset: ImageAsset,
+  placement: CharacterHead['placement'],
+): VisualLocalRect {
+  const width = asset.width * placement.scale;
+  const height = asset.height * placement.scale;
+  return {
+    x: placement.offsetX - width / 2,
+    y: placement.offsetY - height / 2,
+    width,
+    height,
+  };
+}
+
 /**
  * Build the temporary workbench visual through S03's authoritative part
  * resolver. The synthetic Character/Layer never enter Project or History.
@@ -210,7 +254,7 @@ export function buildCharacterAssemblyPreviewVisual(
   project: Project,
   session: CharacterAssemblySnapshotUnion,
   selection: AssemblyFaceSelection,
-): LayerVisualParts | null {
+): CharacterAssemblyPreviewVisual | null {
   const character = previewCharacter(project, session);
   if (!character || character.mode !== 'composite') return null;
   const expressions = character.expressions;
@@ -287,5 +331,25 @@ export function buildCharacterAssemblyPreviewVisual(
     visible: layer.visible,
     zIndex: layer.zIndex,
   };
-  return resolveLayerVisualParts(previewProject, { layers: [layer] }, evaluated);
+  const visual = resolveLayerVisualParts(
+    previewProject,
+    { layers: [layer] },
+    evaluated,
+  );
+  const headAsset = character.head
+    ? project.assets.find(
+        (asset): asset is ImageAsset =>
+          asset.id === character.head?.assetId && asset.kind === 'image',
+      )
+    : undefined;
+  return {
+    ...visual,
+    headPart:
+      character.head && headAsset
+        ? {
+            assetId: headAsset.id,
+            localRect: centeredHeadRect(headAsset, character.head.placement),
+          }
+        : null,
+  };
 }

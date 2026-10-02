@@ -16,6 +16,7 @@ export interface ImageAssetPickerProps {
   /** Opt-in Expression workflow capacity controls; other picker hosts stay unchanged. */
   searchAndPaginate?: boolean;
   disabled?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onChange: (assetId: string | null) => void;
   onThumbnailError: (assetId: string) => void;
   emptyOption?: {
@@ -176,6 +177,7 @@ export function ImageAssetPicker({
   presentation = 'default',
   searchAndPaginate = false,
   disabled = false,
+  onOpenChange,
   onChange,
   onThumbnailError,
   emptyOption,
@@ -201,6 +203,7 @@ export function ImageAssetPicker({
     if (disabled) return;
     onChange(assetId);
     setOpen(false);
+    onOpenChange?.(false);
   };
 
   const selectedLabel = selectedAsset
@@ -223,11 +226,13 @@ export function ImageAssetPicker({
       data-testid={testId ? `${testId}-selected` : undefined}
       disabled={disabled}
       onClick={() => {
-        if (!open) {
+        const nextOpen = !open;
+        if (nextOpen) {
           setSearchQuery('');
           setPage(1);
         }
-        setOpen(!open);
+        setOpen(nextOpen);
+        onOpenChange?.(nextOpen);
       }}
       type="button"
     >

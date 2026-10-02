@@ -8,6 +8,7 @@ import {
   buildCharacterAssemblyPreviewVisual,
   getAssemblyPreviewExpressions,
   hasPendingCharacterAssemblyEdit,
+  isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
 } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import type {
@@ -164,6 +165,125 @@ describe('S07 composite assembly preview', () => {
     expect(mouthVisual?.parts[1]?.assetId).toBe(
       session.draft.mouthOpenAssetId,
     );
+  });
+
+  it('previews Head placement separately while keeping Face/Mouth Character-local', () => {
+    const { project, session } = fixture();
+    const expression = getAssemblyPreviewExpressions(project, session)[0]!;
+    const visual = buildCharacterAssemblyPreviewVisual(project, session, {
+      kind: 'expression',
+      expressionId: expression.id,
+    });
+    const headAsset = project.assets.find(
+      (asset) => asset.id === session.draft.head?.assetId,
+    )!;
+    if (headAsset.kind !== 'image') throw new Error('Expected an image Head asset.');
+
+    expect(visual?.headPart).toEqual({
+      assetId: headAsset.id,
+      localRect: {
+        x:
+          session.draft.head!.placement.offsetX -
+          (headAsset.width * session.draft.head!.placement.scale) / 2,
+        y:
+          session.draft.head!.placement.offsetY -
+          (headAsset.height * session.draft.head!.placement.scale) / 2,
+        width: headAsset.width * session.draft.head!.placement.scale,
+        height: headAsset.height * session.draft.head!.placement.scale,
+      },
+    });
+    expect(visual?.parts.map(({ slot }) => slot)).toEqual(['body', 'face']);
+    expect(visual?.facePlacement).toEqual(session.draft.facePlacement);
+
+    const { head, ...headlessDraft } = session.draft;
+    expect(head).toBeDefined();
+    const headlessSession = { ...session, draft: headlessDraft };
+    const headlessVisual = buildCharacterAssemblyPreviewVisual(
+      project,
+      headlessSession,
+      { kind: 'expression', expressionId: expression.id },
+    );
+    expect(headlessVisual?.headPart).toBeNull();
+    expect(headlessVisual?.parts).toEqual(visual?.parts);
+    expect(headlessVisual?.facePlacement).toEqual(session.draft.facePlacement);
+  });
+
+  it('keeps Test Head Motion session-only and resets its token on removal or session change', () => {
+    const { session } = fixture();
+    const token = {
+      sessionId: session.sessionId,
+      generation: session.generation,
+    };
+    expect(isAssemblyHeadMotionTestRunning(token, session)).toBe(true);
+    expect(
+      isAssemblyHeadMotionTestRunning(token, {
+        ...session,
+        generation: session.generation + 1,
+      }),
+    ).toBe(false);
+    expect(
+      isAssemblyHeadMotionTestRunning(token, {
+        ...session,
+        sessionId: session.sessionId + 1,
+      }),
+    ).toBe(false);
+    const { head, ...headlessDraft } = session.draft;
+    expect(head).toBeDefined();
+    expect(
+      isAssemblyHeadMotionTestRunning(token, { ...session, draft: headlessDraft }),
+    ).toBe(false);
+
+    const source = readFileSync(
+      'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx',
+      'utf8',
+    );
+    const motionHandler = source.match(
+      /const toggleHeadMotionTest = \(\): void => \{([\s\S]*?)\n\s*\};/,
+    )?.[1];
+    expect(motionHandler).toBeDefined();
+    expect(motionHandler).toContain('setHeadMotionTestToken');
+    expect(motionHandler).not.toMatch(/updateDraft|updateHead|commit|editorProjectStore|timeline/i);
+  });
+
+  it('keeps the assembly preview controls in one Head/Face group and leaves no-Head editing available', () => {
+    const { project, session } = fixture();
+    const markup = renderToStaticMarkup(createElement(CharacterAssemblyWorkbench, {
+      projectSnapshot: {
+        projectRoot: session.projectRoot,
+        project,
+        dirty: false,
+        revision: 0,
+      },
+      session,
+    }));
+    const groupStart = markup.indexOf('data-testid="character-assembly-head-group"');
+    const pivotIndex = markup.indexOf('data-testid="character-assembly-head-pivot"');
+    const groupEnd = markup.indexOf('</div>', pivotIndex) + '</div>'.length;
+    const groupMarkup = markup.slice(groupStart, groupEnd);
+
+    expect(markup).toContain('data-testid="character-assembly-head-asset-selected"');
+    expect(groupMarkup).toContain('data-testid="character-assembly-face-drag-target"');
+    expect(groupMarkup).toContain('data-testid="character-assembly-head-pivot"');
+    expect(groupMarkup).toMatch(/transform-origin:\s*1160px\s+750px/);
+    expect(markup).toContain('data-testid="character-assembly-head-offset-x"');
+    expect(markup).toContain('data-testid="character-assembly-head-offset-y"');
+    expect(markup).toContain('data-testid="character-assembly-test-head-motion"');
+    expect(markup).toContain('测试摇头');
+
+    const { head, ...headlessDraft } = session.draft;
+    expect(head).toBeDefined();
+    const headlessMarkup = renderToStaticMarkup(createElement(CharacterAssemblyWorkbench, {
+      projectSnapshot: {
+        projectRoot: session.projectRoot,
+        project,
+        dirty: false,
+        revision: 0,
+      },
+      session: { ...session, draft: headlessDraft },
+    }));
+    expect(headlessMarkup).toContain('data-testid="character-assembly-face-drag-target"');
+    expect(headlessMarkup).not.toContain('data-testid="character-assembly-head-pivot"');
+    expect(headlessMarkup).toContain('data-testid="character-assembly-test-head-motion" disabled=""');
   });
 
   it('reports pending only when the edit draft differs from the persisted definition', () => {
