@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * P0-C03 real-corpus acceptance through the production Main-side FLA
- * inspection, catalog, preview session, and sandbox snapshot rasterizer.
+ * P0-C03 / Issue #679 real-corpus acceptance through the production Main-side
+ * FLA inspection, catalog, preview session, and sandbox snapshot rasterizer.
  * Source FLA files are opened read-only. PNGs and the metadata-only receipt are
  * written only to the caller-provided external acceptance directory.
  */
@@ -276,6 +276,9 @@ async function runGateA(importService, renderSession, sourcePath, outDir, captur
 
   const preview = await previewTarget(renderSession, importService, session, catalog, sceneEntry.target, 'gate-a-file', outDir, capture);
   assert.ok(preview.composition.bitmapInstanceCount >= 2, 'Gate A composition did not include multiple bitmap instances');
+  assert.equal(preview.composition.framing.mode, 'stage', 'Gate A Scene no longer uses authored-stage framing');
+  assert.equal(preview.composition.framing.outputWidth, 1920, 'Gate A stage output width changed');
+  assert.equal(preview.composition.framing.outputHeight, 1080, 'Gate A stage output height changed');
   assert.ok(preview.preview.width > 1 && preview.preview.height > 1, 'Gate A output is still 1×1');
   assert.ok(preview.preview.visiblePixelCount >= 100, 'Gate A output is not meaningfully visible');
   assert.ok(preview.preview.visibleBounds?.width >= 8 && preview.preview.visibleBounds?.height >= 8, 'Gate A visible result is only a tiny fragment');
@@ -323,6 +326,29 @@ async function runGateB(importService, renderSession, sourcePath, outDir, captur
   assert.ok(preview.composition.resolvedNodeCount >= 3, 'Gate B diagnostics do not show multiple resolved display nodes');
   assert.ok(preview.composition.bitmapInstanceCount + preview.composition.shapeCount >= 2, 'Gate B output is still first-shape-only');
   assert.ok(preview.preview.visiblePixelCount > 0, 'Gate B snapshot has no visible pixels');
+  const framing = preview.composition.framing;
+  assert.equal(framing.mode, 'content', 'Gate B Graphic target was not content-framed');
+  assert.ok(framing.contentBounds, 'Gate B receipt has no resolved content bounds');
+  assert.equal(framing.padding, 4, 'Gate B framing padding changed');
+  assert.ok(framing.contentBounds.x < 0 && framing.contentBounds.y < 0, 'Gate B corpus no longer exercises negative Graphic coordinates');
+  assert.ok(
+    framing.viewBox.x <= framing.contentBounds.x &&
+    framing.viewBox.y <= framing.contentBounds.y &&
+    framing.viewBox.x + framing.viewBox.width >= framing.contentBounds.x + framing.contentBounds.width &&
+    framing.viewBox.y + framing.viewBox.height >= framing.contentBounds.y + framing.contentBounds.height,
+    'Gate B viewBox does not fully contain resolved content bounds',
+  );
+  assert.ok(framing.outputWidth <= 512 && framing.outputHeight <= 512, 'Gate B output still uses a large document-stage canvas');
+  assert.equal(framing.outputWidth, preview.preview.width, 'Gate B framed width differs from the raster output');
+  assert.equal(framing.outputHeight, preview.preview.height, 'Gate B framed height differs from the raster output');
+  assert.ok(preview.preview.visibleBounds.x > 0 && preview.preview.visibleBounds.y > 0, 'Gate B visible content touches the top or left edge');
+  assert.ok(
+    preview.preview.visibleBounds.x + preview.preview.visibleBounds.width < preview.preview.width &&
+    preview.preview.visibleBounds.y + preview.preview.visibleBounds.height < preview.preview.height,
+    'Gate B visible content touches the right or bottom edge',
+  );
+  assert.ok(preview.preview.visibleBounds.width >= framing.outputWidth * 0.5, 'Gate B content is too small within its framed viewport');
+  assert.ok(preview.preview.visibleBounds.height >= framing.outputHeight * 0.5, 'Gate B content is too small within its framed viewport');
   assert.equal(sha256(readFileSync(sourcePath)), originalSha256, 'Gate B source FLA changed during preview');
 
   return {
@@ -390,16 +416,21 @@ async function main() {
     assert.deepEqual(parserSecurity, { sandbox: true, contextIsolation: true, nodeIntegration: false });
     assert.deepEqual(snapshotSecurity, { sandbox: true, contextIsolation: true, nodeIntegration: false });
     const receipt = {
-      verifier: 'Issue #676 P0-C03 real-corpus production preview acceptance',
+      verifier: 'Issue #676 P0-C03 / #679 Graphic content-framing real-corpus acceptance',
       executedAt: new Date().toISOString(),
       parserPath: 'FlaImportService -> isolated production parser window -> retained inspection session',
       previewPath: 'production catalog/render session -> Main-built composed SVG -> production sandbox snapshot window',
+      corrective: {
+        rootCause: 'confirmed: Graphic snapshots used the authored DOMDocument stage viewport/output dimensions instead of resolved Graphic content bounds',
+        strategy: 'bound transformed PNG corners and supported transformed Shape path geometry; retain negative world coordinates; add fixed 4-unit padding and fit output within the existing width/height/pixel limits',
+        sceneRegression: 'Scene and timeline targets retain authored document-stage viewBox and output dimensions',
+      },
       gates: { gateA, gateB },
       sandbox: { parser: parserSecurity, snapshot: snapshotSecurity },
       externalSvgResources: 0,
       projectMutation: 'none: no Project was opened and no commit API was called',
       sourceHashesRecheckedAfterPreview: true,
-      manualWindowsAcceptance: 'not performed by this verifier; parent #676 owner acceptance remains required',
+      manualWindowsAcceptance: 'not performed by this verifier; Issue #679 human-visible Gate B acceptance remains required',
     };
     writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' });
     process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);

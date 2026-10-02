@@ -58,6 +58,7 @@ const MAX_OUTPUT_HEIGHT = 4_096;
 const MAX_OUTPUT_PIXELS = 16_777_216;
 const MAX_TARGETS = 64;
 const MAX_EDGE_CHARS = 64 * 1024 * 1024; // 64 MiB; matches maxSnapshotBytes cap
+const GRAPHIC_CONTENT_PADDING = 4;
 
 // ---- Public result types (Panda-owned; never cross the Renderer as raw bytes
 //      from the FLA source — the Renderer only ever sees the SVG.) ----
@@ -816,6 +817,24 @@ export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
     readonly shapeCount: number;
     readonly groupCount: number;
     readonly expandedSymbolCount: number;
+    readonly framing: {
+      readonly mode: 'stage' | 'content';
+      readonly contentBounds: {
+        readonly x: number;
+        readonly y: number;
+        readonly width: number;
+        readonly height: number;
+      } | null;
+      readonly viewBox: {
+        readonly x: number;
+        readonly y: number;
+        readonly width: number;
+        readonly height: number;
+      };
+      readonly padding: number;
+      readonly outputWidth: number;
+      readonly outputHeight: number;
+    };
   };
 }
 
@@ -833,6 +852,236 @@ export interface BuildComposedSvgInput {
 
 interface ComposedLeaf {
   readonly node: Exclude<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
+}
+
+interface Point2D {
+  readonly x: number;
+  readonly y: number;
+}
+
+interface MutableBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+interface Rect2D {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+interface GraphicViewport {
+  readonly contentBounds: Rect2D;
+  readonly viewBox: Rect2D;
+  readonly outputWidth: number;
+  readonly outputHeight: number;
+}
+
+function createBounds(): MutableBounds {
+  return {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+  };
+}
+
+function includePoint(bounds: MutableBounds, point: Point2D): boolean {
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+  bounds.minX = Math.min(bounds.minX, point.x);
+  bounds.minY = Math.min(bounds.minY, point.y);
+  bounds.maxX = Math.max(bounds.maxX, point.x);
+  bounds.maxY = Math.max(bounds.maxY, point.y);
+  return true;
+}
+
+function transformPoint(matrix: Matrix2D, point: Point2D): Point2D {
+  return {
+    x: matrix.a * point.x + matrix.c * point.y + matrix.tx,
+    y: matrix.b * point.x + matrix.d * point.y + matrix.ty,
+  };
+}
+
+function quadraticValue(start: number, control: number, end: number, t: number): number {
+  const inverse = 1 - t;
+  return inverse * inverse * start + 2 * inverse * t * control + t * t * end;
+}
+
+function cubicValue(start: number, first: number, second: number, end: number, t: number): number {
+  const inverse = 1 - t;
+  return inverse * inverse * inverse * start +
+    3 * inverse * inverse * t * first +
+    3 * inverse * t * t * second +
+    t * t * t * end;
+}
+
+function quadraticExtremum(start: number, control: number, end: number): number | null {
+  const denominator = start - 2 * control + end;
+  if (!Number.isFinite(denominator)) return Number.NaN;
+  if (denominator === 0) return null;
+  const t = (start - control) / denominator;
+  return t > 0 && t < 1 ? t : null;
+}
+
+function cubicExtrema(
+  start: number,
+  first: number,
+  second: number,
+  end: number,
+): readonly number[] | null {
+  const a = -start + 3 * first - 3 * second + end;
+  const b = 2 * (start - 2 * first + second);
+  const c = first - start;
+  if (![a, b, c].every(Number.isFinite)) return null;
+  const scale = Math.max(1, Math.abs(a), Math.abs(b), Math.abs(c));
+  const epsilon = Number.EPSILON * scale * 8;
+  if (Math.abs(a) <= epsilon) {
+    if (Math.abs(b) <= epsilon) return [];
+    const t = -c / b;
+    return t > 0 && t < 1 ? [t] : [];
+  }
+  const discriminant = b * b - 4 * a * c;
+  if (!Number.isFinite(discriminant)) return null;
+  if (discriminant < 0) return [];
+  const root = Math.sqrt(discriminant);
+  const q = -0.5 * (b + Math.sign(b || 1) * root);
+  const roots = q === 0 ? [-b / (2 * a)] : [q / a, c / q];
+  return roots.filter((t) => Number.isFinite(t) && t > 0 && t < 1);
+}
+
+function includeQuadraticBounds(
+  bounds: MutableBounds,
+  start: Point2D,
+  control: Point2D,
+  end: Point2D,
+): boolean {
+  if (!includePoint(bounds, start) || !includePoint(bounds, end)) return false;
+  const roots = [
+    quadraticExtremum(start.x, control.x, end.x),
+    quadraticExtremum(start.y, control.y, end.y),
+  ];
+  if (roots.some((root) => typeof root === 'number' && !Number.isFinite(root))) return false;
+  for (const root of roots) {
+    if (root === null) continue;
+    const point = {
+      x: quadraticValue(start.x, control.x, end.x, root),
+      y: quadraticValue(start.y, control.y, end.y, root),
+    };
+    if (!includePoint(bounds, point)) return false;
+  }
+  return true;
+}
+
+function includeCubicBounds(
+  bounds: MutableBounds,
+  start: Point2D,
+  first: Point2D,
+  second: Point2D,
+  end: Point2D,
+): boolean {
+  if (!includePoint(bounds, start) || !includePoint(bounds, end)) return false;
+  const xRoots = cubicExtrema(start.x, first.x, second.x, end.x);
+  const yRoots = cubicExtrema(start.y, first.y, second.y, end.y);
+  if (!xRoots || !yRoots) return false;
+  for (const t of new Set([...xRoots, ...yRoots])) {
+    const point = {
+      x: cubicValue(start.x, first.x, second.x, end.x, t),
+      y: cubicValue(start.y, first.y, second.y, end.y, t),
+    };
+    if (!includePoint(bounds, point)) return false;
+  }
+  return true;
+}
+
+function includeTransformedPathBounds(
+  bounds: MutableBounds,
+  commands: DecodedEdges['commands'],
+  matrix: Matrix2D,
+): boolean {
+  let current: Point2D | null = null;
+  let subpathStart: Point2D | null = null;
+  const origin = transformPoint(matrix, { x: 0, y: 0 });
+  for (const command of commands) {
+    if (command.type === 'M') {
+      current = transformPoint(matrix, command);
+      subpathStart = current;
+      if (!includePoint(bounds, current)) return false;
+      continue;
+    }
+    if (command.type === 'Z') {
+      if (current && subpathStart && (!includePoint(bounds, current) || !includePoint(bounds, subpathStart))) return false;
+      current = subpathStart;
+      continue;
+    }
+    const start = current ?? origin;
+    if (command.type === 'L') {
+      current = transformPoint(matrix, command);
+      if (!includePoint(bounds, start) || !includePoint(bounds, current)) return false;
+      continue;
+    }
+    if (command.type === 'Q') {
+      const control = transformPoint(matrix, { x: command.cx, y: command.cy });
+      current = transformPoint(matrix, command);
+      if (!includeQuadraticBounds(bounds, start, control, current)) return false;
+      continue;
+    }
+    const first = transformPoint(matrix, { x: command.c1x, y: command.c1y });
+    const second = transformPoint(matrix, { x: command.c2x, y: command.c2y });
+    current = transformPoint(matrix, command);
+    if (!includeCubicBounds(bounds, start, first, second, current)) return false;
+  }
+  return true;
+}
+
+function includeTransformedBitmapBounds(
+  bounds: MutableBounds,
+  width: number,
+  height: number,
+  matrix: Matrix2D,
+): boolean {
+  return [
+    transformPoint(matrix, { x: 0, y: 0 }),
+    transformPoint(matrix, { x: width, y: 0 }),
+    transformPoint(matrix, { x: width, y: height }),
+    transformPoint(matrix, { x: 0, y: height }),
+  ].every((point) => includePoint(bounds, point));
+}
+
+function createGraphicViewport(bounds: MutableBounds): GraphicViewport | null {
+  if (![bounds.minX, bounds.minY, bounds.maxX, bounds.maxY].every(Number.isFinite)) return null;
+  const rawWidth = bounds.maxX - bounds.minX;
+  const rawHeight = bounds.maxY - bounds.minY;
+  if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight) || rawWidth < 0 || rawHeight < 0) return null;
+  const contentWidth = Math.max(1, rawWidth);
+  const contentHeight = Math.max(1, rawHeight);
+  const contentBounds: Rect2D = { x: bounds.minX, y: bounds.minY, width: rawWidth, height: rawHeight };
+  const viewBox: Rect2D = {
+    x: bounds.minX - GRAPHIC_CONTENT_PADDING,
+    y: bounds.minY - GRAPHIC_CONTENT_PADDING,
+    width: contentWidth + GRAPHIC_CONTENT_PADDING * 2,
+    height: contentHeight + GRAPHIC_CONTENT_PADDING * 2,
+  };
+  if (![viewBox.x, viewBox.y, viewBox.width, viewBox.height].every(Number.isFinite) ||
+      viewBox.width <= 0 || viewBox.height <= 0) return null;
+
+  const pixelScale = Math.sqrt(MAX_OUTPUT_PIXELS) / Math.sqrt(viewBox.width) / Math.sqrt(viewBox.height);
+  const scale = Math.min(1, MAX_OUTPUT_WIDTH / viewBox.width, MAX_OUTPUT_HEIGHT / viewBox.height, pixelScale);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  let outputWidth = Math.max(1, Math.min(MAX_OUTPUT_WIDTH, Math.ceil(viewBox.width * scale)));
+  let outputHeight = Math.max(1, Math.min(MAX_OUTPUT_HEIGHT, Math.ceil(viewBox.height * scale)));
+  while (outputWidth * outputHeight > MAX_OUTPUT_PIXELS) {
+    if (outputWidth / viewBox.width >= outputHeight / viewBox.height && outputWidth > 1) outputWidth -= 1;
+    else if (outputHeight > 1) outputHeight -= 1;
+    else return null;
+  }
+  return { contentBounds, viewBox, outputWidth, outputHeight };
+}
+
+function formatSvgNumber(value: number): string {
+  return Object.is(value, -0) ? '0' : value.toString();
 }
 
 function escapeXmlText(value: string): string {
@@ -938,18 +1187,22 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   if (!Number.isFinite(stageWidth) || !Number.isFinite(stageHeight) || stageWidth <= 0 || stageHeight <= 0) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Stage dimensions must be finite and positive' };
   }
-  const width = Math.ceil(stageWidth);
-  const height = Math.ceil(stageHeight);
-  if (width > MAX_OUTPUT_WIDTH || height > MAX_OUTPUT_HEIGHT) {
-    return { ok: false, code: 'BUDGET_EXCEEDED', message: `Output ${width}x${height} exceeds budget` };
-  }
-  if (width * height > MAX_OUTPUT_PIXELS) {
-    return { ok: false, code: 'BUDGET_EXCEEDED', message: `Output pixel count ${width * height} exceeds ${MAX_OUTPUT_PIXELS}` };
+  const framingMode = displayList.kind === 'graphic' ? 'content' : 'stage';
+  const stageOutputWidth = Math.ceil(stageWidth);
+  const stageOutputHeight = Math.ceil(stageHeight);
+  if (framingMode === 'stage') {
+    if (stageOutputWidth > MAX_OUTPUT_WIDTH || stageOutputHeight > MAX_OUTPUT_HEIGHT) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: `Output ${stageOutputWidth}x${stageOutputHeight} exceeds budget` };
+    }
+    if (stageOutputWidth * stageOutputHeight > MAX_OUTPUT_PIXELS) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: `Output pixel count ${stageOutputWidth * stageOutputHeight} exceeds ${MAX_OUTPUT_PIXELS}` };
+    }
   }
 
   const flattened = flattenResolvedDisplayList(displayList);
   if (!flattened.ok) return flattened;
 
+  const graphicBounds = framingMode === 'content' ? createBounds() : null;
   const definitions = new Map<string, string>();
   const resolvedMediaByName = new Map<string, FlaStaticSnapshotBitmapMediaLookupResult>();
   const emittedNodes: string[] = [];
@@ -984,6 +1237,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       }
       if (commands.length === 0) {
         return { ok: false, code: 'RENDER_FAILED', message: `Resolved shape has no decoded path: ${node.shapeId}` };
+      }
+      if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
       }
       const fillColor = validSvgColor(shape.fillColor);
       if (firstFillColor === null) firstFillColor = fillColor;
@@ -1027,6 +1283,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         message: `Bitmap media payload is not a bounded RGBA PNG: ${node.libraryItemName}`,
       };
     }
+    if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic bitmap bounds are not finite: ${node.libraryItemName}` };
+    }
     const mediaKey = crypto.createHash('sha256').update(media.id, 'utf8').digest('hex').slice(0, 24);
     const imageId = `fla-bitmap-${mediaKey}`;
     if (!definitions.has(imageId)) {
@@ -1054,12 +1313,22 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     emittedNodes.push(useNode);
   }
 
+  const graphicViewport = graphicBounds ? createGraphicViewport(graphicBounds) : null;
+  if (framingMode === 'content' && !graphicViewport) {
+    return { ok: false, code: 'RENDER_FAILED', message: 'Graphic has no finite drawable content bounds' };
+  }
+  const width = graphicViewport?.outputWidth ?? stageOutputWidth;
+  const height = graphicViewport?.outputHeight ?? stageOutputHeight;
+  const viewBox = graphicViewport?.viewBox ?? { x: 0, y: 0, width: stageOutputWidth, height: stageOutputHeight };
+  const contentBounds = graphicViewport?.contentBounds ?? null;
+  const formatRect = (rect: Rect2D): string =>
+    `${formatSvgNumber(rect.x)} ${formatSvgNumber(rect.y)} ${formatSvgNumber(rect.width)} ${formatSvgNumber(rect.height)}`;
   const title = escapeXmlText(displayList.sourceName);
   const defs = definitions.size > 0 ? `<defs>${[...definitions.values()].join('')}</defs>` : '';
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +
-    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount}</desc>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
     defs + emittedNodes.join('') + '</svg>\n';
   const svgByteLength = Buffer.byteLength(svg, 'utf8');
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -1080,6 +1349,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       shapeCount,
       groupCount: flattened.groupCount,
       expandedSymbolCount: flattened.expandedSymbolCount,
+      framing: {
+        mode: framingMode,
+        contentBounds,
+        viewBox,
+        padding: graphicViewport ? GRAPHIC_CONTENT_PADDING : 0,
+        outputWidth: width,
+        outputHeight: height,
+      },
     },
   };
 }

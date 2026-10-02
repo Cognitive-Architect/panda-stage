@@ -729,7 +729,7 @@
       "runIn": "local",
       "owner": "fla-import",
       "supersedes": null,
-      "notes": "Production C03 inspection/catalog/preview smoke against the approved Gate A and nested-symbol real FLA corpora. Writes PNG and metadata-only receipt to an external --out directory; human Windows acceptance remains separate."
+      "notes": "Production C03 inspection/catalog/preview smoke plus Issue #679 Graphic content-framing regression against the approved Gate A and nested-symbol real FLA corpora. Records bounds/viewBox/output size, preserves Scene stage framing, and writes PNG plus metadata-only receipt to an external --out directory; Gate B human Windows acceptance remains separate."
     },
     {
       "id": "canvas",
