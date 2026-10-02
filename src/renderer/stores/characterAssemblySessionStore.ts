@@ -1,6 +1,7 @@
 import {
   CharacterServiceError,
   type CharacterExpressionDraft,
+  type CharacterHead,
   type CompositeCharacterDefinition,
   type CompositeCharacterUpdate,
   type CreateCompositeCharacterInput,
@@ -60,6 +61,7 @@ export interface CharacterCreationDraftUpdate {
   defaultFlipX?: boolean | null;
   bodyAssetId?: string;
   facePlacement?: FacePlacement;
+  head?: CharacterHead | null;
 }
 
 export interface CharacterCreationSnapshot {
@@ -268,6 +270,7 @@ function cloneDefinition(
   return {
     bodyAssetId: definition.bodyAssetId,
     facePlacement: { ...definition.facePlacement },
+    ...(definition.head ? { head: cloneHead(definition.head) } : {}),
     expressionAssets: definition.expressionAssets.map((expression) => ({
       expressionId: expression.expressionId,
       assetId: expression.assetId,
@@ -284,6 +287,7 @@ function cloneCreationDraft(
     expressions: draft.expressions.map((expression) => ({ ...expression })),
     bodyAssetId: draft.bodyAssetId,
     facePlacement: { ...draft.facePlacement },
+    ...(draft.head ? { head: cloneHead(draft.head) } : {}),
     ...(draft.defaultExpressionIndex === undefined
       ? {}
       : { defaultExpressionIndex: draft.defaultExpressionIndex }),
@@ -297,6 +301,32 @@ function cloneCreationDraft(
       ? {}
       : { defaultFlipX: draft.defaultFlipX }),
   };
+}
+
+function cloneHead(head: CharacterHead): CharacterHead {
+  return {
+    assetId: head.assetId,
+    placement: { ...head.placement },
+    pivot: { ...head.pivot },
+  };
+}
+
+function sameHead(
+  left: CharacterHead | null | undefined,
+  right: CharacterHead | null | undefined,
+): boolean {
+  if (left === null || left === undefined || right === null || right === undefined) {
+    return (left === null || left === undefined) &&
+      (right === null || right === undefined);
+  }
+  return (
+    left.assetId === right.assetId &&
+    left.placement.offsetX === right.placement.offsetX &&
+    left.placement.offsetY === right.placement.offsetY &&
+    left.placement.scale === right.placement.scale &&
+    left.pivot.x === right.pivot.x &&
+    left.pivot.y === right.pivot.y
+  );
 }
 
 function creationDraftsEqual(
@@ -314,6 +344,7 @@ function creationDraftsEqual(
     (left.mouthOpenAssetId ?? null) === (right.mouthOpenAssetId ?? null) &&
     (left.defaultScale ?? 1) === (right.defaultScale ?? 1) &&
     (left.defaultFlipX ?? false) === (right.defaultFlipX ?? false) &&
+    sameHead(left.head, right.head) &&
     left.expressions.length === right.expressions.length &&
     left.expressions.every(
       (expression, index) =>
@@ -332,6 +363,7 @@ function definitionsEqual(
     left.facePlacement.offsetX !== right.facePlacement.offsetX ||
     left.facePlacement.offsetY !== right.facePlacement.offsetY ||
     left.facePlacement.scale !== right.facePlacement.scale ||
+    !sameHead(left.head, right.head) ||
     left.mouthOpenAssetId !== right.mouthOpenAssetId ||
     left.expressionAssets.length !== right.expressionAssets.length
   ) {
@@ -360,7 +392,7 @@ function mergeDefinition(
   current: CompositeCharacterDefinition,
   update: CompositeCharacterUpdate,
 ): CompositeCharacterDefinition {
-  return {
+  const next: CompositeCharacterDefinition = {
     bodyAssetId: update.bodyAssetId ?? current.bodyAssetId,
     facePlacement: update.facePlacement
       ? { ...update.facePlacement }
@@ -372,7 +404,15 @@ function mergeDefinition(
       update.mouthOpenAssetId === undefined
         ? current.mouthOpenAssetId
         : update.mouthOpenAssetId,
+    ...(update.head === undefined
+      ? current.head
+        ? { head: cloneHead(current.head) }
+        : {}
+      : update.head
+        ? { head: cloneHead(update.head) }
+        : {}),
   };
+  return next;
 }
 
 function mergeCreationDraft(
@@ -387,6 +427,10 @@ function mergeCreationDraft(
   if (update.bodyAssetId !== undefined) next.bodyAssetId = update.bodyAssetId;
   if (update.facePlacement !== undefined) {
     next.facePlacement = { ...update.facePlacement };
+  }
+  if (update.head !== undefined) {
+    if (update.head === null) delete next.head;
+    else next.head = cloneHead(update.head);
   }
   if (update.defaultExpressionIndex !== undefined) {
     if (update.defaultExpressionIndex === null) {

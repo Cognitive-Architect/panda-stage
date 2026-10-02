@@ -17,8 +17,8 @@ import exampleProject from '../../../demo-project/project-v1.example.json';
 /**
  * Focused lock-in tests for Issue #152 / #217: migration ownership is
  * consolidated into a single `migrateProject` pipeline. `ProjectSchema` is the
- * current (v7) validator only and must never migrate legacy input; every
- * persisted envelope (v0-v6) is resolved through `migrateProject`.
+ * current (v9) validator only and must never migrate legacy input; every
+ * persisted envelope (v0-v8) is resolved through `migrateProject`.
  */
 
 const V0_IDS = {
@@ -169,18 +169,18 @@ describe('migration ownership: current-only validation boundary', () => {
     expect(() => ProjectSchema.parse(exampleProject)).toThrow();
   });
 
-  it('ProjectSchema still validates a current v7 project without migrating', () => {
-    const v7 = migrateProject(exampleProject);
-    expect(ProjectSchema.parse(v7)).toEqual(v7);
+  it('ProjectSchema still validates a current v9 project without migrating', () => {
+    const current = migrateProject(exampleProject);
+    expect(ProjectSchema.parse(current)).toEqual(current);
   });
 });
 
-describe('migration ownership: single pipeline routes every envelope to v7', () => {
+describe('migration ownership: single pipeline routes every envelope to v9', () => {
   it.each([
     ['v0', buildV0()],
     ['formal v1', exampleProject],
     ['legacy probe v1', buildLegacyProbeV1()],
-  ])('migrates %s through migrateProject to v7', (_label, input) => {
+  ])('migrates %s through migrateProject to v9', (_label, input) => {
     const result = migrateProject(input);
     expect(result.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
@@ -195,9 +195,9 @@ describe('migration ownership: single pipeline routes every envelope to v7', () 
     expect(probe.subtitleStyles).toHaveLength(1);
   });
 
-  it('is idempotent on an already-current v7 project', () => {
-    const v7 = migrateProject(exampleProject);
-    expect(migrateProject(v7)).toEqual(v7);
+  it('is idempotent on an already-current v9 project', () => {
+    const current = migrateProject(exampleProject);
+    expect(migrateProject(current)).toEqual(current);
   });
 });
 

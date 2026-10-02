@@ -134,6 +134,16 @@ export function validateProjectReferences(
           `Composite character references unknown or non-image body asset: ${character.bodyAssetId}`,
         );
       }
+      if (character.head) {
+        const headAsset = assets.get(character.head.assetId);
+        if (!headAsset || headAsset.kind !== 'image') {
+          addIssue(
+            context,
+            ['characters', characterIndex, 'head', 'assetId'],
+            `Composite character references unknown or non-image Head asset: ${character.head.assetId}`,
+          );
+        }
+      }
     }
     const defaultVoice = voiceProfiles.get(character.defaultVoiceProfileId);
     if (!defaultVoice || defaultVoice.characterId !== character.id) {

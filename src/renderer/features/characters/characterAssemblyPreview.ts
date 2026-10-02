@@ -43,6 +43,7 @@ export function isCharacterAssemblyPending(
   const current = {
     bodyAssetId: character.bodyAssetId,
     facePlacement: character.facePlacement,
+    ...(character.head ? { head: character.head } : {}),
     expressionAssets: character.expressions.map((expression) => ({
       expressionId: expression.id,
       assetId: expression.assetId,
@@ -146,6 +147,15 @@ function previewCharacter(
       defaultFlipX: session.draft.defaultFlipX ?? false,
       bodyAssetId: session.draft.bodyAssetId,
       facePlacement: { ...session.draft.facePlacement },
+      ...(session.draft.head
+        ? {
+            head: {
+              assetId: session.draft.head.assetId,
+              placement: { ...session.draft.head.placement },
+              pivot: { ...session.draft.head.pivot },
+            },
+          }
+        : {}),
     };
   }
 
@@ -170,12 +180,22 @@ function previewCharacter(
   if (!defaultExpression) return null;
   const baseCharacter = { ...existing };
   delete baseCharacter.mouthOpenAssetId;
+  delete baseCharacter.head;
   return {
     ...baseCharacter,
     baseAssetId: defaultExpression.assetId,
     expressions,
     bodyAssetId: session.draft.bodyAssetId,
     facePlacement: { ...session.draft.facePlacement },
+    ...(session.draft.head
+      ? {
+          head: {
+            assetId: session.draft.head.assetId,
+            placement: { ...session.draft.head.placement },
+            pivot: { ...session.draft.head.pivot },
+          },
+        }
+      : {}),
     ...(session.draft.mouthOpenAssetId
       ? { mouthOpenAssetId: session.draft.mouthOpenAssetId }
       : {}),

@@ -2,7 +2,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AudioClipService, ProjectSchema } from '../../src/domain';
+import {
+  AudioClipService,
+  PROJECT_SCHEMA_VERSION,
+  ProjectSchema,
+} from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { buildProject, IDS } from '../unit/domain/testProject';
 
@@ -42,7 +46,7 @@ describe('A01 actual ProjectService audio persistence', () => {
     const migrated = await files.open(root);
     expect(migrated.sourceVersion).toBe(7);
     expect(migrated.migrated).toBe(true);
-    expect(migrated.project.schemaVersion).toBe(8);
+    expect(migrated.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(migrated.project.shots[0]!.audioClips).toEqual(legacy.shots[0]!.audioClips.map((clip) => ({ ...clip, role: 'dialogue' })));
     await files.save(root, migrated.project, 2);
     expect((await files.open(root)).project).toEqual(migrated.project);

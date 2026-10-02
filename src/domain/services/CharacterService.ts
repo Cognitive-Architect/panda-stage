@@ -1,8 +1,10 @@
 import {
+  CharacterHeadSchema,
   FacePlacementSchema,
   ProjectSchema,
   type Character,
   type CharacterExpression,
+  type CharacterHead,
   type FacePlacement,
   type ImageAsset,
   type Project,
@@ -26,6 +28,7 @@ export type CharacterServiceErrorCode =
   | 'EXPRESSION_REFERENCED'
   | 'COMPOSITE_CHARACTER_REQUIRED'
   | 'INVALID_FACE_PLACEMENT'
+  | 'INVALID_HEAD'
   | 'EXPRESSION_SET_MISMATCH';
 
 export class CharacterServiceError extends Error {
@@ -59,6 +62,7 @@ export interface CreateCompositeCharacterInput
   extends CreateCharacterInput {
   bodyAssetId: string;
   facePlacement: FacePlacement;
+  head?: CharacterHead;
 }
 
 export interface CharacterExpressionAssetUpdate {
@@ -70,6 +74,7 @@ export interface CharacterExpressionAssetUpdate {
 export interface CompositeCharacterDefinition {
   bodyAssetId: string;
   facePlacement: FacePlacement;
+  head?: CharacterHead;
   expressionAssets: readonly CharacterExpressionAssetUpdate[];
   mouthOpenAssetId: string | null;
 }
@@ -78,6 +83,7 @@ export interface CompositeCharacterDefinition {
 export interface CompositeCharacterUpdate {
   bodyAssetId?: string;
   facePlacement?: FacePlacement;
+  head?: CharacterHead | null;
   expressionAssets?: readonly CharacterExpressionAssetUpdate[];
   mouthOpenAssetId?: string | null;
 }
@@ -194,6 +200,7 @@ export class CharacterService {
   ): Project {
     const bodyAssetId = this.imageAsset(project, input.bodyAssetId).id;
     const facePlacement = this.validFacePlacement(input.facePlacement);
+    const head = input.head ? this.validHead(project, input.head) : undefined;
     const singleImageProject = this.create(project, input);
     const character = singleImageProject.characters.at(-1);
     if (!character) {
@@ -207,6 +214,7 @@ export class CharacterService {
       mode: 'composite',
       bodyAssetId,
       facePlacement,
+      ...(head ? { head } : {}),
     });
   }
 
@@ -225,6 +233,9 @@ export class CharacterService {
     const character = this.compositeCharacter(project, characterId);
     const bodyAssetId = this.imageAsset(project, definition.bodyAssetId).id;
     const facePlacement = this.validFacePlacement(definition.facePlacement);
+    const head = definition.head
+      ? this.validHead(project, definition.head)
+      : undefined;
     const expressions = this.resolveExpressionAssets(
       project,
       character,
@@ -251,6 +262,8 @@ export class CharacterService {
       baseAssetId: defaultExpression.assetId,
       ...(mouthOpenAssetId ? { mouthOpenAssetId } : {}),
     };
+    if (head) next.head = head;
+    else delete next.head;
     if (this.sameCompositeDefinition(character, next)) return project;
     return this.replaceCharacter(project, next);
   }
@@ -270,6 +283,12 @@ export class CharacterService {
         update.mouthOpenAssetId === undefined
           ? current.mouthOpenAssetId
           : update.mouthOpenAssetId,
+      head:
+        update.head === undefined
+          ? current.head
+          : update.head === null
+            ? undefined
+            : update.head,
     });
   }
 
@@ -608,6 +627,7 @@ export class CharacterService {
     return {
       bodyAssetId: character.bodyAssetId,
       facePlacement: { ...character.facePlacement },
+      ...(character.head ? { head: this.cloneHead(character.head) } : {}),
       expressionAssets: character.expressions.map((expression) => ({
         expressionId: expression.id,
         assetId: expression.assetId,
@@ -625,6 +645,30 @@ export class CharacterService {
       );
     }
     return { ...parsed.data };
+  }
+
+  private validHead(project: Project, raw: CharacterHead): CharacterHead {
+    const parsed = CharacterHeadSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new CharacterServiceError(
+        'INVALID_HEAD',
+        'Head must contain an image asset, finite Character-local placement, and finite Character-local pivot.',
+      );
+    }
+    const asset = this.imageAsset(project, parsed.data.assetId);
+    return {
+      assetId: asset.id,
+      placement: { ...parsed.data.placement },
+      pivot: { ...parsed.data.pivot },
+    };
+  }
+
+  private cloneHead(head: CharacterHead): CharacterHead {
+    return {
+      assetId: head.assetId,
+      placement: { ...head.placement },
+      pivot: { ...head.pivot },
+    };
   }
 
   private resolveExpressionAssets(
@@ -677,6 +721,8 @@ export class CharacterService {
       current.facePlacement.offsetX === next.facePlacement.offsetX &&
       current.facePlacement.offsetY === next.facePlacement.offsetY &&
       current.facePlacement.scale === next.facePlacement.scale &&
+      JSON.stringify(current.head ?? null) ===
+        JSON.stringify(next.head ?? null) &&
       current.baseAssetId === next.baseAssetId &&
       (current.mouthOpenAssetId ?? null) ===
         (next.mouthOpenAssetId ?? null) &&

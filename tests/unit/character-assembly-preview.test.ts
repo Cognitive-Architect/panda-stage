@@ -37,6 +37,11 @@ function fixture(): {
         mode: 'composite' as const,
         bodyAssetId: body.id,
         facePlacement: placement,
+        head: {
+          assetId: mouth.id,
+          placement: { offsetX: 12, offsetY: -5, scale: 0.8 },
+          pivot: { x: 200, y: 210 },
+        },
         mouthOpenAssetId: mouth.id,
       },
     ],
@@ -57,6 +62,7 @@ function fixture(): {
       draft: {
         bodyAssetId: character.bodyAssetId,
         facePlacement: { ...placement },
+        ...(character.head ? { head: structuredClone(character.head) } : {}),
         expressionAssets: character.expressions.map((expression) => ({
           expressionId: expression.id,
           assetId: expression.assetId,
@@ -171,6 +177,18 @@ describe('S07 composite assembly preview', () => {
       },
     };
     expect(isCharacterAssemblyPending(project, pendingSession)).toBe(true);
+    expect(
+      isCharacterAssemblyPending(project, {
+        ...session,
+        draft: {
+          ...session.draft,
+          head: {
+            ...session.draft.head!,
+            placement: { ...session.draft.head!.placement, offsetX: 40 },
+          },
+        },
+      }),
+    ).toBe(true);
     expect(hasPendingCharacterAssemblyEdit(project, session)).toBe(false);
     expect(hasPendingCharacterAssemblyEdit(project, pendingSession)).toBe(
       true,

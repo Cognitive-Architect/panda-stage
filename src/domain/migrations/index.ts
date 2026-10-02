@@ -7,6 +7,7 @@ import {
 } from '../constants';
 import {
   ProjectSchema,
+  ProjectV8Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -32,6 +33,7 @@ export type DetectedSchemaVersion =
   | 5
   | 6
   | 7
+  | 8
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -39,7 +41,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -63,6 +65,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 5 ||
     version === 6 ||
     version === 7 ||
+    version === 8 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -172,12 +175,12 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v7) is routed here by version and resolved to
- * the current v8 project through exactly one path. The formal v1-v7
+ * Every persisted envelope (v0-v8) is routed here by version and resolved to
+ * the current v9 project through exactly one path. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v8 shape. A narrow compatibility normalization then
+ * validate the resolved v9 shape. A narrow compatibility normalization then
  * replaces the one historical subtitle default while preserving all other
  * style values. There is no second, implicit migration path:
  * `ProjectSchema.parse` never migrates legacy input.
@@ -202,8 +205,17 @@ export function migrateProject(input: unknown): Project {
       // shared formal transform, then validated as a current project.
       project = ProjectSchema.parse(migrateFormalProject(input));
       break;
+    case 8:
+      // Historical v8 envelope: validate its strict pre-Head shape, then
+      // advance only the schema version so incumbent Character visuals stay
+      // unchanged.
+      project = ProjectSchema.parse({
+        ...ProjectV8Schema.parse(input),
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      break;
     case PROJECT_SCHEMA_VERSION:
-      // Current v8 envelope: validate it, then apply only the narrow
+      // Current v9 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;

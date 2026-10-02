@@ -1,14 +1,17 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   CharacterService,
+  evaluateShotAtTime,
   LayerService,
   ProjectSchema,
+  resolveLayerVisualParts,
   ShotService,
 } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
+import { PROJECT_FILE_NAME } from '../../src/main/services/ProjectFileSystemService';
 import { CharacterStore } from '../../src/renderer/stores/characterStore';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
@@ -51,6 +54,11 @@ describe('BFM-S02 composite Character lifecycle', () => {
           mode: 'composite',
           bodyAssetId: IDS.assetBg,
           facePlacement: { offsetX: 10, offsetY: -5, scale: 1 },
+          head: {
+            assetId: IDS.assetChar2,
+            placement: { offsetX: 6, offsetY: -3, scale: 0.9 },
+            pivot: { x: 320, y: 300 },
+          },
         },
       ],
     });
@@ -64,7 +72,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
         now: () => new Date('2026-08-02T00:00:00.000Z'),
       }),
     );
-    const changed = characters.applyCompositeUpdate(IDS.character, {
+    characters.applyCompositeUpdate(IDS.character, {
       bodyAssetId: IDS.assetChar2,
       facePlacement: { offsetX: 32, offsetY: -14, scale: 1.2 },
       expressionAssets: [
@@ -72,10 +80,26 @@ describe('BFM-S02 composite Character lifecycle', () => {
         { expressionId: IDS.expressionAngry, assetId: IDS.assetChar },
       ],
       mouthOpenAssetId: IDS.assetChar,
+      head: {
+        assetId: IDS.assetChar,
+        placement: { offsetX: 18, offsetY: 9, scale: 1.1 },
+        pivot: { x: 280, y: 260 },
+      },
+    });
+    const createdWithHead = characters.createComposite({
+      name: 'Created Head character',
+      bodyAssetId: IDS.assetBg,
+      facePlacement: { offsetX: 3, offsetY: -2, scale: 0.95 },
+      head: {
+        assetId: IDS.assetChar2,
+        placement: { offsetX: -7, offsetY: 12, scale: 1.05 },
+        pivot: { x: 300, y: 270 },
+      },
+      expressions: [{ name: 'Normal', assetId: IDS.assetChar }],
     });
     await projectService.save(
       projectRoot,
-      changed,
+      createdWithHead,
       editor.getSnapshot()!.revision,
     );
 
@@ -86,6 +110,11 @@ describe('BFM-S02 composite Character lifecycle', () => {
       bodyAssetId: IDS.assetChar2,
       facePlacement: { offsetX: 32, offsetY: -14, scale: 1.2 },
       mouthOpenAssetId: IDS.assetChar,
+      head: {
+        assetId: IDS.assetChar,
+        placement: { offsetX: 18, offsetY: 9, scale: 1.1 },
+        pivot: { x: 280, y: 260 },
+      },
     });
     expect(reopened.project.characters[0]!.expressions).toEqual([
       {
@@ -99,6 +128,19 @@ describe('BFM-S02 composite Character lifecycle', () => {
         assetId: IDS.assetChar,
       },
     ]);
+    const createdCharacterId = createdWithHead.characters.at(-1)!.id;
+    expect(
+      reopened.project.characters.find(
+        (character) => character.id === createdCharacterId,
+      ),
+    ).toMatchObject({
+      mode: 'composite',
+      head: {
+        assetId: IDS.assetChar2,
+        placement: { offsetX: -7, offsetY: 12, scale: 1.05 },
+        pivot: { x: 300, y: 270 },
+      },
+    });
 
     const shots = new ShotStore(editor, new ShotService());
     const copiedProject = shots.duplicate(IDS.shot);
@@ -151,5 +193,61 @@ describe('BFM-S02 composite Character lifecycle', () => {
       ),
     ).toBe(true);
     shots.dispose();
+  });
+
+  it('opens a persisted v8 composite as v9 without changing Body/Face visuals', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-v8-migration-'),
+    );
+    temporaryParents.push(parent);
+    const projectRoot = path.join(parent, 'v8-composite.pandastage');
+    const projectService = new ProjectService();
+    const created = await projectService.create(projectRoot, {
+      name: 'v8 migration acceptance',
+    });
+    const base = buildProject();
+    const current = ProjectSchema.parse({
+      ...base,
+      id: created.project.id,
+      name: created.project.name,
+      createdAt: created.project.createdAt,
+      updatedAt: created.project.updatedAt,
+      characters: [
+        {
+          ...base.characters[0]!,
+          mode: 'composite',
+          bodyAssetId: IDS.assetBg,
+          facePlacement: { offsetX: 21, offsetY: -13, scale: 0.85 },
+        },
+      ],
+    });
+    const v8 = { ...current, schemaVersion: 8 as const };
+    const shot = current.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 0, current).layers.find(
+      (layer) => layer.id === IDS.layerChar,
+    );
+    if (!evaluated) throw new Error('Expected a Character layer.');
+    const expectedVisual = resolveLayerVisualParts(current, shot, evaluated);
+
+    await writeFile(
+      path.join(projectRoot, PROJECT_FILE_NAME),
+      JSON.stringify(v8),
+      'utf8',
+    );
+    const opened = await projectService.open(projectRoot);
+
+    expect(opened).toMatchObject({ migrated: true, sourceVersion: 8 });
+    expect(opened.project).toEqual(current);
+    expect(opened.project.characters[0]).not.toHaveProperty('head');
+    const migratedShot = opened.project.shots[0]!;
+    const migratedEvaluated = evaluateShotAtTime(
+      migratedShot,
+      0,
+      opened.project,
+    ).layers.find((layer) => layer.id === IDS.layerChar);
+    if (!migratedEvaluated) throw new Error('Expected a migrated Character layer.');
+    expect(
+      resolveLayerVisualParts(opened.project, migratedShot, migratedEvaluated),
+    ).toEqual(expectedVisual);
   });
 });
