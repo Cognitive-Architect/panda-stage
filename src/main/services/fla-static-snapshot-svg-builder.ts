@@ -67,6 +67,8 @@ const MAX_PATH_COMMANDS_PER_SHAPE = 1_000_000;
 const MAX_PATH_COMMANDS_PER_COMPOSITION = 1_000_000;
 const MAX_FILL_BOUNDARY_SEGMENTS_PER_SHAPE = MAX_PATH_COMMANDS_PER_SHAPE * 2;
 const MAX_FILL_BOUNDARY_SEGMENTS_PER_COMPOSITION = MAX_PATH_COMMANDS_PER_COMPOSITION * 2;
+const MAX_STROKE_SEGMENTS_PER_SHAPE = MAX_PATH_COMMANDS_PER_SHAPE;
+const MAX_STROKE_SEGMENTS_PER_COMPOSITION = MAX_PATH_COMMANDS_PER_COMPOSITION;
 const GRAPHIC_CONTENT_PADDING = 4;
 
 // ---- Public result types (Panda-owned; never cross the Renderer as raw bytes
@@ -1215,6 +1217,367 @@ function reconstructSolidFills(
   };
 }
 
+type StrokeCap = 'butt' | 'round' | 'square';
+type StrokeJoin = 'miter' | 'round' | 'bevel';
+type StrokeDrawCommand = Extract<DecodedEdges['commands'][number], { type: 'L' | 'Q' | 'C' }>;
+
+interface ParsedSolidStrokeStyle {
+  readonly color: string;
+  readonly opacity: number;
+  readonly width: number;
+  readonly cap: StrokeCap;
+  readonly join: StrokeJoin;
+  readonly miterLimit: number;
+}
+
+interface StrokeBoundarySegment {
+  readonly from: Point2D;
+  readonly to: Point2D;
+  readonly command: StrokeDrawCommand;
+  readonly order: number;
+}
+
+interface ReconstructedStrokePath {
+  readonly commands: DecodedEdges['commands'];
+  readonly pathD: string;
+  readonly segmentCount: number;
+}
+
+interface ReconstructedSolidStroke {
+  readonly style: ParsedShapeStyle;
+  readonly rendererStyle: ParsedSolidStrokeStyle;
+  readonly paths: readonly ReconstructedStrokePath[];
+  readonly segmentCount: number;
+}
+
+function parseSolidStrokeStyle(
+  style: ParsedShapeStyle,
+  shapeId: string,
+): { readonly ok: true; readonly result: ParsedSolidStrokeStyle } | BuildSvgFailure {
+  const unsupported = (detail: string): BuildSvgFailure => ({
+    ok: false,
+    code: 'TARGET_UNSUPPORTED',
+    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal SolidStroke semantics only`,
+  });
+  if (style.type !== 'solid') return unsupported(`${style.type} stroke fill`);
+  const solidStrokeTag = style.sourceXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
+  if (!solidStrokeTag) return unsupported('non-SolidStroke construct');
+  const solidColorTag = style.sourceXml.match(/<SolidColor\b[^>]*>/u)?.[0];
+  if (!solidColorTag) return unsupported('non-solid stroke fill');
+
+  const color = solidColorTag.match(/\bcolor="([^"]*)"/u)?.[1] ?? null;
+  if (!color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(color)) {
+    return {
+      ok: false,
+      code: 'RENDER_FAILED',
+      message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid solid color`,
+    };
+  }
+  const rawAlpha = solidColorTag.match(/\balpha="([^"]*)"/u)?.[1] ?? null;
+  const opacity = rawAlpha === null ? 1 : Number(rawAlpha);
+  if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) {
+    return {
+      ok: false,
+      code: 'RENDER_FAILED',
+      message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid alpha`,
+    };
+  }
+
+  const rawWidth = attributeFromElement(style.sourceXml, 'SolidStroke', 'weight');
+  const width = rawWidth === null ? 1 : Number(rawWidth);
+  if (!Number.isFinite(width) || width < 0) {
+    return {
+      ok: false,
+      code: 'RENDER_FAILED',
+      message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid weight`,
+    };
+  }
+  if (width === 0) return unsupported('zero-weight hairline stroke');
+
+  const rawCap = attributeFromElement(style.sourceXml, 'SolidStroke', 'caps') ?? 'round';
+  const cap: StrokeCap | null = rawCap === 'none' || rawCap === 'butt' ? 'butt' :
+    rawCap === 'round' ? 'round' : rawCap === 'square' ? 'square' : null;
+  if (!cap) return unsupported(`cap value "${rawCap}"`);
+
+  const rawJoin = attributeFromElement(style.sourceXml, 'SolidStroke', 'joints') ?? 'round';
+  const join: StrokeJoin | null = rawJoin === 'miter' ? 'miter' :
+    rawJoin === 'round' ? 'round' : rawJoin === 'bevel' ? 'bevel' : null;
+  if (!join) return unsupported(`join value "${rawJoin}"`);
+
+  const rawMiterLimit = attributeFromElement(style.sourceXml, 'SolidStroke', 'miterLimit');
+  const miterLimit = rawMiterLimit === null ? 3 : Number(rawMiterLimit);
+  if (!Number.isFinite(miterLimit) || miterLimit < 1) {
+    return {
+      ok: false,
+      code: 'RENDER_FAILED',
+      message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid miter limit`,
+    };
+  }
+
+  const scaleMode = attributeFromElement(style.sourceXml, 'SolidStroke', 'scaleMode') ?? 'normal';
+  if (scaleMode !== 'normal') return unsupported(`scaleMode "${scaleMode}"`);
+  const pixelHinting = attributeFromElement(style.sourceXml, 'SolidStroke', 'pixelHinting');
+  if (pixelHinting !== null && pixelHinting !== 'true' && pixelHinting !== 'false') {
+    return {
+      ok: false,
+      code: 'RENDER_FAILED',
+      message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid pixelHinting value`,
+    };
+  }
+  if (pixelHinting === 'true') return unsupported('pixelHinting');
+
+  return { ok: true, result: { color, opacity, width, cap, join, miterLimit } };
+}
+
+function stitchSolidStrokeSegments(
+  segments: readonly StrokeBoundarySegment[],
+  shapeId: string,
+  strokeStyleIndex: number,
+): { readonly ok: true; readonly paths: readonly ReconstructedStrokePath[] } | BuildSvgFailure {
+  const incidentByPoint = new Map<string, number[]>();
+  const degreeByPoint = new Map<string, number>();
+  const pointByKey = new Map<string, Point2D>();
+  const addIncident = (key: string, segmentIndex: number, point: Point2D): void => {
+    const incident = incidentByPoint.get(key) ?? [];
+    incident.push(segmentIndex);
+    incidentByPoint.set(key, incident);
+    pointByKey.set(key, point);
+  };
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!segment) continue;
+    const fromKey = pointKey(segment.from);
+    const toKey = pointKey(segment.to);
+    addIncident(fromKey, index, segment.from);
+    degreeByPoint.set(fromKey, (degreeByPoint.get(fromKey) ?? 0) + 1);
+    if (toKey !== fromKey) addIncident(toKey, index, segment.to);
+    degreeByPoint.set(toKey, (degreeByPoint.get(toKey) ?? 0) + 1);
+    if ((degreeByPoint.get(fromKey) ?? 0) > 2 || (degreeByPoint.get(toKey) ?? 0) > 2) {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${strokeStyleIndex} has branched stroke topology`,
+      };
+    }
+  }
+
+  const visited = new Set<number>();
+  const paths: ReconstructedStrokePath[] = [];
+  for (let seedIndex = 0; seedIndex < segments.length; seedIndex += 1) {
+    if (visited.has(seedIndex)) continue;
+    const componentSegments = new Set<number>();
+    const componentPoints = new Set<string>();
+    const pending = [seedIndex];
+    while (pending.length > 0) {
+      const currentIndex = pending.pop();
+      if (currentIndex === undefined || componentSegments.has(currentIndex)) continue;
+      const segment = segments[currentIndex];
+      if (!segment) continue;
+      componentSegments.add(currentIndex);
+      for (const key of [pointKey(segment.from), pointKey(segment.to)]) {
+        componentPoints.add(key);
+        for (const neighbor of incidentByPoint.get(key) ?? []) {
+          if (!componentSegments.has(neighbor)) pending.push(neighbor);
+        }
+      }
+    }
+    const endpoints = [...componentPoints]
+      .filter((key) => degreeByPoint.get(key) === 1)
+      .sort((left, right) => {
+        const leftOrder = Math.min(...(incidentByPoint.get(left) ?? []).map((index) => segments[index]?.order ?? Infinity));
+        const rightOrder = Math.min(...(incidentByPoint.get(right) ?? []).map((index) => segments[index]?.order ?? Infinity));
+        return leftOrder - rightOrder;
+      });
+    if (endpoints.length !== 0 && endpoints.length !== 2) {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${strokeStyleIndex} has ambiguous stroke endpoints`,
+      };
+    }
+
+    const firstSegmentIndex = endpoints.length === 2
+      ? (incidentByPoint.get(endpoints[0] ?? '') ?? [])[0]
+      : [...componentSegments].reduce((first, index) =>
+          (segments[index]?.order ?? Infinity) < (segments[first]?.order ?? Infinity) ? index : first,
+        seedIndex);
+    const firstSegment = firstSegmentIndex === undefined ? undefined : segments[firstSegmentIndex];
+    const startKey = endpoints[0] ?? (firstSegment ? pointKey(firstSegment.from) : '');
+    const startPoint = pointByKey.get(startKey);
+    if (!firstSegment || !startPoint) {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${strokeStyleIndex} has incomplete stroke topology`,
+      };
+    }
+
+    const commands: DecodedEdges['commands'] = [{ type: 'M', x: startPoint.x, y: startPoint.y }];
+    const pathSegmentIds = new Set<number>();
+    let currentKey = startKey;
+    let currentIndex = firstSegmentIndex as number;
+    let closed = false;
+    while (true) {
+      const segment = segments[currentIndex];
+      if (!segment || pathSegmentIds.has(currentIndex)) {
+        return {
+          ok: false,
+          code: 'TARGET_UNSUPPORTED',
+          message: `Shape ${shapeId} StrokeStyle ${strokeStyleIndex} has ambiguous stroke traversal`,
+        };
+      }
+      const fromKey = pointKey(segment.from);
+      const toKey = pointKey(segment.to);
+      const forward = fromKey === currentKey;
+      if (!forward && toKey !== currentKey) {
+        return {
+          ok: false,
+          code: 'TARGET_UNSUPPORTED',
+          message: `Shape ${shapeId} StrokeStyle ${strokeStyleIndex} has disconnected stroke segments`,
+        };
+      }
+      commands.push(forward ? segment.command : reverseFillDrawCommand(segment.command, segment.from));
+      pathSegmentIds.add(currentIndex);
+      visited.add(currentIndex);
+      currentKey = forward ? toKey : fromKey;
+      if (currentKey === startKey) {
+        closed = true;
+        break;
+      }
+      const available = (incidentByPoint.get(currentKey) ?? [])
+        .filter((neighbor) => neighbor !== currentIndex && !pathSegmentIds.has(neighbor));
+      if (available.length === 0) break;
+      if (available.length !== 1) {
+        return {
+          ok: false,
+          code: 'TARGET_UNSUPPORTED',
+          message: `Shape ${shapeId} StrokeStyle ${strokeStyleIndex} has ambiguous stroke joins`,
+        };
+      }
+      currentIndex = available[0] as number;
+    }
+    if (pathSegmentIds.size !== componentSegments.size) {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${strokeStyleIndex} has disconnected stroke traversal`,
+      };
+    }
+    if (closed) commands.push({ type: 'Z' });
+    paths.push({
+      commands,
+      pathD: commandsToSvgPath(commands),
+      segmentCount: pathSegmentIds.size,
+    });
+  }
+  return { ok: true, paths };
+}
+
+function reconstructSolidStrokes(
+  representation: StyleAwareShapeRepresentation,
+  shapeId: string,
+): { readonly ok: true; readonly result: readonly ReconstructedSolidStroke[] } | BuildSvgFailure {
+  const boundaryByStyle = new Map<number, StrokeBoundarySegment[]>();
+  let currentEdgeIndex = -1;
+  let current: Point2D | null = null;
+  let subpathStart: Point2D | null = null;
+  let segmentCount = 0;
+  let nextOrder = 0;
+
+  const addSegment = (
+    fillStyleIndex: number,
+    from: Point2D,
+    to: Point2D,
+    command: StrokeDrawCommand,
+  ): BuildSvgFailure | null => {
+    if (segmentCount >= MAX_STROKE_SEGMENTS_PER_SHAPE) {
+      return {
+        ok: false,
+        code: 'BUDGET_EXCEEDED',
+        message: `Shape ${shapeId} stroke-segment budget exceeded`,
+      };
+    }
+    const styleSegments = boundaryByStyle.get(fillStyleIndex) ?? [];
+    styleSegments.push({ from, to, command, order: nextOrder });
+    boundaryByStyle.set(fillStyleIndex, styleSegments);
+    segmentCount += 1;
+    nextOrder += 1;
+    return null;
+  };
+
+  for (const run of representation.styleRuns) {
+    if (run.edgeIndex !== currentEdgeIndex) {
+      currentEdgeIndex = run.edgeIndex;
+      current = null;
+      subpathStart = null;
+    }
+    if (run.strokeStyle === null) continue;
+    for (const command of run.commands) {
+      if (command.type === 'M') {
+        current = { x: command.x, y: command.y };
+        subpathStart = current;
+        continue;
+      }
+      if (command.type === 'Z') {
+        if (current && subpathStart && pointKey(current) !== pointKey(subpathStart)) {
+          const failure = addSegment(
+            run.strokeStyle,
+            current,
+            subpathStart,
+            { type: 'L', x: subpathStart.x, y: subpathStart.y },
+          );
+          if (failure) return failure;
+        }
+        current = subpathStart;
+        continue;
+      }
+      if (!current) {
+        return {
+          ok: false,
+          code: 'TARGET_UNSUPPORTED',
+          message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} starts without a path point`,
+        };
+      }
+      const end = { x: command.x, y: command.y };
+      if (!Number.isFinite(end.x) || !Number.isFinite(end.y)) {
+        return {
+          ok: false,
+          code: 'RENDER_FAILED',
+          message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} has a non-finite endpoint`,
+        };
+      }
+      const failure = addSegment(run.strokeStyle, current, end, command);
+      if (failure) return failure;
+      current = end;
+    }
+  }
+
+  const stylesByIndex = new Map(representation.strokeStyles.map((style) => [style.index, style]));
+  const strokes: ReconstructedSolidStroke[] = [];
+  for (const style of representation.strokeStyles) {
+    const segments = boundaryByStyle.get(style.index);
+    if (!segments || segments.length === 0) continue;
+    const parsed = parseSolidStrokeStyle(style, shapeId);
+    if (!parsed.ok) return parsed;
+    const stitched = stitchSolidStrokeSegments(segments, shapeId, style.index);
+    if (!stitched.ok) return stitched;
+    if (!stylesByIndex.has(style.index)) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${style.index} was not resolved`,
+      };
+    }
+    strokes.push({
+      style,
+      rendererStyle: parsed.result,
+      paths: stitched.paths,
+      segmentCount: segments.length,
+    });
+  }
+  return { ok: true, result: strokes };
+}
+
 // ---- Renderable target discovery and Main-side C01/C02 build path ----
 /**
  * R2 corrective (#309): catalog discovery and frame-source assembly can run
@@ -1496,6 +1859,10 @@ export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
     readonly fillContourCount: number;
     /** Number of directed source boundary segments used to build those paths. */
     readonly fillBoundarySegmentCount: number;
+    /** Number of connected solid-stroke SVG paths emitted. */
+    readonly strokePathCount: number;
+    /** Number of authored line/curve segments included in solid strokes. */
+    readonly strokeSegmentCount: number;
     readonly groupCount: number;
     readonly expandedSymbolCount: number;
     readonly framing: {
@@ -1717,6 +2084,28 @@ function includeTransformedPathBounds(
   return true;
 }
 
+function strokeBoundsExpansion(
+  style: ParsedSolidStrokeStyle,
+  matrix: Matrix2D,
+): { readonly x: number; readonly y: number } | null {
+  const capFactor = style.cap === 'square' ? Math.SQRT2 : 1;
+  const joinFactor = style.join === 'miter' ? style.miterLimit : 1;
+  const radius = (style.width / 2) * Math.max(capFactor, joinFactor);
+  const x = radius * Math.hypot(matrix.a, matrix.c);
+  const y = radius * Math.hypot(matrix.b, matrix.d);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+function includeExpandedStrokeBounds(
+  bounds: MutableBounds,
+  pathBounds: MutableBounds,
+  expansion: { readonly x: number; readonly y: number },
+): boolean {
+  if (![pathBounds.minX, pathBounds.minY, pathBounds.maxX, pathBounds.maxY].every(Number.isFinite)) return false;
+  return includePoint(bounds, { x: pathBounds.minX - expansion.x, y: pathBounds.minY - expansion.y }) &&
+    includePoint(bounds, { x: pathBounds.maxX + expansion.x, y: pathBounds.maxY + expansion.y });
+}
+
 function includeTransformedBitmapBounds(
   bounds: MutableBounds,
   width: number,
@@ -1896,6 +2285,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let fillRegionCount = 0;
   let fillContourCount = 0;
   let fillBoundarySegmentCount = 0;
+  let strokePathCount = 0;
+  let strokeSegmentCount = 0;
   let styleSourceChars = 0;
   let firstFillColor: string | null = null;
 
@@ -1964,6 +2355,42 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         emittedNodes.push(pathNode);
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = fill.color;
+      }
+      const reconstructedStrokes = reconstructSolidStrokes(representation, node.shapeId);
+      if (!reconstructedStrokes.ok) return reconstructedStrokes;
+      const shapeStrokeSegmentCount = reconstructedStrokes.result
+        .reduce((total, stroke) => total + stroke.segmentCount, 0);
+      if (strokeSegmentCount + shapeStrokeSegmentCount > MAX_STROKE_SEGMENTS_PER_COMPOSITION) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition stroke-segment budget exceeded' };
+      }
+      strokeSegmentCount += shapeStrokeSegmentCount;
+      for (const stroke of reconstructedStrokes.result) {
+        const expansion = strokeBoundsExpansion(stroke.rendererStyle, node.worldTransform);
+        if (!expansion) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
+        }
+        for (const path of stroke.paths) {
+          if (graphicBounds) {
+            const strokePathBounds = createBounds();
+            if (!includeTransformedPathBounds(strokePathBounds, path.commands, node.worldTransform) ||
+                !includeExpandedStrokeBounds(graphicBounds, strokePathBounds, expansion)) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
+            }
+          }
+          const pathBytes = Buffer.byteLength(path.pathD, 'utf8');
+          if (pathBytes > MAX_EDGE_CHARS ||
+              pathBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+            return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+          }
+          const style = stroke.rendererStyle;
+          const pathNode = `<path d="${path.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="none" stroke="${style.color}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(style.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
+          emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
+          if (embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+            return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+          }
+          emittedNodes.push(pathNode);
+          strokePathCount += 1;
+        }
       }
       pathCommandCount += commands.length;
       shapeCount += 1;
@@ -2047,7 +2474,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +
-    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} fillRegions=${fillRegionCount} fillContours=${fillContourCount} fillBoundarySegments=${fillBoundarySegmentCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} fillRegions=${fillRegionCount} fillContours=${fillContourCount} fillBoundarySegments=${fillBoundarySegmentCount} strokePaths=${strokePathCount} strokeSegments=${strokeSegmentCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
     defs + emittedNodes.join('') + '</svg>\n';
   const svgByteLength = Buffer.byteLength(svg, 'utf8');
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -2061,7 +2488,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     pixelCount: width * height,
     pathCommandCount,
     firstFillColor,
-    hasRenderablePath: fillRegionCount > 0,
+    hasRenderablePath: fillRegionCount > 0 || strokePathCount > 0,
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,
@@ -2078,6 +2505,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       fillRegionCount,
       fillContourCount,
       fillBoundarySegmentCount,
+      strokePathCount,
+      strokeSegmentCount,
       groupCount: flattened.groupCount,
       expandedSymbolCount: flattened.expandedSymbolCount,
       framing: {

@@ -42,7 +42,7 @@ function solidFill(index: number, color: string): string {
 }
 
 describe('P2-C01 style-aware Shape reconstruction', () => {
-  it('retains a stroke-only Shape and its edge reference without drawing strokes in C01', async () => {
+  it('retains and renders a basic solid stroke on a stroke-only Shape', async () => {
     const rendered = await renderScene(`<DOMShape>
       <strokes><StrokeStyle index="1"><SolidStroke weight="2"><fill><SolidColor color="#202020"/></fill></SolidStroke></StrokeStyle></strokes>
       <edges><Edge strokeStyle="1" cubics="${RECT_CUBICS}"/></edges>
@@ -53,8 +53,9 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
     expect(rendered.composition.fillStyleCount).toBe(0);
     expect(rendered.composition.strokeStyleCount).toBe(1);
     expect(rendered.composition.styleRunCount).toBe(1);
-    expect(rendered.hasRenderablePath).toBe(false);
-    expect(rendered.svg).not.toContain('<path');
+    expect(rendered.hasRenderablePath).toBe(true);
+    expect(rendered.svg).toContain('fill="none" stroke="#202020"');
+    expect(rendered.svg).toContain('stroke-width="2"');
     expect(rendered.svg).toContain('fillStyles=0 strokeStyles=1 styleRuns=1');
   });
 

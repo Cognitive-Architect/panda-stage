@@ -15,6 +15,7 @@
     "verify:issue658-audio-timeline": "pnpm build && electron scripts/verify-issue658-audio-timeline.cjs",
     "verify:issue676-p0-c02": "pnpm build && electron scripts/verify-issue676-p0-c02.cjs",
     "verify:issue686-p2-c02": "pnpm build && electron scripts/verify-issue686-p2-c02.cjs",
+    "verify:issue686-p2-c03": "pnpm build && electron scripts/verify-issue686-p2-c03.cjs",
     "verify:issue676-p0-c03": "pnpm build && electron scripts/verify-issue676-p0-c03.cjs",
     "verify:issue680-p1-c03": "pnpm build && electron scripts/verify-issue680-p1-c03.cjs",
     "dev": "pnpm build:electron && concurrently --kill-others --success first \"pnpm dev:renderer\" \"pnpm dev:electron\"",
