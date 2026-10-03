@@ -937,8 +937,11 @@ function parseLinearGradientPaint(
     return fail('BUDGET_EXCEEDED', 'exceeds the per-style gradient-stop budget');
   }
   const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
-  if (stopTags.length !== rawStopCount || stopTags.length === 0) {
+  if (stopTags.length !== rawStopCount) {
     return fail('RENDER_FAILED', 'has malformed or missing GradientEntry stops');
+  }
+  if (stopTags.length < 2) {
+    return fail('RENDER_FAILED', 'has insufficient GradientEntry stops; at least two are required');
   }
   const stops: Array<{ readonly color: string; readonly alpha: number; readonly ratio: number }> = [];
   let previousRatio = -1;
@@ -975,29 +978,28 @@ function parseLinearGradientPaint(
 
   const matrixWrapperCount = (gradientBlock.match(/<matrix\b/gu) ?? []).length;
   const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
-  if (matrixWrapperCount !== matrixBlocks.length || matrixBlocks.length > 1) {
-    return fail('RENDER_FAILED', 'has a malformed gradient matrix');
+  const matrixTagCount = (gradientBlock.match(/<Matrix\b/gu) ?? []).length;
+  if (matrixWrapperCount !== 1 || matrixBlocks.length !== 1 || matrixTagCount !== 1) {
+    return fail('RENDER_FAILED', 'has a malformed or missing gradient matrix');
   }
+  const matrixTags = (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? [];
+  if (matrixTags.length !== 1) return fail('RENDER_FAILED', 'has a malformed gradient matrix');
+  const matrixTag = matrixTags[0] as string;
   const matrix: Matrix2D = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
-  if (matrixBlocks.length === 1) {
-    const matrixTags = (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? [];
-    if (matrixTags.length !== 1) return fail('RENDER_FAILED', 'has a malformed gradient matrix');
-    const matrixTag = matrixTags[0] as string;
-    const values: Record<keyof Matrix2D, number> = {
-      a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0,
-    };
-    for (const key of Object.keys(values) as Array<keyof Matrix2D>) {
-      const raw = attributeFromElement(matrixTag, 'Matrix', key);
-      if (raw === null) continue;
-      const numericPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u;
-      const value = numericPattern.test(raw) ? Number(raw) : Number.NaN;
-      if (!Number.isFinite(value) || Math.abs(value) > 1_000_000) {
-        return fail('RENDER_FAILED', 'has an invalid gradient matrix value');
-      }
-      values[key] = value;
+  const values: Record<keyof Matrix2D, number> = {
+    a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0,
+  };
+  for (const key of Object.keys(values) as Array<keyof Matrix2D>) {
+    const raw = attributeFromElement(matrixTag, 'Matrix', key);
+    if (raw === null) continue;
+    const numericPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u;
+    const value = numericPattern.test(raw) ? Number(raw) : Number.NaN;
+    if (!Number.isFinite(value) || Math.abs(value) > 1_000_000) {
+      return fail('RENDER_FAILED', 'has an invalid gradient matrix value');
     }
-    Object.assign(matrix, values);
+    values[key] = value;
   }
+  Object.assign(matrix, values);
 
   const gradientId = `fla-linear-${crypto.createHash('sha256')
     .update(JSON.stringify([renderTargetId, frameIndex, shapeId, style.index, style.sourceXml]), 'utf8')

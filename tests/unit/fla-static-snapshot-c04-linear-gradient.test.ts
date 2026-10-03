@@ -5,6 +5,8 @@ import {
   buildSvgForRenderTarget,
 } from '../../src/main/services/fla-static-snapshot-svg-builder';
 
+const IDENTITY_MATRIX = '<matrix><Matrix/></matrix>';
+
 function linearFill(
   index: number,
   entries: string,
@@ -66,6 +68,18 @@ async function buildScenes(shapeXml: string) {
   return outputs;
 }
 
+async function buildSceneTwice(shapeXml: string) {
+  const bytes = await makeFla(shapeXml);
+  const catalog = await buildRenderableTargetCatalog(bytes);
+  if (!catalog.ok) throw new Error(catalog.message);
+  const target = catalog.entries.find((entry) => entry.target.kind === 'scene')?.target;
+  if (!target) throw new Error('Synthetic scene target was not cataloged');
+  return Promise.all([
+    buildSvgForRenderTarget(bytes, target),
+    buildSvgForRenderTarget(bytes, target),
+  ]);
+}
+
 function gradientIds(svg: string): string[] {
   return [...svg.matchAll(/<linearGradient\b id="([^"]+)"/gu)].map((match) => match[1] as string);
 }
@@ -119,7 +133,7 @@ describe('P2-C04 linear-gradient fill reconstruction', () => {
     const shape = twoGradientRegions({
       first: linearFill(1,
         '<GradientEntry color="#123456" alpha="0.75" ratio="0.125"/><GradientEntry color="#abcdef" alpha="0.5" ratio="0.875"/>',
-        { spread: 'repeat' },
+        { matrix: IDENTITY_MATRIX, spread: 'repeat' },
       ),
       second: `<FillStyle index="2"><SolidColor color="#eeeeee"/></FillStyle>`,
     });
@@ -134,17 +148,23 @@ describe('P2-C04 linear-gradient fill reconstruction', () => {
   });
 
   it('fails closed for invalid stop order, alpha, ratio, matrix, spread, and interpolation', async () => {
+    const validStops = '<GradientEntry color="#ff0000" ratio="0"/><GradientEntry color="#0000ff" ratio="1"/>';
     const invalidStyles = [
       linearFill(1,
         '<GradientEntry color="#ff0000" ratio="0.8"/><GradientEntry color="#0000ff" ratio="0.2"/>',
+        { matrix: IDENTITY_MATRIX },
       ),
-      linearFill(1, '<GradientEntry color="#ff0000" alpha="1.2" ratio="0"/>'),
-      linearFill(1, '<GradientEntry color="#ff0000" ratio="1.01"/>'),
-      linearFill(1, '<GradientEntry color="#ff0000" ratio="0"/>', {
+      linearFill(1, '<GradientEntry color="#ff0000" alpha="1.2" ratio="0"/><GradientEntry color="#0000ff" ratio="1"/>', {
+        matrix: IDENTITY_MATRIX,
+      }),
+      linearFill(1, '<GradientEntry color="#ff0000" ratio="1.01"/><GradientEntry color="#0000ff" ratio="1.01"/>', {
+        matrix: IDENTITY_MATRIX,
+      }),
+      linearFill(1, validStops, {
         matrix: '<matrix><Matrix a="NaN"/></matrix>',
       }),
-      linearFill(1, '<GradientEntry color="#ff0000" ratio="0"/>', { spread: 'unknown' }),
-      linearFill(1, '<GradientEntry color="#ff0000" ratio="0"/>', { interpolation: 'unknown' }),
+      linearFill(1, validStops, { matrix: IDENTITY_MATRIX, spread: 'unknown' }),
+      linearFill(1, validStops, { matrix: IDENTITY_MATRIX, interpolation: 'unknown' }),
     ];
     const expectedCodes = ['RENDER_FAILED', 'RENDER_FAILED', 'RENDER_FAILED', 'RENDER_FAILED', 'TARGET_UNSUPPORTED', 'TARGET_UNSUPPORTED'];
     for (let index = 0; index < invalidStyles.length; index += 1) {
@@ -162,7 +182,9 @@ describe('P2-C04 linear-gradient fill reconstruction', () => {
 
   it('rejects composition-wide gradient-stop budget exhaustion', async () => {
     const stops = Array.from({ length: 256 }, () => '<GradientEntry color="#ff0000" ratio="0"/>').join('');
-    const styles = Array.from({ length: 65 }, (_, index) => linearFill(index + 1, stops)).join('');
+    const styles = Array.from({ length: 65 }, (_, index) =>
+      linearFill(index + 1, stops, { matrix: IDENTITY_MATRIX }),
+    ).join('');
     const edges = Array.from({ length: 65 }, (_, index) =>
       `<Edge fillStyle1="${index + 1}" cubics="!0 0|20 0|20 20|0 20|0 0"/>`,
     ).join('');
@@ -170,6 +192,46 @@ describe('P2-C04 linear-gradient fill reconstruction', () => {
     expect(rendered[0]?.composed).toMatchObject({ ok: false, code: 'BUDGET_EXCEEDED' });
     if (rendered[0]?.composed && !rendered[0].composed.ok) {
       expect(rendered[0].composed.message).toContain('gradient-stop budget');
+    }
+  });
+
+  it('fails deterministically for zero/one stop, a missing matrix, and duplicate matrices', async () => {
+    const validStops = '<GradientEntry color="#ff0000" ratio="0"/><GradientEntry color="#0000ff" ratio="1"/>';
+    const malformedStyles = [
+      {
+        style: linearFill(1, '', { matrix: '<matrix><Matrix/></matrix>' }),
+        message: 'insufficient GradientEntry stops',
+      },
+      {
+        style: linearFill(1, '<GradientEntry color="#ff0000" ratio="0"/>', {
+          matrix: '<matrix><Matrix/></matrix>',
+        }),
+        message: 'insufficient GradientEntry stops',
+      },
+      {
+        style: linearFill(1, validStops),
+        message: 'malformed or missing gradient matrix',
+      },
+      {
+        style: linearFill(1, validStops, {
+          matrix: '<matrix><Matrix/></matrix><matrix><Matrix/></matrix>',
+        }),
+        message: 'malformed or missing gradient matrix',
+      },
+      {
+        style: linearFill(1, validStops, {
+          matrix: '<matrix><Matrix/><Matrix/></matrix>',
+        }),
+        message: 'malformed or missing gradient matrix',
+      },
+    ];
+
+    for (const malformed of malformedStyles) {
+      const [first, repeated] = await buildSceneTwice(twoGradientRegions({ first: malformed.style }));
+      expect(first).toEqual(repeated);
+      expect(first).toMatchObject({ ok: false, code: 'RENDER_FAILED' });
+      expect(first).not.toHaveProperty('svg');
+      if (!first.ok) expect(first.message).toContain(malformed.message);
     }
   });
 });
