@@ -67,6 +67,7 @@ const MAX_GRADIENT_STOPS_PER_STYLE = 256;
 const MAX_GRADIENT_STOPS_PER_COMPOSITION = 16_384;
 const MAX_GRADIENT_DEFINITION_BYTES = 4 * 1024 * 1024;
 const LINEAR_GRADIENT_HALF_LENGTH = 819.2;
+const RADIAL_GRADIENT_RADIUS = 819.2;
 const MAX_PATH_COMMANDS_PER_SHAPE = 1_000_000;
 const MAX_PATH_COMMANDS_PER_COMPOSITION = 1_000_000;
 const MAX_FILL_BOUNDARY_SEGMENTS_PER_SHAPE = MAX_PATH_COMMANDS_PER_SHAPE * 2;
@@ -897,6 +898,7 @@ interface ReconstructedFillPaint {
   readonly svgPaint: string;
   readonly firstColor: string;
   readonly opacity: number;
+  readonly gradientType: 'linear' | 'radial' | null;
   readonly gradientId: string | null;
   readonly gradientDefinition: string | null;
   readonly gradientStopCount: number;
@@ -1017,6 +1019,124 @@ function parseLinearGradientPaint(
       svgPaint: `url(#${gradientId})`,
       firstColor,
       opacity: 1,
+      gradientType: 'linear',
+      gradientId,
+      gradientDefinition: definition,
+      gradientStopCount: stops.length,
+    },
+  };
+}
+
+function parseRadialGradientPaint(
+  style: ParsedShapeStyle,
+  shapeId: string,
+  renderTargetId: string,
+  frameIndex: number,
+): { readonly ok: true; readonly paint: ReconstructedFillPaint } | BuildSvgFailure {
+  const fail = (code: BuildSvgFailure['code'], message: string): BuildSvgFailure => ({
+    ok: false,
+    code,
+    message: 'Shape ' + shapeId + ' FillStyle ' + style.index + ' ' + message,
+  });
+  const gradientBlocks = extractBalancedBlocks(style.sourceXml, 'RadialGradient');
+  if (gradientBlocks.length !== 1) {
+    return fail('RENDER_FAILED', 'has a malformed RadialGradient definition');
+  }
+  const gradientBlock = gradientBlocks[0] as string;
+  const rawStopCount = (gradientBlock.match(/<GradientEntry\b/gu) ?? []).length;
+  if (rawStopCount > MAX_GRADIENT_STOPS_PER_STYLE) {
+    return fail('BUDGET_EXCEEDED', 'exceeds the per-style gradient-stop budget');
+  }
+  const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+  if (stopTags.length !== rawStopCount) {
+    return fail('RENDER_FAILED', 'has malformed or missing GradientEntry stops');
+  }
+  if (stopTags.length < 2) {
+    return fail('RENDER_FAILED', 'has insufficient GradientEntry stops; at least two are required');
+  }
+  const stops: Array<{ readonly color: string; readonly alpha: number; readonly ratio: number }> = [];
+  let previousRatio = -1;
+  for (const stopTag of stopTags) {
+    const color = attributeFromElement(stopTag, 'GradientEntry', 'color') ?? '#000000';
+    const rawAlpha = attributeFromElement(stopTag, 'GradientEntry', 'alpha');
+    const rawRatio = attributeFromElement(stopTag, 'GradientEntry', 'ratio');
+    const alphaText = rawAlpha ?? '1';
+    const ratioText = rawRatio ?? '0';
+    const numericPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u;
+    const alpha = numericPattern.test(alphaText) ? Number(alphaText) : Number.NaN;
+    const ratio = numericPattern.test(ratioText) ? Number(ratioText) : Number.NaN;
+    if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/iu.test(color)) {
+      return fail('RENDER_FAILED', 'has an invalid gradient stop color');
+    }
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+      return fail('RENDER_FAILED', 'has an invalid gradient stop alpha');
+    }
+    if (!Number.isFinite(ratio) || ratio < 0 || ratio > 1 || ratio < previousRatio) {
+      return fail('RENDER_FAILED', 'has an invalid or out-of-order gradient stop ratio');
+    }
+    stops.push({ color, alpha, ratio });
+    previousRatio = ratio;
+  }
+
+  const spreadMethod = attributeFromElement(gradientBlock, 'RadialGradient', 'spreadMethod') ?? 'pad';
+  if (spreadMethod !== 'pad' && spreadMethod !== 'reflect' && spreadMethod !== 'repeat') {
+    return fail('TARGET_UNSUPPORTED', 'uses unsupported spread method "' + spreadMethod + '"');
+  }
+  const interpolationMethod = attributeFromElement(gradientBlock, 'RadialGradient', 'interpolationMethod') ?? 'rgb';
+  if (interpolationMethod !== 'rgb' && interpolationMethod !== 'linearRGB') {
+    return fail('TARGET_UNSUPPORTED', 'uses unsupported interpolation method "' + interpolationMethod + '"');
+  }
+
+  const focalPointText = attributeFromElement(gradientBlock, 'RadialGradient', 'focalPointRatio') ?? '0';
+  const numericPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u;
+  const focalPointRatio = numericPattern.test(focalPointText) ? Number(focalPointText) : Number.NaN;
+  if (!Number.isFinite(focalPointRatio) || focalPointRatio < -1 || focalPointRatio > 1) {
+    return fail('RENDER_FAILED', 'has an invalid radial focalPointRatio');
+  }
+
+  const matrixWrapperCount = (gradientBlock.match(/<matrix\b/gu) ?? []).length;
+  const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+  const matrixTagCount = (gradientBlock.match(/<Matrix\b/gu) ?? []).length;
+  if (matrixWrapperCount !== 1 || matrixBlocks.length !== 1 || matrixTagCount !== 1) {
+    return fail('RENDER_FAILED', 'has a malformed or missing gradient matrix');
+  }
+  const matrixTags = (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? [];
+  if (matrixTags.length !== 1) return fail('RENDER_FAILED', 'has a malformed gradient matrix');
+  const matrixTag = matrixTags[0] as string;
+  const values: Record<keyof Matrix2D, number> = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+  for (const key of Object.keys(values) as Array<keyof Matrix2D>) {
+    const raw = attributeFromElement(matrixTag, 'Matrix', key);
+    if (raw === null) continue;
+    const value = numericPattern.test(raw) ? Number(raw) : Number.NaN;
+    if (!Number.isFinite(value) || Math.abs(value) > 1_000_000) {
+      return fail('RENDER_FAILED', 'has an invalid gradient matrix value');
+    }
+    values[key] = value;
+  }
+  const matrix: Matrix2D = { ...values };
+
+  const gradientId = 'fla-radial-' + crypto.createHash('sha256')
+    .update(JSON.stringify([renderTargetId, frameIndex, shapeId, style.index, style.sourceXml]), 'utf8')
+    .digest('hex');
+  const firstColor = stops[0]?.color;
+  if (!firstColor) return fail('RENDER_FAILED', 'has no usable gradient stop');
+  const stopNodes = stops.map((stop) =>
+    '<stop offset="' + String(stop.ratio) + '" stop-color="' + stop.color + '" stop-opacity="' + String(stop.alpha) + '"/>',
+  ).join('');
+  const interpolation = interpolationMethod === 'linearRGB' ? 'linearRGB' : 'sRGB';
+  const focalOffset = focalPointRatio * RADIAL_GRADIENT_RADIUS;
+  const definition = '<radialGradient id="' + gradientId +
+    '" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="' + RADIAL_GRADIENT_RADIUS +
+    '" fx="' + String(focalOffset) + '" fy="0" spreadMethod="' + spreadMethod +
+    '" color-interpolation="' + interpolation + '" gradientTransform="' +
+    matrixToSvgTransform(matrix) + '">' + stopNodes + '</radialGradient>';
+  return {
+    ok: true,
+    paint: {
+      svgPaint: 'url(#' + gradientId + ')',
+      firstColor,
+      opacity: 1,
+      gradientType: 'radial',
       gradientId,
       gradientDefinition: definition,
       gradientStopCount: stops.length,
@@ -1192,6 +1312,10 @@ function reconstructFills(
         const parsed = parseLinearGradientPaint(style, shapeId, renderTargetId, frameIndex);
         if (!parsed.ok) return parsed;
         paint = parsed.paint;
+      } else if (style.type === 'radial') {
+        const parsed = parseRadialGradientPaint(style, shapeId, renderTargetId, frameIndex);
+        if (!parsed.ok) return parsed;
+        paint = parsed.paint;
       } else if (style.type === 'solid') {
         if (!style.color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(style.color)) {
           return {
@@ -1214,6 +1338,7 @@ function reconstructFills(
           svgPaint: style.color,
           firstColor: style.color,
           opacity: Math.max(0, Math.min(1, parsedAlpha)),
+          gradientType: null,
           gradientId: null,
           gradientDefinition: null,
           gradientStopCount: 0,
@@ -1222,7 +1347,7 @@ function reconstructFills(
         return {
           ok: false,
           code: 'TARGET_UNSUPPORTED',
-          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} uses unsupported ${style.type} fill; P2-C04 supports solid and linear fills only`,
+          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} uses unsupported ${style.type} fill; P2-C05 supports solid, linear, and radial fills`,
         };
       }
       resolvedStyles.set(fillStyleIndex, paint);
@@ -1997,6 +2122,10 @@ export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
     readonly linearGradientCount: number;
     /** Number of GradientEntry stops across emitted linear-gradient definitions. */
     readonly linearGradientStopCount: number;
+    /** Number of unique radial-gradient paint servers emitted. */
+    readonly radialGradientCount: number;
+    /** Number of GradientEntry stops across emitted radial-gradient definitions. */
+    readonly radialGradientStopCount: number;
     /** Number of connected solid-stroke SVG paths emitted. */
     readonly strokePathCount: number;
     /** Number of authored line/curve segments included in solid strokes. */
@@ -2411,7 +2540,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const resolvedMediaByName = new Map<string, FlaStaticSnapshotBitmapMediaLookupResult>();
   const emittedNodes: string[] = [];
   let embeddedPngBytes = 0;
-  let linearGradientDefinitionBytes = 0;
+  let gradientDefinitionBytes = 0;
+  let gradientStopCount = 0;
   let emittedContentBytes = 0;
   let pathCommandCount = 0;
   let shapeCount = 0;
@@ -2429,6 +2559,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let fillBoundarySegmentCount = 0;
   let linearGradientCount = 0;
   let linearGradientStopCount = 0;
+  let radialGradientCount = 0;
+  let radialGradientStopCount = 0;
   let strokePathCount = 0;
   let strokeSegmentCount = 0;
   let styleSourceChars = 0;
@@ -2495,33 +2627,39 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         if (paint.gradientId && paint.gradientDefinition) {
           const existingDefinition = definitions.get(paint.gradientId);
           if (existingDefinition && existingDefinition !== paint.gradientDefinition) {
-            return { ok: false, code: 'RENDER_FAILED', message: 'Linear-gradient id collision detected' };
+            return { ok: false, code: 'RENDER_FAILED', message: 'Gradient id collision detected' };
           }
           if (!existingDefinition) {
             const definitionBytes = Buffer.byteLength(paint.gradientDefinition, 'utf8');
-            if (linearGradientStopCount + paint.gradientStopCount > MAX_GRADIENT_STOPS_PER_COMPOSITION) {
+            if (gradientStopCount + paint.gradientStopCount > MAX_GRADIENT_STOPS_PER_COMPOSITION) {
               return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-stop budget exceeded' };
             }
-            if (linearGradientDefinitionBytes + definitionBytes > MAX_GRADIENT_DEFINITION_BYTES) {
+            if (gradientDefinitionBytes + definitionBytes > MAX_GRADIENT_DEFINITION_BYTES) {
               return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-definition byte budget exceeded' };
             }
-            if (linearGradientDefinitionBytes + definitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+            if (gradientDefinitionBytes + definitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
               return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
             }
             definitions.set(paint.gradientId, paint.gradientDefinition);
-            linearGradientDefinitionBytes += definitionBytes;
-            linearGradientCount += 1;
-            linearGradientStopCount += paint.gradientStopCount;
+            gradientDefinitionBytes += definitionBytes;
+            gradientStopCount += paint.gradientStopCount;
+            if (paint.gradientType === 'linear') {
+              linearGradientCount += 1;
+              linearGradientStopCount += paint.gradientStopCount;
+            } else if (paint.gradientType === 'radial') {
+              radialGradientCount += 1;
+              radialGradientStopCount += paint.gradientStopCount;
+            }
           }
         }
         const pathBytes = Buffer.byteLength(fill.pathD, 'utf8');
         if (pathBytes > MAX_EDGE_CHARS ||
-            pathBytes + linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+            pathBytes + gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
         }
         const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
         emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
-        if (linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+        if (gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
         }
         emittedNodes.push(pathNode);
@@ -2551,13 +2689,13 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           }
           const pathBytes = Buffer.byteLength(path.pathD, 'utf8');
           if (pathBytes > MAX_EDGE_CHARS ||
-              pathBytes + linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+              pathBytes + gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
             return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
           }
           const style = stroke.rendererStyle;
           const pathNode = `<path d="${path.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="none" stroke="${style.color}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(style.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
           emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
-          if (linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+          if (gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
             return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
           }
           emittedNodes.push(pathNode);
@@ -2603,7 +2741,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     const imageId = `fla-bitmap-${mediaKey}`;
     if (!definitions.has(imageId)) {
       const base64Length = Math.ceil(media.pngBytes.byteLength / 3) * 4;
-      const estimatedSvgBytes = linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes + base64Length + 512;
+      const estimatedSvgBytes = gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes + base64Length + 512;
       if (estimatedSvgBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Embedded PNG media exceeds the SVG byte budget' };
       }
@@ -2620,7 +2758,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     }
     const useNode = `<use href="#${imageId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
     emittedContentBytes += Buffer.byteLength(useNode, 'utf8');
-    if (linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+    if (gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
     }
     emittedNodes.push(useNode);
@@ -2646,7 +2784,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +
-    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} fillRegions=${fillRegionCount} fillContours=${fillContourCount} fillBoundarySegments=${fillBoundarySegmentCount} linearGradients=${linearGradientCount} linearGradientStops=${linearGradientStopCount} strokePaths=${strokePathCount} strokeSegments=${strokeSegmentCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} fillRegions=${fillRegionCount} fillContours=${fillContourCount} fillBoundarySegments=${fillBoundarySegmentCount} linearGradients=${linearGradientCount} linearGradientStops=${linearGradientStopCount} radialGradients=${radialGradientCount} radialGradientStops=${radialGradientStopCount} strokePaths=${strokePathCount} strokeSegments=${strokeSegmentCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
     defs + emittedNodes.join('') + '</svg>\n';
   const svgByteLength = Buffer.byteLength(svg, 'utf8');
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -2679,6 +2817,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       fillBoundarySegmentCount,
       linearGradientCount,
       linearGradientStopCount,
+      radialGradientCount,
+      radialGradientStopCount,
       strokePathCount,
       strokeSegmentCount,
       groupCount: flattened.groupCount,

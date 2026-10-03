@@ -85,7 +85,7 @@ describe('P2-C02 solid multi-fill reconstruction', () => {
     expect(rendered.composition.fillContourCount).toBe(2);
   });
 
-  it('keeps radial fills explicitly unsupported after linear-gradient graduation', async () => {
+  it('fails closed for malformed radial fills', async () => {
     const rendered = await renderScene(`<DOMShape>
       <fills><FillStyle index="1" type="radial"><RadialGradient><GradientEntry color="#000000" ratio="0"/></RadialGradient></FillStyle></fills>
       <edges><Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/></edges>
@@ -93,8 +93,8 @@ describe('P2-C02 solid multi-fill reconstruction', () => {
 
     expect(rendered.ok).toBe(false);
     if (!rendered.ok) {
-      expect(rendered.code).toBe('TARGET_UNSUPPORTED');
-      expect(rendered.message).toContain('P2-C04 supports solid and linear fills only');
+      expect(rendered.code).toBe('RENDER_FAILED');
+      expect(rendered.message).toContain('insufficient GradientEntry stops');
     }
   });
 
