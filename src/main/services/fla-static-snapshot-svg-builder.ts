@@ -1494,6 +1494,8 @@ interface StrokeBoundarySegment {
   readonly to: Point2D;
   readonly command: StrokeDrawCommand;
   readonly order: number;
+  readonly sourceSubpathId: number;
+  readonly closesSourceSubpath: boolean;
 }
 
 interface ReconstructedStrokePath {
@@ -1591,6 +1593,7 @@ function parseSolidStrokeStyle(
 
 function stitchSolidStrokeSegments(
   segments: readonly StrokeBoundarySegment[],
+  closedSourceSubpaths: ReadonlySet<number>,
   shapeId: string,
   strokeStyleIndex: number,
 ): { readonly ok: true; readonly paths: readonly ReconstructedStrokePath[] } | BuildSvgFailure {
@@ -1612,13 +1615,6 @@ function stitchSolidStrokeSegments(
     degreeByPoint.set(fromKey, (degreeByPoint.get(fromKey) ?? 0) + 1);
     if (toKey !== fromKey) addIncident(toKey, index, segment.to);
     degreeByPoint.set(toKey, (degreeByPoint.get(toKey) ?? 0) + 1);
-    if ((degreeByPoint.get(fromKey) ?? 0) > 2 || (degreeByPoint.get(toKey) ?? 0) > 2) {
-      return {
-        ok: false,
-        code: 'TARGET_UNSUPPORTED',
-        message: `Shape ${shapeId} StrokeStyle ${strokeStyleIndex} has branched stroke topology`,
-      };
-    }
   }
 
   const visited = new Set<number>();
@@ -1640,6 +1636,35 @@ function stitchSolidStrokeSegments(
           if (!componentSegments.has(neighbor)) pending.push(neighbor);
         }
       }
+    }
+    const branched = [...componentPoints].some((key) => (degreeByPoint.get(key) ?? 0) > 2);
+    if (branched) {
+      const subpathSegments = new Map<number, StrokeBoundarySegment[]>();
+      const authoredSegments = [...componentSegments]
+        .map((index) => segments[index])
+        .filter((segment): segment is StrokeBoundarySegment => segment !== undefined)
+        .sort((left, right) => left.order - right.order);
+      for (const segment of authoredSegments) {
+        const subpath = subpathSegments.get(segment.sourceSubpathId) ?? [];
+        subpath.push(segment);
+        subpathSegments.set(segment.sourceSubpathId, subpath);
+      }
+      for (const [sourceSubpathId, sourceSegments] of subpathSegments) {
+        const first = sourceSegments[0];
+        if (!first) continue;
+        const commands: DecodedEdges['commands'] = [{ type: 'M', x: first.from.x, y: first.from.y }];
+        for (const segment of sourceSegments) {
+          if (!segment.closesSourceSubpath) commands.push(segment.command);
+        }
+        if (closedSourceSubpaths.has(sourceSubpathId)) commands.push({ type: 'Z' });
+        paths.push({
+          commands,
+          pathD: commandsToSvgPath(commands),
+          segmentCount: sourceSegments.length,
+        });
+      }
+      for (const index of componentSegments) visited.add(index);
+      continue;
     }
     const endpoints = [...componentPoints]
       .filter((key) => degreeByPoint.get(key) === 1)
@@ -1743,12 +1768,17 @@ function reconstructSolidStrokes(
   let subpathStart: Point2D | null = null;
   let segmentCount = 0;
   let nextOrder = 0;
+  let currentSourceSubpathId: number | null = null;
+  let nextSourceSubpathId = 0;
+  const closedSourceSubpaths = new Set<number>();
 
   const addSegment = (
     fillStyleIndex: number,
     from: Point2D,
     to: Point2D,
     command: StrokeDrawCommand,
+    sourceSubpathId: number,
+    closesSourceSubpath = false,
   ): BuildSvgFailure | null => {
     if (segmentCount >= MAX_STROKE_SEGMENTS_PER_SHAPE) {
       return {
@@ -1758,7 +1788,14 @@ function reconstructSolidStrokes(
       };
     }
     const styleSegments = boundaryByStyle.get(fillStyleIndex) ?? [];
-    styleSegments.push({ from, to, command, order: nextOrder });
+    styleSegments.push({
+      from,
+      to,
+      command,
+      order: nextOrder,
+      sourceSubpathId,
+      closesSourceSubpath,
+    });
     boundaryByStyle.set(fillStyleIndex, styleSegments);
     segmentCount += 1;
     nextOrder += 1;
@@ -1770,21 +1807,34 @@ function reconstructSolidStrokes(
       currentEdgeIndex = run.edgeIndex;
       current = null;
       subpathStart = null;
+      currentSourceSubpathId = null;
     }
     if (run.strokeStyle === null) continue;
     for (const command of run.commands) {
       if (command.type === 'M') {
         current = { x: command.x, y: command.y };
         subpathStart = current;
+        currentSourceSubpathId = nextSourceSubpathId;
+        nextSourceSubpathId += 1;
         continue;
       }
       if (command.type === 'Z') {
+        if (currentSourceSubpathId !== null) closedSourceSubpaths.add(currentSourceSubpathId);
         if (current && subpathStart && pointKey(current) !== pointKey(subpathStart)) {
+          if (currentSourceSubpathId === null) {
+            return {
+              ok: false,
+              code: 'TARGET_UNSUPPORTED',
+              message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} closes without a source subpath`,
+            };
+          }
           const failure = addSegment(
             run.strokeStyle,
             current,
             subpathStart,
             { type: 'L', x: subpathStart.x, y: subpathStart.y },
+            currentSourceSubpathId,
+            true,
           );
           if (failure) return failure;
         }
@@ -1798,6 +1848,13 @@ function reconstructSolidStrokes(
           message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} starts without a path point`,
         };
       }
+      if (currentSourceSubpathId === null) {
+        return {
+          ok: false,
+          code: 'TARGET_UNSUPPORTED',
+          message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} starts without a source subpath`,
+        };
+      }
       const end = { x: command.x, y: command.y };
       if (!Number.isFinite(end.x) || !Number.isFinite(end.y)) {
         return {
@@ -1806,7 +1863,7 @@ function reconstructSolidStrokes(
           message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} has a non-finite endpoint`,
         };
       }
-      const failure = addSegment(run.strokeStyle, current, end, command);
+      const failure = addSegment(run.strokeStyle, current, end, command, currentSourceSubpathId);
       if (failure) return failure;
       current = end;
     }
@@ -1819,7 +1876,7 @@ function reconstructSolidStrokes(
     if (!segments || segments.length === 0) continue;
     const parsed = parseSolidStrokeStyle(style, shapeId);
     if (!parsed.ok) return parsed;
-    const stitched = stitchSolidStrokeSegments(segments, shapeId, style.index);
+    const stitched = stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
     if (!stitched.ok) return stitched;
     if (!stylesByIndex.has(style.index)) {
       return {
