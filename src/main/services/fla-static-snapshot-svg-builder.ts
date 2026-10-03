@@ -720,7 +720,7 @@ function parseShapeAt(block: string): ParsedShape {
           issue = { code: 'RENDER_FAILED', message: `Malformed Edge ${name} reference` };
           return result();
         }
-        refs[name] = parsed;
+        refs[name] = parsed === 0 ? null : parsed;
       }
       edgeStrings.push({ cubics, edges, ...refs });
     }
@@ -801,7 +801,7 @@ function buildStyleAwareShapeRepresentation(
       return { ok: false, code, message: `Shape ${shapeId}: ${decoded.error}` };
     }
     for (const change of decoded.styleChanges) {
-      if (!fillStyles.has(change.fillStyle1)) {
+      if (change.fillStyle1 !== 0 && !fillStyles.has(change.fillStyle1)) {
         return {
           ok: false,
           code: 'RENDER_FAILED',
@@ -814,7 +814,7 @@ function buildStyleAwareShapeRepresentation(
       styleChanges.push({
         edgeIndex,
         commandIndex: change.commandIndex,
-        fillStyle1: change.fillStyle1,
+        fillStyle1: change.fillStyle1 === 0 ? null : change.fillStyle1,
       });
     }
 
@@ -852,7 +852,7 @@ function buildStyleAwareShapeRepresentation(
       }
       currentRefs = {
         ...currentRefs,
-        fillStyle1: change.fillStyle1,
+        fillStyle1: change.fillStyle1 === 0 ? null : change.fillStyle1,
       };
       runStart = change.commandIndex;
     }
@@ -1147,6 +1147,10 @@ export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
     readonly styleRunCount: number;
     readonly midEdgeStyleChangeCount: number;
     readonly pathCommandCount: number;
+    readonly edgeFillStyle0ReferenceCount: number;
+    readonly edgeFillStyle1ReferenceCount: number;
+    readonly edgeStrokeStyleReferenceCount: number;
+    readonly noFillStyle1RunCount: number;
     readonly groupCount: number;
     readonly expandedSymbolCount: number;
     readonly framing: {
@@ -1547,6 +1551,10 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let strokeStyleCount = 0;
   let styleRunCount = 0;
   let midEdgeStyleChangeCount = 0;
+  let edgeFillStyle0ReferenceCount = 0;
+  let edgeFillStyle1ReferenceCount = 0;
+  let edgeStrokeStyleReferenceCount = 0;
+  let noFillStyle1RunCount = 0;
   let styleSourceChars = 0;
   let firstFillColor: string | null = null;
 
@@ -1571,6 +1579,13 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       strokeStyleCount += representation.strokeStyles.length;
       styleRunCount += representation.styleRuns.length;
       midEdgeStyleChangeCount += representation.styleChanges.length;
+      for (const reference of representation.edgeReferences) {
+        if (reference.fillStyle0 !== null) edgeFillStyle0ReferenceCount += 1;
+        if (reference.fillStyle1 !== null) edgeFillStyle1ReferenceCount += 1;
+        if (reference.strokeStyle !== null) edgeStrokeStyleReferenceCount += 1;
+      }
+      noFillStyle1RunCount += representation.styleRuns
+        .filter((run) => run.fillStyle1 === null).length;
       styleSourceChars += representation.styleSourceChars;
       if (fillStyleCount + strokeStyleCount > MAX_STYLE_ENTRIES_PER_COMPOSITION) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-entry budget exceeded' };
@@ -1684,7 +1699,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +
-    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
     defs + emittedNodes.join('') + '</svg>\n';
   const svgByteLength = Buffer.byteLength(svg, 'utf8');
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -1708,6 +1723,10 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       styleRunCount,
       midEdgeStyleChangeCount,
       pathCommandCount,
+      edgeFillStyle0ReferenceCount,
+      edgeFillStyle1ReferenceCount,
+      edgeStrokeStyleReferenceCount,
+      noFillStyle1RunCount,
       groupCount: flattened.groupCount,
       expandedSymbolCount: flattened.expandedSymbolCount,
       framing: {

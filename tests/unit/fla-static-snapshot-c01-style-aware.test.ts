@@ -70,6 +70,34 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
     expect(rendered.svg).toContain('fillStyles=0 strokeStyles=1 styleRuns=1');
   });
 
+  it('treats edge reference zero as no style while retaining positive references', async () => {
+    const rendered = await renderScene(`<DOMShape>
+      <fills>${solidFill(1, '#112233')}</fills>
+      <edges><Edge fillStyle0="0" fillStyle1="1" strokeStyle="0" cubics="${RECT_CUBICS}"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    expect(rendered.composition.fillStyleCount).toBe(1);
+    expect(rendered.composition.styleRunCount).toBe(1);
+    expect(rendered.composition.edgeFillStyle0ReferenceCount).toBe(0);
+    expect(rendered.composition.edgeFillStyle1ReferenceCount).toBe(1);
+    expect(rendered.composition.edgeStrokeStyleReferenceCount).toBe(0);
+    expect(rendered.composition.noFillStyle1RunCount).toBe(0);
+  });
+
+  it('treats an edge fillStyle1 zero as an empty-fill run without requiring table entry zero', async () => {
+    const rendered = await renderScene(`<DOMShape>
+      <fills>${solidFill(1, '#112233')}</fills>
+      <edges><Edge fillStyle1="0" cubics="${RECT_CUBICS}"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    expect(rendered.composition.edgeFillStyle1ReferenceCount).toBe(0);
+    expect(rendered.composition.noFillStyle1RunCount).toBe(1);
+  });
+
   it('records an authored S<n> change as a second style run while preserving the path commands', async () => {
     const changed = await renderScene(`<DOMShape>
       <fills>${solidFill(1, '#112233')}${solidFill(2, '#aabbcc')}</fills>
@@ -88,6 +116,27 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
     expect(changed.composition.pathCommandCount).toBe(unchanged.composition.pathCommandCount);
     expect(pathData(changed.svg)).toBe(pathData(unchanged.svg));
     expect(changed.svg).toContain('styleRuns=2 styleChanges=1');
+  });
+
+  it('accepts mid-edge S0 as a transition to no fill and keeps geometry unchanged', async () => {
+    const changed = await renderScene(`<DOMShape>
+      <fills>${solidFill(1, '#112233')}</fills>
+      <edges><Edge fillStyle1="1" cubics="!0 0|100 0S0|100 100|0 100|0 0"/></edges>
+    </DOMShape>`);
+    const unchanged = await renderScene(`<DOMShape>
+      <fills>${solidFill(1, '#112233')}</fills>
+      <edges><Edge fillStyle1="1" cubics="!0 0|100 0|100 100|0 100|0 0"/></edges>
+    </DOMShape>`);
+
+    expect(changed.ok).toBe(true);
+    expect(unchanged.ok).toBe(true);
+    if (!changed.ok || !unchanged.ok) return;
+    expect(changed.composition.styleRunCount).toBe(2);
+    expect(changed.composition.midEdgeStyleChangeCount).toBe(1);
+    expect(changed.composition.edgeFillStyle1ReferenceCount).toBe(1);
+    expect(changed.composition.noFillStyle1RunCount).toBe(1);
+    expect(changed.composition.pathCommandCount).toBe(unchanged.composition.pathCommandCount);
+    expect(pathData(changed.svg)).toBe(pathData(unchanged.svg));
   });
 
   it('keeps negative translated geometry and the existing transform unchanged', async () => {
@@ -118,6 +167,16 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
       name: 'out-of-range',
       edgeAttributes: 'fillStyle1="2"',
       error: 'references missing fillStyle1 2',
+    },
+    {
+      name: 'negative',
+      edgeAttributes: 'fillStyle1="-1"',
+      error: 'Malformed Edge fillStyle1 reference',
+    },
+    {
+      name: 'unsafe',
+      edgeAttributes: 'fillStyle1="9007199254740992"',
+      error: 'Malformed Edge fillStyle1 reference',
     },
   ])('rejects $name style references deterministically', async ({ edgeAttributes, error }) => {
     const shape = `<DOMShape><fills>${solidFill(1, '#112233')}</fills><edges><Edge ${edgeAttributes} cubics="${RECT_CUBICS}"/></edges></DOMShape>`;
