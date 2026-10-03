@@ -1523,7 +1523,8 @@ function parseSolidStrokeStyle(
   const solidColorTag = style.sourceXml.match(/<SolidColor\b[^>]*>/u)?.[0];
   if (!solidColorTag) return unsupported('non-solid stroke fill');
 
-  const color = solidColorTag.match(/\bcolor="([^"]*)"/u)?.[1] ?? null;
+  const rawColor = solidColorTag.match(/\bcolor="([^"]*)"/u)?.[1] ?? null;
+  const color = rawColor === null ? '#000000' : rawColor;
   if (!color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(color)) {
     return {
       ok: false,

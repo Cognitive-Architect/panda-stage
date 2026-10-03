@@ -52,6 +52,17 @@ function strokePathTags(svg: string): string[] {
 }
 
 describe('P2-C03 solid stroke reconstruction', () => {
+  it('uses the XFL default black when a solid stroke omits its color attribute', async () => {
+    const rendered = await renderScene(`<DOMShape>
+      ${strokeStyle('weight="2"', '#abcdef', '1', '<SolidColor/>')}
+      <edges><Edge strokeStyle="1" cubics="!100 80|200 80"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    expect(strokePathTags(rendered.svg)[0]).toContain('stroke="#000000"');
+  });
+
   it('keeps stroke-only art visible and preserves solid color, alpha, weight, cap, join, and miter limit', async () => {
     const rendered = await renderScene(`<DOMShape>
       ${strokeStyle('weight="4" caps="none" joints="miter" miterLimit="6"', '#123456', '0.5')}
