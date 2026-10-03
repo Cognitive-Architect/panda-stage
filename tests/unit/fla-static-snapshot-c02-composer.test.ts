@@ -174,6 +174,7 @@ describe('P0-C02 composed snapshot SVG', () => {
     const fixture = c02Fixture();
     const result = buildSvgForResolvedDisplayList({
       displayList: fixture.displayList,
+      renderTargetId: 'c02-composer-scene',
       stageWidth: 4,
       stageHeight: 4,
       shapeBlocks: fixture.shapeBlocks,
@@ -209,6 +210,7 @@ describe('P0-C02 composed snapshot SVG', () => {
     const fixture = c02Fixture();
     const unresolved = buildSvgForResolvedDisplayList({
       displayList: fixture.displayList,
+      renderTargetId: 'c02-composer-scene',
       stageWidth: 4,
       stageHeight: 4,
       shapeBlocks: fixture.shapeBlocks,
@@ -218,6 +220,7 @@ describe('P0-C02 composed snapshot SVG', () => {
 
     const invalidMedia = buildSvgForResolvedDisplayList({
       displayList: fixture.displayList,
+      renderTargetId: 'c02-composer-scene',
       stageWidth: 4,
       stageHeight: 4,
       shapeBlocks: fixture.shapeBlocks,
@@ -235,6 +238,7 @@ describe('P0-C02 composed snapshot SVG', () => {
 
     const overBudget = buildSvgForResolvedDisplayList({
       displayList: fixture.displayList,
+      renderTargetId: 'c02-composer-scene',
       stageWidth: 4_097,
       stageHeight: 4,
       shapeBlocks: fixture.shapeBlocks,

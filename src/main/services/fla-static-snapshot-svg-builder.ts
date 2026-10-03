@@ -63,6 +63,10 @@ const MAX_STYLE_ENTRIES_PER_COMPOSITION = 32_768;
 const MAX_STYLE_RUNS_PER_SHAPE = 16_384;
 const MAX_STYLE_RUNS_PER_COMPOSITION = 65_536;
 const MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION = 4 * 1024 * 1024;
+const MAX_GRADIENT_STOPS_PER_STYLE = 256;
+const MAX_GRADIENT_STOPS_PER_COMPOSITION = 16_384;
+const MAX_GRADIENT_DEFINITION_BYTES = 4 * 1024 * 1024;
+const LINEAR_GRADIENT_HALF_LENGTH = 819.2;
 const MAX_PATH_COMMANDS_PER_SHAPE = 1_000_000;
 const MAX_PATH_COMMANDS_PER_COMPOSITION = 1_000_000;
 const MAX_FILL_BOUNDARY_SEGMENTS_PER_SHAPE = MAX_PATH_COMMANDS_PER_SHAPE * 2;
@@ -889,19 +893,133 @@ interface FillBoundarySegment {
   readonly order: number;
 }
 
-interface ReconstructedSolidFill {
-  readonly style: ParsedShapeStyle;
-  readonly color: string;
+interface ReconstructedFillPaint {
+  readonly svgPaint: string;
+  readonly firstColor: string;
   readonly opacity: number;
+  readonly gradientId: string | null;
+  readonly gradientDefinition: string | null;
+  readonly gradientStopCount: number;
+}
+
+interface ReconstructedFill {
+  readonly style: ParsedShapeStyle;
+  readonly paint: ReconstructedFillPaint;
   readonly pathD: string;
   readonly contourCount: number;
   readonly boundarySegmentCount: number;
 }
 
-interface ReconstructedSolidFills {
-  readonly fills: readonly ReconstructedSolidFill[];
+interface ReconstructedFills {
+  readonly fills: readonly ReconstructedFill[];
   readonly contourCount: number;
   readonly boundarySegmentCount: number;
+}
+
+function parseLinearGradientPaint(
+  style: ParsedShapeStyle,
+  shapeId: string,
+  renderTargetId: string,
+  frameIndex: number,
+): { readonly ok: true; readonly paint: ReconstructedFillPaint } | BuildSvgFailure {
+  const fail = (code: BuildSvgFailure['code'], message: string): BuildSvgFailure => ({
+    ok: false,
+    code,
+    message: `Shape ${shapeId} FillStyle ${style.index} ${message}`,
+  });
+  const gradientBlocks = extractBalancedBlocks(style.sourceXml, 'LinearGradient');
+  if (gradientBlocks.length !== 1) {
+    return fail('RENDER_FAILED', 'has a malformed LinearGradient definition');
+  }
+  const gradientBlock = gradientBlocks[0] as string;
+  const rawStopCount = (gradientBlock.match(/<GradientEntry\b/gu) ?? []).length;
+  if (rawStopCount > MAX_GRADIENT_STOPS_PER_STYLE) {
+    return fail('BUDGET_EXCEEDED', 'exceeds the per-style gradient-stop budget');
+  }
+  const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+  if (stopTags.length !== rawStopCount || stopTags.length === 0) {
+    return fail('RENDER_FAILED', 'has malformed or missing GradientEntry stops');
+  }
+  const stops: Array<{ readonly color: string; readonly alpha: number; readonly ratio: number }> = [];
+  let previousRatio = -1;
+  for (const stopTag of stopTags) {
+    const color = attributeFromElement(stopTag, 'GradientEntry', 'color') ?? '#000000';
+    const rawAlpha = attributeFromElement(stopTag, 'GradientEntry', 'alpha');
+    const rawRatio = attributeFromElement(stopTag, 'GradientEntry', 'ratio');
+    const alphaText = rawAlpha ?? '1';
+    const ratioText = rawRatio ?? '0';
+    const numericPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u;
+    const alpha = numericPattern.test(alphaText) ? Number(alphaText) : Number.NaN;
+    const ratio = numericPattern.test(ratioText) ? Number(ratioText) : Number.NaN;
+    if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/iu.test(color)) {
+      return fail('RENDER_FAILED', 'has an invalid gradient stop color');
+    }
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+      return fail('RENDER_FAILED', 'has an invalid gradient stop alpha');
+    }
+    if (!Number.isFinite(ratio) || ratio < 0 || ratio > 1 || ratio < previousRatio) {
+      return fail('RENDER_FAILED', 'has an invalid or out-of-order gradient stop ratio');
+    }
+    stops.push({ color, alpha, ratio });
+    previousRatio = ratio;
+  }
+
+  const spreadMethod = attributeFromElement(gradientBlock, 'LinearGradient', 'spreadMethod') ?? 'pad';
+  if (spreadMethod !== 'pad' && spreadMethod !== 'reflect' && spreadMethod !== 'repeat') {
+    return fail('TARGET_UNSUPPORTED', `uses unsupported spread method "${spreadMethod}"`);
+  }
+  const interpolationMethod = attributeFromElement(gradientBlock, 'LinearGradient', 'interpolationMethod') ?? 'rgb';
+  if (interpolationMethod !== 'rgb' && interpolationMethod !== 'linearRGB') {
+    return fail('TARGET_UNSUPPORTED', `uses unsupported interpolation method "${interpolationMethod}"`);
+  }
+
+  const matrixWrapperCount = (gradientBlock.match(/<matrix\b/gu) ?? []).length;
+  const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+  if (matrixWrapperCount !== matrixBlocks.length || matrixBlocks.length > 1) {
+    return fail('RENDER_FAILED', 'has a malformed gradient matrix');
+  }
+  const matrix: Matrix2D = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+  if (matrixBlocks.length === 1) {
+    const matrixTags = (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? [];
+    if (matrixTags.length !== 1) return fail('RENDER_FAILED', 'has a malformed gradient matrix');
+    const matrixTag = matrixTags[0] as string;
+    const values: Record<keyof Matrix2D, number> = {
+      a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0,
+    };
+    for (const key of Object.keys(values) as Array<keyof Matrix2D>) {
+      const raw = attributeFromElement(matrixTag, 'Matrix', key);
+      if (raw === null) continue;
+      const numericPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u;
+      const value = numericPattern.test(raw) ? Number(raw) : Number.NaN;
+      if (!Number.isFinite(value) || Math.abs(value) > 1_000_000) {
+        return fail('RENDER_FAILED', 'has an invalid gradient matrix value');
+      }
+      values[key] = value;
+    }
+    Object.assign(matrix, values);
+  }
+
+  const gradientId = `fla-linear-${crypto.createHash('sha256')
+    .update(JSON.stringify([renderTargetId, frameIndex, shapeId, style.index, style.sourceXml]), 'utf8')
+    .digest('hex')}`;
+  const firstColor = stops[0]?.color;
+  if (!firstColor) return fail('RENDER_FAILED', 'has no usable gradient stop');
+  const stopNodes = stops.map((stop) =>
+    `<stop offset="${String(stop.ratio)}" stop-color="${stop.color}" stop-opacity="${String(stop.alpha)}"/>`,
+  ).join('');
+  const interpolation = interpolationMethod === 'linearRGB' ? 'linearRGB' : 'sRGB';
+  const definition = `<linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="-${LINEAR_GRADIENT_HALF_LENGTH}" y1="0" x2="${LINEAR_GRADIENT_HALF_LENGTH}" y2="0" spreadMethod="${spreadMethod}" color-interpolation="${interpolation}" gradientTransform="${matrixToSvgTransform(matrix)}">${stopNodes}</linearGradient>`;
+  return {
+    ok: true,
+    paint: {
+      svgPaint: `url(#${gradientId})`,
+      firstColor,
+      opacity: 1,
+      gradientId,
+      gradientDefinition: definition,
+      gradientStopCount: stops.length,
+    },
+  };
 }
 
 function pointKey(point: Point2D): string {
@@ -1036,13 +1154,15 @@ function stitchFillBoundary(
   return { ok: true, commands, contourCount };
 }
 
-function reconstructSolidFills(
+function reconstructFills(
   representation: StyleAwareShapeRepresentation,
   shapeId: string,
-): { readonly ok: true; readonly result: ReconstructedSolidFills } | BuildSvgFailure {
+  renderTargetId: string,
+  frameIndex: number,
+): { readonly ok: true; readonly result: ReconstructedFills } | BuildSvgFailure {
   const stylesByIndex = new Map(representation.fillStyles.map((style) => [style.index, style]));
   const boundaryByStyle = new Map<number, FillBoundarySegment[]>();
-  const resolvedStyles = new Map<number, { color: string; opacity: number }>();
+  const resolvedStyles = new Map<number, ReconstructedFillPaint>();
   let segmentCount = 0;
   let nextOrder = 0;
   let currentEdgeIndex = -1;
@@ -1056,8 +1176,8 @@ function reconstructSolidFills(
     command: FillDrawCommand,
     reverse: boolean,
   ): BuildSvgFailure | null => {
-    let resolved = resolvedStyles.get(fillStyleIndex);
-    if (!resolved) {
+    let paint = resolvedStyles.get(fillStyleIndex);
+    if (!paint) {
       const style = stylesByIndex.get(fillStyleIndex);
       if (!style) {
         return {
@@ -1066,32 +1186,44 @@ function reconstructSolidFills(
           message: `Shape ${shapeId} references missing FillStyle ${fillStyleIndex}`,
         };
       }
-      if (style.type !== 'solid') {
+      if (style.type === 'linear') {
+        const parsed = parseLinearGradientPaint(style, shapeId, renderTargetId, frameIndex);
+        if (!parsed.ok) return parsed;
+        paint = parsed.paint;
+      } else if (style.type === 'solid') {
+        if (!style.color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(style.color)) {
+          return {
+            ok: false,
+            code: 'RENDER_FAILED',
+            message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has an invalid solid color`,
+          };
+        }
+        const solidColorTag = style.sourceXml.match(/<SolidColor\b[^>]*>/u)?.[0];
+        const rawAlpha = solidColorTag?.match(/\balpha="([^"]*)"/u)?.[1] ?? null;
+        const parsedAlpha = rawAlpha === null ? 1 : Number(rawAlpha);
+        if (!Number.isFinite(parsedAlpha)) {
+          return {
+            ok: false,
+            code: 'RENDER_FAILED',
+            message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has an invalid alpha`,
+          };
+        }
+        paint = {
+          svgPaint: style.color,
+          firstColor: style.color,
+          opacity: Math.max(0, Math.min(1, parsedAlpha)),
+          gradientId: null,
+          gradientDefinition: null,
+          gradientStopCount: 0,
+        };
+      } else {
         return {
           ok: false,
           code: 'TARGET_UNSUPPORTED',
-          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} uses unsupported ${style.type} fill; P2-C02 supports solid fills only`,
+          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} uses unsupported ${style.type} fill; P2-C04 supports solid and linear fills only`,
         };
       }
-      if (!style.color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(style.color)) {
-        return {
-          ok: false,
-          code: 'RENDER_FAILED',
-          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has an invalid solid color`,
-        };
-      }
-      const solidColorTag = style.sourceXml.match(/<SolidColor\b[^>]*>/u)?.[0];
-      const rawAlpha = solidColorTag?.match(/\balpha="([^"]*)"/u)?.[1] ?? null;
-      const parsedAlpha = rawAlpha === null ? 1 : Number(rawAlpha);
-      if (!Number.isFinite(parsedAlpha)) {
-        return {
-          ok: false,
-          code: 'RENDER_FAILED',
-          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has an invalid alpha`,
-        };
-      }
-      resolved = { color: style.color, opacity: Math.max(0, Math.min(1, parsedAlpha)) };
-      resolvedStyles.set(fillStyleIndex, resolved);
+      resolvedStyles.set(fillStyleIndex, paint);
     }
 
     if (segmentCount >= MAX_FILL_BOUNDARY_SEGMENTS_PER_SHAPE) {
@@ -1186,15 +1318,15 @@ function reconstructSolidFills(
     }
   }
 
-  const fills: ReconstructedSolidFill[] = [];
+  const fills: ReconstructedFill[] = [];
   let contourCount = 0;
   for (const style of representation.fillStyles) {
     const segments = boundaryByStyle.get(style.index);
     if (!segments || segments.length === 0) continue;
     const stitched = stitchFillBoundary(segments, shapeId, style.index);
     if (!stitched.ok) return stitched;
-    const resolved = resolvedStyles.get(style.index);
-    if (!resolved) {
+    const paint = resolvedStyles.get(style.index);
+    if (!paint) {
       return {
         ok: false,
         code: 'RENDER_FAILED',
@@ -1203,8 +1335,7 @@ function reconstructSolidFills(
     }
     fills.push({
       style,
-      color: resolved.color,
-      opacity: resolved.opacity,
+      paint,
       pathD: commandsToSvgPath(stitched.commands),
       contourCount: stitched.contourCount,
       boundarySegmentCount: segments.length,
@@ -1816,6 +1947,7 @@ export async function buildSvgForRenderTarget(
   if (!resolved.ok) return resolved;
   return buildSvgForResolvedDisplayList({
     displayList: resolved.displayList,
+    renderTargetId: target.renderTargetId,
     stageWidth: adapted.source.stageWidth,
     stageHeight: adapted.source.stageHeight,
     shapeBlocks: adapted.source.shapeBlocks,
@@ -1859,6 +1991,10 @@ export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
     readonly fillContourCount: number;
     /** Number of directed source boundary segments used to build those paths. */
     readonly fillBoundarySegmentCount: number;
+    /** Number of unique linear-gradient paint servers emitted. */
+    readonly linearGradientCount: number;
+    /** Number of GradientEntry stops across emitted linear-gradient definitions. */
+    readonly linearGradientStopCount: number;
     /** Number of connected solid-stroke SVG paths emitted. */
     readonly strokePathCount: number;
     /** Number of authored line/curve segments included in solid strokes. */
@@ -1890,6 +2026,8 @@ export type BuildComposedSvgResult = BuildComposedSvgSuccess | BuildSvgFailure;
 
 export interface BuildComposedSvgInput {
   readonly displayList: FlaResolvedDisplayList;
+  /** Stable catalog identity used to scope deterministic SVG paint-server ids. */
+  readonly renderTargetId: string;
   readonly stageWidth: number;
   readonly stageHeight: number;
   /** C01 shape ids map to source DOMShape blocks held in the Main process. */
@@ -2241,9 +2379,10 @@ function flattenResolvedDisplayList(
  * and SVG paints later siblings on top, matching Animate's stacking semantics.
  */
 export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): BuildComposedSvgResult {
-  const { displayList, stageWidth, stageHeight, shapeBlocks, resolveBitmapMedia } = input;
+  const { displayList, renderTargetId, stageWidth, stageHeight, shapeBlocks, resolveBitmapMedia } = input;
   if (!displayList || !Array.isArray(displayList.layers) || !shapeBlocks ||
       typeof shapeBlocks.get !== 'function' ||
+      typeof renderTargetId !== 'string' || renderTargetId.length === 0 || renderTargetId.length > 512 ||
       typeof resolveBitmapMedia !== 'function') {
     return { ok: false, code: 'RENDER_FAILED', message: 'Invalid composed display-list input' };
   }
@@ -2270,6 +2409,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const resolvedMediaByName = new Map<string, FlaStaticSnapshotBitmapMediaLookupResult>();
   const emittedNodes: string[] = [];
   let embeddedPngBytes = 0;
+  let linearGradientDefinitionBytes = 0;
   let emittedContentBytes = 0;
   let pathCommandCount = 0;
   let shapeCount = 0;
@@ -2285,6 +2425,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let fillRegionCount = 0;
   let fillContourCount = 0;
   let fillBoundarySegmentCount = 0;
+  let linearGradientCount = 0;
+  let linearGradientStopCount = 0;
   let strokePathCount = 0;
   let strokeSegmentCount = 0;
   let styleSourceChars = 0;
@@ -2334,7 +2476,12 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
       }
-      const reconstructed = reconstructSolidFills(representation, node.shapeId);
+      const reconstructed = reconstructFills(
+        representation,
+        node.shapeId,
+        renderTargetId,
+        displayList.frameIndex,
+      );
       if (!reconstructed.ok) return reconstructed;
       if (fillBoundarySegmentCount + reconstructed.result.boundarySegmentCount > MAX_FILL_BOUNDARY_SEGMENTS_PER_COMPOSITION) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition fill-boundary segment budget exceeded' };
@@ -2342,19 +2489,42 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       fillBoundarySegmentCount += reconstructed.result.boundarySegmentCount;
       fillContourCount += reconstructed.result.contourCount;
       for (const fill of reconstructed.result.fills) {
+        const { paint } = fill;
+        if (paint.gradientId && paint.gradientDefinition) {
+          const existingDefinition = definitions.get(paint.gradientId);
+          if (existingDefinition && existingDefinition !== paint.gradientDefinition) {
+            return { ok: false, code: 'RENDER_FAILED', message: 'Linear-gradient id collision detected' };
+          }
+          if (!existingDefinition) {
+            const definitionBytes = Buffer.byteLength(paint.gradientDefinition, 'utf8');
+            if (linearGradientStopCount + paint.gradientStopCount > MAX_GRADIENT_STOPS_PER_COMPOSITION) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-stop budget exceeded' };
+            }
+            if (linearGradientDefinitionBytes + definitionBytes > MAX_GRADIENT_DEFINITION_BYTES) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-definition byte budget exceeded' };
+            }
+            if (linearGradientDefinitionBytes + definitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+            }
+            definitions.set(paint.gradientId, paint.gradientDefinition);
+            linearGradientDefinitionBytes += definitionBytes;
+            linearGradientCount += 1;
+            linearGradientStopCount += paint.gradientStopCount;
+          }
+        }
         const pathBytes = Buffer.byteLength(fill.pathD, 'utf8');
         if (pathBytes > MAX_EDGE_CHARS ||
-            pathBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+            pathBytes + linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
         }
-        const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fill.color}" fill-opacity="${formatSvgNumber(fill.opacity)}" stroke="none" fill-rule="nonzero"/>`;
+        const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
         emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
-        if (embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+        if (linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
         }
         emittedNodes.push(pathNode);
         fillRegionCount += 1;
-        if (firstFillColor === null) firstFillColor = fill.color;
+        if (firstFillColor === null) firstFillColor = paint.firstColor;
       }
       const reconstructedStrokes = reconstructSolidStrokes(representation, node.shapeId);
       if (!reconstructedStrokes.ok) return reconstructedStrokes;
@@ -2379,13 +2549,13 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           }
           const pathBytes = Buffer.byteLength(path.pathD, 'utf8');
           if (pathBytes > MAX_EDGE_CHARS ||
-              pathBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+              pathBytes + linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
             return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
           }
           const style = stroke.rendererStyle;
           const pathNode = `<path d="${path.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="none" stroke="${style.color}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(style.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
           emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
-          if (embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+          if (linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
             return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
           }
           emittedNodes.push(pathNode);
@@ -2431,7 +2601,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     const imageId = `fla-bitmap-${mediaKey}`;
     if (!definitions.has(imageId)) {
       const base64Length = Math.ceil(media.pngBytes.byteLength / 3) * 4;
-      const estimatedSvgBytes = embeddedPngBytes + emittedContentBytes + base64Length + 512;
+      const estimatedSvgBytes = linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes + base64Length + 512;
       if (estimatedSvgBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Embedded PNG media exceeds the SVG byte budget' };
       }
@@ -2448,7 +2618,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     }
     const useNode = `<use href="#${imageId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
     emittedContentBytes += Buffer.byteLength(useNode, 'utf8');
-    if (embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+    if (linearGradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
     }
     emittedNodes.push(useNode);
@@ -2474,7 +2644,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +
-    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} fillRegions=${fillRegionCount} fillContours=${fillContourCount} fillBoundarySegments=${fillBoundarySegmentCount} strokePaths=${strokePathCount} strokeSegments=${strokeSegmentCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} fillRegions=${fillRegionCount} fillContours=${fillContourCount} fillBoundarySegments=${fillBoundarySegmentCount} linearGradients=${linearGradientCount} linearGradientStops=${linearGradientStopCount} strokePaths=${strokePathCount} strokeSegments=${strokeSegmentCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
     defs + emittedNodes.join('') + '</svg>\n';
   const svgByteLength = Buffer.byteLength(svg, 'utf8');
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -2505,6 +2675,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       fillRegionCount,
       fillContourCount,
       fillBoundarySegmentCount,
+      linearGradientCount,
+      linearGradientStopCount,
       strokePathCount,
       strokeSegmentCount,
       groupCount: flattened.groupCount,
