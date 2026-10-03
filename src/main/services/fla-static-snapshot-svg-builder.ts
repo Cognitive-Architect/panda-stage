@@ -19,9 +19,10 @@
  *
  * The edge decoder below follows the accepted command grammar from
  * src/renderer/fla-import/parser-core/edge-decoder.ts at commit
- * 3c47a4ee8af07e834338b223fcb3260a4c6dddbc. Main records pinned S<n>
- * semantics as a fillStyle1 transition and does not read the parser's
- * mutable debug or experimental globals.
+ * 3c47a4ee8af07e834338b223fcb3260a4c6dddbc. Per Issue #691, S1..S7 are
+ * validated and ignored as non-rendering selection hints; authored style
+ * ownership comes only from Edge attributes. S0 is rejected as unsupported.
+ * Main does not read the parser's mutable debug or experimental globals.
  *
  * This module is a pure function on FLA bytes + a target identity.
  * It performs NO filesystem access, NO network access, NO
@@ -513,27 +514,24 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
       case ')': i++; break;
       case 'S': {
         if (i + 1 < tokens.length) {
-          const styleToken = tokens[i + 1] as string;
-          if (!/^\d+$/u.test(styleToken)) {
-            error ??= 'Malformed mid-edge fillStyle1 reference';
+          const selectionToken = tokens[i + 1] as string;
+          if (!/^\d+$/u.test(selectionToken)) {
+            error ??= 'Malformed mid-edge selection marker';
             i += 2;
             break;
           }
-          const styleIndex = Number(styleToken);
-          if (!Number.isSafeInteger(styleIndex)) {
-            error ??= 'Mid-edge fillStyle1 reference is outside the supported range';
+          const selectionMask = Number(selectionToken);
+          if (!Number.isSafeInteger(selectionMask) || selectionMask < 1 || selectionMask > 7) {
+            error ??= selectionMask === 0
+              ? 'Unsupported S0 edge marker'
+              : 'Unsupported mid-edge selection marker';
             i += 2;
             break;
           }
-          if (styleChanges.length >= MAX_STYLE_RUNS_PER_SHAPE) {
-            error ??= 'Shape style-run budget exceeded';
-            i += 2;
-            break;
-          }
-          styleChanges.push({ commandIndex: commands.length, fillStyle1: styleIndex });
+          // Selection hints do not change authored Edge style ownership or rendering.
           i += 2;
         } else {
-          error ??= 'Malformed mid-edge fillStyle1 reference';
+          error ??= 'Malformed mid-edge selection marker';
           i++;
         }
         break;

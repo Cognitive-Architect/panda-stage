@@ -31,14 +31,15 @@ function pathData(svg: string): string | undefined {
   return svg.match(/<path\b[^>]*\bd="([^"]*)"/u)?.[1];
 }
 
-function pathContours(svg: string): string[] {
-  return [...svg.matchAll(/<path\b[^>]*\bd="([^"]*)"/gu)]
-    .flatMap((match) => [...(match[1] ?? '').matchAll(/M [^Z]*Z/gu)].map((contour) => contour[0] ?? ''))
-    .sort();
-}
-
 function solidFill(index: number, color: string): string {
   return `<FillStyle index="${index}"><SolidColor color="${color}"/></FillStyle>`;
+}
+
+function shapeWithEdges(fills: string, strokes: string, edgeAttributes: string, edgeData: string): string {
+  const fillsXml = fills ? '<fills>' + fills + '</fills>' : '';
+  const strokesXml = strokes ? '<strokes>' + strokes + '</strokes>' : '';
+  return '<DOMShape>' + fillsXml + strokesXml + '<edges><Edge ' + edgeAttributes +
+    ' edges="' + edgeData + '"/></edges></DOMShape>';
 }
 
 describe('P2-C01 style-aware Shape reconstruction', () => {
@@ -87,50 +88,97 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
     expect(rendered.composition.noFillStyle1RunCount).toBe(1);
   });
 
-  it('records an authored S<n> change as a second style run while preserving the path commands', async () => {
-    const changed = await renderScene(`<DOMShape>
-      <fills>${solidFill(1, '#112233')}${solidFill(2, '#aabbcc')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0S2!60 0|100 0|100 40|60 40|60 0"/></edges>
-    </DOMShape>`);
-    const unchanged = await renderScene(`<DOMShape>
-      <fills>${solidFill(1, '#112233')}${solidFill(2, '#aabbcc')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0S1!60 0|100 0|100 40|60 40|60 0"/></edges>
-    </DOMShape>`);
+  it('keeps S5 neutral for authored fillStyle0 and strokeStyle ownership', async () => {
+    const stroke = '<StrokeStyle index="1"><SolidStroke weight="2"><fill><SolidColor color="#202020"/></fill></SolidStroke></StrokeStyle>';
+    const attributes = 'fillStyle0="1" strokeStyle="1"';
+    const plain = await renderScene(shapeWithEdges(solidFill(1, '#112233'), stroke, attributes, RECT_CUBICS));
+    const marked = await renderScene(shapeWithEdges(solidFill(1, '#112233'), stroke, attributes, 'S5' + RECT_CUBICS));
 
-    expect(changed.ok).toBe(true);
-    expect(unchanged.ok).toBe(true);
-    if (!changed.ok || !unchanged.ok) return;
-    expect(changed.composition.midEdgeStyleChangeCount).toBe(1);
-    expect(changed.composition.styleRunCount).toBe(2);
-    expect(changed.composition.pathCommandCount).toBe(unchanged.composition.pathCommandCount);
-    expect(pathContours(changed.svg)).toEqual(pathContours(unchanged.svg));
-    expect(changed.composition.fillRegionCount).toBe(2);
-    expect(changed.svg).toContain('styleRuns=2 styleChanges=1');
+    expect(marked.ok).toBe(true);
+    expect(plain.ok).toBe(true);
+    if (!marked.ok || !plain.ok) return;
+    expect(marked.svg).toBe(plain.svg);
+    expect(marked.composition.edgeFillStyle0ReferenceCount).toBe(1);
+    expect(marked.composition.edgeStrokeStyleReferenceCount).toBe(1);
+    expect(marked.composition.styleRunCount).toBe(1);
+    expect(marked.composition.midEdgeStyleChangeCount).toBe(0);
+    expect(marked.composition.pathCommandCount).toBe(plain.composition.pathCommandCount);
   });
 
-  it('accepts mid-edge S0 as a transition to no fill and keeps geometry unchanged', async () => {
-    const changed = await renderScene(`<DOMShape>
-      <fills>${solidFill(1, '#112233')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0S0!60 0|100 0|100 40|60 40|60 0"/></edges>
-    </DOMShape>`);
-    const unchanged = await renderScene(`<DOMShape>
-      <fills>${solidFill(1, '#112233')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0S1!60 0|100 0|100 40|60 40|60 0"/></edges>
-    </DOMShape>`);
+  it('keeps S6 neutral for authored fillStyle1 and strokeStyle ownership', async () => {
+    const stroke = '<StrokeStyle index="1"><SolidStroke weight="2"><fill><SolidColor color="#202020"/></fill></SolidStroke></StrokeStyle>';
+    const attributes = 'fillStyle1="1" strokeStyle="1"';
+    const plain = await renderScene(shapeWithEdges(solidFill(1, '#112233'), stroke, attributes, RECT_CUBICS));
+    const marked = await renderScene(shapeWithEdges(solidFill(1, '#112233'), stroke, attributes, 'S6' + RECT_CUBICS));
 
-    expect(changed.ok).toBe(true);
-    expect(unchanged.ok).toBe(true);
-    if (!changed.ok || !unchanged.ok) return;
-    expect(changed.composition.styleRunCount).toBe(2);
-    expect(changed.composition.midEdgeStyleChangeCount).toBe(1);
-    expect(changed.composition.edgeFillStyle1ReferenceCount).toBe(1);
-    expect(changed.composition.noFillStyle1RunCount).toBe(1);
-    expect(changed.composition.pathCommandCount).toBe(unchanged.composition.pathCommandCount);
-    expect(changed.composition.fillRegionCount).toBe(1);
-    expect(changed.composition.fillContourCount).toBe(1);
-    expect(pathContours(changed.svg)).toHaveLength(1);
-    expect(pathContours(unchanged.svg)).toHaveLength(2);
-    expect(pathContours(changed.svg)[0]).toBe(pathContours(unchanged.svg)[0]);
+    expect(marked.ok).toBe(true);
+    expect(plain.ok).toBe(true);
+    if (!marked.ok || !plain.ok) return;
+    expect(marked.svg).toBe(plain.svg);
+    expect(marked.composition.edgeFillStyle1ReferenceCount).toBe(1);
+    expect(marked.composition.edgeStrokeStyleReferenceCount).toBe(1);
+    expect(marked.composition.styleRunCount).toBe(1);
+    expect(marked.composition.midEdgeStyleChangeCount).toBe(0);
+    expect(marked.composition.pathCommandCount).toBe(plain.composition.pathCommandCount);
+  });
+
+  it('keeps S4 stroke-only geometry free of invented fills', async () => {
+    const stroke = '<StrokeStyle index="1"><SolidStroke weight="2"><fill><SolidColor color="#202020"/></fill></SolidStroke></StrokeStyle>';
+    const attributes = 'strokeStyle="1"';
+    const plain = await renderScene(shapeWithEdges('', stroke, attributes, RECT_CUBICS));
+    const marked = await renderScene(shapeWithEdges('', stroke, attributes, 'S4' + RECT_CUBICS));
+
+    expect(marked.ok).toBe(true);
+    expect(plain.ok).toBe(true);
+    if (!marked.ok || !plain.ok) return;
+    expect(marked.svg).toBe(plain.svg);
+    expect(marked.composition.fillStyleCount).toBe(0);
+    expect(marked.composition.edgeFillStyle0ReferenceCount).toBe(0);
+    expect(marked.composition.edgeFillStyle1ReferenceCount).toBe(0);
+    expect(marked.composition.edgeStrokeStyleReferenceCount).toBe(1);
+    expect(marked.composition.strokeStyleCount).toBe(1);
+    expect(marked.composition.styleRunCount).toBe(1);
+    expect(marked.hasRenderablePath).toBe(true);
+  });
+
+  it.each([1, 2, 3, 4, 5, 6, 7])('treats S%d as a rendering-neutral selection hint', async (mask) => {
+    const edgeAttributes = 'fillStyle1="1"';
+    const plain = await renderScene(shapeWithEdges(solidFill(1, '#112233'), '', edgeAttributes, RECT_CUBICS));
+    const edgeData = '!0 0|100 0S' + mask + '|100 100|0 100|0 0';
+    const marked = await renderScene(shapeWithEdges(solidFill(1, '#112233'), '', edgeAttributes, edgeData));
+
+    expect(marked.ok).toBe(true);
+    expect(plain.ok).toBe(true);
+    if (!marked.ok || !plain.ok) return;
+    expect(marked.svg).toBe(plain.svg);
+    expect(marked.composition.styleRunCount).toBe(1);
+    expect(marked.composition.midEdgeStyleChangeCount).toBe(0);
+    expect(marked.composition.edgeFillStyle1ReferenceCount).toBe(1);
+    expect(marked.composition.pathCommandCount).toBe(plain.composition.pathCommandCount);
+  });
+
+  it('rejects S0 deterministically without interpreting it as no fill', async () => {
+    const shape = shapeWithEdges(solidFill(1, '#112233'), '', 'fillStyle1="1"', 'S0' + RECT_CUBICS);
+    const first = await renderScene(shape);
+    const second = await renderScene(shape);
+
+    expect(first).toEqual(second);
+    expect(first.ok).toBe(false);
+    if (!first.ok) {
+      expect(first.code).toBe('RENDER_FAILED');
+      expect(first.message).toContain('Unsupported S0 edge marker');
+      expect(first.message).not.toContain('missing fillStyle1 0');
+    }
+  });
+
+  it.each(['Sx' + RECT_CUBICS, 'S8' + RECT_CUBICS, 'S'])('rejects unsupported or malformed selection marker %s', async (edgeData) => {
+    const rendered = await renderScene(shapeWithEdges(solidFill(1, '#112233'), '', 'fillStyle1="1"', edgeData));
+
+    expect(rendered.ok).toBe(false);
+    if (!rendered.ok) {
+      expect(rendered.code).toBe('RENDER_FAILED');
+      expect(rendered.message).toMatch(/(Malformed|Unsupported).*selection marker/iu);
+    }
   });
 
   it('keeps negative translated geometry and the existing transform unchanged', async () => {
@@ -185,17 +233,18 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
     }
   });
 
-  it('fails closed when the bounded style-run budget is exhausted', async () => {
-    const changes = 'S1'.repeat(16_385);
-    const rendered = await renderScene(`<DOMShape>
-      <fills>${solidFill(1, '#112233')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|100 0${changes}"/></edges>
-    </DOMShape>`);
+  it('ignores repeated bounded selection markers without consuming style-run budget', async () => {
+    const repeatedMarkers = 'S1'.repeat(16_385);
+    const edgeAttributes = 'fillStyle1="1"';
+    const baseline = await renderScene(shapeWithEdges(solidFill(1, '#112233'), '', edgeAttributes, RECT_CUBICS));
+    const marked = await renderScene(shapeWithEdges(solidFill(1, '#112233'), '', edgeAttributes, repeatedMarkers + RECT_CUBICS));
 
-    expect(rendered.ok).toBe(false);
-    if (!rendered.ok) {
-      expect(rendered.code).toBe('BUDGET_EXCEEDED');
-      expect(rendered.message).toContain('style-run budget exceeded');
-    }
+    expect(marked.ok).toBe(true);
+    expect(baseline.ok).toBe(true);
+    if (!marked.ok || !baseline.ok) return;
+    expect(marked.svg).toBe(baseline.svg);
+    expect(marked.composition.styleRunCount).toBe(1);
+    expect(marked.composition.midEdgeStyleChangeCount).toBe(0);
+    expect(marked.composition.pathCommandCount).toBe(baseline.composition.pathCommandCount);
   });
 });
