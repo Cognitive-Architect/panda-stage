@@ -621,7 +621,10 @@ function parseShapeStyle(block: string, tag: 'FillStyle' | 'StrokeStyle'): Parse
     'solid'
   );
   const colorBlock = block.match(/<(?:SolidColor|GradientEntry)\b[^>]*>/u)?.[0];
-  const color = colorBlock?.match(/\bcolor="([^"]*)"/u)?.[1] ?? null;
+  const rawColor = colorBlock?.match(/\bcolor="([^"]*)"/u)?.[1] ?? null;
+  const color = rawColor === null && tag === 'FillStyle' && type === 'solid' && /<SolidColor\b/u.test(block)
+    ? '#000000'
+    : rawColor;
   const rawAlpha = colorBlock?.match(/\balpha="([^"]*)"/u)?.[1] ?? null;
   const parsedAlpha = rawAlpha === null ? null : Number(rawAlpha);
   return {

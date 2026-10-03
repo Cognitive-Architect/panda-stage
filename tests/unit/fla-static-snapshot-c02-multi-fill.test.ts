@@ -44,6 +44,27 @@ function twoAdjacentRegions(): string {
 }
 
 describe('P2-C02 solid multi-fill reconstruction', () => {
+  it('uses the XFL default black when a solid fill omits its color attribute', async () => {
+    const rendered = await renderScene(`<DOMShape>
+      <fills><FillStyle index="1"><SolidColor/></FillStyle></fills>
+      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    expect(fillPathAttributes(rendered.svg)[0]).toContain('fill="#000000"');
+  });
+
+  it('rejects an explicitly empty solid-fill color instead of applying the omitted-color default', async () => {
+    const rendered = await renderScene(`<DOMShape>
+      <fills><FillStyle index="1"><SolidColor color=""/></FillStyle></fills>
+      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(false);
+    if (!rendered.ok) expect(rendered.message).toContain('has an invalid solid color');
+  });
+
   it('renders both adjacent regions from fillStyle0/fillStyle1 ownership in source fill order', async () => {
     const rendered = await renderScene(twoAdjacentRegions());
 
