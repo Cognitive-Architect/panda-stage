@@ -17,11 +17,11 @@
  *   - nodeIntegration = false
  *   - no arbitrary renderer FS / network / ActionScript
  *
- * The edge decoder below is a verbatim copy of
- * src/renderer/fla-import/parser-core/edge-decoder.ts:decodeEdgesWithStyleChanges
- * at commit 3c47a4ee8af07e834338b223fcb3260a4c6dddbc (the pinned
- * lifeart/fla-viewer parser closure). Reusing the bytes keeps R1
- * bit-identical to the R0 spike output for the same input.
+ * The edge decoder below follows the accepted command grammar from
+ * src/renderer/fla-import/parser-core/edge-decoder.ts at commit
+ * 3c47a4ee8af07e834338b223fcb3260a4c6dddbc. Main records pinned S<n>
+ * semantics as a fillStyle1 transition and does not read the parser's
+ * mutable debug or experimental globals.
  *
  * This module is a pure function on FLA bytes + a target identity.
  * It performs NO filesystem access, NO network access, NO
@@ -58,6 +58,13 @@ const MAX_OUTPUT_HEIGHT = 4_096;
 const MAX_OUTPUT_PIXELS = 16_777_216;
 const MAX_TARGETS = 64;
 const MAX_EDGE_CHARS = 64 * 1024 * 1024; // 64 MiB; matches maxSnapshotBytes cap
+const MAX_STYLE_ENTRIES_PER_SHAPE = 4_096;
+const MAX_STYLE_ENTRIES_PER_COMPOSITION = 32_768;
+const MAX_STYLE_RUNS_PER_SHAPE = 16_384;
+const MAX_STYLE_RUNS_PER_COMPOSITION = 65_536;
+const MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION = 4 * 1024 * 1024;
+const MAX_PATH_COMMANDS_PER_SHAPE = 1_000_000;
+const MAX_PATH_COMMANDS_PER_COMPOSITION = 1_000_000;
 const GRAPHIC_CONTENT_PADDING = 4;
 
 // ---- Public result types (Panda-owned; never cross the Renderer as raw bytes
@@ -246,8 +253,7 @@ function extractSelfClosingTags(xml: string, tag: string): string[] {
   return xml.match(re) ?? [];
 }
 
-// ---- Edge decoder (verbatim copy of src/renderer/fla-import/parser-core/edge-decoder.ts
-//      at commit 3c47a4e, Pinned FLAParser closure.) ----
+// ---- Main-local bounded edge decoder based on the pinned parser grammar ----
 const COORD_SCALE = 20;
 function decodeCoord(value: string): number {
   if (value.startsWith('#')) {
@@ -355,6 +361,11 @@ function tokenize(edgeStr: string): string[] {
   return tokens;
 }
 
+interface DecodedStyleChange {
+  readonly commandIndex: number;
+  readonly fillStyle1: number;
+}
+
 interface DecodedEdges {
   commands: Array<
     | { type: 'M'; x: number; y: number }
@@ -363,10 +374,21 @@ interface DecodedEdges {
     | { type: 'C'; c1x: number; c1y: number; c2x: number; c2y: number; x: number; y: number }
     | { type: 'Z' }
   >;
+  styleChanges: DecodedStyleChange[];
+  error: string | null;
 }
 
 function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
   const commands: DecodedEdges['commands'] = [];
+  const styleChanges: DecodedStyleChange[] = [];
+  let error: string | null = null;
+  const pushCommand = (command: DecodedEdges['commands'][number]): void => {
+    if (commands.length >= MAX_PATH_COMMANDS_PER_SHAPE) {
+      error ??= 'Shape path-command budget exceeded';
+      return;
+    }
+    commands.push(command);
+  };
   const tokens = tokenize(edgeStr);
   let i = 0;
   let currentX = NaN;
@@ -375,7 +397,7 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
   let startY = NaN;
   const EPSILON = 0.5;
   const MAX_COORD = 200_000;
-  while (i < tokens.length) {
+  while (i < tokens.length && !error) {
     const token = tokens[i] as string;
     switch (token) {
       case '!': {
@@ -385,7 +407,7 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
           if (!Number.isFinite(x) || !Number.isFinite(y) ||
               Math.abs(x) > MAX_COORD || Math.abs(y) > MAX_COORD) { i += 3; break; }
           if (Number.isNaN(currentX) || Math.abs(x - currentX) > EPSILON || Math.abs(y - currentY) > EPSILON) {
-            commands.push({ type: 'M', x, y });
+            pushCommand({ type: 'M', x, y });
             startX = x; startY = y;
           }
           currentX = x; currentY = y;
@@ -400,7 +422,7 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
           if (!Number.isFinite(x) || !Number.isFinite(y) ||
               Math.abs(x) > MAX_COORD || Math.abs(y) > MAX_COORD) { i += 3; break; }
           if (Math.abs(x - currentX) > EPSILON || Math.abs(y - currentY) > EPSILON) {
-            commands.push({ type: 'L', x, y });
+            pushCommand({ type: 'L', x, y });
             currentX = x; currentY = y;
           }
           i += 3;
@@ -416,7 +438,7 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
           if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(x) || !Number.isFinite(y) ||
               Math.abs(cx) > MAX_COORD || Math.abs(cy) > MAX_COORD ||
               Math.abs(x) > MAX_COORD || Math.abs(y) > MAX_COORD) { i += 5; break; }
-          commands.push({ type: 'Q', cx, cy, x, y });
+          pushCommand({ type: 'Q', cx, cy, x, y });
           currentX = x; currentY = y;
           i += 5;
         } else { i++; }
@@ -424,7 +446,7 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
       }
       case '(;': {
         i++;
-        while (i < tokens.length && tokens[i] !== 'q' && tokens[i] !== 'Q' &&
+        while (i < tokens.length && !error && tokens[i] !== 'q' && tokens[i] !== 'Q' &&
                tokens[i] !== ');' && tokens[i] !== ')') {
           if (i + 5 < tokens.length) {
             const next = [tokens[i], tokens[i+1], tokens[i+2], tokens[i+3], tokens[i+4], tokens[i+5]];
@@ -437,7 +459,7 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
               const x = decodeCoord(tokens[i+4] as string);
               const y = decodeCoord(tokens[i+5] as string);
               if ([c1x,c1y,c2x,c2y,x,y].some(c => !Number.isFinite(c) || Math.abs(c) > MAX_COORD)) { i += 6; continue; }
-              commands.push({ type: 'C', c1x, c1y, c2x, c2y, x, y });
+              pushCommand({ type: 'C', c1x, c1y, c2x, c2y, x, y });
               currentX = x; currentY = y;
               i += 6;
             } else break;
@@ -447,9 +469,9 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
       }
       case '(': {
         i++;
-        while (i < tokens.length && tokens[i] !== ';') i++;
+        while (i < tokens.length && !error && tokens[i] !== ';') i++;
         if (i < tokens.length && tokens[i] === ';') i++;
-        while (i < tokens.length && tokens[i] !== 'q' && tokens[i] !== 'Q' &&
+        while (i < tokens.length && !error && tokens[i] !== 'q' && tokens[i] !== 'Q' &&
                tokens[i] !== ');' && tokens[i] !== ')') {
           if (i + 5 < tokens.length) {
             const next = [tokens[i], tokens[i+1], tokens[i+2], tokens[i+3], tokens[i+4], tokens[i+5]];
@@ -462,7 +484,7 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
               const x = decodeCoord(tokens[i+4] as string);
               const y = decodeCoord(tokens[i+5] as string);
               if ([c1x,c1y,c2x,c2y,x,y].some(c => !Number.isFinite(c) || Math.abs(c) > MAX_COORD)) { i += 6; continue; }
-              commands.push({ type: 'C', c1x, c1y, c2x, c2y, x, y });
+              pushCommand({ type: 'C', c1x, c1y, c2x, c2y, x, y });
               currentX = x; currentY = y;
               i += 6;
             } else break;
@@ -474,7 +496,7 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
       case 'q':
       case 'Q': {
         i++;
-        while (i < tokens.length && tokens[i] !== ');' && tokens[i] !== ')' &&
+        while (i < tokens.length && !error && tokens[i] !== ');' && tokens[i] !== ')' &&
                tokens[i] !== '!' && tokens[i] !== '|' && tokens[i] !== '[') i++;
         break;
       }
@@ -482,14 +504,33 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
       case ')': i++; break;
       case 'S': {
         if (i + 1 < tokens.length) {
-          const styleIndex = parseInt(tokens[i + 1] as string, 10);
-          if (!Number.isNaN(styleIndex)) i += 2;
-          else i++;
-        } else i++;
+          const styleToken = tokens[i + 1] as string;
+          if (!/^\d+$/u.test(styleToken)) {
+            error ??= 'Malformed mid-edge fillStyle1 reference';
+            i += 2;
+            break;
+          }
+          const styleIndex = Number(styleToken);
+          if (!Number.isSafeInteger(styleIndex)) {
+            error ??= 'Mid-edge fillStyle1 reference is outside the supported range';
+            i += 2;
+            break;
+          }
+          if (styleChanges.length >= MAX_STYLE_RUNS_PER_SHAPE) {
+            error ??= 'Shape style-run budget exceeded';
+            i += 2;
+            break;
+          }
+          styleChanges.push({ commandIndex: commands.length, fillStyle1: styleIndex });
+          i += 2;
+        } else {
+          error ??= 'Malformed mid-edge fillStyle1 reference';
+          i++;
+        }
         break;
       }
       case '/': {
-        commands.push({ type: 'Z' });
+        pushCommand({ type: 'Z' });
         startX = NaN; startY = NaN;
         i++;
         break;
@@ -497,12 +538,12 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
       default: i++;
     }
   }
-  if (!Number.isNaN(startX) && !Number.isNaN(currentX) &&
+  if (!error && !Number.isNaN(startX) && !Number.isNaN(currentX) &&
       Math.abs(currentX - startX) < EPSILON && Math.abs(currentY - startY) < EPSILON) {
     const last = commands[commands.length - 1];
-    if (last && last.type !== 'Z') commands.push({ type: 'Z' });
+    if (last && last.type !== 'Z') pushCommand({ type: 'Z' });
   }
-  return { commands };
+  return { commands, styleChanges, error };
 }
 
 function commandsToSvgPath(commands: DecodedEdges['commands']): string {
@@ -519,18 +560,68 @@ function commandsToSvgPath(commands: DecodedEdges['commands']): string {
   return parts.join(' ');
 }
 
-function parseFillStyle(block: string): { type: string; index: number; color: string; alpha: number } {
-  const type = (block.match(/<FillStyle\b[^>]*\btype="([^"]*)"/) ?? ['', 'solid'])[1] as string;
-  const idx = (block.match(/<FillStyle\b[^>]*\bindex="([^"]*)"/) ?? ['', '0'])[1];
-  const solidMatch = block.match(/<SolidColor\b[^>]*\bcolor="([^"]*)"(?:\s+[^>]*\balpha="([^"]*)")?/);
-  if (solidMatch) {
-    return { type, index: Number(idx), color: solidMatch[1] as string, alpha: solidMatch[2] ? Number(solidMatch[2]) : 1 };
+interface ShapeParseIssue {
+  readonly code: 'RENDER_FAILED' | 'BUDGET_EXCEEDED';
+  readonly message: string;
+}
+
+interface ParsedShapeStyle {
+  readonly index: number;
+  readonly type: string;
+  readonly color: string | null;
+  readonly alpha: number | null;
+  /** Retained only in Main; source style XML is never forwarded to the sandbox. */
+  readonly sourceXml: string;
+}
+
+interface EdgeStyleReferences {
+  readonly fillStyle0: number | null;
+  readonly fillStyle1: number | null;
+  readonly strokeStyle: number | null;
+}
+
+interface ParsedShapeEdge extends EdgeStyleReferences {
+  readonly cubics: string;
+  readonly edges: string;
+}
+
+function attributeFromElement(block: string, tag: string, attribute: string): string | null {
+  const openTag = block.match(new RegExp(`<${tag}\\b[^>]*>`))?.[0];
+  if (!openTag) return null;
+  return openTag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1] ?? null;
+}
+
+function parseNonNegativeInteger(value: string): number | null {
+  if (!/^\d+$/u.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parseShapeStyle(block: string, tag: 'FillStyle' | 'StrokeStyle'): ParsedShapeStyle | ShapeParseIssue {
+  const rawIndex = attributeFromElement(block, tag, 'index');
+  const index = rawIndex === null ? 1 : parseNonNegativeInteger(rawIndex);
+  if (index === null) {
+    return { code: 'RENDER_FAILED', message: `Malformed ${tag} index` };
   }
-  const gradMatch = block.match(/<GradientEntry\b[^>]*\bcolor="([^"]*)"/);
-  if (gradMatch) {
-    return { type, index: Number(idx), color: gradMatch[1] as string, alpha: 1 };
-  }
-  return { type, index: Number(idx), color: '#808080', alpha: 1 };
+
+  const explicitType = attributeFromElement(block, tag, 'type');
+  const type = explicitType ?? (
+    /<RadialGradient\b/u.test(block) ? 'radial' :
+    /<LinearGradient\b/u.test(block) ? 'linear' :
+    /<(?:BitmapFill|ClippedBitmapFill)\b/u.test(block) ? 'bitmap' :
+    'solid'
+  );
+  const colorBlock = block.match(/<(?:SolidColor|GradientEntry)\b[^>]*>/u)?.[0];
+  const color = colorBlock?.match(/\bcolor="([^"]*)"/u)?.[1] ?? null;
+  const rawAlpha = colorBlock?.match(/\balpha="([^"]*)"/u)?.[1] ?? null;
+  const parsedAlpha = rawAlpha === null ? null : Number(rawAlpha);
+  return {
+    index,
+    type,
+    color,
+    alpha: parsedAlpha !== null && Number.isFinite(parsedAlpha) ? parsedAlpha : null,
+    sourceXml: block,
+  };
 }
 
 interface Matrix2D { a: number; b: number; c: number; d: number; tx: number; ty: number; }
@@ -540,14 +631,20 @@ function matrixToSvgTransform(m: Matrix2D): string {
 }
 
 interface ParsedShape {
-  matrix: Matrix2D | null;
-  fillColor: string | null;
-  fillOpacity: number;
-  edgeStrings: Array<{ cubics: string; edges: string }>;
+  readonly matrix: Matrix2D | null;
+  readonly fillStyles: readonly ParsedShapeStyle[];
+  readonly strokeStyles: readonly ParsedShapeStyle[];
+  readonly edgeStrings: readonly ParsedShapeEdge[];
+  readonly issue: ShapeParseIssue | null;
 }
 
 function parseShapeAt(block: string): ParsedShape {
-  const result: ParsedShape = { matrix: null, fillColor: null, fillOpacity: 1, edgeStrings: [] };
+  const fillStyles: ParsedShapeStyle[] = [];
+  const strokeStyles: ParsedShapeStyle[] = [];
+  const edgeStrings: ParsedShapeEdge[] = [];
+  let issue: ShapeParseIssue | null = null;
+  let matrix: Matrix2D | null = null;
+  const result = (): ParsedShape => ({ matrix, fillStyles, strokeStyles, edgeStrings, issue });
   const matrixBlock = extractBalancedBlocks(block, 'matrix')[0];
   if (matrixBlock) {
     const m = matrixBlock.match(/<Matrix\b([^/>]*)\/?>/);
@@ -557,17 +654,52 @@ function parseShapeAt(block: string): ParsedShape {
         const x = attrs.match(new RegExp('\\b' + k + '="([^"]*)"'));
         return x ? Number(x[1]) : 0;
       };
-      result.matrix = { a: get('a'), b: get('b'), c: get('c'), d: get('d'), tx: get('tx'), ty: get('ty') };
+      matrix = { a: get('a'), b: get('b'), c: get('c'), d: get('d'), tx: get('tx'), ty: get('ty') };
     }
   }
   const fillsBlock = extractBalancedBlocks(block, 'fills')[0];
   if (fillsBlock) {
     const fillStyleBlocks = extractBalancedBlocks(fillsBlock, 'FillStyle');
-    if (fillStyleBlocks.length > 0) {
-      const fill = parseFillStyle(fillStyleBlocks[0] as string);
-      result.fillColor = fill.color;
-      result.fillOpacity = Number.isFinite(fill.alpha) ? Math.max(0, Math.min(1, fill.alpha)) : 1;
+    if (fillStyleBlocks.length > MAX_STYLE_ENTRIES_PER_SHAPE) {
+      issue = { code: 'BUDGET_EXCEEDED', message: 'Shape fill-style entry budget exceeded' };
+      return result();
     }
+    for (const styleBlock of fillStyleBlocks) {
+      const style = parseShapeStyle(styleBlock, 'FillStyle');
+      if ('code' in style) {
+        issue = style;
+        return result();
+      }
+      if (fillStyles.some((entry) => entry.index === style.index)) {
+        issue = { code: 'RENDER_FAILED', message: `Duplicate FillStyle index: ${style.index}` };
+        return result();
+      }
+      fillStyles.push(style);
+    }
+  }
+  const strokesBlock = extractBalancedBlocks(block, 'strokes')[0];
+  if (strokesBlock) {
+    const strokeStyleBlocks = extractBalancedBlocks(strokesBlock, 'StrokeStyle');
+    if (strokeStyleBlocks.length > MAX_STYLE_ENTRIES_PER_SHAPE) {
+      issue = { code: 'BUDGET_EXCEEDED', message: 'Shape stroke-style entry budget exceeded' };
+      return result();
+    }
+    for (const styleBlock of strokeStyleBlocks) {
+      const style = parseShapeStyle(styleBlock, 'StrokeStyle');
+      if ('code' in style) {
+        issue = style;
+        return result();
+      }
+      if (strokeStyles.some((entry) => entry.index === style.index)) {
+        issue = { code: 'RENDER_FAILED', message: `Duplicate StrokeStyle index: ${style.index}` };
+        return result();
+      }
+      strokeStyles.push(style);
+    }
+  }
+  if (fillStyles.length + strokeStyles.length > MAX_STYLE_ENTRIES_PER_SHAPE) {
+    issue = { code: 'BUDGET_EXCEEDED', message: 'Shape style-entry budget exceeded' };
+    return result();
   }
   const edgesBlock = extractBalancedBlocks(block, 'edges')[0];
   if (edgesBlock) {
@@ -575,10 +707,173 @@ function parseShapeAt(block: string): ParsedShape {
     for (const eb of edgeBlocks) {
       const cubics = ((eb.match(/\bcubics="([^"]*)"/) ?? ['', ''])[1]) as string;
       const edges = ((eb.match(/\bedges="([^"]*)"/) ?? ['', ''])[1]) as string;
-      result.edgeStrings.push({ cubics, edges });
+      const refs: Record<keyof EdgeStyleReferences, number | null> = {
+        fillStyle0: null,
+        fillStyle1: null,
+        strokeStyle: null,
+      };
+      for (const name of ['fillStyle0', 'fillStyle1', 'strokeStyle'] as const) {
+        const raw = attributeFromElement(eb, 'Edge', name);
+        if (raw === null) continue;
+        const parsed = parseNonNegativeInteger(raw);
+        if (parsed === null) {
+          issue = { code: 'RENDER_FAILED', message: `Malformed Edge ${name} reference` };
+          return result();
+        }
+        refs[name] = parsed;
+      }
+      edgeStrings.push({ cubics, edges, ...refs });
     }
   }
-  return result;
+  return result();
+}
+
+interface ShapeStyleRun extends EdgeStyleReferences {
+  readonly edgeIndex: number;
+  readonly commandStart: number;
+  readonly commandEnd: number;
+  readonly commands: readonly DecodedEdges['commands'][number][];
+}
+
+interface RetainedStyleChange {
+  readonly edgeIndex: number;
+  readonly commandIndex: number;
+  readonly fillStyle1: number | null;
+}
+
+interface StyleAwareShapeRepresentation {
+  readonly fillStyles: readonly ParsedShapeStyle[];
+  readonly strokeStyles: readonly ParsedShapeStyle[];
+  readonly edgeReferences: readonly EdgeStyleReferences[];
+  readonly commands: DecodedEdges['commands'];
+  readonly styleRuns: readonly ShapeStyleRun[];
+  readonly styleChanges: readonly RetainedStyleChange[];
+  readonly styleSourceChars: number;
+}
+
+function buildStyleAwareShapeRepresentation(
+  shape: ParsedShape,
+  shapeId: string,
+): { readonly ok: true; readonly representation: StyleAwareShapeRepresentation } | BuildSvgFailure {
+  if (shape.issue) {
+    return { ok: false, code: shape.issue.code, message: `Shape ${shapeId}: ${shape.issue.message}` };
+  }
+  const fillStyles = new Map(shape.fillStyles.map((style) => [style.index, style]));
+  const strokeStyles = new Map(shape.strokeStyles.map((style) => [style.index, style]));
+  const commands: DecodedEdges['commands'] = [];
+  const styleRuns: ShapeStyleRun[] = [];
+  const styleChanges: RetainedStyleChange[] = [];
+  const edgeReferences: EdgeStyleReferences[] = [];
+  const styleSourceChars = [...shape.fillStyles, ...shape.strokeStyles]
+    .reduce((total, style) => total + style.sourceXml.length, 0);
+  if (styleSourceChars > MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Shape style-source budget exceeded' };
+  }
+
+  for (let edgeIndex = 0; edgeIndex < shape.edgeStrings.length; edgeIndex += 1) {
+    const edge = shape.edgeStrings[edgeIndex];
+    if (!edge) continue;
+    edgeReferences.push({
+      fillStyle0: edge.fillStyle0,
+      fillStyle1: edge.fillStyle1,
+      strokeStyle: edge.strokeStyle,
+    });
+    for (const [name, index, styles] of [
+      ['fillStyle0', edge.fillStyle0, fillStyles],
+      ['fillStyle1', edge.fillStyle1, fillStyles],
+      ['strokeStyle', edge.strokeStyle, strokeStyles],
+    ] as const) {
+      if (index !== null && !styles.has(index)) {
+        return {
+          ok: false,
+          code: 'RENDER_FAILED',
+          message: `Shape ${shapeId} Edge ${edgeIndex} references missing ${name} ${index}`,
+        };
+      }
+    }
+    const encodedEdges = edge.cubics || edge.edges;
+    if (encodedEdges.length > MAX_EDGE_CHARS) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: `Edge attribute exceeds ${MAX_EDGE_CHARS} chars` };
+    }
+    const decoded = decodeEdgesWithStyleChanges(encodedEdges);
+    if (decoded.error) {
+      const code = decoded.error.includes('budget') ? 'BUDGET_EXCEEDED' : 'RENDER_FAILED';
+      return { ok: false, code, message: `Shape ${shapeId}: ${decoded.error}` };
+    }
+    for (const change of decoded.styleChanges) {
+      if (!fillStyles.has(change.fillStyle1)) {
+        return {
+          ok: false,
+          code: 'RENDER_FAILED',
+          message: `Shape ${shapeId} Edge ${edgeIndex} mid-edge change references missing fillStyle1 ${change.fillStyle1}`,
+        };
+      }
+      if (styleChanges.length >= MAX_STYLE_RUNS_PER_SHAPE) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Shape style-run budget exceeded' };
+      }
+      styleChanges.push({
+        edgeIndex,
+        commandIndex: change.commandIndex,
+        fillStyle1: change.fillStyle1,
+      });
+    }
+
+    const commandOffset = commands.length;
+    if (commandOffset + decoded.commands.length > MAX_PATH_COMMANDS_PER_SHAPE) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Shape path-command budget exceeded' };
+    }
+    commands.push(...decoded.commands);
+    let currentRefs: EdgeStyleReferences = {
+      fillStyle0: edge.fillStyle0,
+      fillStyle1: edge.fillStyle1,
+      strokeStyle: edge.strokeStyle,
+    };
+    let runStart = 0;
+    let runBudgetExceeded = false;
+    const appendRun = (start: number, end: number): void => {
+      if (end <= start || runBudgetExceeded) return;
+      if (styleRuns.length >= MAX_STYLE_RUNS_PER_SHAPE) {
+        runBudgetExceeded = true;
+        return;
+      }
+      const runCommands = decoded.commands.slice(start, end);
+      styleRuns.push({
+        edgeIndex,
+        commandStart: commandOffset + start,
+        commandEnd: commandOffset + end,
+        commands: runCommands,
+        ...currentRefs,
+      });
+    };
+    for (const change of decoded.styleChanges) {
+      appendRun(runStart, change.commandIndex);
+      if (runBudgetExceeded) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Shape style-run budget exceeded' };
+      }
+      currentRefs = {
+        ...currentRefs,
+        fillStyle1: change.fillStyle1,
+      };
+      runStart = change.commandIndex;
+    }
+    appendRun(runStart, decoded.commands.length);
+    if (runBudgetExceeded) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Shape style-run budget exceeded' };
+    }
+  }
+
+  return {
+    ok: true,
+    representation: {
+      fillStyles: shape.fillStyles,
+      strokeStyles: shape.strokeStyles,
+      edgeReferences,
+      commands,
+      styleRuns,
+      styleChanges,
+      styleSourceChars,
+    },
+  };
 }
 
 // ---- Renderable target discovery and Main-side C01/C02 build path ----
@@ -717,7 +1012,15 @@ function catalogSupportReason(
     }
     const shapeBlock = source.shapeBlocks.get(node.shapeId);
     const shape = shapeBlock ? parseShapeAt(shapeBlock) : null;
-    if (!shape || !shape.edgeStrings.some(({ cubics, edges }) => Boolean(cubics || edges))) {
+    if (!shape) {
+      reason = 'Shape has no supported path data: ' + node.shapeId;
+      return;
+    }
+    if (shape.issue) {
+      reason = shape.issue.message;
+      return;
+    }
+    if (!shape.edgeStrings.some(({ cubics, edges }) => Boolean(cubics || edges))) {
       reason = 'Shape has no supported path data: ' + node.shapeId;
     }
   };
@@ -839,6 +1142,11 @@ export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
     readonly resolvedNodeCount: number;
     readonly bitmapInstanceCount: number;
     readonly shapeCount: number;
+    readonly fillStyleCount: number;
+    readonly strokeStyleCount: number;
+    readonly styleRunCount: number;
+    readonly midEdgeStyleChangeCount: number;
+    readonly pathCommandCount: number;
     readonly groupCount: number;
     readonly expandedSymbolCount: number;
     readonly framing: {
@@ -1235,6 +1543,11 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let pathCommandCount = 0;
   let shapeCount = 0;
   let bitmapInstanceCount = 0;
+  let fillStyleCount = 0;
+  let strokeStyleCount = 0;
+  let styleRunCount = 0;
+  let midEdgeStyleChangeCount = 0;
+  let styleSourceChars = 0;
   let firstFillColor: string | null = null;
 
   for (const { node } of flattened.leaves) {
@@ -1244,35 +1557,49 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         return { ok: false, code: 'RENDER_FAILED', message: `Resolved shape source not found: ${node.shapeId}` };
       }
       const shape = parseShapeAt(shapeBlock);
+      const styleAware = buildStyleAwareShapeRepresentation(shape, node.shapeId);
+      if (!styleAware.ok) return styleAware;
       if (shape.edgeStrings.length === 0) {
         return { ok: false, code: 'RENDER_FAILED', message: `Resolved shape has no Edge children: ${node.shapeId}` };
       }
-      const commands: DecodedEdges['commands'] = [];
-      for (const { cubics, edges } of shape.edgeStrings) {
-        const encodedEdges = cubics || edges;
-        if (encodedEdges.length > MAX_EDGE_CHARS) {
-          return { ok: false, code: 'BUDGET_EXCEEDED', message: `Edge attribute exceeds ${MAX_EDGE_CHARS} chars` };
-        }
-        const decoded = decodeEdgesWithStyleChanges(encodedEdges);
-        commands.push(...decoded.commands);
-        if (commands.length > 1_000_000) {
-          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed vector path exceeds the command budget' };
-        }
-      }
+      const representation = styleAware.representation;
+      const commands = representation.commands;
       if (commands.length === 0) {
         return { ok: false, code: 'RENDER_FAILED', message: `Resolved shape has no decoded path: ${node.shapeId}` };
+      }
+      fillStyleCount += representation.fillStyles.length;
+      strokeStyleCount += representation.strokeStyles.length;
+      styleRunCount += representation.styleRuns.length;
+      midEdgeStyleChangeCount += representation.styleChanges.length;
+      styleSourceChars += representation.styleSourceChars;
+      if (fillStyleCount + strokeStyleCount > MAX_STYLE_ENTRIES_PER_COMPOSITION) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-entry budget exceeded' };
+      }
+      if (styleRunCount > MAX_STYLE_RUNS_PER_COMPOSITION) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-run budget exceeded' };
+      }
+      if (styleSourceChars > MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-source budget exceeded' };
+      }
+      if (pathCommandCount + commands.length > MAX_PATH_COMMANDS_PER_COMPOSITION) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition path-command budget exceeded' };
       }
       if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
       }
-      const fillColor = validSvgColor(shape.fillColor);
+      const firstFill = representation.fillStyles[0];
+      const fillColor = validSvgColor(firstFill?.color ?? null);
+      const rawFillOpacity = firstFill && /<SolidColor\b/u.test(firstFill.sourceXml)
+        ? firstFill.alpha ?? 1
+        : 1;
+      const fillOpacity = Number.isFinite(rawFillOpacity) ? Math.max(0, Math.min(1, rawFillOpacity)) : 1;
       if (firstFillColor === null) firstFillColor = fillColor;
       const pathD = commandsToSvgPath(commands);
       const pathBytes = Buffer.byteLength(pathD, 'utf8');
       if (pathBytes > MAX_EDGE_CHARS || pathBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
       }
-      const pathNode = `<path d="${pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fillColor}" fill-opacity="${shape.fillOpacity}" stroke="none" fill-rule="evenodd"/>`;
+      const pathNode = `<path d="${pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fillColor}" fill-opacity="${fillOpacity}" stroke="none" fill-rule="evenodd"/>`;
       emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
       emittedNodes.push(pathNode);
       pathCommandCount += commands.length;
@@ -1357,7 +1684,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +
-    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
     defs + emittedNodes.join('') + '</svg>\n';
   const svgByteLength = Buffer.byteLength(svg, 'utf8');
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -1376,6 +1703,11 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,
       shapeCount,
+      fillStyleCount,
+      strokeStyleCount,
+      styleRunCount,
+      midEdgeStyleChangeCount,
+      pathCommandCount,
       groupCount: flattened.groupCount,
       expandedSymbolCount: flattened.expandedSymbolCount,
       framing: {
