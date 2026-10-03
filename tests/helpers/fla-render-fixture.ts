@@ -56,7 +56,7 @@ export async function buildMultiFrameGraphicFla(
                     </fills>
                     <strokes/>
                     <edges>
-                      <Edge cubics="${SIMPLE_RECT_CUBICS}"/>
+                      <Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/>
                     </edges>
                   </DOMShape>
                 </members>

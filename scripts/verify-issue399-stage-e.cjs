@@ -64,7 +64,7 @@ function buildSymbolXml(symbolName, color, offset, frameCount) {
                       <FillStyle index="1"><SolidColor color="${color}" alpha="1"/></FillStyle>
                     </fills>
                     <strokes/>
-                    <edges><Edge cubics="${SIMPLE_RECT_CUBICS}"/></edges>
+                    <edges><Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/></edges>
                   </DOMShape>
                 </members>
               </DOMGroup>

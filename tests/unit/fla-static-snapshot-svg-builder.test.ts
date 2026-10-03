@@ -64,7 +64,7 @@ async function buildSyntheticFla(
                  <FillStyle index="1"><SolidColor color="#abcdef"/></FillStyle>
                </fills>
                <edges>
-                 <Edge cubics="${SIMPLE_RECT_CUBICS}"/>
+                 <Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/>
                </edges>
              </DOMShape>
            </elements>`
@@ -102,7 +102,7 @@ async function buildSyntheticFla(
                     </fills>
                     <strokes/>
                     <edges>
-                      <Edge cubics="${SIMPLE_RECT_CUBICS}"/>
+                      <Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/>
                     </edges>
                   </DOMShape>
                 </members>

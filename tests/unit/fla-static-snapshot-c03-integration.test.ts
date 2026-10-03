@@ -62,7 +62,7 @@ function matrix(a = 1, d = 1, tx = 0, ty = 0, b = 0, c = 0): string {
 function shape(tx = 0, ty = 0, width = 1, height = 1): string {
   const right = width * 20;
   const bottom = height * 20;
-  return `<DOMShape>${matrix(1, 1, tx, ty)}<fills><FillStyle index="1"><SolidColor color="#336699"/></FillStyle></fills><edges><Edge cubics="!0 0|${right} 0|${right} ${bottom}|0 ${bottom}|0 0"/></edges></DOMShape>`;
+  return `<DOMShape>${matrix(1, 1, tx, ty)}<fills><FillStyle index="1"><SolidColor color="#336699"/></FillStyle></fills><edges><Edge fillStyle1="1" cubics="!0 0|${right} 0|${right} ${bottom}|0 ${bottom}|0 0"/></edges></DOMShape>`;
 }
 
 function frameTimeline(name: string, elements: string): string {
@@ -221,7 +221,7 @@ describe('P0-C03 production target integration', () => {
   });
 
   it('uses the actual supported cubic path extrema when framing Graphic vector content', async () => {
-    const cubic = `<DOMShape>${matrix()}<fills><FillStyle index="1"><SolidColor color="#336699"/></FillStyle></fills><edges><Edge cubics="!0 0(;0 200 200 200 200 0);"/></edges></DOMShape>`;
+    const cubic = `<DOMShape>${matrix()}<edges><Edge cubics="!0 0(;0 200 200 200 200 0);"/></edges></DOMShape>`;
     const bytes = await makeFla('', { curve: graphicSymbol('curve', cubic) }, { width: 1920, height: 1080 });
     const catalog = await buildRenderableTargetCatalog(bytes);
     expect(catalog.ok).toBe(true);

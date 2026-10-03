@@ -93,7 +93,7 @@ const RED_ALPHA_PNG = rgbaPng(2, 2, [
 
 const SHAPE_BLOCK = `<DOMShape>
   <fills><FillStyle index="1"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills>
-  <edges><Edge cubics="!0 0|20 0|20 20|0 20|0 0"/></edges>
+  <edges><Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/></edges>
 </DOMShape>`;
 
 function c02Fixture(): {

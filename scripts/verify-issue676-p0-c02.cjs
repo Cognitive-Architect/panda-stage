@@ -216,7 +216,7 @@ function buildAcceptanceFixture() {
       <DOMBitmapInstance libraryItemName="LIBRARY/background.png"/>
       <DOMShape><matrix><Matrix a="1" d="1" tx="0" ty="3"/></matrix>
         <fills><FillStyle index="1"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills>
-        <edges><Edge cubics="!0 0|20 0|20 20|0 20|0 0"/></edges>
+        <edges><Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/></edges>
       </DOMShape>
     </elements></DOMFrame></frames></DOMLayer>
     <DOMLayer name="Layer 2"><frames><DOMFrame index="0"><elements>
@@ -299,7 +299,7 @@ function buildAcceptanceFixture() {
 
   const shapeBlocks = new Map([[
     'fixture-green-shape',
-    `<DOMShape><fills><FillStyle index="1"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills><edges><Edge cubics="!0 0|20 0|20 20|0 20|0 0"/></edges></DOMShape>`,
+    `<DOMShape><fills><FillStyle index="1"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills><edges><Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/></edges></DOMShape>`,
   ]]);
   const composed = buildSvgForResolvedDisplayList({
     displayList: resolved.displayList,

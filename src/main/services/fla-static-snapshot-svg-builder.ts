@@ -65,6 +65,8 @@ const MAX_STYLE_RUNS_PER_COMPOSITION = 65_536;
 const MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION = 4 * 1024 * 1024;
 const MAX_PATH_COMMANDS_PER_SHAPE = 1_000_000;
 const MAX_PATH_COMMANDS_PER_COMPOSITION = 1_000_000;
+const MAX_FILL_BOUNDARY_SEGMENTS_PER_SHAPE = MAX_PATH_COMMANDS_PER_SHAPE * 2;
+const MAX_FILL_BOUNDARY_SEGMENTS_PER_COMPOSITION = MAX_PATH_COMMANDS_PER_COMPOSITION * 2;
 const GRAPHIC_CONTENT_PADDING = 4;
 
 // ---- Public result types (Panda-owned; never cross the Renderer as raw bytes
@@ -876,6 +878,343 @@ function buildStyleAwareShapeRepresentation(
   };
 }
 
+type FillDrawCommand = Extract<DecodedEdges['commands'][number], { type: 'L' | 'Q' | 'C' }>;
+
+interface FillBoundarySegment {
+  readonly from: Point2D;
+  readonly to: Point2D;
+  readonly command: FillDrawCommand;
+  readonly order: number;
+}
+
+interface ReconstructedSolidFill {
+  readonly style: ParsedShapeStyle;
+  readonly color: string;
+  readonly opacity: number;
+  readonly pathD: string;
+  readonly contourCount: number;
+  readonly boundarySegmentCount: number;
+}
+
+interface ReconstructedSolidFills {
+  readonly fills: readonly ReconstructedSolidFill[];
+  readonly contourCount: number;
+  readonly boundarySegmentCount: number;
+}
+
+function pointKey(point: Point2D): string {
+  const part = (value: number): string => Object.is(value, -0) ? '0' : value.toString();
+  return `${part(point.x)},${part(point.y)}`;
+}
+
+function reverseFillDrawCommand(command: FillDrawCommand, start: Point2D): FillDrawCommand {
+  switch (command.type) {
+    case 'L': return { type: 'L', x: start.x, y: start.y };
+    case 'Q': return { type: 'Q', cx: command.cx, cy: command.cy, x: start.x, y: start.y };
+    case 'C': return {
+      type: 'C',
+      c1x: command.c2x,
+      c1y: command.c2y,
+      c2x: command.c1x,
+      c2y: command.c1y,
+      x: start.x,
+      y: start.y,
+    };
+  }
+}
+
+function commandStartAngle(segment: FillBoundarySegment): number {
+  const { from, to, command } = segment;
+  const vectors: readonly Point2D[] = command.type === 'Q'
+    ? [{ x: command.cx - from.x, y: command.cy - from.y }, { x: to.x - from.x, y: to.y - from.y }]
+    : command.type === 'C'
+      ? [
+          { x: command.c1x - from.x, y: command.c1y - from.y },
+          { x: command.c2x - from.x, y: command.c2y - from.y },
+          { x: to.x - from.x, y: to.y - from.y },
+        ]
+      : [{ x: to.x - from.x, y: to.y - from.y }];
+  const vector = vectors.find((candidate) => candidate.x !== 0 || candidate.y !== 0);
+  return vector ? Math.atan2(vector.y, vector.x) : Number.NaN;
+}
+
+function commandEndAngle(segment: FillBoundarySegment): number {
+  const { from, to, command } = segment;
+  const vectors: readonly Point2D[] = command.type === 'Q'
+    ? [{ x: to.x - command.cx, y: to.y - command.cy }, { x: to.x - from.x, y: to.y - from.y }]
+    : command.type === 'C'
+      ? [
+          { x: to.x - command.c2x, y: to.y - command.c2y },
+          { x: to.x - command.c1x, y: to.y - command.c1y },
+          { x: to.x - from.x, y: to.y - from.y },
+        ]
+      : [{ x: to.x - from.x, y: to.y - from.y }];
+  const vector = vectors.find((candidate) => candidate.x !== 0 || candidate.y !== 0);
+  return vector ? Math.atan2(vector.y, vector.x) : Number.NaN;
+}
+
+function nextFillBoundarySegment(
+  incoming: FillBoundarySegment,
+  candidates: readonly FillBoundarySegment[],
+): FillBoundarySegment | null {
+  if (candidates.length === 1) return candidates[0] ?? null;
+  const endAngle = commandEndAngle(incoming);
+  if (!Number.isFinite(endAngle)) return null;
+  const reverseAngle = endAngle + Math.PI;
+  const ranked = candidates.map((candidate) => {
+    const angle = commandStartAngle(candidate);
+    if (!Number.isFinite(angle)) return { candidate, delta: Number.NaN };
+    let delta = reverseAngle - angle;
+    while (delta <= 1e-9) delta += Math.PI * 2;
+    while (delta > Math.PI * 2) delta -= Math.PI * 2;
+    return { candidate, delta };
+  }).sort((left, right) => left.delta - right.delta || left.candidate.order - right.candidate.order);
+  const first = ranked[0];
+  const second = ranked[1];
+  if (!first || !Number.isFinite(first.delta) ||
+      (second && Math.abs(first.delta - second.delta) <= 1e-9)) return null;
+  return first.candidate;
+}
+
+function stitchFillBoundary(
+  segments: readonly FillBoundarySegment[],
+  shapeId: string,
+  fillStyleIndex: number,
+): { readonly ok: true; readonly commands: DecodedEdges['commands']; readonly contourCount: number } | BuildSvgFailure {
+  const outgoing = new Map<string, FillBoundarySegment[]>();
+  for (const segment of segments) {
+    const key = pointKey(segment.from);
+    const connected = outgoing.get(key) ?? [];
+    connected.push(segment);
+    outgoing.set(key, connected);
+  }
+
+  const commands: DecodedEdges['commands'] = [];
+  const visited = new Set<number>();
+  let contourCount = 0;
+  for (const first of segments) {
+    if (visited.has(first.order)) continue;
+    const startKey = pointKey(first.from);
+    const contour: FillBoundarySegment[] = [];
+    let current: FillBoundarySegment | null = first;
+    while (current && !visited.has(current.order)) {
+      visited.add(current.order);
+      contour.push(current);
+      if (pointKey(current.to) === startKey) break;
+      const nextCandidates = (outgoing.get(pointKey(current.to)) ?? [])
+        .filter((candidate) => !visited.has(candidate.order));
+      if (nextCandidates.length === 0) {
+        return {
+          ok: false,
+          code: 'TARGET_UNSUPPORTED',
+          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has an open fill boundary`,
+        };
+      }
+      current = nextFillBoundarySegment(current, nextCandidates);
+      if (!current) {
+        return {
+          ok: false,
+          code: 'TARGET_UNSUPPORTED',
+          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has ambiguous fill topology`,
+        };
+      }
+    }
+    if (pointKey(contour[contour.length - 1]?.to ?? first.from) !== startKey) {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has an open fill boundary`,
+      };
+    }
+    commands.push({ type: 'M', x: first.from.x, y: first.from.y });
+    for (const segment of contour) commands.push(segment.command);
+    commands.push({ type: 'Z' });
+    contourCount += 1;
+  }
+  return { ok: true, commands, contourCount };
+}
+
+function reconstructSolidFills(
+  representation: StyleAwareShapeRepresentation,
+  shapeId: string,
+): { readonly ok: true; readonly result: ReconstructedSolidFills } | BuildSvgFailure {
+  const stylesByIndex = new Map(representation.fillStyles.map((style) => [style.index, style]));
+  const boundaryByStyle = new Map<number, FillBoundarySegment[]>();
+  const resolvedStyles = new Map<number, { color: string; opacity: number }>();
+  let segmentCount = 0;
+  let nextOrder = 0;
+  let currentEdgeIndex = -1;
+  let current: Point2D | null = null;
+  let subpathStart: Point2D | null = null;
+
+  const addBoundary = (
+    fillStyleIndex: number,
+    from: Point2D,
+    to: Point2D,
+    command: FillDrawCommand,
+    reverse: boolean,
+  ): BuildSvgFailure | null => {
+    let resolved = resolvedStyles.get(fillStyleIndex);
+    if (!resolved) {
+      const style = stylesByIndex.get(fillStyleIndex);
+      if (!style) {
+        return {
+          ok: false,
+          code: 'RENDER_FAILED',
+          message: `Shape ${shapeId} references missing FillStyle ${fillStyleIndex}`,
+        };
+      }
+      if (style.type !== 'solid') {
+        return {
+          ok: false,
+          code: 'TARGET_UNSUPPORTED',
+          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} uses unsupported ${style.type} fill; P2-C02 supports solid fills only`,
+        };
+      }
+      if (!style.color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(style.color)) {
+        return {
+          ok: false,
+          code: 'RENDER_FAILED',
+          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has an invalid solid color`,
+        };
+      }
+      const solidColorTag = style.sourceXml.match(/<SolidColor\b[^>]*>/u)?.[0];
+      const rawAlpha = solidColorTag?.match(/\balpha="([^"]*)"/u)?.[1] ?? null;
+      const parsedAlpha = rawAlpha === null ? 1 : Number(rawAlpha);
+      if (!Number.isFinite(parsedAlpha)) {
+        return {
+          ok: false,
+          code: 'RENDER_FAILED',
+          message: `Shape ${shapeId} FillStyle ${fillStyleIndex} has an invalid alpha`,
+        };
+      }
+      resolved = { color: style.color, opacity: Math.max(0, Math.min(1, parsedAlpha)) };
+      resolvedStyles.set(fillStyleIndex, resolved);
+    }
+
+    if (segmentCount >= MAX_FILL_BOUNDARY_SEGMENTS_PER_SHAPE) {
+      return {
+        ok: false,
+        code: 'BUDGET_EXCEEDED',
+        message: `Shape ${shapeId} fill-boundary segment budget exceeded`,
+      };
+    }
+    const styleSegments = boundaryByStyle.get(fillStyleIndex) ?? [];
+    const orientedFrom = reverse ? to : from;
+    const orientedTo = reverse ? from : to;
+    const orientedCommand = reverse ? reverseFillDrawCommand(command, from) : command;
+    styleSegments.push({ from: orientedFrom, to: orientedTo, command: orientedCommand, order: nextOrder });
+    boundaryByStyle.set(fillStyleIndex, styleSegments);
+    segmentCount += 1;
+    nextOrder += 1;
+    return null;
+  };
+
+  for (const run of representation.styleRuns) {
+    if (run.edgeIndex !== currentEdgeIndex) {
+      currentEdgeIndex = run.edgeIndex;
+      current = null;
+      subpathStart = null;
+    }
+    for (const command of run.commands) {
+      if (command.type === 'M') {
+        current = { x: command.x, y: command.y };
+        subpathStart = current;
+        continue;
+      }
+      if (command.type === 'Z') {
+        if (current && subpathStart && pointKey(current) !== pointKey(subpathStart)) {
+          if (run.fillStyle0 !== run.fillStyle1) {
+            if (run.fillStyle1 !== null) {
+              const failure = addBoundary(
+                run.fillStyle1,
+                current,
+                subpathStart,
+                { type: 'L', x: subpathStart.x, y: subpathStart.y },
+                false,
+              );
+              if (failure) return failure;
+            }
+            if (run.fillStyle0 !== null) {
+              const failure = addBoundary(
+                run.fillStyle0,
+                current,
+                subpathStart,
+                { type: 'L', x: subpathStart.x, y: subpathStart.y },
+                true,
+              );
+              if (failure) return failure;
+            }
+          }
+        }
+        current = subpathStart;
+        continue;
+      }
+
+      const end = { x: command.x, y: command.y };
+      if (!current) {
+        if (run.fillStyle0 !== null || run.fillStyle1 !== null) {
+          return {
+            ok: false,
+            code: 'TARGET_UNSUPPORTED',
+            message: `Shape ${shapeId} has a styled fill edge without a start point`,
+          };
+        }
+        current = end;
+        continue;
+      }
+      if (!Number.isFinite(end.x) || !Number.isFinite(end.y)) {
+        return {
+          ok: false,
+          code: 'RENDER_FAILED',
+          message: `Shape ${shapeId} has a non-finite fill edge endpoint`,
+        };
+      }
+      if (run.fillStyle0 !== run.fillStyle1) {
+        if (run.fillStyle1 !== null) {
+          const failure = addBoundary(run.fillStyle1, current, end, command, false);
+          if (failure) return failure;
+        }
+        if (run.fillStyle0 !== null) {
+          const failure = addBoundary(run.fillStyle0, current, end, command, true);
+          if (failure) return failure;
+        }
+      }
+      current = end;
+    }
+  }
+
+  const fills: ReconstructedSolidFill[] = [];
+  let contourCount = 0;
+  for (const style of representation.fillStyles) {
+    const segments = boundaryByStyle.get(style.index);
+    if (!segments || segments.length === 0) continue;
+    const stitched = stitchFillBoundary(segments, shapeId, style.index);
+    if (!stitched.ok) return stitched;
+    const resolved = resolvedStyles.get(style.index);
+    if (!resolved) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} FillStyle ${style.index} was not resolved`,
+      };
+    }
+    fills.push({
+      style,
+      color: resolved.color,
+      opacity: resolved.opacity,
+      pathD: commandsToSvgPath(stitched.commands),
+      contourCount: stitched.contourCount,
+      boundarySegmentCount: segments.length,
+    });
+    contourCount += stitched.contourCount;
+  }
+  return {
+    ok: true,
+    result: { fills, contourCount, boundarySegmentCount: segmentCount },
+  };
+}
+
 // ---- Renderable target discovery and Main-side C01/C02 build path ----
 /**
  * R2 corrective (#309): catalog discovery and frame-source assembly can run
@@ -1151,6 +1490,12 @@ export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
     readonly edgeFillStyle1ReferenceCount: number;
     readonly edgeStrokeStyleReferenceCount: number;
     readonly noFillStyle1RunCount: number;
+    /** Number of style-indexed solid-fill SVG paths emitted. */
+    readonly fillRegionCount: number;
+    /** Number of closed style-owned contours emitted across fill paths. */
+    readonly fillContourCount: number;
+    /** Number of directed source boundary segments used to build those paths. */
+    readonly fillBoundarySegmentCount: number;
     readonly groupCount: number;
     readonly expandedSymbolCount: number;
     readonly framing: {
@@ -1429,13 +1774,6 @@ function escapeXmlText(value: string): string {
     .replaceAll("'", '&apos;');
 }
 
-function validSvgColor(value: string | null): string {
-  if (value && /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(value)) {
-    return value;
-  }
-  return '#808080';
-}
-
 function matrixIsFinite(matrix: FlaResolvedDisplayNode['worldTransform']): boolean {
   return [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty].every(Number.isFinite);
 }
@@ -1555,6 +1893,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let edgeFillStyle1ReferenceCount = 0;
   let edgeStrokeStyleReferenceCount = 0;
   let noFillStyle1RunCount = 0;
+  let fillRegionCount = 0;
+  let fillContourCount = 0;
+  let fillBoundarySegmentCount = 0;
   let styleSourceChars = 0;
   let firstFillColor: string | null = null;
 
@@ -1602,21 +1943,28 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
       }
-      const firstFill = representation.fillStyles[0];
-      const fillColor = validSvgColor(firstFill?.color ?? null);
-      const rawFillOpacity = firstFill && /<SolidColor\b/u.test(firstFill.sourceXml)
-        ? firstFill.alpha ?? 1
-        : 1;
-      const fillOpacity = Number.isFinite(rawFillOpacity) ? Math.max(0, Math.min(1, rawFillOpacity)) : 1;
-      if (firstFillColor === null) firstFillColor = fillColor;
-      const pathD = commandsToSvgPath(commands);
-      const pathBytes = Buffer.byteLength(pathD, 'utf8');
-      if (pathBytes > MAX_EDGE_CHARS || pathBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+      const reconstructed = reconstructSolidFills(representation, node.shapeId);
+      if (!reconstructed.ok) return reconstructed;
+      if (fillBoundarySegmentCount + reconstructed.result.boundarySegmentCount > MAX_FILL_BOUNDARY_SEGMENTS_PER_COMPOSITION) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition fill-boundary segment budget exceeded' };
       }
-      const pathNode = `<path d="${pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fillColor}" fill-opacity="${fillOpacity}" stroke="none" fill-rule="evenodd"/>`;
-      emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
-      emittedNodes.push(pathNode);
+      fillBoundarySegmentCount += reconstructed.result.boundarySegmentCount;
+      fillContourCount += reconstructed.result.contourCount;
+      for (const fill of reconstructed.result.fills) {
+        const pathBytes = Buffer.byteLength(fill.pathD, 'utf8');
+        if (pathBytes > MAX_EDGE_CHARS ||
+            pathBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+        }
+        const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fill.color}" fill-opacity="${formatSvgNumber(fill.opacity)}" stroke="none" fill-rule="nonzero"/>`;
+        emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
+        if (embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+        }
+        emittedNodes.push(pathNode);
+        fillRegionCount += 1;
+        if (firstFillColor === null) firstFillColor = fill.color;
+      }
       pathCommandCount += commands.length;
       shapeCount += 1;
       continue;
@@ -1699,7 +2047,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +
-    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
+    `<desc>kind=${displayList.kind} frame=${displayList.frameIndex} resolvedNodes=${displayList.resolvedNodeCount} drawableLeaves=${flattened.leaves.length} groups=${flattened.groupCount} expandedSymbols=${flattened.expandedSymbolCount} bitmapInstances=${bitmapInstanceCount} shapes=${shapeCount} fillStyles=${fillStyleCount} strokeStyles=${strokeStyleCount} styleRuns=${styleRunCount} styleChanges=${midEdgeStyleChangeCount} pathCommands=${pathCommandCount} edgeFillStyle0Refs=${edgeFillStyle0ReferenceCount} edgeFillStyle1Refs=${edgeFillStyle1ReferenceCount} edgeStrokeStyleRefs=${edgeStrokeStyleReferenceCount} noFillStyle1Runs=${noFillStyle1RunCount} fillRegions=${fillRegionCount} fillContours=${fillContourCount} fillBoundarySegments=${fillBoundarySegmentCount} framing=${framingMode} viewBox=${formatRect(viewBox)} output=${width}x${height}${contentBounds ? ` contentBounds=${formatRect(contentBounds)} padding=${GRAPHIC_CONTENT_PADDING}` : ''}</desc>` +
     defs + emittedNodes.join('') + '</svg>\n';
   const svgByteLength = Buffer.byteLength(svg, 'utf8');
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -1713,7 +2061,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     pixelCount: width * height,
     pathCommandCount,
     firstFillColor,
-    hasRenderablePath: shapeCount > 0,
+    hasRenderablePath: fillRegionCount > 0,
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,
@@ -1727,6 +2075,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       edgeFillStyle1ReferenceCount,
       edgeStrokeStyleReferenceCount,
       noFillStyle1RunCount,
+      fillRegionCount,
+      fillContourCount,
+      fillBoundarySegmentCount,
       groupCount: flattened.groupCount,
       expandedSymbolCount: flattened.expandedSymbolCount,
       framing: {

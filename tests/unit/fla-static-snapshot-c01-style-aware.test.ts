@@ -31,30 +31,17 @@ function pathData(svg: string): string | undefined {
   return svg.match(/<path\b[^>]*\bd="([^"]*)"/u)?.[1];
 }
 
+function pathContours(svg: string): string[] {
+  return [...svg.matchAll(/<path\b[^>]*\bd="([^"]*)"/gu)]
+    .flatMap((match) => [...(match[1] ?? '').matchAll(/M [^Z]*Z/gu)].map((contour) => contour[0] ?? ''))
+    .sort();
+}
+
 function solidFill(index: number, color: string): string {
   return `<FillStyle index="${index}"><SolidColor color="${color}"/></FillStyle>`;
 }
 
 describe('P2-C01 style-aware Shape reconstruction', () => {
-  it('retains multiple solid fills and distinct edge style references without graduating fill rendering', async () => {
-    const styledEdges = `<Edge fillStyle0="1" fillStyle1="2" cubics="${RECT_CUBICS}"/>`;
-    const baselineEdges = `<Edge cubics="${RECT_CUBICS}"/>`;
-    const styled = await renderScene(`<DOMShape><fills>${solidFill(1, '#112233')}${solidFill(2, '#aabbcc')}</fills><edges>${styledEdges}</edges></DOMShape>`);
-    const baseline = await renderScene(`<DOMShape><fills>${solidFill(1, '#112233')}</fills><edges>${baselineEdges}</edges></DOMShape>`);
-
-    expect(styled.ok).toBe(true);
-    expect(baseline.ok).toBe(true);
-    if (!styled.ok || !baseline.ok) return;
-    expect(styled.composition.fillStyleCount).toBe(2);
-    expect(styled.composition.strokeStyleCount).toBe(0);
-    expect(styled.composition.styleRunCount).toBe(1);
-    expect(styled.composition.pathCommandCount).toBe(baseline.composition.pathCommandCount);
-    expect(pathData(styled.svg)).toBe(pathData(baseline.svg));
-    expect(styled.svg.match(/<path\b/gu)).toHaveLength(1);
-    expect(styled.svg).toContain('fill="#112233"');
-    expect(styled.svg).toContain('fillStyles=2 strokeStyles=0 styleRuns=1');
-  });
-
   it('retains a stroke-only Shape and its edge reference without drawing strokes in C01', async () => {
     const rendered = await renderScene(`<DOMShape>
       <strokes><StrokeStyle index="1"><SolidStroke weight="2"><fill><SolidColor color="#202020"/></fill></SolidStroke></StrokeStyle></strokes>
@@ -66,7 +53,8 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
     expect(rendered.composition.fillStyleCount).toBe(0);
     expect(rendered.composition.strokeStyleCount).toBe(1);
     expect(rendered.composition.styleRunCount).toBe(1);
-    expect(rendered.svg).toContain('stroke="none"');
+    expect(rendered.hasRenderablePath).toBe(false);
+    expect(rendered.svg).not.toContain('<path');
     expect(rendered.svg).toContain('fillStyles=0 strokeStyles=1 styleRuns=1');
   });
 
@@ -101,11 +89,11 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
   it('records an authored S<n> change as a second style run while preserving the path commands', async () => {
     const changed = await renderScene(`<DOMShape>
       <fills>${solidFill(1, '#112233')}${solidFill(2, '#aabbcc')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|100 0S2|100 100|0 100|0 0"/></edges>
+      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0S2!60 0|100 0|100 40|60 40|60 0"/></edges>
     </DOMShape>`);
     const unchanged = await renderScene(`<DOMShape>
       <fills>${solidFill(1, '#112233')}${solidFill(2, '#aabbcc')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|100 0|100 100|0 100|0 0"/></edges>
+      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0S1!60 0|100 0|100 40|60 40|60 0"/></edges>
     </DOMShape>`);
 
     expect(changed.ok).toBe(true);
@@ -114,18 +102,19 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
     expect(changed.composition.midEdgeStyleChangeCount).toBe(1);
     expect(changed.composition.styleRunCount).toBe(2);
     expect(changed.composition.pathCommandCount).toBe(unchanged.composition.pathCommandCount);
-    expect(pathData(changed.svg)).toBe(pathData(unchanged.svg));
+    expect(pathContours(changed.svg)).toEqual(pathContours(unchanged.svg));
+    expect(changed.composition.fillRegionCount).toBe(2);
     expect(changed.svg).toContain('styleRuns=2 styleChanges=1');
   });
 
   it('accepts mid-edge S0 as a transition to no fill and keeps geometry unchanged', async () => {
     const changed = await renderScene(`<DOMShape>
       <fills>${solidFill(1, '#112233')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|100 0S0|100 100|0 100|0 0"/></edges>
+      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0S0!60 0|100 0|100 40|60 40|60 0"/></edges>
     </DOMShape>`);
     const unchanged = await renderScene(`<DOMShape>
       <fills>${solidFill(1, '#112233')}</fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|100 0|100 100|0 100|0 0"/></edges>
+      <edges><Edge fillStyle1="1" cubics="!0 0|40 0|40 40|0 40|0 0S1!60 0|100 0|100 40|60 40|60 0"/></edges>
     </DOMShape>`);
 
     expect(changed.ok).toBe(true);
@@ -136,18 +125,22 @@ describe('P2-C01 style-aware Shape reconstruction', () => {
     expect(changed.composition.edgeFillStyle1ReferenceCount).toBe(1);
     expect(changed.composition.noFillStyle1RunCount).toBe(1);
     expect(changed.composition.pathCommandCount).toBe(unchanged.composition.pathCommandCount);
-    expect(pathData(changed.svg)).toBe(pathData(unchanged.svg));
+    expect(changed.composition.fillRegionCount).toBe(1);
+    expect(changed.composition.fillContourCount).toBe(1);
+    expect(pathContours(changed.svg)).toHaveLength(1);
+    expect(pathContours(unchanged.svg)).toHaveLength(2);
+    expect(pathContours(changed.svg)[0]).toBe(pathContours(unchanged.svg)[0]);
   });
 
   it('keeps negative translated geometry and the existing transform unchanged', async () => {
     const transformed = await renderScene(`<DOMShape>
       <matrix><Matrix a="1" b="0" c="0" d="1" tx="-40" ty="-30"/></matrix>
-      <fills>${solidFill(1, '#112233')}${solidFill(2, '#aabbcc')}</fills>
-      <edges><Edge fillStyle0="1" fillStyle1="2" cubics="${RECT_CUBICS}"/></edges>
+      <fills>${solidFill(1, '#112233')}</fills>
+      <edges><Edge fillStyle1="1" cubics="${RECT_CUBICS}"/></edges>
     </DOMShape>`);
     const baseline = await renderScene(`<DOMShape>
       <matrix><Matrix a="1" b="0" c="0" d="1" tx="-40" ty="-30"/></matrix>
-      <fills>${solidFill(1, '#112233')}</fills><edges><Edge cubics="${RECT_CUBICS}"/></edges>
+      <fills>${solidFill(1, '#112233')}</fills><edges><Edge fillStyle1="1" cubics="${RECT_CUBICS}"/></edges>
     </DOMShape>`);
 
     expect(transformed.ok).toBe(true);
