@@ -20,7 +20,6 @@ const {
   getFlaXflDirectChildren,
 } = require(path.join(__dirname, '..', '..', 'dist-electron', 'main', 'services', 'fla-static-snapshot-display-list-adapter.js'));
 
-const ROOT = path.resolve(__dirname, '..', '..');
 const SCHEMA_VERSION = 'issue704-black-candidate-manifest/1';
 const ID_VERSION = 'issue704-candidate-id/1';
 const HASH = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -249,14 +248,6 @@ function boundaryAssessment(instances, source, parentFrame) {
   return { supported: unsupported.length === 0, unsupported };
 }
 
-function copyRecord(candidate, sourceHash, parentFrame = null) {
-  return {
-    candidateId: candidate,
-    sourceSha256: sourceHash,
-    ...(parentFrame === null ? {} : { parentFrame }),
-  };
-}
-
 function makeIdentity(sourceSha256, sourceAddress, renderAddressClass, renderAddress) {
   return candidateId(sourceSha256, {
     sourceAddress,
@@ -297,19 +288,6 @@ function classifyGraphicAddress(symbol, state, sourceClasses, stateDetails, nest
     return { renderAddressClass: 'DIRECT_COMPONENT_STATE', disposition: 'SUPPORTED_COMPONENT', reasonCode: 'SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET' };
   }
   return { renderAddressClass: 'UNSUPPORTED_OR_UNKNOWN', disposition: 'FAIL_CLOSED', reasonCode: 'NO_SUPPORTED_SOURCE_STATE_CLASS' };
-}
-
-function renderEvidenceFromCensus(state, evidencePathForCandidate, sourceHash) {
-  if (!state.svg?.path || !state.png?.path || !state.svg?.sha256 || !state.png?.sha256) return null;
-  return {
-    origin: 'Issue #702 production inspection/render receipt; exact authored state output',
-    sourceSha256: sourceHash,
-    svgSha256: state.svg.sha256.toLowerCase(),
-    pngSha256: state.png.sha256.toLowerCase(),
-    svgPath: evidencePathForCandidate.svg,
-    pngPath: evidencePathForCandidate.png,
-    evidenceOnlyWhenDispositionIsNotSupported: true,
-  };
 }
 
 function makeGraphicCandidate(sourceHash, symbol, state, stateDetails, censusState, nestedInputs, target, source) {
