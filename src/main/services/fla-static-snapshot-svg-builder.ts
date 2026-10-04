@@ -405,7 +405,6 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
   let currentY = NaN;
   let startX = NaN;
   let startY = NaN;
-  const EPSILON = 0.5;
   const MAX_COORD = 200_000;
   while (i < tokens.length && !error) {
     const token = tokens[i] as string;
@@ -416,7 +415,8 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
           const y = decodeCoord(tokens[i + 2] as string);
           if (!Number.isFinite(x) || !Number.isFinite(y) ||
               Math.abs(x) > MAX_COORD || Math.abs(y) > MAX_COORD) { i += 3; break; }
-          if (Number.isNaN(currentX) || Math.abs(x - currentX) > EPSILON || Math.abs(y - currentY) > EPSILON) {
+          // Preserve authored subpath boundaries; a visual epsilon changes topology.
+          if (Number.isNaN(currentX) || Number.isNaN(startX) || x !== currentX || y !== currentY) {
             pushCommand({ type: 'M', x, y });
             startX = x; startY = y;
           }
@@ -431,7 +431,8 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
           const y = decodeCoord(tokens[i + 2] as string);
           if (!Number.isFinite(x) || !Number.isFinite(y) ||
               Math.abs(x) > MAX_COORD || Math.abs(y) > MAX_COORD) { i += 3; break; }
-          if (Math.abs(x - currentX) > EPSILON || Math.abs(y - currentY) > EPSILON) {
+          // Keep every non-zero authored line even when its rendered length is tiny.
+          if (!Number.isNaN(currentX) && (x !== currentX || y !== currentY)) {
             pushCommand({ type: 'L', x, y });
             currentX = x; currentY = y;
           }
@@ -538,6 +539,10 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
       }
       case '/': {
         pushCommand({ type: 'Z' });
+        // A close returns the current point to this subpath's start.
+        if (!Number.isNaN(startX) && !Number.isNaN(startY)) {
+          currentX = startX; currentY = startY;
+        }
         startX = NaN; startY = NaN;
         i++;
         break;
@@ -545,8 +550,8 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
       default: i++;
     }
   }
-  if (!error && !Number.isNaN(startX) && !Number.isNaN(currentX) &&
-      Math.abs(currentX - startX) < EPSILON && Math.abs(currentY - startY) < EPSILON) {
+  // Exact endpoint equality adds no geometry; near-equality must stay open.
+  if (!error && currentX === startX && currentY === startY) {
     const last = commands[commands.length - 1];
     if (last && last.type !== 'Z') pushCommand({ type: 'Z' });
   }
