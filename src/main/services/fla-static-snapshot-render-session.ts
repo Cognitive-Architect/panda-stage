@@ -28,11 +28,13 @@
  */
 
 import crypto from 'node:crypto';
+import type { AnimationImportIR } from '../../shared/fla-import-api';
 import {
   buildRenderableTargetCatalog,
   buildSvgForRenderTarget,
   type BuildCatalogResult,
 } from './fla-static-snapshot-svg-builder';
+import { createFlaStaticSnapshotBitmapMediaLookup } from './fla-static-snapshot-media-resolver';
 import {
   FLA_STATIC_SNAPSHOT_LIMITS,
   FlaStaticSnapshotCancelRequestSchema,
@@ -74,6 +76,8 @@ export interface FlaStaticSnapshotSource {
   bytes: Uint8Array;
   basename: string;
   sha256: string;
+  /** Main-owned decoded inspection media; never returned to the Renderer. */
+  media?: AnimationImportIR['media'];
 }
 
 export interface FlaStaticSnapshotSourceLookup {
@@ -150,7 +154,10 @@ export class FlaStaticSnapshotRenderSession {
         message: 'The FLA inspection session has expired. Inspect the source again.',
       };
     }
-    return buildRenderableTargetCatalog(source.bytes);
+    return buildRenderableTargetCatalog(
+      source.bytes,
+      createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
+    );
   }
 
   async preview(
@@ -212,7 +219,11 @@ export class FlaStaticSnapshotRenderSession {
     // supersede can interrupt the SVG build or rasterization below.
     this.active.set(requestId, active);
 
-    const svgResult = await buildSvgForRenderTarget(bytes, target);
+    const svgResult = await buildSvgForRenderTarget(
+      bytes,
+      target,
+      createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
+    );
     if (active.settled) return active.settledPromise;
     if (!svgResult.ok) {
       this.settleActive(
