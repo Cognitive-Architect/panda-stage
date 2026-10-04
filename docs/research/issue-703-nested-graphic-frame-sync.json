@@ -176,7 +176,7 @@
   "renders": {
     "controlA": {
       "parentFrame": 0,
-      "resolvedChildren": ["補間 1@0", "補間 2@0", "補間 3@0"],
+      "resolvedChildren": ["补间 1@0", "补间 2@0", "补间 3@0"],
       "svgPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-00.svg",
       "svgSha256": "F78FF2AF1894F595A5D3BA5844B9E9603D3E515BCBA4E89713F7D7EB41A4AFFF",
       "pngPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-00.png",
@@ -188,7 +188,7 @@
       "parentSymbol": "元件 1",
       "parentFrame": 6,
       "parentState": "held from parent span start 0; span [0,30); no tween",
-      "resolvedNestedFrames": ["補間 1@0", "補間 2@6", "補間 3@0"],
+      "resolvedNestedFrames": ["补间 1@0", "补间 2@6", "补间 3@0"],
       "fullCharacterRender": true,
       "svgPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-06.svg",
       "svgSha256": "FA52B27026DBE5B0BB4066FC73D2C31AB6B794E13FC248D05567D974037D1A5F",
@@ -202,7 +202,7 @@
       "parentSymbol": "元件 1",
       "parentFrame": 7,
       "parentState": "held from parent span start 0; span [0,30); no tween",
-      "resolvedNestedFrames": ["補間 1@0", "補間 2@7", "補間 3@0"],
+      "resolvedNestedFrames": ["补间 1@0", "补间 2@7", "补间 3@0"],
       "fullCharacterRender": true,
       "svgPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-07.svg",
       "svgSha256": "E2A532E2FD78F5D056777B7F221E54923F6966C16B6780F84F2A48517342605E",
