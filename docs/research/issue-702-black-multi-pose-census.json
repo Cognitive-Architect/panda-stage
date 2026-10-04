@@ -529,7 +529,36 @@
               "outputWidth": 478,
               "outputHeight": 864
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "元件 1",
+          "targetIdentity": {
+            "targetId": "fla-render-target-c4af797070beada488cd2f338b2dfdaaf102b0f306bd67b8e2524d3220e794c7",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "元件 1",
+            "userLabel": "元件 1",
+            "frameCount": 30
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 473,
+            "maxY": 859
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": "A",
+            "status": "MATCH",
+            "confidence": "HIGH",
+            "note": "Same full-character source state as Scene candidate S0-F00000; target framing produces a different exact PNG hash."
+          },
+          "confidence": "HIGH",
+          "blocker": null
         }
       ]
     },
@@ -667,7 +696,35 @@
               "outputWidth": 217,
               "outputHeight": 277
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 1",
+          "targetIdentity": {
+            "targetId": "fla-render-target-355dc5e96862422f928f8a8094b68946bee166dc4d847279eabe4b29eb92958c",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 1",
+            "userLabel": "补间 1",
+            "frameCount": 1
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 212,
+            "maxY": 272
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         }
       ]
     },
@@ -1015,7 +1072,35 @@
               "outputWidth": 478,
               "outputHeight": 620
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 3,
+            "maxX": 473,
+            "maxY": 615
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00001",
@@ -1140,7 +1225,35 @@
               "outputWidth": 595,
               "outputHeight": 620
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 590,
+            "maxY": 615
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00002",
@@ -1265,7 +1378,35 @@
               "outputWidth": 595,
               "outputHeight": 620
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 590,
+            "maxY": 615
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00003",
@@ -1390,7 +1531,35 @@
               "outputWidth": 595,
               "outputHeight": 620
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 590,
+            "maxY": 615
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00004",
@@ -1515,7 +1684,35 @@
               "outputWidth": 595,
               "outputHeight": 620
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 590,
+            "maxY": 615
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00005",
@@ -1662,7 +1859,35 @@
               "outputWidth": 647,
               "outputHeight": 620
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 3,
+            "maxX": 642,
+            "maxY": 615
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00006",
@@ -1763,7 +1988,37 @@
               "outputWidth": 768,
               "outputHeight": 505
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 220,
+            "minY": 4,
+            "maxX": 763,
+            "maxY": 500
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": "B",
+            "status": "PENDING MAINTAINER REVIEW",
+            "confidence": "MEDIUM_BODY_SILHOUETTE_ONLY",
+            "note": "Body silhouette candidate only; full-character match is unresolved."
+          },
+          "confidence": "MEDIUM_BODY_SILHOUETTE_ONLY",
+          "blocker": "The body component renders, but the full-character source does not encode an authored firstFrame=6/7 on 元件 1’s 补间 2 instance; the production target API has no nested-frame override input.",
+          "fullCharacterRenderable": false
         },
         {
           "candidateId": "G03-F00007",
@@ -1864,7 +2119,37 @@
               "outputWidth": 478,
               "outputHeight": 371
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 3,
+            "maxX": 473,
+            "maxY": 366
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": "C",
+            "status": "PENDING MAINTAINER REVIEW",
+            "confidence": "MEDIUM_BODY_SILHOUETTE_ONLY",
+            "note": "Body silhouette candidate only; full-character match is unresolved."
+          },
+          "confidence": "MEDIUM_BODY_SILHOUETTE_ONLY",
+          "blocker": "The body component renders, but the full-character source does not encode an authored firstFrame=6/7 on 元件 1’s 补间 2 instance; the production target API has no nested-frame override input.",
+          "fullCharacterRenderable": false
         },
         {
           "candidateId": "G03-F00008",
@@ -1964,7 +2249,35 @@
               "outputWidth": 648,
               "outputHeight": 864
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 210,
+            "minY": 4,
+            "maxX": 612,
+            "maxY": 859
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": "D",
+            "status": "MATCH",
+            "confidence": "HIGH"
+          },
+          "confidence": "HIGH",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00009",
@@ -2064,7 +2377,35 @@
               "outputWidth": 419,
               "outputHeight": 754
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 414,
+            "maxY": 749
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": "E",
+            "status": "MATCH",
+            "confidence": "HIGH"
+          },
+          "confidence": "HIGH",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00010",
@@ -2164,7 +2505,35 @@
               "outputWidth": 561,
               "outputHeight": 622
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 120,
+            "minY": 4,
+            "maxX": 556,
+            "maxY": 617
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G03-F00011",
@@ -2288,7 +2657,35 @@
               "outputWidth": 478,
               "outputHeight": 549
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 2",
+            "userLabel": "补间 2",
+            "frameCount": 1927
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 3,
+            "maxX": 473,
+            "maxY": 544
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         }
       ]
     },
@@ -2426,7 +2823,35 @@
               "outputWidth": 270,
               "outputHeight": 339
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 3",
+          "targetIdentity": {
+            "targetId": "fla-render-target-f125ba788802e8ca05093d68f9b47332c73640143736994a6fb066d21ea39f56",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 3",
+            "userLabel": "补间 3",
+            "frameCount": 1
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 3,
+            "maxX": 265,
+            "maxY": 335
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         }
       ]
     },
@@ -2635,7 +3060,35 @@
               "outputWidth": 66,
               "outputHeight": 65
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "targetIdentity": {
+            "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "frameCount": 6
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 61,
+            "maxY": 60
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G05-F00001",
@@ -2735,7 +3188,35 @@
               "outputWidth": 68,
               "outputHeight": 58
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "targetIdentity": {
+            "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "frameCount": 6
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 63,
+            "maxY": 53
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G05-F00002",
@@ -2835,7 +3316,35 @@
               "outputWidth": 70,
               "outputHeight": 60
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "targetIdentity": {
+            "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "frameCount": 6
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 65,
+            "maxY": 55
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G05-F00003",
@@ -2935,7 +3444,35 @@
               "outputWidth": 58,
               "outputHeight": 77
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "targetIdentity": {
+            "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "frameCount": 6
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 53,
+            "maxY": 72
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G05-F00004",
@@ -3035,7 +3572,35 @@
               "outputWidth": 52,
               "outputHeight": 74
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "targetIdentity": {
+            "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "frameCount": 6
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 47,
+            "maxY": 69
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G05-F00005",
@@ -3159,7 +3724,35 @@
               "outputWidth": 64,
               "outputHeight": 87
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "targetIdentity": {
+            "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "frameCount": 6
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 3,
+            "minY": 3,
+            "maxX": 60,
+            "maxY": 83
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         }
       ]
     },
@@ -3297,7 +3890,35 @@
               "outputWidth": 410,
               "outputHeight": 899
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+          "targetIdentity": {
+            "targetId": "fla-render-target-720c5165a9271215c23d5c8da41dc7208f16f36e8253b670d2d58b5e3563e07e",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+            "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+            "frameCount": 1
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 405,
+            "maxY": 894
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         }
       ]
     },
@@ -4095,7 +4716,35 @@
               "outputWidth": 221,
               "outputHeight": 262
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "元件 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "元件 2",
+            "userLabel": "元件 2",
+            "frameCount": 21
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 216,
+            "maxY": 257
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G07-F00005",
@@ -4345,7 +4994,35 @@
               "outputWidth": 219,
               "outputHeight": 263
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "元件 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "元件 2",
+            "userLabel": "元件 2",
+            "frameCount": 21
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 214,
+            "maxY": 258
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G07-F00010",
@@ -4595,7 +5272,35 @@
               "outputWidth": 203,
               "outputHeight": 264
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "元件 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "元件 2",
+            "userLabel": "元件 2",
+            "frameCount": 21
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 198,
+            "maxY": 259
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G07-F00015",
@@ -4845,7 +5550,35 @@
               "outputWidth": 214,
               "outputHeight": 264
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "元件 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "元件 2",
+            "userLabel": "元件 2",
+            "frameCount": 21
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 209,
+            "maxY": 259
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         },
         {
           "candidateId": "G07-F00020",
@@ -5095,7 +5828,35 @@
               "outputWidth": 221,
               "outputHeight": 262
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "元件 2",
+          "targetIdentity": {
+            "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "元件 2",
+            "userLabel": "元件 2",
+            "frameCount": 21
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 216,
+            "maxY": 257
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         }
       ]
     },
@@ -5233,7 +5994,35 @@
               "outputWidth": 80,
               "outputHeight": 192
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 4",
+          "targetIdentity": {
+            "targetId": "fla-render-target-a954d8dcbb8f01c0a71afa7ef7a688894c106d077e1a8b0ded47a735744d7e89",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 4",
+            "userLabel": "补间 4",
+            "frameCount": 1
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 75,
+            "maxY": 187
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         }
       ]
     },
@@ -5371,7 +6160,35 @@
               "outputWidth": 102,
               "outputHeight": 238
             }
-          }
+          },
+          "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+          "sourceOwner": "补间 5",
+          "targetIdentity": {
+            "targetId": "fla-render-target-4387b3622051d8f8979099c672c05b2e3e93d00cac9f46ab22585e75ee58fcae",
+            "kind": "graphic-symbol",
+            "sourceLibraryItemName": "补间 5",
+            "userLabel": "补间 5",
+            "frameCount": 1
+          },
+          "renderResult": {
+            "adapterState": "RESOLVED",
+            "svg": "SUCCESS",
+            "png": "SUCCESS"
+          },
+          "visibleBounds": {
+            "minX": 4,
+            "minY": 4,
+            "maxX": 97,
+            "maxY": 233
+          },
+          "exactDuplicateGroup": null,
+          "referenceMatch": {
+            "pose": null,
+            "status": "NO_SUPPORTED_REFERENCE_MATCH",
+            "confidence": "N/A"
+          },
+          "confidence": "N/A",
+          "blocker": null
         }
       ]
     }
@@ -5495,7 +6312,10 @@
         "svgSha256": "F78FF2AF1894F595A5D3BA5844B9E9603D3E515BCBA4E89713F7D7EB41A4AFFF",
         "pngSha256": "A049F7554B33A645398D981394E6C11FCFF183197C512D7EBAB3C4F3015B0900",
         "pngPath": "D:\\PandaStage-Acceptance\\issue702-black-census-20261004\\png\\001-S0-F00000-F78FF2AF1894.png"
-      }
+      },
+      "additionalCandidateIds": [
+        "G01-F00000"
+      ]
     },
     {
       "referencePose": "B",
@@ -5740,5 +6560,104 @@
       "This Markdown receipt",
       "This JSON census map"
     ]
+  },
+  "sceneCandidateState": {
+    "candidateId": "S0-F00000",
+    "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+    "sourceOwner": {
+      "kind": "scene",
+      "name": "场景 1"
+    },
+    "targetIdentity": {
+      "targetId": "fla-render-target-680581b05cd778ce0f05f78b9b4e31fdfcc938d10ccb84a40f4d035074cd48f1",
+      "kind": "scene",
+      "sourceTimelineIndex": 0,
+      "userLabel": "主场景 · 第 1 帧"
+    },
+    "frameIndex": 0,
+    "heldFrameRange": [
+      0,
+      1
+    ],
+    "nestedStateInputs": [
+      {
+        "name": "图层_1",
+        "visible": true,
+        "instances": [
+          {
+            "libraryItemName": "元件 1",
+            "symbolType": "graphic",
+            "localTransform": {
+              "a": 1,
+              "b": 0,
+              "c": 0,
+              "d": 1,
+              "tx": 759.05,
+              "ty": 112.6
+            }
+          }
+        ]
+      }
+    ],
+    "relevantInstanceCombination": [
+      {
+        "layerName": "图层_1",
+        "layerVisible": true,
+        "libraryItemName": "元件 1",
+        "symbolType": "graphic",
+        "childDefaultFrameIndex": 0,
+        "firstFrameWasAuthored": false,
+        "localTransform": {
+          "a": 1,
+          "b": 0,
+          "c": 0,
+          "d": 1,
+          "tx": 759.05,
+          "ty": 112.6
+        }
+      }
+    ],
+    "classification": [
+      "FULL_CHARACTER_STATE"
+    ],
+    "renderResult": {
+      "adapterState": "RESOLVED",
+      "svg": "SUCCESS",
+      "png": "SUCCESS"
+    },
+    "artifact": {
+      "svgSha256": "F78FF2AF1894F595A5D3BA5844B9E9603D3E515BCBA4E89713F7D7EB41A4AFFF",
+      "svgPath": "D:\\PandaStage-Acceptance\\issue702-black-census-20261004\\svg\\scene-frame-00000-F78FF2AF1894.svg",
+      "pngSha256": "A049F7554B33A645398D981394E6C11FCFF183197C512D7EBAB3C4F3015B0900",
+      "pngPath": "D:\\PandaStage-Acceptance\\issue702-black-census-20261004\\png\\001-S0-F00000-F78FF2AF1894.png"
+    },
+    "visibleBounds": {
+      "minX": 758,
+      "minY": 112,
+      "maxX": 1227,
+      "maxY": 967
+    },
+    "exactDuplicateGroup": null,
+    "referenceMatch": {
+      "pose": "A",
+      "status": "MATCH",
+      "confidence": "HIGH"
+    },
+    "confidence": "HIGH",
+    "blocker": null
+  },
+  "candidateStateCount": 30,
+  "candidateStateTableCoverage": {
+    "sourceSha256PerCandidate": true,
+    "sourceOwnerPerCandidate": true,
+    "targetIdentityPerCandidate": true,
+    "frameAndHeldRangePerCandidate": true,
+    "nestedInputsAndInstanceCombinationPerCandidate": true,
+    "classificationPerCandidate": true,
+    "renderResultPerCandidate": true,
+    "svgPngHashesAndVisibleBoundsPerRenderableCandidate": true,
+    "exactDuplicateGroupPerCandidate": true,
+    "referenceMatchConfidencePerCandidate": true,
+    "blockerPerUnrenderableFullPose": true
   }
 }
