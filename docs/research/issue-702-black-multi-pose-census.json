@@ -6659,5 +6659,29 @@
     "exactDuplicateGroupPerCandidate": true,
     "referenceMatchConfidencePerCandidate": true,
     "blockerPerUnrenderableFullPose": true
+  },
+  "issue703SupersedingResult": {
+    "recordedAt": "2026-10-04",
+    "issue": 703,
+    "supersedes": "The provisional B/C UNKNOWN full-character address conclusion in this Issue #702 census.",
+    "parentSymbol": "元件 1",
+    "rule": "Default-loop nested Graphic child frame follows elapsed parent instance-span time; empirically supported for the tested Black frames.",
+    "poses": {
+      "B": {
+        "parentFrame": 6,
+        "children": ["补间 1@0", "补间 2@6", "补间 3@0"],
+        "svgSha256": "FA52B27026DBE5B0BB4066FC73D2C31AB6B794E13FC248D05567D974037D1A5F",
+        "pngSha256": "5BC7C406BA126FB6E503978CACCEE1E28D27032905458CD09989D0D8E87067DF"
+      },
+      "C": {
+        "parentFrame": 7,
+        "children": ["补间 1@0", "补间 2@7", "补间 3@0"],
+        "svgSha256": "E2A532E2FD78F5D056777B7F221E54923F6966C16B6780F84F2A48517342605E",
+        "pngSha256": "09EC439047388FE48BA95FE83041F0E48A333E6E1E4F05D81EE1AF49C29527BE"
+      }
+    },
+    "referenceAcceptance": "Visual correspondence recorded; maintainer acceptance pending.",
+    "productionFrameSyncImplemented": false,
+    "receipt": "issue-703-nested-graphic-frame-sync.json"
   }
 }

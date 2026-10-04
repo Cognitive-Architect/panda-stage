@@ -1,0 +1,248 @@
+{
+  "schemaVersion": "issue703-nested-graphic-frame-sync/1",
+  "issue": 703,
+  "parents": [702, 701, 694],
+  "motherPullRequest": 677,
+  "executionDate": "2026-10-04",
+  "scope": "Bounded Black nested Graphic synchronization research and in-memory prototype; no production frame-selection implementation.",
+  "recommendation": "GO TO IMPLEMENTATION CONTRACT",
+  "confidence": {
+    "blackDefaultLoopFrames0Through11": "HIGH",
+    "nonzeroSpanOriginGeneralization": "MEDIUM; Adobe documentation supports span-relative timing, but Black spans all start at 0",
+    "childCountWrapBoundary": "DOCUMENTED, NOT CROSSED BY THIS BLACK PARENT SPAN"
+  },
+  "source": {
+    "fileName": "黑衣修仙男.fla",
+    "sha256Before": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+    "sha256After": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+    "byteLength": 3503255,
+    "unchanged": true,
+    "rawArchiveReadability": "JSZip rejects the original archive as missing 54 bytes in its central directory",
+    "normalizedArchive": {
+      "origin": "Issue #702 normalized source copy",
+      "sha256Before": "681237ABB7B32E79CE89FF8E283B0573B4BF170C6B85830828C7A10911BC7A33",
+      "sha256After": "681237ABB7B32E79CE89FF8E283B0573B4BF170C6B85830828C7A10911BC7A33",
+      "byteLength": 3503255,
+      "unchanged": true
+    }
+  },
+  "reference": {
+    "fileName": "黑衣修仙男（截图）.jpg",
+    "sha256Before": "7C53292222EDCD183BB0D40EE647435EF860F9894CD4203150317364CA679EAC",
+    "sha256After": "7C53292222EDCD183BB0D40EE647435EF860F9894CD4203150317364CA679EAC",
+    "byteLength": 131654,
+    "unchanged": true
+  },
+  "evidenceDirectory": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004",
+  "prototype": {
+    "repositoryScript": "scripts/research/issue703-nested-graphic-sync-prototype.cjs",
+    "productionPath": [
+      "adaptFlaXflDisplaySource",
+      "resolveFlaDisplayList",
+      "buildSvgForResolvedDisplayList",
+      "FlaStaticSnapshotWindowManager"
+    ],
+    "frameContexts": "Temporary in-memory symbol-map values; no production resolver behavior or persisted state is changed",
+    "testedParentFrames": [0, 5, 6, 7, 8, 9, 10, 11],
+    "fullCompositeParentFrames": [0, 6, 7, 8, 9, 10],
+    "renderTargetId": "fla-render-target-680581b05cd778ce0f05f78b9b4e31fdfcc938d10ccb84a40f4d035074cd48f1",
+    "noExternalResourcesInSvg": true
+  },
+  "documentTarget": {
+    "kind": "scene",
+    "name": "场景 1",
+    "documentFrame": 0,
+    "documentFrameCount": 1,
+    "sceneGraphicInstance": {
+      "libraryItem": "元件 1",
+      "symbolType": "graphic",
+      "playbackMode": "loop",
+      "firstFrame": null,
+      "containingSpan": {
+        "start": 0,
+        "duration": 1,
+        "endExclusive": 1
+      },
+      "visible": true,
+      "transform": {
+        "a": 1,
+        "b": 0,
+        "c": 0,
+        "d": 1,
+        "tx": 759.05,
+        "ty": 112.6
+      }
+    },
+    "interpretation": "Scene frame 0 is the static composition wrapper. Parent Graphic frames 0..11 are explicit diagnostic parent-time inputs, not Scene document-frame numbers."
+  },
+  "parent": {
+    "symbol": "元件 1",
+    "symbolType": "graphic",
+    "frameCount": 30,
+    "testedFrames": [0, 5, 6, 7, 8, 9, 10, 11],
+    "layerSpanPerTestedFrame": {
+      "start": 0,
+      "duration": 30,
+      "endExclusive": 30,
+      "tweenType": "none",
+      "stateAtFrame0": "keyframe",
+      "stateAtFrames5Through11": "held"
+    },
+    "pandaLayerOrder": ["图层_4", "图层_1", "图层_3"],
+    "nestedInstances": [
+      {
+        "libraryItem": "补间 1",
+        "symbolType": "graphic",
+        "childFrameCount": 1,
+        "playbackMode": "loop",
+        "firstFrame": null,
+        "lastFrame": null,
+        "containingSpan": {"start": 0, "duration": 30, "endExclusive": 30},
+        "visible": true,
+        "transform": {"a": 1, "b": 0, "c": 0, "d": 1, "tx": 186.25, "ty": 133.75}
+      },
+      {
+        "libraryItem": "补间 2",
+        "symbolType": "graphic",
+        "childFrameCount": 1927,
+        "playbackMode": "loop",
+        "firstFrame": null,
+        "lastFrame": null,
+        "containingSpan": {"start": 0, "duration": 30, "endExclusive": 30},
+        "visible": true,
+        "transform": {"a": 1, "b": 0, "c": 0, "d": 1, "tx": 234.15, "ty": 549.6}
+      },
+      {
+        "libraryItem": "补间 3",
+        "symbolType": "graphic",
+        "childFrameCount": 1,
+        "playbackMode": "loop",
+        "firstFrame": null,
+        "lastFrame": null,
+        "containingSpan": {"start": 0, "duration": 30, "endExclusive": 30},
+        "visible": true,
+        "transform": {"a": 1, "b": 0, "c": 0, "d": 1, "tx": 262.3, "ty": 291.8}
+      }
+    ]
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "name": "Graphic Loop advances with elapsed parent-span time",
+      "rule": "Advance from the first child frame by parentFrame - containingInstanceSpanStart; Loop repeats through the authored child range.",
+      "result": "SUPPORTED",
+      "bodyFrameByParentFrame": {"0": 0, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "11": 11},
+      "nearbyFrameEvidence": {
+        "parent5": {
+          "bodyFrame": 5,
+          "deeperNestedInstances": [
+            {"symbolType": "graphic", "playbackMode": "single frame", "firstFrame": "3", "spanStart": 5, "spanDuration": 1},
+            {"symbolType": "graphic", "playbackMode": "single frame", "firstFrame": "3", "spanStart": 5, "spanDuration": 1}
+          ],
+          "fullCompositeClaimed": false
+        },
+        "parent6": {"bodyFrame": 6, "deeperNestedInstances": 0},
+        "parent7": {"bodyFrame": 7, "deeperNestedInstances": 0},
+        "parent8": {"bodyFrame": 8, "deeperNestedInstances": 0}
+      },
+      "childStates6And7": {
+        "frame6": {"spanStart": 6, "duration": 1, "endExclusive": 7, "tweenType": "none"},
+        "frame7": {"spanStart": 7, "duration": 1, "endExclusive": 8, "tweenType": "none"}
+      }
+    },
+    {
+      "id": "H2",
+      "name": "Nested Graphics remain on fixed/default first frame",
+      "rule": "Use the first frame regardless of parent time.",
+      "result": "FALSIFIED_FOR_B_AND_C",
+      "bodyFrameAtParent6": 0,
+      "bodyFrameAtParent7": 0,
+      "renderHashesEqualAControl": true
+    },
+    {
+      "id": "H3",
+      "name": "Absolute parent frame ignores the instance-span origin",
+      "result": "NOT_DISTINGUISHABLE_IN_BLACK",
+      "reason": "Every tested nested instance span begins at 0, so absolute and span-relative formulas yield equal indices.",
+      "sameResolvedSelectionsAsH1": true
+    }
+  ],
+  "verifiedSynchronizationRule": {
+    "scope": "Visible Graphic instance; loop mode; default first frame; tested Black parent span",
+    "formulaForObservedRange": "childFrameIndex = firstFrameDefault(0) + (parentFrame - instanceSpanStart)",
+    "loopBehavior": "Animate documentation says Loop continues through the Graphic timeline while the parent instance occupies its span. Black empirically exercises child frames 0..11; its parent span does not reach the 1927-frame child end, so no wrap boundary is crossed.",
+    "confidence": "HIGH for Black default-loop frames 0..11; general bounds and nonzero span origin need dedicated contract controls"
+  },
+  "renders": {
+    "controlA": {
+      "parentFrame": 0,
+      "resolvedChildren": ["補間 1@0", "補間 2@0", "補間 3@0"],
+      "svgPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-00.svg",
+      "svgSha256": "F78FF2AF1894F595A5D3BA5844B9E9603D3E515BCBA4E89713F7D7EB41A4AFFF",
+      "pngPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-00.png",
+      "pngSha256": "A049F7554B33A645398D981394E6C11FCFF183197C512D7EBAB3C4F3015B0900",
+      "matchesIssue702SvgAndPngByteForByte": true
+    },
+    "poseB": {
+      "documentFrame": 0,
+      "parentSymbol": "元件 1",
+      "parentFrame": 6,
+      "parentState": "held from parent span start 0; span [0,30); no tween",
+      "resolvedNestedFrames": ["補間 1@0", "補間 2@6", "補間 3@0"],
+      "fullCharacterRender": true,
+      "svgPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-06.svg",
+      "svgSha256": "FA52B27026DBE5B0BB4066FC73D2C31AB6B794E13FC248D05567D974037D1A5F",
+      "pngPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-06.png",
+      "pngSha256": "5BC7C406BA126FB6E503978CACCEE1E28D27032905458CD09989D0D8E87067DF",
+      "dimensions": [1920, 1080],
+      "referenceStatus": "VISUAL CANDIDATE CORRESPONDS; MAINTAINER ACCEPTANCE PENDING"
+    },
+    "poseC": {
+      "documentFrame": 0,
+      "parentSymbol": "元件 1",
+      "parentFrame": 7,
+      "parentState": "held from parent span start 0; span [0,30); no tween",
+      "resolvedNestedFrames": ["補間 1@0", "補間 2@7", "補間 3@0"],
+      "fullCharacterRender": true,
+      "svgPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-07.svg",
+      "svgSha256": "E2A532E2FD78F5D056777B7F221E54923F6966C16B6780F84F2A48517342605E",
+      "pngPath": "D:\\PandaStage-Acceptance\\issue703-nested-graphic-20261004\\H1-parent-07.png",
+      "pngSha256": "09EC439047388FE48BA95FE83041F0E48A333E6E1E4F05D81EE1AF49C29527BE",
+      "dimensions": [1920, 1080],
+      "referenceStatus": "VISUAL CANDIDATE CORRESPONDS; MAINTAINER ACCEPTANCE PENDING"
+    },
+    "fixedDefaultH2": {
+      "parent6SvgSha256": "F78FF2AF1894F595A5D3BA5844B9E9603D3E515BCBA4E89713F7D7EB41A4AFFF",
+      "parent6PngSha256": "A049F7554B33A645398D981394E6C11FCFF183197C512D7EBAB3C4F3015B0900",
+      "parent7SvgSha256": "F78FF2AF1894F595A5D3BA5844B9E9603D3E515BCBA4E89713F7D7EB41A4AFFF",
+      "parent7PngSha256": "A049F7554B33A645398D981394E6C11FCFF183197C512D7EBAB3C4F3015B0900"
+    }
+  },
+  "repeatability": {
+    "frames": [0, 6, 7],
+    "svgHashesIdenticalOnRepeat": true,
+    "pngHashesIdenticalOnRepeat": true
+  },
+  "negativeControls": {
+    "sourceMutation": "NO",
+    "referenceMutation": "NO",
+    "normalizedArchiveMutation": "NO",
+    "productionResolverChanged": "NO",
+    "issue698GeometrySemanticsChanged": "NO",
+    "issue700LayerOrderSemanticsChanged": "NO; existing adapter order was preserved",
+    "sandbox": {"sandbox": true, "contextIsolation": true, "nodeIntegration": false},
+    "tweenInterpolationImplemented": "NO",
+    "movieClipRuntimeImplemented": "NO",
+    "actionScriptImplemented": "NO",
+    "schemaOrUiChanged": "NO"
+  },
+  "implications": {
+    "issue702": "B/C full-character candidates now have source-derived parent addresses: 元件1@6 with children 补间1@0/补间2@6/补间3@0 and 元件1@7 with children 补间1@0/补间2@7/补间3@0. Keep maintainer reference acceptance pending.",
+    "stageB2": "Enumerate Graphic child state from parent coordinates plus containing instance span, playback mode, first/last frame, and child frame count; deduplicate complete resolved compositions instead of treating raw frameCount as pose count.",
+    "nextSingleAction": "Maintainer reviews preserved B/C artifacts and authorizes a focused implementation contract with wrap and nonzero-span controls."
+  },
+  "sources": [
+    "https://helpx.adobe.com/ph_fil/animate/desktop/using/elements.html",
+    "https://www.adobe.com/learn/animate/web/types-of-symbols"
+  ]
+}

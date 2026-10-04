@@ -81,3 +81,12 @@ B2 可安全使用已确认的 Scene/Graphic target identity、authored state st
 - 无 production code、parser、renderer、schema、UI 或 tween runtime 变更。
 - 本交付只在母 PR #677 分支记录研究 Markdown 与 JSON；没有新开 PR。
 - 本研究未运行测试；Markdown 交付按仓库规则只做链接、内容与 diff whitespace 检查。
+
+## 2026-10-04 更正：Issue #703 嵌套 Graphic 帧同步
+
+上文 B/C 的 `UNKNOWN` 是 #702 当时仅检查身体 Graphic 单独输出后的暂定结论。后续 #703 在不修改生产解析器的内存原型中验证了父 Graphic `元件 1` 的默认 Loop 子实例随父时间推进，并通过生产 SVG/PNG 路径得到完整候选：
+
+- B：`元件 1@6 → 补间 1@0 / 补间 2@6 / 补间 3@0`。
+- C：`元件 1@7 → 补间 1@0 / 补间 2@7 / 补间 3@0`。
+
+这修订了上文“完整地址 UNKNOWN”的研究状态，但参考图的维护者验收仍待完成。透明 PNG 与机器收据保存在 `D:\PandaStage-Acceptance\issue703-nested-graphic-20261004\`；方法、假设对照、哈希和限制见 [Issue #703 收据](issue-703-nested-graphic-frame-sync.md) 与 [机器收据](issue-703-nested-graphic-frame-sync.json)。这项更正不表示生产 renderer 已实现嵌套帧同步。
