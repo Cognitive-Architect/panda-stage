@@ -3,10 +3,9 @@
  *
  * This is an ephemeral composition model. It deliberately contains references
  * to shapes and bitmap library items, not parser objects, image bytes, project
- * data, paths, or renderer capabilities. The caller supplies source arrays in
- * their source stacking order and supplies a concrete frame context; this
- * module preserves both without selecting timeline frames or interpolating
- * tweens (P1).
+ * data, paths, or renderer capabilities. The caller supplies painter-ordered
+ * arrays and a concrete frame context; this module preserves that order
+ * without selecting timeline frames or interpolating tweens (P1).
  */
 
 export interface FlaDisplayListMatrix {
@@ -28,7 +27,7 @@ export const FLA_DISPLAY_LIST_IDENTITY_MATRIX: FlaDisplayListMatrix =
  */
 export interface FlaDisplayListFrameContext {
   readonly frameIndex: number;
-  /** Layers and their elements are supplied in source stacking order. */
+  /** Layers are supplied back-to-front in painter order; the resolver preserves it. */
   readonly layers: readonly FlaDisplayListLayer[];
 }
 

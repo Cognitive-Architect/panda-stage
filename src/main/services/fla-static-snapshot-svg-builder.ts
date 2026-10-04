@@ -2570,8 +2570,8 @@ function flattenResolvedDisplayList(
  * C02 compositor for an already-resolved C01 tree. It flattens drawable leaves
  * and applies each absolute worldTransform once; group transforms are never
  * nested around descendants that already carry absolute matrices. Layers and
- * leaves are emitted in input order. XFL parser source order is back-to-front,
- * and SVG paints later siblings on top, matching Animate's stacking semantics.
+ * leaves are emitted in input order. The XFL adapter supplies layers in
+ * back-to-front painter order, and SVG paints later siblings on top.
  */
 export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): BuildComposedSvgResult {
   const { displayList, renderTargetId, stageWidth, stageHeight, shapeBlocks, resolveBitmapMedia } = input;

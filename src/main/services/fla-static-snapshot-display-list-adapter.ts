@@ -1,8 +1,10 @@
 /**
  * P0-C03 narrow Main-side adapter from the existing bounded XFL archive
  * reader's DOMTimeline/DOMLayer/DOMFrame display elements to the Panda-owned
- * C01 resolver input. This intentionally does not parse unrelated XFL
- * semantics (tweens, masks, text, filters, or ActionScript).
+ * C01 resolver input. XFL layer arrays are authored front/top to back/bottom;
+ * this adapter converts them once to Panda's back-to-front painter order.
+ * Within-layer elements retain their authored order. This intentionally does
+ * not parse unrelated XFL semantics (tweens, masks, text, filters, or ActionScript).
  */
 
 import crypto from 'node:crypto';
@@ -621,8 +623,15 @@ function buildFrameContext(
   }
   return {
     ok: true,
-    value: { frameIndex, layers: resolvedLayers },
+    value: { frameIndex, layers: normalizeXflTimelineLayersForPainterOrder(resolvedLayers) },
   };
+}
+
+/** XFL lists timeline layers front-to-back; Panda frame contexts paint back-to-front. */
+function normalizeXflTimelineLayersForPainterOrder<T>(
+  layers: readonly T[],
+): readonly T[] {
+  return [...layers].reverse();
 }
 
 function buildGraphicFrameContext(
@@ -668,7 +677,10 @@ function buildGraphicFrameContext(
       elements,
     });
   }
-  return { ok: true, value: { frameIndex, layers: resolvedLayers } };
+  return {
+    ok: true,
+    value: { frameIndex, layers: normalizeXflTimelineLayersForPainterOrder(resolvedLayers) },
+  };
 }
 
 function countNestedSymbols(elements: readonly FlaDisplayListElement[]): boolean {

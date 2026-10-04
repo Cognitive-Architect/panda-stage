@@ -170,7 +170,7 @@ function c02Fixture(): {
 }
 
 describe('P0-C02 composed snapshot SVG', () => {
-  it('embeds multiple Panda PNGs and supported shapes in source back-to-front order with absolute transforms once', () => {
+  it('embeds multiple Panda PNGs and supported shapes in caller-supplied painter order with absolute transforms once', () => {
     const fixture = c02Fixture();
     const result = buildSvgForResolvedDisplayList({
       displayList: fixture.displayList,

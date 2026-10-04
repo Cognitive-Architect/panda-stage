@@ -6,8 +6,11 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 
 const root = path.resolve(__dirname, '..');
 const { IPC_CHANNELS } = require(path.join(root, 'dist-electron/shared/ipc/channels.js'));
-const { resolveFlaDisplayList, FLA_DISPLAY_LIST_IDENTITY_MATRIX } = require(
+const { resolveFlaDisplayList } = require(
   path.join(root, 'dist-electron/main/services/fla-display-list-resolver.js'),
+);
+const { adaptFlaXflDisplaySource } = require(
+  path.join(root, 'dist-electron/main/services/fla-static-snapshot-display-list-adapter.js'),
 );
 const { buildSvgForResolvedDisplayList } = require(
   path.join(root, 'dist-electron/main/services/fla-static-snapshot-svg-builder.js'),
@@ -205,22 +208,20 @@ function buildAcceptanceFixture() {
       { kind: 'mixed', zeroAlphaPixels: 2, partialAlphaPixels: 1 },
     ),
   ];
-  // The production FLAParser reads :scope > layers > DOMLayer through
-  // querySelectorAll and pushes those nodes in document order. Adobe's
-  // Animate stacking contract says Layer 2 is in front of Layer 1. Keep both
-  // facts explicit in this generated XFL overlap fixture so raster order is
-  // checked from source layer order through the resolved tree into the PNG.
+  // XFL timeline layers are authored front/top to back/bottom. Keep the
+  // foreground on the first source layer so this raster gate exercises the
+  // production adapter's single conversion to Panda painter order.
   const xflDocumentXml = `<DOMDocument width="4" height="4" xmlns="http://ns.adobe.com/xfl/2008/">
   <timelines><DOMTimeline name="Scene 1"><layers>
+    <DOMLayer name="Layer 2"><frames><DOMFrame index="0"><elements>
+      <DOMSymbolInstance libraryItemName="front-symbol"><matrix a="1" d="1" tx="1" ty="0"/></DOMSymbolInstance>
+    </elements></DOMFrame></frames></DOMLayer>
     <DOMLayer name="Layer 1"><frames><DOMFrame index="0"><elements>
       <DOMBitmapInstance libraryItemName="LIBRARY/background.png"/>
       <DOMShape><matrix><Matrix a="1" d="1" tx="0" ty="3"/></matrix>
         <fills><FillStyle index="1"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills>
         <edges><Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/></edges>
       </DOMShape>
-    </elements></DOMFrame></frames></DOMLayer>
-    <DOMLayer name="Layer 2"><frames><DOMFrame index="0"><elements>
-      <DOMSymbolInstance libraryItemName="front-symbol"><matrix a="1" d="1" tx="1" ty="0"/></DOMSymbolInstance>
     </elements></DOMFrame></frames></DOMLayer>
   </layers></DOMTimeline></timelines>
 </DOMDocument>`;
@@ -235,77 +236,33 @@ function buildAcceptanceFixture() {
 </DOMSymbolItem>`;
   assert.match(xflLibraryXml, /<DOMSymbolItem\b[^>]*\bsymbolType="graphic"/u);
   const sourceLayerOrder = sourceLayerNamesFromXfl(xflDocumentXml);
-  assert.deepEqual(sourceLayerOrder, ['Layer 1', 'Layer 2']);
-  const frameLayerByName = new Map([
-    ['Layer 1', {
-      name: 'Layer 1',
-      visible: true,
-      elements: [
-        { kind: 'bitmap', libraryItemName: 'LIBRARY/background.png' },
-        {
-          kind: 'shape',
-          shapeId: 'fixture-green-shape',
-          localTransform: { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, ty: 3 },
-        },
-      ],
-    }],
-    ['Layer 2', {
-      name: 'Layer 2',
-      visible: true,
-      elements: [{
-        kind: 'symbol',
-        libraryItemName: 'front-symbol',
-        symbolType: 'graphic',
-        localTransform: { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, tx: 1 },
-      }],
-    }],
-  ]);
-  const frameLayers = sourceLayerOrder.map((name) => {
-    const layer = frameLayerByName.get(name);
-    assert.ok(layer, `generated display-list adapter must understand ${name}`);
-    return layer;
-  });
+  assert.deepEqual(sourceLayerOrder, ['Layer 2', 'Layer 1']);
+  const adapted = adaptFlaXflDisplaySource(xflDocumentXml, [{
+    name: 'LIBRARY/front-symbol.xml',
+    xml: xflLibraryXml,
+  }]);
+  assert.equal(adapted.ok, true, `production display-list adapter failed: ${adapted.message ?? ''}`);
+  if (!adapted.ok) throw new Error(`Production display-list adapter failed: ${adapted.message}`);
+  const frameContext = adapted.source.sceneTimelines[0]?.frameContext;
+  assert.ok(frameContext, 'production adapter returned no selected Scene frame');
+  assert.deepEqual(frameContext.layers.map((layer) => layer.name), ['Layer 1', 'Layer 2']);
   const resolved = resolveFlaDisplayList({
     root: {
       kind: 'scene',
       name: 'C02 generated overlap fixture',
-      frameContext: {
-        frameIndex: 0,
-        layers: frameLayers,
-      },
+      frameContext,
     },
-    symbols: new Map([[
-      'front-symbol',
-      {
-        kind: 'graphic',
-        libraryItemName: 'front-symbol',
-        frameContext: {
-          frameIndex: 0,
-          layers: [{
-            name: 'front-symbol-layer',
-            visible: true,
-            elements: [{
-              kind: 'group',
-              groupId: 'translated-child-group',
-              localTransform: { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, tx: 1, ty: 1 },
-              elements: [{ kind: 'bitmap', libraryItemName: 'overlay.png' }],
-            }],
-          }],
-        },
-      },
-    ]]),
+    symbols: adapted.source.symbols,
   });
   if (!resolved.ok) throw new Error(`Generated C02 resolver fixture failed: ${resolved.code}`);
+  assert.deepEqual(resolved.displayList.layers.map((layer) => layer.name), ['Layer 1', 'Layer 2']);
 
-  const shapeBlocks = new Map([[
-    'fixture-green-shape',
-    `<DOMShape><fills><FillStyle index="1"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills><edges><Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/></edges></DOMShape>`,
-  ]]);
   const composed = buildSvgForResolvedDisplayList({
     displayList: resolved.displayList,
+    renderTargetId: 'c02-generated-overlap-fixture',
     stageWidth: 4,
     stageHeight: 4,
-    shapeBlocks,
+    shapeBlocks: adapted.source.shapeBlocks,
     resolveBitmapMedia: createFlaStaticSnapshotBitmapMediaLookup(mediaItems),
   });
   if (!composed.ok) throw new Error(`Generated C02 SVG composition failed: ${composed.message}`);

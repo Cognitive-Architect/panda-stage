@@ -142,7 +142,7 @@ describe('P0-C01 FLA display-list resolver', () => {
     });
   });
 
-  it('recursively resolves Graphic symbols, preserves source order, omits hidden entries, and accumulates parent × local transforms', () => {
+  it('recursively resolves Graphic symbols, preserves caller order, omits hidden entries, and accumulates parent × local transforms', () => {
     const result = resolveFlaDisplayList(buildP0C01Fixture());
 
     expect(result.ok).toBe(true);
