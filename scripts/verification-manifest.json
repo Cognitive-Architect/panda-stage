@@ -119,10 +119,7 @@
           "tests/unit/standalone-audio.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts"
         ],
-        "verifierPatterns": [
-          "scripts/verify-issue257-slice3*",
-          "scripts/verify-issue657-audio-foundation.cjs"
-        ],
+        "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
@@ -171,9 +168,7 @@
           "scripts/verify-issue102-task1*",
           "scripts/verify-issue102-task3*"
         ],
-        "suites": [
-          "project"
-        ],
+        "suites": ["project"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "project",
@@ -181,24 +176,10 @@
       },
       {
         "id": "assets",
-        "sourcePatterns": [
-          "src/renderer/features/assets/**"
-        ],
-        "testPatterns": [
-          "tests/unit/asset-*.test.ts",
-          "tests/integration/asset-*.test.ts",
-          "tests/unit/product-copy.test.ts",
-          "tests/unit/apply-asset-import-response.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-day16*",
-          "scripts/verify-day17*",
-          "scripts/verify-day18*"
-        ],
-        "suites": [
-          "assets",
-          "character"
-        ],
+        "sourcePatterns": ["src/renderer/features/assets/**"],
+        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts"],
+        "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
+        "suites": ["assets", "character"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "assets",
@@ -206,66 +187,10 @@
       },
       {
         "id": "fla-import",
-        "sourcePatterns": [
-          "src/renderer/fla-import/**",
-          "fla-parser.html",
-          "fla-static-snapshot.html",
-          "src/renderer/fla-static-snapshot-renderer.ts",
-          "docs/research/fla-corpus-manifest.json",
-          "docs/research/fla-v1.5-c1-recovery-evidence.json",
-          "docs/research/fla-v1.5-c2-safe-recovery-envelope.json",
-          "docs/research/fla-v1.5-c3-compatibility-recovery.json",
-          "docs/research/fla-v1.5-c4-recovered-content-routing.json",
-          "docs/evidence/issue-284-r0/.gitignore",
-          "docs/evidence/issue-284-r0/r0-budget.json",
-          "docs/evidence/issue-284-r0/r0-determinism.json",
-          "docs/evidence/issue-284-r0/r0-extract.json",
-          "docs/evidence/issue-284-r0/r0-render-sword.png",
-          "docs/evidence/issue-284-r0/r0-render-sword.svg",
-          "docs/evidence/issue-294-r2/r2-summary.json",
-          "docs/research/issue-704-black-candidate-discovery.json",
-          "docs/research/issue-704-black-candidate-manifest.json"
-        ],
-        "testPatterns": [
-          "tests/unit/fla-*.test.ts",
-          "tests/unit/fla-static-snapshot-render-session.test.ts",
-          "tests/unit/fla-static-snapshot-commit.test.ts",
-          "tests/unit/fla-static-snapshot-api.test.ts",
-          "tests/contract/issue260-slice4.test.ts",
-          "tests/unit/apply-fla-asset-commit-response.test.ts",
-          "tests/unit/apply-fla-frame-sequence-commit-response.test.ts",
-          "tests/helpers/fla-structural-probe.ts",
-          "tests/helpers/fla-render-fixture.ts",
-          "tests/integration/fla-b0-structural-probe.test.ts",
-          "tests/unit/fla-derive-structure-summary.test.ts",
-          "tests/integration/fla-b1-structural-fields.test.ts",
-          "tests/unit/fla-corpus-probe.test.ts",
-          "tests/integration/fla-corpus-collector.test.ts",
-          "tests/helpers/fla-corpus-probe.cjs",
-          "tests/helpers/fla-corpus-probe.d.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-issue251-slice1*",
-          "scripts/verify-issue253-slice2*",
-          "scripts/verify-issue257-slice3*",
-          "scripts/verify-issue260-slice4*",
-          "scripts/verify-issue396-stage-d*",
-          "scripts/verify-issue399-stage-e*",
-          "scripts/verify-issue402-stage-f*",
-          "scripts/verify-issue403-raster-containment*",
-          "scripts/verify-issue405-stage-g*",
-          "scripts/verify-issue407-stage-a*",
-          "scripts/verify-issue676-p0-c02*",
-          "scripts/verify-issue676-p0-c03*",
-          "scripts/verify-issue680-p1-c03*",
-          "scripts/verify-issue686-p2-c02.cjs",
-          "scripts/verify-issue686-p2-c03.cjs",
-          "scripts/verify-issue686-p2-c04.cjs",
-          "scripts/verify-issue686-p2-c05.cjs"
-        ],
-        "suites": [
-          "assets"
-        ],
+        "sourcePatterns": ["src/renderer/fla-import/**", "fla-parser.html", "fla-static-snapshot.html", "src/renderer/fla-static-snapshot-renderer.ts", "docs/research/fla-corpus-manifest.json", "docs/research/fla-v1.5-c1-recovery-evidence.json", "docs/research/fla-v1.5-c2-safe-recovery-envelope.json", "docs/research/fla-v1.5-c3-compatibility-recovery.json", "docs/research/fla-v1.5-c4-recovered-content-routing.json", "docs/research/issue-704-black-candidate-discovery.json", "docs/research/issue-704-black-candidate-manifest.json", "docs/evidence/issue-284-r0/.gitignore", "docs/evidence/issue-284-r0/r0-budget.json", "docs/evidence/issue-284-r0/r0-determinism.json", "docs/evidence/issue-284-r0/r0-extract.json", "docs/evidence/issue-284-r0/r0-render-sword.png", "docs/evidence/issue-284-r0/r0-render-sword.svg", "docs/evidence/issue-294-r2/r2-summary.json"],
+        "testPatterns": ["tests/unit/fla-*.test.ts", "tests/unit/fla-static-snapshot-render-session.test.ts", "tests/unit/fla-static-snapshot-commit.test.ts", "tests/unit/fla-static-snapshot-api.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts", "tests/unit/apply-fla-frame-sequence-commit-response.test.ts", "tests/helpers/fla-structural-probe.ts", "tests/helpers/fla-render-fixture.ts", "tests/integration/fla-b0-structural-probe.test.ts", "tests/unit/fla-derive-structure-summary.test.ts", "tests/integration/fla-b1-structural-fields.test.ts", "tests/unit/fla-corpus-probe.test.ts", "tests/integration/fla-corpus-collector.test.ts", "tests/helpers/fla-corpus-probe.cjs", "tests/helpers/fla-corpus-probe.d.ts"],
+        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*", "scripts/verify-issue396-stage-d*", "scripts/verify-issue399-stage-e*", "scripts/verify-issue402-stage-f*", "scripts/verify-issue403-raster-containment*", "scripts/verify-issue405-stage-g*", "scripts/verify-issue407-stage-a*", "scripts/verify-issue676-p0-c02*", "scripts/verify-issue676-p0-c03*", "scripts/verify-issue680-p1-c03*", "scripts/verify-issue686-p2-c02.cjs", "scripts/verify-issue686-p2-c03.cjs", "scripts/verify-issue686-p2-c04.cjs", "scripts/verify-issue686-p2-c05.cjs"],
+        "suites": ["assets"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "fla-import",
@@ -278,18 +203,12 @@
           "public/character-empty-normal.png",
           "public/character-empty-angry.png"
         ],
-        "testPatterns": [
-          "tests/unit/character-*.test.ts",
-          "tests/unit/legacy-character-layer-reminder.test.ts",
-          "tests/integration/character-*.test.ts"
-        ],
+        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day19*",
           "scripts/verify-issue609-character-assembly.cjs"
         ],
-        "suites": [
-          "character"
-        ],
+        "suites": ["character"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "character",
@@ -297,20 +216,13 @@
       },
       {
         "id": "shots",
-        "sourcePatterns": [
-          "src/renderer/features/shots/**"
-        ],
-        "testPatterns": [
-          "tests/unit/shot-*.test.ts",
-          "tests/integration/shot-*.test.ts"
-        ],
+        "sourcePatterns": ["src/renderer/features/shots/**"],
+        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/integration/shot-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day20*",
           "scripts/verify-issue608-shot-thumbnail.cjs"
         ],
-        "suites": [
-          "shot"
-        ],
+        "suites": ["shot"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "shot",
@@ -347,10 +259,7 @@
           "scripts/verify-issue602*",
           "scripts/verify-issue606*"
         ],
-        "suites": [
-          "canvas",
-          "history"
-        ],
+        "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "canvas",
@@ -362,17 +271,9 @@
           "src/renderer/features/editor/HistoryControls*",
           "src/renderer/features/editor/useHistoryShortcuts*"
         ],
-        "testPatterns": [
-          "tests/unit/history-*.test.ts",
-          "tests/unit/editor-history.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-day24*"
-        ],
-        "suites": [
-          "history",
-          "canvas"
-        ],
+        "testPatterns": ["tests/unit/history-*.test.ts", "tests/unit/editor-history.test.ts"],
+        "verifierPatterns": ["scripts/verify-day24*"],
+        "suites": ["history", "canvas"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "history",
@@ -380,25 +281,15 @@
       },
       {
         "id": "timeline",
-        "sourcePatterns": [
-          "src/renderer/features/timeline/**"
-        ],
+        "sourcePatterns": ["src/renderer/features/timeline/**"],
         "testPatterns": [
           "tests/unit/features/timeline/**",
           "tests/integration/timeline-selection.test.ts",
           "tests/contract/*timeline*.test.ts",
           "tests/contract/day26-*.test.ts"
         ],
-        "verifierPatterns": [
-          "scripts/verify-issue197*",
-          "scripts/verify-issue199*",
-          "scripts/verify-issue207*",
-          "scripts/verify-issue655-preview-isolation.cjs",
-          "scripts/verify-issue658-audio-timeline.cjs"
-        ],
-        "suites": [
-          "timeline"
-        ],
+        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*", "scripts/verify-issue655-preview-isolation.cjs", "scripts/verify-issue658-audio-timeline.cjs"],
+        "suites": ["timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "timeline",
@@ -406,21 +297,10 @@
       },
       {
         "id": "dialogue",
-        "sourcePatterns": [
-          "src/renderer/features/dialogue/**"
-        ],
-        "testPatterns": [
-          "tests/unit/dialogue-*.test.ts",
-          "tests/contract/issue220-*.test.ts",
-          "tests/contract/issue221-*.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-issue663-dialogue-voice.cjs"
-        ],
-        "suites": [
-          "editor",
-          "timeline"
-        ],
+        "sourcePatterns": ["src/renderer/features/dialogue/**"],
+        "testPatterns": ["tests/unit/dialogue-*.test.ts", "tests/contract/issue220-*.test.ts", "tests/contract/issue221-*.test.ts"],
+        "verifierPatterns": ["scripts/verify-issue663-dialogue-voice.cjs"],
+        "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "dialogue",
@@ -428,17 +308,10 @@
       },
       {
         "id": "subtitles",
-        "sourcePatterns": [
-          "src/renderer/features/subtitles/**"
-        ],
-        "testPatterns": [
-          "tests/unit/subtitle-*.test.ts"
-        ],
+        "sourcePatterns": ["src/renderer/features/subtitles/**"],
+        "testPatterns": ["tests/unit/subtitle-*.test.ts"],
         "verifierPatterns": [],
-        "suites": [
-          "canvas",
-          "timeline"
-        ],
+        "suites": ["canvas", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "subtitles",
@@ -536,10 +409,7 @@
           "scripts/verify-css-split.cjs",
           "scripts/verify-issue659-preview-mixer.cjs"
         ],
-        "suites": [
-          "editor",
-          "timeline"
-        ],
+        "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
