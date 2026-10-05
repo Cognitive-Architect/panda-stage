@@ -230,7 +230,27 @@ function compareCandidateIds(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function finalizeBatchResults(inputRows) {
+const DEFAULT_SECTION_DEFINITIONS = [
+  { id: 'FULL_CHARACTER_ASSETS', title: 'FULL CHARACTER ASSETS' },
+  { id: 'COMPONENT_ASSETS', title: 'COMPONENT ASSETS' },
+];
+
+function normalizeSectionDefinitions(input) {
+  const sections = input ?? DEFAULT_SECTION_DEFINITIONS;
+  invariant(Array.isArray(sections) && sections.length > 0, 'contact-sheet section definitions must be a non-empty array');
+  const ids = new Set();
+  for (const section of sections) {
+    invariant(section && typeof section.id === 'string' && /^[A-Z0-9_]{1,80}$/u.test(section.id), 'contact-sheet section id is invalid');
+    invariant(typeof section.title === 'string' && section.title.trim().length > 0 && section.title.length <= 120, `contact-sheet section title is invalid: ${section.id}`);
+    invariant(!ids.has(section.id), `duplicate contact-sheet section: ${section.id}`);
+    ids.add(section.id);
+  }
+  return sections;
+}
+
+function finalizeBatchResults(inputRows, options = {}) {
+  const sectionDefinitions = normalizeSectionDefinitions(options.sectionDefinitions);
+  const sectionIds = new Set(sectionDefinitions.map((section) => section.id));
   const rows = inputRows.map((row) => ({ ...row }));
   const ids = new Set();
   for (const row of rows) {
@@ -296,10 +316,7 @@ function finalizeBatchResults(inputRows) {
     }
   }
 
-  const sectionOrder = new Map([
-    ['FULL_CHARACTER_ASSETS', 0],
-    ['COMPONENT_ASSETS', 1],
-  ]);
+  const sectionOrder = new Map(sectionDefinitions.map((section, index) => [section.id, index]));
   const previewTiles = rows.filter((row) => row.previewIncluded).map((row) => ({
     candidateId: row.candidateId,
     duplicateGroupId: row.duplicateGroupId,
@@ -310,8 +327,12 @@ function finalizeBatchResults(inputRows) {
     displayLabel: row.displayLabel,
     pngBytes: row.pngBytes,
     pngInfo: row.pngInfo,
-    section: row.renderAddressClass === 'DIRECT_COMPONENT_STATE' ? 'COMPONENT_ASSETS' : 'FULL_CHARACTER_ASSETS',
-  })).sort((left, right) =>
+    section: row.artifactSection ?? (row.renderAddressClass === 'DIRECT_COMPONENT_STATE' ? 'COMPONENT_ASSETS' : 'FULL_CHARACTER_ASSETS'),
+  }));
+  for (const tile of previewTiles) {
+    invariant(sectionIds.has(tile.section), `unknown contact-sheet section for ${tile.candidateId}: ${tile.section}`);
+  }
+  previewTiles.sort((left, right) =>
     (sectionOrder.get(left.section) - sectionOrder.get(right.section)) || compareCandidateIds(left.candidateId, right.candidateId),
   );
 
@@ -342,10 +363,12 @@ function buildContactSheetLayout(tiles, options = {}) {
   const sectionGap = options.sectionGap ?? 24;
   invariant(Number.isInteger(sheetWidth) && sheetWidth > 0 && Number.isInteger(columns) && columns > 0, 'invalid contact-sheet dimensions');
 
-  const sections = [
-    { id: 'FULL_CHARACTER_ASSETS', title: 'FULL CHARACTER ASSETS', items: tiles.filter((tile) => tile.section === 'FULL_CHARACTER_ASSETS') },
-    { id: 'COMPONENT_ASSETS', title: 'COMPONENT ASSETS', items: tiles.filter((tile) => tile.section === 'COMPONENT_ASSETS') },
-  ].filter((section) => section.items.length > 0);
+  const sectionDefinitions = normalizeSectionDefinitions(options.sectionDefinitions);
+  const sectionIds = new Set(sectionDefinitions.map((section) => section.id));
+  for (const tile of tiles) invariant(sectionIds.has(tile.section), `unknown contact-sheet section for ${tile.candidateId}: ${tile.section}`);
+  const sections = sectionDefinitions
+    .map((section) => ({ ...section, items: tiles.filter((tile) => tile.section === section.id) }))
+    .filter((section) => section.items.length > 0);
   let y = margin;
   let tileIndex = 0;
   const sectionLayouts = [];
@@ -475,6 +498,7 @@ async function isolateCandidateFailures(candidates, renderOne) {
 module.exports = {
   ACCEPTED_B2_MANIFEST_SHA256,
   ADDRESS_CLASSES,
+  DEFAULT_SECTION_DEFINITIONS,
   analyzePng,
   buildContactSheetLayout,
   buildContactSheetSvg,

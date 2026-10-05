@@ -29,6 +29,7 @@ interface BatchRow {
   duplicateGroupId?: string | null;
   representativeCandidateId?: string | null;
   previewIncluded?: boolean;
+  artifactSection?: string;
   [key: string]: unknown;
 }
 
@@ -73,9 +74,9 @@ interface IsolatedResult {
 const core = require('../../scripts/research/issue705-black-asset-batch-core.cjs') as {
   ACCEPTED_B2_MANIFEST_SHA256: string;
   analyzePng: (bytes: Uint8Array) => PngInfo;
-  buildContactSheetLayout: (tiles: PreviewTile[], options?: Partial<{ sheetWidth: number; columns: number; margin: number; gap: number }>) => ContactSheetLayout;
+  buildContactSheetLayout: (tiles: PreviewTile[], options?: Partial<{ sheetWidth: number; columns: number; margin: number; gap: number; sectionDefinitions: Array<{ id: string; title: string }> }>) => ContactSheetLayout;
   buildContactSheetSvg: (layout: ContactSheetLayout, tiles: PreviewTile[]) => string;
-  finalizeBatchResults: (rows: BatchRow[]) => {
+  finalizeBatchResults: (rows: BatchRow[], options?: { sectionDefinitions?: Array<{ id: string; title: string }> }) => {
     results: BatchRow[];
     duplicateGroups: DuplicateGroup[];
     previewTiles: PreviewTile[];
@@ -245,6 +246,35 @@ describe('Issue #705 Black asset batch core', () => {
     expect(svg.indexOf('B3-B')).toBeLessThan(svg.indexOf('B3-A'));
     expect(svg).toContain('data:image/png;base64,');
     expect(unique.results).toHaveLength(3);
+  });
+
+  it('supports corpus-specific sections without assigning character semantics', () => {
+    const sectionDefinitions = [
+      { id: 'STATIC_ASSETS', title: 'STATIC ASSETS' },
+      { id: 'PROP_ASSETS', title: 'PROP ASSETS' },
+    ];
+    const firstPixels = new Uint8Array(4 * 4 * 4);
+    firstPixels.set([20, 40, 60, 255], (1 * 4 + 1) * 4);
+    const secondPixels = new Uint8Array(4 * 4 * 4);
+    secondPixels.set([60, 40, 20, 255], (2 * 4 + 2) * 4);
+    const staticRow = renderedRow('B4-STATIC', rgbaPng(4, 4, firstPixels), 'timeline-0@0');
+    const propRow = renderedRow('B4-PROP', rgbaPng(4, 4, secondPixels), 'timeline-0@2');
+    staticRow.artifactSection = 'STATIC_ASSETS';
+    propRow.artifactSection = 'PROP_ASSETS';
+
+    const finalized = core.finalizeBatchResults([propRow, staticRow], { sectionDefinitions });
+    const layout = core.buildContactSheetLayout(finalized.previewTiles, {
+      sheetWidth: 420,
+      columns: 2,
+      margin: 20,
+      gap: 10,
+      sectionDefinitions,
+    });
+
+    expect(finalized.previewTiles.map((tile) => tile.section)).toEqual(['STATIC_ASSETS', 'PROP_ASSETS']);
+    expect(layout.sections.map((section) => section.id)).toEqual(['STATIC_ASSETS', 'PROP_ASSETS']);
+    expect(layout.order).toEqual(['B4-STATIC', 'B4-PROP']);
+    expect(core.buildContactSheetSvg(layout, finalized.previewTiles)).toContain('PROP ASSETS');
   });
 
   it('records an individual render failure and continues with later candidates', async () => {
