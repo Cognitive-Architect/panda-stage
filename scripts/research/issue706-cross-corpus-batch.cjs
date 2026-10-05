@@ -190,6 +190,7 @@ function fixtureBlocked(fixture, sourcePath, reason, sourceSha256 = null) {
     determinism: { discovery: 'NOT_RUN', artifacts: 'NOT_RUN' },
     blockerFamilies: ['UNKNOWN_SEMANTIC'],
     sourceCompatibilityBlockerFamilies: [],
+    recommendedFollowUp: 'Resolve source availability/hash mismatch before interpreting this fixture; no capability conclusion is claimed.',
     humanVisualReview: { agentStatus: 'NOT_RUN', maintainerStatus: 'PENDING', note: 'Source was unavailable or did not match the approved hash.' },
   };
 }
@@ -256,6 +257,7 @@ function publicFixtureRecord(fixture, first, second, determinism, classification
     determinism,
     blockerFamilies: classification.evidence.candidateBlockerFamilies,
     sourceCompatibilityBlockerFamilies: classification.evidence.sourceCompatibilityBlockerFamilies,
+    recommendedFollowUp: recommendedFollowUp(fixture.id, fixture.wave),
     humanVisualReview: {
       agentStatus: first.artifactBatch.contactSheet.status === 'PRODUCED' ? 'AGENT_INSPECTED_NO_GROSS_CLIPPING' : 'NO_SUCCESSFUL_SHEET',
       maintainerStatus: 'PENDING',
@@ -281,6 +283,139 @@ function visualReviewNote(fixtureId) {
     return `${general} Two Prop previews are visible; their PNG hashes differ, so no exact-duplicate group was formed.`;
   }
   return general;
+}
+
+function recommendedFollowUp(fixtureId, wave) {
+  if (wave === 4) {
+    return 'No capability follow-up indicated: the direct Graphic and Scene-initial Prop previews rendered with no unsupported candidates. Keep this as a generic Prop control.';
+  }
+  if (wave === 2 || wave === 3) {
+    return 'Relate temporal-anchor and authored-timeline findings to existing open Issue #694. Keep direct Graphic snapshots as anchors; do not flatten them into action clips. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes.';
+  }
+  return 'Direct Graphic previews support a bounded static subset but do not prove full-character or parent-composite semantics. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes; keep TRANSFORM/UNKNOWN_SEMANTIC fail-closed until a reusable cause is established.';
+}
+
+function buildCompletionReceipt(fixtures) {
+  const sum = (rows, select) => rows.reduce((total, row) => total + (select(row) ?? 0), 0);
+  const waveSummary = [1, 2, 3, 4].map((wave) => {
+    const rows = fixtures.filter((fixture) => fixture.wave === wave);
+    return {
+      wave,
+      fixtureIds: rows.map((fixture) => fixture.fixtureId),
+      primaryClasses: [...new Set(rows.map((fixture) => fixture.primaryClass))].sort(),
+      candidateCount: sum(rows, (fixture) => fixture.candidateDiscovery?.candidateCount),
+      discoveredCount: sum(rows, (fixture) => fixture.candidateDiscovery?.discoveredCount),
+      renderedCandidateCount: sum(rows, (fixture) => fixture.artifactBatch?.renderedCandidateCount),
+      blankCount: sum(rows, (fixture) => fixture.artifactBatch?.blankCount),
+      exactDuplicateGroupCount: sum(rows, (fixture) => fixture.artifactBatch?.exactDuplicateGroupCount),
+      renderFailureCount: sum(rows, (fixture) => fixture.artifactBatch?.renderFailureCount),
+      unsupportedCount: sum(rows, (fixture) => fixture.artifactBatch?.unsupportedCount),
+    };
+  });
+  const familyStats = new Map();
+  const addressClassCounts = new Map();
+  for (const fixture of fixtures) {
+    for (const candidate of fixture.candidateDiscovery?.candidates ?? []) {
+      for (const family of new Set([...(candidate.blockerFamilies ?? []), ...(candidate.discoveryBlockerFamilies ?? [])])) {
+        const entry = familyStats.get(family) ?? { candidateIds: new Set(), fixtureIds: new Set() };
+        entry.candidateIds.add(candidate.candidateId);
+        entry.fixtureIds.add(fixture.fixtureId);
+        familyStats.set(family, entry);
+      }
+      const addressClass = candidate.renderAddressClass ?? 'UNKNOWN';
+      addressClassCounts.set(addressClass, (addressClassCounts.get(addressClass) ?? 0) + 1);
+    }
+  }
+  const familySummary = (family) => {
+    const entry = familyStats.get(family) ?? { candidateIds: new Set(), fixtureIds: new Set() };
+    return { family, candidateCount: entry.candidateIds.size, fixtureCount: entry.fixtureIds.size };
+  };
+  const blockedCandidateIds = new Set([...familyStats.values()].flatMap((entry) => [...entry.candidateIds]));
+  return {
+    corpusFixturesAttempted: fixtures.length,
+    corpusFixturesAvailable: fixtures.filter((fixture) => fixture.sourceAvailability === 'AVAILABLE').length,
+    corpusFixturesBlockedByAvailability: fixtures.filter((fixture) => fixture.sourceAvailability !== 'AVAILABLE').length,
+    waveSummary,
+    crossCorpusCandidateAssumptionsThatGeneralized: [
+      'Hash-derived candidate IDs and visible Graphic authored-span starts were repeatable without Black-specific source names or IDs.',
+      'Held frames stayed unexpanded; direct Graphic authored-frame snapshots were discoverable across character, pose/action, temporal, and Prop fixtures.',
+      'The #705 alpha blank analysis, exact PNG grouping, deterministic representative choice, source-address provenance, and sandbox contact-sheet path were reused.',
+      'Generic sections can present Scene states, Graphic assets, temporal anchors, and Props without assigning every section a character meaning.',
+    ],
+    blackSpecificAssumptionsThatDidNotGeneralize: [
+      'Black-specific symbol names and semantic labels were not used by B4 candidate logic and do not establish full-character versus component meaning in this corpus.',
+      'A direct Graphic snapshot does not prove a parent-composite or full-character pose without independent source/reference evidence.',
+      'The Wave 2/3 action files contain temporal evidence; static snapshots do not reconstruct their motion.',
+    ],
+    candidateAndRenderAddressClasses: {
+      observedRenderAddressClasses: [...addressClassCounts.keys()].sort(),
+      addressCounts: Object.fromEntries([...addressClassCounts.entries()].sort(([left], [right]) => left.localeCompare(right))),
+      newSemanticCandidateClassRequired: false,
+      sceneAddressNote: 'DIRECT_SCENE_FRAME is an evidence-only Scene initial catalog address because the current adapter exposes no Scene span index; it is not a persisted product class.',
+      sourceStateClasses: [...new Set(fixtures.flatMap((fixture) => (fixture.candidateDiscovery?.candidates ?? []).flatMap((candidate) => candidate.sourceStateClasses ?? [])))].sort(),
+    },
+    b3ProtocolReuse: {
+      reused: ['PNG alpha blank analysis', 'exact-byte PNG dedupe with every source address retained', 'deterministic representative selection', 'sandbox rasterization', 'contact-sheet layout and SVG/PNG artifact hashing'],
+      boundedChange: 'Added optional generic section definitions to the shared #705 core; default B3 character/component sections and exact-dedupe behavior remain unchanged.',
+    },
+    blockerImpactRanking: [
+      {
+        priority: 1,
+        family: 'NESTED_GRAPHIC_TIMING',
+        ...familySummary('NESTED_GRAPHIC_TIMING'),
+        productImpact: 'Largest specific candidate-route block across the corpus; these previews cannot be claimed as resolved states.',
+        followUp: 'Issue #703 is closed with a narrow synchronization result. If Stage C requires broader child-clock selection, open a separate bounded follow-up from these source addresses; do not infer broader support from #703.',
+      },
+      {
+        priority: 2,
+        family: 'TEMPORAL_ACTION_FIDELITY',
+        fixtureCount: fixtures.filter((fixture) => (fixture.classificationEvidence?.tweenSpanCount ?? 0) > 0).length,
+        actionWaveFixtureCount: fixtures.filter((fixture) => fixture.wave === 2 || fixture.wave === 3).length,
+        candidateCount: null,
+        productImpact: 'Eight sources have tween spans and all five Wave 2/3 action fixtures are temporal; static anchors do not represent reconstructed motion.',
+        followUp: 'Continue temporal-fidelity work in existing open Issue #694; keep authored snapshots distinct from action reconstruction.',
+      },
+      {
+        priority: 3,
+        family: 'UNKNOWN_SEMANTIC',
+        ...familySummary('UNKNOWN_SEMANTIC'),
+        productImpact: 'Many candidates fail closed, but the current evidence does not identify one reusable source feature to implement.',
+        followUp: 'Do not open a generic implementation issue yet; collect targeted source/address evidence first.',
+      },
+      {
+        priority: 4,
+        family: 'TRANSFORM',
+        ...familySummary('TRANSFORM'),
+        productImpact: 'Observed on one candidate in one fixture; this corpus does not establish a broad product limitation.',
+        followUp: 'Keep the affected candidate fail-closed and defer a capability issue until a second fixture or confirmed Stage C requirement supports it.',
+      },
+    ],
+    sourceCompatibilityObservations: {
+      families: [...new Set(fixtures.flatMap((fixture) => fixture.sourceCompatibilityBlockerFamilies ?? []))].sort(),
+      interpretation: 'These are production-inspector source-level observations. They are recorded separately and are not candidate-route failures unless the candidate itself carries that blocker.',
+    },
+    recommendedCapabilityFollowUpIssues: [
+      { issue: '#694', state: 'OPEN', recommendation: 'Use its temporal-fidelity work for Wave 2/3 timeline evidence and preserve static anchors.' },
+      { issue: '#703', state: 'CLOSED', recommendation: 'Treat its narrow accepted result as a boundary; open a new bounded issue only if broader nested Graphic timing is required for Stage C.' },
+    ],
+    sourceMutation: 'NO',
+    productUiAdded: 'NO',
+    persistedSchemaAdded: 'NO',
+    aiOrPerceptualClassifierAdded: 'NO',
+    candidateBlockerCount: blockedCandidateIds.size,
+    b4Conclusion: 'The discovery/artifact approach generalizes to a bounded direct-Graphic static subset and a Prop control, but does not establish character semantics or temporal playback compatibility.',
+    stageCMaySafelyAssume: [
+      'Direct Graphic authored-frame discovery and the reused artifact protocol can produce repeatable review artifacts with source provenance.',
+      'Props can be reviewed without character-specific labels.',
+      'Exact dedupe groups previews by bytes and preserves every source candidate/address.',
+    ],
+    stageCMustNotAssume: [
+      'Nested Graphic timing, tween interpolation, MovieClip/script runtime, full-character composites, or temporal action reconstruction are supported.',
+      'Agent self-inspection is maintainer acceptance or source-reference semantic validation.',
+      'Blank or duplicate rates generalize beyond this corpus.',
+    ],
+    nextSingleAction: 'Maintainer reviews the nine external contact sheets and representative PNGs, then decides whether the bounded Stage C subset is acceptable and whether a new nested-timing issue is warranted. Keep PR #677 Draft until that review.',
+  };
 }
 
 function loadC3Hashes() {
@@ -399,6 +534,7 @@ async function main() {
       PROP: 'The Wave 4 Sword fixture is classified PROP from its approved asset-family hint and repeatable direct Graphic previews.',
       blockerScope: 'blockerFamilies are candidate-route blockers. Source-level compatibility features are recorded separately and do not imply that every candidate preview was blocked.',
     },
+    completionReceipt: buildCompletionReceipt(fixtureRecords),
     compatibilityEnvelope: {
       safeForV1: [],
       safeWithLimitations: [],
@@ -461,7 +597,11 @@ async function main() {
   if (campaignFailures > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.stack || error.message}\n`);
-  process.exitCode = 1;
-});
+module.exports = { buildCompletionReceipt, recommendedFollowUp };
+
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error.stack || error.message}\n`);
+    process.exitCode = 1;
+  });
+}

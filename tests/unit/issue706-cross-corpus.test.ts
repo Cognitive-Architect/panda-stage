@@ -12,6 +12,10 @@ const core = require('../../scripts/research/issue706-cross-corpus-core.cjs') as
   classifyBlockerFamily: (featureOrReason: string) => string;
   classifyPrimaryCorpus: (evidence: Record<string, unknown>) => string;
 };
+const batch = require('../../scripts/research/issue706-cross-corpus-batch.cjs') as {
+  buildCompletionReceipt: (fixtures: Array<Record<string, unknown>>) => unknown;
+  recommendedFollowUp: (fixtureId: string, wave: number) => string;
+};
 
 const sourceSha256 = 'a'.repeat(64);
 
@@ -115,5 +119,66 @@ describe('Issue #706 cross-corpus discovery core', () => {
       unsupportedCandidateCount: 0,
       blockerFamilies: [],
     })).toBe('UNKNOWN');
+  });
+
+  it('builds a ranked completion receipt from per-fixture evidence and keeps source compatibility separate', () => {
+    const fixture = {
+      fixtureId: 'sample-wave1',
+      wave: 1,
+      primaryClass: 'MIXED',
+      sourceAvailability: 'AVAILABLE',
+      classificationEvidence: { tweenSpanCount: 1 },
+      candidateDiscovery: {
+        candidateCount: 2,
+        discoveredCount: 1,
+        candidates: [
+          {
+            candidateId: 'B4-A',
+            renderAddressClass: 'DIRECT_GRAPHIC_FRAME',
+            sourceStateClasses: ['DIRECT_GRAPHIC_ASSET'],
+            blockerFamilies: ['NESTED_GRAPHIC_TIMING'],
+            discoveryBlockerFamilies: ['NESTED_GRAPHIC_TIMING'],
+          },
+          {
+            candidateId: 'B4-B',
+            renderAddressClass: 'DIRECT_SCENE_FRAME',
+            sourceStateClasses: ['AUTHORED_SCENE_STATE'],
+            blockerFamilies: ['UNKNOWN_SEMANTIC'],
+            discoveryBlockerFamilies: ['UNKNOWN_SEMANTIC'],
+          },
+        ],
+      },
+      artifactBatch: {
+        renderedCandidateCount: 1,
+        blankCount: 0,
+        exactDuplicateGroupCount: 0,
+        renderFailureCount: 0,
+        unsupportedCount: 1,
+      },
+    } satisfies Record<string, unknown>;
+
+    const receipt = batch.buildCompletionReceipt([fixture]) as {
+      corpusFixturesAttempted: number;
+      candidateBlockerCount: number;
+      candidateAndRenderAddressClasses: {
+        newSemanticCandidateClassRequired: boolean;
+        addressCounts: Record<string, number>;
+      };
+      blockerImpactRanking: Array<{ family: string; candidateCount: number | null; fixtureCount: number; actionWaveFixtureCount?: number }>;
+      waveSummary: Array<{ wave: number; candidateCount: number; discoveredCount: number; renderedCandidateCount: number }>;
+    };
+
+    expect(receipt.corpusFixturesAttempted).toBe(1);
+    expect(receipt.candidateBlockerCount).toBe(2);
+    expect(receipt.candidateAndRenderAddressClasses.newSemanticCandidateClassRequired).toBe(false);
+    expect(receipt.candidateAndRenderAddressClasses.addressCounts).toEqual({ DIRECT_GRAPHIC_FRAME: 1, DIRECT_SCENE_FRAME: 1 });
+    expect(receipt.blockerImpactRanking.slice(0, 2).map((entry) => entry.family)).toEqual([
+      'NESTED_GRAPHIC_TIMING',
+      'TEMPORAL_ACTION_FIDELITY',
+    ]);
+    expect(receipt.blockerImpactRanking[0]).toMatchObject({ candidateCount: 1, fixtureCount: 1 });
+    expect(receipt.blockerImpactRanking[1]).toMatchObject({ candidateCount: null, fixtureCount: 1, actionWaveFixtureCount: 0 });
+    expect(receipt.waveSummary[0]).toMatchObject({ wave: 1, candidateCount: 2, discoveredCount: 1, renderedCandidateCount: 1 });
+    expect(batch.recommendedFollowUp('sample-wave2', 2)).toContain('#694');
   });
 });

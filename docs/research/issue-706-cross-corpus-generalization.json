@@ -6012,7 +6012,8 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "Direct Graphic previews support a bounded static subset but do not prove full-character or parent-composite semantics. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes; keep TRANSFORM/UNKNOWN_SEMANTIC fail-closed until a reusable cause is established."
     },
     {
       "fixtureId": "wave1-static-character-b",
@@ -9722,7 +9723,8 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "Direct Graphic previews support a bounded static subset but do not prove full-character or parent-composite semantics. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes; keep TRANSFORM/UNKNOWN_SEMANTIC fail-closed until a reusable cause is established."
     },
     {
       "fixtureId": "wave1-static-character-c",
@@ -14253,7 +14255,8 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "Direct Graphic previews support a bounded static subset but do not prove full-character or parent-composite semantics. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes; keep TRANSFORM/UNKNOWN_SEMANTIC fail-closed until a reusable cause is established."
     },
     {
       "fixtureId": "wave2-pose-action-a",
@@ -19375,7 +19378,8 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "Relate temporal-anchor and authored-timeline findings to existing open Issue #694. Keep direct Graphic snapshots as anchors; do not flatten them into action clips. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes."
     },
     {
       "fixtureId": "wave2-pose-action-b",
@@ -28083,7 +28087,8 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "Relate temporal-anchor and authored-timeline findings to existing open Issue #694. Keep direct Graphic snapshots as anchors; do not flatten them into action clips. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes."
     },
     {
       "fixtureId": "wave3-temporal-walk",
@@ -35825,7 +35830,8 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "Relate temporal-anchor and authored-timeline findings to existing open Issue #694. Keep direct Graphic snapshots as anchors; do not flatten them into action clips. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes."
     },
     {
       "fixtureId": "wave3-temporal-charge",
@@ -43656,7 +43662,8 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "Relate temporal-anchor and authored-timeline findings to existing open Issue #694. Keep direct Graphic snapshots as anchors; do not flatten them into action clips. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes."
     },
     {
       "fixtureId": "wave3-temporal-rotation",
@@ -45633,7 +45640,8 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "Relate temporal-anchor and authored-timeline findings to existing open Issue #694. Keep direct Graphic snapshots as anchors; do not flatten them into action clips. Consider separate nested-Graphic timing scope only if Stage C requires those blocked routes."
     },
     {
       "fixtureId": "wave4-prop-sword",
@@ -46138,12 +46146,198 @@
         "MOVIECLIP_RUNTIME",
         "SCRIPT_RUNTIME",
         "UNKNOWN_SEMANTIC"
-      ]
+      ],
+      "recommendedFollowUp": "No capability follow-up indicated: the direct Graphic and Scene-initial Prop previews rendered with no unsupported candidates. Keep this as a generic Prop control."
     }
   ],
   "classificationNotes": {
     "MIXED": "Eight fixtures are MIXED because directly renderable Graphic assets coexist with tweened or multi-span timeline content. Wave 2 and Wave 3 also carry the temporal-action evidence tag. Static snapshots remain authored-frame anchors; no timeline is flattened into an action clip.",
     "PROP": "The Wave 4 Sword fixture is classified PROP from its approved asset-family hint and repeatable direct Graphic previews.",
     "blockerScope": "blockerFamilies are candidate-route blockers. Source-level compatibility features are recorded separately and do not imply that every candidate preview was blocked."
+  },
+  "completionReceipt": {
+    "corpusFixturesAttempted": 9,
+    "corpusFixturesAvailable": 9,
+    "corpusFixturesBlockedByAvailability": 0,
+    "waveSummary": [
+      {
+        "wave": 1,
+        "fixtureIds": [
+          "wave1-static-character-a",
+          "wave1-static-character-b",
+          "wave1-static-character-c"
+        ],
+        "primaryClasses": [
+          "MIXED"
+        ],
+        "candidateCount": 121,
+        "discoveredCount": 88,
+        "renderedCandidateCount": 58,
+        "blankCount": 0,
+        "exactDuplicateGroupCount": 0,
+        "renderFailureCount": 0,
+        "unsupportedCount": 63
+      },
+      {
+        "wave": 2,
+        "fixtureIds": [
+          "wave2-pose-action-a",
+          "wave2-pose-action-b"
+        ],
+        "primaryClasses": [
+          "MIXED"
+        ],
+        "candidateCount": 101,
+        "discoveredCount": 76,
+        "renderedCandidateCount": 65,
+        "blankCount": 4,
+        "exactDuplicateGroupCount": 3,
+        "renderFailureCount": 0,
+        "unsupportedCount": 36
+      },
+      {
+        "wave": 3,
+        "fixtureIds": [
+          "wave3-temporal-walk",
+          "wave3-temporal-charge",
+          "wave3-temporal-rotation"
+        ],
+        "primaryClasses": [
+          "MIXED"
+        ],
+        "candidateCount": 140,
+        "discoveredCount": 103,
+        "renderedCandidateCount": 80,
+        "blankCount": 2,
+        "exactDuplicateGroupCount": 5,
+        "renderFailureCount": 0,
+        "unsupportedCount": 60
+      },
+      {
+        "wave": 4,
+        "fixtureIds": [
+          "wave4-prop-sword"
+        ],
+        "primaryClasses": [
+          "PROP"
+        ],
+        "candidateCount": 2,
+        "discoveredCount": 2,
+        "renderedCandidateCount": 2,
+        "blankCount": 0,
+        "exactDuplicateGroupCount": 0,
+        "renderFailureCount": 0,
+        "unsupportedCount": 0
+      }
+    ],
+    "crossCorpusCandidateAssumptionsThatGeneralized": [
+      "Hash-derived candidate IDs and visible Graphic authored-span starts were repeatable without Black-specific source names or IDs.",
+      "Held frames stayed unexpanded; direct Graphic authored-frame snapshots were discoverable across character, pose/action, temporal, and Prop fixtures.",
+      "The #705 alpha blank analysis, exact PNG grouping, deterministic representative choice, source-address provenance, and sandbox contact-sheet path were reused.",
+      "Generic sections can present Scene states, Graphic assets, temporal anchors, and Props without assigning every section a character meaning."
+    ],
+    "blackSpecificAssumptionsThatDidNotGeneralize": [
+      "Black-specific symbol names and semantic labels were not used by B4 candidate logic and do not establish full-character versus component meaning in this corpus.",
+      "A direct Graphic snapshot does not prove a parent-composite or full-character pose without independent source/reference evidence.",
+      "The Wave 2/3 action files contain temporal evidence; static snapshots do not reconstruct their motion."
+    ],
+    "candidateAndRenderAddressClasses": {
+      "observedRenderAddressClasses": [
+        "DIRECT_GRAPHIC_FRAME",
+        "DIRECT_SCENE_FRAME"
+      ],
+      "addressCounts": {
+        "DIRECT_GRAPHIC_FRAME": 355,
+        "DIRECT_SCENE_FRAME": 9
+      },
+      "newSemanticCandidateClassRequired": false,
+      "sceneAddressNote": "DIRECT_SCENE_FRAME is an evidence-only Scene initial catalog address because the current adapter exposes no Scene span index; it is not a persisted product class.",
+      "sourceStateClasses": [
+        "AUTHORED_SCENE_STATE",
+        "DIRECT_GRAPHIC_ASSET"
+      ]
+    },
+    "b3ProtocolReuse": {
+      "reused": [
+        "PNG alpha blank analysis",
+        "exact-byte PNG dedupe with every source address retained",
+        "deterministic representative selection",
+        "sandbox rasterization",
+        "contact-sheet layout and SVG/PNG artifact hashing"
+      ],
+      "boundedChange": "Added optional generic section definitions to the shared #705 core; default B3 character/component sections and exact-dedupe behavior remain unchanged."
+    },
+    "blockerImpactRanking": [
+      {
+        "priority": 1,
+        "family": "NESTED_GRAPHIC_TIMING",
+        "candidateCount": 92,
+        "fixtureCount": 8,
+        "productImpact": "Largest specific candidate-route block across the corpus; these previews cannot be claimed as resolved states.",
+        "followUp": "Issue #703 is closed with a narrow synchronization result. If Stage C requires broader child-clock selection, open a separate bounded follow-up from these source addresses; do not infer broader support from #703."
+      },
+      {
+        "priority": 2,
+        "family": "TEMPORAL_ACTION_FIDELITY",
+        "fixtureCount": 8,
+        "actionWaveFixtureCount": 5,
+        "candidateCount": null,
+        "productImpact": "Eight sources have tween spans and all five Wave 2/3 action fixtures are temporal; static anchors do not represent reconstructed motion.",
+        "followUp": "Continue temporal-fidelity work in existing open Issue #694; keep authored snapshots distinct from action reconstruction."
+      },
+      {
+        "priority": 3,
+        "family": "UNKNOWN_SEMANTIC",
+        "candidateCount": 66,
+        "fixtureCount": 5,
+        "productImpact": "Many candidates fail closed, but the current evidence does not identify one reusable source feature to implement.",
+        "followUp": "Do not open a generic implementation issue yet; collect targeted source/address evidence first."
+      },
+      {
+        "priority": 4,
+        "family": "TRANSFORM",
+        "candidateCount": 1,
+        "fixtureCount": 1,
+        "productImpact": "Observed on one candidate in one fixture; this corpus does not establish a broad product limitation.",
+        "followUp": "Keep the affected candidate fail-closed and defer a capability issue until a second fixture or confirmed Stage C requirement supports it."
+      }
+    ],
+    "sourceCompatibilityObservations": {
+      "families": [
+        "MOVIECLIP_RUNTIME",
+        "SCRIPT_RUNTIME",
+        "UNKNOWN_SEMANTIC"
+      ],
+      "interpretation": "These are production-inspector source-level observations. They are recorded separately and are not candidate-route failures unless the candidate itself carries that blocker."
+    },
+    "recommendedCapabilityFollowUpIssues": [
+      {
+        "issue": "#694",
+        "state": "OPEN",
+        "recommendation": "Use its temporal-fidelity work for Wave 2/3 timeline evidence and preserve static anchors."
+      },
+      {
+        "issue": "#703",
+        "state": "CLOSED",
+        "recommendation": "Treat its narrow accepted result as a boundary; open a new bounded issue only if broader nested Graphic timing is required for Stage C."
+      }
+    ],
+    "sourceMutation": "NO",
+    "productUiAdded": "NO",
+    "persistedSchemaAdded": "NO",
+    "aiOrPerceptualClassifierAdded": "NO",
+    "candidateBlockerCount": 159,
+    "b4Conclusion": "The discovery/artifact approach generalizes to a bounded direct-Graphic static subset and a Prop control, but does not establish character semantics or temporal playback compatibility.",
+    "stageCMaySafelyAssume": [
+      "Direct Graphic authored-frame discovery and the reused artifact protocol can produce repeatable review artifacts with source provenance.",
+      "Props can be reviewed without character-specific labels.",
+      "Exact dedupe groups previews by bytes and preserves every source candidate/address."
+    ],
+    "stageCMustNotAssume": [
+      "Nested Graphic timing, tween interpolation, MovieClip/script runtime, full-character composites, or temporal action reconstruction are supported.",
+      "Agent self-inspection is maintainer acceptance or source-reference semantic validation.",
+      "Blank or duplicate rates generalize beyond this corpus."
+    ],
+    "nextSingleAction": "Maintainer reviews the nine external contact sheets and representative PNGs, then decides whether the bounded Stage C subset is acceptable and whether a new nested-timing issue is warranted. Keep PR #677 Draft until that review."
   }
 }

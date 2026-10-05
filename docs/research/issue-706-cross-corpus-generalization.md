@@ -35,11 +35,41 @@ I inspected all nine final run-1 contact sheets, including representative raster
 
 No independent Animate/reference images were available. This inspection therefore does not establish semantic correspondence, full-character poses, or maintainer acceptance. Maintainer visual review remains **PENDING**. The binary contact sheets and candidate PNG/SVG files are outside the repository at `D:\PandaStage-Acceptance\issue706-cross-corpus-20261005\run-final`.
 
+## Completion receipt and capability priorities
+
+All **9/9** requested fixtures were available; none were blocked by source availability. Every source hash remained unchanged. Each fixture has one primary class, separate discovery and artifact outcomes, confidence, determinism, visual status, candidate-level blockers, and a fixture-specific follow-up recommendation in the [JSON receipt](issue-706-cross-corpus-generalization.json).
+
+| Wave | Primary classes | Candidates | Discovered | PNG outputs | Blank | Exact duplicate groups | Unsupported |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 — character/static | MIXED | 121 | 88 | 58 | 0 | 0 | 63 |
+| 2 — pose/action | MIXED | 101 | 76 | 65 | 4 | 3 | 36 |
+| 3 — temporal/action | MIXED | 140 | 103 | 80 | 2 | 5 | 60 |
+| 4 — Prop | PROP | 2 | 2 | 2 | 0 | 0 | 0 |
+
+Observed source-state classes are `DIRECT_GRAPHIC_ASSET` and `AUTHORED_SCENE_STATE`. Render-address classes are `DIRECT_GRAPHIC_FRAME` (355 addresses) and the separately labeled `DIRECT_SCENE_FRAME` (9 addresses). No new semantic candidate class is justified. The Scene address is evidence-only because the current production adapter does not expose a Scene span index. The shared #705 artifact core gained optional generic contact-sheet section definitions; default B3 sections and exact-dedupe behavior remain unchanged. No corpus-specific production rule or persisted class was added.
+
+Blockers are ranked by observed product impact. Counts below are unique candidate addresses; source-level compatibility observations are tracked separately.
+
+| Priority | Gap | Evidence | Recommended action |
+| ---: | --- | --- | --- |
+| 1 | `NESTED_GRAPHIC_TIMING` | 92 candidate addresses across 8 fixtures | #703 is closed with a narrow synchronization result. If Stage C requires broader child-clock selection, create a separate bounded follow-up from these addresses; do not infer broader support from #703. |
+| 2 | Temporal/tween fidelity | 8 sources contain tween spans; all 5 Wave 2/3 action fixtures are temporal | Continue under open [Issue #694](https://github.com/Cognitive-Architect/panda-stage/issues/694). Preserve static anchors without claiming action reconstruction. |
+| 3 | `UNKNOWN_SEMANTIC` | 66 candidate addresses across 5 fixtures | Keep fail-closed and gather source/address evidence before defining an implementation issue. |
+| 4 | `TRANSFORM` | 1 candidate address in 1 fixture | Defer a capability issue until another fixture or a confirmed Stage C requirement supports it. |
+
+ActionScript and MovieClip compatibility diagnostics appear as source-level observations. They are not counted as candidate-route failures unless attached to a candidate. No execution/runtime follow-up is recommended from these observations alone. The fixture-specific recommendations and source-level families are preserved in the JSON receipt.
+
+The approach generalized to repeatable, provenance-preserving direct Graphic snapshots and to a Prop control without character labels. It did not generalize Black-specific full-character/component semantics; those remain unknown without source/reference review. No follow-up Issue was opened as part of B4. [Issue #703](https://github.com/Cognitive-Architect/panda-stage/issues/703) was closed when checked for this report; its narrow result is a boundary, while [Issue #694](https://github.com/Cognitive-Architect/panda-stage/issues/694) was open and is the existing temporal-fidelity route.
+
+Source mutation: **NO**. Product UI: **NO**. Persisted schema: **NO**. AI/perceptual classifier: **NO**. Focused `pnpm exec vitest run tests/unit/issue705-black-asset-batch.test.ts tests/unit/issue706-cross-corpus.test.ts`: **PASS, 2 files / 11 tests**. Focused ESLint for the B4 batch script and unit file: **PASS**. Automatic Focused core quality CI run [#37254992349](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37254992349) passed on delivery commit `df29441`; the receipt update is covered by the automatic PR check for the new head.
+
 ## Stage C recommendation
 
 Proceed with a bounded static-asset subset: deterministic discovery and review of direct Graphic authored-frame snapshots, alpha blank detection, exact PNG dedupe, and preserved source provenance. Keep nested Graphic timing, tween interpolation, MovieClip/script runtime, temporal reconstruction, and unknown semantics outside that supported subset. Do not promote a snapshot to a named pose or full-character composite without reference review.
 
 This evidence updates mother PR #677 and does not mark it ready. No production editor behavior or project schema was changed.
+
+**Next single action:** maintainer reviews the nine external contact sheets and representative PNGs, then decides whether the bounded Stage C subset is acceptable and whether a separate nested-timing issue is warranted. Keep PR #677 Draft until that review.
 
 ## Reproduction
 
