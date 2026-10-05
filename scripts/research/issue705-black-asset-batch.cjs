@@ -451,7 +451,7 @@ async function main() {
     fs.promises.readFile(args.archive),
   ]);
   const manifest = JSON.parse(manifestBytes.toString('utf8'));
-  const manifestSha256 = HASH(manifestBytes);
+  const manifestSha256 = HASH(core.normalizeManifestLineEndings(manifestBytes));
   const { candidatesById } = core.validateB2Manifest(manifest, manifestSha256);
   const originalSourcePath = path.resolve(manifest.source.localPath);
   const sourceSha256Before = await sha256File(originalSourcePath);
@@ -545,6 +545,7 @@ async function main() {
         issue: 704,
         b2ManifestSchemaVersion: manifest.schemaVersion,
         b2ManifestSha256: manifestSha256,
+        b2ManifestHashNormalization: 'CRLF pairs are normalized to LF before hashing; all other input bytes remain significant.',
         sourceFileName: manifest.source.fileName,
         sourceSha256Before: sourceSha256Before,
         sourceSha256After,

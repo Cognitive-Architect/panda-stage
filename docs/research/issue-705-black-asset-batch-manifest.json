@@ -6,6 +6,7 @@
     "issue": 704,
     "b2ManifestSchemaVersion": "issue704-black-candidate-manifest/1",
     "b2ManifestSha256": "fd76203dcd24dfb145bc968e9faf6b679e3478bdcbdce3ff50dbf9222980895d",
+    "b2ManifestHashNormalization": "CRLF pairs are normalized to LF before hashing; all other input bytes remain significant.",
     "sourceFileName": "黑衣修仙男.fla",
     "sourceSha256Before": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
     "sourceSha256After": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",

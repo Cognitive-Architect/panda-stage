@@ -84,6 +84,7 @@ const core = require('../../scripts/research/issue705-black-asset-batch-core.cjs
     candidates: Array<{ candidateId: string }>,
     renderOne: (candidate: { candidateId: string }) => Promise<IsolatedResult>,
   ) => Promise<IsolatedResult[]>;
+  normalizeManifestLineEndings: (bytes: Uint8Array) => Uint8Array;
   validateB2Manifest: (manifest: Record<string, unknown>, hash: string) => unknown;
 };
 
@@ -155,14 +156,18 @@ function renderedRow(
 }
 
 describe('Issue #705 Black asset batch core', () => {
-  it('accepts the pinned B2 manifest and fails closed on any different manifest hash', () => {
+  it('pins B2 manifest content across CRLF checkout conversion and fails closed on other changes', () => {
     const bytes = readFileSync('docs/research/issue-704-black-candidate-manifest.json');
     const manifest = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>;
-    const manifestHash = hash(bytes);
+    const canonicalBytes = Buffer.from(core.normalizeManifestLineEndings(bytes));
+    const manifestHash = hash(canonicalBytes);
+    const windowsCheckoutBytes = Buffer.from(canonicalBytes.toString('utf8').replace(/\n/gu, '\r\n'));
+    const modifiedBytes = Buffer.concat([canonicalBytes, Buffer.from(' ', 'utf8')]);
 
     expect(manifestHash).toBe(core.ACCEPTED_B2_MANIFEST_SHA256);
+    expect(hash(core.normalizeManifestLineEndings(windowsCheckoutBytes))).toBe(core.ACCEPTED_B2_MANIFEST_SHA256);
     expect(() => core.validateB2Manifest(manifest, manifestHash)).not.toThrow();
-    expect(() => core.validateB2Manifest(manifest, '0'.repeat(64))).toThrow(/accepted Issue #704 manifest/u);
+    expect(() => core.validateB2Manifest(manifest, hash(core.normalizeManifestLineEndings(modifiedBytes)))).toThrow(/accepted Issue #704 manifest/u);
   });
 
   it('detects fully transparent PNGs and computes alpha-visible bounds without modifying the input', () => {

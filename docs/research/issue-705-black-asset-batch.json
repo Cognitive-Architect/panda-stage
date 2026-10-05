@@ -14,6 +14,7 @@
     "issue": 704,
     "candidateManifestPath": "docs/research/issue-704-black-candidate-manifest.json",
     "candidateManifestSha256": "fd76203dcd24dfb145bc968e9faf6b679e3478bdcbdce3ff50dbf9222980895d",
+    "candidateManifestHashNormalization": "CRLF pairs normalized to LF before SHA-256; all other input bytes remain significant.",
     "sourceFileName": "黑衣修仙男.fla",
     "sourceSha256BeforeAndAfter": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
     "normalizedArchivePath": "D:\\PandaStage-Acceptance\\issue702-black-census-20261004\\normalized-source.fla",
@@ -64,19 +65,19 @@
   },
   "independentRuns": [
     {
-      "name": "run-1-final",
-      "outputDirectory": "D:\\PandaStage-Acceptance\\issue705-black-asset-batch-20261005\\run-1-final",
-      "batchManifestSha256": "4381fac912f8e2d4ec0ca6463c3f183cf3711c3c93517fe44017190e7af3f608",
-      "receiptSha256": "eff92f1c923d236235c6a5fbf0b39d9622fafb4b2d7e03bff6f74ea830266bc6",
+      "name": "run-3-final",
+      "outputDirectory": "D:\\PandaStage-Acceptance\\issue705-black-asset-batch-20261005\\run-3-final",
+      "batchManifestSha256": "daf3fbb0c2e4a8e404a9c7517dcdd85f198e59bf1ca145edfa772ef71b2b66ff",
+      "receiptSha256": "9c5e81cf19c784bc7613e26068fc1515c9523e4bd36405e5c959fec7fcbafc9a",
       "contactSheetSvgSha256": "334f26185150d53e58d0deabfade1081898cb990fc39e599a90a7a4d21866b34",
       "contactSheetPngSha256": "442a6391c75d0470a190fff3824ff594c1dcebeac636c25cb7aa6a73695094fe",
       "individualRenderFileCount": 40
     },
     {
-      "name": "run-2-final",
-      "outputDirectory": "D:\\PandaStage-Acceptance\\issue705-black-asset-batch-20261005\\run-2-final",
-      "batchManifestSha256": "4381fac912f8e2d4ec0ca6463c3f183cf3711c3c93517fe44017190e7af3f608",
-      "receiptSha256": "eff92f1c923d236235c6a5fbf0b39d9622fafb4b2d7e03bff6f74ea830266bc6",
+      "name": "run-4-final",
+      "outputDirectory": "D:\\PandaStage-Acceptance\\issue705-black-asset-batch-20261005\\run-4-final",
+      "batchManifestSha256": "daf3fbb0c2e4a8e404a9c7517dcdd85f198e59bf1ca145edfa772ef71b2b66ff",
+      "receiptSha256": "9c5e81cf19c784bc7613e26068fc1515c9523e4bd36405e5c959fec7fcbafc9a",
       "contactSheetSvgSha256": "334f26185150d53e58d0deabfade1081898cb990fc39e599a90a7a4d21866b34",
       "contactSheetPngSha256": "442a6391c75d0470a190fff3824ff594c1dcebeac636c25cb7aa6a73695094fe",
       "individualRenderFileCount": 40
@@ -119,7 +120,7 @@
     "focusedTests": "tests/unit/issue705-black-asset-batch.test.ts",
     "candidateBatchManifest": {
       "path": "docs/research/issue-705-black-asset-batch-manifest.json",
-      "sha256": "4381fac912f8e2d4ec0ca6463c3f183cf3711c3c93517fe44017190e7af3f608"
+      "sha256": "daf3fbb0c2e4a8e404a9c7517dcdd85f198e59bf1ca145edfa772ef71b2b66ff"
     },
     "report": "docs/research/issue-705-black-asset-batch.md"
   },

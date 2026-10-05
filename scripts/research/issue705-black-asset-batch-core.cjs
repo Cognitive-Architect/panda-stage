@@ -21,6 +21,11 @@ function invariant(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function normalizeManifestLineEndings(bytes) {
+  const utf8 = Buffer.from(bytes).toString('utf8');
+  return Buffer.from(utf8.replace(/\r\n/gu, '\n'), 'utf8');
+}
+
 function validateB2Manifest(manifest, manifestSha256) {
   invariant(manifest && typeof manifest === 'object' && !Array.isArray(manifest), 'B2 manifest must be an object');
   invariant(manifestSha256 === ACCEPTED_B2_MANIFEST_SHA256, 'B2 manifest hash is not the accepted Issue #704 manifest');
@@ -475,5 +480,6 @@ module.exports = {
   buildContactSheetSvg,
   finalizeBatchResults,
   isolateCandidateFailures,
+  normalizeManifestLineEndings,
   validateB2Manifest,
 };
