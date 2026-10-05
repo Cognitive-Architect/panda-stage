@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "issue705-black-asset-batch-receipt/1",
+  "date": "2026-10-05",
+  "issue": 705,
+  "motherPullRequest": 677,
+  "status": {
+    "batchImplementation": "complete",
+    "machineValidation": "complete",
+    "humanVisualReview": "pending",
+    "issueClosed": false,
+    "pullRequestDraft": true
+  },
+  "input": {
+    "issue": 704,
+    "candidateManifestPath": "docs/research/issue-704-black-candidate-manifest.json",
+    "candidateManifestSha256": "fd76203dcd24dfb145bc968e9faf6b679e3478bdcbdce3ff50dbf9222980895d",
+    "sourceFileName": "黑衣修仙男.fla",
+    "sourceSha256BeforeAndAfter": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+    "normalizedArchivePath": "D:\\PandaStage-Acceptance\\issue702-black-census-20261004\\normalized-source.fla",
+    "normalizedArchiveSha256": "681237abb7b32e79ce89ff8e283b0573b4bf170c6b85830828c7a10911bc7a33"
+  },
+  "summary": {
+    "inputCandidateCount": 32,
+    "supportedStaticCandidates": 20,
+    "renderedSvgCount": 20,
+    "renderedPngCount": 20,
+    "renderFailureCount": 0,
+    "blankBlackCandidateCount": 0,
+    "exactPngDuplicateGroupCount": 0,
+    "temporalSkippedCount": 4,
+    "unsupportedCount": 8,
+    "previewTileCount": 20,
+    "fullCharacterPreviewCount": 7,
+    "componentPreviewCount": 13,
+    "renderAddressClassCounts": {
+      "PARENT_COMPOSITE": 4,
+      "DIRECT_FULL_CHARACTER_STATE": 3,
+      "DIRECT_COMPONENT_STATE": 13,
+      "TEMPORAL_ONLY": 4,
+      "UNSUPPORTED_OR_UNKNOWN": 8
+    }
+  },
+  "b2Comparison": {
+    "pngHashMatches": 20,
+    "pngHashComparisonCount": 20,
+    "svgHashMatches": 8,
+    "svgHashComparisonCount": 20,
+    "svgHashMismatchCount": 12,
+    "svgHashMismatchCandidateIds": [
+      "B2-131741E7A086D1EE3ED3C91B",
+      "B2-4C0EC7036437CD3045D1F3BA",
+      "B2-6B59262065D28C279718C576",
+      "B2-7511FB6C975B2A4CE13439E9",
+      "B2-88C67A49D286E728706AB9C0",
+      "B2-8A7035B80257FB67A05D218A",
+      "B2-B651BA3047C03B16971269D0",
+      "B2-B69A8D02EF0570958C68A6FA",
+      "B2-B72F73EAF7A346E6D9CE2B89",
+      "B2-C23E23F9335AFF7F2626F2AC",
+      "B2-C4146E01383AF6B709E38BDB",
+      "B2-CF4C869D9E2F745AC070137A"
+    ],
+    "pngMatchDoesNotAssertSvgByteEquivalence": true
+  },
+  "independentRuns": [
+    {
+      "name": "run-1-final",
+      "outputDirectory": "D:\\PandaStage-Acceptance\\issue705-black-asset-batch-20261005\\run-1-final",
+      "batchManifestSha256": "4381fac912f8e2d4ec0ca6463c3f183cf3711c3c93517fe44017190e7af3f608",
+      "receiptSha256": "eff92f1c923d236235c6a5fbf0b39d9622fafb4b2d7e03bff6f74ea830266bc6",
+      "contactSheetSvgSha256": "334f26185150d53e58d0deabfade1081898cb990fc39e599a90a7a4d21866b34",
+      "contactSheetPngSha256": "442a6391c75d0470a190fff3824ff594c1dcebeac636c25cb7aa6a73695094fe",
+      "individualRenderFileCount": 40
+    },
+    {
+      "name": "run-2-final",
+      "outputDirectory": "D:\\PandaStage-Acceptance\\issue705-black-asset-batch-20261005\\run-2-final",
+      "batchManifestSha256": "4381fac912f8e2d4ec0ca6463c3f183cf3711c3c93517fe44017190e7af3f608",
+      "receiptSha256": "eff92f1c923d236235c6a5fbf0b39d9622fafb4b2d7e03bff6f74ea830266bc6",
+      "contactSheetSvgSha256": "334f26185150d53e58d0deabfade1081898cb990fc39e599a90a7a4d21866b34",
+      "contactSheetPngSha256": "442a6391c75d0470a190fff3824ff594c1dcebeac636c25cb7aa6a73695094fe",
+      "individualRenderFileCount": 40
+    }
+  ],
+  "determinism": {
+    "batchManifestByteIdentical": true,
+    "receiptByteIdentical": true,
+    "individualRenderFilesByteIdentical": true,
+    "contactSheetSvgByteIdentical": true,
+    "contactSheetPngByteIdentical": true,
+    "electronUserDataCachesCompared": false
+  },
+  "testControls": {
+    "blankControl": "synthetic transparent PNG detected blank and excluded from preview",
+    "duplicateControl": "synthetic identical PNG grouped with both source addresses and deterministic representative retained",
+    "partialFailureControl": "synthetic one-candidate render failure isolated while surrounding candidates continued",
+    "blackCandidatesContaminatedByControls": false
+  },
+  "contactSheet": {
+    "dimensions": {
+      "width": 1740,
+      "height": 1980
+    },
+    "sections": [
+      {
+        "id": "FULL_CHARACTER_ASSETS",
+        "tileCount": 7
+      },
+      {
+        "id": "COMPONENT_ASSETS",
+        "tileCount": 13
+      }
+    ],
+    "canonicalPngsModifiedByPresentationCrop": false
+  },
+  "deliverables": {
+    "runner": "scripts/research/issue705-black-asset-batch.cjs",
+    "core": "scripts/research/issue705-black-asset-batch-core.cjs",
+    "focusedTests": "tests/unit/issue705-black-asset-batch.test.ts",
+    "candidateBatchManifest": {
+      "path": "docs/research/issue-705-black-asset-batch-manifest.json",
+      "sha256": "4381fac912f8e2d4ec0ca6463c3f183cf3711c3c93517fe44017190e7af3f608"
+    },
+    "report": "docs/research/issue-705-black-asset-batch.md"
+  },
+  "maintainerAcceptance": {
+    "visualReviewRequired": true,
+    "status": "PENDING",
+    "agentInspectionCountsAsAcceptance": false
+  }
+}
