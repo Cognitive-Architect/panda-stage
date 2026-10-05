@@ -22,6 +22,8 @@ The non-preferred parent routes at frames 8, 9, and 10 remain excluded. Parent t
 
 Blank detection uses decoded PNG alpha pixels and visible bounds, not candidate labels. None of the 20 Black renders was blank. The 20 Black PNG SHA-256 values were all unique, so the Black batch has no exact duplicate groups. Separate synthetic controls verified blank suppression, exact-PNG grouping with two distinct source addresses and retained provenance, and isolation of a single renderer failure; those controls are not Black candidates and are not contact-sheet tiles.
 
+**Representative-selection rule:** within each exact PNG SHA-256 group, choose the lexicographically smallest `candidateId`. The contact sheet uses one tile for that representative while the receipt retains every group member and its source provenance.
+
 The deterministic contact sheet contains 20 tiles: seven full-character candidates and 13 component candidates in separate sections. The sheet is 1740 × 1980 pixels. Bounds-based cropping and scaling are presentation metadata only; canonical per-candidate PNGs remain unchanged.
 
 - Contact-sheet PNG SHA-256: `442a6391c75d0470a190fff3824ff594c1dcebeac636c25cb7aa6a73695094fe`.

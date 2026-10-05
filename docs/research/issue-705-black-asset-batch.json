@@ -106,6 +106,12 @@
     ],
     "pngMatchDoesNotAssertSvgByteEquivalence": true
   },
+  "duplicatePolicy": {
+    "groupingEvidence": "Exact B3 PNG SHA-256",
+    "representativeSelectionRule": "Lexicographically smallest candidateId within each exact PNG SHA-256 group.",
+    "contactSheetUsesOneRepresentativePerGroup": true,
+    "allCandidateIdsAndSourceProvenanceRemainInReceipt": true
+  },
   "independentRuns": [
     {
       "name": "run-3-final",
@@ -145,6 +151,7 @@
       "deterministic artifact protocol",
       "candidate/source provenance fields",
       "PNG-evidence blank and exact-duplicate handling",
+      "lexicographically smallest candidateId as duplicate-group representative",
       "presentation-only contact-sheet layout"
     ],
     "mustRevalidate": [
