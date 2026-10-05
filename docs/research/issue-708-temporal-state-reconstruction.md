@@ -97,6 +97,7 @@ Black #703 control was also rerun against the unchanged source, normalized archi
 - `pnpm typecheck`, `pnpm lint`, and `pnpm build`: **passed**.
 - `pnpm test:unit`: **341 files, 2,395 tests passed**.
 - `pnpm test:integration`: **38 files, 189 tests passed**; its configured build also passed.
+- Automatic PR CI: [run 37275141113](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37275141113) **passed**, including typecheck, lint, unit tests, integration tests, build, and the manifest-selected subsystem regression suite.
 
 ## Artifacts and reproduction
 
