@@ -488,6 +488,8 @@ interface ElementParseContext {
   readonly parentWorld: FlaDisplayListMatrix;
   readonly depth: number;
   readonly path: string;
+  readonly sourceParentFrameIndex: number;
+  readonly sourceParentFrameSpanStart: number;
   readonly state: SourceBuildState;
 }
 
@@ -527,6 +529,8 @@ function parseDisplayElements(
             parentWorld: groupWorld,
             depth: nextDepth,
             path,
+            sourceParentFrameIndex: context.sourceParentFrameIndex,
+            sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
             state: context.state,
           })
         : { ok: true as const, value: [] as readonly FlaDisplayListElement[] };
@@ -574,6 +578,12 @@ function parseDisplayElements(
       kind: 'symbol',
       libraryItemName: resolvedName,
       symbolType,
+      ...(child.attributes.loop !== undefined ? { playbackMode: child.attributes.loop } : {}),
+      ...(child.attributes.firstFrame !== undefined ? { firstFrame: child.attributes.firstFrame } : {}),
+      ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
+      sourceParentFrameIndex: context.sourceParentFrameIndex,
+      sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+      sourceAddress: `${context.scope}/${path}`,
       ...(localTransform ? { localTransform } : {}),
     });
   }
@@ -598,6 +608,10 @@ function buildFrameContext(
     const frame = frames[frameIndex];
     let elements: readonly FlaDisplayListElement[] = [];
     if (frame) {
+      const declaredFrameIndex = Number(frame.attributes.index ?? frameIndex);
+      const sourceParentFrameSpanStart = Number.isSafeInteger(declaredFrameIndex) && declaredFrameIndex >= 0
+        ? declaredFrameIndex
+        : frameIndex;
       const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
       if (elementContainer) {
         const parsed = parseDisplayElements(elementContainer, {
@@ -605,6 +619,8 @@ function buildFrameContext(
           parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
           depth: 0,
           path: `layer-${layerIndex}-frame-${frameIndex}`,
+          sourceParentFrameIndex: frameIndex,
+          sourceParentFrameSpanStart,
           state,
         });
         if (!parsed.ok) return parsed;
@@ -665,6 +681,8 @@ function buildGraphicFrameContext(
         parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
         depth: 0,
         path: `layer-${selection.layerIndex}-frame-${selection.span.index}`,
+        sourceParentFrameIndex: frameIndex,
+        sourceParentFrameSpanStart: selection.span.index,
         state,
       });
       if (!parsed.ok) return parsed;

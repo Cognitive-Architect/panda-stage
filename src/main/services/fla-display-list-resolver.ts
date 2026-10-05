@@ -64,7 +64,19 @@ export type FlaDisplayListElement =
       readonly kind: 'symbol';
       readonly libraryItemName: string;
       readonly symbolType: 'graphic' | 'movieclip' | 'button';
-      /** Transform from this instance’s local space into its immediate parent. */
+      /** Raw XFL playback mode retained for bounded nested-frame selection. */
+      readonly playbackMode?: string;
+      /** Raw XFL firstFrame/lastFrame attributes; parsing stays fail-closed. */
+      readonly firstFrame?: string;
+      readonly lastFrame?: string;
+      /** Parent timeline coordinate and containing DOMFrame span start. */
+      readonly sourceParentFrameIndex?: number;
+      readonly sourceParentFrameSpanStart?: number;
+      /** Stable source address of this DOMSymbolInstance within the XFL. */
+      readonly sourceAddress?: string;
+      /** Per-instance definition lookup; libraryItemName remains source identity. */
+      readonly frameSelectionKey?: string;
+      /** Transform from this instance's local space into its immediate parent. */
       readonly localTransform?: FlaDisplayListMatrix;
       readonly visible?: boolean;
     };
@@ -90,7 +102,10 @@ export type FlaDisplayListRoot =
 
 export interface FlaDisplayListResolverInput {
   readonly root: FlaDisplayListRoot;
-  /** Exact source library-item name to Panda-owned Graphic definition. */
+  /**
+   * Exact source library-item name, or a per-instance frameSelectionKey, to a
+   * Panda-owned Graphic definition. Definitions always retain the source name.
+   */
   readonly symbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>;
 }
 
@@ -364,7 +379,7 @@ function resolveElements(
         elementPath,
       );
     }
-    const definition = context.input.symbols.get(element.libraryItemName);
+    const definition = context.input.symbols.get(element.frameSelectionKey ?? element.libraryItemName);
     if (!definition) {
       return failure(
         'MISSING_SYMBOL',
