@@ -105,7 +105,7 @@ source derivation: endpoint `<Matrix>` values; progress `(21 - 20) / 2 = 0.5`
 determinism: two independent runs and repeated renders match
 #707 regression: PASS; `d754bd0046c2f19c05a4f9a826b4a1b374c5b727c2e70516ae98012070f20e1a`
 #708 regression: PASS; frames 20 and 22 hashes match accepted results
-CI: pending after push to existing mother PR #677
+CI: PASS on the existing mother PR; [GitHub Actions run 37286641748](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37286641748) completed focused core quality and manifest-selected subsystem regression successfully
 
 Gate B:
 reference source: not available in this environment
