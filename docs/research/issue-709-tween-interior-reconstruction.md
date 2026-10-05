@@ -105,7 +105,7 @@ source derivation: endpoint `<Matrix>` values; progress `(21 - 20) / 2 = 0.5`
 determinism: four independent runs and repeated renders match
 #707 regression: PASS; `d754bd0046c2f19c05a4f9a826b4a1b374c5b727c2e70516ae98012070f20e1a`
 #708 regression: PASS; frames 20 and 22 hashes match accepted results
-CI: pending for the production-adapter commit; prior prototype CI passed in [run 37286641748](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37286641748)
+CI: PASS for the production-adapter commit; [GitHub Actions run 37290465283](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37290465283) completed focused core quality, including typecheck, lint, unit, integration, build, and manifest-selected subsystem regression
 
 Gate B:
 reference source: not available in this environment
