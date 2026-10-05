@@ -35,6 +35,12 @@ export interface FlaNestedGraphicFrameSelection {
   readonly sourceParentFrameSpanStart: number;
   readonly childFrameCount: number;
   readonly selectedChildFrameIndex: number;
+  readonly selectionRule:
+    | 'single-frame-explicit-first-frame'
+    | 'single-frame-default-first-frame-zero'
+    | 'loop-single-frame-constant'
+    | 'loop-zero-origin-no-wrap'
+    | 'play-once-relative-containing-span';
   readonly sourceTransform: FlaDisplayListMatrix;
 }
 
@@ -94,7 +100,11 @@ function frameSelectionKey(libraryItemName: string, frameIndex: number, sourceAd
 function selectAuthoredChildFrame(
   element: Extract<FlaDisplayListElement, { readonly kind: 'symbol' }>,
   childFrameCount: number,
-): { readonly ok: true; readonly frameIndex: number } | SelectorFailure {
+): {
+  readonly ok: true;
+  readonly frameIndex: number;
+  readonly selectionRule: FlaNestedGraphicFrameSelection['selectionRule'];
+} | SelectorFailure {
   const sourceAddress = element.sourceAddress;
   const parentFrameIndex = element.sourceParentFrameIndex;
   const parentSpanStart = element.sourceParentFrameSpanStart;
@@ -119,7 +129,7 @@ function selectAuthoredChildFrame(
 
   const mode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
   if (mode === 'single frame') {
-    const selectedFrame = parseFrameIndex(element.firstFrame);
+    const selectedFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
     if (selectedFrame === null) {
       return failure(
         'UNSUPPORTED_TIMING',
@@ -134,10 +144,19 @@ function selectAuthoredChildFrame(
         sourceAddress,
       );
     }
-    return { ok: true, frameIndex: selectedFrame };
+    return {
+      ok: true,
+      frameIndex: selectedFrame,
+      selectionRule: element.firstFrame === undefined
+        ? 'single-frame-default-first-frame-zero'
+        : 'single-frame-explicit-first-frame',
+    };
   }
 
   if (mode === 'loop' && element.firstFrame === undefined) {
+    if (childFrameCount === 1) {
+      return { ok: true, frameIndex: 0, selectionRule: 'loop-single-frame-constant' };
+    }
     if (parentSpanStart !== 0) {
       return failure(
         'UNSUPPORTED_TIMING',
@@ -156,7 +175,28 @@ function selectAuthoredChildFrame(
         sourceAddress,
       );
     }
-    return { ok: true, frameIndex: elapsed };
+    return { ok: true, frameIndex: elapsed, selectionRule: 'loop-zero-origin-no-wrap' };
+  }
+
+  if (mode === 'play once') {
+    const firstFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
+    if (firstFrame === null) {
+      return failure('UNSUPPORTED_TIMING', 'Play Once Graphic has an invalid firstFrame', sourceAddress);
+    }
+    const elapsed = parentFrameIndex - parentSpanStart;
+    const selectedFrame = firstFrame + elapsed;
+    if (!Number.isSafeInteger(selectedFrame) || selectedFrame >= childFrameCount) {
+      return failure(
+        'UNSUPPORTED_TIMING',
+        `Play Once selection is outside child frameCount ${childFrameCount} (firstFrame=${firstFrame}, elapsed=${elapsed})`,
+        sourceAddress,
+      );
+    }
+    return {
+      ok: true,
+      frameIndex: selectedFrame,
+      selectionRule: 'play-once-relative-containing-span',
+    };
   }
 
   return failure(
@@ -308,6 +348,7 @@ export function prepareFlaNestedGraphicFrameSelections(
         sourceParentFrameSpanStart: parentFrameSpanStart,
         childFrameCount: descriptor.frameCount,
         selectedChildFrameIndex: selected.frameIndex,
+        selectionRule: selected.selectionRule,
         sourceTransform: element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX,
       });
       const variant = prepareSymbol(

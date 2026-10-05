@@ -111,6 +111,68 @@ describe('nested Graphic authored-frame selection', () => {
     if (!result.ok) expect(result.message).toContain('span starts at 4');
   });
 
+  it('selects Play Once relative to its containing authored span', () => {
+    const parent = frame(5,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="play once">${matrix(12)}</DOMSymbolInstance>`,
+      5);
+    const source = adapt(parent, frame(0, shape()) + frame(1, shape()) + frame(2, shape()));
+    const root = graphicRoot(source, 'parent', 7);
+    const prepared = prepareFlaNestedGraphicFrameSelections(source, root);
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.selections).toMatchObject([{
+      sourceParentFrameIndex: 7,
+      sourceParentFrameSpanStart: 5,
+      selectedChildFrameIndex: 2,
+      selectionRule: 'play-once-relative-containing-span',
+      sourceTransform: { tx: 12, ty: 0 },
+    }]);
+  });
+
+  it('uses frame zero for omitted Single Frame firstFrame and constant one-frame Loop', () => {
+    const singleFrameParent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="single frame">${matrix()}</DOMSymbolInstance>`);
+    const singleFrameSource = adapt(singleFrameParent, frame(0, shape()) + frame(1, shape()));
+    const singleFrame = prepareFlaNestedGraphicFrameSelections(
+      singleFrameSource,
+      graphicRoot(singleFrameSource, 'parent', 0),
+    );
+    expect(singleFrame.ok).toBe(true);
+    if (singleFrame.ok) {
+      expect(singleFrame.selections).toMatchObject([{
+        selectedChildFrameIndex: 0,
+        selectionRule: 'single-frame-default-first-frame-zero',
+      }]);
+    }
+
+    const constantLoopParent = frame(5,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop">${matrix()}</DOMSymbolInstance>`,
+      3);
+    const constantLoopSource = adapt(constantLoopParent, frame(0, shape()));
+    const constantLoop = prepareFlaNestedGraphicFrameSelections(
+      constantLoopSource,
+      graphicRoot(constantLoopSource, 'parent', 7),
+    );
+    expect(constantLoop.ok).toBe(true);
+    if (constantLoop.ok) {
+      expect(constantLoop.selections).toMatchObject([{
+        sourceParentFrameSpanStart: 5,
+        selectedChildFrameIndex: 0,
+        selectionRule: 'loop-single-frame-constant',
+      }]);
+    }
+  });
+
+  it('fails closed when Play Once advances beyond the child timeline', () => {
+    const parent = frame(5,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="play once">${matrix()}</DOMSymbolInstance>`,
+      5);
+    const source = adapt(parent, frame(0, shape()) + frame(1, shape()) + frame(2, shape()));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 8));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('Play Once selection is outside child frameCount 3');
+  });
+
   it('fails closed instead of inferring a Loop wrap', () => {
     const parent = frame(0,
       `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop">${matrix()}</DOMSymbolInstance>`,
@@ -123,9 +185,9 @@ describe('nested Graphic authored-frame selection', () => {
   });
 
   it.each([
-    { mode: 'play once', firstFrame: '' },
+    { mode: 'play once', firstFrame: 'not-an-index' },
     { mode: 'loop', firstFrame: '1' },
-    { mode: 'single frame', firstFrame: '' },
+    { mode: 'single frame', firstFrame: 'not-an-index' },
   ])('fails closed for unsupported timing attributes ($mode, firstFrame=$firstFrame)', ({ mode, firstFrame }) => {
     const first = firstFrame ? ` firstFrame="${firstFrame}"` : '';
     const parent = frame(0,
