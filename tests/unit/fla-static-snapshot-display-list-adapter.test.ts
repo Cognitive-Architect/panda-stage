@@ -9,6 +9,10 @@ function matrix(tx = 0, ty = 0): string {
   return `<matrix><Matrix a="1" b="0" c="0" d="1" tx="${tx}" ty="${ty}"/></matrix>`;
 }
 
+function transformedMatrix(a: number, b: number, c: number, d: number, tx: number, ty: number): string {
+  return `<matrix><Matrix a="${a}" b="${b}" c="${c}" d="${d}" tx="${tx}" ty="${ty}"/></matrix>`;
+}
+
 function bitmap(name: string, tx = 0, ty = 0): string {
   return `<DOMBitmapInstance libraryItemName="${name}">${matrix(tx, ty)}</DOMBitmapInstance>`;
 }
@@ -72,6 +76,26 @@ function buildAdapterFixture() {
   if (!adapted.ok) throw new Error(`Adapter fixture failed: ${adapted.message}`);
 
   return { adapted: adapted.source, documentXml, libraryXmlEntries, originalLibraryEntries };
+}
+
+function buildMotionAdapterFixture(startMetadata = '', endMetadata = '', endLibraryItemName = 'moving-target') {
+  const motionFrame = (index: number, duration: number, target: string, transform: string, metadata: string) =>
+    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="22017">${metadata}` +
+    `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="single frame">` +
+    `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance></elements></DOMFrame>`;
+  const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+    layer('scene', [frame(0, symbol('motion-root'))].join('')),
+  ])}</timelines></DOMDocument>`;
+  const libraryXmlEntries = [{
+    name: 'LIBRARY/motion-root.xml',
+    xml: graphic('motion-root', [layer('moving', [
+      motionFrame(0, 2, 'moving-target', transformedMatrix(1, 0, 0, 1, 0, 0), startMetadata),
+      motionFrame(2, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata),
+    ].join(''))]),
+  }];
+  const adapted = adaptFlaXflDisplaySource(documentXml, libraryXmlEntries);
+  if (!adapted.ok) throw new Error(`Motion adapter fixture failed: ${adapted.message}`);
+  return adapted.source;
 }
 
 function descriptor(source: ReturnType<typeof buildAdapterFixture>['adapted'], name: string): FlaXflGraphicSymbolDescriptor {
@@ -178,5 +202,62 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       'outer-front-frame1-a',
       'outer-front-frame1-b',
     ]);
+  });
+
+  it('resolves the bounded two-frame motion span through the production Graphic frame adapter', () => {
+    const source = buildMotionAdapterFixture();
+    const target = descriptor(source, 'motion-root');
+
+    const selected = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      1,
+      'bounded-motion-interior',
+    );
+
+    expect(selected.ok).toBe(true);
+    if (!selected.ok) return;
+    expect(selected.value.frameIndex).toBe(1);
+    expect(selected.value.layers).toHaveLength(1);
+    expect(selected.value.layers[0]?.elements).toHaveLength(1);
+    const interpolated = selected.value.layers[0]?.elements[0];
+    expect(interpolated).toMatchObject({
+      kind: 'symbol',
+      libraryItemName: 'moving-target',
+      symbolType: 'graphic',
+      localTransform: {
+        tx: 10,
+        ty: 15,
+      },
+    });
+    if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) return;
+    expect(interpolated.localTransform.a).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(interpolated.localTransform.b).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(interpolated.localTransform.c).toBeCloseTo(-Math.SQRT1_2, 12);
+    expect(interpolated.localTransform.d).toBeCloseTo(Math.SQRT1_2, 12);
+  });
+
+  it('keeps motion tween interiors fail-closed when source easing or target identity changes', () => {
+    const eased = buildMotionAdapterFixture('<Ease><Property name="x" value="1"/></Ease>');
+    const easedTarget = descriptor(eased, 'motion-root');
+    const easedResult = eased.buildGraphicFrameContext(
+      easedTarget.timelineXml,
+      easedTarget.frameSpanIndex,
+      1,
+      'eased-motion-interior',
+    );
+    expect(easedResult.ok).toBe(false);
+    if (!easedResult.ok) expect(easedResult.message).toContain('bounded transform-only subset');
+
+    const mismatched = buildMotionAdapterFixture('', '', 'different-target');
+    const mismatchedTarget = descriptor(mismatched, 'motion-root');
+    const mismatchedResult = mismatched.buildGraphicFrameContext(
+      mismatchedTarget.timelineXml,
+      mismatchedTarget.frameSpanIndex,
+      1,
+      'mismatched-motion-interior',
+    );
+    expect(mismatchedResult.ok).toBe(false);
+    if (!mismatchedResult.ok) expect(mismatchedResult.message).toContain('bounded transform-only subset');
   });
 });

@@ -3,8 +3,9 @@
  * reader's DOMTimeline/DOMLayer/DOMFrame display elements to the Panda-owned
  * C01 resolver input. XFL layer arrays are authored front/top to back/bottom;
  * this adapter converts them once to Panda's back-to-front painter order.
- * Within-layer elements retain their authored order. This intentionally does
- * not parse unrelated XFL semantics (tweens, masks, text, filters, or ActionScript).
+ * Within-layer elements retain their authored order. Graphic frame selection
+ * adds one fail-closed, two-frame transform-only motion subset; unrelated XFL
+ * semantics (shape tweens, masks, text, filters, or ActionScript) remain unsupported.
  */
 
 import crypto from 'node:crypto';
@@ -13,6 +14,7 @@ import {
   resolveFlaTimelineFrameSpan,
   type FlaTimelineFrameSpanIndex,
 } from './fla-timeline-frame-span-resolver';
+import { interpolateFlaLinearMotionTransform } from './fla-motion-tween-transform-interpolator';
 import {
   FLA_DISPLAY_LIST_IDENTITY_MATRIX,
   type FlaDisplayListElement,
@@ -23,6 +25,47 @@ import {
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
+const BOUNDED_MOTION_FRAME_ATTRIBUTES = new Set([
+  'index',
+  'duration',
+  'tweenType',
+  'motionTweenSnap',
+  'keyMode',
+]);
+const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
+  'libraryItemName',
+  'selected',
+  'symbolType',
+  'centerPoint3DX',
+  'centerPoint3DY',
+  'loop',
+  'firstFrame',
+  'lastFrame',
+]);
+const UNSUPPORTED_MOTION_METADATA_TAGS = new Set([
+  'motionobject',
+  'motionpath',
+  'ease',
+  'customease',
+  'domtween',
+  'animationcore',
+  'propertycontainer',
+  'motionobjectxml',
+]);
+const UNSUPPORTED_MOTION_METADATA_ATTRIBUTES = new Set([
+  'acceleration',
+  'easein',
+  'easeout',
+  'motionpath',
+  'orienttopath',
+  'rotate',
+  'rotatedirection',
+  'rotatetimes',
+  'rotationdirection',
+  'rotationtimes',
+  'tweeneasing',
+  'motiontweenrotate',
+]);
 
 interface XmlToken {
   readonly start: number;
@@ -643,6 +686,102 @@ function buildFrameContext(
   };
 }
 
+function containsUnsupportedMotionMetadata(xml: string): boolean {
+  let cursor = 0;
+  while (cursor < xml.length) {
+    const token = nextTagToken(xml, cursor);
+    if (!token) return xml.slice(cursor).trim().length > 0;
+    if (UNSUPPORTED_MOTION_METADATA_TAGS.has(token.name.toLocaleLowerCase('en-US')) ||
+        Object.keys(token.attributes).some((name) =>
+          UNSUPPORTED_MOTION_METADATA_ATTRIBUTES.has(name.toLocaleLowerCase('en-US')))) {
+      return true;
+    }
+    cursor = token.end;
+  }
+  return false;
+}
+
+function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElementBlock[] {
+  const frameChildren = getFlaXflDirectChildren(frame.xml, 'DOMFrame');
+  if (frameChildren.length !== 1 || frameChildren[0]?.name !== 'elements') return [];
+  const container = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
+  return getFlaXflDirectChildren(container.xml, container.name);
+}
+
+function isBoundedMotionFramePair(
+  startFrame: FlaXflElementBlock,
+  endFrame: FlaXflElementBlock,
+  startIndex: number,
+  duration: number,
+): boolean {
+  const allowedFrameAttributes = (frame: FlaXflElementBlock): boolean =>
+    Object.keys(frame.attributes).every((name) => BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name));
+  if (!allowedFrameAttributes(startFrame) || !allowedFrameAttributes(endFrame) ||
+      duration !== 2 || Number(startFrame.attributes.index) !== startIndex ||
+      Number(endFrame.attributes.index) !== startIndex + duration ||
+      startFrame.attributes.tweenType !== 'motion' || endFrame.attributes.tweenType !== 'motion' ||
+      startFrame.attributes.motionTweenSnap !== 'true' || endFrame.attributes.motionTweenSnap !== 'true' ||
+      startFrame.attributes.keyMode !== '22017' || endFrame.attributes.keyMode !== '22017' ||
+      containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
+    return false;
+  }
+
+  const startElements = frameDisplayElements(startFrame);
+  const endElements = frameDisplayElements(endFrame);
+  if (startElements.length !== 1 || endElements.length !== 1 ||
+      startElements[0]?.name !== 'DOMSymbolInstance' || endElements[0]?.name !== 'DOMSymbolInstance' ||
+      !elementIsVisible(startElements[0].attributes) || !elementIsVisible(endElements[0].attributes)) {
+    return false;
+  }
+
+  const startTarget = startElements[0];
+  const endTarget = endElements[0];
+  const allowedInstanceAttributes = (target: FlaXflElementBlock): boolean =>
+    Object.keys(target.attributes).every((name) => BOUNDED_MOTION_INSTANCE_ATTRIBUTES.has(name));
+  if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget) ||
+      startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName ||
+      startTarget.attributes.symbolType !== 'graphic' || endTarget.attributes.symbolType !== 'graphic') {
+    return false;
+  }
+  for (const target of [startTarget, endTarget]) {
+    for (const name of ['centerPoint3DX', 'centerPoint3DY']) {
+      const raw = target.attributes[name];
+      if (raw !== undefined && !Number.isFinite(Number(raw))) return false;
+    }
+  }
+  for (const name of new Set([
+    ...Object.keys(startTarget.attributes),
+    ...Object.keys(endTarget.attributes),
+  ])) {
+    if (name === 'centerPoint3DX' || name === 'centerPoint3DY') continue;
+    if (startTarget.attributes[name] !== endTarget.attributes[name]) return false;
+  }
+
+  const hasSupportedTransformChildren = (target: FlaXflElementBlock): boolean => {
+    const children = getFlaXflDirectChildren(target.xml, target.name);
+    const matrices = children.filter((child) => child.name === 'matrix');
+    const points = children.filter((child) => child.name === 'transformationPoint');
+    if (matrices.length !== 1 || points.length > 1 ||
+        children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint')) {
+      return false;
+    }
+    const matrixValues = getFlaXflDirectChildren(matrices[0]!.xml, 'matrix');
+    if (matrixValues.length !== 1 || matrixValues[0]?.name !== 'Matrix') return false;
+    if (Object.keys(matrixValues[0].attributes).some((name) =>
+      !['a', 'b', 'c', 'd', 'tx', 'ty'].includes(name))) return false;
+    if (points.length === 1) {
+      const pointValues = getFlaXflDirectChildren(points[0]!.xml, 'transformationPoint');
+      if (pointValues.length !== 1 || pointValues[0]?.name !== 'Point' ||
+          Object.keys(pointValues[0].attributes).some((name) => name !== 'x' && name !== 'y') ||
+          Object.values(pointValues[0].attributes).some((value) => !Number.isFinite(Number(value)))) {
+        return false;
+      }
+    }
+    return true;
+  };
+  return hasSupportedTransformChildren(startTarget) && hasSupportedTransformChildren(endTarget);
+}
+
 /** XFL lists timeline layers front-to-back; Panda frame contexts paint back-to-front. */
 function normalizeXflTimelineLayersForPainterOrder<T>(
   layers: readonly T[],
@@ -665,12 +804,6 @@ function buildGraphicFrameContext(
   for (const selection of resolution.layers) {
     const layer = layers[selection.layerIndex];
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
-    if (selection.kind === 'unsupported-tween-interior' && selection.visible) {
-      return fail(
-        'RENDER_FAILED',
-        `Graphic frame ${frameIndex} requires unsupported ${selection.span.tweenType} tween interpolation on layer ${selection.layerIndex}`,
-      );
-    }
 
     let elements: readonly FlaDisplayListElement[] = [];
     if (selection.kind === 'authored-frame') {
@@ -687,6 +820,56 @@ function buildGraphicFrameContext(
       });
       if (!parsed.ok) return parsed;
       elements = parsed.value;
+    } else if (selection.kind === 'unsupported-tween-interior' && selection.visible) {
+      const rejectTween = (reason: string) => fail(
+        'RENDER_FAILED',
+        `Graphic frame ${frameIndex} requires unsupported ${selection.span.tweenType} tween interpolation on layer ${selection.layerIndex}: ${reason}`,
+      );
+      if (selection.span.tweenType !== 'motion') return rejectTween('only the bounded motion subset is supported');
+
+      const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
+      const startSpan = indexedLayer?.spans.find((span) => span.index === selection.span.index);
+      const endSpan = indexedLayer?.spans.find((span) => span.index === selection.span.endExclusive);
+      if (!startSpan || !endSpan) return rejectTween('an adjacent authored end keyframe is required');
+      const startFrame = startSpan.sourceFrame;
+      const endFrame = endSpan.sourceFrame;
+      if (!isBoundedMotionFramePair(startFrame, endFrame, startSpan.index, startSpan.duration)) {
+        return rejectTween('source metadata falls outside the bounded transform-only subset');
+      }
+
+      const parseTweenTarget = (frame: FlaXflElementBlock, sourceFrameIndex: number) => {
+        const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
+        return parseDisplayElements(elementContainer, {
+          scope,
+          parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+          depth: 0,
+          path: `layer-${selection.layerIndex}-frame-${sourceFrameIndex}`,
+          sourceParentFrameIndex: frameIndex,
+          sourceParentFrameSpanStart: startSpan.index,
+          state,
+        });
+      };
+      const startParsed = parseTweenTarget(startFrame, startSpan.index);
+      if (!startParsed.ok) return startParsed;
+      const endParsed = parseTweenTarget(endFrame, endSpan.index);
+      if (!endParsed.ok) return endParsed;
+      const startTarget = startParsed.value[0];
+      const endTarget = endParsed.value[0];
+      if (startParsed.value.length !== 1 || endParsed.value.length !== 1 ||
+          startTarget?.kind !== 'symbol' || endTarget?.kind !== 'symbol' ||
+          startTarget.symbolType !== 'graphic' || endTarget.symbolType !== 'graphic' ||
+          startTarget.libraryItemName !== endTarget.libraryItemName ||
+          !startTarget.localTransform || !endTarget.localTransform) {
+        return rejectTween('matching Graphic instances with authored matrices are required');
+      }
+      const progress = (frameIndex - startSpan.index) / startSpan.duration;
+      const interpolated = interpolateFlaLinearMotionTransform(
+        startTarget.localTransform,
+        endTarget.localTransform,
+        progress,
+      );
+      if (!interpolated.ok) return rejectTween(interpolated.message);
+      elements = [{ ...startTarget, localTransform: interpolated.matrix }];
     }
 
     resolvedLayers.push({

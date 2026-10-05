@@ -2,7 +2,7 @@
 
 Date: 2026-10-05
 
-Status: Gate 0 GO; Gate A prototype complete; Gate B pending approved reference review
+Status: Gate 0 GO; Gate A bounded production implementation complete; Gate B pending approved reference review
 
 Mother PR: #677 (existing draft; no new PR)
 
@@ -21,7 +21,7 @@ The source-derived candidate semantics are:
 
 Adobe describes motion tweens as property-keyframed spans and lists 2D position, rotation, skew, and scale as tweenable properties. Its Motion Editor documentation says ease curves alter the rate of change of a property. Adobe also documents a zero-strength ease as no easing. Applying those rules to this archive is an inference from the missing ease/path records and the two authored endpoint matrices; the frame-21 result still requires the separate visual acceptance in Gate B. References: [motion tween properties and spans](https://helpx.adobe.com/animate/desktop/animation/motion-tween-animation.html), [Motion Editor property curves and easing](https://helpx.adobe.com/animate/desktop/animation/editing-motion-tween-using-motion.html), and [ease strength zero](https://helpx.adobe.com/animate/desktop/animation/bone-tool-animation.html).
 
-The prototype therefore interpolates only the bounded affine transform properties represented by these matrices: position, 2D rotation, and the near-unit uniform scale. It rejects skew, reflection, malformed matrices, custom easing/path data, mismatched targets, and requests outside the source span. It does not interpolate the six matrix coefficients directly, because doing so would shrink a rotating object between its keyframes.
+The bounded production implementation interpolates only the affine transform properties represented by these matrices: position, 2D rotation, and the near-unit uniform scale. It rejects skew, reflection, malformed matrices, custom easing/path data, mismatched targets, and requests outside the source span. It does not interpolate the six matrix coefficients directly, because doing so would shrink a rotating object between its keyframes.
 
 ## Source and archive evidence
 
@@ -58,23 +58,23 @@ Nested timing at root frame 21:
 - The 11 root motion targets are Graphic instances. Ten have one-frame Loop children; one has a two-frame Single Frame child fixed to frame 0. Their selected child frames remain source-derived and constant for this interval.
 - `肌肉男-cilisucai.com11 16` has two nested one-frame Loop symbols; both remain at child frame 0.
 
-## Gate A — prototype results
+## Gate A — bounded production results
 
-The production timeline resolver remains fail-closed for tween interiors. The research prototype created frame 21 from the source-authored frame 20 and frame 22 contexts, applied one generic transform-only interpolation helper to the 11 bounded matrices, and passed the concrete context through the same nested Graphic selector, display-list resolver, SVG builder, and hidden rasterizer used by #708.
+The Graphic frame adapter now resolves the source-authored frame 21 directly. It applies the generic transform-only helper only to a two-frame `motion` span with an adjacent authored end keyframe, one matching Graphic target, the observed `motionTweenSnap="true"` / `keyMode="22017"` metadata, no easing/path/rotation metadata, and positive no-skew endpoint matrices. The resulting context goes through the same nested Graphic selector, display-list resolver, SVG builder, and hidden rasterizer used by #708.
 
-No FLA-specific condition will be added to the production resolver. No color/effect, shape, vector morph, custom path, easing, or MovieClip semantics will be inferred.
+Other spans and metadata remain fail-closed. No fixture-name-specific branch, color/effect interpolation, shape/vector morph, custom path, custom easing, or MovieClip behavior was added.
 
-Two independent Electron runs produced identical SVG and PNG hashes for frames 20, 21, and 22. Repeated PNG renders within each run were also identical. Frame 20 and frame 22 PNGs match the accepted #708 controls; the accepted #707 coherent-character control also reproduced.
+Four independent Electron runs through the production adapter produced identical SVG and PNG hashes for frames 20, 21, and 22. Repeated PNG renders within each run were also identical. Frame 20 and frame 22 PNGs match the accepted #708 controls; the accepted #707 coherent-character control also reproduced after the adapter change.
 
 | Output | PNG SHA-256 | SVG SHA-256 |
 | --- | --- | --- |
 | Frame 20 control | `61547c34bf3e5ccb234bf3b315a8c80bf7524f605ee60fb6e580699870b366d6` | `13ffe09c924fc67d654b06252067c10f2d8e3f6938cdefcc3fd6c2d0f4a0e524` |
-| Frame 21 prototype | `fcbbf077a1097144a0a0f757c84f0a5ffcbc7664c4ed949b1c9ff8066605f827` | `394c157f6515850b5de2ccf2bae83d23f6b9671ca9e49401a20b8d7189dc0b08` |
+| Frame 21 production output | `fcbbf077a1097144a0a0f757c84f0a5ffcbc7664c4ed949b1c9ff8066605f827` | `394c157f6515850b5de2ccf2bae83d23f6b9671ca9e49401a20b8d7189dc0b08` |
 | Frame 22 control | `95ef1f30a4ce5c2c545a9863449e5452b14203cf5469d78ec5d51054ea65afb2` | `1f706703499caaf7afd53984b5141c5c7d0510c891f1710f270d552dcf859c19` |
 
-The #707 PNG control was `d754bd0046c2f19c05a4f9a826b4a1b374c5b727c2e70516ae98012070f20e1a`, matching its accepted receipt. Both runs kept the primary FLA SHA-256 unchanged at `bad5f00cc1e4937fa8190e570ce7c5a8951a32d611d2b87dfc6910172b01fd9d`.
+The #707 PNG control was `d754bd0046c2f19c05a4f9a826b4a1b374c5b727c2e70516ae98012070f20e1a`, matching its accepted receipt. All four runs kept the primary FLA SHA-256 unchanged at `bad5f00cc1e4937fa8190e570ce7c5a8951a32d611d2b87dfc6910172b01fd9d`.
 
-External evidence is under `D:\PandaStage-Acceptance\issue709-tween-20261005\run-1` and `run-2`; the #707 control is under `D:\PandaStage-Acceptance\issue709-b5a-control-20261005\run-1`.
+External production evidence is under `D:\PandaStage-Acceptance\issue709-tween-20261005\production-run-1` through `production-run-4`; the #707 control is under `D:\PandaStage-Acceptance\issue709-b5a-control-20261005\run-2`.
 
 ## Gate B — pending
 
@@ -92,20 +92,20 @@ primary fixture: 人物倒地.fla
 source hash before/after: bad5f00cc1e4937fa8190e570ce7c5a8951a32d611d2b87dfc6910172b01fd9d / unchanged
 
 target interval: 20 -> 21 -> 22
-active layers:
-bounded property semantics:
-Gate 0: GO / BLOCKED / NO-GO
+active layers: layers 1–11 motion; layer 0 held
+bounded property semantics: X/Y translation, 2D rotation, positive orthogonal scale
+Gate 0: GO — bounded transform-only motion span
 
 Gate A:
 frame 20 control: PASS; `61547c34bf3e5ccb234bf3b315a8c80bf7524f605ee60fb6e580699870b366d6`
-frame 21 output: prototype PNG `fcbbf077a1097144a0a0f757c84f0a5ffcbc7664c4ed949b1c9ff8066605f827`; Gate B pending
+frame 21 output: production adapter PNG `fcbbf077a1097144a0a0f757c84f0a5ffcbc7664c4ed949b1c9ff8066605f827`; Gate B pending
 frame 22 control: PASS; `95ef1f30a4ce5c2c545a9863449e5452b14203cf5469d78ec5d51054ea65afb2`
 interpolated properties: X/Y translation, 2D rotation, positive orthogonal X/Y scale
 source derivation: endpoint `<Matrix>` values; progress `(21 - 20) / 2 = 0.5`
-determinism: two independent runs and repeated renders match
+determinism: four independent runs and repeated renders match
 #707 regression: PASS; `d754bd0046c2f19c05a4f9a826b4a1b374c5b727c2e70516ae98012070f20e1a`
 #708 regression: PASS; frames 20 and 22 hashes match accepted results
-CI: PASS on the existing mother PR; [GitHub Actions run 37286641748](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37286641748) completed focused core quality and manifest-selected subsystem regression successfully
+CI: pending for the production-adapter commit; prior prototype CI passed in [run 37286641748](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37286641748)
 
 Gate B:
 reference source: not available in this environment
@@ -118,5 +118,5 @@ MovieClip runtime added: NO
 script execution added: NO
 playback UI added: NO
 
-result: Gate A prototype ready; Gate B human visual acceptance remains pending
+result: bounded production frame-21 path implemented; Gate B human visual acceptance remains pending
 ```

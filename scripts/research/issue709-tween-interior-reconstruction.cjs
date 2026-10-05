@@ -351,61 +351,6 @@ function requireFrameContext(source, descriptor, frameIndex, scope, index = desc
   return result.value;
 }
 
-function buildSyntheticFrameSpanIndex(frameSpanIndex, interiorFrame) {
-  return {
-    ...frameSpanIndex,
-    layers: frameSpanIndex.layers.map((layer) => ({
-      ...layer,
-      spans: layer.spans.map((span) => span.tweenType === 'motion' &&
-        interiorFrame > span.index && interiorFrame < span.endExclusive
-        ? { ...span, tweenType: 'none' }
-        : span),
-    })),
-  };
-}
-
-function interpolateMotionLayers(frameContext, startContext, endContext, descriptor, frameIndex, interpolateTransform) {
-  const layers = frameContext.layers.map((layer) => ({ ...layer, elements: [...layer.elements] }));
-  for (let sourceLayerIndex = 0; sourceLayerIndex < descriptor.frameSpanIndex.layers.length; sourceLayerIndex += 1) {
-    const sourceLayer = descriptor.frameSpanIndex.layers[sourceLayerIndex];
-    if (!sourceLayer) continue;
-    const span = spanAt(sourceLayer, frameIndex);
-    if (!span || span.tweenType !== 'motion') continue;
-    assert.equal(span.index, TARGET_INTERVAL.start);
-    assert.equal(span.endExclusive, TARGET_INTERVAL.end);
-    const painterLayerIndex = layers.length - sourceLayerIndex - 1;
-    const outputLayer = layers[painterLayerIndex];
-    const startLayer = startContext.layers[painterLayerIndex];
-    const endLayer = endContext.layers[painterLayerIndex];
-    assert.ok(outputLayer && startLayer && endLayer, `missing frame context for source layer ${sourceLayerIndex}`);
-    assert.equal(outputLayer.elements.length, 1);
-    assert.equal(startLayer.elements.length, 1);
-    assert.equal(endLayer.elements.length, 1);
-    const target = outputLayer.elements[0];
-    const startTarget = startLayer.elements[0];
-    const endTarget = endLayer.elements[0];
-    assert.equal(target?.kind, 'symbol');
-    assert.equal(startTarget?.kind, 'symbol');
-    assert.equal(endTarget?.kind, 'symbol');
-    assert.equal(target.libraryItemName, startTarget.libraryItemName);
-    assert.equal(target.libraryItemName, endTarget.libraryItemName);
-    assert.equal(target.symbolType, 'graphic');
-    assert.equal(startTarget.symbolType, 'graphic');
-    assert.equal(endTarget.symbolType, 'graphic');
-    assert.ok(target.localTransform && startTarget.localTransform && endTarget.localTransform);
-    const progress = (frameIndex - span.index) / span.duration;
-    const interpolated = interpolateTransform(
-      startTarget.localTransform,
-      endTarget.localTransform,
-      progress,
-    );
-    assert.equal(interpolated.ok, true, interpolated.ok ? '' : interpolated.message);
-    if (!interpolated.ok) throw new Error(interpolated.message);
-    outputLayer.elements[0] = { ...target, localTransform: interpolated.matrix };
-  }
-  return { ...frameContext, layers };
-}
-
 function buildProbe(source, descriptor, rootInstance, frameContext, frameIndex) {
   const root = {
     kind: 'graphic',
@@ -501,30 +446,21 @@ async function run(args) {
   const interpolateTransform = interpolateFlaLinearMotionTransform;
   assertGate0(descriptor, census, archiveEvidence, interpolateTransform);
 
-  const originalFrame21 = source.buildGraphicFrameContext(
+  const productionFrame21 = source.buildGraphicFrameContext(
     descriptor.timelineXml,
     descriptor.frameSpanIndex,
     TARGET_INTERVAL.interior,
-    `issue709-root:${descriptor.sourceLibraryItemName}@${TARGET_INTERVAL.interior}:original`,
+    `issue709-root:${descriptor.sourceLibraryItemName}@${TARGET_INTERVAL.interior}`,
   );
-  assert.equal(originalFrame21.ok, false, 'the unmodified production timeline resolver must remain fail-closed at frame 21');
-  assert.match(originalFrame21.message, /unsupported\s+motion\s+tween\s+interpolation/iu);
+  assert.equal(productionFrame21.ok, true,
+    productionFrame21.ok ? '' : `production Graphic timeline resolver rejected frame 21: ${productionFrame21.message}`);
 
   const frame20Context = requireFrameContext(source, descriptor, TARGET_INTERVAL.start,
     `issue709-root:${descriptor.sourceLibraryItemName}@${TARGET_INTERVAL.start}`);
   const frame22Context = requireFrameContext(source, descriptor, TARGET_INTERVAL.end,
     `issue709-root:${descriptor.sourceLibraryItemName}@${TARGET_INTERVAL.end}`);
-  const syntheticIndex = buildSyntheticFrameSpanIndex(descriptor.frameSpanIndex, TARGET_INTERVAL.interior);
-  const heldFrame21Context = requireFrameContext(source, descriptor, TARGET_INTERVAL.interior,
-    `issue709-root:${descriptor.sourceLibraryItemName}@${TARGET_INTERVAL.interior}`, syntheticIndex);
-  const frame21Context = interpolateMotionLayers(
-    heldFrame21Context,
-    frame20Context,
-    frame22Context,
-    descriptor,
-    TARGET_INTERVAL.interior,
-    interpolateTransform,
-  );
+  if (!productionFrame21.ok) throw new Error(productionFrame21.message);
+  const frame21Context = productionFrame21.value;
 
   const contexts = [
     { frameIndex: TARGET_INTERVAL.start, frameContext: frame20Context },
@@ -617,7 +553,7 @@ async function run(args) {
       archiveEvidence,
       rule: 'Linear interpolation of translation, 2D rotation, and positive no-skew scale at source-derived progress 0.5.',
       inference: 'No easing/path/rotation-direction metadata was found. Adobe documentation supports default un-eased property interpolation; Gate B visual comparison is still required.',
-      unmodifiedResolverFrame21: originalFrame21.message,
+      productionResolverFrame21: 'resolved through the bounded source-semantic motion subset',
     },
     hierarchy: rootSummary,
     probes,
@@ -635,7 +571,7 @@ async function run(args) {
     scriptExecutionAdded: 'NO',
     playbackUiAdded: 'NO',
     humanVisualReview: 'PENDING_MAINTAINER',
-    result: 'FRAME21_PROTOTYPE_READY_FOR_GATE_B_REVIEW',
+    result: 'FRAME21_PRODUCTION_ADAPTER_READY_FOR_GATE_B_REVIEW',
   };
   const receiptArtifact = await writeVerified(
     args.out,
