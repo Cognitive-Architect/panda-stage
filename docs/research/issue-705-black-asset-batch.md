@@ -38,6 +38,27 @@ The accepted B2 manifest SHA-256 is `fd76203dcd24dfb145bc968e9faf6b679e3478bdcbd
 
 The complete candidate rows, render addresses, source provenance, per-file hashes, PNG bounds, duplicate groups, rejected routes, and synthetic controls are in the [B3 batch manifest](issue-705-black-asset-batch-manifest.json). A concise machine-readable receipt is in [issue-705-black-asset-batch.json](issue-705-black-asset-batch.json). Individual acceptance binaries remain outside the repository at `D:\PandaStage-Acceptance\issue705-black-asset-batch-20261005\run-3-final` and `D:\PandaStage-Acceptance\issue705-black-asset-batch-20261005\run-4-final`.
 
+## Required acceptance cases
+
+| Case | Candidate | B3 route/result |
+| --- | --- | --- |
+| A | `B2-131741E7A086D1EE3ED3C91B` | `PARENT_COMPOSITE`, rendered |
+| B | `B2-C23E23F9335AFF7F2626F2AC` | `PARENT_COMPOSITE`, rendered |
+| C | `B2-CF4C869D9E2F745AC070137A` | `PARENT_COMPOSITE`, rendered |
+| D | `B2-6B59262065D28C279718C576` | `DIRECT_FULL_CHARACTER_STATE`, rendered directly |
+| E | `B2-C4146E01383AF6B709E38BDB` | `DIRECT_FULL_CHARACTER_STATE`, rendered directly |
+| Unmatched `补间 2@10` | `B2-B69A8D02EF0570958C68A6FA` | `DIRECT_FULL_CHARACTER_STATE`, rendered directly |
+| Head component | `B2-B651BA3047C03B16971269D0` | `DIRECT_COMPONENT_STATE`, rendered in component section |
+| Body component | `B2-7511FB6C975B2A4CE13439E9` | `DIRECT_COMPONENT_STATE`, rendered in component section |
+
+The known-wrong parent alternatives for D/E (parent frames 8, 9, and 10) remain excluded. Their exact records and the fail-closed timing probes are present in the batch manifest.
+
+## B4 handoff
+
+B4 may reuse the artifact protocol, deterministic ordering, PNG-based blank/duplicate evidence, provenance fields, and presentation-only contact-sheet layout. B4 must independently discover and classify each new FLA; this Black fixture does not establish cross-corpus classification, broader Graphic timing, or a universal render route. The lack of Black blank outputs or exact PNG duplicates is not evidence that other sources lack them. The 12 SVG byte-hash differences from B2 must remain visible as a distinction even though their PNG hashes match.
+
+The next action is maintainer visual review of the contact sheet and representative full-resolution PNGs, followed by recording PASS or FAIL. Issue #705 remains open until that gate is recorded.
+
 ## Human review gate
 
 The generated contact sheet was inspected by the agent for its two sections and 20 visible tiles. This is not maintainer acceptance. The required human visual review remains **pending**; Issue #705 remains open and PR #677 remains a draft.

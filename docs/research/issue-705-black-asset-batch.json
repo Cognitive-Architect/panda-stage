@@ -41,6 +41,49 @@
       "UNSUPPORTED_OR_UNKNOWN": 8
     }
   },
+  "acceptanceCases": {
+    "A": {
+      "candidateId": "B2-131741E7A086D1EE3ED3C91B",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "status": "RENDERED_UNIQUE"
+    },
+    "B": {
+      "candidateId": "B2-C23E23F9335AFF7F2626F2AC",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "status": "RENDERED_UNIQUE"
+    },
+    "C": {
+      "candidateId": "B2-CF4C869D9E2F745AC070137A",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "status": "RENDERED_UNIQUE"
+    },
+    "D": {
+      "candidateId": "B2-6B59262065D28C279718C576",
+      "renderAddressClass": "DIRECT_FULL_CHARACTER_STATE",
+      "status": "RENDERED_UNIQUE"
+    },
+    "E": {
+      "candidateId": "B2-C4146E01383AF6B709E38BDB",
+      "renderAddressClass": "DIRECT_FULL_CHARACTER_STATE",
+      "status": "RENDERED_UNIQUE"
+    },
+    "unmatchedBodyFrame10": {
+      "candidateId": "B2-B69A8D02EF0570958C68A6FA",
+      "renderAddressClass": "DIRECT_FULL_CHARACTER_STATE",
+      "status": "RENDERED_UNIQUE"
+    },
+    "headComponent": {
+      "candidateId": "B2-B651BA3047C03B16971269D0",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "status": "RENDERED_UNIQUE"
+    },
+    "bodyComponent": {
+      "candidateId": "B2-7511FB6C975B2A4CE13439E9",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "status": "RENDERED_UNIQUE"
+    },
+    "rejectedParentFrames": [8, 9, 10]
+  },
   "b2Comparison": {
     "pngHashMatches": 20,
     "pngHashComparisonCount": 20,
@@ -96,6 +139,26 @@
     "duplicateControl": "synthetic identical PNG grouped with both source addresses and deterministic representative retained",
     "partialFailureControl": "synthetic one-candidate render failure isolated while surrounding candidates continued",
     "blackCandidatesContaminatedByControls": false
+  },
+  "b4Handoff": {
+    "mayReuse": [
+      "deterministic artifact protocol",
+      "candidate/source provenance fields",
+      "PNG-evidence blank and exact-duplicate handling",
+      "presentation-only contact-sheet layout"
+    ],
+    "mustRevalidate": [
+      "candidate discovery and classification for each new FLA",
+      "render-address support and timing for each new source",
+      "blank and exact-duplicate outcomes on each new source"
+    ],
+    "mustNotAssume": [
+      "Black classifications generalize across corpora",
+      "all sources have no blanks or exact PNG duplicates",
+      "B3 proves a universal Graphic render route",
+      "matching PNG hashes imply matching SVG bytes"
+    ],
+    "nextSingleAction": "Maintainer visual review of contact sheet and representative full-resolution PNGs; record PASS or FAIL."
   },
   "contactSheet": {
     "dimensions": {
