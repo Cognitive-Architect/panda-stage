@@ -119,10 +119,10 @@ Clip SHA-256:
 
 ## Gate D — maintainer full-motion review
 
-**PENDING_MAINTAINER.** The clip and contact sheets are ready for comparison
-against the supplied Animate/source animation. No human PASS, PARTIAL, or FAIL
-is claimed. Do not close Issue #713 or mark mother PR #677 Ready based on the
-automated reconstruction alone.
+**PENDING_MAINTAINER.** The clip and contact sheets are ready for review. The
+approved source/material-site animation reference has not been recorded in the
+receipt, so no human PASS, PARTIAL, or FAIL is claimed. Do not close Issue #713
+or mark mother PR #677 Ready based on the automated reconstruction alone.
 
 ## Validation
 
@@ -135,6 +135,10 @@ automated reconstruction alone.
 - `git diff --check`: passed.
 - Full source-specific Electron reconstruction, repeated raster check,
   #712 control comparison, FFmpeg encode, and ffprobe checks: passed.
+- Mother PR #677 CI on commit `ab29094`: passed, including typecheck, lint,
+  unit tests, integration tests, build, manifest-selected subsystem regression,
+  and the final CI result ([run #37417928248](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37417928248)).
 
 No Full CI or repository-wide verifier sweep was run manually. The mother PR’s
-normal automation remains responsible for CI status.
+automated risk-based route completed successfully. Gate D remains pending
+maintainer review against the approved source/material-site animation.
