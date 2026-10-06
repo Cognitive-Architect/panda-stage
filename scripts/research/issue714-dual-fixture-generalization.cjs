@@ -339,7 +339,8 @@ function censusFixture(loaded, root) {
   for (const span of flat) tweenTypeCounts[span.tweenType] = (tweenTypeCounts[span.tweenType] || 0) + 1;
   const durationCounts = {};
   for (const span of flat) durationCounts[span.duration] = (durationCounts[span.duration] || 0) + 1;
-  const motionDurations = [...new Set(flat.filter((span) => span.tweenType === 'motion' && span.duration > 1).map((span) => span.duration))].sort((a, b) => a - b);
+  const motionSpanDurations = [...new Set(flat.filter((span) => span.tweenType === 'motion').map((span) => span.duration))].sort((a, b) => a - b);
+  const motionDurations = motionSpanDurations.filter((duration) => duration > 1);
   const nestedCensus = [];
   const visitedNested = new Set();
   const walkNested = (name, depth) => {
@@ -379,7 +380,7 @@ function censusFixture(loaded, root) {
     totalLayerCount: root.descriptor.frameSpanIndex.layers.length,
     authoredSpanCount: flat.length,
     authoredSpanStartUnion: [...new Set(flat.map((span) => span.index))].sort((a, b) => a - b),
-    tweenTypeCounts, spanDurationCounts: durationCounts, motionDurations,
+    tweenTypeCounts, spanDurationCounts: durationCounts, motionDurations, motionSpanDurations,
     capabilityCounts,
     layers,
     nestedGraphicCensus: nestedCensus,
@@ -446,14 +447,14 @@ function crossFixtureComparison(fixtures) {
   const rows = fixtures.map((fixture) => ({
     label: fixture.label, sha256: fixture.sha256, frameRate: fixture.frameRate, stage: fixture.stage,
     sceneFrameCount: fixture.sceneFrameCount, rootGraphic: fixture.rootGraphic, rootFrameCount: fixture.rootFrameCount,
-    visibleLayers: fixture.visibleLayerCount, spans: fixture.authoredSpanCount, motionDurations: fixture.motionDurations,
+    visibleLayers: fixture.visibleLayerCount, spans: fixture.authoredSpanCount, motionDurations: fixture.motionSpanDurations,
     nestedModes: [...new Set(fixture.nestedGraphicCensus.map((entry) => entry.playbackMode ?? '(missing)'))].sort(),
     movieClips: fixture.archiveEvidence.librarySymbolTypeCounts.movieclip ?? 0,
     shapeTween: fixture.archiveEvidence.shapeTweenFrameCount, scriptsWithPayload: fixture.archiveEvidence.scriptTagsWithPayload.length,
     filters: fixture.archiveEvidence.filtersCount, maskLayers: fixture.archiveEvidence.maskLayerCount,
     easingOrPath: fixture.archiveEvidence.unsupportedMotionAttributes.length + Object.values(fixture.archiveEvidence.unsupportedMotionTagCounts).reduce((a, b) => a + b, 0),
     gateAResolved: `${fixture.gateA.resolvedFrameCount}/${fixture.gateA.requestedFrameCount}`,
-    firstBlocker: fixture.gateA.firstBlocker ? `${fixture.gateA.firstBlocker.stage}: ${fixture.gateA.firstBlocker.message}` : null,
+    firstBlocker: fixture.gateA.firstBlocker ? `${fixture.gateA.firstBlocker.stage} ${fixture.gateA.firstBlocker.blockerCode} @F${fixture.gateA.firstBlocker.frameIndex}: ${fixture.gateA.firstBlocker.blockerMessage}` : null,
   }));
   const control = { label: '人物倒地.fla (#713 control)', sha256: CONTROL_713.sha256, frameRate: CONTROL_713.frameRate, stage: CONTROL_713.stage, sceneFrameCount: 1, rootGraphic: '人物倒地', rootFrameCount: CONTROL_713.rootFrames, visibleLayers: CONTROL_713.visibleLayers, spans: CONTROL_713.spans, motionDurations: CONTROL_713.rootMotionDurations, nestedModes: ['play once'], movieClips: 0, shapeTween: 0, scriptsWithPayload: 0, filters: 0, maskLayers: 0, easingOrPath: 0, gateAResolved: `${CONTROL_713.gateAResolved}/${CONTROL_713.rootFrames}`, firstBlocker: null };
   const shared = ['single-frame Scene with a root Graphic holding the timeline', 'nested Graphic cutout rig', 'no MovieClip', 'no shape tween', 'no scripts', 'no easing/motion-path metadata'];
@@ -556,7 +557,8 @@ async function build(args) {
       `SHA-256 before/after: ${fixture.source.sha256Before} / ${fixture.source.sha256After}`,
       `FPS: ${fixture.frameRate}`, `root frame range/count: 0..${fixture.rootFrameCount - 1} / ${fixture.rootFrameCount}`,
       `stage: ${fixture.stage}`, `semantic census: layers=${fixture.totalLayerCount} visible=${fixture.visibleLayerCount} spans=${fixture.authoredSpanCount}`,
-      `motion durations: {${fixture.motionDurations.join(',')}}`,
+      `motion durations (all motion spans): {${fixture.motionSpanDurations.join(',')}}`,
+      `motion durations (>1, bounded-relevant): {${fixture.motionDurations.join(',')}}`,
       `interval capability map: ${JSON.stringify(fixture.capabilityCounts)}`,
       `feature census: movieclips=${fixture.archiveEvidence.librarySymbolTypeCounts.movieclip ?? 0} shapeTween=${fixture.archiveEvidence.shapeTweenFrameCount} scriptsWithPayload=${fixture.archiveEvidence.scriptTagsWithPayload.length} easing/path=${fixture.archiveEvidence.unsupportedMotionAttributes.length} filters=${fixture.archiveEvidence.filtersCount} masks=${fixture.archiveEvidence.maskLayerCount} loops=${JSON.stringify(fixture.archiveEvidence.loopAttributeValues)}`,
       `Gate A authored/tween/held/blocked: ${JSON.stringify(fixture.gateA.statusCounts)}`,
